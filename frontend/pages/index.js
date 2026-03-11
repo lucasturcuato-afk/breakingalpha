@@ -17,7 +17,7 @@ const SECTORS = [
   { key: 're',     label: 'REAL ESTATE', value: 'Real Estate & REITs',                 color: '#f97316' },
   { key: 'fin',    label: 'FINTECH',     value: 'Fintech & Crypto',                    color: '#06b6d4' },
   { key: 'health', label: 'HEALTHCARE',  value: 'Healthcare & Biotech',                color: '#ec4899' },
-  { key: 'energy', label: 'ENERGY',      value: 'Energy & Commodities',                color: '#84cc16' },
+  { key: 'energy', label: 'ENERGY',      value: 'Energy & Climate',                    color: '#84cc16' },
   { key: 'cons',   label: 'CONSUMER',    value: 'Consumer & Retail',                   color: '#a78bfa' },
 ]
 
