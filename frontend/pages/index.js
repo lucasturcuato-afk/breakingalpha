@@ -133,7 +133,7 @@ function BriefView({ type }) {
       setLoading(true)
       const { data: bData } = await supabase.from('briefings').select('*').eq('briefing_type', type).order('created_at', { ascending: false }).limit(1)
       if (bData?.[0]) setBriefing(bData[0])
-      const { data: aData } = await supabase.from('articles').select('*').order('created_at', { ascending: false }).limit(100)
+      const { data: aData } = await supabase.from('articles').select('*').order('ingested_at', { ascending: false }).limit(100)
       if (aData) setArticles(aData)
       setLoading(false)
     }
@@ -250,7 +250,7 @@ function CompanyIntel() {
   const [search, setSearch] = useState('')
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from('articles').select('companies_mentioned, sector').order('created_at', { ascending: false }).limit(200)
+      const { data } = await supabase.from('articles').select('companies_mentioned, sector').order('ingested_at', { ascending: false }).limit(200)
       if (data) {
         const map = {}
         data.forEach(a => {
@@ -301,7 +301,7 @@ function Trends() {
   const [loading, setLoading] = useState(true)
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from('articles').select('sector').order('created_at', { ascending: false }).limit(500)
+      const { data } = await supabase.from('articles').select('sector').order('ingested_at', { ascending: false }).limit(500)
       if (data) setArticles(data)
       setLoading(false)
     }
