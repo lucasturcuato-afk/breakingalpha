@@ -1,0 +1,40 @@
+name: BreakingAlpha Pipeline
+
+on:
+  schedule:
+    - cron: '0 14 * * 1-5'   # 6am PT Monday-Friday (morning)
+    - cron: '0 6 * * 2-6'    # 10pm PT Monday-Friday (evening)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'morning or evening'
+        default: 'morning'
+        type: choice
+        options: [morning, evening]
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install supabase google-generativeai newsapi-python feedparser requests python-dotenv
+      - name: Run pipeline
+        working-directory: backend
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+        run: |
+          HOUR=$(date -u +%H)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python run.py ${{ github.event.inputs.mode }}
+          elif [ "$HOUR" = "14" ]; then
+            python run.py morning
+          else
+            python run.py evening
+          fi
