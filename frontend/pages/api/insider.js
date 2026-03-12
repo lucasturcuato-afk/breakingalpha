@@ -49,10 +49,10 @@ async function fetchCongress() {
 
   // Fetch both House and Senate stock watcher APIs
   const [houseRes, senateRes] = await Promise.allSettled([
-    fetch('https://housestockwatcher.com/api/transactions_by_date/all', {
+    fetch('https://house-stock-watcher-data.s3-us-west-2.amazonaws.com/data/all_transactions.json', {
       headers: { 'User-Agent': 'BreakingAlpha research@breakingalpha.com', 'Accept': 'application/json' }
     }),
-    fetch('https://senatestockwatcher.com/api/transactions_by_date/all', {
+    fetch('https://senate-stock-watcher-data.s3-us-east-2.amazonaws.com/aggregate/all_transactions.json', {
       headers: { 'User-Agent': 'BreakingAlpha research@breakingalpha.com', 'Accept': 'application/json' }
     })
   ])
@@ -62,37 +62,48 @@ async function fetchCongress() {
   if (houseRes.status === 'fulfilled' && houseRes.value.ok) {
     const houseData = await houseRes.value.json()
     const trades = Array.isArray(houseData) ? houseData : (houseData.data || [])
-    combined.push(...trades.map(t => ({
-      id:             `house-${t.representative}-${t.ticker}-${t.transaction_date}`,
-      representative: t.representative || 'Unknown',
-      party:          t.party || '',
-      chamber:        'House',
-      ticker:         (t.ticker||'').replace('$',''),
-      asset:          t.asset_description || t.ticker || '',
-      type:           t.type || '',
-      amount:         t.amount || '',
-      filed:          t.disclosure_date || '',
-      traded:         t.transaction_date || '',
-      district:       t.district || '',
-    })))
+    combined.push(...trades
+      .filter(t => t.ticker && t.ticker !== '--' && t.transaction_date)
+      .map(t => ({
+        id:             `house-${t.representative}-${t.ticker}-${t.transaction_date}`,
+        representative: t.representative || 'Unknown',
+        party:          t.party || '',
+        chamber:        'House',
+        ticker:         (t.ticker||'').replace('$',''),
+        asset:          t.asset_description || t.ticker || '',
+        type:           t.type || '',
+        amount:         t.amount || '',
+        filed:          t.disclosure_date || '',
+        traded:         t.transaction_date || '',
+        district:       t.district || '',
+      }))
+    )
   }
 
   if (senateRes.status === 'fulfilled' && senateRes.value.ok) {
     const senateData = await senateRes.value.json()
-    const trades = Array.isArray(senateData) ? senateData : (senateData.data || [])
-    combined.push(...trades.map(t => ({
-      id:             `senate-${t.senator}-${t.ticker}-${t.transaction_date}`,
-      representative: t.senator || t.first_name + ' ' + t.last_name || 'Unknown',
-      party:          t.party || '',
-      chamber:        'Senate',
-      ticker:         (t.ticker||'').replace('$',''),
-      asset:          t.asset_description || t.ticker || '',
-      type:           t.type || '',
-      amount:         t.amount || '',
-      filed:          t.disclosure_date || '',
-      traded:         t.transaction_date || '',
-      district:       t.state || '',
-    })))
+    // Senate data is nested: array of senators, each with transactions[]
+    const senators = Array.isArray(senateData) ? senateData : []
+    senators.forEach(senator => {
+      const name = `${senator.first_name || ''} ${senator.last_name || ''}`.trim() || senator.office || 'Unknown'
+      const transactions = Array.isArray(senator.transactions) ? senator.transactions : []
+      transactions.forEach(t => {
+        if (!t.ticker || t.ticker === '--') return
+        combined.push({
+          id:             `senate-${name}-${t.ticker}-${t.transaction_date}`,
+          representative: name,
+          party:          senator.party || '',
+          chamber:        'Senate',
+          ticker:         (t.ticker||'').replace('$',''),
+          asset:          t.asset_description || t.ticker || '',
+          type:           t.type || '',
+          amount:         t.amount || '',
+          filed:          senator.date_recieved || '',
+          traded:         t.transaction_date || '',
+          district:       senator.office || '',
+        })
+      })
+    })
   }
 
   if (combined.length === 0) throw new Error('No data returned from congress trade APIs')
