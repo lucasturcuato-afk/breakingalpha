@@ -353,238 +353,233 @@ function Trends() {
   )
 }
 
-// ── Deal Flow Tracker ─────────────────────────────────────────────────────────
-const EMPTY_DEAL = { company: '', deal_type: 'M&A', sector: '', stage: 'rumored', valuation: '', source_url: '', notes: '' }
+// ── Deal Flow Tracker (AI-automated) ─────────────────────────────────────────
+const DEAL_STAGE_MAP = {
+  rumored:   { label: 'RUMORED',    color: '#94a3b8' },
+  announced: { label: 'ANNOUNCED',  color: '#fbbf24' },
+  loi:       { label: 'UNDER LOI',  color: '#f97316' },
+  diligence: { label: 'DILIGENCE',  color: '#8b5cf6' },
+  signed:    { label: 'SIGNED',     color: '#3b82f6' },
+  closed:    { label: 'CLOSED',     color: '#4ade80' },
+  dead:      { label: 'DEAD',       color: '#f87171' },
+}
 
 function DealFlowTracker() {
-  const [deals, setDeals] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState(EMPTY_DEAL)
-  const [saving, setSaving] = useState(false)
-  const [editId, setEditId] = useState(null)
+  const [deals, setDeals]           = useState([])
+  const [loading, setLoading]       = useState(true)
   const [filterStage, setFilterStage] = useState('ALL')
-  const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [search, setSearch]         = useState('')
+  const [expanded, setExpanded]     = useState(null)
 
-  // Load from localStorage (no extra Supabase table needed)
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('ba_dealflow')
-      if (saved) setDeals(JSON.parse(saved))
-    } catch {}
-    setLoading(false)
+    async function load() {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('deal_flow')
+        .select('*')
+        .order('updated_at', { ascending: false })
+        .limit(200)
+      if (data) setDeals(data)
+      if (error) console.error('Deal flow error:', error)
+      setLoading(false)
+    }
+    load()
   }, [])
 
-  function persist(newDeals) {
-    setDeals(newDeals)
-    try { localStorage.setItem('ba_dealflow', JSON.stringify(newDeals)) } catch {}
-  }
-
-  function handleSave() {
-    if (!form.company.trim()) return
-    setSaving(true)
-    const now = new Date().toISOString()
-    if (editId) {
-      persist(deals.map(d => d.id === editId ? { ...form, id: editId, updated_at: now } : d))
-      setEditId(null)
-    } else {
-      const newDeal = { ...form, id: crypto.randomUUID(), created_at: now, updated_at: now }
-      persist([newDeal, ...deals])
-    }
-    setForm(EMPTY_DEAL)
-    setShowForm(false)
-    setSaving(false)
-  }
-
-  function handleEdit(deal) {
-    setForm({ company: deal.company, deal_type: deal.deal_type, sector: deal.sector, stage: deal.stage, valuation: deal.valuation, source_url: deal.source_url, notes: deal.notes })
-    setEditId(deal.id)
-    setShowForm(true)
-  }
-
-  function handleDelete(id) {
-    persist(deals.filter(d => d.id !== id))
-    setDeleteConfirm(null)
-  }
-
-  function handleStageChange(id, newStage) {
-    persist(deals.map(d => d.id === id ? { ...d, stage: newStage, updated_at: new Date().toISOString() } : d))
-  }
-
-  const filtered = filterStage === 'ALL' ? deals : deals.filter(d => d.stage === filterStage)
-
+  // Stage counts for filter tabs
   const stageCounts = {}
   deals.forEach(d => { stageCounts[d.stage] = (stageCounts[d.stage] || 0) + 1 })
 
-  const inputStyle = { width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }
-  const labelStyle = { fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.32)', letterSpacing: '0.14em', display: 'block', marginBottom: '5px' }
+  const filtered = deals.filter(d => {
+    const stageMatch = filterStage === 'ALL' || d.stage === filterStage
+    const searchMatch = !search || 
+      d.company?.toLowerCase().includes(search.toLowerCase()) ||
+      d.acquirer?.toLowerCase().includes(search.toLowerCase()) ||
+      d.sector?.toLowerCase().includes(search.toLowerCase())
+    return stageMatch && searchMatch
+  })
+
+  // Summary stats
+  const totalVal = deals.filter(d => d.valuation).length
+  const activeDeals = deals.filter(d => !['closed','dead'].includes(d.stage)).length
 
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
-        <div>
-          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '4px' }}>💼 DEAL FLOW TRACKER</div>
-          <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', margin: 0 }}>
-            Your private pipeline of deals to watch
-          </p>
-        </div>
-        <button onClick={() => { setShowForm(!showForm); setEditId(null); setForm(EMPTY_DEAL) }} style={{ padding: '7px 16px', borderRadius: '6px', border: '1px solid rgba(245,158,11,0.4)', background: showForm ? 'rgba(245,158,11,0.15)' : 'transparent', color: '#f59e0b', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', letterSpacing: '0.08em', transition: 'all 0.15s' }}>
-          {showForm ? '✕ CANCEL' : '+ ADD DEAL'}
-        </button>
+      <div style={{ marginBottom: '6px' }}>
+        <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '4px' }}>💼 DEAL FLOW TRACKER</div>
+        <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', margin: 0 }}>
+          AI-extracted deal pipeline · auto-updated from news ingestion
+        </p>
       </div>
 
-      {/* Explainer banner — shown when no deals yet */}
-      {deals.length === 0 && !showForm && (
-        <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.06), rgba(59,130,246,0.04))', border: '1px solid rgba(245,158,11,0.14)', borderRadius: '12px', padding: '28px 30px', marginTop: '20px', marginBottom: '24px' }}>
+      {/* Stats row */}
+      {deals.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', margin: '16px 0 20px' }}>
+          {[
+            { label: 'DEALS TRACKED', value: deals.length },
+            { label: 'ACTIVE',        value: activeDeals },
+            { label: 'CLOSED',        value: stageCounts['closed'] || 0 },
+            { label: 'WITH VALUATION',value: totalVal },
+          ].map((s, i) => (
+            <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '12px 14px' }}>
+              <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '22px', fontWeight: 700, color: '#f8fafc', marginBottom: '3px' }}>{s.value}</div>
+              <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em' }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Search */}
+      {deals.length > 0 && (
+        <input
+          type="text"
+          placeholder="Search company, acquirer, sector..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '8px', padding: '9px 15px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none', marginBottom: '14px' }}
+        />
+      )}
+
+      {/* Stage filter tabs */}
+      {deals.length > 0 && (
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '20px' }}>
+          <button onClick={() => setFilterStage('ALL')} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${filterStage === 'ALL' ? '#f59e0b' : 'rgba(255,255,255,0.07)'}`, background: filterStage === 'ALL' ? 'rgba(245,158,11,0.12)' : 'transparent', color: filterStage === 'ALL' ? '#f59e0b' : 'rgba(255,255,255,0.38)' }}>
+            ALL ({deals.length})
+          </button>
+          {Object.entries(DEAL_STAGE_MAP).map(([key, s]) => {
+            const count = stageCounts[key] || 0
+            if (!count) return null
+            const isActive = filterStage === key
+            return (
+              <button key={key} onClick={() => setFilterStage(key)} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${isActive ? s.color : 'rgba(255,255,255,0.07)'}`, background: isActive ? s.color + '18' : 'transparent', color: isActive ? s.color : 'rgba(255,255,255,0.38)' }}>
+                {s.label} ({count})
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Loading */}
+      {loading && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px' }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ width: '28px', height: '28px', border: '2px solid rgba(255,255,255,0.08)', borderTopColor: '#f59e0b', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 14px' }} />
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em' }}>LOADING DEAL PIPELINE...</div>
+          </div>
+        </div>
+      )}
+
+      {/* Empty state — first run before table exists */}
+      {!loading && deals.length === 0 && (
+        <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.06), rgba(59,130,246,0.04))', border: '1px solid rgba(245,158,11,0.14)', borderRadius: '12px', padding: '32px', marginTop: '16px' }}>
           <div style={{ fontSize: '28px', marginBottom: '14px' }}>💼</div>
           <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '22px', color: '#f8fafc', margin: '0 0 12px 0' }}>What is a Deal Flow Tracker?</h2>
-          <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.58)', lineHeight: 1.75, margin: '0 0 20px 0' }}>
-            In investment banking and private equity, <strong style={{ color: 'rgba(255,255,255,0.8)' }}>deal flow</strong> is the stream of investment opportunities your firm is actively evaluating. Analysts and associates maintain running logs of deals they're tracking — from early rumors all the way to close.
+          <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.55)', lineHeight: 1.75, margin: '0 0 18px 0' }}>
+            In IB and PE, <strong style={{ color: 'rgba(255,255,255,0.8)' }}>deal flow</strong> is the pipeline of live transactions your firm is tracking — from early rumors through close. BreakingAlpha automatically extracts deals from every article it ingests using AI, classifying the target, deal type, stage, and valuation. Your pipeline builds itself.
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px', marginBottom: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '10px', marginBottom: '20px' }}>
             {[
-              { icon: '🔍', title: 'Track rumors early', desc: 'Log deals before they hit the wire. First-mover awareness is a real edge.' },
-              { icon: '📊', title: 'Monitor stage progression', desc: 'Move deals from Rumored → Announced → LOI → Closed as they develop.' },
-              { icon: '📝', title: 'Capture your thesis', desc: 'Record valuations, deal type, and your own notes on every opportunity.' },
-              { icon: '⚡', title: 'Paired with live news', desc: 'Your pipeline lives next to BreakingAlpha\'s signals — connect the dots faster.' },
+              { icon: '🤖', title: 'Fully automated',    desc: 'AI scans every article and extracts deals — no manual input needed.' },
+              { icon: '📊', title: 'Stage tracking',      desc: 'Rumored → Announced → LOI → Diligence → Signed → Closed.' },
+              { icon: '💰', title: 'Valuation capture',   desc: 'Dollar figures extracted directly from the news, when reported.' },
+              { icon: '⚡', title: 'Runs every ingest',   desc: 'Updated each morning and evening alongside your briefs.' },
             ].map((item, i) => (
               <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '14px 16px' }}>
                 <div style={{ fontSize: '18px', marginBottom: '8px' }}>{item.icon}</div>
                 <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#f59e0b', marginBottom: '5px' }}>{item.title}</div>
-                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.42)', lineHeight: 1.55 }}>{item.desc}</div>
+                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', lineHeight: 1.55 }}>{item.desc}</div>
               </div>
             ))}
           </div>
-          <button onClick={() => setShowForm(true)} style={{ padding: '9px 22px', borderRadius: '6px', border: '1px solid rgba(245,158,11,0.5)', background: 'rgba(245,158,11,0.12)', color: '#f59e0b', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', letterSpacing: '0.1em' }}>
-            + LOG YOUR FIRST DEAL
-          </button>
-        </div>
-      )}
-
-      {/* Add / Edit Form */}
-      {showForm && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '12px', padding: '24px', marginTop: '16px', marginBottom: '24px' }}>
-          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '18px' }}>{editId ? '✏️ EDIT DEAL' : '+ NEW DEAL'}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
-            <div>
-              <label style={labelStyle}>COMPANY / TARGET *</label>
-              <input style={inputStyle} placeholder="e.g. Figma, OpenAI..." value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} />
-            </div>
-            <div>
-              <label style={labelStyle}>DEAL TYPE</label>
-              <select style={{ ...inputStyle, cursor: 'pointer' }} value={form.deal_type} onChange={e => setForm(f => ({ ...f, deal_type: e.target.value }))}>
-                {DEAL_TYPES.map(t => <option key={t} value={t} style={{ background: '#0f172a' }}>{t}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>SECTOR</label>
-              <select style={{ ...inputStyle, cursor: 'pointer' }} value={form.sector} onChange={e => setForm(f => ({ ...f, sector: e.target.value }))}>
-                <option value="" style={{ background: '#0f172a' }}>— Select —</option>
-                {SECTORS.filter(s => s.value).map(s => <option key={s.key} value={s.value} style={{ background: '#0f172a' }}>{s.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>STAGE</label>
-              <select style={{ ...inputStyle, cursor: 'pointer' }} value={form.stage} onChange={e => setForm(f => ({ ...f, stage: e.target.value }))}>
-                {DEAL_STAGES.map(s => <option key={s.value} value={s.value} style={{ background: '#0f172a' }}>{s.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>VALUATION / SIZE</label>
-              <input style={inputStyle} placeholder="e.g. $4.2B, $850M EV..." value={form.valuation} onChange={e => setForm(f => ({ ...f, valuation: e.target.value }))} />
-            </div>
-            <div>
-              <label style={labelStyle}>SOURCE URL</label>
-              <input style={inputStyle} placeholder="https://..." value={form.source_url} onChange={e => setForm(f => ({ ...f, source_url: e.target.value }))} />
-            </div>
-          </div>
-          <div style={{ marginBottom: '18px' }}>
-            <label style={labelStyle}>NOTES / THESIS</label>
-            <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: '72px', lineHeight: 1.6 }} placeholder="Your read on this deal — why it matters, who the buyers are, what the multiple looks like..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
-          </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={handleSave} disabled={!form.company.trim() || saving} style={{ padding: '8px 22px', borderRadius: '6px', border: 'none', background: form.company.trim() ? '#f59e0b' : 'rgba(245,158,11,0.3)', color: '#0f172a', fontSize: '11px', fontFamily: "'DM Mono', monospace", fontWeight: 600, cursor: form.company.trim() ? 'pointer' : 'not-allowed', letterSpacing: '0.1em' }}>
-              {saving ? 'SAVING...' : editId ? 'UPDATE DEAL' : 'LOG DEAL'}
-            </button>
-            <button onClick={() => { setShowForm(false); setEditId(null); setForm(EMPTY_DEAL) }} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: 'rgba(255,255,255,0.4)', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: 'pointer' }}>CANCEL</button>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.3)', padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.07)' }}>
+            ⚠ Pipeline populates after next scheduled ingest. See setup instructions below to create the <span style={{ color: '#f59e0b' }}>deal_flow</span> Supabase table and run the extractor.
           </div>
         </div>
       )}
 
-      {/* Stage filter tabs + deal count */}
-      {deals.length > 0 && (
-        <>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '20px', marginBottom: '16px' }}>
-            <button onClick={() => setFilterStage('ALL')} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${filterStage === 'ALL' ? '#f59e0b' : 'rgba(255,255,255,0.07)'}`, background: filterStage === 'ALL' ? 'rgba(245,158,11,0.12)' : 'transparent', color: filterStage === 'ALL' ? '#f59e0b' : 'rgba(255,255,255,0.38)' }}>
-              ALL ({deals.length})
-            </button>
-            {DEAL_STAGES.map(s => {
-              const count = stageCounts[s.value] || 0
-              if (count === 0) return null
-              const isActive = filterStage === s.value
-              return (
-                <button key={s.value} onClick={() => setFilterStage(s.value)} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${isActive ? s.color : 'rgba(255,255,255,0.07)'}`, background: isActive ? s.color + '18' : 'transparent', color: isActive ? s.color : 'rgba(255,255,255,0.38)' }}>
-                  {s.label} ({count})
-                </button>
-              )
-            })}
+      {/* Deal cards */}
+      {!loading && filtered.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '6px' }}>
+            {filtered.length} {filtered.length === 1 ? 'DEAL' : 'DEALS'}{filterStage !== 'ALL' ? ` · ${DEAL_STAGE_MAP[filterStage]?.label}` : ''}
           </div>
-
-          {/* Deal table */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {filtered.map(deal => {
-              const stage = stageInfo(deal.stage)
-              const sectorColor = deal.sector ? getSectorColor(deal.sector) : '#64748b'
-              return (
-                <div key={deal.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '16px 20px', transition: 'border-color 0.15s' }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
-                    {/* Left: company + meta */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                        <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '18px', fontWeight: 700, color: '#f8fafc' }}>{deal.company}</span>
-                        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: '3px' }}>{deal.deal_type}</span>
-                        {deal.valuation && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#fbbf24' }}>{deal.valuation}</span>}
-                      </div>
-                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: deal.notes ? '10px' : '0' }}>
-                        {/* Stage badge — clickable to cycle */}
-                        <select
-                          value={deal.stage}
-                          onChange={e => { e.stopPropagation(); handleStageChange(deal.id, e.target.value) }}
-                          style={{ padding: '3px 8px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: stage.color, background: stage.color + '18', border: `1px solid ${stage.color}40`, cursor: 'pointer', outline: 'none' }}
-                        >
-                          {DEAL_STAGES.map(s => <option key={s.value} value={s.value} style={{ background: '#0f172a', color: '#fff' }}>{s.label}</option>)}
-                        </select>
-                        {deal.sector && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: sectorColor, background: sectorColor + '15', border: `1px solid ${sectorColor}28`, padding: '2px 8px', borderRadius: '3px' }}>{deal.sector.split(' ')[0]}</span>}
-                        <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.2)' }}>{timeAgo(deal.updated_at)}</span>
-                      </div>
-                      {deal.notes && <p style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.46)', lineHeight: 1.6, margin: 0, fontStyle: 'italic' }}>{deal.notes}</p>}
-                      {deal.source_url && (
-                        <a href={deal.source_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#60a5fa', textDecoration: 'none', display: 'inline-block', marginTop: '8px' }}>
-                          SOURCE →
-                        </a>
-                      )}
-                    </div>
-                    {/* Right: actions */}
-                    <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                      <button onClick={() => handleEdit(deal)} style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: 'rgba(255,255,255,0.35)', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer' }}>EDIT</button>
-                      {deleteConfirm === deal.id ? (
-                        <>
-                          <button onClick={() => handleDelete(deal.id)} style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid rgba(248,113,113,0.4)', background: 'rgba(248,113,113,0.12)', color: '#f87171', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer' }}>CONFIRM</button>
-                          <button onClick={() => setDeleteConfirm(null)} style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: 'rgba(255,255,255,0.35)', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer' }}>NO</button>
-                        </>
-                      ) : (
-                        <button onClick={() => setDeleteConfirm(deal.id)} style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: 'rgba(255,255,255,0.25)', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer' }}>✕</button>
-                      )}
-                    </div>
+          {filtered.map(deal => {
+            const stage     = DEAL_STAGE_MAP[deal.stage] || DEAL_STAGE_MAP.rumored
+            const secColor  = deal.sector ? getSectorColor(deal.sector) : '#64748b'
+            const isExpanded = expanded === deal.id
+            return (
+              <div key={deal.id}
+                onClick={() => setExpanded(isExpanded ? null : deal.id)}
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '16px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)' }}
+              >
+                {/* Top row */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '18px', fontWeight: 700, color: '#f8fafc' }}>{deal.company}</span>
+                    {deal.acquirer && (
+                      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.3)' }}>← {deal.acquirer}</span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}>
+                    {deal.valuation && (
+                      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#fbbf24', fontWeight: 500 }}>{deal.valuation}</span>
+                    )}
+                    <span style={{ padding: '3px 9px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: stage.color, background: stage.color + '18', border: `1px solid ${stage.color}40` }}>
+                      {stage.label}
+                    </span>
                   </div>
                 </div>
-              )
-            })}
-          </div>
-        </>
+                {/* Meta row */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {deal.deal_type && (
+                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: '3px' }}>{deal.deal_type}</span>
+                  )}
+                  {deal.sector && (
+                    <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: secColor, background: secColor + '15', border: `1px solid ${secColor}28`, padding: '2px 8px', borderRadius: '3px' }}>
+                      {deal.sector.split(' ')[0]}
+                    </span>
+                  )}
+                  <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)' }}>
+                    {timeAgo(deal.updated_at)}
+                  </span>
+                  {deal.auto_extracted && (
+                    <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(245,158,11,0.4)', letterSpacing: '0.08em' }}>🤖 AI</span>
+                  )}
+                </div>
+                {/* Expanded */}
+                {isExpanded && (
+                  <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    {deal.thesis && (
+                      <div style={{ background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.18)', borderRadius: '6px', padding: '10px 14px', marginBottom: '10px' }}>
+                        <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#fbbf24', letterSpacing: '0.12em', marginBottom: '4px' }}>SIGNAL</div>
+                        <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)', margin: 0, lineHeight: 1.55, fontStyle: 'italic' }}>{deal.thesis}</p>
+                      </div>
+                    )}
+                    {deal.source_url && (
+                      <a href={deal.source_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                        style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#60a5fa', textDecoration: 'none' }}>
+                        READ SOURCE →
+                      </a>
+                    )}
+                  </div>
+                )}
+                <div style={{ marginTop: '8px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.15)' }}>
+                  {isExpanded ? '↑ collapse' : '↓ expand'}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* No results for filter */}
+      {!loading && deals.length > 0 && filtered.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>
+          NO DEALS MATCH THIS FILTER
+        </div>
       )}
     </div>
   )
