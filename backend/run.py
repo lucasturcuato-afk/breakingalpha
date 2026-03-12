@@ -4,7 +4,7 @@ Order: ingest → synthesize → extract deals
 """
 
 import sys
-from ingest import run as run_ingest
+from ingest import run_ingestion as run_ingest
 from synthesize import run as run_synthesize
 from deal_extractor import run as run_deal_extractor
 
