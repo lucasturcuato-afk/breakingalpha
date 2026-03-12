@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -33,6 +33,18 @@ const SIDEBAR_SECTORS = [
   { name: 'Consumer & Retail', color: '#a78bfa' },
 ]
 
+const DEAL_STAGES = [
+  { value: 'rumored',    label: 'RUMORED',    color: '#94a3b8' },
+  { value: 'announced',  label: 'ANNOUNCED',  color: '#fbbf24' },
+  { value: 'loi',        label: 'UNDER LOI',  color: '#f97316' },
+  { value: 'diligence',  label: 'DILIGENCE',  color: '#8b5cf6' },
+  { value: 'signed',     label: 'SIGNED',     color: '#3b82f6' },
+  { value: 'closed',     label: 'CLOSED',     color: '#4ade80' },
+  { value: 'dead',       label: 'DEAD',       color: '#f87171' },
+]
+
+const DEAL_TYPES = ['M&A', 'LBO', 'IPO', 'VC Round', 'SPAC', 'Recap', 'Minority Stake', 'Other']
+
 function getSectorColor(sector) {
   if (!sector) return '#64748b'
   const found = SECTORS.find(s => s.value && sector.includes(s.value.split(' ')[0]))
@@ -50,7 +62,11 @@ function timeAgo(dateStr) {
   return `${days}d ago`
 }
 
-// ── Ticker Bar ──
+function stageInfo(val) {
+  return DEAL_STAGES.find(s => s.value === val) || DEAL_STAGES[0]
+}
+
+// ── Ticker Bar ──────────────────────────────────────────────────────────────
 function TickerBar({ quotes }) {
   if (!quotes || quotes.length === 0) return (
     <div style={{ background: 'rgba(0,0,0,0.6)', borderBottom: '1px solid rgba(255,255,255,0.06)', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -76,7 +92,7 @@ function TickerBar({ quotes }) {
   )
 }
 
-// ── Sector Pill ──
+// ── Sector Pill ─────────────────────────────────────────────────────────────
 function SectorPill({ sector }) {
   const color = getSectorColor(sector)
   return (
@@ -86,15 +102,13 @@ function SectorPill({ sector }) {
   )
 }
 
-// ── Article Card ──
+// ── Article Card ─────────────────────────────────────────────────────────────
 function ArticleCard({ article }) {
   const [expanded, setExpanded] = useState(false)
   let companies = article.companies
   if (typeof companies === 'string') { try { companies = JSON.parse(companies) } catch { companies = [] } }
   if (!Array.isArray(companies)) companies = []
-
   const timestamp = article.published_at || article.ingested_at
-  const ago = timeAgo(timestamp)
 
   return (
     <div
@@ -106,30 +120,14 @@ function ArticleCard({ article }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           {article.sector && <SectorPill sector={article.sector} />}
-          {article.source && (
-            <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)' }}>
-              {article.source}
-            </span>
-          )}
+          {article.source && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)' }}>{article.source}</span>}
         </div>
-        {ago && (
-          <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)', flexShrink: 0 }}>
-            {ago}
-          </span>
-        )}
+        {timestamp && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)', flexShrink: 0 }}>{timeAgo(timestamp)}</span>}
       </div>
-
-      <h3 style={{ fontSize: '15.5px', fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, color: '#f1f5f9', lineHeight: 1.4, margin: 0 }}>
-        {article.title}
-      </h3>
-
+      <h3 style={{ fontSize: '15.5px', fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, color: '#f1f5f9', lineHeight: 1.4, margin: 0 }}>{article.title}</h3>
       {expanded && (
         <div style={{ marginTop: '12px' }}>
-          {article.summary && (
-            <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.58)', lineHeight: 1.72, margin: '0 0 14px 0' }}>
-              {article.summary}
-            </p>
-          )}
+          {article.summary && <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.58)', lineHeight: 1.72, margin: '0 0 14px 0' }}>{article.summary}</p>}
           {article.relevance_reason && (
             <div style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: '6px', padding: '10px 14px', marginBottom: '12px' }}>
               <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#fbbf24', letterSpacing: '0.12em', marginBottom: '4px' }}>SIGNAL</div>
@@ -138,26 +136,18 @@ function ArticleCard({ article }) {
           )}
           {companies.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '10px' }}>
-              {companies.map((c, i) => (
-                <span key={i} style={{ padding: '2px 9px', borderRadius: '4px', fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>{c}</span>
-              ))}
+              {companies.map((c, i) => <span key={i} style={{ padding: '2px 9px', borderRadius: '4px', fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>{c}</span>)}
             </div>
           )}
-          {article.url && (
-            <a href={article.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#60a5fa', textDecoration: 'none' }}>
-              READ SOURCE →
-            </a>
-          )}
+          {article.url && <a href={article.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#60a5fa', textDecoration: 'none' }}>READ SOURCE →</a>}
         </div>
       )}
-      <div style={{ marginTop: '7px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)' }}>
-        {expanded ? '↑ collapse' : '↓ expand'}
-      </div>
+      <div style={{ marginTop: '7px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)' }}>{expanded ? '↑ collapse' : '↓ expand'}</div>
     </div>
   )
 }
 
-// ── Brief View ──
+// ── Brief View ───────────────────────────────────────────────────────────────
 function BriefView({ type }) {
   const [briefing, setBriefing] = useState(null)
   const [articles, setArticles] = useState([])
@@ -168,21 +158,11 @@ function BriefView({ type }) {
   useEffect(() => {
     async function load() {
       setLoading(true)
-
-      const { data: bData } = await supabase
-        .from('briefings').select('*')
-        .eq('briefing_type', type)
-        .order('created_at', { ascending: false }).limit(1)
+      const { data: bData } = await supabase.from('briefings').select('*').eq('briefing_type', type).order('created_at', { ascending: false }).limit(1)
       if (bData?.[0]) setBriefing(bData[0])
-
-      // Use ingested_at — the actual column name in your articles table
-      const { data: aData } = await supabase
-        .from('articles').select('*')
-        .order('ingested_at', { ascending: false }).limit(100)
-
+      const { data: aData } = await supabase.from('articles').select('*').order('ingested_at', { ascending: false }).limit(100)
       if (aData) {
         setArticles(aData)
-        // Build sector counts for filter badges
         const counts = {}
         aData.forEach(a => { if (a.sector) counts[a.sector] = (counts[a.sector] || 0) + 1 })
         setSectorCounts(counts)
@@ -195,9 +175,6 @@ function BriefView({ type }) {
   const activeSector = SECTORS.find(s => s.key === sectorFilter)
   const filtered = sectorFilter === 'ALL' ? articles : articles.filter(a => a.sector === activeSector?.value)
 
-  // Count for ALL button
-  const allCount = articles.length
-
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px' }}>
       <div style={{ textAlign: 'center' }}>
@@ -209,96 +186,44 @@ function BriefView({ type }) {
 
   return (
     <div>
-      {/* Brief label + date */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-        <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>
-          {type === 'morning' ? '☀ MORNING BRIEF' : '🌙 EVENING BRIEF'}
-        </span>
-        {briefing && (
-          <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)' }}>
-            {new Date(briefing.created_at).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-          </span>
-        )}
+        <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>{type === 'morning' ? '☀ MORNING BRIEF' : '🌙 EVENING BRIEF'}</span>
+        {briefing && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)' }}>{new Date(briefing.created_at).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>}
       </div>
-
-      {/* Lead card */}
       {briefing ? (
         <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.08), rgba(139,92,246,0.04))', border: '1px solid rgba(245,158,11,0.18)', borderRadius: '12px', padding: '26px 30px', marginBottom: '28px' }}>
           <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '10px' }}>TODAY'S LEAD</div>
-          <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 'clamp(22px, 2.8vw, 30px)', fontWeight: 700, color: '#f8fafc', lineHeight: 1.3, margin: '0 0 14px 0' }}>
-            {briefing.headline}
-          </h1>
-          <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.62)', lineHeight: 1.78, margin: 0 }}>
-            {briefing.summary}
-          </p>
-          {briefing.sector_breakdown && (() => {
-            try {
-              const bd = typeof briefing.sector_breakdown === 'string' ? JSON.parse(briefing.sector_breakdown) : briefing.sector_breakdown
-              const entries = Object.entries(bd)
-              if (!entries.length) return null
-              return (
-                <div style={{ marginTop: '20px', paddingTop: '18px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-                  <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '12px' }}>SECTOR BREAKDOWN</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '8px' }}>
-                    {entries.map(([sector, text]) => {
-                      const color = getSectorColor(sector)
-                      return (
-                        <div key={sector} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.055)', borderRadius: '7px', padding: '10px 13px' }}>
-                          <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color, marginBottom: '5px' }}>{sector.split(' ')[0].toUpperCase()}</div>
-                          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.48)', lineHeight: 1.5 }}>{text}</div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            } catch { return null }
-          })()}
+          <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 'clamp(22px, 2.8vw, 30px)', fontWeight: 700, color: '#f8fafc', lineHeight: 1.3, margin: '0 0 14px 0' }}>{briefing.headline}</h1>
+          <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.62)', lineHeight: 1.78, margin: 0 }}>{briefing.summary}</p>
         </div>
       ) : (
         <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: '12px', padding: '44px', textAlign: 'center', marginBottom: '28px' }}>
           <div style={{ fontSize: '30px', marginBottom: '12px' }}>{type === 'morning' ? '☀️' : '🌙'}</div>
           <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '20px', color: 'rgba(255,255,255,0.35)', marginBottom: '8px' }}>No {type} brief yet</div>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.22)' }}>
-            {type === 'morning' ? 'Publishes weekdays at 6:00 AM PT' : 'Publishes weekdays at 10:00 PM PT'}
-          </div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.22)' }}>{type === 'morning' ? 'Publishes weekdays at 6:00 AM PT' : 'Publishes weekdays at 10:00 PM PT'}</div>
         </div>
       )}
-
-      {/* Sector filters with counts */}
       <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em', marginBottom: '10px' }}>TOP STORIES</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
         {SECTORS.map(s => {
-          const count = s.key === 'ALL' ? allCount : (sectorCounts[s.value] || 0)
+          const count = s.key === 'ALL' ? articles.length : (sectorCounts[s.value] || 0)
           const isActive = sectorFilter === s.key
           return (
-            <button key={s.key} onClick={() => setSectorFilter(s.key)} style={{
-              padding: '4px 11px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace",
-              cursor: 'pointer', transition: 'all 0.12s', letterSpacing: '0.05em', outline: 'none',
-              border: `1px solid ${isActive ? s.color : 'rgba(255,255,255,0.07)'}`,
-              background: isActive ? s.color + '18' : 'transparent',
-              color: isActive ? s.color : count > 0 ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.2)',
-            }}>
+            <button key={s.key} onClick={() => setSectorFilter(s.key)} style={{ padding: '4px 11px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', transition: 'all 0.12s', letterSpacing: '0.05em', outline: 'none', border: `1px solid ${isActive ? s.color : 'rgba(255,255,255,0.07)'}`, background: isActive ? s.color + '18' : 'transparent', color: isActive ? s.color : count > 0 ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.2)' }}>
               {s.label}{count > 0 ? ` (${count})` : ''}
             </button>
           )
         })}
       </div>
-
-      <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '14px' }}>
-        {filtered.length} {filtered.length === 1 ? 'STORY' : 'STORIES'}
-        {sectorFilter !== 'ALL' && ` · ${activeSector?.label}`}
-      </div>
-
+      <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '14px' }}>{filtered.length} {filtered.length === 1 ? 'STORY' : 'STORIES'}{sectorFilter !== 'ALL' && ` · ${activeSector?.label}`}</div>
       {filtered.length > 0
         ? filtered.map(a => <ArticleCard key={a.id} article={a} />)
-        : <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>NO STORIES IN THIS SECTOR YET</div>
-      }
+        : <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>NO STORIES IN THIS SECTOR YET</div>}
     </div>
   )
 }
 
-// ── Thesis Board ──
+// ── Thesis Board ─────────────────────────────────────────────────────────────
 function ThesisBoard() {
   const THESES = [
     { title: 'AI Infrastructure Supercycle', signal: 'BULLISH', sectors: ['Technology M&A & Investment Banking'], thesis: 'Hyperscaler capex commitments ($300B+ in 2025) are creating durable demand for AI chips, data centers, and infrastructure software. NVDA, MSFT Azure, and custom silicon plays remain core positions. DeepSeek dynamics bear close monitoring for multiple compression risk.' },
@@ -319,16 +244,14 @@ function ThesisBoard() {
             <span style={{ padding: '3px 10px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: SIG[t.signal], background: SIG[t.signal] + '18', border: `1px solid ${SIG[t.signal]}40`, flexShrink: 0, marginLeft: '12px' }}>{t.signal}</span>
           </div>
           <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.52)', lineHeight: 1.68, margin: '0 0 14px 0' }}>{t.thesis}</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {t.sectors.map((s, j) => <SectorPill key={j} sector={s} />)}
-          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>{t.sectors.map((s, j) => <SectorPill key={j} sector={s} />)}</div>
         </div>
       ))}
     </div>
   )
 }
 
-// ── Company Intel ──
+// ── Company Intel ─────────────────────────────────────────────────────────────
 function CompanyIntel() {
   const [companies, setCompanies] = useState([])
   const [loading, setLoading] = useState(true)
@@ -336,11 +259,7 @@ function CompanyIntel() {
 
   useEffect(() => {
     async function load() {
-      // Fixed: use ingested_at instead of created_at
-      const { data } = await supabase.from('articles')
-        .select('companies, sector')
-        .order('ingested_at', { ascending: false })
-        .limit(200)
+      const { data } = await supabase.from('articles').select('companies, sector').order('ingested_at', { ascending: false }).limit(200)
       if (data) {
         const map = {}
         data.forEach(a => {
@@ -367,54 +286,39 @@ function CompanyIntel() {
     <div>
       <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '14px' }}>🏢 COMPANY INTEL</div>
       <input type="text" placeholder="Search companies..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '8px', padding: '9px 15px', fontSize: '13px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none', marginBottom: '18px' }} />
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>LOADING...</div>
-      ) : filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>
-          {search ? 'NO COMPANIES MATCH YOUR SEARCH' : 'NO COMPANY DATA YET'}
-        </div>
-      ) : (
-        <>
-          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '14px' }}>
-            {filtered.length} COMPANIES TRACKED
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(195px, 1fr))', gap: '9px' }}>
-            {filtered.slice(0, 60).map((c, i) => {
-              const color = c.sectors[0] ? getSectorColor(c.sectors[0]) : '#64748b'
-              return (
-                <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '13px 15px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '7px' }}>
-                    <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '15px', fontWeight: 600, color: '#f1f5f9' }}>{c.name}</span>
-                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '2px 7px', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.22)' }}>{c.mentions}×</span>
+      {loading ? <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>LOADING...</div>
+        : filtered.length === 0 ? <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>{search ? 'NO COMPANIES MATCH' : 'NO COMPANY DATA YET'}</div>
+        : (
+          <>
+            <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '14px' }}>{filtered.length} COMPANIES TRACKED</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(195px, 1fr))', gap: '9px' }}>
+              {filtered.slice(0, 60).map((c, i) => {
+                const color = c.sectors[0] ? getSectorColor(c.sectors[0]) : '#64748b'
+                return (
+                  <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '13px 15px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '7px' }}>
+                      <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '15px', fontWeight: 600, color: '#f1f5f9' }}>{c.name}</span>
+                      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '2px 7px', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.22)' }}>{c.mentions}×</span>
+                    </div>
+                    {c.sectors[0] && <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color, background: color + '15', border: `1px solid ${color}28`, padding: '1px 6px', borderRadius: '3px' }}>{c.sectors[0].split(' ')[0]}</span>}
                   </div>
-                  {c.sectors[0] && (
-                    <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color, background: color + '15', border: `1px solid ${color}28`, padding: '1px 6px', borderRadius: '3px' }}>
-                      {c.sectors[0].split(' ')[0]}
-                    </span>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </>
-      )}
+                )
+              })}
+            </div>
+          </>
+        )}
     </div>
   )
 }
 
-// ── Trends ──
+// ── Trends ────────────────────────────────────────────────────────────────────
 function Trends() {
   const [articles, setArticles] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
-      // Fixed: use ingested_at instead of created_at
-      const { data } = await supabase.from('articles')
-        .select('sector')
-        .order('ingested_at', { ascending: false })
-        .limit(500)
+      const { data } = await supabase.from('articles').select('sector').order('ingested_at', { ascending: false }).limit(500)
       if (data) setArticles(data)
       setLoading(false)
     }
@@ -429,13 +333,9 @@ function Trends() {
   return (
     <div>
       <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '6px' }}>📈 SIGNAL TRENDS</div>
-      <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', marginBottom: '24px' }}>
-        Story volume by sector · {articles.length} articles ingested
-      </p>
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>LOADING...</div>
-      ) : (
-        sorted.map(([sector, count]) => {
+      <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', marginBottom: '24px' }}>Story volume by sector · {articles.length} articles ingested</p>
+      {loading ? <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>LOADING...</div>
+        : sorted.map(([sector, count]) => {
           const color = getSectorColor(sector)
           return (
             <div key={sector} style={{ marginBottom: '20px' }}>
@@ -448,20 +348,259 @@ function Trends() {
               </div>
             </div>
           )
-        })
+        })}
+    </div>
+  )
+}
+
+// ── Deal Flow Tracker ─────────────────────────────────────────────────────────
+const EMPTY_DEAL = { company: '', deal_type: 'M&A', sector: '', stage: 'rumored', valuation: '', source_url: '', notes: '' }
+
+function DealFlowTracker() {
+  const [deals, setDeals] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState(EMPTY_DEAL)
+  const [saving, setSaving] = useState(false)
+  const [editId, setEditId] = useState(null)
+  const [filterStage, setFilterStage] = useState('ALL')
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
+
+  // Load from localStorage (no extra Supabase table needed)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('ba_dealflow')
+      if (saved) setDeals(JSON.parse(saved))
+    } catch {}
+    setLoading(false)
+  }, [])
+
+  function persist(newDeals) {
+    setDeals(newDeals)
+    try { localStorage.setItem('ba_dealflow', JSON.stringify(newDeals)) } catch {}
+  }
+
+  function handleSave() {
+    if (!form.company.trim()) return
+    setSaving(true)
+    const now = new Date().toISOString()
+    if (editId) {
+      persist(deals.map(d => d.id === editId ? { ...form, id: editId, updated_at: now } : d))
+      setEditId(null)
+    } else {
+      const newDeal = { ...form, id: crypto.randomUUID(), created_at: now, updated_at: now }
+      persist([newDeal, ...deals])
+    }
+    setForm(EMPTY_DEAL)
+    setShowForm(false)
+    setSaving(false)
+  }
+
+  function handleEdit(deal) {
+    setForm({ company: deal.company, deal_type: deal.deal_type, sector: deal.sector, stage: deal.stage, valuation: deal.valuation, source_url: deal.source_url, notes: deal.notes })
+    setEditId(deal.id)
+    setShowForm(true)
+  }
+
+  function handleDelete(id) {
+    persist(deals.filter(d => d.id !== id))
+    setDeleteConfirm(null)
+  }
+
+  function handleStageChange(id, newStage) {
+    persist(deals.map(d => d.id === id ? { ...d, stage: newStage, updated_at: new Date().toISOString() } : d))
+  }
+
+  const filtered = filterStage === 'ALL' ? deals : deals.filter(d => d.stage === filterStage)
+
+  const stageCounts = {}
+  deals.forEach(d => { stageCounts[d.stage] = (stageCounts[d.stage] || 0) + 1 })
+
+  const inputStyle = { width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }
+  const labelStyle = { fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.32)', letterSpacing: '0.14em', display: 'block', marginBottom: '5px' }
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+        <div>
+          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '4px' }}>💼 DEAL FLOW TRACKER</div>
+          <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', margin: 0 }}>
+            Your private pipeline of deals to watch
+          </p>
+        </div>
+        <button onClick={() => { setShowForm(!showForm); setEditId(null); setForm(EMPTY_DEAL) }} style={{ padding: '7px 16px', borderRadius: '6px', border: '1px solid rgba(245,158,11,0.4)', background: showForm ? 'rgba(245,158,11,0.15)' : 'transparent', color: '#f59e0b', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', letterSpacing: '0.08em', transition: 'all 0.15s' }}>
+          {showForm ? '✕ CANCEL' : '+ ADD DEAL'}
+        </button>
+      </div>
+
+      {/* Explainer banner — shown when no deals yet */}
+      {deals.length === 0 && !showForm && (
+        <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.06), rgba(59,130,246,0.04))', border: '1px solid rgba(245,158,11,0.14)', borderRadius: '12px', padding: '28px 30px', marginTop: '20px', marginBottom: '24px' }}>
+          <div style={{ fontSize: '28px', marginBottom: '14px' }}>💼</div>
+          <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '22px', color: '#f8fafc', margin: '0 0 12px 0' }}>What is a Deal Flow Tracker?</h2>
+          <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.58)', lineHeight: 1.75, margin: '0 0 20px 0' }}>
+            In investment banking and private equity, <strong style={{ color: 'rgba(255,255,255,0.8)' }}>deal flow</strong> is the stream of investment opportunities your firm is actively evaluating. Analysts and associates maintain running logs of deals they're tracking — from early rumors all the way to close.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px', marginBottom: '20px' }}>
+            {[
+              { icon: '🔍', title: 'Track rumors early', desc: 'Log deals before they hit the wire. First-mover awareness is a real edge.' },
+              { icon: '📊', title: 'Monitor stage progression', desc: 'Move deals from Rumored → Announced → LOI → Closed as they develop.' },
+              { icon: '📝', title: 'Capture your thesis', desc: 'Record valuations, deal type, and your own notes on every opportunity.' },
+              { icon: '⚡', title: 'Paired with live news', desc: 'Your pipeline lives next to BreakingAlpha\'s signals — connect the dots faster.' },
+            ].map((item, i) => (
+              <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '14px 16px' }}>
+                <div style={{ fontSize: '18px', marginBottom: '8px' }}>{item.icon}</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#f59e0b', marginBottom: '5px' }}>{item.title}</div>
+                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.42)', lineHeight: 1.55 }}>{item.desc}</div>
+              </div>
+            ))}
+          </div>
+          <button onClick={() => setShowForm(true)} style={{ padding: '9px 22px', borderRadius: '6px', border: '1px solid rgba(245,158,11,0.5)', background: 'rgba(245,158,11,0.12)', color: '#f59e0b', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', letterSpacing: '0.1em' }}>
+            + LOG YOUR FIRST DEAL
+          </button>
+        </div>
+      )}
+
+      {/* Add / Edit Form */}
+      {showForm && (
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '12px', padding: '24px', marginTop: '16px', marginBottom: '24px' }}>
+          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '18px' }}>{editId ? '✏️ EDIT DEAL' : '+ NEW DEAL'}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+            <div>
+              <label style={labelStyle}>COMPANY / TARGET *</label>
+              <input style={inputStyle} placeholder="e.g. Figma, OpenAI..." value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} />
+            </div>
+            <div>
+              <label style={labelStyle}>DEAL TYPE</label>
+              <select style={{ ...inputStyle, cursor: 'pointer' }} value={form.deal_type} onChange={e => setForm(f => ({ ...f, deal_type: e.target.value }))}>
+                {DEAL_TYPES.map(t => <option key={t} value={t} style={{ background: '#0f172a' }}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>SECTOR</label>
+              <select style={{ ...inputStyle, cursor: 'pointer' }} value={form.sector} onChange={e => setForm(f => ({ ...f, sector: e.target.value }))}>
+                <option value="" style={{ background: '#0f172a' }}>— Select —</option>
+                {SECTORS.filter(s => s.value).map(s => <option key={s.key} value={s.value} style={{ background: '#0f172a' }}>{s.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>STAGE</label>
+              <select style={{ ...inputStyle, cursor: 'pointer' }} value={form.stage} onChange={e => setForm(f => ({ ...f, stage: e.target.value }))}>
+                {DEAL_STAGES.map(s => <option key={s.value} value={s.value} style={{ background: '#0f172a' }}>{s.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>VALUATION / SIZE</label>
+              <input style={inputStyle} placeholder="e.g. $4.2B, $850M EV..." value={form.valuation} onChange={e => setForm(f => ({ ...f, valuation: e.target.value }))} />
+            </div>
+            <div>
+              <label style={labelStyle}>SOURCE URL</label>
+              <input style={inputStyle} placeholder="https://..." value={form.source_url} onChange={e => setForm(f => ({ ...f, source_url: e.target.value }))} />
+            </div>
+          </div>
+          <div style={{ marginBottom: '18px' }}>
+            <label style={labelStyle}>NOTES / THESIS</label>
+            <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: '72px', lineHeight: 1.6 }} placeholder="Your read on this deal — why it matters, who the buyers are, what the multiple looks like..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+          </div>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button onClick={handleSave} disabled={!form.company.trim() || saving} style={{ padding: '8px 22px', borderRadius: '6px', border: 'none', background: form.company.trim() ? '#f59e0b' : 'rgba(245,158,11,0.3)', color: '#0f172a', fontSize: '11px', fontFamily: "'DM Mono', monospace", fontWeight: 600, cursor: form.company.trim() ? 'pointer' : 'not-allowed', letterSpacing: '0.1em' }}>
+              {saving ? 'SAVING...' : editId ? 'UPDATE DEAL' : 'LOG DEAL'}
+            </button>
+            <button onClick={() => { setShowForm(false); setEditId(null); setForm(EMPTY_DEAL) }} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: 'rgba(255,255,255,0.4)', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: 'pointer' }}>CANCEL</button>
+          </div>
+        </div>
+      )}
+
+      {/* Stage filter tabs + deal count */}
+      {deals.length > 0 && (
+        <>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '20px', marginBottom: '16px' }}>
+            <button onClick={() => setFilterStage('ALL')} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${filterStage === 'ALL' ? '#f59e0b' : 'rgba(255,255,255,0.07)'}`, background: filterStage === 'ALL' ? 'rgba(245,158,11,0.12)' : 'transparent', color: filterStage === 'ALL' ? '#f59e0b' : 'rgba(255,255,255,0.38)' }}>
+              ALL ({deals.length})
+            </button>
+            {DEAL_STAGES.map(s => {
+              const count = stageCounts[s.value] || 0
+              if (count === 0) return null
+              const isActive = filterStage === s.value
+              return (
+                <button key={s.value} onClick={() => setFilterStage(s.value)} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${isActive ? s.color : 'rgba(255,255,255,0.07)'}`, background: isActive ? s.color + '18' : 'transparent', color: isActive ? s.color : 'rgba(255,255,255,0.38)' }}>
+                  {s.label} ({count})
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Deal table */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {filtered.map(deal => {
+              const stage = stageInfo(deal.stage)
+              const sectorColor = deal.sector ? getSectorColor(deal.sector) : '#64748b'
+              return (
+                <div key={deal.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '16px 20px', transition: 'border-color 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                    {/* Left: company + meta */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                        <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '18px', fontWeight: 700, color: '#f8fafc' }}>{deal.company}</span>
+                        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: '3px' }}>{deal.deal_type}</span>
+                        {deal.valuation && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#fbbf24' }}>{deal.valuation}</span>}
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: deal.notes ? '10px' : '0' }}>
+                        {/* Stage badge — clickable to cycle */}
+                        <select
+                          value={deal.stage}
+                          onChange={e => { e.stopPropagation(); handleStageChange(deal.id, e.target.value) }}
+                          style={{ padding: '3px 8px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: stage.color, background: stage.color + '18', border: `1px solid ${stage.color}40`, cursor: 'pointer', outline: 'none' }}
+                        >
+                          {DEAL_STAGES.map(s => <option key={s.value} value={s.value} style={{ background: '#0f172a', color: '#fff' }}>{s.label}</option>)}
+                        </select>
+                        {deal.sector && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: sectorColor, background: sectorColor + '15', border: `1px solid ${sectorColor}28`, padding: '2px 8px', borderRadius: '3px' }}>{deal.sector.split(' ')[0]}</span>}
+                        <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.2)' }}>{timeAgo(deal.updated_at)}</span>
+                      </div>
+                      {deal.notes && <p style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.46)', lineHeight: 1.6, margin: 0, fontStyle: 'italic' }}>{deal.notes}</p>}
+                      {deal.source_url && (
+                        <a href={deal.source_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#60a5fa', textDecoration: 'none', display: 'inline-block', marginTop: '8px' }}>
+                          SOURCE →
+                        </a>
+                      )}
+                    </div>
+                    {/* Right: actions */}
+                    <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                      <button onClick={() => handleEdit(deal)} style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: 'rgba(255,255,255,0.35)', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer' }}>EDIT</button>
+                      {deleteConfirm === deal.id ? (
+                        <>
+                          <button onClick={() => handleDelete(deal.id)} style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid rgba(248,113,113,0.4)', background: 'rgba(248,113,113,0.12)', color: '#f87171', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer' }}>CONFIRM</button>
+                          <button onClick={() => setDeleteConfirm(null)} style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: 'rgba(255,255,255,0.35)', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer' }}>NO</button>
+                        </>
+                      ) : (
+                        <button onClick={() => setDeleteConfirm(deal.id)} style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: 'rgba(255,255,255,0.25)', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer' }}>✕</button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
       )}
     </div>
   )
 }
 
+// ── Nav ───────────────────────────────────────────────────────────────────────
 const NAV = [
-  { id: 'morning',   label: 'Morning Brief',  icon: '☀️' },
-  { id: 'evening',   label: 'Evening Brief',   icon: '🌙' },
-  { id: 'thesis',    label: 'Thesis Board',    icon: '📋' },
-  { id: 'companies', label: 'Company Intel',   icon: '🏢' },
-  { id: 'trends',    label: 'Trends',          icon: '📈' },
+  { id: 'morning',   label: 'Morning Brief',      icon: '☀️' },
+  { id: 'evening',   label: 'Evening Brief',       icon: '🌙' },
+  { id: 'thesis',    label: 'Thesis Board',        icon: '📋' },
+  { id: 'dealflow',  label: 'Deal Flow',           icon: '💼' },
+  { id: 'companies', label: 'Company Intel',       icon: '🏢' },
+  { id: 'trends',    label: 'Trends',              icon: '📈' },
 ]
 
+// ── App ───────────────────────────────────────────────────────────────────────
 export default function Home() {
   const [activeTab, setActiveTab] = useState('morning')
   const [quotes, setQuotes] = useState([])
@@ -482,10 +621,7 @@ export default function Home() {
 
   useEffect(() => {
     const update = () => setMarketTime(
-      new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/Los_Angeles', weekday: 'long',
-        month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
-      }).format(new Date())
+      new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', weekday: 'long', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date())
     )
     update()
     const t = setInterval(update, 10000)
@@ -509,6 +645,8 @@ export default function Home() {
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.25; } }
         button:focus { outline: none; }
+        input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.2); }
+        select option { background: #0f172a; }
       `}</style>
 
       <TickerBar quotes={quotes} />
@@ -525,15 +663,7 @@ export default function Home() {
 
           <nav style={{ padding: '14px 10px', flex: 1 }}>
             {NAV.map(item => (
-              <button key={item.id} onClick={() => setActiveTab(item.id)} style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: '9px',
-                padding: '9px 11px', borderRadius: '6px', border: 'none',
-                background: activeTab === item.id ? 'rgba(245,158,11,0.09)' : 'transparent',
-                color: activeTab === item.id ? '#f59e0b' : 'rgba(255,255,255,0.42)',
-                fontSize: '12.5px', fontFamily: "'DM Mono', monospace",
-                cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s', marginBottom: '1px',
-                borderLeft: activeTab === item.id ? '2px solid #f59e0b' : '2px solid transparent',
-              }}>
+              <button key={item.id} onClick={() => setActiveTab(item.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '9px', padding: '9px 11px', borderRadius: '6px', border: 'none', background: activeTab === item.id ? 'rgba(245,158,11,0.09)' : 'transparent', color: activeTab === item.id ? '#f59e0b' : 'rgba(255,255,255,0.42)', fontSize: '12.5px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s', marginBottom: '1px', borderLeft: activeTab === item.id ? '2px solid #f59e0b' : '2px solid transparent' }}>
                 <span>{item.icon}</span>
                 {item.label}
                 {activeTab === item.id && <span style={{ marginLeft: 'auto', width: '4px', height: '4px', borderRadius: '50%', background: '#f59e0b', flexShrink: 0 }} />}
@@ -556,9 +686,7 @@ export default function Home() {
             <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.38)', lineHeight: 1.6 }}>{marketTime || '—'}</div>
             <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: isMarketOpen() ? '#4ade80' : '#f87171', animation: 'pulse 2s infinite' }} />
-              <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.1em' }}>
-                US EQUITIES {isMarketOpen() ? 'OPEN' : 'CLOSED'}
-              </span>
+              <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.1em' }}>US EQUITIES {isMarketOpen() ? 'OPEN' : 'CLOSED'}</span>
             </div>
           </div>
         </div>
@@ -570,9 +698,7 @@ export default function Home() {
               {NAV.find(n => n.id === activeTab)?.icon} {NAV.find(n => n.id === activeTab)?.label.toUpperCase()}
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.25)' }}>
-                {new Date().toISOString().split('T')[0]}
-              </span>
+              <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.25)' }}>{new Date().toISOString().split('T')[0]}</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#4ade80', animation: 'pulse 2s infinite' }} />
                 <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#4ade80', letterSpacing: '0.1em' }}>LIVE</span>
@@ -585,6 +711,7 @@ export default function Home() {
               {activeTab === 'morning'   && <BriefView type="morning" />}
               {activeTab === 'evening'   && <BriefView type="evening" />}
               {activeTab === 'thesis'    && <ThesisBoard />}
+              {activeTab === 'dealflow'  && <DealFlowTracker />}
               {activeTab === 'companies' && <CompanyIntel />}
               {activeTab === 'trends'    && <Trends />}
             </div>
