@@ -1,0 +1,50 @@
+# Breaking Alpha Handoff
+
+## Current status
+- Breaking Alpha is live on Vercel.
+- Repo-based Claude Code workflow is set up and documented.
+- `docs/SETUP.md` is now complete with real commands, env vars, and Supabase notes.
+- Yahoo Finance enrichment still needs to be ported and validated in the shared backend.
+
+## Done
+- Shared repo cloned locally
+- New branch created: `noah/claude-workflow-setup`
+- Workflow and documentation files created and filled in:
+  - `CLAUDE.md` — stable project instructions for Claude Code
+  - `docs/HANDOFF.md` — current project state (this file)
+  - `docs/ROADMAP.md` — priorities and backlog
+  - `docs/SETUP.md` — local setup, run commands, env vars, Supabase notes ✅
+- Codebase audited: frontend (Next.js 14), backend (Python/Groq/Supabase), API routes inspected
+
+## Known issues (not yet fixed — needs scoped PR)
+- `backend/requirements.txt` lists `google-generativeai` but the backend uses `groq`. The `groq` package is missing. Backend will fail on `pip install` + run without a manual `pip install groq`. Needs a targeted fix PR.
+
+## In progress
+- Preparing first scoped development task (Yahoo Finance enrichment or pipeline validation)
+
+## Blocked / open questions
+- Need Lucas to confirm env var values and Supabase project access
+- Need alignment on Yahoo Finance integration approach before starting
+- Need final alignment on ownership split for first implementation task
+
+## Immediate next steps
+1. Push `noah/claude-workflow-setup` branch and open PR for Lucas to review
+2. Lucas validates `docs/SETUP.md` against his local setup
+3. Fix `backend/requirements.txt` in a separate scoped PR
+4. Align on Yahoo Finance integration plan
+5. Start first backend implementation task on a new feature branch
+
+## Ownership
+- Noah:
+  - Claude workflow setup
+  - backend / data integration planning
+  - Yahoo Finance port planning
+- Lucas:
+  - frontend / deployed app ownership
+  - live app validation
+  - collaboration on merge / review flow
+
+## Notes
+- Shared repo context should now live in the repo, not in long Claude chats.
+- `CLAUDE.md` should stay stable.
+- `docs/HANDOFF.md` should be updated at the end of meaningful work sessions.
