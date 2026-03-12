@@ -1,5 +1,5 @@
 supabase
-google-generativeai
+groq
 newsapi-python
 feedparser
 requests
