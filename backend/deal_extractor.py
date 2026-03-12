@@ -37,7 +37,7 @@ def extract_deal(title, summary, url):
     content = f"Title: {title}\nSummary: {summary or ''}"
     try:
         resp = groq.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="llama-3.1-8b-instant",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user",   "content": content},
