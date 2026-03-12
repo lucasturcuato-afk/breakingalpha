@@ -8,9 +8,9 @@ const supabase = createClient(
 
 const SECTORS = [
   { key: 'ALL',    label: 'ALL',         value: null,                                  color: '#f59e0b' },
-  { key: 'tech',   label: 'TECH M&A',    value: 'Technology M&A & Investment Banking', color: '#f59e0b' },
+  { key: 'tech',   label: 'TECH M&A',    value: 'should Technology M&A & Investment Banking', color: '#f59e0b' },
   { key: 'vc',     label: 'VENTURE',     value: 'Venture Capital & Startup Funding',   color: '#8b5cf6' },
-  { key: 'pe',     label: 'PRIVATE EQ',  value: 'Private Equity & Buyouts',            color: '#3b82f6' },
+  { key: 'pe',     label: 'PRIVATE EQ',  value: 'Private Equity& Buyouts',            color: '#3b82f6' },
   { key: 'pub',    label: 'PUBLIC MKT',  value: 'Public Markets & Earnings',           color: '#10b981' },
   { key: 'geo',    label: 'GEO & MACRO', value: 'Geopolitics & Macro',                 color: '#ef4444' },
   { key: 're',     label: 'REAL ESTATE', value: 'Real Estate & REITs',                 color: '#f97316' },
