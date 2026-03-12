@@ -49,6 +49,13 @@
   - live app validation
   - collaboration on merge / review flow
 
+## Operational notes
+- GitHub Actions scheduler runs twice daily: 6am PT (morning briefing) and 10pm PT (evening briefing), weekdays only.
+- Finnhub is the primary quotes source. Stooq CSV is the fallback if Finnhub is unavailable.
+- Evening Wrap was not confirmed generating as of last check — needs validation.
+- Deal Flow manual entry form exists in the UI but only saves to local state — does NOT write to Supabase yet.
+- Thesis Board has no backend persistence — resets on page refresh.
+
 ## Notes
 - Shared repo context should now live in the repo, not in long Claude chats.
 - `CLAUDE.md` should stay stable.

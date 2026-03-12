@@ -92,6 +92,13 @@ NEWS_API_KEY=your-newsapi-key     # newsapi.org — free tier available
 
 ---
 
+## Supabase schema notes
+- Use `ingested_at` for ordering articles, NOT `created_at`.
+- `briefings` table has four extra columns added manually: `market_tone` (text), `sections` (jsonb), `top_deals` (jsonb), `sector_breakdown` (jsonb).
+- `deal_flow` table has row level security enabled with a public read policy.
+
+---
+
 ## Collaboration notes
 - Noah and Lucas should both work from the same shared repo.
 - Do not rely on chat history as project memory.
