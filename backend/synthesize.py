@@ -1,151 +1,160 @@
 """
-BreakingAlpha - AI Synthesis Engine
-Generates morning/evening briefings across all sectors.
+synthesize.py — BreakingAlpha
+Generates a detailed analyst-style morning/evening briefing using Groq.
 """
 
-import os, json, sys
+import os, json, re
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
 from groq import Groq
-from dotenv import load_dotenv
-
-load_dotenv()
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
-groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
+groq     = Groq(api_key=os.environ["GROQ_API_KEY"])
 
-BRIEFING_PROMPT = """You are a senior analyst at a top-tier investment firm preparing a {type} briefing for sophisticated investors and finance professionals.
+MORNING_SYSTEM = """You are a senior investment banking analyst preparing the daily morning briefing for a capital markets team.
 
-Date: {date}
-Recent Articles: {articles}
-Company Context: {company_context}
+You will receive a list of recent news articles. Produce a structured JSON briefing that is detailed, analytical, and immediately actionable for IB/PE/VC professionals.
 
-Generate a comprehensive {type} market briefing. Cover ALL relevant sectors present in the articles: tech M&A, VC/startup, PE/buyouts, public markets, geopolitics, macro, real estate, fintech, healthcare, energy.
-
-Respond ONLY in valid JSON:
-{{
-  "headline": "One punchy sentence capturing the single most important market development",
-  "executive_summary": "3-4 sentences covering what matters most across all sectors",
-  "top_stories": [
-    {{
-      "title": "Story title",
-      "source": "Source",
-      "summary": "2-3 sentences with investment implications",
-      "sector": "Sector name",
-      "companies": ["Company"],
-      "signal": "What this means for deal flow, valuations, or positioning"
-    }}
+Respond ONLY with valid JSON in this exact schema — no preamble, no markdown fences:
+{
+  "headline": "Punchy 10-15 word headline capturing the single biggest market story",
+  "summary": "3-4 sentence executive summary of the day's most important developments. Be specific — name companies, figures, and implications.",
+  "market_tone": "One of: RISK-ON | RISK-OFF | MIXED | NEUTRAL",
+  "sections": {
+    "deals_and_ma": "2-3 sentences on the most significant M&A, PE, and VC deal activity. Name specific companies, valuations, acquirers.",
+    "public_markets": "2-3 sentences on equity market moves, earnings, IPO pipeline, and public market signals that matter for deal activity.",
+    "macro_and_rates": "2-3 sentences on macro environment — Fed signals, rates, inflation, FX moves, and how they affect deal math (LBO spreads, multiples, cost of capital).",
+    "geopolitics": "2-3 sentences on geopolitical developments with direct market or deal implications.",
+    "sector_spotlight": "2-3 sentences on the single sector with the most deal/news activity today and why it matters.",
+    "what_to_watch": "3-4 specific things to monitor today — earnings releases, Fed speakers, deal announcements expected, regulatory decisions. Be concrete."
+  },
+  "top_deals": [
+    {
+      "company": "Target company name",
+      "deal_type": "M&A / LBO / IPO / VC Round / etc",
+      "valuation": "$Xb or null",
+      "one_liner": "One sentence on why this deal matters"
+    }
   ],
-  "sector_breakdown": [
-    {{
-      "sector": "Sector name",
-      "headline": "One line on what happened in this sector today",
-      "key_developments": "2-3 sentences",
-      "companies": ["Company"],
-      "opportunity": "Specific actionable insight"
-    }}
+  "sector_breakdown": {
+    "Technology M&A & Investment Banking": "1-2 sentence signal",
+    "Private Equity & Buyouts": "1-2 sentence signal",
+    "Venture Capital & Startup Funding": "1-2 sentence signal",
+    "Public Markets & Earnings": "1-2 sentence signal",
+    "Geopolitics & Macro": "1-2 sentence signal"
+  }
+}
+
+Only include sectors with meaningful activity. top_deals should have 3-5 entries max. Be precise and analytical — avoid generic filler."""
+
+EVENING_SYSTEM = """You are a senior investment banking analyst preparing the evening market wrap briefing.
+
+You will receive today's news articles. Produce a structured JSON evening wrap that reviews what happened and sets up tomorrow.
+
+Respond ONLY with valid JSON in this exact schema — no preamble, no markdown fences:
+{
+  "headline": "Punchy headline capturing the day's defining story",
+  "summary": "3-4 sentence wrap of the day's most important developments and what they signal going forward.",
+  "market_tone": "One of: RISK-ON | RISK-OFF | MIXED | NEUTRAL",
+  "sections": {
+    "deals_and_ma": "2-3 sentences wrapping deal activity — what closed, what was announced, what rumors emerged.",
+    "public_markets": "2-3 sentences on how markets closed, key movers, and what the tape is signaling.",
+    "macro_and_rates": "2-3 sentences on macro developments and rate environment into tomorrow.",
+    "geopolitics": "2-3 sentences on geopolitical developments and overnight risk.",
+    "tomorrow_setup": "3-4 concrete things to watch tomorrow — pre-market catalysts, scheduled announcements, international markets to monitor."
+  },
+  "top_deals": [
+    {
+      "company": "Target company name",
+      "deal_type": "M&A / LBO / IPO / VC Round / etc",
+      "valuation": "$Xb or null",
+      "one_liner": "One sentence on why this deal matters"
+    }
   ],
-  "thesis": "Write a full one-page investment thesis covering: (1) the dominant macro theme today, (2) specific deals or transactions likely to emerge from today's news, (3) which sectors have the most momentum, (4) key risks to watch, (5) your recommended positioning for the next 30 days. Be specific and write like a top-tier analyst.",
-  "tailwinds": [{{"trend": "name", "description": "why this accelerates deal activity"}}],
-  "headwinds": [{{"trend": "name", "description": "why this creates friction"}}],
-  "watch_list": ["Company or theme to watch 1", "Company or theme 2", "Company or theme 3"]
-}}"""
+  "sector_breakdown": {
+    "Technology M&A & Investment Banking": "1-2 sentence signal",
+    "Private Equity & Buyouts": "1-2 sentence signal",
+    "Venture Capital & Startup Funding": "1-2 sentence signal",
+    "Public Markets & Earnings": "1-2 sentence signal",
+    "Geopolitics & Macro": "1-2 sentence signal"
+  }
+}
 
+Only include sectors with meaningful activity. top_deals should have 3-5 entries max."""
 
-def get_articles(hours=14):
-    since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-    r = supabase.table("articles").select("*").gte("ingested_at", since).order("relevance_score", desc=True).limit(30).execute()
-    return r.data or []
+def run(brief_type="morning"):
+    print(f"📝 Synthesizing {brief_type} briefing...")
 
+    # Pull articles from last 24 hours
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    resp = supabase.table("articles")\
+        .select("title, summary, sector, companies, relevance_score")\
+        .gte("ingested_at", cutoff)\
+        .order("relevance_score", desc=True)\
+        .limit(60)\
+        .execute()
 
-def get_company_context(companies):
-    ctx = {}
-    for name in list(set(companies))[:10]:
-        r = supabase.table("companies").select("*").eq("name", name).execute()
-        if r.data:
-            c = r.data[0]
-            ctx[name] = {"mentions": c.get("mention_count", 0), "themes": c.get("key_themes", []), "first_seen": c.get("first_seen", "")[:10]}
-    return ctx
-
-
-def store_briefing(btype, data):
-    today = datetime.now(timezone.utc).date().isoformat()
-    try:
-        r = supabase.table("briefings").insert({
-            "briefing_type": btype,
-            "briefing_date": today,
-            "headline": data.get("headline", ""),
-            "summary": data.get("executive_summary", ""),
-            "top_stories": json.dumps(data.get("top_stories", [])),
-            "market_themes": json.dumps(data.get("sector_breakdown", [])),
-            "thesis": data.get("thesis", ""),
-            "tailwinds": json.dumps(data.get("tailwinds", [])),
-            "headwinds": json.dumps(data.get("headwinds", []))
-        }).execute()
-        return r.data[0]["id"]
-    except Exception as e:
-        print(f"  Store error: {e}")
-        return None
-
-
-def update_trends(data):
-    for item in (data.get("tailwinds", []) + data.get("headwinds", [])):
-        name = item.get("trend", "")
-        if not name: continue
-        try:
-            ex = supabase.table("trends").select("*").eq("name", name).execute()
-            if ex.data:
-                supabase.table("trends").update({"mention_count": ex.data[0]["mention_count"] + 1, "last_seen": datetime.now(timezone.utc).isoformat()}).eq("name", name).execute()
-            else:
-                cat = "tailwind" if item in data.get("tailwinds", []) else "headwind"
-                supabase.table("trends").insert({"name": name, "category": cat, "description": item.get("description", ""), "mention_count": 1}).execute()
-        except: pass
-
-
-def generate_briefing(btype):
-    print(f"\n{'='*60}\nBreakingAlpha {btype.title()} Synthesis — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n{'='*60}")
-    hours = 14 if btype == "morning" else 12
-    articles = get_articles(hours)
+    articles = resp.data or []
     if not articles:
-        print("  No articles found")
-        return None
+        # Fallback — grab most recent 60 regardless of date
+        resp = supabase.table("articles")\
+            .select("title, summary, sector, companies, relevance_score")\
+            .order("ingested_at", desc=True)\
+            .limit(60)\
+            .execute()
+        articles = resp.data or []
 
-    all_companies = [c for a in articles for c in (a.get("companies") or [])]
-    company_ctx = get_company_context(all_companies)
+    print(f"  📰 Using {len(articles)} articles for synthesis")
 
-    articles_text = json.dumps([{
-        "title": a["title"], "source": a["source"], "summary": a["summary"],
-        "sector": a.get("sector", ""), "companies": a.get("companies", []),
-        "themes": a.get("themes", []), "sentiment": a.get("sentiment"),
-        "score": a.get("relevance_score")
-    } for a in articles[:25]], indent=2)
+    # Format articles for the prompt
+    article_text = "\n\n".join([
+        f"[{a.get('sector','')}] {a.get('title','')}\n{a.get('summary','')}"
+        for a in articles
+    ])
 
-    prompt = BRIEFING_PROMPT.format(
-        type=btype, date=datetime.now().strftime("%A, %B %d, %Y"),
-        articles=articles_text, company_context=json.dumps(company_ctx, indent=2)
-    )
+    system = MORNING_SYSTEM if brief_type == "morning" else EVENING_SYSTEM
 
     try:
-        resp = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1
+        resp = groq.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user",   "content": f"Today's articles:\n\n{article_text}"},
+            ],
+            temperature=0.3,
+            max_tokens=2000,
         )
-        text = resp.choices[0].message.content.strip()
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"): text = text[4:]
-        briefing = json.loads(text.strip())
+        raw = resp.choices[0].message.content.strip()
+        raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
+        data = json.loads(raw)
     except Exception as e:
-        print(f"  Synthesis error: {e}")
-        return None
+        print(f"  ⚠ Groq error: {e}")
+        data = {
+            "headline": "Market Intelligence Unavailable",
+            "summary": "Briefing generation failed. Please check logs.",
+            "market_tone": "NEUTRAL",
+            "sections": {},
+            "top_deals": [],
+            "sector_breakdown": {}
+        }
 
-    print(f"  Headline: {briefing.get('headline', '')[:80]}")
-    bid = store_briefing(btype, briefing)
-    update_trends(briefing)
-    print(f"✅ {btype.title()} briefing stored (id: {bid})")
-    return briefing
+    now = datetime.now(timezone.utc).isoformat()
+    row = {
+        "briefing_type": brief_type,
+        "headline":       data.get("headline", ""),
+        "summary":        data.get("summary", ""),
+        "market_tone":    data.get("market_tone", "NEUTRAL"),
+        "sections":       json.dumps(data.get("sections", {})),
+        "top_deals":      json.dumps(data.get("top_deals", [])),
+        "sector_breakdown": json.dumps(data.get("sector_breakdown", {})),
+        "created_at":     now,
+    }
+
+    supabase.table("briefings").insert(row).execute()
+    print(f"  ✅ {brief_type.capitalize()} briefing stored")
+    print(f"  Headline: {row['headline'][:80]}")
 
 if __name__ == "__main__":
-    mode = sys.argv[1] if len(sys.argv) > 1 else "morning"
-    generate_briefing(mode)
+    import sys
+    brief_type = sys.argv[1] if len(sys.argv) > 1 else "morning"
+    run(brief_type)

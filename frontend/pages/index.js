@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -33,17 +33,22 @@ const SIDEBAR_SECTORS = [
   { name: 'Consumer & Retail', color: '#a78bfa' },
 ]
 
-const DEAL_STAGES = [
-  { value: 'rumored',    label: 'RUMORED',    color: '#94a3b8' },
-  { value: 'announced',  label: 'ANNOUNCED',  color: '#fbbf24' },
-  { value: 'loi',        label: 'UNDER LOI',  color: '#f97316' },
-  { value: 'diligence',  label: 'DILIGENCE',  color: '#8b5cf6' },
-  { value: 'signed',     label: 'SIGNED',     color: '#3b82f6' },
-  { value: 'closed',     label: 'CLOSED',     color: '#4ade80' },
-  { value: 'dead',       label: 'DEAD',       color: '#f87171' },
-]
+const DEAL_STAGE_MAP = {
+  rumored:   { label: 'RUMORED',   color: '#94a3b8' },
+  announced: { label: 'ANNOUNCED', color: '#fbbf24' },
+  loi:       { label: 'UNDER LOI', color: '#f97316' },
+  diligence: { label: 'DILIGENCE', color: '#8b5cf6' },
+  signed:    { label: 'SIGNED',    color: '#3b82f6' },
+  closed:    { label: 'CLOSED',    color: '#4ade80' },
+  dead:      { label: 'DEAD',      color: '#f87171' },
+}
 
-const DEAL_TYPES = ['M&A', 'LBO', 'IPO', 'VC Round', 'SPAC', 'Recap', 'Minority Stake', 'Other']
+const TONE_COLORS = {
+  'RISK-ON':  '#4ade80',
+  'RISK-OFF': '#f87171',
+  'MIXED':    '#fbbf24',
+  'NEUTRAL':  '#94a3b8',
+}
 
 function getSectorColor(sector) {
   if (!sector) return '#64748b'
@@ -55,18 +60,20 @@ function timeAgo(dateStr) {
   if (!dateStr) return ''
   const diff = Date.now() - new Date(dateStr).getTime()
   const mins = Math.floor(diff / 60000)
+  if (mins < 1)  return 'just now'
   if (mins < 60) return `${mins}m ago`
   const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  return `${days}d ago`
+  if (hrs < 24)  return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
 }
 
-function stageInfo(val) {
-  return DEAL_STAGES.find(s => s.value === val) || DEAL_STAGES[0]
+function parseJSON(val) {
+  if (!val) return null
+  if (typeof val === 'object') return val
+  try { return JSON.parse(val) } catch { return null }
 }
 
-// ── Ticker Bar ──────────────────────────────────────────────────────────────
+// ── Ticker Bar ───────────────────────────────────────────────────────────────
 function TickerBar({ quotes }) {
   if (!quotes || quotes.length === 0) return (
     <div style={{ background: 'rgba(0,0,0,0.6)', borderBottom: '1px solid rgba(255,255,255,0.06)', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -92,7 +99,7 @@ function TickerBar({ quotes }) {
   )
 }
 
-// ── Sector Pill ─────────────────────────────────────────────────────────────
+// ── Sector Pill ──────────────────────────────────────────────────────────────
 function SectorPill({ sector }) {
   const color = getSectorColor(sector)
   return (
@@ -103,7 +110,7 @@ function SectorPill({ sector }) {
 }
 
 // ── Article Card ─────────────────────────────────────────────────────────────
-function ArticleCard({ article }) {
+function ArticleCard({ article, isNew }) {
   const [expanded, setExpanded] = useState(false)
   let companies = article.companies
   if (typeof companies === 'string') { try { companies = JSON.parse(companies) } catch { companies = [] } }
@@ -113,12 +120,13 @@ function ArticleCard({ article }) {
   return (
     <div
       onClick={() => setExpanded(!expanded)}
-      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '16px 20px', cursor: 'pointer', marginBottom: '8px', transition: 'background 0.15s, border-color 0.15s' }}
+      style={{ background: isNew ? 'rgba(245,158,11,0.05)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isNew ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '10px', padding: '16px 20px', cursor: 'pointer', marginBottom: '8px', transition: 'all 0.15s' }}
       onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.052)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = isNew ? 'rgba(245,158,11,0.05)' : 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = isNew ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.07)' }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {isNew && <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', padding: '1px 6px', borderRadius: '3px', letterSpacing: '0.1em' }}>NEW</span>}
           {article.sector && <SectorPill sector={article.sector} />}
           {article.source && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)' }}>{article.source}</span>}
         </div>
@@ -147,7 +155,7 @@ function ArticleCard({ article }) {
   )
 }
 
-// ── Brief View ───────────────────────────────────────────────────────────────
+// ── Morning / Evening Brief (detailed analyst style) ─────────────────────────
 function BriefView({ type }) {
   const [briefing, setBriefing] = useState(null)
   const [articles, setArticles] = useState([])
@@ -184,18 +192,93 @@ function BriefView({ type }) {
     </div>
   )
 
+  const sections    = parseJSON(briefing?.sections) || {}
+  const topDeals    = parseJSON(briefing?.top_deals) || []
+  const sectorBreak = parseJSON(briefing?.sector_breakdown) || {}
+  const tone        = briefing?.market_tone || 'NEUTRAL'
+  const toneColor   = TONE_COLORS[tone] || '#94a3b8'
+
+  const SECTION_LABELS = {
+    deals_and_ma:    '💼 DEALS & M&A',
+    public_markets:  '📊 PUBLIC MARKETS',
+    macro_and_rates: '🏦 MACRO & RATES',
+    geopolitics:     '🌍 GEOPOLITICS',
+    sector_spotlight:'🔦 SECTOR SPOTLIGHT',
+    what_to_watch:   '👁 WHAT TO WATCH',
+    tomorrow_setup:  '🌅 TOMORROW\'S SETUP',
+  }
+
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-        <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>{type === 'morning' ? '☀ MORNING BRIEF' : '🌙 EVENING BRIEF'}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+        <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>{type === 'morning' ? '☀ MORNING REVIEW' : '🌙 EVENING WRAP'}</span>
         {briefing && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)' }}>{new Date(briefing.created_at).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>}
       </div>
+
       {briefing ? (
-        <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.08), rgba(139,92,246,0.04))', border: '1px solid rgba(245,158,11,0.18)', borderRadius: '12px', padding: '26px 30px', marginBottom: '28px' }}>
-          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '10px' }}>TODAY'S LEAD</div>
-          <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 'clamp(22px, 2.8vw, 30px)', fontWeight: 700, color: '#f8fafc', lineHeight: 1.3, margin: '0 0 14px 0' }}>{briefing.headline}</h1>
-          <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.62)', lineHeight: 1.78, margin: 0 }}>{briefing.summary}</p>
-        </div>
+        <>
+          {/* Lead card */}
+          <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.08), rgba(139,92,246,0.04))', border: '1px solid rgba(245,158,11,0.18)', borderRadius: '12px', padding: '28px 32px', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+              <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>TODAY'S LEAD</div>
+              <span style={{ padding: '3px 10px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: toneColor, background: toneColor + '18', border: `1px solid ${toneColor}40` }}>{tone}</span>
+            </div>
+            <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 'clamp(22px, 2.8vw, 30px)', fontWeight: 700, color: '#f8fafc', lineHeight: 1.3, margin: '0 0 14px 0' }}>{briefing.headline}</h1>
+            <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.65)', lineHeight: 1.78, margin: 0 }}>{briefing.summary}</p>
+          </div>
+
+          {/* Top Deals */}
+          {topDeals.length > 0 && (
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '10px' }}>TOP DEALS TO WATCH</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
+                {topDeals.map((deal, i) => (
+                  <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '14px 16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                      <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '15px', fontWeight: 600, color: '#f8fafc' }}>{deal.company}</span>
+                      {deal.valuation && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#fbbf24', flexShrink: 0, marginLeft: '8px' }}>{deal.valuation}</span>}
+                    </div>
+                    <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', marginBottom: '5px' }}>{deal.deal_type}</div>
+                    <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>{deal.one_liner}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Analyst sections */}
+          {Object.keys(sections).length > 0 && (
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '10px' }}>ANALYST BRIEFING</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                {Object.entries(sections).map(([key, text]) => (
+                  <div key={key} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '14px 16px', gridColumn: key === 'what_to_watch' || key === 'tomorrow_setup' ? 'span 2' : 'span 1' }}>
+                    <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.12em', marginBottom: '7px' }}>{SECTION_LABELS[key] || key.toUpperCase()}</div>
+                    <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.55)', lineHeight: 1.68, margin: 0 }}>{text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Sector breakdown */}
+          {Object.keys(sectorBreak).length > 0 && (
+            <div style={{ marginBottom: '24px' }}>
+              <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '10px' }}>SECTOR SIGNALS</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
+                {Object.entries(sectorBreak).map(([sector, text]) => {
+                  const color = getSectorColor(sector)
+                  return (
+                    <div key={sector} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.055)', borderRadius: '7px', padding: '10px 13px' }}>
+                      <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color, marginBottom: '5px' }}>{sector.split(' ')[0].toUpperCase()}</div>
+                      <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>{text}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </>
       ) : (
         <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: '12px', padding: '44px', textAlign: 'center', marginBottom: '28px' }}>
           <div style={{ fontSize: '30px', marginBottom: '12px' }}>{type === 'morning' ? '☀️' : '🌙'}</div>
@@ -203,6 +286,8 @@ function BriefView({ type }) {
           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.22)' }}>{type === 'morning' ? 'Publishes weekdays at 6:00 AM PT' : 'Publishes weekdays at 10:00 PM PT'}</div>
         </div>
       )}
+
+      {/* Articles feed */}
       <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em', marginBottom: '10px' }}>TOP STORIES</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
         {SECTORS.map(s => {
@@ -219,6 +304,111 @@ function BriefView({ type }) {
       {filtered.length > 0
         ? filtered.map(a => <ArticleCard key={a.id} article={a} />)
         : <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>NO STORIES IN THIS SECTOR YET</div>}
+    </div>
+  )
+}
+
+// ── Live News Tracker ────────────────────────────────────────────────────────
+function LiveTracker() {
+  const [articles, setArticles] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [lastRefresh, setLastRefresh] = useState(null)
+  const [sectorFilter, setSectorFilter] = useState('ALL')
+  const [sectorCounts, setSectorCounts] = useState({})
+  const [newIds, setNewIds] = useState(new Set())
+  const knownIds = useRef(new Set())
+  const REFRESH_MS = 60000
+
+  const fetchArticles = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    const { data } = await supabase
+      .from('articles')
+      .select('*')
+      .order('ingested_at', { ascending: false })
+      .limit(150)
+    if (data) {
+      // Find truly new articles since last fetch
+      const incoming = new Set(data.map(a => a.id))
+      const brandNew = new Set([...incoming].filter(id => knownIds.current.size > 0 && !knownIds.current.has(id)))
+      if (brandNew.size > 0) setNewIds(prev => new Set([...prev, ...brandNew]))
+      knownIds.current = incoming
+      setArticles(data)
+      const counts = {}
+      data.forEach(a => { if (a.sector) counts[a.sector] = (counts[a.sector] || 0) + 1 })
+      setSectorCounts(counts)
+      setLastRefresh(new Date())
+    }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    fetchArticles(false)
+    const interval = setInterval(() => fetchArticles(true), REFRESH_MS)
+    return () => clearInterval(interval)
+  }, [fetchArticles])
+
+  const activeSector = SECTORS.find(s => s.key === sectorFilter)
+  const filtered = sectorFilter === 'ALL' ? articles : articles.filter(a => a.sector === activeSector?.value)
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+        <div>
+          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '4px' }}>
+            ⚡ LIVE NEWS TRACKER
+          </div>
+          <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', margin: 0 }}>
+            Auto-refreshes every 60 seconds · {articles.length} stories tracked
+          </p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {lastRefresh && (
+            <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.2)' }}>
+              Updated {timeAgo(lastRefresh)}
+            </span>
+          )}
+          {/* Live pulse indicator */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#4ade80', animation: 'pulse 2s infinite' }} />
+            <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#4ade80', letterSpacing: '0.1em' }}>LIVE</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Sector filters */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
+        {SECTORS.map(s => {
+          const count = s.key === 'ALL' ? articles.length : (sectorCounts[s.value] || 0)
+          const isActive = sectorFilter === s.key
+          return (
+            <button key={s.key} onClick={() => setSectorFilter(s.key)} style={{ padding: '4px 11px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', transition: 'all 0.12s', letterSpacing: '0.05em', outline: 'none', border: `1px solid ${isActive ? s.color : 'rgba(255,255,255,0.07)'}`, background: isActive ? s.color + '18' : 'transparent', color: isActive ? s.color : count > 0 ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.2)' }}>
+              {s.label}{count > 0 ? ` (${count})` : ''}
+            </button>
+          )
+        })}
+      </div>
+
+      <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '14px' }}>
+        {filtered.length} {filtered.length === 1 ? 'STORY' : 'STORIES'}
+        {sectorFilter !== 'ALL' && ` · ${activeSector?.label}`}
+        {newIds.size > 0 && (
+          <span style={{ marginLeft: '10px', color: '#f59e0b' }}>· {newIds.size} new since last visit</span>
+        )}
+      </div>
+
+      {loading ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px' }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ width: '28px', height: '28px', border: '2px solid rgba(255,255,255,0.08)', borderTopColor: '#f59e0b', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 14px' }} />
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em' }}>LOADING FEED...</div>
+          </div>
+        </div>
+      ) : filtered.length > 0 ? (
+        filtered.map(a => <ArticleCard key={a.id} article={a} isNew={newIds.has(a.id)} />)
+      ) : (
+        <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>NO STORIES IN THIS SECTOR YET</div>
+      )}
     </div>
   )
 }
@@ -251,12 +441,141 @@ function ThesisBoard() {
   )
 }
 
+// ── Deal Flow Tracker ─────────────────────────────────────────────────────────
+function DealFlowTracker() {
+  const [deals, setDeals]             = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [filterStage, setFilterStage] = useState('ALL')
+  const [search, setSearch]           = useState('')
+  const [expanded, setExpanded]       = useState(null)
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true)
+      const { data } = await supabase.from('deal_flow').select('*').order('updated_at', { ascending: false }).limit(200)
+      if (data) setDeals(data)
+      setLoading(false)
+    }
+    load()
+  }, [])
+
+  const stageCounts = {}
+  deals.forEach(d => { stageCounts[d.stage] = (stageCounts[d.stage] || 0) + 1 })
+
+  const filtered = deals.filter(d => {
+    const stageMatch  = filterStage === 'ALL' || d.stage === filterStage
+    const searchMatch = !search || d.company?.toLowerCase().includes(search.toLowerCase()) || d.acquirer?.toLowerCase().includes(search.toLowerCase())
+    return stageMatch && searchMatch
+  })
+
+  const activeDeals = deals.filter(d => !['closed','dead'].includes(d.stage)).length
+
+  return (
+    <div>
+      <div style={{ marginBottom: '6px' }}>
+        <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '4px' }}>💼 DEAL FLOW TRACKER</div>
+        <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', margin: 0 }}>AI-extracted deal pipeline · auto-updated from news ingestion</p>
+      </div>
+
+      {deals.length > 0 && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', margin: '16px 0 20px' }}>
+            {[
+              { label: 'DEALS TRACKED',   value: deals.length },
+              { label: 'ACTIVE',          value: activeDeals },
+              { label: 'CLOSED',          value: stageCounts['closed'] || 0 },
+              { label: 'WITH VALUATION',  value: deals.filter(d => d.valuation).length },
+            ].map((s, i) => (
+              <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '12px 14px' }}>
+                <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '22px', fontWeight: 700, color: '#f8fafc', marginBottom: '3px' }}>{s.value}</div>
+                <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em' }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+          <input type="text" placeholder="Search company, acquirer..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '8px', padding: '9px 15px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none', marginBottom: '14px' }} />
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '20px' }}>
+            <button onClick={() => setFilterStage('ALL')} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${filterStage === 'ALL' ? '#f59e0b' : 'rgba(255,255,255,0.07)'}`, background: filterStage === 'ALL' ? 'rgba(245,158,11,0.12)' : 'transparent', color: filterStage === 'ALL' ? '#f59e0b' : 'rgba(255,255,255,0.38)' }}>ALL ({deals.length})</button>
+            {Object.entries(DEAL_STAGE_MAP).map(([key, s]) => {
+              const count = stageCounts[key] || 0
+              if (!count) return null
+              const isActive = filterStage === key
+              return <button key={key} onClick={() => setFilterStage(key)} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${isActive ? s.color : 'rgba(255,255,255,0.07)'}`, background: isActive ? s.color + '18' : 'transparent', color: isActive ? s.color : 'rgba(255,255,255,0.38)' }}>{s.label} ({count})</button>
+            })}
+          </div>
+        </>
+      )}
+
+      {loading && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px' }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ width: '28px', height: '28px', border: '2px solid rgba(255,255,255,0.08)', borderTopColor: '#f59e0b', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 14px' }} />
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em' }}>LOADING PIPELINE...</div>
+          </div>
+        </div>
+      )}
+
+      {!loading && deals.length === 0 && (
+        <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.06), rgba(59,130,246,0.04))', border: '1px solid rgba(245,158,11,0.14)', borderRadius: '12px', padding: '32px', marginTop: '16px' }}>
+          <div style={{ fontSize: '28px', marginBottom: '14px' }}>💼</div>
+          <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '22px', color: '#f8fafc', margin: '0 0 12px 0' }}>Deal pipeline populating...</h2>
+          <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.55)', lineHeight: 1.75, margin: '0 0 18px 0' }}>AI is extracting deals from ingested articles. If this is your first run, make sure the <span style={{ color: '#f59e0b', fontFamily: "'DM Mono', monospace" }}>deal_flow</span> table exists in Supabase and RLS read policy is enabled.</p>
+        </div>
+      )}
+
+      {!loading && filtered.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '6px' }}>{filtered.length} {filtered.length === 1 ? 'DEAL' : 'DEALS'}{filterStage !== 'ALL' ? ` · ${DEAL_STAGE_MAP[filterStage]?.label}` : ''}</div>
+          {filtered.map(deal => {
+            const stage    = DEAL_STAGE_MAP[deal.stage] || DEAL_STAGE_MAP.rumored
+            const secColor = deal.sector ? getSectorColor(deal.sector) : '#64748b'
+            const isExp    = expanded === deal.id
+            return (
+              <div key={deal.id} onClick={() => setExpanded(isExp ? null : deal.id)}
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '16px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '18px', fontWeight: 700, color: '#f8fafc' }}>{deal.company}</span>
+                    {deal.acquirer && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.3)' }}>← {deal.acquirer}</span>}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}>
+                    {deal.valuation && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#fbbf24' }}>{deal.valuation}</span>}
+                    <span style={{ padding: '3px 9px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: stage.color, background: stage.color + '18', border: `1px solid ${stage.color}40` }}>{stage.label}</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {deal.deal_type && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: '3px' }}>{deal.deal_type}</span>}
+                  {deal.sector && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: secColor, background: secColor + '15', border: `1px solid ${secColor}28`, padding: '2px 8px', borderRadius: '3px' }}>{deal.sector.split(' ')[0]}</span>}
+                  <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)' }}>{timeAgo(deal.updated_at)}</span>
+                  {deal.auto_extracted && <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(245,158,11,0.4)' }}>🤖 AI</span>}
+                </div>
+                {isExp && (
+                  <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    {deal.thesis && (
+                      <div style={{ background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.18)', borderRadius: '6px', padding: '10px 14px', marginBottom: '10px' }}>
+                        <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#fbbf24', letterSpacing: '0.12em', marginBottom: '4px' }}>SIGNAL</div>
+                        <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)', margin: 0, lineHeight: 1.55, fontStyle: 'italic' }}>{deal.thesis}</p>
+                      </div>
+                    )}
+                    {deal.source_url && <a href={deal.source_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#60a5fa', textDecoration: 'none' }}>READ SOURCE →</a>}
+                  </div>
+                )}
+                <div style={{ marginTop: '8px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.15)' }}>{isExp ? '↑ collapse' : '↓ expand'}</div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Company Intel ─────────────────────────────────────────────────────────────
 function CompanyIntel() {
   const [companies, setCompanies] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-
   useEffect(() => {
     async function load() {
       const { data } = await supabase.from('articles').select('companies, sector').order('ingested_at', { ascending: false }).limit(200)
@@ -279,34 +598,30 @@ function CompanyIntel() {
     }
     load()
   }, [])
-
   const filtered = companies.filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase()))
-
   return (
     <div>
       <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '14px' }}>🏢 COMPANY INTEL</div>
       <input type="text" placeholder="Search companies..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '8px', padding: '9px 15px', fontSize: '13px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none', marginBottom: '18px' }} />
       {loading ? <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>LOADING...</div>
-        : filtered.length === 0 ? <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>{search ? 'NO COMPANIES MATCH' : 'NO COMPANY DATA YET'}</div>
-        : (
-          <>
-            <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '14px' }}>{filtered.length} COMPANIES TRACKED</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(195px, 1fr))', gap: '9px' }}>
-              {filtered.slice(0, 60).map((c, i) => {
-                const color = c.sectors[0] ? getSectorColor(c.sectors[0]) : '#64748b'
-                return (
-                  <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '13px 15px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '7px' }}>
-                      <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '15px', fontWeight: 600, color: '#f1f5f9' }}>{c.name}</span>
-                      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '2px 7px', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.22)' }}>{c.mentions}×</span>
-                    </div>
-                    {c.sectors[0] && <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color, background: color + '15', border: `1px solid ${color}28`, padding: '1px 6px', borderRadius: '3px' }}>{c.sectors[0].split(' ')[0]}</span>}
+        : filtered.length === 0 ? <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>{search ? 'NO MATCH' : 'NO DATA YET'}</div>
+        : (<>
+          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '14px' }}>{filtered.length} COMPANIES TRACKED</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(195px, 1fr))', gap: '9px' }}>
+            {filtered.slice(0, 60).map((c, i) => {
+              const color = c.sectors[0] ? getSectorColor(c.sectors[0]) : '#64748b'
+              return (
+                <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '13px 15px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '7px' }}>
+                    <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '15px', fontWeight: 600, color: '#f1f5f9' }}>{c.name}</span>
+                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '2px 7px', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.22)' }}>{c.mentions}×</span>
                   </div>
-                )
-              })}
-            </div>
-          </>
-        )}
+                  {c.sectors[0] && <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color, background: color + '15', border: `1px solid ${color}28`, padding: '1px 6px', borderRadius: '3px' }}>{c.sectors[0].split(' ')[0]}</span>}
+                </div>
+              )
+            })}
+          </div>
+        </>)}
     </div>
   )
 }
@@ -315,7 +630,6 @@ function CompanyIntel() {
 function Trends() {
   const [articles, setArticles] = useState([])
   const [loading, setLoading] = useState(true)
-
   useEffect(() => {
     async function load() {
       const { data } = await supabase.from('articles').select('sector').order('ingested_at', { ascending: false }).limit(500)
@@ -324,12 +638,10 @@ function Trends() {
     }
     load()
   }, [])
-
   const counts = {}
   articles.forEach(a => { if (a.sector) counts[a.sector] = (counts[a.sector] || 0) + 1 })
   const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1])
   const max = sorted[0]?.[1] || 1
-
   return (
     <div>
       <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '6px' }}>📈 SIGNAL TRENDS</div>
@@ -353,246 +665,15 @@ function Trends() {
   )
 }
 
-// ── Deal Flow Tracker (AI-automated) ─────────────────────────────────────────
-const DEAL_STAGE_MAP = {
-  rumored:   { label: 'RUMORED',    color: '#94a3b8' },
-  announced: { label: 'ANNOUNCED',  color: '#fbbf24' },
-  loi:       { label: 'UNDER LOI',  color: '#f97316' },
-  diligence: { label: 'DILIGENCE',  color: '#8b5cf6' },
-  signed:    { label: 'SIGNED',     color: '#3b82f6' },
-  closed:    { label: 'CLOSED',     color: '#4ade80' },
-  dead:      { label: 'DEAD',       color: '#f87171' },
-}
-
-function DealFlowTracker() {
-  const [deals, setDeals]           = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [filterStage, setFilterStage] = useState('ALL')
-  const [search, setSearch]         = useState('')
-  const [expanded, setExpanded]     = useState(null)
-
-  useEffect(() => {
-    async function load() {
-      setLoading(true)
-      const { data, error } = await supabase
-        .from('deal_flow')
-        .select('*')
-        .order('updated_at', { ascending: false })
-        .limit(200)
-      if (data) setDeals(data)
-      if (error) console.error('Deal flow error:', error)
-      setLoading(false)
-    }
-    load()
-  }, [])
-
-  // Stage counts for filter tabs
-  const stageCounts = {}
-  deals.forEach(d => { stageCounts[d.stage] = (stageCounts[d.stage] || 0) + 1 })
-
-  const filtered = deals.filter(d => {
-    const stageMatch = filterStage === 'ALL' || d.stage === filterStage
-    const searchMatch = !search || 
-      d.company?.toLowerCase().includes(search.toLowerCase()) ||
-      d.acquirer?.toLowerCase().includes(search.toLowerCase()) ||
-      d.sector?.toLowerCase().includes(search.toLowerCase())
-    return stageMatch && searchMatch
-  })
-
-  // Summary stats
-  const totalVal = deals.filter(d => d.valuation).length
-  const activeDeals = deals.filter(d => !['closed','dead'].includes(d.stage)).length
-
-  return (
-    <div>
-      {/* Header */}
-      <div style={{ marginBottom: '6px' }}>
-        <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '4px' }}>💼 DEAL FLOW TRACKER</div>
-        <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', margin: 0 }}>
-          AI-extracted deal pipeline · auto-updated from news ingestion
-        </p>
-      </div>
-
-      {/* Stats row */}
-      {deals.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', margin: '16px 0 20px' }}>
-          {[
-            { label: 'DEALS TRACKED', value: deals.length },
-            { label: 'ACTIVE',        value: activeDeals },
-            { label: 'CLOSED',        value: stageCounts['closed'] || 0 },
-            { label: 'WITH VALUATION',value: totalVal },
-          ].map((s, i) => (
-            <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '12px 14px' }}>
-              <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '22px', fontWeight: 700, color: '#f8fafc', marginBottom: '3px' }}>{s.value}</div>
-              <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em' }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Search */}
-      {deals.length > 0 && (
-        <input
-          type="text"
-          placeholder="Search company, acquirer, sector..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '8px', padding: '9px 15px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none', marginBottom: '14px' }}
-        />
-      )}
-
-      {/* Stage filter tabs */}
-      {deals.length > 0 && (
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '20px' }}>
-          <button onClick={() => setFilterStage('ALL')} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${filterStage === 'ALL' ? '#f59e0b' : 'rgba(255,255,255,0.07)'}`, background: filterStage === 'ALL' ? 'rgba(245,158,11,0.12)' : 'transparent', color: filterStage === 'ALL' ? '#f59e0b' : 'rgba(255,255,255,0.38)' }}>
-            ALL ({deals.length})
-          </button>
-          {Object.entries(DEAL_STAGE_MAP).map(([key, s]) => {
-            const count = stageCounts[key] || 0
-            if (!count) return null
-            const isActive = filterStage === key
-            return (
-              <button key={key} onClick={() => setFilterStage(key)} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${isActive ? s.color : 'rgba(255,255,255,0.07)'}`, background: isActive ? s.color + '18' : 'transparent', color: isActive ? s.color : 'rgba(255,255,255,0.38)' }}>
-                {s.label} ({count})
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Loading */}
-      {loading && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px' }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ width: '28px', height: '28px', border: '2px solid rgba(255,255,255,0.08)', borderTopColor: '#f59e0b', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 14px' }} />
-            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em' }}>LOADING DEAL PIPELINE...</div>
-          </div>
-        </div>
-      )}
-
-      {/* Empty state — first run before table exists */}
-      {!loading && deals.length === 0 && (
-        <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.06), rgba(59,130,246,0.04))', border: '1px solid rgba(245,158,11,0.14)', borderRadius: '12px', padding: '32px', marginTop: '16px' }}>
-          <div style={{ fontSize: '28px', marginBottom: '14px' }}>💼</div>
-          <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '22px', color: '#f8fafc', margin: '0 0 12px 0' }}>What is a Deal Flow Tracker?</h2>
-          <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.55)', lineHeight: 1.75, margin: '0 0 18px 0' }}>
-            In IB and PE, <strong style={{ color: 'rgba(255,255,255,0.8)' }}>deal flow</strong> is the pipeline of live transactions your firm is tracking — from early rumors through close. BreakingAlpha automatically extracts deals from every article it ingests using AI, classifying the target, deal type, stage, and valuation. Your pipeline builds itself.
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '10px', marginBottom: '20px' }}>
-            {[
-              { icon: '🤖', title: 'Fully automated',    desc: 'AI scans every article and extracts deals — no manual input needed.' },
-              { icon: '📊', title: 'Stage tracking',      desc: 'Rumored → Announced → LOI → Diligence → Signed → Closed.' },
-              { icon: '💰', title: 'Valuation capture',   desc: 'Dollar figures extracted directly from the news, when reported.' },
-              { icon: '⚡', title: 'Runs every ingest',   desc: 'Updated each morning and evening alongside your briefs.' },
-            ].map((item, i) => (
-              <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '14px 16px' }}>
-                <div style={{ fontSize: '18px', marginBottom: '8px' }}>{item.icon}</div>
-                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#f59e0b', marginBottom: '5px' }}>{item.title}</div>
-                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', lineHeight: 1.55 }}>{item.desc}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.3)', padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.07)' }}>
-            ⚠ Pipeline populates after next scheduled ingest. See setup instructions below to create the <span style={{ color: '#f59e0b' }}>deal_flow</span> Supabase table and run the extractor.
-          </div>
-        </div>
-      )}
-
-      {/* Deal cards */}
-      {!loading && filtered.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '6px' }}>
-            {filtered.length} {filtered.length === 1 ? 'DEAL' : 'DEALS'}{filterStage !== 'ALL' ? ` · ${DEAL_STAGE_MAP[filterStage]?.label}` : ''}
-          </div>
-          {filtered.map(deal => {
-            const stage     = DEAL_STAGE_MAP[deal.stage] || DEAL_STAGE_MAP.rumored
-            const secColor  = deal.sector ? getSectorColor(deal.sector) : '#64748b'
-            const isExpanded = expanded === deal.id
-            return (
-              <div key={deal.id}
-                onClick={() => setExpanded(isExpanded ? null : deal.id)}
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '16px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)' }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)' }}
-              >
-                {/* Top row */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '18px', fontWeight: 700, color: '#f8fafc' }}>{deal.company}</span>
-                    {deal.acquirer && (
-                      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.3)' }}>← {deal.acquirer}</span>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}>
-                    {deal.valuation && (
-                      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#fbbf24', fontWeight: 500 }}>{deal.valuation}</span>
-                    )}
-                    <span style={{ padding: '3px 9px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: stage.color, background: stage.color + '18', border: `1px solid ${stage.color}40` }}>
-                      {stage.label}
-                    </span>
-                  </div>
-                </div>
-                {/* Meta row */}
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                  {deal.deal_type && (
-                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: '3px' }}>{deal.deal_type}</span>
-                  )}
-                  {deal.sector && (
-                    <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: secColor, background: secColor + '15', border: `1px solid ${secColor}28`, padding: '2px 8px', borderRadius: '3px' }}>
-                      {deal.sector.split(' ')[0]}
-                    </span>
-                  )}
-                  <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)' }}>
-                    {timeAgo(deal.updated_at)}
-                  </span>
-                  {deal.auto_extracted && (
-                    <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(245,158,11,0.4)', letterSpacing: '0.08em' }}>🤖 AI</span>
-                  )}
-                </div>
-                {/* Expanded */}
-                {isExpanded && (
-                  <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                    {deal.thesis && (
-                      <div style={{ background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.18)', borderRadius: '6px', padding: '10px 14px', marginBottom: '10px' }}>
-                        <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#fbbf24', letterSpacing: '0.12em', marginBottom: '4px' }}>SIGNAL</div>
-                        <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)', margin: 0, lineHeight: 1.55, fontStyle: 'italic' }}>{deal.thesis}</p>
-                      </div>
-                    )}
-                    {deal.source_url && (
-                      <a href={deal.source_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
-                        style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#60a5fa', textDecoration: 'none' }}>
-                        READ SOURCE →
-                      </a>
-                    )}
-                  </div>
-                )}
-                <div style={{ marginTop: '8px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.15)' }}>
-                  {isExpanded ? '↑ collapse' : '↓ expand'}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* No results for filter */}
-      {!loading && deals.length > 0 && filtered.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>
-          NO DEALS MATCH THIS FILTER
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ── Nav ───────────────────────────────────────────────────────────────────────
 const NAV = [
-  { id: 'morning',   label: 'Morning Brief',      icon: '☀️' },
-  { id: 'evening',   label: 'Evening Brief',       icon: '🌙' },
-  { id: 'thesis',    label: 'Thesis Board',        icon: '📋' },
-  { id: 'dealflow',  label: 'Deal Flow',           icon: '💼' },
-  { id: 'companies', label: 'Company Intel',       icon: '🏢' },
-  { id: 'trends',    label: 'Trends',              icon: '📈' },
+  { id: 'morning',   label: 'Morning Review',  icon: '☀️' },
+  { id: 'live',      label: 'Live Tracker',    icon: '⚡' },
+  { id: 'evening',   label: 'Evening Wrap',    icon: '🌙' },
+  { id: 'dealflow',  label: 'Deal Flow',       icon: '💼' },
+  { id: 'thesis',    label: 'Thesis Board',    icon: '📋' },
+  { id: 'companies', label: 'Company Intel',   icon: '🏢' },
+  { id: 'trends',    label: 'Trends',          icon: '📈' },
 ]
 
 // ── App ───────────────────────────────────────────────────────────────────────
@@ -607,7 +688,7 @@ export default function Home() {
         const res = await fetch('/api/quotes')
         const data = await res.json()
         if (data.quotes?.length) setQuotes(data.quotes)
-      } catch (e) { console.error('Quotes error:', e) }
+      } catch (e) { console.error(e) }
     }
     loadQuotes()
     const t = setInterval(loadQuotes, 90000)
@@ -615,9 +696,7 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    const update = () => setMarketTime(
-      new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', weekday: 'long', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date())
-    )
+    const update = () => setMarketTime(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', weekday: 'long', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date()))
     update()
     const t = setInterval(update, 10000)
     return () => clearInterval(t)
@@ -641,7 +720,6 @@ export default function Home() {
         @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.25; } }
         button:focus { outline: none; }
         input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.2); }
-        select option { background: #0f172a; }
       `}</style>
 
       <TickerBar quotes={quotes} />
@@ -655,17 +733,16 @@ export default function Home() {
             </div>
             <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)', letterSpacing: '0.22em', marginTop: '3px' }}>MARKET INTELLIGENCE</div>
           </div>
-
           <nav style={{ padding: '14px 10px', flex: 1 }}>
             {NAV.map(item => (
               <button key={item.id} onClick={() => setActiveTab(item.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '9px', padding: '9px 11px', borderRadius: '6px', border: 'none', background: activeTab === item.id ? 'rgba(245,158,11,0.09)' : 'transparent', color: activeTab === item.id ? '#f59e0b' : 'rgba(255,255,255,0.42)', fontSize: '12.5px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s', marginBottom: '1px', borderLeft: activeTab === item.id ? '2px solid #f59e0b' : '2px solid transparent' }}>
                 <span>{item.icon}</span>
                 {item.label}
-                {activeTab === item.id && <span style={{ marginLeft: 'auto', width: '4px', height: '4px', borderRadius: '50%', background: '#f59e0b', flexShrink: 0 }} />}
+                {item.id === 'live' && <span style={{ marginLeft: 'auto', width: '5px', height: '5px', borderRadius: '50%', background: '#4ade80', animation: 'pulse 2s infinite', flexShrink: 0 }} />}
+                {activeTab === item.id && item.id !== 'live' && <span style={{ marginLeft: 'auto', width: '4px', height: '4px', borderRadius: '50%', background: '#f59e0b', flexShrink: 0 }} />}
               </button>
             ))}
           </nav>
-
           <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.055)' }}>
             <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)', letterSpacing: '0.18em', marginBottom: '10px' }}>SECTORS TRACKED</div>
             {SIDEBAR_SECTORS.map(s => (
@@ -675,7 +752,6 @@ export default function Home() {
               </div>
             ))}
           </div>
-
           <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.055)' }}>
             <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)', letterSpacing: '0.18em', marginBottom: '6px' }}>MARKET TIME</div>
             <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.38)', lineHeight: 1.6 }}>{marketTime || '—'}</div>
@@ -700,13 +776,13 @@ export default function Home() {
               </div>
             </div>
           </div>
-
           <div style={{ flex: 1, overflowY: 'auto', padding: '30px' }}>
             <div style={{ maxWidth: '860px' }}>
               {activeTab === 'morning'   && <BriefView type="morning" />}
+              {activeTab === 'live'      && <LiveTracker />}
               {activeTab === 'evening'   && <BriefView type="evening" />}
-              {activeTab === 'thesis'    && <ThesisBoard />}
               {activeTab === 'dealflow'  && <DealFlowTracker />}
+              {activeTab === 'thesis'    && <ThesisBoard />}
               {activeTab === 'companies' && <CompanyIntel />}
               {activeTab === 'trends'    && <Trends />}
             </div>
