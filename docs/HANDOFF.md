@@ -16,6 +16,11 @@
   - `docs/SETUP.md` — local setup, run commands, env vars, Supabase notes ✅
 - Codebase audited: frontend (Next.js 14), backend (Python/Groq/Supabase), API routes inspected
 
+## Frontend nav (current state)
+- The insider trading tab has been fully removed from the nav.
+- The insider trading API route (`frontend/pages/api/insider.js`) has been deleted.
+- The current nav has exactly 7 tabs (in order): Morning Review, Live Tracker, Evening Wrap, Deal Flow, Thesis Board, Company Intel, Trends.
+
 ## Known issues (not yet fixed — needs scoped PR)
 - `backend/requirements.txt` lists `google-generativeai` but the backend uses `groq`. The `groq` package is missing. Backend will fail on `pip install` + run without a manual `pip install groq`. Needs a targeted fix PR.
 
