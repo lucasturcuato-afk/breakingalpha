@@ -47,32 +47,61 @@ async function fetchSEC() {
 async function fetchCongress() {
   if (cache.congress && Date.now() - cache.congressTs < CACHE_TTL) return cache.congress
 
-  // House stock watcher API — fully free, no key
-  const res = await fetch('https://house-stock-watcher-data.s3-us-east-2.amazonaws.com/data/all_transactions.json', {
-    headers: { 'User-Agent': 'BreakingAlpha research@breakingalpha.com' }
-  })
+  // Fetch both House and Senate stock watcher APIs
+  const [houseRes, senateRes] = await Promise.allSettled([
+    fetch('https://housestockwatcher.com/api/transactions_by_date/all', {
+      headers: { 'User-Agent': 'BreakingAlpha research@breakingalpha.com', 'Accept': 'application/json' }
+    }),
+    fetch('https://senatestockwatcher.com/api/transactions_by_date/all', {
+      headers: { 'User-Agent': 'BreakingAlpha research@breakingalpha.com', 'Accept': 'application/json' }
+    })
+  ])
 
-  if (!res.ok) throw new Error(`Congress API ${res.status}`)
-  const data = await res.json()
+  let combined = []
 
-  // Get most recent 60 trades
-  const recent = data
-    .filter(t => t.ticker && t.ticker !== '--' && t.transaction_date)
-    .sort((a, b) => new Date(b.transaction_date) - new Date(a.transaction_date))
-    .slice(0, 80)
-    .map(t => ({
-      id:              `${t.representative}-${t.ticker}-${t.transaction_date}`,
-      representative:  t.representative || 'Unknown',
-      party:           t.party || '',
-      ticker:          t.ticker?.replace('$','') || '',
-      asset:           t.asset_description || t.ticker || '',
-      type:            t.type || '',
-      amount:          t.amount || '',
-      filed:           t.disclosure_date || '',
-      traded:          t.transaction_date || '',
-      district:        t.district || '',
-      capitol_gains_over_200:  t.cap_gains_over_200 || false,
-    }))
+  if (houseRes.status === 'fulfilled' && houseRes.value.ok) {
+    const houseData = await houseRes.value.json()
+    const trades = Array.isArray(houseData) ? houseData : (houseData.data || [])
+    combined.push(...trades.map(t => ({
+      id:             `house-${t.representative}-${t.ticker}-${t.transaction_date}`,
+      representative: t.representative || 'Unknown',
+      party:          t.party || '',
+      chamber:        'House',
+      ticker:         (t.ticker||'').replace('$',''),
+      asset:          t.asset_description || t.ticker || '',
+      type:           t.type || '',
+      amount:         t.amount || '',
+      filed:          t.disclosure_date || '',
+      traded:         t.transaction_date || '',
+      district:       t.district || '',
+    })))
+  }
+
+  if (senateRes.status === 'fulfilled' && senateRes.value.ok) {
+    const senateData = await senateRes.value.json()
+    const trades = Array.isArray(senateData) ? senateData : (senateData.data || [])
+    combined.push(...trades.map(t => ({
+      id:             `senate-${t.senator}-${t.ticker}-${t.transaction_date}`,
+      representative: t.senator || t.first_name + ' ' + t.last_name || 'Unknown',
+      party:          t.party || '',
+      chamber:        'Senate',
+      ticker:         (t.ticker||'').replace('$',''),
+      asset:          t.asset_description || t.ticker || '',
+      type:           t.type || '',
+      amount:         t.amount || '',
+      filed:          t.disclosure_date || '',
+      traded:         t.transaction_date || '',
+      district:       t.state || '',
+    })))
+  }
+
+  if (combined.length === 0) throw new Error('No data returned from congress trade APIs')
+
+  // Sort by most recent, take top 100
+  const recent = combined
+    .filter(t => t.ticker && t.ticker !== '--' && t.traded)
+    .sort((a, b) => new Date(b.traded) - new Date(a.traded))
+    .slice(0, 100)
 
   cache.congress    = recent
   cache.congressTs  = Date.now()

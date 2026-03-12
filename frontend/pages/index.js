@@ -1036,6 +1036,7 @@ function InsiderTrading() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px', flexWrap: 'wrap' }}>
                       <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '16px', fontWeight: 600, color: '#f1f5f9' }}>{t.representative}</span>
                       {party && <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: pc, background: pc+'18', border: `1px solid ${pc}30`, padding: '1px 6px', borderRadius: '3px' }}>{party}</span>}
+                      {t.chamber && <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', padding: '1px 6px', borderRadius: '3px' }}>{t.chamber.toUpperCase()}</span>}
                       {t.district && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)' }}>{t.district}</span>}
                     </div>
                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
