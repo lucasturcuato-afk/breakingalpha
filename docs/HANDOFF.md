@@ -2,37 +2,37 @@
 
 ## Current status
 - Breaking Alpha is live on Vercel.
-- Lucas’s repo / stack is the source of truth going forward.
-- Noah has cloned the shared repo locally and created an initial Claude Code workflow branch.
-- Repo-based project memory is being set up to replace long chat-based development.
+- Repo-based Claude Code workflow is set up and documented.
+- `docs/SETUP.md` is now complete with real commands, env vars, and Supabase notes.
 - Yahoo Finance enrichment still needs to be ported and validated in the shared backend.
 
 ## Done
 - Shared repo cloned locally
 - New branch created: `noah/claude-workflow-setup`
-- Initial workflow files created:
-  - `CLAUDE.md`
-  - `docs/HANDOFF.md`
-  - `docs/ROADMAP.md`
-  - `docs/SETUP.md`
+- Workflow and documentation files created and filled in:
+  - `CLAUDE.md` — stable project instructions for Claude Code
+  - `docs/HANDOFF.md` — current project state (this file)
+  - `docs/ROADMAP.md` — priorities and backlog
+  - `docs/SETUP.md` — local setup, run commands, env vars, Supabase notes ✅
+- Codebase audited: frontend (Next.js 14), backend (Python/Groq/Supabase), API routes inspected
+
+## Known issues (not yet fixed — needs scoped PR)
+- `backend/requirements.txt` lists `google-generativeai` but the backend uses `groq`. The `groq` package is missing. Backend will fail on `pip install` + run without a manual `pip install groq`. Needs a targeted fix PR.
 
 ## In progress
-- Defining the shared Claude Code workflow
-- Converting project context into repo-based memory
-- Preparing for scoped development directly in the shared codebase
+- Preparing first scoped development task (Yahoo Finance enrichment or pipeline validation)
 
 ## Blocked / open questions
-- Need to confirm exact local run commands for frontend and backend
-- Need to confirm env var setup and Supabase local/dev flow
-- Need to inspect current codebase to determine best path for Yahoo Finance integration
-- Need final alignment with Lucas on ownership split and first implementation tasks
+- Need Lucas to confirm env var values and Supabase project access
+- Need alignment on Yahoo Finance integration approach before starting
+- Need final alignment on ownership split for first implementation task
 
 ## Immediate next steps
-1. Finalize the initial repo memory files
-2. Inspect the repo structure and document setup instructions
-3. Start first scoped Claude Code task inside the shared repo
-4. Push this branch and send Lucas a workflow update
-5. Plan the Yahoo Finance integration into the shared backend
+1. Push `noah/claude-workflow-setup` branch and open PR for Lucas to review
+2. Lucas validates `docs/SETUP.md` against his local setup
+3. Fix `backend/requirements.txt` in a separate scoped PR
+4. Align on Yahoo Finance integration plan
+5. Start first backend implementation task on a new feature branch
 
 ## Ownership
 - Noah:

@@ -1,12 +1,13 @@
 # Breaking Alpha Roadmap
 
 ## Immediate priorities
-- Set up repo-based Claude Code workflow
-- Document collaboration process for Noah and Lucas
-- Document local setup and run instructions
-- Audit current frontend and backend structure
-- Plan and port Yahoo Finance enrichment into the shared backend
-- Validate data pipeline and data display flow
+- [x] Set up repo-based Claude Code workflow
+- [x] Document collaboration process for Noah and Lucas
+- [x] Document local setup and run instructions (`docs/SETUP.md`)
+- [x] Audit current frontend and backend structure
+- [ ] Fix `backend/requirements.txt` — replace `google-generativeai` with `groq` (missing dependency)
+- [ ] Plan and port Yahoo Finance enrichment into the shared backend
+- [ ] Validate data pipeline and data display flow end-to-end
 
 ## Next priorities
 - Improve frontend data display reliability
