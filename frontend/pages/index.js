@@ -375,8 +375,8 @@ function LiveTracker() {
 
   // Sort
   const sorted = [...filtered].sort((a, b) => {
-    if (sortBy === 'newest')    return new Date(b.ingested_at||0) - new Date(a.ingested_at||0)
-    if (sortBy === 'oldest')    return new Date(a.ingested_at||0) - new Date(b.ingested_at||0)
+    if (sortBy === 'newest')    return new Date(b.published_at||b.ingested_at||0) - new Date(a.published_at||a.ingested_at||0)
+    if (sortBy === 'oldest')    return new Date(a.published_at||a.ingested_at||0) - new Date(b.published_at||b.ingested_at||0)
     if (sortBy === 'relevance') return (b.relevance_score||0) - (a.relevance_score||0)
     if (sortBy === 'sentiment') {
       const sa = SENTIMENT_ORDER[a.sentiment?.toLowerCase()] ?? 1
@@ -392,7 +392,7 @@ function LiveTracker() {
   const grouped = {}
   if (useBuckets) {
     sorted.forEach(a => {
-      const bucket = getTimeBucket(a.ingested_at || a.published_at)
+      const bucket = getTimeBucket(a.published_at || a.ingested_at)
       if (!grouped[bucket]) grouped[bucket] = []
       grouped[bucket].push(a)
     })
