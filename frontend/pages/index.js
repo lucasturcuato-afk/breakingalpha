@@ -309,13 +309,36 @@ function BriefView({ type }) {
 }
 
 // ── Live News Tracker ────────────────────────────────────────────────────────
+const SORT_OPTIONS = [
+  { key: 'newest',    label: 'NEWEST FIRST' },
+  { key: 'oldest',    label: 'OLDEST FIRST' },
+  { key: 'relevance', label: 'TOP RELEVANCE' },
+  { key: 'sentiment', label: 'BY SENTIMENT' },
+]
+
+const SENTIMENT_ORDER = { bullish: 0, positive: 0, neutral: 1, mixed: 1, bearish: 2, negative: 2 }
+
+function getTimeBucket(dateStr) {
+  if (!dateStr) return 'EARLIER'
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = diff / 60000
+  if (mins < 60)   return 'LAST HOUR'
+  if (mins < 1440) return 'TODAY'
+  if (mins < 2880) return 'YESTERDAY'
+  return 'EARLIER'
+}
+
+const BUCKET_ORDER = ['LAST HOUR', 'TODAY', 'YESTERDAY', 'EARLIER']
+const BUCKET_COLORS = { 'LAST HOUR': '#f59e0b', 'TODAY': '#4ade80', 'YESTERDAY': '#60a5fa', 'EARLIER': '#94a3b8' }
+
 function LiveTracker() {
-  const [articles, setArticles] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [articles, setArticles]       = useState([])
+  const [loading, setLoading]         = useState(true)
   const [lastRefresh, setLastRefresh] = useState(null)
   const [sectorFilter, setSectorFilter] = useState('ALL')
   const [sectorCounts, setSectorCounts] = useState({})
-  const [newIds, setNewIds] = useState(new Set())
+  const [newIds, setNewIds]           = useState(new Set())
+  const [sortBy, setSortBy]           = useState('newest')
   const knownIds = useRef(new Set())
   const REFRESH_MS = 60000
 
@@ -327,7 +350,6 @@ function LiveTracker() {
       .order('ingested_at', { ascending: false })
       .limit(150)
     if (data) {
-      // Find truly new articles since last fetch
       const incoming = new Set(data.map(a => a.id))
       const brandNew = new Set([...incoming].filter(id => knownIds.current.size > 0 && !knownIds.current.has(id)))
       if (brandNew.size > 0) setNewIds(prev => new Set([...prev, ...brandNew]))
@@ -347,32 +369,66 @@ function LiveTracker() {
     return () => clearInterval(interval)
   }, [fetchArticles])
 
+  // Filter by sector
   const activeSector = SECTORS.find(s => s.key === sectorFilter)
   const filtered = sectorFilter === 'ALL' ? articles : articles.filter(a => a.sector === activeSector?.value)
+
+  // Sort
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortBy === 'newest')    return new Date(b.ingested_at||0) - new Date(a.ingested_at||0)
+    if (sortBy === 'oldest')    return new Date(a.ingested_at||0) - new Date(b.ingested_at||0)
+    if (sortBy === 'relevance') return (b.relevance_score||0) - (a.relevance_score||0)
+    if (sortBy === 'sentiment') {
+      const sa = SENTIMENT_ORDER[a.sentiment?.toLowerCase()] ?? 1
+      const sb = SENTIMENT_ORDER[b.sentiment?.toLowerCase()] ?? 1
+      if (sa !== sb) return sa - sb
+      return new Date(b.ingested_at||0) - new Date(a.ingested_at||0)
+    }
+    return 0
+  })
+
+  // Group into time buckets (only for non-sentiment sorts)
+  const useBuckets = sortBy !== 'sentiment' && sortBy !== 'relevance'
+  const grouped = {}
+  if (useBuckets) {
+    sorted.forEach(a => {
+      const bucket = getTimeBucket(a.ingested_at || a.published_at)
+      if (!grouped[bucket]) grouped[bucket] = []
+      grouped[bucket].push(a)
+    })
+  }
 
   return (
     <div>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
         <div>
-          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '4px' }}>
-            ⚡ LIVE NEWS TRACKER
-          </div>
+          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '4px' }}>⚡ LIVE NEWS TRACKER</div>
           <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', margin: 0 }}>
-            Auto-refreshes every 60 seconds · {articles.length} stories tracked
+            Auto-refreshes every 60s · {articles.length} stories tracked
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {lastRefresh && (
-            <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.2)' }}>
-              Updated {timeAgo(lastRefresh)}
-            </span>
-          )}
-          {/* Live pulse indicator */}
+          {lastRefresh && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.2)' }}>Updated {timeAgo(lastRefresh)}</span>}
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#4ade80', animation: 'pulse 2s infinite' }} />
             <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#4ade80', letterSpacing: '0.1em' }}>LIVE</span>
           </div>
+        </div>
+      </div>
+
+      {/* Sort controls */}
+      <div style={{ marginBottom: '14px' }}>
+        <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)', letterSpacing: '0.14em', marginBottom: '7px' }}>SORT BY</div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          {SORT_OPTIONS.map(opt => {
+            const isActive = sortBy === opt.key
+            return (
+              <button key={opt.key} onClick={() => setSortBy(opt.key)} style={{ padding: '5px 13px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', transition: 'all 0.12s', letterSpacing: '0.06em', outline: 'none', border: `1px solid ${isActive ? '#f59e0b' : 'rgba(255,255,255,0.1)'}`, background: isActive ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.03)', color: isActive ? '#f59e0b' : 'rgba(255,255,255,0.4)' }}>
+                {isActive && '● '}{opt.label}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -390,11 +446,9 @@ function LiveTracker() {
       </div>
 
       <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '14px' }}>
-        {filtered.length} {filtered.length === 1 ? 'STORY' : 'STORIES'}
+        {sorted.length} {sorted.length === 1 ? 'STORY' : 'STORIES'}
         {sectorFilter !== 'ALL' && ` · ${activeSector?.label}`}
-        {newIds.size > 0 && (
-          <span style={{ marginLeft: '10px', color: '#f59e0b' }}>· {newIds.size} new since last visit</span>
-        )}
+        {newIds.size > 0 && <span style={{ marginLeft: '10px', color: '#f59e0b' }}>· {newIds.size} new since last visit</span>}
       </div>
 
       {loading ? (
@@ -404,10 +458,45 @@ function LiveTracker() {
             <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em' }}>LOADING FEED...</div>
           </div>
         </div>
-      ) : filtered.length > 0 ? (
-        filtered.map(a => <ArticleCard key={a.id} article={a} isNew={newIds.has(a.id)} />)
-      ) : (
+      ) : sorted.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>NO STORIES IN THIS SECTOR YET</div>
+      ) : useBuckets ? (
+        // Time-bucketed view
+        BUCKET_ORDER.filter(b => grouped[b]?.length > 0).map(bucket => (
+          <div key={bucket} style={{ marginBottom: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', paddingBottom: '8px', borderBottom: `1px solid rgba(255,255,255,0.06)` }}>
+              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: BUCKET_COLORS[bucket], flexShrink: 0, ...(bucket === 'LAST HOUR' ? { animation: 'pulse 2s infinite' } : {}) }} />
+              <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: BUCKET_COLORS[bucket], letterSpacing: '0.14em' }}>{bucket}</span>
+              <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)' }}>{grouped[bucket].length} {grouped[bucket].length === 1 ? 'story' : 'stories'}</span>
+            </div>
+            {grouped[bucket].map(a => <ArticleCard key={a.id} article={a} isNew={newIds.has(a.id)} />)}
+          </div>
+        ))
+      ) : sortBy === 'sentiment' ? (
+        // Sentiment-grouped view
+        (() => {
+          const sentGroups = { 'BULLISH': [], 'NEUTRAL': [], 'BEARISH': [] }
+          sorted.forEach(a => {
+            const s = a.sentiment?.toLowerCase() || ''
+            if (s === 'bullish' || s === 'positive') sentGroups['BULLISH'].push(a)
+            else if (s === 'bearish' || s === 'negative') sentGroups['BEARISH'].push(a)
+            else sentGroups['NEUTRAL'].push(a)
+          })
+          const sentColors = { BULLISH: '#4ade80', NEUTRAL: '#94a3b8', BEARISH: '#f87171' }
+          return Object.entries(sentGroups).filter(([, arr]) => arr.length > 0).map(([label, arr]) => (
+            <div key={label} style={{ marginBottom: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: sentColors[label], flexShrink: 0 }} />
+                <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: sentColors[label], letterSpacing: '0.14em' }}>{label}</span>
+                <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)' }}>{arr.length} {arr.length === 1 ? 'story' : 'stories'}</span>
+              </div>
+              {arr.map(a => <ArticleCard key={a.id} article={a} isNew={newIds.has(a.id)} />)}
+            </div>
+          ))
+        })()
+      ) : (
+        // Flat sorted view (relevance)
+        sorted.map(a => <ArticleCard key={a.id} article={a} isNew={newIds.has(a.id)} />)
       )}
     </div>
   )
