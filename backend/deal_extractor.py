@@ -105,6 +105,10 @@ def run():
         if not deal:
             continue
 
+        if not deal.get("company"):
+            print("↷ Skipping deal with missing company")
+            continue
+
         extracted += 1
         print(f"  ✓ Deal found: {deal['company']} — {deal['deal_type']} ({deal['stage']})")
 
