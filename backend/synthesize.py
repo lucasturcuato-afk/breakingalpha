@@ -3,10 +3,10 @@ synthesize.py — BreakingAlpha
 Generates a detailed analyst-style morning/evening briefing using Groq.
 """
 
-import os, json, re
+import os, json, re, time
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
-from groq import Groq
+from groq import Groq, RateLimitError
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 groq     = Groq(api_key=os.environ["GROQ_API_KEY"])
@@ -114,21 +114,36 @@ def run(brief_type="morning"):
 
     system = MORNING_SYSTEM if brief_type == "morning" else EVENING_SYSTEM
 
-    try:
-        resp = groq.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user",   "content": f"Today's articles:\n\n{article_text}"},
-            ],
-            temperature=0.3,
-            max_tokens=2000,
-        )
-        raw = resp.choices[0].message.content.strip()
-        raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
-        data = json.loads(raw)
-    except Exception as e:
-        print(f"  ⚠ Groq error: {e}")
+    data = None
+    rate_limited = False
+    for attempt in range(3):
+        try:
+            resp = groq.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user",   "content": f"Today's articles:\n\n{article_text}"},
+                ],
+                temperature=0.3,
+                max_tokens=2000,
+            )
+            raw = resp.choices[0].message.content.strip()
+            raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
+            data = json.loads(raw)
+            break
+        except RateLimitError:
+            rate_limited = True
+            wait = [5, 10, 20][attempt]
+            print(f"  ⚠ Groq 429 — waiting {wait}s (attempt {attempt+1}/3)")
+            time.sleep(wait)
+        except Exception as e:
+            print(f"  ⚠ Groq error: {e}")
+            break
+    if data is None:
+        if rate_limited:
+            print(f"  ✗ Groq rate limit exhausted after retries — falling back to stub briefing")
+        else:
+            print(f"  ✗ Groq generation error — falling back to stub briefing")
         data = {
             "headline": "Market Intelligence Unavailable",
             "summary": "Briefing generation failed. Please check logs.",

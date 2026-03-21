@@ -7,7 +7,7 @@ stores in Supabase.
 import os, json, time, requests, feedparser
 from datetime import datetime, timezone
 from supabase import create_client
-from groq import Groq
+from groq import Groq, RateLimitError
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -113,26 +113,33 @@ def fetch_all_articles():
 
 
 def filter_article(article):
-    try:
-        prompt = FILTER_PROMPT.format(
-            title=article["title"],
-            summary=article["summary"],
-            source=article["source"],
-            sectors=", ".join(SECTORS)
-        )
-        resp = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1
-        )
-        text = resp.choices[0].message.content.strip()
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"): text = text[4:]
-        return json.loads(text.strip())
-    except Exception as ex:
-        print(f"  Filter error: {ex}")
-        return None
+    prompt = FILTER_PROMPT.format(
+        title=article["title"],
+        summary=article["summary"],
+        source=article["source"],
+        sectors=", ".join(SECTORS)
+    )
+    for attempt in range(3):
+        try:
+            resp = groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1
+            )
+            text = resp.choices[0].message.content.strip()
+            if text.startswith("```"):
+                text = text.split("```")[1]
+                if text.startswith("json"): text = text[4:]
+            return json.loads(text.strip())
+        except RateLimitError:
+            wait = [5, 10, 20][attempt]
+            print(f"  ⚠ Groq 429 — waiting {wait}s (attempt {attempt+1}/3)")
+            time.sleep(wait)
+        except Exception as ex:
+            print(f"  Filter error: {ex}")
+            return None
+    print(f"  ✗ Groq rate limit exhausted for: {article['title'][:50]}")
+    return None
 
 
 def upsert_company(name, themes, sentiment):
