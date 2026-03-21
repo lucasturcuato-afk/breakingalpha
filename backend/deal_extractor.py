@@ -4,10 +4,10 @@ Runs after ingest — scans recent articles with Groq AI,
 extracts deals, and upserts them into the deal_flow Supabase table.
 """
 
-import os, json, re
+import os, json, re, time
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
-from groq import Groq
+from groq import Groq, RateLimitError
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 groq     = Groq(api_key=os.environ["GROQ_API_KEY"])
@@ -35,25 +35,33 @@ Do not add any text outside the JSON."""
 
 def extract_deal(title, summary, url):
     content = f"Title: {title}\nSummary: {summary or ''}"
-    try:
-        resp = groq.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user",   "content": content},
-            ],
-            temperature=0.1,
-            max_tokens=400,
-        )
-        raw = resp.choices[0].message.content.strip()
-        # Strip markdown fences if present
-        raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
-        data = json.loads(raw)
-        if data.get("is_deal"):
-            data["source_url"] = url
-            return data
-    except Exception as e:
-        print(f"  ⚠ Groq error for '{title[:50]}': {e}")
+    for attempt in range(3):
+        try:
+            resp = groq.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user",   "content": content},
+                ],
+                temperature=0.1,
+                max_tokens=400,
+            )
+            raw = resp.choices[0].message.content.strip()
+            # Strip markdown fences if present
+            raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
+            data = json.loads(raw)
+            if data.get("is_deal"):
+                data["source_url"] = url
+                return data
+            return None
+        except RateLimitError:
+            wait = [5, 10, 20][attempt]
+            print(f"  ⚠ Groq 429 — waiting {wait}s (attempt {attempt+1}/3)")
+            time.sleep(wait)
+        except Exception as e:
+            print(f"  ⚠ Groq error for '{title[:50]}': {e}")
+            return None
+    print(f"  ✗ Groq rate limit exhausted for '{title[:50]}'")
     return None
 
 def stage_label(stage):
@@ -102,6 +110,7 @@ def run():
             continue
 
         deal = extract_deal(title, summary, url)
+        time.sleep(0.5)
         if not deal:
             continue
 
