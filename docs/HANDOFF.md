@@ -1,62 +1,56 @@
 # Breaking Alpha Handoff
 
 ## Current status
-- Breaking Alpha is live on Vercel.
-- Repo-based Claude Code workflow is set up and documented.
-- `docs/SETUP.md` is now complete with real commands, env vars, and Supabase notes.
-- Yahoo Finance enrichment still needs to be ported and validated in the shared backend.
+- BreakingAlpha is live on Vercel.
+- Backend startup/config fixes were merged into `main`.
+- Groq reliability retry/backoff/logging fixes were merged into `main`.
+- A frontend PR is now open from `debug/frontend-prod-issue` into `main`.
+- That PR fixes multiple homepage hydration mismatches in `frontend/pages/index.js`.
+- Local production build succeeds after the frontend fixes.
+- Lucas has been messaged and asked to review the PR / protected Vercel preview before merge.
 
-## Done
-- Shared repo cloned locally
-- New branch created: `noah/claude-workflow-setup`
-- Workflow and documentation files created and filled in:
-  - `CLAUDE.md` — stable project instructions for Claude Code
-  - `docs/HANDOFF.md` — current project state (this file)
-  - `docs/ROADMAP.md` — priorities and backlog
-  - `docs/SETUP.md` — local setup, run commands, env vars, Supabase notes ✅
-- Codebase audited: frontend (Next.js 14), backend (Python/Groq/Supabase), API routes inspected
+## Frontend hydration PR
+Branch:
+- `debug/frontend-prod-issue`
 
-## Frontend nav (current state)
-- The insider trading tab has been fully removed from the nav.
-- The insider trading API route (`frontend/pages/api/insider.js`) has been deleted.
-- The current nav has exactly 7 tabs (in order): Morning Review, Live Tracker, Evening Wrap, Deal Flow, Thesis Board, Company Intel, Trends.
+PR purpose:
+- fix homepage SSR/client hydration mismatches without broad refactors
 
-## Known issues (not yet fixed — needs scoped PR)
-- `backend/requirements.txt` lists `google-generativeai` but the backend uses `groq`. The `groq` package is missing. Backend will fail on `pip install` + run without a manual `pip install groq`. Needs a targeted fix PR.
+What was fixed:
+- moved render-time date logic behind client-side state/effect
+- moved render-time market-open logic behind client-side state/effect
+- removed conditional ticker `<style>` mismatch
+- moved Google Fonts `@import` out of the inline style block into `Head`
 
-## In progress
-- Preparing first scoped development task (Yahoo Finance enrichment or pipeline validation)
+Validation completed:
+- local frontend env configured
+- `npm run build` succeeds
+- local production render works
+- PR created and pushed
 
-## Blocked / open questions
-- Need Lucas to confirm env var values and Supabase project access
-- Need alignment on Yahoo Finance integration approach before starting
-- Need final alignment on ownership split for first implementation task
+## Current blocker / open question
+Do not merge blindly yet.
 
-## Immediate next steps
-1. Push `noah/claude-workflow-setup` branch and open PR for Lucas to review
-2. Lucas validates `docs/SETUP.md` against his local setup
-3. Fix `backend/requirements.txt` in a separate scoped PR
-4. Align on Yahoo Finance integration plan
-5. Start first backend implementation task on a new feature branch
+What still needs confirmation:
+- does the Vercel preview fully resolve the homepage hydration/runtime issue?
+- does the preview preserve the current polished sidebar/icon rendering?
+- is the local sidebar/icon ugliness only local, or a real deploy regression?
 
-## Ownership
-- Noah:
-  - Claude workflow setup
-  - backend / data integration planning
-  - Yahoo Finance port planning
-- Lucas:
-  - frontend / deployed app ownership
-  - live app validation
-  - collaboration on merge / review flow
+## Immediate next step
+- Lucas opens the PR / Vercel preview
+- Lucas checks whether:
+  - homepage loads cleanly
+  - hydration/runtime issue is resolved
+  - sidebar/icons still look normal
+  - preview seems safe to merge
 
-## Operational notes
-- GitHub Actions scheduler runs twice daily: 6am PT (morning briefing) and 10pm PT (evening briefing), weekdays only.
-- Finnhub is the primary quotes source. Stooq CSV is the fallback if Finnhub is unavailable.
-- Evening Wrap was not confirmed generating as of last check — needs validation.
-- Deal Flow manual entry form exists in the UI but only saves to local state — does NOT write to Supabase yet.
-- Thesis Board has no backend persistence — resets on page refresh.
+If preview looks good:
+- merge the PR
+
+If preview looks off:
+- isolate sidebar/icon issue as a separate frontend follow-up
 
 ## Notes
-- Shared repo context should now live in the repo, not in long Claude chats.
-- `CLAUDE.md` should stay stable.
-- `docs/HANDOFF.md` should be updated at the end of meaningful work sessions.
+- Do not commit `frontend/.env.local`
+- `.claude/` remains uncommitted for now
+- Notion is the detailed project source of truth; this file is the short repo handoff
