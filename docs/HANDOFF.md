@@ -8,6 +8,9 @@
 - That PR fixes multiple homepage hydration mismatches in `frontend/pages/index.js`.
 - Local production build succeeds after the frontend fixes.
 - Lucas has been messaged and asked to review the PR / protected Vercel preview before merge.
+- Repo workflow documentation was updated and merged into `main`.
+- `CLAUDE.md`, `docs/ROADMAP.md`, and `docs/SETUP.md` are now aligned and should be used as the repo source of truth for workflow/setup.
+- `debug/frontend-prod-issue` has been merged with latest `main` so branch state is current.
 
 ## Frontend hydration PR
 Branch:
@@ -52,5 +55,5 @@ If preview looks off:
 
 ## Notes
 - Do not commit `frontend/.env.local`
-- `.claude/` remains uncommitted for now
+- `.claude/` is ignored in `.gitignore` on `debug/frontend-prod-issue`
 - Notion is the detailed project source of truth; this file is the short repo handoff
