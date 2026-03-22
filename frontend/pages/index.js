@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import Head from 'next/head'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -94,7 +95,6 @@ function TickerBar({ quotes }) {
           </span>
         ))}
       </div>
-      <style>{`@keyframes scrollTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-33.333%); } }`}</style>
     </div>
   )
 }
@@ -908,6 +908,8 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState('morning')
   const [quotes, setQuotes] = useState([])
   const [marketTime, setMarketTime] = useState('')
+  const [marketOpen, setMarketOpen] = useState(null)
+  const [todayStr, setTodayStr] = useState(null)
 
   useEffect(() => {
     async function loadQuotes() {
@@ -935,16 +937,31 @@ export default function Home() {
     return d >= 1 && d <= 5 && m >= 570 && m <= 960
   }
 
+  useEffect(() => {
+    setMarketOpen(isMarketOpen())
+    const t = setInterval(() => setMarketOpen(isMarketOpen()), 60000)
+    return () => clearInterval(t)
+  }, [])
+
+  useEffect(() => {
+    setTodayStr(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).replace(/\//g, '-'))
+  }, [])
+
   return (
     <div style={{ minHeight: '100vh', background: '#080c18', color: '#f8fafc' }}>
+      <Head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+      </Head>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=DM+Mono:wght@300;400;500&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body { background: #080c18; overflow: hidden; }
         ::-webkit-scrollbar { width: 3px; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.25; } }
+        @keyframes scrollTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-33.333%); } }
         button:focus { outline: none; }
         input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.2); }
       `}</style>
@@ -983,8 +1000,8 @@ export default function Home() {
             <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)', letterSpacing: '0.18em', marginBottom: '6px' }}>MARKET TIME</div>
             <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.38)', lineHeight: 1.6 }}>{marketTime || 'â'}</div>
             <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: isMarketOpen() ? '#4ade80' : '#f87171', animation: 'pulse 2s infinite' }} />
-              <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.1em' }}>US EQUITIES {isMarketOpen() ? 'OPEN' : 'CLOSED'}</span>
+              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: marketOpen ? '#4ade80' : '#f87171', animation: 'pulse 2s infinite' }} />
+              <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.1em' }}>US EQUITIES {marketOpen ? 'OPEN' : 'CLOSED'}</span>
             </div>
           </div>
         </div>
@@ -996,7 +1013,7 @@ export default function Home() {
               {NAV.find(n => n.id === activeTab)?.icon} {NAV.find(n => n.id === activeTab)?.label.toUpperCase()}
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.25)' }}>{new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).replace(/\//g, '-')}</span>
+              <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.25)' }}>{todayStr}</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#4ade80', animation: 'pulse 2s infinite' }} />
                 <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#4ade80', letterSpacing: '0.1em' }}>LIVE</span>
