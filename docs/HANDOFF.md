@@ -53,6 +53,14 @@ If preview looks good:
 If preview looks off:
 - isolate sidebar/icon issue as a separate frontend follow-up
 
+## In Progress
+- **AI Deal Memo Generator** (branch: `lucas/deal-memo-generator`)
+  - New API route: `frontend/pages/api/memo.js` — calls Groq llama-3.1-8b-instant with IB-style prompt
+  - "Generate Memo" button on each Deal Flow card
+  - Modal overlay displays formatted memo with copy-to-clipboard
+  - Needs: GROQ_API_KEY added to Vercel environment variables before merge
+  - Status: built, needs testing on preview before PR into main
+
 ## Recently Fixed (2026-03-25)
 - **secrets mapping**: `schedule.yml` line 46 was pointing to `secrets.SUPABASE_KEY` (nonexistent); corrected to `secrets.SUPABASE_ANON_KEY`. This was causing KeyError failures in the pipeline.
 - **null deal size**: Evening Wrap top_deals cards were rendering `deal.valuation` conditionally; changed to always render `deal.value || 'Undisclosed'` to match what the AI pipeline actually produces and prevent blank/null display.
