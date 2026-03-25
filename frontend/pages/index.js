@@ -996,13 +996,13 @@ function Trends() {
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
 const NAV = [
-  { id: 'morning',  label: 'Morning Review',  icon: '☀️' },
-  { id: 'live',     label: 'Live Tracker',    icon: '⚡' },
-  { id: 'evening',  label: 'Evening Wrap',    icon: '🌙' },
-  { id: 'dealflow', label: 'Deal Flow',       icon: '💼' },
-  { id: 'thesis',   label: 'Thesis Board',    icon: '📋' },
-  { id: 'companies',label: 'Company Intel',   icon: '🏢' },
-  { id: 'trends',   label: 'Trends',          icon: '📈' },
+  { id: 'morning',   label: 'Morning Review', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg> },
+  { id: 'live',      label: 'Live Tracker',   icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
+  { id: 'evening',   label: 'Evening Wrap',   icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg> },
+  { id: 'dealflow',  label: 'Deal Flow',      icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> },
+  { id: 'thesis',    label: 'Thesis Board',   icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> },
+  { id: 'companies', label: 'Company Intel',  icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg> },
+  { id: 'trends',    label: 'Trends',         icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg> },
 ]
 
 // ── App ───────────────────────────────────────────────────────────────────────
@@ -1066,44 +1066,51 @@ export default function Home() {
         @keyframes scrollTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-33.333%); } }
         button:focus { outline: none; }
         input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.2); }
+        .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 16px; border-radius: 6px; border: none; border-left: 2px solid transparent; background: transparent; color: #9ca3af; font-size: 12.5px; font-family: 'DM Mono', monospace; cursor: pointer; text-align: left; transition: all 0.15s ease; margin-bottom: 1px; }
+        .nav-item:hover { background: rgba(245,158,11,0.06); color: #e5e7eb; }
+        .nav-item:hover .nav-icon { color: #f59e0b; }
+        .nav-item.nav-active { background: rgba(245,158,11,0.10); color: #f59e0b; border-left: 2px solid #f59e0b; }
+        .nav-item.nav-active .nav-icon { color: #f59e0b; }
+        .nav-icon { color: #6b7280; display: flex; align-items: center; flex-shrink: 0; transition: color 0.15s ease; }
+        .sector-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .sector-row:hover .sector-label { color: #9ca3af; }
       `}</style>
 
       <TickerBar quotes={quotes} />
 
       <div style={{ display: 'flex', height: 'calc(100vh - 32px)' }}>
         {/* Sidebar */}
-        <div style={{ width: '232px', flexShrink: 0, background: '#060a15', borderRight: '1px solid rgba(255,255,255,0.055)', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
-          <div style={{ padding: '22px 20px 20px', borderBottom: '1px solid rgba(255,255,255,0.055)' }}>
+        <div style={{ width: '232px', flexShrink: 0, background: '#060a15', borderRight: '1px solid #0f1623', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
+          <div style={{ padding: '22px 20px 16px', borderBottom: '1px solid #1a2235' }}>
             <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '21px', fontWeight: 700 }}>
               <span style={{ color: '#fff' }}>Breaking</span><span style={{ color: '#f59e0b' }}>Alpha</span>
             </div>
-            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)', letterSpacing: '0.22em', marginTop: '3px' }}>MARKET INTELLIGENCE</div>
+            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#4b5563', letterSpacing: '0.15em', marginTop: '3px' }}>MARKET INTELLIGENCE</div>
           </div>
-          <nav style={{ padding: '14px 10px', flex: 1 }}>
+          <nav style={{ padding: '10px 10px', flex: 1 }}>
             {NAV.map(item => (
-              <button key={item.id} onClick={() => setActiveTab(item.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '9px', padding: '9px 11px', borderRadius: '6px', border: 'none', background: activeTab === item.id ? 'rgba(245,158,11,0.09)' : 'transparent', color: activeTab === item.id ? '#f59e0b' : 'rgba(255,255,255,0.42)', fontSize: '12.5px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s', marginBottom: '1px', borderLeft: activeTab === item.id ? '2px solid #f59e0b' : '2px solid transparent' }}>
-                <span>{item.icon}</span>
+              <button key={item.id} onClick={() => setActiveTab(item.id)} className={`nav-item${activeTab === item.id ? ' nav-active' : ''}`}>
+                <span className="nav-icon">{item.icon}</span>
                 {item.label}
                 {item.id === 'live' && <span style={{ marginLeft: 'auto', width: '5px', height: '5px', borderRadius: '50%', background: '#4ade80', animation: 'pulse 2s infinite', flexShrink: 0 }} />}
-                {activeTab === item.id && item.id !== 'live' && <span style={{ marginLeft: 'auto', width: '4px', height: '4px', borderRadius: '50%', background: '#f59e0b', flexShrink: 0 }} />}
               </button>
             ))}
           </nav>
           <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.055)' }}>
-            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)', letterSpacing: '0.18em', marginBottom: '10px' }}>SECTORS TRACKED</div>
+            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#374151', letterSpacing: '0.12em', marginBottom: '10px' }}>SECTORS TRACKED</div>
             {SIDEBAR_SECTORS.map(s => (
-              <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-                <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.32)' }}>{s.name}</span>
+              <div key={s.name} className="sector-row">
+                <div style={{ width: '3px', height: '3px', borderRadius: '1px', background: s.color, flexShrink: 0 }} />
+                <span className="sector-label" style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#6b7280', transition: 'color 0.15s ease' }}>{s.name}</span>
               </div>
             ))}
           </div>
           <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.055)' }}>
-            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)', letterSpacing: '0.18em', marginBottom: '6px' }}>MARKET TIME</div>
+            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#374151', letterSpacing: '0.12em', marginBottom: '6px' }}>MARKET TIME</div>
             <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.38)', lineHeight: 1.6 }}>{marketTime || '—'}</div>
             <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: marketOpen ? '#4ade80' : '#f87171', animation: 'pulse 2s infinite' }} />
-              <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.1em' }}>US EQUITIES {marketOpen ? 'OPEN' : 'CLOSED'}</span>
+              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: marketOpen ? '#4ade80' : '#f87171', animation: 'pulse 2s infinite', flexShrink: 0 }} />
+              <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: marketOpen ? '#4ade80' : '#f87171', letterSpacing: '0.1em' }}>US EQUITIES {marketOpen ? 'OPEN' : 'CLOSED'}</span>
             </div>
           </div>
         </div>
