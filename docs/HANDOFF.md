@@ -53,6 +53,11 @@ If preview looks good:
 If preview looks off:
 - isolate sidebar/icon issue as a separate frontend follow-up
 
+## Recently Fixed (2026-03-25)
+- **secrets mapping**: `schedule.yml` line 46 was pointing to `secrets.SUPABASE_KEY` (nonexistent); corrected to `secrets.SUPABASE_ANON_KEY`. This was causing KeyError failures in the pipeline.
+- **null deal size**: Evening Wrap top_deals cards were rendering `deal.valuation` conditionally; changed to always render `deal.value || 'Undisclosed'` to match what the AI pipeline actually produces and prevent blank/null display.
+- **deal flow form not saving**: `DealFlowTracker` had no add-deal UI or Supabase write path. Added a "+ ADD DEAL" form with a `handleAddDeal` handler that updates local state and inserts to the `deal_flow` table in Supabase.
+
 ## Notes
 - Do not commit `frontend/.env.local`
 - `.claude/` is ignored in `.gitignore` on `debug/frontend-prod-issue`
