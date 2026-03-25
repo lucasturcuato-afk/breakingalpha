@@ -236,7 +236,7 @@ function BriefView({ type }) {
                   <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '14px 16px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
                       <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '15px', fontWeight: 600, color: '#f8fafc' }}>{deal.company}</span>
-                      {deal.valuation && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#fbbf24', flexShrink: 0, marginLeft: '8px' }}>{deal.valuation}</span>}
+                      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#fbbf24', flexShrink: 0, marginLeft: '8px' }}>{deal.value || 'Undisclosed'}</span>
                     </div>
                     <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', marginBottom: '5px' }}>{deal.deal_type}</div>
                     <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>{deal.one_liner}</div>
@@ -537,6 +537,8 @@ function DealFlowTracker() {
   const [filterStage, setFilterStage] = useState('ALL')
   const [search, setSearch]           = useState('')
   const [expanded, setExpanded]       = useState(null)
+  const [showForm, setShowForm]       = useState(false)
+  const [formData, setFormData]       = useState({ company: '', acquirer: '', deal_type: '', status: 'announced', value: '', notes: '' })
 
   useEffect(() => {
     async function load() {
@@ -547,6 +549,25 @@ function DealFlowTracker() {
     }
     load()
   }, [])
+
+  const handleAddDeal = async () => {
+    if (!formData.company.trim()) return
+    const newDeal = { ...formData, id: Date.now(), source: 'manual', ingested_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+    setDeals([newDeal, ...deals])
+    setShowForm(false)
+    setFormData({ company: '', acquirer: '', deal_type: '', status: 'announced', value: '', notes: '' })
+    const { error } = await supabase.from('deal_flow').insert([{
+      company: newDeal.company || '',
+      acquirer: newDeal.acquirer || null,
+      deal_type: newDeal.deal_type || null,
+      status: newDeal.status || 'announced',
+      value: newDeal.value || null,
+      notes: newDeal.notes || null,
+      source: 'manual',
+      ingested_at: new Date().toISOString()
+    }])
+    if (error) console.error('Deal Flow insert failed:', error)
+  }
 
   const stageCounts = {}
   deals.forEach(d => { stageCounts[d.stage] = (stageCounts[d.stage] || 0) + 1 })
@@ -561,10 +582,29 @@ function DealFlowTracker() {
 
   return (
     <div>
-      <div style={{ marginBottom: '6px' }}>
-        <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '4px' }}>💼 DEAL FLOW TRACKER</div>
-        <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', margin: 0 }}>AI-extracted deal pipeline · auto-updated from news ingestion</p>
+      <div style={{ marginBottom: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '4px' }}>💼 DEAL FLOW TRACKER</div>
+          <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', margin: 0 }}>AI-extracted deal pipeline · auto-updated from news ingestion</p>
+        </div>
+        <button onClick={() => setShowForm(f => !f)} style={{ padding: '5px 13px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#f59e0b', flexShrink: 0 }}>+ ADD DEAL</button>
       </div>
+
+      {showForm && (
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '10px', padding: '18px 20px', marginBottom: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+            <input placeholder="Company *" value={formData.company} onChange={e => setFormData(f => ({ ...f, company: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }} />
+            <input placeholder="Acquirer" value={formData.acquirer} onChange={e => setFormData(f => ({ ...f, acquirer: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }} />
+            <input placeholder="Deal type (e.g. M&A, IPO)" value={formData.deal_type} onChange={e => setFormData(f => ({ ...f, deal_type: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }} />
+            <input placeholder="Value (e.g. $2.5B)" value={formData.value} onChange={e => setFormData(f => ({ ...f, value: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }} />
+          </div>
+          <input placeholder="Notes" value={formData.notes} onChange={e => setFormData(f => ({ ...f, notes: e.target.value }))} style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none', marginBottom: '10px' }} />
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={handleAddDeal} style={{ padding: '6px 16px', borderRadius: '4px', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid rgba(245,158,11,0.5)', background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>SAVE DEAL</button>
+            <button onClick={() => setShowForm(false)} style={{ padding: '6px 16px', borderRadius: '4px', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: 'rgba(255,255,255,0.35)' }}>CANCEL</button>
+          </div>
+        </div>
+      )}
 
       {deals.length > 0 && (
         <>
