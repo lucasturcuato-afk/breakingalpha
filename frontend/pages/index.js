@@ -745,7 +745,8 @@ function DealFlowTracker() {
               <button onClick={() => setShowMemoModal(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '18px', cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}>×</button>
             </div>
             <div style={{ overflowY: 'auto', padding: '24px', flex: 1 }}>
-              <pre style={{ fontFamily: "'DM Mono', monospace", fontSize: '12px', color: 'rgba(255,255,255,0.75)', lineHeight: 1.75, whiteSpace: 'pre-wrap', margin: 0 }}>{memoContent}</pre>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '12px', color: 'rgba(255,255,255,0.75)', lineHeight: 1.75, whiteSpace: 'pre-wrap', margin: 0 }}
+                dangerouslySetInnerHTML={{ __html: memoContent.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>') }} />
             </div>
             <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
               <button
