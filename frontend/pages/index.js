@@ -539,6 +539,38 @@ function DealFlowTracker() {
   const [expanded, setExpanded]       = useState(null)
   const [showForm, setShowForm]       = useState(false)
   const [formData, setFormData]       = useState({ company: '', acquirer: '', deal_type: '', status: 'announced', value: '', notes: '' })
+  const [memoLoading, setMemoLoading] = useState(null)
+  const [memoContent, setMemoContent] = useState('')
+  const [memoTitle, setMemoTitle]     = useState('')
+  const [showMemoModal, setShowMemoModal] = useState(false)
+
+  const generateMemo = async (deal, e) => {
+    e.stopPropagation()
+    setMemoLoading(deal.id)
+    try {
+      const res = await fetch('/api/memo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company: deal.company,
+          acquirer: deal.acquirer,
+          deal_type: deal.deal_type,
+          value: deal.value || deal.valuation,
+          sector: deal.sector,
+          description: deal.summary || deal.notes,
+        }),
+      })
+      const data = await res.json()
+      if (data.memo) {
+        setMemoContent(data.memo)
+        setMemoTitle(deal.company)
+        setShowMemoModal(true)
+      }
+    } catch (err) {
+      console.error('Memo generation failed:', err)
+    }
+    setMemoLoading(null)
+  }
 
   useEffect(() => {
     async function load() {
@@ -690,10 +722,40 @@ function DealFlowTracker() {
                     {deal.source_url && <a href={deal.source_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#60a5fa', textDecoration: 'none' }}>READ SOURCE →</a>}
                   </div>
                 )}
-                <div style={{ marginTop: '8px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.15)' }}>{isExp ? '↑ collapse' : '↓ expand'}</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+                  <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.15)' }}>{isExp ? '↑ collapse' : '↓ expand'}</span>
+                  <button
+                    onClick={e => generateMemo(deal, e)}
+                    disabled={memoLoading === deal.id}
+                    style={{ padding: '3px 10px', borderRadius: '4px', fontSize: '9px', fontFamily: "'DM Mono', monospace", cursor: memoLoading === deal.id ? 'default' : 'pointer', border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.06)', color: memoLoading === deal.id ? 'rgba(245,158,11,0.4)' : '#f59e0b', letterSpacing: '0.06em' }}>
+                    {memoLoading === deal.id ? 'GENERATING...' : '✦ GENERATE MEMO'}
+                  </button>
+                </div>
               </div>
             )
           })}
+        </div>
+      )}
+
+      {showMemoModal && (
+        <div onClick={() => setShowMemoModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#0d1424', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '12px', width: '100%', maxWidth: '680px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+              <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>DEAL MEMO — {memoTitle.toUpperCase()}</span>
+              <button onClick={() => setShowMemoModal(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '18px', cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}>×</button>
+            </div>
+            <div style={{ overflowY: 'auto', padding: '24px', flex: 1 }}>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '12px', color: 'rgba(255,255,255,0.75)', lineHeight: 1.75, whiteSpace: 'pre-wrap', margin: 0 }}
+                dangerouslySetInnerHTML={{ __html: memoContent.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>') }} />
+            </div>
+            <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+              <button
+                onClick={() => navigator.clipboard.writeText(memoContent)}
+                style={{ padding: '6px 16px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#f59e0b', letterSpacing: '0.06em' }}>
+                COPY TO CLIPBOARD
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
