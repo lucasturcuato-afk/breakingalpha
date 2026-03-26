@@ -4,7 +4,9 @@
 - Live at https://breakingalpha.vercel.app
 - Pipeline auto-runs 6am PT (morning) and 10pm PT (evening), weekdays
 - Morning Review and Evening Wrap both generating correctly
-- PR #10 merged — Groq reliability + Thesis Board backend (see below)
+- PR #13 merged March 26 — Fixed Groq [sector] placeholder bug in synthesize.py
+- PR #14 merged March 26 — Watchlist relevance boost added to ingest pipeline
+- PR #15 merged March 26 — Full Watchlist frontend tab live (ticker/company/sector tracking, matched articles feed, + buttons in Company Intel and Deal Flow)
 - Lucas has `lucas/thesis-board-live` in progress — Thesis Board frontend
 
 ## Architecture
@@ -25,7 +27,7 @@
 
 **theses:** Live in Supabase. Public read/write RLS. CRUD via backend/theses.py. Schema in backend/theses_schema.sql.
 
-**watchlist:** Live in Supabase. Public read/write RLS. CRUD via backend/watchlist.py. Schema in backend/watchlist_schema.sql. Fields: id (uuid), identifier (text), type (enum: ticker/company), created_at, updated_at.
+**watchlist:** Live in Supabase. Public read/write RLS. CRUD via backend/watchlist.py. Schema in backend/watchlist_schema.sql. Fields: id (uuid), identifier (text), type (enum: ticker/company/sector), created_at, updated_at.
 
 ## Environment Variables
 **Backend — GitHub Secrets + backend/.env:**
@@ -39,9 +41,10 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 2. Live Tracker — 150+ articles, real-time, sector filters, auto-refreshes 60s
 3. Evening Wrap — end-of-day brief, same format as morning
 4. Deal Flow — 180+ deals tracked, manual entry via ADD DEAL saves to Supabase
-5. Thesis Board — hardcoded frontend (lucas/thesis-board-live adds Supabase backend)
+5. Thesis Board — Supabase backend live, frontend in progress (lucas/thesis-board-live)
 6. Company Intel — 187 companies auto-extracted, sorted by mention frequency
 7. Trends — signal momentum, sector velocity, top company movers
+8. Watchlist — live. Ticker/company/sector tracking, matched articles feed, quick-add chips, + buttons in Company Intel and Deal Flow, nav badge
 
 ## In Progress
 
@@ -91,7 +94,7 @@ If on main:
 
 ## Division of Work
 Lucas: Frontend UI, Thesis Board live integration, Evening Wrap validation, UI polish
-Noah: Backend, pipeline reliability, Groq prompt quality, Supabase schema
+Noah: Backend, pipeline reliability, Groq prompt quality, Supabase schema, Watchlist feature (backend + frontend complete)
 
 ## Key Links
 - Live site: https://breakingalpha.vercel.app
