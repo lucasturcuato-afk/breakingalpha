@@ -4,7 +4,7 @@ Runs after ingest — scans recent articles with Groq AI,
 extracts deals, and upserts them into the deal_flow Supabase table.
 """
 
-import os, json, re, time
+import os, json, re, time, random
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
 from groq import Groq, RateLimitError
@@ -33,52 +33,65 @@ If a deal is present, respond ONLY with a valid JSON object using this exact sch
 If no specific deal is present, respond ONLY with: {"is_deal": false}
 Do not add any text outside the JSON."""
 
-def extract_deal(title, summary, url):
-    content = f"Title: {title}\nSummary: {summary or ''}"
-    for attempt in range(3):
+def groq_with_backoff(messages, temperature=0.1, max_tokens=400, max_retries=5):
+    """Call Groq with exponential backoff + jitter on 429 rate limit errors."""
+    for attempt in range(max_retries):
         try:
             resp = groq.chat.completions.create(
                 model="llama-3.1-8b-instant",
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user",   "content": content},
-                ],
-                temperature=0.1,
-                max_tokens=400,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
-            raw = resp.choices[0].message.content.strip()
-            # Strip markdown fences if present
-            raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
-            data = json.loads(raw)
-            if data.get("is_deal"):
-                data["source_url"] = url
-                return data
-            return None
+            return resp.choices[0].message.content.strip()
         except RateLimitError:
-            wait = [5, 10, 20][attempt]
-            print(f"  ⚠ Groq 429 — waiting {wait}s (attempt {attempt+1}/3)")
+            if attempt == max_retries - 1:
+                raise
+            wait = (2 ** attempt) + random.uniform(0, 1)
+            print(f"  ⚠ Groq 429 — waiting {wait:.1f}s (attempt {attempt+1}/{max_retries})")
             time.sleep(wait)
-        except Exception as e:
-            print(f"  ⚠ Groq error for '{title[:50]}': {e}")
-            return None
-    print(f"  ✗ Groq rate limit exhausted for '{title[:50]}'")
-    return None
+        except Exception:
+            raise
+    raise RateLimitError("Groq rate limit: max retries exceeded")
+
+def extract_deal(title, summary, url):
+    content = f"Title: {title}\nSummary: {summary or ''}"
+    try:
+        raw = groq_with_backoff(
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user",   "content": content},
+            ],
+            temperature=0.1,
+            max_tokens=400,
+        )
+        raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
+        data = json.loads(raw)
+        if data.get("is_deal"):
+            data["source_url"] = url
+            return data
+        return None
+    except RateLimitError:
+        print(f"  ✗ Groq rate limit exhausted for '{title[:50]}'")
+        return None
+    except Exception as e:
+        print(f"  ⚠ Groq error for '{title[:50]}': {e}")
+        return None
 
 def stage_label(stage):
     mapping = {
-        "rumored":    "rumored",
-        "announced":  "announced",
-        "under_loi":  "loi",
-        "diligence":  "diligence",
-        "signed":     "signed",
-        "closed":     "closed",
+        "rumored":   "rumored",
+        "announced": "announced",
+        "under_loi": "loi",
+        "diligence": "diligence",
+        "signed":    "signed",
+        "closed":    "closed",
     }
     return mapping.get(stage, "rumored")
 
 def run():
     print("🔍 Deal Extractor starting...")
 
-    # Pull articles from last 48 hours
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
     resp = supabase.table("articles")\
         .select("id, title, summary, url, sector")\
@@ -98,7 +111,6 @@ def run():
         summary = article.get("summary", "")
         url     = article.get("url", "")
 
-        # Quick pre-filter — skip obviously non-deal articles
         deal_keywords = [
             "acqui", "merger", "buyout", "takeover", "ipo", "fund", "raises",
             "invest", "stake", "deal", "sale", "billion", "million", "close",
@@ -110,7 +122,10 @@ def run():
             continue
 
         deal = extract_deal(title, summary, url)
-        time.sleep(0.5)
+
+        # Inter-article sleep with jitter to avoid bursting the rate limit
+        time.sleep(1.0 + random.uniform(0, 0.5))
+
         if not deal:
             continue
 
@@ -121,22 +136,20 @@ def run():
         extracted += 1
         print(f"  ✓ Deal found: {deal['company']} — {deal['deal_type']} ({deal['stage']})")
 
-        # Upsert into deal_flow table (dedupe on company + deal_type)
         row = {
-            "company":    deal["company"],
-            "acquirer":   deal.get("acquirer"),
-            "deal_type":  deal["deal_type"],
-            "stage":      stage_label(deal["stage"]),
-            "valuation":  deal.get("valuation"),
-            "sector":     deal.get("sector") or article.get("sector"),
-            "thesis":     deal.get("thesis"),
-            "source_url": deal.get("source_url") or url,
+            "company":        deal["company"],
+            "acquirer":       deal.get("acquirer"),
+            "deal_type":      deal["deal_type"],
+            "stage":          stage_label(deal["stage"]),
+            "valuation":      deal.get("valuation"),
+            "sector":         deal.get("sector") or article.get("sector"),
+            "thesis":         deal.get("thesis"),
+            "source_url":     deal.get("source_url") or url,
             "auto_extracted": True,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at":     datetime.now(timezone.utc).isoformat(),
         }
 
         try:
-            # Check if this deal already exists
             existing = supabase.table("deal_flow")\
                 .select("id, stage")\
                 .eq("company", row["company"])\
@@ -144,7 +157,6 @@ def run():
                 .execute()
 
             if existing.data:
-                # Update stage and thesis if deal already tracked
                 deal_id = existing.data[0]["id"]
                 supabase.table("deal_flow").update({
                     "stage":      row["stage"],
@@ -164,6 +176,3 @@ def run():
             print(f"  ⚠ Supabase error: {e}")
 
     print(f"\n✅ Done — {extracted} deals extracted, {upserted} new deals added to pipeline")
-
-if __name__ == "__main__":
-    run()

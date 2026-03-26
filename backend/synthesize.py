@@ -3,7 +3,7 @@ synthesize.py — BreakingAlpha
 Generates a detailed analyst-style morning/evening briefing using Groq.
 """
 
-import os, json, re, time
+import os, json, re, time, random
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
 from groq import Groq, RateLimitError
@@ -82,6 +82,27 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
 
 Only include sectors with meaningful activity. top_deals should have 3-5 entries max."""
 
+def groq_with_backoff(messages, temperature=0.3, max_tokens=2000, max_retries=5):
+    """Call Groq with exponential backoff + jitter on 429 rate limit errors."""
+    for attempt in range(max_retries):
+        try:
+            resp = groq.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return resp.choices[0].message.content.strip()
+        except RateLimitError:
+            if attempt == max_retries - 1:
+                raise
+            wait = (2 ** attempt) + random.uniform(0, 1)
+            print(f"  ⚠ Groq 429 — waiting {wait:.1f}s (attempt {attempt+1}/{max_retries})")
+            time.sleep(wait)
+        except Exception:
+            raise
+    raise RateLimitError("Groq rate limit: max retries exceeded")
+
 def run(brief_type="morning"):
     print(f"📝 Synthesizing {brief_type} briefing...")
 
@@ -96,7 +117,6 @@ def run(brief_type="morning"):
 
     articles = resp.data or []
     if not articles:
-        # Fallback — grab most recent 60 regardless of date
         resp = supabase.table("articles")\
             .select("title, summary, sector, companies, relevance_score")\
             .order("ingested_at", desc=True)\
@@ -106,7 +126,6 @@ def run(brief_type="morning"):
 
     print(f"  📰 Using {len(articles)} articles for synthesis")
 
-    # Format articles for the prompt
     article_text = "\n\n".join([
         f"[{a.get('sector','')}] {a.get('title','')}\n{a.get('summary','')}"
         for a in articles
@@ -115,35 +134,23 @@ def run(brief_type="morning"):
     system = MORNING_SYSTEM if brief_type == "morning" else EVENING_SYSTEM
 
     data = None
-    rate_limited = False
-    for attempt in range(3):
-        try:
-            resp = groq.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user",   "content": f"Today's articles:\n\n{article_text}"},
-                ],
-                temperature=0.3,
-                max_tokens=2000,
-            )
-            raw = resp.choices[0].message.content.strip()
-            raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
-            data = json.loads(raw)
-            break
-        except RateLimitError:
-            rate_limited = True
-            wait = [5, 10, 20][attempt]
-            print(f"  ⚠ Groq 429 — waiting {wait}s (attempt {attempt+1}/3)")
-            time.sleep(wait)
-        except Exception as e:
-            print(f"  ⚠ Groq error: {e}")
-            break
+    try:
+        raw = groq_with_backoff(
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user",   "content": f"Today's articles:\n\n{article_text}"},
+            ],
+            temperature=0.3,
+            max_tokens=2000,
+        )
+        raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
+        data = json.loads(raw)
+    except RateLimitError:
+        print(f"  ✗ Groq rate limit exhausted after retries — falling back to stub briefing")
+    except Exception as e:
+        print(f"  ✗ Groq error: {e} — falling back to stub briefing")
+
     if data is None:
-        if rate_limited:
-            print(f"  ✗ Groq rate limit exhausted after retries — falling back to stub briefing")
-        else:
-            print(f"  ✗ Groq generation error — falling back to stub briefing")
         data = {
             "headline": "Market Intelligence Unavailable",
             "summary": "Briefing generation failed. Please check logs.",
@@ -155,14 +162,14 @@ def run(brief_type="morning"):
 
     now = datetime.now(timezone.utc).isoformat()
     row = {
-        "briefing_type": brief_type,
-        "headline":       data.get("headline", ""),
-        "summary":        data.get("summary", ""),
-        "market_tone":    data.get("market_tone", "NEUTRAL"),
-        "sections":       json.dumps(data.get("sections", {})),
-        "top_deals":      json.dumps(data.get("top_deals", [])),
+        "briefing_type":    brief_type,
+        "headline":         data.get("headline", ""),
+        "summary":          data.get("summary", ""),
+        "market_tone":      data.get("market_tone", "NEUTRAL"),
+        "sections":         json.dumps(data.get("sections", {})),
+        "top_deals":        json.dumps(data.get("top_deals", [])),
         "sector_breakdown": json.dumps(data.get("sector_breakdown", {})),
-        "created_at":     now,
+        "created_at":       now,
     }
 
     supabase.table("briefings").insert(row).execute()
