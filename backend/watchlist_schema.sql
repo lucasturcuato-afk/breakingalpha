@@ -2,7 +2,7 @@
 -- Run once in the Supabase SQL editor to create the watchlist table.
 
 -- Create watchlist_type enum
-CREATE TYPE watchlist_type AS ENUM ('ticker', 'company');
+CREATE TYPE watchlist_type AS ENUM ('ticker', 'company', 'sector');
 
 -- Create watchlist table
 CREATE TABLE watchlist (
