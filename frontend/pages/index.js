@@ -9,9 +9,9 @@ const supabase = createClient(
 
 const SECTORS = [
   { key: 'ALL',    label: 'ALL',         value: null,                                  color: '#f59e0b' },
-  { key: 'tech',   label: 'TECH M&A',    value: 'should Technology M&A & Investment Banking', color: '#f59e0b' },
+  { key: 'tech',   label: 'TECH M&A',    value: 'Technology M&A & Investment Banking', color: '#f59e0b' },
   { key: 'vc',     label: 'VENTURE',     value: 'Venture Capital & Startup Funding',   color: '#8b5cf6' },
-  { key: 'pe',     label: 'PRIVATE EQ',  value: 'Private Equity& Buyouts',            color: '#3b82f6' },
+  { key: 'pe',     label: 'PRIVATE EQ',  value: 'Private Equity & Buyouts',           color: '#3b82f6' },
   { key: 'pub',    label: 'PUBLIC MKT',  value: 'Public Markets & Earnings',           color: '#10b981' },
   { key: 'geo',    label: 'GEO & MACRO', value: 'Geopolitics & Macro',                 color: '#ef4444' },
   { key: 're',     label: 'REAL ESTATE', value: 'Real Estate & REITs',                 color: '#f97316' },
@@ -49,6 +49,14 @@ const TONE_COLORS = {
   'RISK-OFF': '#f87171',
   'MIXED':    '#fbbf24',
   'NEUTRAL':  '#94a3b8',
+}
+
+function cleanDealType(raw) {
+  if (!raw) return 'M&A'
+  const str = String(raw)
+  // If it contains slashes or commas, take only the first item
+  const first = str.split(/[\/,]/)[0].trim()
+  return first || 'M&A'
 }
 
 function getSectorColor(sector) {
@@ -238,7 +246,7 @@ function BriefView({ type }) {
                       <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '15px', fontWeight: 600, color: '#f8fafc' }}>{deal.company}</span>
                       <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#fbbf24', flexShrink: 0, marginLeft: '8px' }}>{deal.value || 'Undisclosed'}</span>
                     </div>
-                    <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', marginBottom: '5px' }}>{deal.deal_type}</div>
+                    <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', marginBottom: '5px' }}>{cleanDealType(deal.deal_type)}</div>
                     <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>{deal.one_liner}</div>
                   </div>
                 ))}
@@ -797,6 +805,7 @@ function CompanyIntel() {
       {loading ? <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>LOADING...</div>
         : filtered.length === 0 ? <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>{search ? 'NO MATCH' : 'NO DATA YET'}</div>
         : (<>
+          {/* Note: company count differs from deal count — sourced from different Supabase queries */}
           <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '14px' }}>{filtered.length} COMPANIES TRACKED</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(195px, 1fr))', gap: '9px' }}>
             {filtered.slice(0, 60).map((c, i) => {
@@ -1087,7 +1096,7 @@ export default function Home() {
             </div>
             <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#4b5563', letterSpacing: '0.15em', marginTop: '3px' }}>MARKET INTELLIGENCE</div>
           </div>
-          <nav style={{ padding: '10px 10px', flex: 1 }}>
+          <nav style={{ padding: '10px 10px' }}>
             {NAV.map(item => (
               <button key={item.id} onClick={() => setActiveTab(item.id)} className={`nav-item${activeTab === item.id ? ' nav-active' : ''}`}>
                 <span className="nav-icon">{item.icon}</span>
