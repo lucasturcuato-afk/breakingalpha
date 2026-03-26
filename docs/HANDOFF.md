@@ -25,6 +25,8 @@
 
 **theses:** Live in Supabase. Public read/write RLS. CRUD via backend/theses.py. Schema in backend/theses_schema.sql.
 
+**watchlist:** Live in Supabase. Public read/write RLS. CRUD via backend/watchlist.py. Schema in backend/watchlist_schema.sql. Fields: id (uuid), identifier (text), type (enum: ticker/company), created_at, updated_at.
+
 ## Environment Variables
 **Backend — GitHub Secrets + backend/.env:**
 GROQ_API_KEY, NEWS_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
@@ -49,6 +51,7 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Status: in progress
 
 ## Recently Completed (2026-03-25)
+- **PR #12 open:** watchlist_schema.sql + watchlist.py; watchlist table live in Supabase with public read/write RLS
 - **PR #10 merged:** Groq 429 exponential backoff with jitter, 5 retries in synthesize.py and deal_extractor.py
 - **PR #10 merged:** theses.py CRUD module + theses_schema.sql; theses table live in Supabase with public read/write RLS
 - **Branch cleanup:** deleted noah/claude-workflow-setup, noah/fix-supabase-auth, docs/repo-workflow-update, claude/recursing-turing
@@ -57,7 +60,7 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - **Evening Wrap end-to-end validation** — needs real pipeline run to confirm cards render correctly
 - **Company Intel drill-down** — clicking a company does nothing; no detail view yet
 - **Groq memo prompt quality** — [sector] placeholders not filling in correctly
-- **Sprint 2 watchlist feature** — not started
+- **Sprint 2 watchlist feature** — backend complete (PR #12); frontend wiring up next (Lucas)
 
 ## Branch Strategy
 - main — production, always deployable, auto-deploys to Vercel on push
