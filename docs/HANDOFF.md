@@ -50,6 +50,9 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Backend CRUD (theses.py) and schema (theses_schema.sql) merged via PR #10
 - Status: in progress
 
+## Recently Completed (2026-03-26)
+- **Fix:** Groq [sector] placeholder bug — added explicit instructions to MORNING_SYSTEM and EVENING_SYSTEM in synthesize.py to write actual sector/company names instead of bracket placeholders
+
 ## Recently Completed (2026-03-25)
 - **PR #12:** watchlist_schema.sql + watchlist.py; watchlist table live in Supabase with public read/write RLS
 - **PR #10 merged:** Groq 429 exponential backoff with jitter, 5 retries in synthesize.py and deal_extractor.py
@@ -59,7 +62,6 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 ## Pending / Known Issues
 - **Evening Wrap end-to-end validation** — needs real pipeline run to confirm cards render correctly
 - **Company Intel drill-down** — clicking a company does nothing; no detail view yet
-- **Groq memo prompt quality** — [sector] placeholders not filling in correctly
 - **Sprint 2 watchlist feature** — backend complete (PR #12); frontend wiring up next (Lucas)
 - **Noah next:** relevance scoring improvement for watchlist personalization
 
