@@ -51,6 +51,7 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Status: in progress
 
 ## Recently Completed (2026-03-26)
+- **Feature:** Watchlist frontend — full Watchlist tab (ticker/company/sector tracking, matched articles feed, quick-add sector chips, "+" buttons in Company Intel and Deal Flow); API route at `/api/watchlist`; branch `noah/watchlist-frontend`
 - **Fix:** Groq [sector] placeholder bug — added explicit instructions to MORNING_SYSTEM and EVENING_SYSTEM in synthesize.py to write actual sector/company names instead of bracket placeholders
 - **Feature:** Watchlist relevance boost — boost_watchlist_relevance() in watchlist.py; called from run_ingestion() after articles stored; boosts relevance_score +2 (cap 10) for any article matching a watchlist identifier in title, summary, or companies
 
@@ -63,7 +64,6 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 ## Pending / Known Issues
 - **Evening Wrap end-to-end validation** — needs real pipeline run to confirm cards render correctly
 - **Company Intel drill-down** — clicking a company does nothing; no detail view yet
-- **Sprint 2 watchlist feature** — backend complete (PR #12); frontend wiring up next (Lucas)
 
 ## Branch Strategy
 - main — production, always deployable, auto-deploys to Vercel on push
