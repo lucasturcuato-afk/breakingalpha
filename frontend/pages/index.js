@@ -512,28 +512,119 @@ function LiveTracker() {
 
 // ── Thesis Board ─────────────────────────────────────────────────────────────
 function ThesisBoard() {
-  const THESES = [
-    { title: 'AI Infrastructure Supercycle', signal: 'BULLISH', sectors: ['Technology M&A & Investment Banking'], thesis: 'Hyperscaler capex commitments ($300B+ in 2025) are creating durable demand for AI chips, data centers, and infrastructure software. NVDA, MSFT Azure, and custom silicon plays remain core positions. DeepSeek dynamics bear close monitoring for multiple compression risk.' },
-    { title: 'Rate-Sensitive PE Dealflow Revival', signal: 'WATCH', sectors: ['Private Equity & Buyouts'], thesis: 'As the Fed signals rate normalization, LBO math improves materially. Watch for middle-market PE shops to re-activate deal pipelines in H2. Potential multiple compression in growth equity if cuts are delayed further.' },
-    { title: 'Defense & Industrial Re-shoring', signal: 'BULLISH', sectors: ['Geopolitics & Macro', 'Energy & Climate'], thesis: 'NATO 2% GDP defense targets combined with IRA manufacturing credits are driving long-term capex into US industrials. LMT, RTX, NOC well-positioned. Defense tech VC (Anduril, Shield AI) activity accelerating.' },
-    { title: 'Fintech Consolidation Wave', signal: 'WATCH', sectors: ['Fintech & Crypto', 'Technology M&A & Investment Banking'], thesis: 'Post-ZIRP valuation reset is creating compelling M&A opportunities. Legacy banks are acquiring fintech distribution. Traditional IB mandates emerging from consolidation wave.' },
-    { title: 'Healthcare AI Commercialization', signal: 'BULLISH', sectors: ['Healthcare & Biotech'], thesis: 'FDA accelerating digital health approvals. Drug discovery AI (Recursion, Insilico) moving from hype to clinical trials. Vertical SaaS in EHR/RCM ripe for PE roll-up strategies with strong recurring revenue profiles.' },
-  ]
-  const SIG = { BULLISH: '#4ade80', BEARISH: '#f87171', WATCH: '#fbbf24', NEUTRAL: '#94a3b8' }
+  const [theses, setTheses] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [generating, setGenerating] = useState(false)
+  const [lastGenerated, setLastGenerated] = useState(null)
+  const [error, setError] = useState(null)
+
+  const CONVICTION_COLORS = { BULLISH: '#10b981', BEARISH: '#ef4444', WATCH: '#f59e0b' }
+
+  useEffect(() => {
+    async function loadTheses() {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('theses')
+        .select('*')
+        .order('generated_at', { ascending: false })
+        .limit(5)
+      if (!error && data && data.length > 0) {
+        setTheses(data)
+        setLastGenerated(data[0].generated_at)
+      }
+      setLoading(false)
+    }
+    loadTheses()
+  }, [])
+
+  async function generateTheses() {
+    setGenerating(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/theses', { method: 'POST' })
+      const data = await res.json()
+      if (data.theses && data.theses.length > 0) {
+        setTheses(data.theses)
+        setLastGenerated(new Date().toISOString())
+      } else {
+        setError('No theses generated — try again')
+      }
+    } catch (err) {
+      setError('Failed to generate theses')
+    }
+    setGenerating(false)
+  }
+
+  const lastGenTime = lastGenerated
+    ? new Date(lastGenerated).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+    : null
+
   return (
     <div>
-      <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '6px' }}>📋 THESIS BOARD</div>
-      <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', marginBottom: '22px' }}>Curated investment theses synthesized from BreakingAlpha signal flow</p>
-      {THESES.map((t, i) => (
-        <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '20px 24px', marginBottom: '10px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-            <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '19px', fontWeight: 600, color: '#f1f5f9', margin: 0 }}>{t.title}</h3>
-            <span style={{ padding: '3px 10px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: SIG[t.signal], background: SIG[t.signal] + '18', border: `1px solid ${SIG[t.signal]}40`, flexShrink: 0, marginLeft: '12px' }}>{t.signal}</span>
-          </div>
-          <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.52)', lineHeight: 1.68, margin: '0 0 14px 0' }}>{t.thesis}</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>{t.sectors.map((s, j) => <SectorPill key={j} sector={s} />)}</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+        <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>📋 THESIS BOARD</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {lastGenTime && (
+            <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)' }}>
+              Last generated: Today {lastGenTime}
+            </span>
+          )}
+          <button
+            onClick={generateTheses}
+            disabled={generating}
+            style={{ padding: '6px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: generating ? 'not-allowed' : 'pointer', border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#f59e0b', letterSpacing: '0.06em', opacity: generating ? 0.5 : 1, transition: 'opacity 0.3s' }}
+          >
+            {generating ? 'GENERATING...' : '⟳ REGENERATE'}
+          </button>
         </div>
-      ))}
+      </div>
+      <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', marginBottom: '22px' }}>AI-generated investment theses synthesized from live BreakingAlpha signal flow</p>
+
+      {error && (
+        <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#ef4444', marginBottom: '14px' }}>⚠ {error}</div>
+      )}
+
+      {loading ? (
+        <div>
+          {[0, 1, 2].map(i => (
+            <div key={i} style={{ height: '120px', borderRadius: '4px', background: '#1a2235', marginBottom: '10px', animation: 'pulse 1.5s ease-in-out infinite', opacity: 0.6 }} />
+          ))}
+        </div>
+      ) : theses.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '60px 0' }}>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '13px', color: 'rgba(255,255,255,0.35)', marginBottom: '8px' }}>No theses generated yet</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)', marginBottom: '24px' }}>Click REGENERATE to generate today's investment theses from live market data</div>
+          <button
+            onClick={generateTheses}
+            disabled={generating}
+            style={{ padding: '10px 24px', borderRadius: '6px', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: generating ? 'not-allowed' : 'pointer', border: '1px solid rgba(245,158,11,0.5)', background: 'rgba(245,158,11,0.12)', color: '#f59e0b', letterSpacing: '0.08em' }}
+          >
+            {generating ? 'GENERATING...' : 'GENERATE THESES'}
+          </button>
+        </div>
+      ) : (
+        theses.map((t, i) => {
+          const conviction = t.conviction || t.signal
+          const convColor = CONVICTION_COLORS[conviction] || '#94a3b8'
+          return (
+            <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '20px 24px', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '17px', fontWeight: 600, color: '#fff', margin: 0 }}>{t.title}</h3>
+                <span style={{ padding: '3px 10px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: convColor, background: convColor + '18', border: `1px solid ${convColor}40`, flexShrink: 0, marginLeft: '12px' }}>{conviction}</span>
+              </div>
+              <p style={{ fontSize: '13px', color: '#9ca3af', lineHeight: 1.6, margin: '0 0 12px 0' }}>{t.rationale || t.thesis}</p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '8px' }}>
+                {t.sector && <SectorPill sector={t.sector} />}
+                {t.catalyst && (
+                  <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.04em' }}>
+                    ⚡ CATALYST: {t.catalyst}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })
+      )}
     </div>
   )
 }
