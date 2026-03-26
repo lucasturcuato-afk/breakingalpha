@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from supabase import create_client
 from groq import Groq, RateLimitError
 from dotenv import load_dotenv
+from watchlist import boost_watchlist_relevance
 
 load_dotenv()
 
@@ -213,8 +214,12 @@ def run_ingestion():
         time.sleep(0.25)
 
     print(f"\n[3/3] Storing {len(relevant)} articles...")
-    stored = sum(1 for a, r in relevant if store_article(a, r))
+    article_ids = [aid for a, r in relevant if (aid := store_article(a, r))]
+    stored = len(article_ids)
     print(f"\n✅ Done — {stored} new articles stored")
+
+    boosted = boost_watchlist_relevance(article_ids)
+    print(f"  ★ {boosted} articles boosted by watchlist relevance")
     return stored
 
 if __name__ == "__main__":
