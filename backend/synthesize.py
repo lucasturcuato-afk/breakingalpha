@@ -25,7 +25,7 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
     "public_markets": "2-3 sentences on equity market moves, earnings, IPO pipeline, and public market signals that matter for deal activity.",
     "macro_and_rates": "2-3 sentences on macro environment — Fed signals, rates, inflation, FX moves, and how they affect deal math (LBO spreads, multiples, cost of capital).",
     "geopolitics": "2-3 sentences on geopolitical developments with direct market or deal implications.",
-    "sector_spotlight": "2-3 sentences on the single sector with the most deal/news activity today and why it matters.",
+    "sector_spotlight": "2-3 sentences on the single sector with the most deal/news activity today and why it matters. Write the sector name explicitly — do not use bracket placeholders.",
     "what_to_watch": "3-4 specific things to monitor today — earnings releases, Fed speakers, deal announcements expected, regulatory decisions. Be concrete."
   },
   "top_deals": [
@@ -45,7 +45,7 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
   }
 }
 
-Only include sectors with meaningful activity. top_deals should have 3-5 entries max. Be precise and analytical — avoid generic filler."""
+Only include sectors with meaningful activity. top_deals should have 3-5 entries max. Be precise and analytical — avoid generic filler. Never use bracket placeholders like [sector] or [company] — always write the actual name."""
 
 EVENING_SYSTEM = """You are a senior investment banking analyst preparing the evening market wrap briefing.
 
@@ -80,7 +80,7 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
   }
 }
 
-Only include sectors with meaningful activity. top_deals should have 3-5 entries max."""
+Only include sectors with meaningful activity. top_deals should have 3-5 entries max. Never use bracket placeholders like [sector] or [company] — always write the actual name."""
 
 def groq_with_backoff(messages, temperature=0.3, max_tokens=2000, max_retries=5):
     """Call Groq with exponential backoff + jitter on 429 rate limit errors."""
