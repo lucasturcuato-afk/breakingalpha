@@ -642,6 +642,17 @@ function DealFlowTracker() {
   const [memoContent, setMemoContent] = useState('')
   const [memoTitle, setMemoTitle]     = useState('')
   const [showMemoModal, setShowMemoModal] = useState(false)
+  const [dealAddedSet, setDealAddedSet] = useState(new Set())
+
+  const handleAddDealCompany = async (company) => {
+    if (dealAddedSet.has(company)) return
+    await fetch('/api/watchlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: company, type: 'company' })
+    })
+    setDealAddedSet(prev => new Set([...prev, company]))
+  }
 
   const generateMemo = async (deal, e) => {
     e.stopPropagation()
@@ -798,6 +809,7 @@ function DealFlowTracker() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                     <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '18px', fontWeight: 700, color: '#f8fafc' }}>{deal.company}</span>
                     {deal.acquirer && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.3)' }}>← {deal.acquirer}</span>}
+                    {deal.company && <button onClick={e => { e.stopPropagation(); handleAddDealCompany(deal.company) }} style={{ background: 'none', border: 'none', cursor: dealAddedSet.has(deal.company) ? 'default' : 'pointer', color: '#f59e0b', fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '1px 3px', flexShrink: 0, lineHeight: 1 }}>{dealAddedSet.has(deal.company) ? '✓' : '+'}</button>}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}>
                     {deal.valuation && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#fbbf24' }}>{deal.valuation}</span>}
@@ -866,6 +878,17 @@ function CompanyIntel() {
   const [companies, setCompanies] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [addedSet, setAddedSet] = useState(new Set())
+
+  const handleAddCompany = async (name) => {
+    if (addedSet.has(name)) return
+    await fetch('/api/watchlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: name, type: 'company' })
+    })
+    setAddedSet(prev => new Set([...prev, name]))
+  }
   useEffect(() => {
     async function load() {
       const { data } = await supabase.from('articles').select('companies, sector').order('ingested_at', { ascending: false }).limit(200)
@@ -901,11 +924,15 @@ function CompanyIntel() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(195px, 1fr))', gap: '9px' }}>
             {filtered.slice(0, 60).map((c, i) => {
               const color = c.sectors[0] ? getSectorColor(c.sectors[0]) : '#64748b'
+              const isAdded = addedSet.has(c.name)
               return (
                 <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '13px 15px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '7px' }}>
                     <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '15px', fontWeight: 600, color: '#f1f5f9' }}>{c.name}</span>
-                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '2px 7px', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.22)' }}>{c.mentions}×</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '2px 7px', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.22)' }}>{c.mentions}×</span>
+                      <button onClick={() => handleAddCompany(c.name)} style={{ background: 'none', border: 'none', cursor: isAdded ? 'default' : 'pointer', color: '#f59e0b', fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '1px 3px', flexShrink: 0, lineHeight: 1 }}>{isAdded ? '✓' : '+'}</button>
+                    </div>
                   </div>
                   {c.sectors[0] && <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color, background: color + '15', border: `1px solid ${color}28`, padding: '1px 6px', borderRadius: '3px' }}>{c.sectors[0].split(' ')[0]}</span>}
                 </div>
@@ -1103,6 +1130,7 @@ const NAV = [
   { id: 'thesis',    label: 'Thesis Board',   icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> },
   { id: 'companies', label: 'Company Intel',  icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg> },
   { id: 'trends',    label: 'Trends',         icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg> },
+  { id: 'watchlist', label: 'Watchlist',      icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> },
 ]
 
 // ── App ───────────────────────────────────────────────────────────────────────
@@ -1112,6 +1140,12 @@ export default function Home() {
   const [marketTime, setMarketTime] = useState('')
   const [marketOpen, setMarketOpen] = useState(null)
   const [todayStr, setTodayStr] = useState(null)
+  const [watchlist, setWatchlist] = useState([])
+  const [watchlistLoading, setWatchlistLoading] = useState(true)
+  const [watchlistInput, setWatchlistInput] = useState('')
+  const [watchlistType, setWatchlistType] = useState('ticker')
+  const [watchlistMatches, setWatchlistMatches] = useState([])
+  const [watchlistBadge, setWatchlistBadge] = useState(0)
 
   useEffect(() => {
     async function loadQuotes() {
@@ -1148,6 +1182,96 @@ export default function Home() {
   useEffect(() => {
     setTodayStr(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).replace(/\//g, '-'))
   }, [])
+
+  const refreshWatchlist = useCallback(async () => {
+    const res = await fetch('/api/watchlist')
+    const { entries } = await res.json()
+    const newEntries = entries || []
+    setWatchlist(newEntries)
+    if (newEntries.length > 0) {
+      const identifiers = newEntries.map(e => e.identifier.toLowerCase())
+      const { data: articles } = await supabase
+        .from('articles')
+        .select('id, title, source, sector, published_at, ingested_at, summary, companies')
+        .order('relevance_score', { ascending: false })
+        .limit(50)
+      if (articles) {
+        const matched = articles.filter(a => {
+          const title = (a.title || '').toLowerCase()
+          const summary = (a.summary || '').toLowerCase()
+          let cos = a.companies
+          if (typeof cos === 'string') { try { cos = JSON.parse(cos) } catch { cos = [] } }
+          const compStr = Array.isArray(cos) ? cos.map(c => c.toLowerCase()).join(' ') : ''
+          return identifiers.some(ident => title.includes(ident) || summary.includes(ident) || compStr.includes(ident))
+        })
+        setWatchlistMatches(matched.slice(0, 20))
+      }
+    } else {
+      setWatchlistMatches([])
+    }
+    setWatchlistLoading(false)
+  }, [])
+
+  useEffect(() => {
+    if (activeTab !== 'watchlist') return
+    setWatchlistLoading(true)
+    refreshWatchlist().then(() => setWatchlistBadge(0))
+  }, [activeTab, refreshWatchlist])
+
+  useEffect(() => {
+    async function loadBadge() {
+      try {
+        const res = await fetch('/api/watchlist')
+        const { entries } = await res.json()
+        if (!entries || entries.length === 0) return
+        const identifiers = entries.map(e => e.identifier.toLowerCase())
+        const { data: articles } = await supabase
+          .from('articles')
+          .select('id, title, summary')
+          .order('ingested_at', { ascending: false })
+          .limit(50)
+        if (articles) {
+          const matched = articles.filter(a => {
+            const title = (a.title || '').toLowerCase()
+            const summary = (a.summary || '').toLowerCase()
+            return identifiers.some(ident => title.includes(ident) || summary.includes(ident))
+          })
+          setWatchlistBadge(matched.length)
+        }
+      } catch (e) {}
+    }
+    loadBadge()
+  }, [])
+
+  async function handleWatchlistAdd() {
+    const identifier = watchlistInput.trim()
+    if (!identifier) return
+    await fetch('/api/watchlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier, type: watchlistType })
+    })
+    setWatchlistInput('')
+    await refreshWatchlist()
+  }
+
+  async function handleWatchlistAddSector(sectorName) {
+    await fetch('/api/watchlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: sectorName, type: 'sector' })
+    })
+    await refreshWatchlist()
+  }
+
+  async function handleWatchlistRemove(id) {
+    await fetch('/api/watchlist', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    })
+    await refreshWatchlist()
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#080c18', color: '#f8fafc' }}>
@@ -1193,6 +1317,7 @@ export default function Home() {
                 <span className="nav-icon">{item.icon}</span>
                 {item.label}
                 {item.id === 'live' && <span style={{ marginLeft: 'auto', width: '5px', height: '5px', borderRadius: '50%', background: '#4ade80', animation: 'pulse 2s infinite', flexShrink: 0 }} />}
+                {item.id === 'watchlist' && watchlistBadge > 0 && <span style={{ marginLeft: 'auto', background: '#f59e0b', color: '#000', fontSize: '9px', fontFamily: "'DM Mono', monospace", fontWeight: 700, padding: '1px 5px', borderRadius: '8px', flexShrink: 0 }}>{watchlistBadge}</span>}
               </button>
             ))}
           </nav>
@@ -1238,6 +1363,83 @@ export default function Home() {
               {activeTab === 'thesis'    && <ThesisBoard />}
               {activeTab === 'companies' && <CompanyIntel />}
               {activeTab === 'trends'    && <Trends />}
+              {activeTab === 'watchlist' && (
+                <div>
+                  <div style={{ marginBottom: '24px' }}>
+                    <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '4px' }}>⭐ WATCHLIST</div>
+                    <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', margin: 0 }}>Track companies, tickers, and sectors. Articles matching your watchlist are boosted in relevance.</p>
+                  </div>
+
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '16px 20px', marginBottom: '20px' }}>
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                      <input
+                        type="text"
+                        placeholder="e.g. NVDA, Anthropic, Private Equity"
+                        value={watchlistInput}
+                        onChange={e => setWatchlistInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter' && watchlistInput.trim()) handleWatchlistAdd() }}
+                        style={{ flex: 1, minWidth: '200px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }}
+                      />
+                      <button onClick={handleWatchlistAdd} style={{ padding: '8px 18px', borderRadius: '6px', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid rgba(245,158,11,0.5)', background: 'rgba(245,158,11,0.12)', color: '#f59e0b', letterSpacing: '0.06em', flexShrink: 0 }}>ADD</button>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      {['ticker', 'company', 'sector'].map(t => (
+                        <button key={t} onClick={() => setWatchlistType(t)} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${watchlistType === t ? '#f59e0b' : 'rgba(255,255,255,0.1)'}`, background: watchlistType === t ? 'rgba(245,158,11,0.12)' : 'transparent', color: watchlistType === t ? '#f59e0b' : 'rgba(255,255,255,0.35)' }}>{t.toUpperCase()}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '20px' }}>
+                    <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '8px' }}>QUICK ADD SECTOR</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {SIDEBAR_SECTORS.map(s => {
+                        const isTracked = watchlist.some(e => e.identifier.toLowerCase() === s.name.toLowerCase())
+                        return (
+                          <button key={s.name} onClick={() => !isTracked && handleWatchlistAddSector(s.name)} style={{ padding: '4px 11px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: isTracked ? 'default' : 'pointer', border: `1px solid ${isTracked ? 'rgba(255,255,255,0.05)' : s.color + '40'}`, background: isTracked ? 'transparent' : s.color + '12', color: isTracked ? 'rgba(255,255,255,0.18)' : s.color, opacity: isTracked ? 0.5 : 1 }}>{s.name}{isTracked ? ' ✓' : ''}</button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '28px' }}>
+                    <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '10px' }}>TRACKING ({watchlist.length})</div>
+                    {watchlistLoading ? (
+                      <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)', padding: '16px 0' }}>Loading watchlist...</div>
+                    ) : watchlist.length === 0 ? (
+                      <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)', padding: '16px 0' }}>Nothing tracked yet. Add a ticker, company, or sector above.</div>
+                    ) : watchlist.map(entry => (
+                      <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', marginBottom: '6px' }}>
+                        <span style={{ flex: 1, fontFamily: "'DM Mono', monospace", fontSize: '13px', color: '#f1f5f9' }}>{entry.identifier}</span>
+                        <span style={{ padding: '2px 8px', borderRadius: '3px', fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.22)', flexShrink: 0 }}>{(entry.type || '').toUpperCase()}</span>
+                        <button onClick={() => handleWatchlistRemove(entry.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.25)', fontSize: '16px', lineHeight: 1, padding: '0 2px', flexShrink: 0 }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {watchlist.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '10px' }}>WATCHLIST FEED ({watchlistMatches.length})</div>
+                      {watchlistMatches.length === 0 ? (
+                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)', padding: '16px 0' }}>No recent articles match your watchlist yet.</div>
+                      ) : watchlistMatches.map(a => {
+                        const timestamp = a.published_at || a.ingested_at
+                        return (
+                          <div key={a.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '12px 16px', marginBottom: '8px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                {a.sector && <SectorPill sector={a.sector} />}
+                                {a.source && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)' }}>{a.source}</span>}
+                              </div>
+                              {timestamp && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)', flexShrink: 0 }}>{timeAgo(timestamp)}</span>}
+                            </div>
+                            <div style={{ fontSize: '15px', fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, color: '#f1f5f9', lineHeight: 1.4 }}>{a.title}</div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
