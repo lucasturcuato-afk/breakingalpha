@@ -4,9 +4,8 @@
 - Live at https://breakingalpha.vercel.app
 - Pipeline auto-runs 6am PT (morning) and 10pm PT (evening), weekdays
 - Morning Review and Evening Wrap both generating correctly
-- 2 PRs pending merge as of 2026-03-25:
-  - PR #6: AI Deal Memo Generator (lucas/deal-memo-generator)
-  - PR #7: Sidebar UI Redesign (lucas/ui-sidebar-redesign)
+- PR #10 merged — Groq reliability + Thesis Board backend (see below)
+- Lucas has `lucas/thesis-board-live` in progress — Thesis Board frontend
 
 ## Architecture
 - **Frontend:** Next.js 14 + React, hosted on Vercel (root dir: frontend)
@@ -24,6 +23,8 @@
 
 **deal_flow:** RLS enabled, public read policy. Fields: company, acquirer, deal_type, status, value, notes, source, ingested_at
 
+**theses:** Live in Supabase. Public read/write RLS. CRUD via backend/theses.py. Schema in backend/theses_schema.sql.
+
 ## Environment Variables
 **Backend — GitHub Secrets + backend/.env:**
 GROQ_API_KEY, NEWS_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
@@ -36,39 +37,27 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 2. Live Tracker — 150+ articles, real-time, sector filters, auto-refreshes 60s
 3. Evening Wrap — end-of-day brief, same format as morning
 4. Deal Flow — 180+ deals tracked, manual entry via ADD DEAL saves to Supabase
-5. Thesis Board — hardcoded investment theses (no backend yet)
+5. Thesis Board — hardcoded frontend (lucas/thesis-board-live adds Supabase backend)
 6. Company Intel — 187 companies auto-extracted, sorted by mention frequency
 7. Trends — signal momentum, sector velocity, top company movers
 
 ## In Progress
 
-### PR #6 — AI Deal Memo Generator (lucas/deal-memo-generator)
-- API route: frontend/pages/api/memo.js — POST deal data to Groq, returns IB-style memo
-- GENERATE MEMO button on every Deal Flow card
-- Modal: amber header, scrollable body, Copy to Clipboard
-- Tested on Vercel preview — working end to end
-- Known issue: **bold** markdown renders as raw asterisks — needs one-line fix
-- Status: ready to merge after markdown fix
+### lucas/thesis-board-live — Thesis Board Frontend
+- Connecting Thesis Board UI to the live `theses` Supabase table
+- Backend CRUD (theses.py) and schema (theses_schema.sql) merged via PR #10
+- Status: in progress
 
-### PR #7 — Sidebar UI Redesign (lucas/ui-sidebar-redesign)
-- SVG icons replacing emoji icons for all 7 nav items
-- Refined nav states: gray default, amber hover with glow, amber active with left border
-- Cleaned logo area spacing, subtitle sizing, sector labels, square dot indicators
-- Subtle right-edge separator line added
-- Tested on Vercel preview — all checks passing
-- Status: ready to merge
-
-## Recently Fixed (2026-03-25)
-- Pipeline secrets: SUPABASE_KEY corrected to SUPABASE_ANON_KEY in schedule.yml — was causing KeyError on every run
-- Null deal size: Evening Wrap cards now show deal.value or Undisclosed
-- Deal Flow persistence: ADD DEAL form inserts to Supabase via handleAddDeal handler
-- groq-sdk missing: Added to frontend/package.json — was breaking Vercel build on memo branch
+## Recently Completed (2026-03-25)
+- **PR #10 merged:** Groq 429 exponential backoff with jitter, 5 retries in synthesize.py and deal_extractor.py
+- **PR #10 merged:** theses.py CRUD module + theses_schema.sql; theses table live in Supabase with public read/write RLS
+- **Branch cleanup:** deleted noah/claude-workflow-setup, noah/fix-supabase-auth, docs/repo-workflow-update, claude/recursing-turing
 
 ## Pending / Known Issues
-- Thesis Board hardcoded — no Supabase backend, resets on refresh
-- Company Intel has no drill-down — clicking a company does nothing yet
-- Memo modal bold markdown renders as raw asterisks — fix before merging PR #6
-- Deal Flow manual entries need end-to-end verification in Supabase table editor
+- **Evening Wrap end-to-end validation** — needs real pipeline run to confirm cards render correctly
+- **Company Intel drill-down** — clicking a company does nothing; no detail view yet
+- **Groq memo prompt quality** — [sector] placeholders not filling in correctly
+- **Sprint 2 watchlist feature** — not started
 
 ## Branch Strategy
 - main — production, always deployable, auto-deploys to Vercel on push
@@ -95,13 +84,11 @@ If on main:
   git pull origin main
 
 ## Division of Work
-Lucas: Frontend UI, Deal Flow, Evening Wrap validation, UI polish
-Noah: Backend, Supabase auth, pipeline reliability, Yahoo Finance integration
+Lucas: Frontend UI, Thesis Board live integration, Evening Wrap validation, UI polish
+Noah: Backend, pipeline reliability, Groq prompt quality, Supabase schema
 
 ## Key Links
 - Live site: https://breakingalpha.vercel.app
 - GitHub: https://github.com/lucasturcuato-afk/breakingalpha
 - Vercel: https://vercel.com/lucasturcuato-afks-projects/breakingalpha
 - Actions: https://github.com/lucasturcuato-afk/breakingalpha/actions
-- PR #6: https://github.com/lucasturcuato-afk/breakingalpha/pull/6
-- PR #7: https://github.com/lucasturcuato-afk/breakingalpha/pull/7
