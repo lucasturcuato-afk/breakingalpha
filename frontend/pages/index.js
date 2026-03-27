@@ -879,6 +879,9 @@ function CompanyIntel() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [addedSet, setAddedSet] = useState(new Set())
+  const [selectedCompany, setSelectedCompany] = useState(null)
+  const [companyArticles, setCompanyArticles] = useState([])
+  const [companyArticlesLoading, setCompanyArticlesLoading] = useState(false)
 
   const handleAddCompany = async (name) => {
     if (addedSet.has(name)) return
@@ -889,6 +892,27 @@ function CompanyIntel() {
     })
     setAddedSet(prev => new Set([...prev, name]))
   }
+
+  const handleSelectCompany = async (company) => {
+    setSelectedCompany(company)
+    setCompanyArticlesLoading(true)
+    const { data } = await supabase
+      .from('articles')
+      .select('*')
+      .order('ingested_at', { ascending: false })
+      .limit(500)
+    if (data) {
+      const matched = data.filter(a => {
+        let cos = a.companies
+        if (typeof cos === 'string') { try { cos = JSON.parse(cos) } catch { cos = [] } }
+        if (!Array.isArray(cos)) return false
+        return cos.some(c => c === company.name)
+      }).slice(0, 30)
+      setCompanyArticles(matched)
+    }
+    setCompanyArticlesLoading(false)
+  }
+
   useEffect(() => {
     async function load() {
       const { data } = await supabase.from('articles').select('companies, sector').order('ingested_at', { ascending: false }).limit(200)
@@ -926,12 +950,17 @@ function CompanyIntel() {
               const color = c.sectors[0] ? getSectorColor(c.sectors[0]) : '#64748b'
               const isAdded = addedSet.has(c.name)
               return (
-                <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '13px 15px' }}>
+                <div key={i}
+                  onClick={() => handleSelectCompany(c)}
+                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '13px 15px', cursor: 'pointer' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.055)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.13)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)' }}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '7px' }}>
                     <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '15px', fontWeight: 600, color: '#f1f5f9' }}>{c.name}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                       <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '2px 7px', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.22)' }}>{c.mentions}×</span>
-                      <button onClick={() => handleAddCompany(c.name)} style={{ background: 'none', border: 'none', cursor: isAdded ? 'default' : 'pointer', color: '#f59e0b', fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '1px 3px', flexShrink: 0, lineHeight: 1 }}>{isAdded ? '✓' : '+'}</button>
+                      <button onClick={e => { e.stopPropagation(); handleAddCompany(c.name) }} style={{ background: 'none', border: 'none', cursor: isAdded ? 'default' : 'pointer', color: '#f59e0b', fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '1px 3px', flexShrink: 0, lineHeight: 1 }}>{isAdded ? '✓' : '+'}</button>
                     </div>
                   </div>
                   {c.sectors[0] && <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color, background: color + '15', border: `1px solid ${color}28`, padding: '1px 6px', borderRadius: '3px' }}>{c.sectors[0].split(' ')[0]}</span>}
@@ -940,6 +969,45 @@ function CompanyIntel() {
             })}
           </div>
         </>)}
+
+      {selectedCompany && (
+        <div style={{ position: 'fixed', top: '32px', right: 0, width: '480px', height: 'calc(100vh - 32px)', background: '#060a15', borderLeft: '1px solid rgba(255,255,255,0.09)', zIndex: 200, display: 'flex', flexDirection: 'column', overflowY: 'hidden' }}>
+          {/* Panel header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '20px', fontWeight: 600, color: '#f1f5f9' }}>{selectedCompany.name}</span>
+              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '2px 7px', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.22)' }}>{selectedCompany.mentions}×</span>
+            </div>
+            <button onClick={() => setSelectedCompany(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '20px', cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}>×</button>
+          </div>
+          {/* Panel body */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+            {companyArticlesLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ width: '28px', height: '28px', border: '2px solid rgba(255,255,255,0.08)', borderTopColor: '#f59e0b', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 14px' }} />
+                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em' }}>LOADING...</div>
+                </div>
+              </div>
+            ) : (
+              <>
+                {selectedCompany.sectors.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '18px' }}>
+                    {selectedCompany.sectors.map((s, i) => <SectorPill key={i} sector={s} />)}
+                  </div>
+                )}
+                <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.12em', marginBottom: '12px' }}>
+                  ARTICLES MENTIONING {selectedCompany.name.toUpperCase()}
+                </div>
+                {companyArticles.length > 0
+                  ? companyArticles.map(a => <ArticleCard key={a.id} article={a} />)
+                  : <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>NO ARTICLES FOUND</div>
+                }
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
