@@ -20,7 +20,12 @@ Build, debug, and maintain the Breaking Alpha web app and supporting data pipeli
 - Shared context should live in repo files, not personal chat history.
 - Keep work scoped, reviewable, and easy to hand off.
 
+# Session start protocol
+Noah: git fetch origin && git merge origin/main (if on feature branch) or git pull origin main (if on main)
+Lucas: run `ba claude` in terminal
+
 # Working style for Claude
+- Default to Claude Code for all file edits, commits, and repo operations. Use chat only for planning, review, and live site validation.
 - Read `CLAUDE.md` and `docs/HANDOFF.md` before making meaningful changes.
 - Treat `CLAUDE.md` as stable instruction and `docs/HANDOFF.md` as current state.
 - When debugging, rank the top 3 likely causes, choose the single most likely cause, and drive toward the smallest high-confidence fix.
@@ -69,11 +74,16 @@ Build, debug, and maintain the Breaking Alpha web app and supporting data pipeli
 # Subagent usage
 - Use specialized subagents when they reduce drift and keep work focused.
 - Keep subagents narrow and task-specific rather than broad and generic.
-- Current/planned subagent lanes include:
-  - `frontend-production-incident`
-  - `deployment-runtime-verification`
-  - `homepage-feed-integrity`
-  - `repo-handoff-maintainer`
+- Subagent definitions live in .claude/agents/
+- At the end of every meaningful session, run @repo-handoff-maintainer with a one-line session summary to update docs/HANDOFF.md automatically.
+
+Current subagents:
+- `repo-handoff-maintainer` — updates docs/HANDOFF.md at end of session, commits and pushes to main
+
+Planned subagent lanes (not yet built):
+- `frontend-production-incident` — triage frontend issues appearing only in production
+- `deployment-runtime-verification` — validate Vercel deploy, env vars, runtime behavior
+- `homepage-feed-integrity` — verify article feed, sector filters, briefing data display
 
 # Current collaboration preference
 - Noah wants concise, operational guidance.
