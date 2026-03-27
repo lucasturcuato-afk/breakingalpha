@@ -1215,6 +1215,10 @@ export default function Home() {
   const [watchlistError, setWatchlistError] = useState('')
   const [watchlistMatches, setWatchlistMatches] = useState([])
   const [watchlistBadge, setWatchlistBadge] = useState(0)
+  const [watchlistPrices, setWatchlistPrices] = useState({})
+  const [watchlistPricesLoading, setWatchlistPricesLoading] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
     async function loadQuotes() {
@@ -1257,6 +1261,15 @@ export default function Home() {
     const { entries } = await res.json()
     const newEntries = entries || []
     setWatchlist(newEntries)
+    const tickers = newEntries.filter(e => e.type === 'ticker').map(e => e.identifier)
+    if (tickers.length > 0) {
+      setWatchlistPricesLoading(true)
+      fetch(`/api/watchlist-quotes?symbols=${tickers.join(',')}`)
+        .then(r => r.json())
+        .then(d => { if (d.quotes) setWatchlistPrices(d.quotes) })
+        .catch(() => {})
+        .finally(() => setWatchlistPricesLoading(false))
+    }
     if (newEntries.length > 0) {
       const identifiers = newEntries.map(e => e.identifier.toLowerCase())
       const { data: articles } = await supabase
@@ -1486,8 +1499,24 @@ export default function Home() {
                     ) : watchlist.map(entry => (
                       <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', marginBottom: '6px' }}>
                         <span style={{ flex: 1, fontFamily: "'DM Mono', monospace", fontSize: '13px', color: '#f1f5f9' }}>{entry.identifier}</span>
-                        <span style={{ padding: '2px 8px', borderRadius: '3px', fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.22)', flexShrink: 0 }}>{(entry.type || '').toUpperCase()}</span>
-                        <button onClick={() => handleWatchlistRemove(entry.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.25)', fontSize: '16px', lineHeight: 1, padding: '0 2px', flexShrink: 0 }}>×</button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                          {mounted && entry.type === 'ticker' && watchlistPrices[entry.identifier] && (
+                            <span style={{
+                              fontSize: '12px',
+                              color: watchlistPrices[entry.identifier].pct >= 0 ? '#22c55e' : '#ef4444',
+                              fontVariantNumeric: 'tabular-nums',
+                              fontFamily: "'DM Mono', monospace",
+                              letterSpacing: '0.01em',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              ${watchlistPrices[entry.identifier].price} {watchlistPrices[entry.identifier].pct >= 0 ? '+' : ''}{watchlistPrices[entry.identifier].pct}%
+                            </span>
+                          )}
+                          <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.22)', padding: '2px 5px', borderRadius: '3px', flexShrink: 0 }}>
+                            {(entry.type || '').toUpperCase()}
+                          </span>
+                          <button onClick={() => handleWatchlistRemove(entry.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.25)', fontSize: '16px', lineHeight: 1, padding: '0 2px', flexShrink: 0 }}>×</button>
+                        </div>
                       </div>
                     ))}
                   </div>
