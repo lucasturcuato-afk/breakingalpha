@@ -18,9 +18,36 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     const { identifier, type } = req.body
     if (!identifier || !type) return res.status(400).json({ error: 'identifier and type required' })
+    const normalizedIdentifier = identifier.trim().toUpperCase()
+
+    const { data: existing } = await supabase
+      .from('watchlist')
+      .select('id')
+      .eq('identifier', normalizedIdentifier)
+      .eq('type', type)
+      .single()
+    if (existing) return res.status(400).json({ error: `${normalizedIdentifier} is already in your watchlist.` })
+
+    if (type === 'ticker') {
+      const finnhubRes = await fetch(
+        `https://finnhub.io/api/v1/search?q=${encodeURIComponent(normalizedIdentifier)}&token=${process.env.FINNHUB_API_KEY}`
+      )
+      const finnhubData = await finnhubRes.json()
+      const results = finnhubData.result || []
+      const exactMatch = results.some(r => r.symbol === normalizedIdentifier)
+      if (!exactMatch) return res.status(400).json({ error: 'Ticker not found. Please enter a valid symbol.' })
+    } else if (type === 'company') {
+      const finnhubRes = await fetch(
+        `https://finnhub.io/api/v1/search?q=${encodeURIComponent(normalizedIdentifier)}&token=${process.env.FINNHUB_API_KEY}`
+      )
+      const finnhubData = await finnhubRes.json()
+      const results = finnhubData.result || []
+      if (results.length === 0) return res.status(400).json({ error: 'Company not found. Please enter a recognized company name.' })
+    }
+
     const { data, error } = await supabase
       .from('watchlist')
-      .insert([{ identifier, type, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }])
+      .insert([{ identifier: normalizedIdentifier, type, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }])
       .select()
       .single()
     if (error) return res.status(500).json({ error: error.message })
