@@ -9,6 +9,7 @@
 - PR #15 merged March 26 — Full Watchlist frontend tab live (ticker/company/sector tracking, matched articles feed, + buttons in Company Intel and Deal Flow)
 - PR #16 merged March 26 — Company Intel drill-down right-side panel live (click any company card to open matched articles panel)
 - PR #17 merged March 27 — Watchlist ticker validation live (Finnhub validation, uppercase normalization, duplicate prevention)
+- PR #18 merged March 27 — Watchlist price display live (live prices from Finnhub in inline pill, green/red with pct%, DM Mono font)
 - Lucas has `lucas/thesis-board-live` in progress — Thesis Board frontend
 
 ## Architecture
@@ -55,12 +56,11 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Backend CRUD (theses.py) and schema (theses_schema.sql) merged via PR #10
 - Status: in progress
 
-### noah/watchlist-price-display — Watchlist Live Price Data
-- Show Finnhub live price data inline for ticker watchlist entries
-- Scoped next feature after PR #17 watchlist validation merged
-
 ## Recently Completed (2026-03-27)
-- PR #17 merged — Watchlist ticker validation live. Finnhub validation, uppercase normalization, duplicate prevention. Tested in production preview. Next: price-display feature.
+- PR #18 merged — Watchlist price display. New /api/watchlist-quotes route fetches live Finnhub prices for tickers. Inline price pill (price + pct%, green/red, DM Mono) rendered right-aligned before TICKER badge. Mounted hydration guard added.
+
+## Recently Completed (2026-03-27 earlier)
+- PR #17 merged — Watchlist ticker validation live. Finnhub validation, uppercase normalization, duplicate prevention. Tested in production preview.
 
 
 ## Recently Completed (2026-03-26)
