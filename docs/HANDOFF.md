@@ -8,6 +8,7 @@
 - PR #14 merged March 26 — Watchlist relevance boost added to ingest pipeline
 - PR #15 merged March 26 — Full Watchlist frontend tab live (ticker/company/sector tracking, matched articles feed, + buttons in Company Intel and Deal Flow)
 - PR #16 merged March 26 — Company Intel drill-down right-side panel live (click any company card to open matched articles panel)
+- PR #17 merged March 27 — Watchlist ticker validation live (Finnhub validation, uppercase normalization, duplicate prevention)
 - Lucas has `lucas/thesis-board-live` in progress — Thesis Board frontend
 
 ## Architecture
@@ -54,10 +55,8 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Backend CRUD (theses.py) and schema (theses_schema.sql) merged via PR #10
 - Status: in progress
 
-### noah/watchlist-validation — Watchlist Ticker Validation
-- Feature scope locked: validate watchlist ticker additions against Finnhub before saving
-- Ready to implement next session
-- Branch: noah/watchlist-validation
+## Recently Completed (2026-03-27)
+- PR #17 merged — Watchlist ticker validation live. Finnhub validation (exact symbol match for tickers, non-empty results for companies), uppercase normalization, duplicate prevention.
 
 ## Recently Completed (2026-03-27 end-of-session)
 - Evening Wrap production validation passed. Built and merged repo-handoff-maintainer subagent. Updated CLAUDE.md with Claude Code defaults, subagent protocol, session start steps. Cleaned up frontend-prod-debug agent. Scoped watchlist ticker validation feature.
@@ -74,6 +73,7 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - **Branch cleanup:** deleted noah/claude-workflow-setup, noah/fix-supabase-auth, docs/repo-workflow-update, claude/recursing-turing
 
 ## Pending / Known Issues
+- **BLOCKER:** Rotate FINNHUB_API_KEY in Vercel env — key was briefly exposed in chat this session. Regenerate at dashboard.finnhub.io and update Vercel env var.
 
 ## Branch Strategy
 - main — production, always deployable, auto-deploys to Vercel on push
