@@ -7,6 +7,7 @@
 - PR #13 merged March 26 — Fixed Groq [sector] placeholder bug in synthesize.py
 - PR #14 merged March 26 — Watchlist relevance boost added to ingest pipeline
 - PR #15 merged March 26 — Full Watchlist frontend tab live (ticker/company/sector tracking, matched articles feed, + buttons in Company Intel and Deal Flow)
+- PR #16 merged March 26 — Company Intel drill-down right-side panel live (click any company card to open matched articles panel)
 - Lucas has `lucas/thesis-board-live` in progress — Thesis Board frontend
 
 ## Architecture
@@ -66,7 +67,6 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 
 ## Pending / Known Issues
 - **Evening Wrap end-to-end validation** — needs real pipeline run to confirm cards render correctly
-- **Company Intel drill-down** — clicking a company does nothing; no detail view yet
 
 ## Branch Strategy
 - main — production, always deployable, auto-deploys to Vercel on push
