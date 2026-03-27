@@ -1212,6 +1212,7 @@ export default function Home() {
   const [watchlistLoading, setWatchlistLoading] = useState(true)
   const [watchlistInput, setWatchlistInput] = useState('')
   const [watchlistType, setWatchlistType] = useState('ticker')
+  const [watchlistError, setWatchlistError] = useState('')
   const [watchlistMatches, setWatchlistMatches] = useState([])
   const [watchlistBadge, setWatchlistBadge] = useState(0)
 
@@ -1314,11 +1315,17 @@ export default function Home() {
   async function handleWatchlistAdd() {
     const identifier = watchlistInput.trim()
     if (!identifier) return
-    await fetch('/api/watchlist', {
+    const res = await fetch('/api/watchlist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifier, type: watchlistType })
     })
+    if (!res.ok) {
+      const body = await res.json()
+      setWatchlistError(body.error || 'Something went wrong.')
+      return
+    }
+    setWatchlistError('')
     setWatchlistInput('')
     await refreshWatchlist()
   }
@@ -1444,12 +1451,13 @@ export default function Home() {
                         type="text"
                         placeholder="e.g. NVDA, Anthropic, Private Equity"
                         value={watchlistInput}
-                        onChange={e => setWatchlistInput(e.target.value)}
+                        onChange={e => { setWatchlistInput(e.target.value); setWatchlistError('') }}
                         onKeyDown={e => { if (e.key === 'Enter' && watchlistInput.trim()) handleWatchlistAdd() }}
                         style={{ flex: 1, minWidth: '200px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }}
                       />
                       <button onClick={handleWatchlistAdd} style={{ padding: '8px 18px', borderRadius: '6px', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid rgba(245,158,11,0.5)', background: 'rgba(245,158,11,0.12)', color: '#f59e0b', letterSpacing: '0.06em', flexShrink: 0 }}>ADD</button>
                     </div>
+                    {watchlistError && <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#f87171', marginTop: '6px' }}>{watchlistError}</div>}
                     <div style={{ display: 'flex', gap: '6px' }}>
                       {['ticker', 'company', 'sector'].map(t => (
                         <button key={t} onClick={() => setWatchlistType(t)} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${watchlistType === t ? '#f59e0b' : 'rgba(255,255,255,0.1)'}`, background: watchlistType === t ? 'rgba(245,158,11,0.12)' : 'transparent', color: watchlistType === t ? '#f59e0b' : 'rgba(255,255,255,0.35)' }}>{t.toUpperCase()}</button>
