@@ -55,7 +55,7 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Status: in progress
 
 ## Recently Completed (2026-03-27)
-- **Validation:** Evening Wrap end-to-end — confirmed production-valid in live site. All cards rendering correctly (TODAY'S LEAD, TOP DEALS, ANALYST BRIEFING x5, SECTOR SIGNALS, TOP STORIES). No [sector] placeholder bugs. PR #13 fix verified.
+- Evening Wrap validation complete — all sections rendering correctly, no placeholder bugs. PR #13 confirmed fixed. repo-handoff-maintainer subagent added to .claude/agents/; .gitignore updated to allow .claude/agents/ in version control.
 
 ## Recently Completed (2026-03-26)
 - **Feature:** Watchlist frontend — full Watchlist tab (ticker/company/sector tracking, matched articles feed, quick-add sector chips, "+" buttons in Company Intel and Deal Flow); API route at `/api/watchlist`; branch `noah/watchlist-frontend`
