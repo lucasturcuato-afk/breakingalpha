@@ -54,8 +54,13 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Backend CRUD (theses.py) and schema (theses_schema.sql) merged via PR #10
 - Status: in progress
 
-## Recently Completed (2026-03-27 evening)
-- Evening Wrap production validation confirmed. repo-handoff-maintainer subagent built and merged into .claude/agents/. CLAUDE.md updated with Claude Code defaults, subagent protocol, and session start steps.
+### noah/watchlist-validation — Watchlist Ticker Validation
+- Feature scope locked: validate watchlist ticker additions against Finnhub before saving
+- Ready to implement next session
+- Branch: noah/watchlist-validation
+
+## Recently Completed (2026-03-27 end-of-session)
+- Evening Wrap production validation passed. Built and merged repo-handoff-maintainer subagent. Updated CLAUDE.md with Claude Code defaults, subagent protocol, session start steps. Cleaned up frontend-prod-debug agent. Scoped watchlist ticker validation feature.
 
 ## Recently Completed (2026-03-26)
 - **Feature:** Watchlist frontend — full Watchlist tab (ticker/company/sector tracking, matched articles feed, quick-add sector chips, "+" buttons in Company Intel and Deal Flow); API route at `/api/watchlist`; branch `noah/watchlist-frontend`
