@@ -54,6 +54,9 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Backend CRUD (theses.py) and schema (theses_schema.sql) merged via PR #10
 - Status: in progress
 
+## Recently Completed (2026-03-27)
+- **Validation:** Evening Wrap end-to-end — confirmed production-valid in live site. All cards rendering correctly (TODAY'S LEAD, TOP DEALS, ANALYST BRIEFING x5, SECTOR SIGNALS, TOP STORIES). No [sector] placeholder bugs. PR #13 fix verified.
+
 ## Recently Completed (2026-03-26)
 - **Feature:** Watchlist frontend — full Watchlist tab (ticker/company/sector tracking, matched articles feed, quick-add sector chips, "+" buttons in Company Intel and Deal Flow); API route at `/api/watchlist`; branch `noah/watchlist-frontend`
 - **Fix:** Groq [sector] placeholder bug — added explicit instructions to MORNING_SYSTEM and EVENING_SYSTEM in synthesize.py to write actual sector/company names instead of bracket placeholders
@@ -66,7 +69,6 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - **Branch cleanup:** deleted noah/claude-workflow-setup, noah/fix-supabase-auth, docs/repo-workflow-update, claude/recursing-turing
 
 ## Pending / Known Issues
-- **Evening Wrap end-to-end validation** — needs real pipeline run to confirm cards render correctly
 
 ## Branch Strategy
 - main — production, always deployable, auto-deploys to Vercel on push
