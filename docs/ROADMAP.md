@@ -1,27 +1,37 @@
 # Breaking Alpha Roadmap
 
-## Immediate priorities
-- [x] Set up repo-based Claude Code workflow
-- [x] Document collaboration process for Noah and Lucas
-- [x] Document local setup and run instructions (`docs/SETUP.md`)
-- [x] Audit current frontend and backend structure
-- [ ] Validate current frontend production issue in protected preview and decide merge / follow-up path
-- [ ] Fix `backend/requirements.txt` to replace `google-generativeai` with `groq` if still unresolved
-- [ ] Validate data pipeline and frontend data display flow end-to-end
+## Completed
+- Repo-based Claude Code workflow with subagents
+- Collaboration process and session protocols documented (CLAUDE.md)
+- Local setup and run instructions (docs/SETUP.md)
+- Frontend/backend audit complete
+- Data pipeline validated end-to-end
+- Evening Wrap production-validated
+- Watchlist — full feature complete (backend, frontend, Finnhub validation, normalization, duplicate prevention)
+- Company Intel drill-down panel
+- Groq placeholder bug fixed
+- Watchlist relevance boost in ingest pipeline
+- Groq 429 exponential backoff with jitter
+- Developer handoff process formalized (repo-handoff-maintainer subagent, CLAUDE.md protocols)
 
-## Next priorities
-- Improve frontend data display reliability
-- Clean stale routes / stale code paths
-- Tighten Supabase integration and deployment consistency
-- Improve developer handoff process
-- Formalize focused subagent usage where helpful
+## In Progress
+- Thesis Board frontend — Lucas (lucas/thesis-board-live)
 
-## Later priorities
-- Product polish
+## Next — Noah
+- noah/watchlist-price-display — show live Finnhub price data inline for ticker entries in Watchlist tab
+- Clean stale routes and unused code paths in frontend
+- Tighten Supabase query consistency (confirm all tables use ingested_at not created_at)
+
+## Next — Lucas
+- Thesis Board frontend PR and merge
+- UI polish pass across all tabs
+
+## Later
+- Additional data enrichment features (sector one-pagers, yahoo_finance.py integration)
 - Automation improvements
-- Additional data enrichment features
-- UI / UX refinement
+- UI/UX refinement
+- Additional subagent lanes (frontend-production-incident, deployment-runtime-verification, homepage-feed-integrity)
 
-## Ownership notes
-- Noah is currently leading workflow setup, documentation, and backend/data planning
-- Lucas is currently closest to live app behavior and frontend/deployment validation
+## Ownership
+- Noah: Backend, pipeline, Groq prompt quality, Supabase schema, Watchlist, Claude Code workflow and subagent infrastructure
+- Lucas: Frontend UI, Thesis Board, UI polish
