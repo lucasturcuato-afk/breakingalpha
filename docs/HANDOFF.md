@@ -55,11 +55,13 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Backend CRUD (theses.py) and schema (theses_schema.sql) merged via PR #10
 - Status: in progress
 
-## Recently Completed (2026-03-27)
-- PR #17 merged — Watchlist ticker validation live. Finnhub validation (exact symbol match for tickers, non-empty results for companies), uppercase normalization, duplicate prevention.
+### noah/watchlist-price-display — Watchlist Live Price Data
+- Show Finnhub live price data inline for ticker watchlist entries
+- Scoped next feature after PR #17 watchlist validation merged
 
-## Recently Completed (2026-03-27 end-of-session)
-- Evening Wrap production validation passed. Built and merged repo-handoff-maintainer subagent. Updated CLAUDE.md with Claude Code defaults, subagent protocol, session start steps. Cleaned up frontend-prod-debug agent. Scoped watchlist ticker validation feature.
+## Recently Completed (2026-03-27)
+- PR #17 merged — Watchlist ticker validation live. Finnhub validation, uppercase normalization, duplicate prevention. Tested in production preview. Next: price-display feature.
+
 
 ## Recently Completed (2026-03-26)
 - **Feature:** Watchlist frontend — full Watchlist tab (ticker/company/sector tracking, matched articles feed, quick-add sector chips, "+" buttons in Company Intel and Deal Flow); API route at `/api/watchlist`; branch `noah/watchlist-frontend`
