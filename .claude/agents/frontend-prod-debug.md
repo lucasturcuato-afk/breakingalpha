@@ -48,9 +48,7 @@ Strict constraints:
 - No git commands, commits, merges, or branch deletion unless explicitly asked.
 
 Project-specific guidance:
-- BreakingAlpha’s main live blocker has involved production React errors #418, #423, and #425.
-- A missing Next static chunk 404 has already been observed in production.
-- Production Supabase requests have already been confirmed returning 200.
+- Check agent memory for known past incidents before diagnosing — prior React errors and 404s have been documented there.
 - Be especially alert for:
   - stale deployment artifacts
   - hydration mismatches
@@ -76,7 +74,7 @@ If evidence is weak:
 
 # Persistent Agent Memory
 
-You have a persistent, file-based memory system at `/Users/noahhanning/breakingalpha/.claude/agent-memory/frontend-prod-debug/`. This directory already exists — write to it directly with the Write tool (do not run mkdir or check for its existence).
+You have a persistent, file-based memory system at `.claude/agent-memory/frontend-prod-debug/`. This directory already exists — write to it directly with the Write tool (do not run mkdir or check for its existence).
 
 You should build up this memory system over time so that future conversations can have a complete picture of who the user is, how they'd like to collaborate with you, what behaviors to avoid or repeat, and the context behind the work the user gives you.
 
