@@ -170,6 +170,8 @@ function BriefView({ type }) {
   const [loading, setLoading] = useState(true)
   const [sectorFilter, setSectorFilter] = useState('ALL')
   const [sectorCounts, setSectorCounts] = useState({})
+  const [todayLabel, setTodayLabel] = useState('')
+  useEffect(() => { setTodayLabel(new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })) }, [])
 
   useEffect(() => {
     async function load() {
@@ -220,7 +222,7 @@ function BriefView({ type }) {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
         <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>{type === 'morning' ? '☀ MORNING REVIEW' : '🌙 EVENING WRAP'}</span>
-        {briefing && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)' }}>{new Date(briefing.created_at).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>}
+        {todayLabel && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)' }}>{todayLabel}</span>}
       </div>
 
       {briefing ? (
