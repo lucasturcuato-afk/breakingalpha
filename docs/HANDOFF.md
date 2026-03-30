@@ -10,6 +10,7 @@
 - PR #16 merged March 26 — Company Intel drill-down right-side panel live (click any company card to open matched articles panel)
 - PR #17 merged March 27 — Watchlist ticker validation live (Finnhub validation, uppercase normalization, duplicate prevention)
 - PR #18 merged March 27 — Watchlist price display live (live prices from Finnhub in inline pill, green/red with pct%, DM Mono font)
+- PR #19 merged March 29 — Morning Review date header fixed (displays today's date instead of stale briefing.created_at pipeline run date)
 - Lucas has `lucas/thesis-board-live` in progress — Thesis Board frontend
 
 ## Architecture
@@ -56,6 +57,9 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Backend CRUD (theses.py) and schema (theses_schema.sql) merged via PR #10
 - Status: in progress
 
+## Recently Completed (2026-03-29)
+- PR #19 merged — Morning Review date header fixed to display today's date instead of stale briefing.created_at. Added todayLabel useState/useEffect pattern in BriefView component (frontend/pages/index.js), hydration-safe.
+
 ## Recently Completed (2026-03-27)
 - PR #18 merged — Watchlist price display. New /api/watchlist-quotes route fetches live Finnhub prices for tickers. Inline price pill (price + pct%, green/red, DM Mono) rendered right-aligned before TICKER badge. Mounted hydration guard added.
 
@@ -75,7 +79,7 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - **Branch cleanup:** deleted noah/claude-workflow-setup, noah/fix-supabase-auth, docs/repo-workflow-update, claude/recursing-turing
 
 ## Pending / Known Issues
-- **BLOCKER:** Rotate FINNHUB_API_KEY in Vercel env — key was briefly exposed in chat this session. Regenerate at dashboard.finnhub.io and update Vercel env var.
+- DM Mono style tag hydration warning (pre-existing, unrelated to recent fixes, noted in PR #18)
 
 ## Branch Strategy
 - main — production, always deployable, auto-deploys to Vercel on push
