@@ -32,17 +32,41 @@ export default function AuthButton() {
   if (user) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <span style={{ fontSize: '12px', color: '#9ca3af', fontFamily: 'monospace' }}>
+        <span style={{
+          fontSize: '11px',
+          color: '#6b7280',
+          fontFamily: 'var(--font-mono, monospace)',
+          maxWidth: '140px',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
           {user.email}
         </span>
         <button
           onClick={handleSignOut}
           style={{
-            fontSize: '11px', padding: '3px 8px', borderRadius: '4px',
-            border: '1px solid #374151', background: 'transparent',
-            color: '#9ca3af', cursor: 'pointer', fontFamily: 'monospace',
+            fontSize: '11px',
+            padding: '4px 10px',
+            borderRadius: '4px',
+            border: '1px solid #374151',
+            background: 'transparent',
+            color: '#6b7280',
+            cursor: 'pointer',
+            fontFamily: 'var(--font-mono, monospace)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            transition: 'all 0.15s ease',
           }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = '#4b5563'; e.currentTarget.style.color = '#9ca3af' }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = '#374151'; e.currentTarget.style.color = '#6b7280' }}
         >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
           Sign out
         </button>
       </div>
