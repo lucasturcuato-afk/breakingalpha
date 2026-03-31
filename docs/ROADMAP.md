@@ -8,6 +8,7 @@
 - Data pipeline validated end-to-end
 - Evening Wrap production-validated
 - Watchlist — full feature complete (backend, frontend, Finnhub validation, normalization, duplicate prevention)
+- Personalized watchlist + Google SSO auth — user-scoped RLS, Google OAuth, onboarding modal (PR #20)
 - Company Intel drill-down panel
 - Groq placeholder bug fixed
 - Watchlist relevance boost in ingest pipeline
@@ -18,7 +19,10 @@
 - Thesis Board frontend — Lucas (lucas/thesis-board-live)
 
 ## Next — Noah
-- noah/watchlist-price-display — show live Finnhub price data inline for ticker entries in Watchlist tab
+- Article cards structured display — headline, why it matters, impacted name/theme, source, timestamp (fields already in schema, zero backend work)
+- Today feed "Watchlist Only" toggle — filter articles client-side to watchlist-matched items
+- SUPABASE_SERVICE_ROLE_KEY added to backend for pipeline to read all users' watchlists for relevance boost
+- Google OAuth consent screen branding (app name, logo, domain) — defer until launch-ready
 - Clean stale routes and unused code paths in frontend
 - Tighten Supabase query consistency (confirm all tables use ingested_at not created_at)
 
