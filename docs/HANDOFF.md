@@ -48,7 +48,7 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 5. Thesis Board — Supabase backend live, frontend in progress (lucas/thesis-board-live)
 6. Company Intel — 187 companies auto-extracted, sorted by mention frequency
 7. Trends — signal momentum, sector velocity, top company movers
-8. Watchlist — live. Ticker/company/sector tracking, matched articles feed, quick-add chips, + buttons in Company Intel and Deal Flow, nav badge
+8. Watchlist — live. Personalized per user. Google SSO auth gate. Onboarding modal on first sign-in. Ticker/company/sector tracking, matched articles feed, live prices, nav badge.
 
 ## In Progress
 
@@ -56,6 +56,9 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Connecting Thesis Board UI to the live `theses` Supabase table
 - Backend CRUD (theses.py) and schema (theses_schema.sql) merged via PR #10
 - Status: in progress
+
+## Recently Completed (2026-03-30)
+- PR #20 merged — feat: personalized watchlist with Google SSO + user scoping. Supabase: user_id column added to watchlist table, 4 public RLS policies replaced with 3 user-scoped policies (read/insert/delete own rows only), Google OAuth provider enabled. New files: frontend/lib/supabaseClient.js (shared browser client), frontend/components/AuthButton.js (Google sign in/out in nav), frontend/components/OnboardingModal.js (first-run ticker/sector picker), frontend/pages/api/watchlist/batch.js (batch insert for onboarding). Updated: frontend/pages/api/watchlist.js (all routes now user-scoped via RLS), frontend/pages/index.js (auth state wiring, AuthButton in nav, OnboardingModal mount, all 7 watchlist fetch calls updated with auth headers). Supabase redirect URLs configured for Vercel and localhost.
 
 ## Recently Completed (2026-03-29)
 - PR #19 merged — Morning Review date header fixed to display today's date instead of stale briefing.created_at. Added todayLabel useState/useEffect pattern in BriefView component (frontend/pages/index.js), hydration-safe.
