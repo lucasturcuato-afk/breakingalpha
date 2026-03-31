@@ -48,7 +48,7 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 5. Thesis Board — Supabase backend live, frontend in progress (lucas/thesis-board-live)
 6. Company Intel — 187 companies auto-extracted, sorted by mention frequency
 7. Trends — signal momentum, sector velocity, top company movers
-8. Watchlist — live. Ticker/company/sector tracking, matched articles feed, quick-add chips, + buttons in Company Intel and Deal Flow, nav badge
+8. Watchlist — live. Personalized per user. Google SSO auth gate. Onboarding modal on first sign-in. Ticker/company/sector tracking, matched articles feed, live prices, nav badge.
 
 ## In Progress
 

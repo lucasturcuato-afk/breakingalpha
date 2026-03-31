@@ -1,11 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Head from 'next/head'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
+import AuthButton from '../components/AuthButton'
+import OnboardingModal from '../components/OnboardingModal'
+import { supabase } from '../lib/supabaseClient'
 
 const SECTORS = [
   { key: 'ALL',    label: 'ALL',         value: null,                                  color: '#f59e0b' },
@@ -648,9 +645,10 @@ function DealFlowTracker() {
 
   const handleAddDealCompany = async (company) => {
     if (dealAddedSet.has(company)) return
+    const { data: { session: wlSession } } = await supabase.auth.getSession()
     await fetch('/api/watchlist', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${wlSession?.access_token}` },
       body: JSON.stringify({ identifier: company, type: 'company' })
     })
     setDealAddedSet(prev => new Set([...prev, company]))
@@ -887,9 +885,10 @@ function CompanyIntel() {
 
   const handleAddCompany = async (name) => {
     if (addedSet.has(name)) return
+    const { data: { session: wlSession } } = await supabase.auth.getSession()
     await fetch('/api/watchlist', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${wlSession?.access_token}` },
       body: JSON.stringify({ identifier: name, type: 'company' })
     })
     setAddedSet(prev => new Set([...prev, name]))
@@ -1220,6 +1219,8 @@ export default function Home() {
   const [watchlistPrices, setWatchlistPrices] = useState({})
   const [watchlistPricesLoading, setWatchlistPricesLoading] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [user, setUser] = useState(null)
+  const [showOnboarding, setShowOnboarding] = useState(false)
   useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
@@ -1259,7 +1260,8 @@ export default function Home() {
   }, [])
 
   const refreshWatchlist = useCallback(async () => {
-    const res = await fetch('/api/watchlist')
+    const { data: { session: wlSession } } = await supabase.auth.getSession()
+    const res = await fetch('/api/watchlist', { headers: { Authorization: `Bearer ${wlSession?.access_token}` } })
     const { entries } = await res.json()
     const newEntries = entries || []
     setWatchlist(newEntries)
@@ -1305,7 +1307,8 @@ export default function Home() {
   useEffect(() => {
     async function loadBadge() {
       try {
-        const res = await fetch('/api/watchlist')
+        const { data: { session: wlSession } } = await supabase.auth.getSession()
+        const res = await fetch('/api/watchlist', { headers: { Authorization: `Bearer ${wlSession?.access_token}` } })
         const { entries } = await res.json()
         if (!entries || entries.length === 0) return
         const identifiers = entries.map(e => e.identifier.toLowerCase())
@@ -1327,12 +1330,27 @@ export default function Home() {
     loadBadge()
   }, [])
 
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const u = session?.user ?? null
+      setUser(u)
+      if (u && !localStorage.getItem(`ba_onboarded_${u.id}`)) setShowOnboarding(true)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const u = session?.user ?? null
+      setUser(u)
+      if (u && !localStorage.getItem(`ba_onboarded_${u.id}`)) setShowOnboarding(true)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
   async function handleWatchlistAdd() {
     const identifier = watchlistInput.trim()
     if (!identifier) return
+    const { data: { session: wlSession } } = await supabase.auth.getSession()
     const res = await fetch('/api/watchlist', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${wlSession?.access_token}` },
       body: JSON.stringify({ identifier, type: watchlistType })
     })
     if (!res.ok) {
@@ -1346,18 +1364,20 @@ export default function Home() {
   }
 
   async function handleWatchlistAddSector(sectorName) {
+    const { data: { session: wlSession } } = await supabase.auth.getSession()
     await fetch('/api/watchlist', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${wlSession?.access_token}` },
       body: JSON.stringify({ identifier: sectorName, type: 'sector' })
     })
     await refreshWatchlist()
   }
 
   async function handleWatchlistRemove(id) {
+    const { data: { session: wlSession } } = await supabase.auth.getSession()
     await fetch('/api/watchlist', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${wlSession?.access_token}` },
       body: JSON.stringify({ id })
     })
     await refreshWatchlist()
@@ -1410,6 +1430,9 @@ export default function Home() {
                 {item.id === 'watchlist' && watchlistBadge > 0 && <span style={{ marginLeft: 'auto', background: '#f59e0b', color: '#000', fontSize: '9px', fontFamily: "'DM Mono', monospace", fontWeight: 700, padding: '1px 5px', borderRadius: '8px', flexShrink: 0 }}>{watchlistBadge}</span>}
               </button>
             ))}
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+              <AuthButton />
+            </div>
           </nav>
           <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.055)' }}>
             <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#374151', letterSpacing: '0.12em', marginBottom: '10px' }}>SECTORS TRACKED</div>
@@ -1551,6 +1574,9 @@ export default function Home() {
           </div>
         </div>
       </div>
+      {showOnboarding && user && (
+        <OnboardingModal user={user} onComplete={() => setShowOnboarding(false)} />
+      )}
     </div>
   )
 }
