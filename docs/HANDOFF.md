@@ -4,13 +4,8 @@
 - Live at https://breakingalpha.vercel.app
 - Pipeline auto-runs 6am PT (morning) and 10pm PT (evening), weekdays
 - Morning Review and Evening Wrap both generating correctly
-- PR #13 merged March 26 — Fixed Groq [sector] placeholder bug in synthesize.py
-- PR #14 merged March 26 — Watchlist relevance boost added to ingest pipeline
-- PR #15 merged March 26 — Full Watchlist frontend tab live (ticker/company/sector tracking, matched articles feed, + buttons in Company Intel and Deal Flow)
-- PR #16 merged March 26 — Company Intel drill-down right-side panel live (click any company card to open matched articles panel)
-- PR #17 merged March 27 — Watchlist ticker validation live (Finnhub validation, uppercase normalization, duplicate prevention)
-- PR #18 merged March 27 — Watchlist price display live (live prices from Finnhub in inline pill, green/red with pct%, DM Mono font)
-- PR #19 merged March 29 — Morning Review date header fixed (displays today's date instead of stale briefing.created_at pipeline run date)
+- All backend synthesis, watchlist, and frontend work merged to main (3 PRs from 2026-03-31 session)
+- Article card UI with relevance chips, timestamps, and relevance_reason display live in production
 - Lucas has `lucas/thesis-board-live` in progress — Thesis Board frontend
 
 ## Architecture
@@ -58,16 +53,8 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Status: in progress
 
 ## Recently Completed (2026-03-31)
-- **Pipeline output quality — branch: noah/pipeline-output-quality**
-  - `backend/ingest.py` — tightened `relevance_reason` instruction: model now leads with market implication, names companies/figures, writes like a buy-side analyst signal; never opens with "This article…"
-  - `backend/synthesize.py` — `relevance_reason` now fetched from Supabase and injected as `Signal:` line per article, so briefing synthesis builds from pre-digested analyst signals rather than raw RSS copy
-  - `backend/synthesize.py` — all section prompts rewritten to enforce specificity (named companies, dollar figures, causal language); banned filler phrases; `what_to_watch`/`tomorrow_setup` now require continuous prose with binary outcome framing
-  - `backend/synthesize.py` — `top_deals` HARD GATE added: four-criteria qualification test, explicit Signal-line exclusion ("Signal describes relevance only, not deal qualification"), count changed from "3-5 max" to "0-5" to remove fill pressure
-  - `backend/synthesize.py` — article limit reduced from 60 → 20 (top by relevance_score); input capped at 300 chars per summary; both changes right-size context for llama-3.1-8b-instant and reduce rate-limit exposure
-  - `.gitignore` — `.venv/` added (not yet on main)
-  - **Why it matters:** Briefing quality was bottlenecked on generic RSS summaries feeding a small model with no analyst pre-processing. Now each article carries a buy-side signal, section prompts enforce specificity, and `top_deals` has structural gating that prevents non-deal articles from leaking in.
-  - **How tested:** `python synthesize.py morning` run locally. Confirmed `top_deals` no longer includes non-deal company entries (Raspberry Pi, Fractile). Sections output named companies, dollar figures, and directional language.
-  - **Next step:** Monitor 2–3 live briefings post-deploy. If `relevance_reason` values remain generic (RSS summaries are thin), next leverage point is enriching ingest with full article body text.
+- **Watchlist auth / onboarding / Google SSO — 2 merged PRs:** User scoping added to watchlist table, Google OAuth enabled in Supabase, onboarding modal on first sign-in, batch insert route for sector/ticker picker, all watchlist fetch calls scoped via RLS. Article card UI upgraded (Live Tracker): relevance chips, timestamp display, relevance_reason display in briefing cards.
+- **Pipeline output quality (synthesis + ingest improvements) — 1 merged PR:** Tightened `relevance_reason` instruction in ingest.py to lead with market implication (no generic "This article…" openings). Injected `relevance_reason` as `Signal:` line in synthesize.py briefing synthesis. Rewrote section prompts for specificity (named companies, dollar figures, causal language; banned filler). Added HARD GATE to `top_deals` (4-criteria qualification test, explicit Signal exclusion) to stop non-deal articles leaking in. Reduced article input from 60 → 20 for coherence. Confirmed locally: `top_deals` no longer includes non-deal entries (Raspberry Pi, Fractile); sections output named figures and directional language. NEXT: Validate `relevance_reason` quality on real pipeline run — if still generic, investigate RSS feed depth as limiting factor.
 
 ## Recently Completed (2026-03-30)
 - PR #20 merged — feat: personalized watchlist with Google SSO + user scoping. Supabase: user_id column added to watchlist table, 4 public RLS policies replaced with 3 user-scoped policies (read/insert/delete own rows only), Google OAuth provider enabled. New files: frontend/lib/supabaseClient.js (shared browser client), frontend/components/AuthButton.js (Google sign in/out in nav), frontend/components/OnboardingModal.js (first-run ticker/sector picker), frontend/pages/api/watchlist/batch.js (batch insert for onboarding). Updated: frontend/pages/api/watchlist.js (all routes now user-scoped via RLS), frontend/pages/index.js (auth state wiring, AuthButton in nav, OnboardingModal mount, all 7 watchlist fetch calls updated with auth headers). Supabase redirect URLs configured for Vercel and localhost.
@@ -94,6 +81,8 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - **Branch cleanup:** deleted noah/claude-workflow-setup, noah/fix-supabase-auth, docs/repo-workflow-update, claude/recursing-turing
 
 ## Pending / Known Issues
+- Validate `relevance_reason` output quality on next real pipeline run (post-2026-03-31 improvements); if still generic, RSS feed depth may be limiting factor
+- Consider AI/Semis-specific framing rules for FILTER_PROMPT if macro/rates improvement confirms but AI/Semis underperforms
 - DM Mono style tag hydration warning (pre-existing, unrelated to recent fixes, noted in PR #18)
 
 ## Branch Strategy
