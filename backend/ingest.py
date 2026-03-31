@@ -59,7 +59,7 @@ Respond ONLY in valid JSON:
 {{
   "relevant": true/false,
   "relevance_score": 1-10,
-  "relevance_reason": "one sentence",
+  "relevance_reason": "one sharp analyst-grade sentence that leads with the market implication (not a description of the article), names specific companies, dollar figures, or sector dynamics where available, and sounds like a buy-side analyst flagging a signal — never start with 'This article' or 'This deal'",
   "sector": "one of: {sectors}",
   "companies": ["Company A", "Company B"],
   "themes": ["M&A", "IPO", "Earnings", "Macro", "Geopolitics", "VC", "PE", "Regulation", "AI", "Crypto"],

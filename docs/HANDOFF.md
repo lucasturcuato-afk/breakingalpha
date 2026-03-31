@@ -57,6 +57,21 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Backend CRUD (theses.py) and schema (theses_schema.sql) merged via PR #10
 - Status: in progress
 
+## Recently Completed (2026-03-31)
+- **Pipeline output quality — branch: noah/pipeline-output-quality**
+  - `backend/ingest.py` — tightened `relevance_reason` instruction: model now leads with market implication, names companies/figures, writes like a buy-side analyst signal; never opens with "This article…"
+  - `backend/synthesize.py` — `relevance_reason` now fetched from Supabase and injected as `Signal:` line per article, so briefing synthesis builds from pre-digested analyst signals rather than raw RSS copy
+  - `backend/synthesize.py` — all section prompts rewritten to enforce specificity (named companies, dollar figures, causal language); banned filler phrases; `what_to_watch`/`tomorrow_setup` now require continuous prose with binary outcome framing
+  - `backend/synthesize.py` — `top_deals` HARD GATE added: four-criteria qualification test, explicit Signal-line exclusion ("Signal describes relevance only, not deal qualification"), count changed from "3-5 max" to "0-5" to remove fill pressure
+  - `backend/synthesize.py` — article limit reduced from 60 → 20 (top by relevance_score); input capped at 300 chars per summary; both changes right-size context for llama-3.1-8b-instant and reduce rate-limit exposure
+  - `.gitignore` — `.venv/` added (not yet on main)
+  - **Why it matters:** Briefing quality was bottlenecked on generic RSS summaries feeding a small model with no analyst pre-processing. Now each article carries a buy-side signal, section prompts enforce specificity, and `top_deals` has structural gating that prevents non-deal articles from leaking in.
+  - **How tested:** `python synthesize.py morning` run locally. Confirmed `top_deals` no longer includes non-deal company entries (Raspberry Pi, Fractile). Sections output named companies, dollar figures, and directional language.
+  - **Next step:** Monitor 2–3 live briefings post-deploy. If `relevance_reason` values remain generic (RSS summaries are thin), next leverage point is enriching ingest with full article body text.
+
+## Recently Completed (2026-03-30)
+- PR #20 merged — feat: personalized watchlist with Google SSO + user scoping. Supabase: user_id column added to watchlist table, 4 public RLS policies replaced with 3 user-scoped policies (read/insert/delete own rows only), Google OAuth provider enabled. New files: frontend/lib/supabaseClient.js (shared browser client), frontend/components/AuthButton.js (Google sign in/out in nav), frontend/components/OnboardingModal.js (first-run ticker/sector picker), frontend/pages/api/watchlist/batch.js (batch insert for onboarding). Updated: frontend/pages/api/watchlist.js (all routes now user-scoped via RLS), frontend/pages/index.js (auth state wiring, AuthButton in nav, OnboardingModal mount, all 7 watchlist fetch calls updated with auth headers). Supabase redirect URLs configured for Vercel and localhost.
+
 ## Recently Completed (2026-03-29)
 - PR #19 merged — Morning Review date header fixed to display today's date instead of stale briefing.created_at. Added todayLabel useState/useEffect pattern in BriefView component (frontend/pages/index.js), hydration-safe.
 
