@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import Head from 'next/head'
 import AuthButton from '../components/AuthButton'
 import OnboardingModal from '../components/OnboardingModal'
+import LandingPage from '../components/LandingPage'
 import { supabase } from '../lib/supabaseClient'
 
 const SECTORS = [
@@ -1225,6 +1226,7 @@ export default function Home() {
   const [watchlistPricesLoading, setWatchlistPricesLoading] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [user, setUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const [showOnboarding, setShowOnboarding] = useState(false)
   useEffect(() => { setMounted(true) }, [])
 
@@ -1340,6 +1342,7 @@ export default function Home() {
       const u = session?.user ?? null
       setUser(u)
       if (u && !localStorage.getItem(`ba_onboarded_${u.id}`)) setShowOnboarding(true)
+      setAuthLoading(false)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const u = session?.user ?? null
@@ -1387,6 +1390,9 @@ export default function Home() {
     })
     await refreshWatchlist()
   }
+
+  if (authLoading) return null
+  if (!user) return <LandingPage />
 
   return (
     <div style={{ minHeight: '100vh', background: '#080c18', color: '#f8fafc' }}>

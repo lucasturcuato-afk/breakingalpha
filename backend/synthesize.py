@@ -15,18 +15,20 @@ MORNING_SYSTEM = """You are a senior investment banking analyst preparing the da
 
 You will receive a list of recent news articles, each tagged with a Signal line written by a buy-side analyst. Use those signals to anchor your analysis.
 
+SECTION RULES — read before writing anything: Only include a section if you have specific, non-generic content from the provided articles. If a section has no real signal — no named company, concrete rate figure, specific country, or actionable catalyst — OMIT that key from the JSON output entirely. Fewer sections with strong signal beats a complete schema with filler. BANNED phrases in every field: "does not directly impact", "no geopolitical developments", "no direct geopolitical", "investors should monitor", "broadly supportive", "ongoing uncertainty", "markets reacted to", "could also affect", "this is consistent with", "highlight", "broadly positive", "limited direct impact", "while not directly". If you cannot write a sentence without a banned phrase, omit the section.
+
 Respond ONLY with valid JSON in this exact schema — no preamble, no markdown fences:
 {
   "headline": "Single dominant theme only — pick the highest-signal deal, rate move, or macro catalyst and state it precisely. Name the company or figure involved. Never bundle two unrelated themes with 'and'. 10-15 words.",
   "summary": "3-4 sentences. Every sentence must contain at least one specific company name, dollar figure, rate level, or index move. Lead with the most important implication, not a description of what happened. Banned phrases: 'mix of', 'ongoing activity', 'investment landscape', 'markets reacted to', 'could also', 'highlight'.",
   "market_tone": "One of: RISK-ON | RISK-OFF | MIXED | NEUTRAL",
   "sections": {
-    "deals_and_ma": "2-3 sentences. For each deal, state the acquirer, target, price or multiple, and what the transaction signals about the buyer's strategy or sector consolidation pressure — not just that the deal happened.",
-    "public_markets": "2-3 sentences on equity market moves, earnings beats/misses, and IPO pipeline. State the directional implication for deal valuations or risk appetite, not just the move.",
-    "macro_and_rates": "2-3 sentences on rates, Fed signals, or FX moves. State the concrete effect on LBO spreads, deal multiples, or cost of capital — not just that rates moved.",
-    "geopolitics": "2-3 sentences on geopolitical developments. Name the countries and sectors directly in the blast radius. Skip if nothing material.",
-    "sector_spotlight": "2-3 sentences on the single sector with the most concentrated deal or news activity. Explain why the cluster is happening now — regulatory, cycle, or competitive pressure. Write the sector name explicitly.",
-    "what_to_watch": "Write 3-4 sentences of continuous prose — no bullets, no numbered list, no JSON structure. Each sentence must name a specific company, ticker, Fed speaker, or scheduled data release, state the expected catalyst, and name the binary outcome that matters (e.g., 'A miss from X would signal demand destruction in Y'). Write it as a paragraph a senior analyst would read aloud."
+    "deals_and_ma": "2-3 sentences. For each deal, state the acquirer, target, price or multiple, and what the transaction signals about the buyer's strategy or sector consolidation pressure — not just that the deal happened. OMIT if no named transactions in the articles.",
+    "public_markets": "2-3 sentences on equity market moves, earnings beats/misses, and IPO pipeline. State the directional implication for deal valuations or risk appetite, not just the move. OMIT if no specific market moves or earnings in the articles.",
+    "macro_and_rates": "2-3 sentences on rates, Fed signals, or FX moves. State the concrete effect on LBO spreads, deal multiples, or cost of capital — not just that rates moved. OMIT if no concrete rates or macro signal in the articles.",
+    "geopolitics": "2-3 sentences naming the specific countries and sectors in the blast radius and the mechanism of impact on capital flows or deal activity. OMIT THIS KEY ENTIRELY if no geopolitical event materially affected markets today — do not write a placeholder, a 'no developments' statement, or a vague monitoring sentence.",
+    "sector_spotlight": "2-3 sentences on the single sector with the most concentrated deal or news activity today. Explain why the cluster is happening now — regulatory, cycle, or competitive pressure. Write the sector name explicitly. OMIT if no clear sector cluster exists.",
+    "what_to_watch": "Write 3-4 sentences of continuous prose — no bullets, no numbered list. Each sentence must name a specific company, ticker, Fed speaker, or scheduled data release, state the exact expected catalyst, and commit to the binary outcome that matters (e.g., 'A miss from X would signal demand destruction in Y, pressuring comps Z and W'). Write it as a paragraph a senior analyst would read aloud. BANNED phrases: 'investors should monitor', 'watch for', 'could be impacted', 'may be affected', 'bears watching', 'remain cautious'."
   },
   "top_deals": [
     {
@@ -37,11 +39,7 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
     }
   ],
   "sector_breakdown": {
-    "Technology M&A & Investment Banking": "1-2 sentence signal",
-    "Private Equity & Buyouts": "1-2 sentence signal",
-    "Venture Capital & Startup Funding": "1-2 sentence signal",
-    "Public Markets & Earnings": "1-2 sentence signal",
-    "Geopolitics & Macro": "1-2 sentence signal"
+    "note": "Only include sectors where the provided articles contain a specific, named signal — omit any sector with nothing concrete. Do not invent signals for uncovered sectors."
   }
 }
 
@@ -57,17 +55,19 @@ EVENING_SYSTEM = """You are a senior investment banking analyst preparing the ev
 
 You will receive today's news articles, each tagged with a Signal line written by a buy-side analyst. Use those signals to anchor your wrap.
 
+SECTION RULES — read before writing anything: Only include a section if you have specific, non-generic content from the provided articles. If a section has no real signal — no named company, concrete rate figure, specific country, or actionable catalyst — OMIT that key from the JSON output entirely. Fewer sections with strong signal beats a complete schema with filler. BANNED phrases in every field: "does not directly impact", "no geopolitical developments", "no direct geopolitical", "investors should monitor", "broadly supportive", "ongoing uncertainty", "markets reacted to", "could also affect", "this is consistent with", "highlight", "broadly positive", "limited direct impact", "while not directly". If you cannot write a sentence without a banned phrase, omit the section.
+
 Respond ONLY with valid JSON in this exact schema — no preamble, no markdown fences:
 {
   "headline": "Single defining story from the day — name the company, deal, or data point that drove the tape. 10-15 words. No multi-theme bundles.",
   "summary": "3-4 sentences. Every sentence must contain a specific company name, dollar figure, rate level, or index move. State what today's developments signal going into tomorrow. Banned phrases: 'mix of', 'ongoing activity', 'investment landscape', 'markets reacted to', 'could also', 'highlight'.",
   "market_tone": "One of: RISK-ON | RISK-OFF | MIXED | NEUTRAL",
   "sections": {
-    "deals_and_ma": "2-3 sentences. For each deal, name acquirer and target, state the price or multiple, and explain what the transaction signals about buyer strategy or sector consolidation pressure.",
-    "public_markets": "2-3 sentences on how markets closed. Name the key movers and state what the tape is pricing in for tomorrow — not just that stocks went up or down.",
-    "macro_and_rates": "2-3 sentences on macro and rates. State the concrete implication for deal multiples, credit spreads, or risk appetite into tomorrow.",
-    "geopolitics": "2-3 sentences. Name the countries and sectors in the blast radius. Skip if nothing material happened.",
-    "tomorrow_setup": "Write 3-4 sentences of continuous prose — no bullets, no numbered list, no JSON structure. Each sentence must name a specific company, speaker, or data release, state the expected catalyst, and identify what a beat or miss would signal. Write it as a paragraph a senior analyst would read aloud."
+    "deals_and_ma": "2-3 sentences. For each deal, name acquirer and target, state the price or multiple, and explain what the transaction signals about buyer strategy or sector consolidation pressure. OMIT if no named transactions in the articles.",
+    "public_markets": "2-3 sentences on how markets closed. Name the key movers and state what the tape is pricing in for tomorrow — not just that stocks went up or down. OMIT if no specific market close data or named movers in the articles.",
+    "macro_and_rates": "2-3 sentences on macro and rates. State the concrete implication for deal multiples, credit spreads, or risk appetite into tomorrow. OMIT if no concrete rates or macro signal in the articles.",
+    "geopolitics": "2-3 sentences naming the specific countries and sectors in the blast radius and the mechanism of impact on capital flows or deal activity. OMIT THIS KEY ENTIRELY if nothing geopolitical materially affected markets today — do not write a placeholder, a 'no developments' statement, or a vague monitoring sentence.",
+    "tomorrow_setup": "Write 3-4 sentences of continuous prose — no bullets, no numbered list. Each sentence must name a specific company, speaker, or data release, state the exact expected catalyst, and commit to what a beat or miss would signal for the broader market or sector. Write it as a paragraph a senior analyst would read aloud. BANNED phrases: 'investors should monitor', 'watch for', 'could be impacted', 'may be affected', 'bears watching', 'remain cautious'."
   },
   "top_deals": [
     {
@@ -78,11 +78,7 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
     }
   ],
   "sector_breakdown": {
-    "Technology M&A & Investment Banking": "1-2 sentence signal",
-    "Private Equity & Buyouts": "1-2 sentence signal",
-    "Venture Capital & Startup Funding": "1-2 sentence signal",
-    "Public Markets & Earnings": "1-2 sentence signal",
-    "Geopolitics & Macro": "1-2 sentence signal"
+    "note": "Only include sectors where the provided articles contain a specific, named signal — omit any sector with nothing concrete. Do not invent signals for uncovered sectors."
   }
 }
 
@@ -94,12 +90,47 @@ A qualifying top_deals entry MUST satisfy ALL FOUR of the following — if any o
 
 Exclude without exception: earnings reports, revenue or profit results, stock price moves, analyst upgrades or downgrades, product launches, index inclusions, executive appointments, general company performance news, and fundraising stories without a named lead investor and confirmed amount — even if the article features a well-known company. If no qualifying deal exists in the provided articles, return an empty top_deals array rather than filling it with non-deal stories. Never use bracket placeholders — always write the actual name. When stating implications, use hedged language ('may signal', 'suggests') unless multiple articles confirm the same direction — never imply sector-wide repricing, macro conclusions, or broader competitive dynamics from a single story. Banned phrases unless strongly evidenced by multiple articles: 'ongoing consolidation', 'sector rotation', 'broader trend', 'continued pressure'."""
 
+def _diversify_articles(articles, sector_cap=4, company_cap=2, total=20):
+    """
+    Prevent any single deal cluster or company from dominating synthesis input.
+    Walks the relevance-sorted list greedily, capping per-sector and per-company
+    representation. Returns at most `total` articles.
+    """
+    from collections import defaultdict
+    sector_counts = defaultdict(int)
+    company_counts = defaultdict(int)
+    selected = []
+    for a in articles:  # already sorted by relevance_score desc
+        sector = a.get("sector") or ""
+        companies = a.get("companies") or []
+        if isinstance(companies, str):
+            try:
+                companies = json.loads(companies)
+            except Exception:
+                companies = []
+
+        if sector_counts[sector] >= sector_cap:
+            continue
+        if companies and any(company_counts[c] >= company_cap for c in companies):
+            continue
+
+        selected.append(a)
+        sector_counts[sector] += 1
+        for c in companies:
+            company_counts[c] += 1
+
+        if len(selected) >= total:
+            break
+
+    return selected
+
+
 def groq_with_backoff(messages, temperature=0.3, max_tokens=2000, max_retries=5):
     """Call Groq with exponential backoff + jitter on 429 rate limit errors."""
     for attempt in range(max_retries):
         try:
             resp = groq.chat.completions.create(
-                model="llama-3.1-8b-instant",
+                model="llama-3.3-70b-versatile",
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
@@ -118,13 +149,14 @@ def groq_with_backoff(messages, temperature=0.3, max_tokens=2000, max_retries=5)
 def run(brief_type="morning"):
     print(f"📝 Synthesizing {brief_type} briefing...")
 
-    # Pull articles from last 24 hours
+    # Pull a larger pool from last 24 hours, then diversify to prevent
+    # a single deal cluster or company from dominating the briefing.
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     resp = supabase.table("articles")\
         .select("title, summary, sector, companies, relevance_score, relevance_reason")\
         .gte("ingested_at", cutoff)\
         .order("relevance_score", desc=True)\
-        .limit(20)\
+        .limit(60)\
         .execute()
 
     articles = resp.data or []
@@ -132,11 +164,12 @@ def run(brief_type="morning"):
         resp = supabase.table("articles")\
             .select("title, summary, sector, companies, relevance_score, relevance_reason")\
             .order("ingested_at", desc=True)\
-            .limit(20)\
+            .limit(60)\
             .execute()
         articles = resp.data or []
 
-    print(f"  📰 Using {len(articles)} articles for synthesis")
+    articles = _diversify_articles(articles, sector_cap=4, company_cap=2, total=20)
+    print(f"  📰 Using {len(articles)} articles for synthesis (diversified from pool of up to 60)")
 
     article_text = "\n\n".join([
         f"[{a.get('sector','')}] {a.get('title','')}\n{(a.get('summary','') or '')[:300]}"
