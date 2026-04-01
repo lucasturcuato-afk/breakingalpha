@@ -55,6 +55,7 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Status: in progress
 
 ## Recently Completed (2026-04-01)
+- **Brief Preferences (PR pending):** Backend schema (user_preferences table, uuid PK, user_id FK, sectors/modules/prioritize_watchlist fields, user-scoped RLS) and frontend UI (PreferencesPanel: sector chips, module toggles, watchlist relevance toggle, brief schedule display) on `noah/brief-preferences`. Build passes; schema migration pending Supabase execution before merge. Added 9th tab to nav (sliders icon).
 - **Signed-out preview mode (PR #29 merged):** New `SignedOutHomepage` component; signed-out users see hero, Morning Review headline + market tone + first 2 sections, top 3 articles visible + articles 4–5 blurred with sign-in CTAs.
 - **Landing page + auth gate — PR #28 merged (prior session):** Static LandingPage component, signed-out landing page hero ("AI-native market intelligence for what actually matters"), Google sign-in CTA. Auth gate prevents flicker via `authLoading` state; sign-out returns to landing page. Onboarding modal custom ticker chips now render immediately as removable.
 
@@ -87,6 +88,7 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - **Branch cleanup:** deleted noah/claude-workflow-setup, noah/fix-supabase-auth, docs/repo-workflow-update, claude/recursing-turing
 
 ## Pending / Known Issues
+- **Brief Preferences schema migration:** `backend/user_preferences_schema.sql` ready; must be executed in Supabase before merging `noah/brief-preferences` to main.
 - **Next task:** Verify Supabase anon SELECT on `articles` and `briefings` tables. Enable `SELECT TO anon` if needed so signed-out preview shows real live data instead of static fallback.
 - Validate `relevance_reason` output quality on next real pipeline run (post-2026-03-31 improvements); if still generic, RSS feed depth may be limiting factor
 - Consider AI/Semis-specific framing rules for FILTER_PROMPT if macro/rates improvement confirms but AI/Semis underperforms
