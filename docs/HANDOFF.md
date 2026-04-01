@@ -7,6 +7,7 @@
 - All backend synthesis, watchlist, and frontend work merged to main (3 PRs from 2026-03-31 session)
 - Article card UI with relevance chips, timestamps, and relevance_reason display live in production
 - Signed-out landing page + auth gate live in production (PR #28); onboarding modal custom ticker chip removal now functional
+- Signed-out preview mode (PR #29) merged to main; shows Morning Review + top articles to anon users; pending RLS verification for live data
 - Lucas has `lucas/thesis-board-live` in progress — Thesis Board frontend
 
 ## Architecture
@@ -54,7 +55,7 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Status: in progress
 
 ## Recently Completed (2026-04-01)
-- **Signed-out preview mode (PR #29 open):** New `SignedOutHomepage` component replaces static landing page gate. Signed-out users now see hero, Morning Review headline + market tone + first 2 sections, top 3 Live Tracker articles visible + articles 4–5 blurred with sign-in CTAs, graceful fallback to static preview if Supabase RLS blocks anon reads. Vercel preview validated. Pending: merge PR #29, verify Supabase anon SELECT on `articles` and `briefings` tables (enable if needed for real data in preview).
+- **Signed-out preview mode (PR #29 merged):** New `SignedOutHomepage` component; signed-out users see hero, Morning Review headline + market tone + first 2 sections, top 3 articles visible + articles 4–5 blurred with sign-in CTAs.
 - **Landing page + auth gate — PR #28 merged (prior session):** Static LandingPage component, signed-out landing page hero ("AI-native market intelligence for what actually matters"), Google sign-in CTA. Auth gate prevents flicker via `authLoading` state; sign-out returns to landing page. Onboarding modal custom ticker chips now render immediately as removable.
 
 ## Recently Completed (2026-03-31)
@@ -86,8 +87,7 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - **Branch cleanup:** deleted noah/claude-workflow-setup, noah/fix-supabase-auth, docs/repo-workflow-update, claude/recursing-turing
 
 ## Pending / Known Issues
-- PR #29 (noah/signed-out-preview) open — waiting for review/merge. Signed-out preview mode complete and validated in Vercel preview.
-- Supabase RLS: verify anon SELECT on `articles` and `briefings` tables enabled. If not, enable `SELECT TO anon` on these tables so preview shows real live data instead of static fallback.
+- **Next task:** Verify Supabase anon SELECT on `articles` and `briefings` tables. Enable `SELECT TO anon` if needed so signed-out preview shows real live data instead of static fallback.
 - Validate `relevance_reason` output quality on next real pipeline run (post-2026-03-31 improvements); if still generic, RSS feed depth may be limiting factor
 - Consider AI/Semis-specific framing rules for FILTER_PROMPT if macro/rates improvement confirms but AI/Semis underperforms
 - DM Mono style tag hydration warning (pre-existing, unrelated to recent fixes, noted in PR #18)
