@@ -78,6 +78,16 @@ export default function OnboardingModal({ user, onComplete }) {
             <input value={customInput} onChange={e => setCustomInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && addCustom()} placeholder="Add ticker..." style={{ flex: 1, padding: '6px 10px', borderRadius: '4px', border: '1px solid #374151', background: '#1f2937', color: '#f9fafb', fontSize: '12px', fontFamily: 'monospace', outline: 'none' }} />
             <button onClick={addCustom} style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #374151', background: '#1f2937', color: '#9ca3af', fontSize: '12px', cursor: 'pointer' }}>Add</button>
           </div>
+          {selected.filter(s => s.type === 'ticker' && !SUGGESTED_TICKERS.includes(s.identifier)).length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
+              {selected.filter(s => s.type === 'ticker' && !SUGGESTED_TICKERS.includes(s.identifier)).map(s => (
+                <button key={s.key} onClick={() => toggle(s.identifier, 'ticker')} style={{ padding: '4px 10px', borderRadius: '4px', border: '1px solid #3b82f6', background: 'rgba(59,130,246,0.15)', color: '#93c5fd', fontSize: '12px', fontFamily: 'monospace', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {s.identifier}
+                  <span style={{ fontSize: '10px', opacity: 0.7 }}>✕</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{ marginBottom: '28px' }}>
