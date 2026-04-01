@@ -14,13 +14,15 @@
 - Watchlist relevance boost in ingest pipeline
 - Groq 429 exponential backoff with jitter
 - Developer handoff process formalized (repo-handoff-maintainer subagent, CLAUDE.md protocols)
-- Signed-out landing page + auth-aware homepage gate — unauthenticated users see landing page; signed-in experience unchanged (PR merged 2026-04-01)
+- Signed-out landing page + auth-aware homepage gate — unauthenticated users see static landing page; signed-in experience unchanged
+- Signed-out preview mode — hero, Morning Review headline + first 2 sections (blurred + CTA), top 3 articles visible, articles 4–5 blurred with sign-in CTAs
 - Onboarding UX — custom-added tickers render immediately as removable chips in the onboarding modal
 
 ## In Progress
 - Thesis Board frontend — Lucas (lucas/thesis-board-live)
 
 ## Next — Noah
+- Merge PR #29 (signed-out preview mode), then verify/enable Supabase anon SELECT on `articles` and `briefings` tables
 - Article cards structured display — headline, why it matters, impacted name/theme, source, timestamp (fields already in schema, zero backend work)
 - Today feed "Watchlist Only" toggle — filter articles client-side to watchlist-matched items
 - SUPABASE_SERVICE_ROLE_KEY added to backend for pipeline to read all users' watchlists for relevance boost

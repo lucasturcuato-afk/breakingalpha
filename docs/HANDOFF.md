@@ -54,7 +54,8 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Status: in progress
 
 ## Recently Completed (2026-04-01)
-- **Landing page + auth gate — PR #28 merged:** Signed-out users see landing page (hero: "AI-native market intelligence for what actually matters", Google sign-in CTA, 3 preview cards). Authenticated users gate through to full app unchanged. Auth gate prevents flicker via `authLoading` state; `getSession()` resolves before render branch. Sign-out returns to landing page. New: `frontend/components/LandingPage.js`. Updated: `frontend/pages/index.js` (auth gate, authLoading), `frontend/components/OnboardingModal.js` (custom ticker chips render immediately + remove via toggle()). Vercel preview validated: incognito landing, OAuth completion, sign-out transition. Pending: verify custom ticker chip behavior on fresh account (may require localStorage reset of `ba_onboarded_<uid>`).
+- **Signed-out preview mode (PR #29 open):** New `SignedOutHomepage` component replaces static landing page gate. Signed-out users now see hero, Morning Review headline + market tone + first 2 sections, top 3 Live Tracker articles visible + articles 4–5 blurred with sign-in CTAs, graceful fallback to static preview if Supabase RLS blocks anon reads. Vercel preview validated. Pending: merge PR #29, verify Supabase anon SELECT on `articles` and `briefings` tables (enable if needed for real data in preview).
+- **Landing page + auth gate — PR #28 merged (prior session):** Static LandingPage component, signed-out landing page hero ("AI-native market intelligence for what actually matters"), Google sign-in CTA. Auth gate prevents flicker via `authLoading` state; sign-out returns to landing page. Onboarding modal custom ticker chips now render immediately as removable.
 
 ## Recently Completed (2026-03-31)
 - **Watchlist auth / onboarding / Google SSO — 2 merged PRs:** User scoping added to watchlist table, Google OAuth enabled in Supabase, onboarding modal on first sign-in, batch insert route for sector/ticker picker, all watchlist fetch calls scoped via RLS. Article card UI upgraded (Live Tracker): relevance chips, timestamp display, relevance_reason display in briefing cards.
@@ -85,7 +86,8 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - **Branch cleanup:** deleted noah/claude-workflow-setup, noah/fix-supabase-auth, docs/repo-workflow-update, claude/recursing-turing
 
 ## Pending / Known Issues
-- Verify custom ticker chip behavior in onboarding modal (add/remove on fresh account) — may require localStorage reset of `ba_onboarded_<uid>` to trigger modal; existing accounts skip onboarding as expected
+- PR #29 (noah/signed-out-preview) open — waiting for review/merge. Signed-out preview mode complete and validated in Vercel preview.
+- Supabase RLS: verify anon SELECT on `articles` and `briefings` tables enabled. If not, enable `SELECT TO anon` on these tables so preview shows real live data instead of static fallback.
 - Validate `relevance_reason` output quality on next real pipeline run (post-2026-03-31 improvements); if still generic, RSS feed depth may be limiting factor
 - Consider AI/Semis-specific framing rules for FILTER_PROMPT if macro/rates improvement confirms but AI/Semis underperforms
 - DM Mono style tag hydration warning (pre-existing, unrelated to recent fixes, noted in PR #18)
