@@ -3,6 +3,7 @@ import Head from 'next/head'
 import AuthButton from '../components/AuthButton'
 import OnboardingModal from '../components/OnboardingModal'
 import LandingPage from '../components/LandingPage'
+import SignedOutHomepage from '../components/SignedOutHomepage'
 import { supabase } from '../lib/supabaseClient'
 
 const SECTORS = [
@@ -1392,7 +1393,7 @@ export default function Home() {
   }
 
   if (authLoading) return null
-  if (!user) return <LandingPage />
+  if (!user) return <SignedOutHomepage />
 
   return (
     <div style={{ minHeight: '100vh', background: '#080c18', color: '#f8fafc' }}>
