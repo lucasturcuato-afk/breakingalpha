@@ -14,6 +14,8 @@
 - Watchlist relevance boost in ingest pipeline
 - Groq 429 exponential backoff with jitter
 - Developer handoff process formalized (repo-handoff-maintainer subagent, CLAUDE.md protocols)
+- Signed-out landing page + auth-aware homepage gate — unauthenticated users see landing page; signed-in experience unchanged (PR merged 2026-04-01)
+- Onboarding UX — custom-added tickers render immediately as removable chips in the onboarding modal
 
 ## In Progress
 - Thesis Board frontend — Lucas (lucas/thesis-board-live)
