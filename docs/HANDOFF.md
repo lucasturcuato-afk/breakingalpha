@@ -6,6 +6,7 @@
 - Morning Review and Evening Wrap both generating correctly
 - All backend synthesis, watchlist, and frontend work merged to main (3 PRs from 2026-03-31 session)
 - Article card UI with relevance chips, timestamps, and relevance_reason display live in production
+- Signed-out landing page + auth gate live in production (PR #28); onboarding modal custom ticker chip removal now functional
 - Lucas has `lucas/thesis-board-live` in progress — Thesis Board frontend
 
 ## Architecture
@@ -52,6 +53,9 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Backend CRUD (theses.py) and schema (theses_schema.sql) merged via PR #10
 - Status: in progress
 
+## Recently Completed (2026-04-01)
+- **Landing page + auth gate — PR #28 merged:** Signed-out users see landing page (hero: "AI-native market intelligence for what actually matters", Google sign-in CTA, 3 preview cards). Authenticated users gate through to full app unchanged. Auth gate prevents flicker via `authLoading` state; `getSession()` resolves before render branch. Sign-out returns to landing page. New: `frontend/components/LandingPage.js`. Updated: `frontend/pages/index.js` (auth gate, authLoading), `frontend/components/OnboardingModal.js` (custom ticker chips render immediately + remove via toggle()). Vercel preview validated: incognito landing, OAuth completion, sign-out transition. Pending: verify custom ticker chip behavior on fresh account (may require localStorage reset of `ba_onboarded_<uid>`).
+
 ## Recently Completed (2026-03-31)
 - **Watchlist auth / onboarding / Google SSO — 2 merged PRs:** User scoping added to watchlist table, Google OAuth enabled in Supabase, onboarding modal on first sign-in, batch insert route for sector/ticker picker, all watchlist fetch calls scoped via RLS. Article card UI upgraded (Live Tracker): relevance chips, timestamp display, relevance_reason display in briefing cards.
 - **Pipeline output quality (synthesis + ingest improvements) — 1 merged PR:** Tightened `relevance_reason` instruction in ingest.py to lead with market implication (no generic "This article…" openings). Injected `relevance_reason` as `Signal:` line in synthesize.py briefing synthesis. Rewrote section prompts for specificity (named companies, dollar figures, causal language; banned filler). Added HARD GATE to `top_deals` (4-criteria qualification test, explicit Signal exclusion) to stop non-deal articles leaking in. Reduced article input from 60 → 20 for coherence. Confirmed locally: `top_deals` no longer includes non-deal entries (Raspberry Pi, Fractile); sections output named figures and directional language. NEXT: Validate `relevance_reason` quality on real pipeline run — if still generic, investigate RSS feed depth as limiting factor.
@@ -81,6 +85,7 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - **Branch cleanup:** deleted noah/claude-workflow-setup, noah/fix-supabase-auth, docs/repo-workflow-update, claude/recursing-turing
 
 ## Pending / Known Issues
+- Verify custom ticker chip behavior in onboarding modal (add/remove on fresh account) — may require localStorage reset of `ba_onboarded_<uid>` to trigger modal; existing accounts skip onboarding as expected
 - Validate `relevance_reason` output quality on next real pipeline run (post-2026-03-31 improvements); if still generic, RSS feed depth may be limiting factor
 - Consider AI/Semis-specific framing rules for FILTER_PROMPT if macro/rates improvement confirms but AI/Semis underperforms
 - DM Mono style tag hydration warning (pre-existing, unrelated to recent fixes, noted in PR #18)
