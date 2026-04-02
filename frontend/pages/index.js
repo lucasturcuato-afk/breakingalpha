@@ -120,7 +120,7 @@ function ArticleCard({ article, isNew }) {
   return (
     <div
       onClick={() => setExpanded(!expanded)}
-      style={{ background: isNew ? 'rgba(245,158,11,0.05)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isNew ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '10px', padding: '16px 20px', cursor: 'pointer', marginBottom: '8px', transition: 'all 0.15s' }}
+      style={{ background: isNew ? 'rgba(245,158,11,0.05)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isNew ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '3px', padding: '10px 14px', cursor: 'pointer', marginBottom: '6px', transition: 'all 0.15s' }}
       onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.052)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)' }}
       onMouseLeave={e => { e.currentTarget.style.background = isNew ? 'rgba(245,158,11,0.05)' : 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = isNew ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.07)' }}
     >
@@ -137,7 +137,7 @@ function ArticleCard({ article, isNew }) {
         <div style={{ marginTop: '12px' }}>
           {article.summary && <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.58)', lineHeight: 1.72, margin: '0 0 14px 0' }}>{article.summary}</p>}
           {article.relevance_reason && (
-            <div style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: '6px', padding: '10px 14px', marginBottom: '12px' }}>
+            <div style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: '3px', padding: '8px 12px', marginBottom: '10px' }}>
               <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#fbbf24', letterSpacing: '0.12em', marginBottom: '4px' }}>SIGNAL</div>
               <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.68)', margin: 0, lineHeight: 1.5 }}>{article.relevance_reason}</p>
             </div>
@@ -218,12 +218,12 @@ function BriefView({ type }) {
       {briefing ? (
         <>
           {/* Lead card */}
-          <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.08), rgba(139,92,246,0.04))', border: '1px solid rgba(245,158,11,0.18)', borderRadius: '12px', padding: '28px 32px', marginBottom: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+          <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.08), rgba(139,92,246,0.04))', border: '1px solid rgba(245,158,11,0.18)', borderRadius: '3px', padding: '14px 16px', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
               <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>TODAY'S LEAD</div>
-              <span style={{ padding: '3px 10px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: toneColor, background: toneColor + '18', border: `1px solid ${toneColor}40` }}>{tone}</span>
+              <span style={{ padding: '3px 10px', borderRadius: '3px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: toneColor, background: toneColor + '18', border: `1px solid ${toneColor}40` }}>{tone}</span>
             </div>
-            <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 'clamp(22px, 2.8vw, 30px)', fontWeight: 700, color: '#f8fafc', lineHeight: 1.3, margin: '0 0 14px 0' }}>{briefing.headline}</h1>
+            <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 'clamp(18px, 2.4vw, 24px)', fontWeight: 700, color: '#f8fafc', lineHeight: 1.3, margin: '0 0 10px 0' }}>{briefing.headline}</h1>
             <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.65)', lineHeight: 1.78, margin: 0 }}>{briefing.summary}</p>
           </div>
 
@@ -233,7 +233,7 @@ function BriefView({ type }) {
               <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '10px' }}>TOP DEALS TO WATCH</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
                 {topDeals.map((deal, i) => (
-                  <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '14px 16px' }}>
+                  <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '3px', padding: '10px 14px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
                       <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '15px', fontWeight: 600, color: '#f8fafc' }}>{deal.company}</span>
                       <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#fbbf24', flexShrink: 0, marginLeft: '8px' }}>{deal.value || 'Undisclosed'}</span>
@@ -252,7 +252,7 @@ function BriefView({ type }) {
               <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '10px' }}>ANALYST BRIEFING</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 {Object.entries(sections).map(([key, text]) => (
-                  <div key={key} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '14px 16px', gridColumn: key === 'what_to_watch' || key === 'tomorrow_setup' ? 'span 2' : 'span 1' }}>
+                  <div key={key} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '3px', padding: '10px 14px', gridColumn: key === 'what_to_watch' || key === 'tomorrow_setup' ? 'span 2' : 'span 1' }}>
                     <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.12em', marginBottom: '7px' }}>{SECTION_LABELS[key] || key.toUpperCase()}</div>
                     <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.55)', lineHeight: 1.68, margin: 0 }}>{text}</p>
                   </div>
@@ -269,7 +269,7 @@ function BriefView({ type }) {
                 {Object.entries(sectorBreak).map(([sector, text]) => {
                   const color = getSectorColor(sector)
                   return (
-                    <div key={sector} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.055)', borderRadius: '7px', padding: '10px 13px' }}>
+                    <div key={sector} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.055)', borderRadius: '3px', padding: '10px 13px' }}>
                       <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color, marginBottom: '5px' }}>{sector.split(' ')[0].toUpperCase()}</div>
                       <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>{text}</div>
                     </div>
@@ -280,9 +280,8 @@ function BriefView({ type }) {
           )}
         </>
       ) : (
-        <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: '12px', padding: '44px', textAlign: 'center', marginBottom: '28px' }}>
-          <div style={{ fontSize: '30px', marginBottom: '12px' }}>{type === 'morning' ? '☀️' : '🌙'}</div>
-          <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '20px', color: 'rgba(255,255,255,0.35)', marginBottom: '8px' }}>No {type} brief yet</div>
+        <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: '3px', padding: '20px 24px', textAlign: 'center', marginBottom: '16px' }}>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', color: 'rgba(255,255,255,0.2)', letterSpacing: '0.14em', marginBottom: '6px' }}>NO {type.toUpperCase()} BRIEF YET</div>
           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.22)' }}>{type === 'morning' ? 'Publishes weekdays at 6:00 AM PT' : 'Publishes weekdays at 10:00 PM PT'}</div>
         </div>
       )}
@@ -303,7 +302,7 @@ function BriefView({ type }) {
       <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '14px' }}>{filtered.length} {filtered.length === 1 ? 'STORY' : 'STORIES'}{sectorFilter !== 'ALL' && ` · ${activeSector?.label}`}</div>
       {filtered.length > 0
         ? filtered.map(a => <ArticleCard key={a.id} article={a} />)
-        : <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>NO STORIES IN THIS SECTOR YET</div>}
+        : <div style={{ textAlign: 'center', padding: '24px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>NO STORIES IN THIS SECTOR YET</div>}
     </div>
   )
 }
@@ -459,7 +458,7 @@ function LiveTracker() {
           </div>
         </div>
       ) : sorted.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>NO STORIES IN THIS SECTOR YET</div>
+        <div style={{ textAlign: 'center', padding: '24px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>NO STORIES IN THIS SECTOR YET</div>
       ) : useBuckets ? (
         // Time-bucketed view
         BUCKET_ORDER.filter(b => grouped[b]?.length > 0).map(bucket => (
@@ -596,14 +595,14 @@ function DealFlowTracker() {
       </div>
 
       {showForm && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '10px', padding: '18px 20px', marginBottom: '16px' }}>
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '3px', padding: '12px 14px', marginBottom: '12px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-            <input placeholder="Company *" value={formData.company} onChange={e => setFormData(f => ({ ...f, company: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }} />
-            <input placeholder="Acquirer" value={formData.acquirer} onChange={e => setFormData(f => ({ ...f, acquirer: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }} />
-            <input placeholder="Deal type (e.g. M&A, IPO)" value={formData.deal_type} onChange={e => setFormData(f => ({ ...f, deal_type: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }} />
-            <input placeholder="Value (e.g. $2.5B)" value={formData.value} onChange={e => setFormData(f => ({ ...f, value: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }} />
+            <input placeholder="Company *" value={formData.company} onChange={e => setFormData(f => ({ ...f, company: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '3px', padding: '6px 10px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }} />
+            <input placeholder="Acquirer" value={formData.acquirer} onChange={e => setFormData(f => ({ ...f, acquirer: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '3px', padding: '6px 10px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }} />
+            <input placeholder="Deal type (e.g. M&A, IPO)" value={formData.deal_type} onChange={e => setFormData(f => ({ ...f, deal_type: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '3px', padding: '6px 10px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }} />
+            <input placeholder="Value (e.g. $2.5B)" value={formData.value} onChange={e => setFormData(f => ({ ...f, value: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '3px', padding: '6px 10px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }} />
           </div>
-          <input placeholder="Notes" value={formData.notes} onChange={e => setFormData(f => ({ ...f, notes: e.target.value }))} style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none', marginBottom: '10px' }} />
+          <input placeholder="Notes" value={formData.notes} onChange={e => setFormData(f => ({ ...f, notes: e.target.value }))} style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '3px', padding: '6px 10px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none', marginBottom: '10px' }} />
           <div style={{ display: 'flex', gap: '8px' }}>
             <button onClick={handleAddDeal} style={{ padding: '6px 16px', borderRadius: '4px', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid rgba(245,158,11,0.5)', background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>SAVE DEAL</button>
             <button onClick={() => setShowForm(false)} style={{ padding: '6px 16px', borderRadius: '4px', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: 'rgba(255,255,255,0.35)' }}>CANCEL</button>
@@ -620,13 +619,13 @@ function DealFlowTracker() {
               { label: 'CLOSED',          value: stageCounts['closed'] || 0 },
               { label: 'WITH VALUATION',  value: deals.filter(d => d.valuation).length },
             ].map((s, i) => (
-              <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '12px 14px' }}>
-                <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '22px', fontWeight: 700, color: '#f8fafc', marginBottom: '3px' }}>{s.value}</div>
+              <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '3px', padding: '10px 12px' }}>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '16px', fontWeight: 500, color: '#f8fafc', marginBottom: '3px' }}>{s.value}</div>
                 <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em' }}>{s.label}</div>
               </div>
             ))}
           </div>
-          <input type="text" placeholder="Search company, acquirer..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '8px', padding: '9px 15px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none', marginBottom: '14px' }} />
+          <input type="text" placeholder="Search company, acquirer..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '3px', padding: '7px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none', marginBottom: '12px' }} />
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '20px' }}>
             <button onClick={() => setFilterStage('ALL')} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${filterStage === 'ALL' ? '#f59e0b' : 'rgba(255,255,255,0.07)'}`, background: filterStage === 'ALL' ? 'rgba(245,158,11,0.12)' : 'transparent', color: filterStage === 'ALL' ? '#f59e0b' : 'rgba(255,255,255,0.38)' }}>ALL ({deals.length})</button>
             {Object.entries(DEAL_STAGE_MAP).map(([key, s]) => {
@@ -649,9 +648,9 @@ function DealFlowTracker() {
       )}
 
       {!loading && deals.length === 0 && (
-        <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.06), rgba(59,130,246,0.04))', border: '1px solid rgba(245,158,11,0.14)', borderRadius: '12px', padding: '32px', marginTop: '16px' }}>
-          <div style={{ fontSize: '28px', marginBottom: '14px' }}>💼</div>
-          <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '22px', color: '#f8fafc', margin: '0 0 12px 0' }}>Deal pipeline populating...</h2>
+        <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.06), rgba(59,130,246,0.04))', border: '1px solid rgba(245,158,11,0.14)', borderRadius: '3px', padding: '16px 20px', marginTop: '12px' }}>
+          <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '8px' }}>DEAL PIPELINE</div>
+          <h2 style={{ fontFamily: "'DM Sans', 'Inter', system-ui, sans-serif", fontSize: '15px', fontWeight: 600, color: '#f8fafc', margin: '0 0 8px 0' }}>Populating from ingested articles...</h2>
           <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.55)', lineHeight: 1.75, margin: '0 0 18px 0' }}>AI is extracting deals from ingested articles. If this is your first run, make sure the <span style={{ color: '#f59e0b', fontFamily: "'DM Mono', monospace" }}>deal_flow</span> table exists in Supabase and RLS read policy is enabled.</p>
         </div>
       )}
@@ -665,12 +664,12 @@ function DealFlowTracker() {
             const isExp    = expanded === deal.id
             return (
               <div key={deal.id} onClick={() => setExpanded(isExp ? null : deal.id)}
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '16px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '3px', padding: '10px 14px', cursor: 'pointer', transition: 'all 0.15s' }}
                 onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)' }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '18px', fontWeight: 700, color: '#f8fafc' }}>{deal.company}</span>
+                    <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '15px', fontWeight: 700, color: '#f8fafc' }}>{deal.company}</span>
                     {deal.acquirer && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.3)' }}>← {deal.acquirer}</span>}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}>
@@ -687,7 +686,7 @@ function DealFlowTracker() {
                 {isExp && (
                   <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                     {deal.thesis && (
-                      <div style={{ background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.18)', borderRadius: '6px', padding: '10px 14px', marginBottom: '10px' }}>
+                      <div style={{ background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.18)', borderRadius: '3px', padding: '8px 12px', marginBottom: '10px' }}>
                         <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#fbbf24', letterSpacing: '0.12em', marginBottom: '4px' }}>SIGNAL</div>
                         <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)', margin: 0, lineHeight: 1.55, fontStyle: 'italic' }}>{deal.thesis}</p>
                       </div>
@@ -712,7 +711,7 @@ function DealFlowTracker() {
 
       {showMemoModal && (
         <div onClick={() => setShowMemoModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#0d1424', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '12px', width: '100%', maxWidth: '680px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#0d1424', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '3px', width: '100%', maxWidth: '680px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
               <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>DEAL MEMO — {memoTitle.toUpperCase()}</span>
               <button onClick={() => setShowMemoModal(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '18px', cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}>×</button>
@@ -766,9 +765,9 @@ function CompanyIntel() {
   return (
     <div>
       <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '14px' }}>🏢 COMPANY INTEL</div>
-      <input type="text" placeholder="Search companies..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '8px', padding: '9px 15px', fontSize: '13px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none', marginBottom: '18px' }} />
-      {loading ? <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>LOADING...</div>
-        : filtered.length === 0 ? <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>{search ? 'NO MATCH' : 'NO DATA YET'}</div>
+      <input type="text" placeholder="Search companies..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '3px', padding: '7px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none', marginBottom: '12px' }} />
+      {loading ? <div style={{ textAlign: 'center', padding: '24px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>LOADING...</div>
+        : filtered.length === 0 ? <div style={{ textAlign: 'center', padding: '24px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>{search ? 'NO MATCH' : 'NO DATA YET'}</div>
         : (<>
           {/* Note: company count differs from deal count — sourced from different Supabase queries */}
           <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '14px' }}>{filtered.length} COMPANIES TRACKED</div>
@@ -776,7 +775,7 @@ function CompanyIntel() {
             {filtered.slice(0, 60).map((c, i) => {
               const color = c.sectors[0] ? getSectorColor(c.sectors[0]) : '#64748b'
               return (
-                <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '13px 15px' }}>
+                <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '3px', padding: '10px 12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '7px' }}>
                     <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '15px', fontWeight: 600, color: '#f1f5f9' }}>{c.name}</span>
                     <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '2px 7px', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.22)' }}>{c.mentions}×</span>
@@ -898,18 +897,18 @@ function Trends() {
   return (
     <div>
       <div style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:'#f59e0b', letterSpacing:'0.14em', marginBottom:'4px' }}>📈 SIGNAL TRENDS</div>
-      <p style={{ fontSize:'12px', fontFamily:"'DM Mono', monospace", color:'rgba(255,255,255,0.28)', marginBottom:'24px' }}>
+      <p style={{ fontSize:'12px', fontFamily:"'DM Mono', monospace", color:'rgba(255,255,255,0.28)', marginBottom:'16px' }}>
         {articles.length} articles · last 24h vs prior 24h
       </p>
 
       {/* Top Company Movers */}
-      <div style={{ marginBottom:'28px' }}>
+      <div style={{ marginBottom:'16px' }}>
         <div style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:'rgba(255,255,255,0.28)', letterSpacing:'0.14em', marginBottom:'10px' }}>TOP COMPANY MOVERS · LAST 24H</div>
         {movers.length === 0
           ? <div style={{ fontSize:'12px', fontFamily:"'DM Mono', monospace", color:'rgba(255,255,255,0.18)', padding:'20px 0' }}>Not enough data yet — check back after next ingest</div>
           : <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(185px, 1fr))', gap:'8px' }}>
               {movers.map((m, i) => (
-                <div key={i} style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:'8px', padding:'12px 14px' }}>
+                <div key={i} style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:'3px', padding:'10px 12px' }}>
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'6px' }}>
                     <span style={{ fontFamily:"'Cormorant Garamond', serif", fontSize:'15px', fontWeight:600, color:'#f1f5f9', lineHeight:1.2 }}>{m.name}</span>
                     <span style={{ fontFamily:"'DM Mono', monospace", fontSize:'11px', color: m.delta >= 0 ? '#4ade80' : '#f87171', flexShrink:0, marginLeft:'6px' }}>
@@ -939,7 +938,7 @@ function Trends() {
           const shift   = shiftLabel(s.sentShift)
           const momColor = s.momentum > 0 ? '#4ade80' : s.momentum < 0 ? '#f87171' : '#94a3b8'
           return (
-            <div key={s.sector} style={{ marginBottom:'16px', background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.055)', borderRadius:'8px', padding:'14px 16px' }}>
+            <div key={s.sector} style={{ marginBottom:'10px', background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.055)', borderRadius:'3px', padding:'10px 14px' }}>
               {/* Top row */}
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
                 <span style={{ fontFamily:"'DM Mono', monospace", fontSize:'11px', color:'rgba(255,255,255,0.65)' }}>{s.sector}</span>
@@ -1060,7 +1059,7 @@ export default function Home() {
             <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.16em' }}>
               {NAV.find(n => n.id === activeTab)?.icon} {NAV.find(n => n.id === activeTab)?.label.toUpperCase()}
             </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.25)' }}>{todayStr}</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#4ade80', animation: 'pulse 2s infinite' }} />
@@ -1068,7 +1067,7 @@ export default function Home() {
               </div>
             </div>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: activeTab === 'home' ? '20px 24px' : '30px' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
             <div style={{ maxWidth: activeTab === 'home' ? 'none' : '860px' }}>
               {activeTab === 'home'      && <Dashboard onNavigate={setActiveTab} marketOpen={marketOpen} />}
               {activeTab === 'morning'   && <BriefView type="morning" />}
