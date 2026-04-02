@@ -3,7 +3,9 @@
 ## Current Status
 - Live at https://breakingalpha.vercel.app
 - Pipeline auto-runs 6am PT (morning) and 10pm PT (evening), weekdays
-- Morning Review and Evening Wrap both generating correctly
+- **Morning Review stub-row fallback hotfix merged (2026-04-01):** Frontend now skips failed stub briefing rows (headline = "Market Intelligence Unavailable") and falls back to the last successful briefing. Root cause: synthesize.py always inserts a stub row on Groq failure; frontend was fetching the newest row unconditionally, surfacing the error to all users. Fix: `.neq('headline', 'Market Intelligence Unavailable')` added to BriefView query in `frontend/pages/index.js`.
+- **Morning Review outage (2026-04-01):** Today's scheduled morning run hit Groq 100k TPD quota. The stub row surfaced in the frontend until the hotfix was merged. Evening Wrap generated successfully. Prompt-quality improvements (relevance_reason, synthesis prompts) from `noah/briefing-diversity-and-quality` are still pending one clean post-reset morning run before that PR can be merged.
+- **Next validation step:** `cd backend && python ingest.py && python synthesize.py morning` — run after Groq quota resets (rolling 24h window). Inspect output is not a stub and morning quality passes bar before merging `noah/briefing-diversity-and-quality`.
 - All backend synthesis, watchlist, and frontend work merged to main (3 PRs from 2026-03-31 session)
 - Article card UI with relevance chips, timestamps, and relevance_reason display live in production
 - Signed-out landing page + auth gate live in production (PR #28); onboarding modal custom ticker chip removal now functional
@@ -55,6 +57,7 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Status: in progress
 
 ## Recently Completed (2026-04-01)
+- **Briefing stub-row fallback hotfix merged:** `frontend/pages/index.js` BriefView query now filters out stub rows before selecting the latest briefing. Prevents Groq quota/generation failures from surfacing "Market Intelligence Unavailable" to users; falls back to last successful briefing instead. Also corrected HANDOFF.md model config (was llama-3.1-8b-instant / 500k TPD; actual is llama-3.3-70b-versatile / 100k TPD).
 - **Brief Preferences merged (PR #31):** PreferencesPanel, `/api/preferences` route, `user_preferences` schema live. Persistence and load working; not yet wired to filter brief content — next step.
 
 ## Recently Completed (2026-03-31)
@@ -89,7 +92,8 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - **Preferences filtering (next):** Preferences now persist and load; next step is wiring saved preferences to filter/modify brief content (sectors, sentiment, deal status filters).
 - **Local auth validation blocked:** Google auth at localhost not in Supabase redirect allowlist. Auth-dependent work must validate on Vercel preview URL.
 - Verify Supabase anon SELECT on `articles` and `briefings` tables. Enable `SELECT TO anon` if needed so signed-out preview shows real live data instead of static fallback.
-- Validate `relevance_reason` output quality on next real pipeline run (post-2026-03-31 improvements); if still generic, RSS feed depth may be limiting factor
+- **Prompt-quality validation pending:** `noah/briefing-diversity-and-quality` branch has relevance_reason and synthesis prompt improvements. Evening Wrap and article-level relevance_reason both validated. Morning Review blocked by Groq TPD quota exhaustion during validation — needs one clean post-reset run (`cd backend && python ingest.py && python synthesize.py morning`) before PR can merge. Do not merge until morning output is confirmed non-stub and passes quality bar.
+- Validate `relevance_reason` output quality on next real pipeline run; article-level quality confirmed improved on new ingests; morning synthesis quality still pending one clean run.
 - Consider AI/Semis-specific framing rules for FILTER_PROMPT if macro/rates improvement confirms but AI/Semis underperforms
 - DM Mono style tag hydration warning (pre-existing, unrelated to recent fixes, noted in PR #18)
 

@@ -18,10 +18,12 @@
 - Signed-out preview mode — hero, Morning Review headline + first 2 sections (blurred + CTA), top 3 articles visible, articles 4–5 blurred with sign-in CTAs
 - Onboarding UX — custom-added tickers render immediately as removable chips in the onboarding modal
 - Brief preferences UI foundation — PreferencesPanel component, `/api/preferences` API route, `user_preferences` schema (PR #31); preferences data persists/loads but not yet wired to affect brief content
+- Briefing stub-row fallback — frontend now skips failed stub rows and falls back to last successful briefing; prevents Groq quota failures from showing "Market Intelligence Unavailable" to users
 
 ## In Progress
 - Thesis Board frontend — Lucas (lucas/thesis-board-live)
 - Brief preferences wiring — Noah (PR #31 merged; UI exists but not yet filtering/affecting brief content)
+- Prompt-quality improvements — Noah (noah/briefing-diversity-and-quality; Evening Wrap + relevance_reason validated; morning synthesis pending one clean post-Groq-quota-reset run)
 
 ## Next — Noah
 - Validate `noah/brief-preferences` on Vercel preview (auth, panel renders, preferences save/load work)
