@@ -17,12 +17,16 @@
 - Signed-out landing page + auth-aware homepage gate — unauthenticated users see static landing page; signed-in experience unchanged
 - Signed-out preview mode — hero, Morning Review headline + first 2 sections (blurred + CTA), top 3 articles visible, articles 4–5 blurred with sign-in CTAs
 - Onboarding UX — custom-added tickers render immediately as removable chips in the onboarding modal
+- Brief preferences UI foundation — PreferencesPanel component, `/api/preferences` API route, `user_preferences` schema (PR #31); preferences data persists/loads but not yet wired to affect brief content
 
 ## In Progress
 - Thesis Board frontend — Lucas (lucas/thesis-board-live)
+- Brief preferences wiring — Noah (PR #31 merged; UI exists but not yet filtering/affecting brief content)
 
 ## Next — Noah
-- Merge PR #29 (signed-out preview mode), then verify/enable Supabase anon SELECT on `articles` and `briefings` tables
+- Validate `noah/brief-preferences` on Vercel preview (auth, panel renders, preferences save/load work)
+- Wire saved preferences to filter/modify brief content (preferences UI now exists but has zero impact on briefs)
+- Verify/enable Supabase anon SELECT on `articles` and `briefings` tables
 - Article cards structured display — headline, why it matters, impacted name/theme, source, timestamp (fields already in schema, zero backend work)
 - Today feed "Watchlist Only" toggle — filter articles client-side to watchlist-matched items
 - SUPABASE_SERVICE_ROLE_KEY added to backend for pipeline to read all users' watchlists for relevance boost
