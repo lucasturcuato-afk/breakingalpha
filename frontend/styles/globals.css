@@ -1,41 +1,324 @@
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap');
+/* ─────────────────────────────────────────────────────────────────────────────
+   BreakingAlpha — Global Design System
+   Bloomberg-density dark terminal palette
+   ───────────────────────────────────────────────────────────────────────────── */
 
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Inter:wght@300;400;500;600&display=swap');
+
+/* ─── Color Tokens ───────────────────────────────────────────────────────────
+   Three-layer surface system (bg → surface → card)
+   Named semantically — use the semantic names in components, not raw values
+   ─────────────────────────────────────────────────────────────────────────── */
 :root {
-  --bg: #07070d;
-  --surface: #0d0d1a;
-  --surface2: #13131f;
-  --border: #1c1c2e;
-  --border2: #252538;
-  --gold: #c8a951;
-  --gold-dim: #7a6630;
-  --gold-glow: rgba(200,169,81,0.08);
-  --green: #27ae60;
-  --red: #c0392b;
-  --blue: #2980b9;
-  --purple: #8e44ad;
-  --text: #e8e8f2;
-  --text-mid: #9999b8;
-  --text-dim: #55556a;
-  --serif: 'Cormorant Garamond', Georgia, serif;
-  --mono: 'DM Mono', monospace;
-  --sans: 'DM Sans', sans-serif;
+  /* Base backgrounds */
+  --bg:             #04040b;   /* near-OLED black, slight blue tint */
+  --surface:        #08080f;   /* primary card/panel surface */
+  --surface-2:      #0c0c16;   /* elevated surface (modals, tooltips) */
+  --surface-3:      #10101d;   /* table rows, hover states */
+  --surface-4:      #14142200; /* deep hover / selected row */
+
+  /* Borders */
+  --border:         #1a1a2e;   /* default divider */
+  --border-2:       #22223a;   /* card/panel outline */
+  --border-3:       #2e2e4a;   /* emphasis border, input focus ring */
+  --border-accent:  #1d6ef540; /* blue-tinted focus ring */
+
+  /* ── Accent: Electric Blue (primary interactive / links / CTAs) ── */
+  --blue:           #1d6ef5;   /* electric blue — primary action */
+  --blue-bright:    #4d8fff;   /* hover / highlight state */
+  --blue-dim:       #1043a8;   /* pressed / active state */
+  --blue-muted:     #1d6ef518; /* subtle blue background tint */
+  --blue-glow:      rgba(29, 110, 245, 0.15);
+
+  /* ── Accent: Amber (financial positive / alerts / watchlists) ── */
+  --amber:          #e8940a;   /* financial amber — secondary accent */
+  --amber-bright:   #f5b228;   /* hover / emphasis */
+  --amber-dim:      #9b620a;   /* subdued / inactive */
+  --amber-muted:    #e8940a14; /* subtle amber background tint */
+  --amber-glow:     rgba(232, 148, 10, 0.12);
+
+  /* ── Market Direction Colors ── */
+  --green:          #16c25e;   /* positive / gain */
+  --green-bright:   #22d96e;
+  --green-muted:    #16c25e14;
+  --red:            #e83a3a;   /* negative / loss */
+  --red-bright:     #ff5252;
+  --red-muted:      #e83a3a14;
+  --yellow:         #f0c040;   /* neutral / pending / flagged */
+  --yellow-muted:   #f0c04014;
+  --purple:         #8b5cf6;   /* AI signal / model output */
+  --purple-muted:   #8b5cf614;
+
+  /* ── Text Hierarchy (4 levels) ── */
+  --text:           #e8e8f5;   /* primary — headlines, key data */
+  --text-2:         #a0a0c0;   /* secondary — labels, meta */
+  --text-3:         #60607a;   /* tertiary — timestamps, footnotes */
+  --text-4:         #32324a;   /* disabled / placeholder */
+  --text-inverse:   #04040b;   /* on bright accent backgrounds */
+
+  /* ── Semantic Aliases ── */
+  --positive:       var(--green);
+  --negative:       var(--red);
+  --neutral:        var(--yellow);
+  --signal:         var(--purple);
+  --primary:        var(--blue);
+  --primary-hover:  var(--blue-bright);
+  --warning:        var(--amber);
+
+  /* ── Typography ── */
+  --font-mono:   'DM Mono', 'JetBrains Mono', 'Courier New', monospace;
+  --font-sans:   'DM Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-label:  'Inter', 'DM Sans', system-ui, sans-serif;
+
+  /* ── Font Sizes (tight scale for density) ── */
+  --text-2xs:  10px;
+  --text-xs:   11px;
+  --text-sm:   12px;
+  --text-base: 13px;
+  --text-md:   14px;
+  --text-lg:   16px;
+  --text-xl:   18px;
+  --text-2xl:  22px;
+  --text-3xl:  28px;
+  --text-4xl:  36px;
+
+  /* ── Spacing (tighter than Tailwind defaults) ── */
+  --space-0:   0px;
+  --space-px:  1px;
+  --space-0-5: 2px;
+  --space-1:   3px;
+  --space-1-5: 5px;
+  --space-2:   7px;
+  --space-2-5: 9px;
+  --space-3:   11px;
+  --space-4:   14px;
+  --space-5:   18px;
+  --space-6:   22px;
+  --space-8:   28px;
+  --space-10:  36px;
+  --space-12:  44px;
+  --space-16:  56px;
+
+  /* ── Border Radius ── */
+  --radius-none: 0px;
+  --radius-sm:   2px;
+  --radius:      3px;
+  --radius-md:   4px;
+  --radius-lg:   6px;
+  --radius-xl:   8px;
+
+  /* ── Shadows / Elevation ── */
+  --shadow-sm:  0 1px 2px rgba(0,0,0,0.5);
+  --shadow:     0 2px 8px rgba(0,0,0,0.6);
+  --shadow-md:  0 4px 16px rgba(0,0,0,0.7);
+  --shadow-lg:  0 8px 32px rgba(0,0,0,0.8);
+  --glow-blue:  0 0 12px var(--blue-glow);
+  --glow-amber: 0 0 12px var(--amber-glow);
+
+  /* ── Z-index Scale ── */
+  --z-base:    0;
+  --z-raised:  10;
+  --z-dropdown:20;
+  --z-sticky:  30;
+  --z-overlay: 40;
+  --z-modal:   50;
+  --z-toast:   60;
+  --z-tooltip: 70;
+
+  /* ── Layout ── */
+  --sidebar-width:  220px;
+  --header-height:  44px;
+  --panel-min:      280px;
+  --content-max:    1440px;
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
+/* ─── Reset ──────────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* ─── Base Document ──────────────────────────────────────────────────────── */
+html {
+  font-size: 14px; /* sets rem base — tighter than browser default 16px */
+  -webkit-text-size-adjust: 100%;
+}
 
 html, body {
-  background: var(--bg);
+  background-color: var(--bg);
   color: var(--text);
-  font-family: var(--sans);
-  font-size: 15px;
-  line-height: 1.6;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-a { color: inherit; text-decoration: none; }
+/* ─── Typography Primitives ─────────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
 
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-::-webkit-scrollbar-track { background: transparent; }
+h1 { font-size: var(--text-3xl); }
+h2 { font-size: var(--text-2xl); }
+h3 { font-size: var(--text-xl); }
+h4 { font-size: var(--text-lg); }
+h5 { font-size: var(--text-md); }
+h6 { font-size: var(--text-base); font-weight: 500; }
 
-::selection { background: var(--gold-glow); color: var(--gold); }
+p {
+  font-size: var(--text-base);
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+/* ─── Data & Numbers (always monospace) ─────────────────────────────────── */
+.mono,
+[data-value],
+[data-price],
+[data-ticker],
+[data-pct],
+td.num,
+.price,
+.pct,
+.ticker {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: 0;
+}
+
+/* ─── Links ─────────────────────────────────────────────────────────────── */
+a {
+  color: var(--blue);
+  text-decoration: none;
+  transition: color 120ms ease;
+}
+a:hover { color: var(--blue-bright); }
+
+/* ─── Market Color Utilities ─────────────────────────────────────────────── */
+.positive { color: var(--green); }
+.negative { color: var(--red); }
+.neutral  { color: var(--yellow); }
+.signal   { color: var(--purple); }
+.muted    { color: var(--text-3); }
+.dim      { color: var(--text-4); }
+
+.bg-positive { background-color: var(--green-muted); }
+.bg-negative { background-color: var(--red-muted); }
+.bg-neutral  { background-color: var(--yellow-muted); }
+.bg-signal   { background-color: var(--purple-muted); }
+
+/* ─── Scrollbars ─────────────────────────────────────────────────────────── */
+::-webkit-scrollbar         { width: 3px; height: 3px; }
+::-webkit-scrollbar-track   { background: transparent; }
+::-webkit-scrollbar-thumb   { background: var(--border-2); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-3); }
+
+/* Firefox */
+* { scrollbar-width: thin; scrollbar-color: var(--border-2) transparent; }
+
+/* ─── Selection ──────────────────────────────────────────────────────────── */
+::selection {
+  background: var(--blue-muted);
+  color: var(--blue-bright);
+}
+
+/* ─── Focus ──────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 1.5px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ─── Horizontal Rule ────────────────────────────────────────────────────── */
+hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: var(--space-4) 0;
+}
+
+/* ─── Table Defaults (for data-dense tables) ─────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+thead tr {
+  border-bottom: 1px solid var(--border-2);
+}
+
+thead th {
+  font-family: var(--font-label);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  white-space: nowrap;
+}
+
+tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background-color 80ms ease;
+}
+
+tbody tr:hover {
+  background-color: var(--surface-3);
+}
+
+tbody td {
+  padding: var(--space-1-5) var(--space-3);
+  color: var(--text);
+  white-space: nowrap;
+  font-size: var(--text-sm);
+}
+
+/* ─── Code ───────────────────────────────────────────────────────────────── */
+code, pre {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+code { padding: 1px 4px; }
+pre  { padding: var(--space-4); overflow: auto; }
+
+/* ─── Animations ─────────────────────────────────────────────────────────── */
+@keyframes pulse-positive {
+  0%, 100% { color: var(--green); }
+  50%       { color: var(--green-bright); }
+}
+
+@keyframes pulse-negative {
+  0%, 100% { color: var(--red); }
+  50%       { color: var(--red-bright); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.flash-positive { animation: pulse-positive 600ms ease 2; }
+.flash-negative { animation: pulse-negative 600ms ease 2; }
+.fade-in        { animation: fade-in 180ms ease forwards; }
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

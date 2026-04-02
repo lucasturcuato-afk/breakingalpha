@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Head from 'next/head'
 import { createClient } from '@supabase/supabase-js'
+import Sidebar from '../components/Sidebar'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -21,18 +22,6 @@ const SECTORS = [
   { key: 'cons',   label: 'CONSUMER',    value: 'Consumer & Retail',                   color: '#a78bfa' },
 ]
 
-const SIDEBAR_SECTORS = [
-  { name: 'Technology M&A',    color: '#f59e0b' },
-  { name: 'Venture Capital',   color: '#8b5cf6' },
-  { name: 'Private Equity',    color: '#3b82f6' },
-  { name: 'Public Markets',    color: '#10b981' },
-  { name: 'Geopolitics',       color: '#ef4444' },
-  { name: 'Real Estate',       color: '#f97316' },
-  { name: 'Fintech & Crypto',  color: '#06b6d4' },
-  { name: 'Healthcare',        color: '#ec4899' },
-  { name: 'Energy',            color: '#84cc16' },
-  { name: 'Consumer & Retail', color: '#a78bfa' },
-]
 
 const DEAL_STAGE_MAP = {
   rumored:   { label: 'RUMORED',   color: '#94a3b8' },
@@ -1166,54 +1155,18 @@ export default function Home() {
         @keyframes scrollTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-33.333%); } }
         button:focus { outline: none; }
         input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.2); }
-        .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 16px; border-radius: 6px; border: none; border-left: 2px solid transparent; background: transparent; color: #9ca3af; font-size: 12.5px; font-family: 'DM Mono', monospace; cursor: pointer; text-align: left; transition: all 0.15s ease; margin-bottom: 1px; }
-        .nav-item:hover { background: rgba(245,158,11,0.06); color: #e5e7eb; }
-        .nav-item:hover .nav-icon { color: #f59e0b; }
-        .nav-item.nav-active { background: rgba(245,158,11,0.10); color: #f59e0b; border-left: 2px solid #f59e0b; }
-        .nav-item.nav-active .nav-icon { color: #f59e0b; }
-        .nav-icon { color: #6b7280; display: flex; align-items: center; flex-shrink: 0; transition: color 0.15s ease; }
-        .sector-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-        .sector-row:hover .sector-label { color: #9ca3af; }
       `}</style>
 
       <TickerBar quotes={quotes} />
 
       <div style={{ display: 'flex', height: 'calc(100vh - 32px)' }}>
         {/* Sidebar */}
-        <div style={{ width: '232px', flexShrink: 0, background: '#060a15', borderRight: '1px solid #0f1623', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
-          <div style={{ padding: '22px 20px 16px', borderBottom: '1px solid #1a2235' }}>
-            <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '21px', fontWeight: 700 }}>
-              <span style={{ color: '#fff' }}>Breaking</span><span style={{ color: '#f59e0b' }}>Alpha</span>
-            </div>
-            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#4b5563', letterSpacing: '0.15em', marginTop: '3px' }}>MARKET INTELLIGENCE</div>
-          </div>
-          <nav style={{ padding: '10px 10px' }}>
-            {NAV.map(item => (
-              <button key={item.id} onClick={() => setActiveTab(item.id)} className={`nav-item${activeTab === item.id ? ' nav-active' : ''}`}>
-                <span className="nav-icon">{item.icon}</span>
-                {item.label}
-                {item.id === 'live' && <span style={{ marginLeft: 'auto', width: '5px', height: '5px', borderRadius: '50%', background: '#4ade80', animation: 'pulse 2s infinite', flexShrink: 0 }} />}
-              </button>
-            ))}
-          </nav>
-          <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.055)' }}>
-            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#374151', letterSpacing: '0.12em', marginBottom: '10px' }}>SECTORS TRACKED</div>
-            {SIDEBAR_SECTORS.map(s => (
-              <div key={s.name} className="sector-row">
-                <div style={{ width: '3px', height: '3px', borderRadius: '1px', background: s.color, flexShrink: 0 }} />
-                <span className="sector-label" style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#6b7280', transition: 'color 0.15s ease' }}>{s.name}</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.055)' }}>
-            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#374151', letterSpacing: '0.12em', marginBottom: '6px' }}>MARKET TIME</div>
-            <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.38)', lineHeight: 1.6 }}>{marketTime || '—'}</div>
-            <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: marketOpen ? '#4ade80' : '#f87171', animation: 'pulse 2s infinite', flexShrink: 0 }} />
-              <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: marketOpen ? '#4ade80' : '#f87171', letterSpacing: '0.1em' }}>US EQUITIES {marketOpen ? 'OPEN' : 'CLOSED'}</span>
-            </div>
-          </div>
-        </div>
+        <Sidebar
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          marketTime={marketTime}
+          marketOpen={marketOpen}
+        />
 
         {/* Main */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

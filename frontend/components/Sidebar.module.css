@@ -1,0 +1,136 @@
+/* ── Sidebar.module.css ────────────────────────────────────────────────────
+   Extracted from the inline <style> block that caused SSR/client hydration
+   mismatches. Next.js encodes single-quote characters differently on server
+   vs. client when they appear inside JSX template-literal style tags —
+   moving to a CSS Module avoids that entirely.
+
+   Token map (mirrors T object in Sidebar.js):
+     text3      #55556e
+     text2      #a0a0c0
+     text4      #32324a
+     amber      #e8940a
+     amberHover rgba(232,148,10,0.06)
+     amberActive rgba(232,148,10,0.10)
+     border2    #1a2235
+     mono       'DM Mono', 'JetBrains Mono', monospace
+   ──────────────────────────────────────────────────────────────────────── */
+
+.sb-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 0 3px 3px 0;
+  background: transparent;
+  color: #55556e;
+  font-size: 12px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  text-align: left;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  white-space: nowrap;
+  overflow: hidden;
+  position: relative;
+}
+
+.sb-nav-item:hover {
+  background: rgba(232, 148, 10, 0.06);
+  color: #a0a0c0;
+}
+
+.sb-nav-item:hover .sb-icon {
+  color: #e8940a;
+}
+
+.sb-nav-item:focus-visible {
+  outline: 1.5px solid #e8940a;
+  outline-offset: -2px;
+}
+
+.sb-nav-item.active {
+  background: rgba(232, 148, 10, 0.10);
+  color: #e8940a;
+  border-left-color: #e8940a;
+}
+
+.sb-nav-item.active .sb-icon {
+  color: #e8940a;
+}
+
+.sb-icon {
+  color: #32324a;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  transition: color 120ms ease;
+}
+
+.sb-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #1a2235;
+  border-radius: 3px;
+  background: transparent;
+  color: #55556e;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.sb-collapse-btn:hover {
+  background: rgba(232, 148, 10, 0.06);
+  color: #e8940a;
+  border-color: #e8940a40;
+}
+
+.sb-collapse-btn:focus-visible {
+  outline: 1.5px solid #e8940a;
+  outline-offset: 2px;
+}
+
+.sb-sector-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 10px;
+  border-radius: 2px;
+  transition: background 120ms ease;
+}
+
+.sb-sector-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sb-sector-row:hover .sb-sector-label {
+  color: #a0a0c0;
+}
+
+.sb-sector-label {
+  font-size: 11px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: #55556e;
+  transition: color 120ms ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes sb-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.25; }
+}
+
+.sb-pulse {
+  animation: sb-pulse 2s infinite;
+}
+
+.sb-root {
+  transition: width 200ms cubic-bezier(0.2, 0, 0, 1);
+}
