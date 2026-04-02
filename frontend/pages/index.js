@@ -3,6 +3,7 @@ import Head from 'next/head'
 import { createClient } from '@supabase/supabase-js'
 import Sidebar from '../components/Sidebar'
 import ThesisBoard from '../components/ThesisBoard'
+import DealMemo from '../components/DealMemo'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -1070,7 +1071,13 @@ export default function Home() {
               {activeTab === 'morning'   && <BriefView type="morning" />}
               {activeTab === 'live'      && <LiveTracker />}
               {activeTab === 'evening'   && <BriefView type="evening" />}
-              {activeTab === 'dealflow'  && <DealFlowTracker />}
+              {activeTab === 'dealflow'  && (
+                <>
+                  <DealMemo />
+                  <div style={{ height: 1, background: '#1a1a2e', margin: '24px 0' }} />
+                  <DealFlowTracker />
+                </>
+              )}
               {activeTab === 'thesis'    && <ThesisBoard />}
               {activeTab === 'companies' && <CompanyIntel />}
               {activeTab === 'trends'    && <Trends />}

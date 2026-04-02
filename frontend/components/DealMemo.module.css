@@ -1,0 +1,312 @@
+/* ── DealMemo.module.css ──────────────────────────────────────────────────
+   Bloomberg-density split-pane deal memo generator.
+   Left pane: compact input form. Right pane: scrollable memo output.
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* ── Root ── */
+.root {
+  margin-bottom: 28px;
+}
+
+/* ── Header ── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.headerLabel {
+  font-size: 10px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: #e8940a;
+  letter-spacing: 0.14em;
+}
+
+.headerSub {
+  font-size: 10px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: rgba(255, 255, 255, 0.22);
+}
+
+/* ── Split panes ── */
+.panes {
+  display: flex;
+  border: 1px solid #1a1a2e;
+  border-radius: 3px;
+  overflow: hidden;
+  min-height: 480px;
+}
+
+/* ── Left: form pane ── */
+.formPane {
+  width: 40%;
+  flex-shrink: 0;
+  background: #060a15;
+  border-right: 1px solid #1a1a2e;
+  padding: 14px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.sectionLabel {
+  font-size: 9px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: rgba(255, 255, 255, 0.2);
+  letter-spacing: 0.14em;
+  margin-bottom: 12px;
+}
+
+/* ── Form fields ── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+
+.fieldRow {
+  display: flex;
+  gap: 8px;
+}
+
+.fieldRow .field {
+  flex: 1;
+}
+
+.label {
+  font-size: 9px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: rgba(255, 255, 255, 0.32);
+  letter-spacing: 0.08em;
+}
+
+.req {
+  color: #e8940a;
+}
+
+.input,
+.textarea {
+  background: #0c0c18;
+  border: 1px solid #1a1a2e;
+  border-radius: 2px;
+  font-size: 11px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: #e8e8f5;
+  outline: none;
+  transition: border-color 120ms ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.input {
+  height: 32px;
+  padding: 0 9px;
+}
+
+.textarea {
+  padding: 7px 9px;
+  resize: vertical;
+  line-height: 1.5;
+  min-height: 60px;
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: rgba(232, 148, 10, 0.45);
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: rgba(255, 255, 255, 0.16);
+}
+
+/* ── Generate button ── */
+.generateBtn {
+  width: 100%;
+  margin-top: auto;
+  padding-top: 14px;
+  padding: 8px 14px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  cursor: pointer;
+  border: 1px solid rgba(232, 148, 10, 0.5);
+  background: rgba(232, 148, 10, 0.10);
+  color: #e8940a;
+  letter-spacing: 0.1em;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+
+.generateBtn:hover:not(:disabled) {
+  background: rgba(232, 148, 10, 0.18);
+  border-color: rgba(232, 148, 10, 0.65);
+}
+
+.generateBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.generateBtn:focus-visible {
+  outline: 1.5px solid #e8940a;
+  outline-offset: 2px;
+}
+
+/* ── Error ── */
+.error {
+  margin-top: 8px;
+  font-size: 10px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: #e83a3a;
+  line-height: 1.4;
+}
+
+/* ── Right: output pane ── */
+.outputPane {
+  flex: 1;
+  background: #08080f;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Sticky toolbar ── */
+.outputToolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 14px;
+  background: #0a0a16;
+  border-bottom: 1px solid #1a1a2e;
+  flex-shrink: 0;
+}
+
+.outputLabel {
+  font-size: 9px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: rgba(255, 255, 255, 0.28);
+  letter-spacing: 0.1em;
+}
+
+.toolbarActions {
+  display: flex;
+  gap: 6px;
+}
+
+.toolBtn {
+  padding: 3px 10px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  cursor: pointer;
+  border: 1px solid rgba(232, 148, 10, 0.3);
+  background: rgba(232, 148, 10, 0.06);
+  color: #e8940a;
+  letter-spacing: 0.06em;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.toolBtn:hover:not(:disabled) {
+  background: rgba(232, 148, 10, 0.14);
+  border-color: rgba(232, 148, 10, 0.5);
+}
+
+.toolBtn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.toolBtn:focus-visible {
+  outline: 1.5px solid #e8940a;
+  outline-offset: 2px;
+}
+
+/* ── Output content ── */
+.outputContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.memoText {
+  font-size: 11.5px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.72;
+}
+
+.memoText strong {
+  color: #e8940a;
+  font-weight: 600;
+}
+
+/* ── Loading state ── */
+.loadingState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  gap: 12px;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid rgba(255, 255, 255, 0.08);
+  border-top-color: #e8940a;
+  border-radius: 50%;
+  animation: dmSpin 0.8s linear infinite;
+}
+
+@keyframes dmSpin {
+  to { transform: rotate(360deg); }
+}
+
+.loadingText {
+  font-size: 10px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: rgba(255, 255, 255, 0.25);
+  letter-spacing: 0.12em;
+}
+
+/* ── Placeholder (empty state) ── */
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 200px;
+  padding: 24px;
+  text-align: center;
+}
+
+.placeholderText {
+  font-size: 11px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: rgba(255, 255, 255, 0.14);
+  line-height: 1.6;
+  max-width: 260px;
+}
+
+/* ── Responsive: stack panes vertically on mobile ── */
+@media (max-width: 640px) {
+  .panes {
+    flex-direction: column;
+    min-height: auto;
+  }
+  .formPane {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #1a1a2e;
+  }
+  .outputPane {
+    min-height: 320px;
+  }
+}
