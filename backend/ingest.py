@@ -123,7 +123,7 @@ def filter_article(article):
     for attempt in range(3):
         try:
             resp = groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model="llama-3.1-8b-instant",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1
             )
@@ -204,14 +204,14 @@ def run_ingestion():
     articles = fetch_all_articles()
     print(f"  {len(articles)} unique articles")
 
-    print("\n[2/3] Filtering with Gemini...")
+    print("\n[2/3] Filtering with Groq...")
     relevant = []
     for a in articles:
         result = filter_article(a)
         if result and result.get("relevant") and result.get("relevance_score", 0) >= 6:
             relevant.append((a, result))
             print(f"  ✓ [{result['relevance_score']}/10] [{result.get('sector','?')[:20]}] {a['title'][:60]}...")
-        time.sleep(0.25)
+        time.sleep(2.0)
 
     print(f"\n[3/3] Storing {len(relevant)} articles...")
     article_ids = [aid for a, r in relevant if (aid := store_article(a, r))]
