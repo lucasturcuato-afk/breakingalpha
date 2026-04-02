@@ -55,8 +55,7 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Status: in progress
 
 ## Recently Completed (2026-04-01)
-- **Brief Preferences foundation (PR #31 merged):** PreferencesPanel component, `/api/preferences` API route, `user_preferences` SQL schema merged to main. Preferences data persists and loads correctly. **Important: UI exists but has NO impact on brief content yet** — wiring saved preferences to filter/modify actual briefs is the next step after Vercel preview validation.
-- **Signed-out preview mode (PR #29 merged):** New `SignedOutHomepage` component; signed-out users see hero, Morning Review headline + market tone + first 2 sections, top 3 articles visible + articles 4–5 blurred with sign-in CTAs.
+- **Brief Preferences merged (PR #31):** PreferencesPanel, `/api/preferences` route, `user_preferences` schema live. Persistence and load working; not yet wired to filter brief content — next step.
 
 ## Recently Completed (2026-03-31)
 - **Watchlist auth / onboarding / Google SSO — 2 merged PRs:** User scoping added to watchlist table, Google OAuth enabled in Supabase, onboarding modal on first sign-in, batch insert route for sector/ticker picker, all watchlist fetch calls scoped via RLS. Article card UI upgraded (Live Tracker): relevance chips, timestamp display, relevance_reason display in briefing cards.
@@ -87,8 +86,8 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - **Branch cleanup:** deleted noah/claude-workflow-setup, noah/fix-supabase-auth, docs/repo-workflow-update, claude/recursing-turing
 
 ## Pending / Known Issues
-- **Preferences wiring (in progress):** PreferencesPanel renders and saves/loads preferences correctly via `/api/preferences`. NOT yet wired to filter or modify brief content. Must validate via Vercel preview first, then implement the filtering logic to apply saved preferences to brief display.
-- **Local auth validation blocked:** Google auth at localhost not in Supabase redirect allowlist. Preferences preview validation must happen on Vercel preview URL.
+- **Preferences filtering (next):** Preferences now persist and load; next step is wiring saved preferences to filter/modify brief content (sectors, sentiment, deal status filters).
+- **Local auth validation blocked:** Google auth at localhost not in Supabase redirect allowlist. Auth-dependent work must validate on Vercel preview URL.
 - Verify Supabase anon SELECT on `articles` and `briefings` tables. Enable `SELECT TO anon` if needed so signed-out preview shows real live data instead of static fallback.
 - Validate `relevance_reason` output quality on next real pipeline run (post-2026-03-31 improvements); if still generic, RSS feed depth may be limiting factor
 - Consider AI/Semis-specific framing rules for FILTER_PROMPT if macro/rates improvement confirms but AI/Semis underperforms
