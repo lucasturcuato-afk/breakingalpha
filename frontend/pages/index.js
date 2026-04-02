@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import Head from 'next/head'
 import { createClient } from '@supabase/supabase-js'
 import Sidebar from '../components/Sidebar'
+import ThesisBoard from '../components/ThesisBoard'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -500,124 +501,6 @@ function LiveTracker() {
 }
 
 // ── Thesis Board ─────────────────────────────────────────────────────────────
-function ThesisBoard() {
-  const [theses, setTheses] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [generating, setGenerating] = useState(false)
-  const [lastGenerated, setLastGenerated] = useState(null)
-  const [error, setError] = useState(null)
-
-  const CONVICTION_COLORS = { BULLISH: '#10b981', BEARISH: '#ef4444', WATCH: '#f59e0b' }
-
-  useEffect(() => {
-    async function loadTheses() {
-      setLoading(true)
-      const { data, error } = await supabase
-        .from('theses')
-        .select('*')
-        .order('generated_at', { ascending: false })
-        .limit(5)
-      if (!error && data && data.length > 0) {
-        setTheses(data)
-        setLastGenerated(data[0].generated_at)
-      }
-      setLoading(false)
-    }
-    loadTheses()
-  }, [])
-
-  async function generateTheses() {
-    setGenerating(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/theses', { method: 'POST' })
-      const data = await res.json()
-      if (data.theses && data.theses.length > 0) {
-        setTheses(data.theses)
-        setLastGenerated(new Date().toISOString())
-      } else {
-        setError('No theses generated — try again')
-      }
-    } catch (err) {
-      setError('Failed to generate theses')
-    }
-    setGenerating(false)
-  }
-
-  const lastGenTime = lastGenerated
-    ? new Date(lastGenerated).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
-    : null
-
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-        <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>📋 THESIS BOARD</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {lastGenTime && (
-            <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)' }}>
-              Last generated: Today {lastGenTime}
-            </span>
-          )}
-          <button
-            onClick={generateTheses}
-            disabled={generating}
-            style={{ padding: '6px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: generating ? 'not-allowed' : 'pointer', border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#f59e0b', letterSpacing: '0.06em', opacity: generating ? 0.5 : 1, transition: 'opacity 0.3s' }}
-          >
-            {generating ? 'GENERATING...' : '⟳ REGENERATE'}
-          </button>
-        </div>
-      </div>
-      <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', marginBottom: '22px' }}>AI-generated investment theses synthesized from live BreakingAlpha signal flow</p>
-
-      {error && (
-        <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#ef4444', marginBottom: '14px' }}>⚠ {error}</div>
-      )}
-
-      {loading ? (
-        <div>
-          {[0, 1, 2].map(i => (
-            <div key={i} style={{ height: '120px', borderRadius: '4px', background: '#1a2235', marginBottom: '10px', animation: 'pulse 1.5s ease-in-out infinite', opacity: 0.6 }} />
-          ))}
-        </div>
-      ) : theses.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 0' }}>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '13px', color: 'rgba(255,255,255,0.35)', marginBottom: '8px' }}>No theses generated yet</div>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)', marginBottom: '24px' }}>Click REGENERATE to generate today's investment theses from live market data</div>
-          <button
-            onClick={generateTheses}
-            disabled={generating}
-            style={{ padding: '10px 24px', borderRadius: '6px', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: generating ? 'not-allowed' : 'pointer', border: '1px solid rgba(245,158,11,0.5)', background: 'rgba(245,158,11,0.12)', color: '#f59e0b', letterSpacing: '0.08em' }}
-          >
-            {generating ? 'GENERATING...' : 'GENERATE THESES'}
-          </button>
-        </div>
-      ) : (
-        theses.map((t, i) => {
-          const conviction = t.conviction || t.signal
-          const convColor = CONVICTION_COLORS[conviction] || '#94a3b8'
-          return (
-            <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '20px 24px', marginBottom: '10px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '17px', fontWeight: 600, color: '#fff', margin: 0 }}>{t.title}</h3>
-                <span style={{ padding: '3px 10px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: convColor, background: convColor + '18', border: `1px solid ${convColor}40`, flexShrink: 0, marginLeft: '12px' }}>{conviction}</span>
-              </div>
-              <p style={{ fontSize: '13px', color: '#9ca3af', lineHeight: 1.6, margin: '0 0 12px 0' }}>{t.rationale || t.thesis}</p>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '8px' }}>
-                {t.sector && <SectorPill sector={t.sector} />}
-                {t.catalyst && (
-                  <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.04em' }}>
-                    ⚡ CATALYST: {t.catalyst}
-                  </div>
-                )}
-              </div>
-            </div>
-          )
-        })
-      )}
-    </div>
-  )
-}
-
 // ── Deal Flow Tracker ─────────────────────────────────────────────────────────
 function DealFlowTracker() {
   const [deals, setDeals]             = useState([])

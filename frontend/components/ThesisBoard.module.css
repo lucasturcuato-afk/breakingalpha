@@ -1,0 +1,323 @@
+/* ── ThesisBoard.module.css ────────────────────────────────────────────────
+   Bloomberg-density thesis card grid.
+   All hover/focus pseudo-states live here (can't be inline styles).
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* ── Header row ── */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.boardLabel {
+  font-size: 10px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: #e8940a;
+  letter-spacing: 0.14em;
+}
+
+.lastGen {
+  font-size: 10px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: rgba(255, 255, 255, 0.22);
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ── Regenerate button ── */
+.regenBtn {
+  padding: 5px 11px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  cursor: pointer;
+  border: 1px solid rgba(232, 148, 10, 0.4);
+  background: rgba(232, 148, 10, 0.08);
+  color: #e8940a;
+  letter-spacing: 0.06em;
+  transition: background 120ms ease, border-color 120ms ease, opacity 120ms ease;
+}
+
+.regenBtn:hover:not(:disabled) {
+  background: rgba(232, 148, 10, 0.14);
+  border-color: rgba(232, 148, 10, 0.6);
+}
+
+.regenBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.regenBtn:focus-visible {
+  outline: 1.5px solid #e8940a;
+  outline-offset: 2px;
+}
+
+/* ── Subtitle ── */
+.subtitle {
+  font-size: 11px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: rgba(255, 255, 255, 0.25);
+  margin-bottom: 14px;
+  margin-top: 0;
+}
+
+/* ── Error ── */
+.error {
+  font-size: 11px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: #e83a3a;
+  margin-bottom: 12px;
+}
+
+/* ── Skeleton loading ── */
+.skeletonGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.skeleton {
+  height: 160px;
+  border-radius: 3px;
+  background: #0c0c16;
+  border: 1px solid #1a1a2e;
+  animation: tbPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes tbPulse {
+  0%, 100% { opacity: 0.6; }
+  50%       { opacity: 0.25; }
+}
+
+/* ── Empty state ── */
+.empty {
+  text-align: center;
+  padding: 48px 0;
+  grid-column: 1 / -1;
+}
+
+.emptyPrimary {
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.32);
+  margin-bottom: 6px;
+}
+
+.emptySecondary {
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.18);
+  margin-bottom: 20px;
+  max-width: 320px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.emptyBtn {
+  padding: 8px 20px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  cursor: pointer;
+  border: 1px solid rgba(232, 148, 10, 0.5);
+  background: rgba(232, 148, 10, 0.10);
+  color: #e8940a;
+  letter-spacing: 0.08em;
+  transition: background 120ms ease;
+}
+
+.emptyBtn:hover:not(:disabled) {
+  background: rgba(232, 148, 10, 0.16);
+}
+
+.emptyBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Card grid ── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .grid          { grid-template-columns: repeat(2, 1fr); }
+  .skeletonGrid  { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .grid          { grid-template-columns: 1fr; }
+  .skeletonGrid  { grid-template-columns: 1fr; }
+}
+
+/* ── Card ── */
+.card {
+  background: #08080f;
+  border: 1px solid #1a1a2e;
+  border-left-width: 3px;
+  /* border-left-color set via inline style (dynamic sentiment color) */
+  border-radius: 0 3px 3px 0;
+  padding: 11px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  transition: background 120ms ease, border-color 120ms ease;
+  cursor: default;
+}
+
+.card:hover {
+  background: #0c0c18;
+  border-color: #22223a;
+  border-left-color: inherit; /* preserve sentiment color on hover */
+}
+
+/* ── Card header ── */
+.cardTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.convictionBadge {
+  font-size: 9px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  letter-spacing: 0.08em;
+  padding: 2px 7px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.sectorTag {
+  font-size: 9px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: #60607a;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+  flex-shrink: 1;
+  margin-left: auto;
+  padding-top: 2px;
+}
+
+/* ── Title ── */
+.title {
+  font-size: 12px;
+  font-family: 'DM Sans', 'Inter', system-ui, sans-serif;
+  font-weight: 600;
+  color: #e8e8f5;
+  line-height: 1.35;
+  margin: 0 0 7px 0;
+}
+
+/* ── Divider ── */
+.divider {
+  height: 1px;
+  background: #1a1a2e;
+  margin: 0 0 8px 0;
+  flex-shrink: 0;
+}
+
+/* ── Rationale text — collapsed (4-line clamp) ── */
+.rationale {
+  font-size: 11px;
+  font-family: 'DM Sans', 'Inter', system-ui, sans-serif;
+  color: #a0a0c0;
+  line-height: 1.55;
+  margin: 0 0 4px 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Rationale text — expanded (full text) ── */
+.rationaleExpanded {
+  font-size: 11px;
+  font-family: 'DM Sans', 'Inter', system-ui, sans-serif;
+  color: #a0a0c0;
+  line-height: 1.55;
+  margin: 0 0 4px 0;
+  /* No clamp — full text visible */
+}
+
+/* ── Read more / Show less toggle ── */
+.expandBtn {
+  display: inline-block;
+  margin: 0 0 8px 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 10px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: #55556e;
+  cursor: pointer;
+  letter-spacing: 0.03em;
+  transition: color 120ms ease;
+  text-align: left;
+}
+
+.expandBtn:hover {
+  color: #e8940a;
+}
+
+.expandBtn:focus-visible {
+  outline: 1.5px solid #e8940a;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ── Catalyst ── */
+.catalyst {
+  font-size: 10px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: #e8940a;
+  letter-spacing: 0.03em;
+  margin-bottom: 8px;
+  line-height: 1.4;
+  /* Clamp to 2 lines */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Card footer ── */
+.cardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.timestamp {
+  font-size: 10px;
+  font-family: 'DM Mono', 'JetBrains Mono', monospace;
+  color: #55556e;
+  letter-spacing: 0.02em;
+}
