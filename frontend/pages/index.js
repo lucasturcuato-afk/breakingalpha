@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import Sidebar from '../components/Sidebar'
 import ThesisBoard from '../components/ThesisBoard'
 import DealMemo from '../components/DealMemo'
+import Dashboard from '../components/Dashboard'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -969,6 +970,7 @@ function Trends() {
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
 const NAV = [
+  { id: 'home',      label: 'Dashboard',      icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
   { id: 'morning',   label: 'Morning Review', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg> },
   { id: 'live',      label: 'Live Tracker',   icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
   { id: 'evening',   label: 'Evening Wrap',   icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg> },
@@ -980,7 +982,7 @@ const NAV = [
 
 // ── App ───────────────────────────────────────────────────────────────────────
 export default function Home() {
-  const [activeTab, setActiveTab] = useState('morning')
+  const [activeTab, setActiveTab] = useState('home')
   const [quotes, setQuotes] = useState([])
   const [marketTime, setMarketTime] = useState('')
   const [marketOpen, setMarketOpen] = useState(null)
@@ -1066,8 +1068,9 @@ export default function Home() {
               </div>
             </div>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '30px' }}>
-            <div style={{ maxWidth: '860px' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: activeTab === 'home' ? '20px 24px' : '30px' }}>
+            <div style={{ maxWidth: activeTab === 'home' ? 'none' : '860px' }}>
+              {activeTab === 'home'      && <Dashboard onNavigate={setActiveTab} marketOpen={marketOpen} />}
               {activeTab === 'morning'   && <BriefView type="morning" />}
               {activeTab === 'live'      && <LiveTracker />}
               {activeTab === 'evening'   && <BriefView type="evening" />}
