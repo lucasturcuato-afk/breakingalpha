@@ -18,12 +18,26 @@
 - Signed-out preview mode — hero, Morning Review headline + first 2 sections (blurred + CTA), top 3 articles visible, articles 4–5 blurred with sign-in CTAs
 - Onboarding UX — custom-added tickers render immediately as removable chips in the onboarding modal
 - Brief preferences UI foundation — PreferencesPanel component, `/api/preferences` API route, `user_preferences` schema (PR #31); preferences data persists/loads but not yet wired to affect brief content
+- Frontend stub-row fallback — homepage skips "Market Intelligence Unavailable" rows and falls back to last successful briefing
+- Ingest rate-limit hotfix — filtering model → llama-3.1-8b-instant, sleep 0.25s → 2.0s; zero 429 errors observed on full validation run
+- Relevance gate tightening — opinion/think-piece/cultural commentary articles rejected; named-person commentary excluded
+- Filter prompt quality — style examples removed (eliminated verbatim blurb copying); personnel announcements excluded from relevance gate
 
 ## In Progress
 - Thesis Board frontend — Lucas (lucas/thesis-board-live)
 - Brief preferences wiring — Noah (PR #31 merged; UI exists but not yet filtering/affecting brief content)
+- Post-PR #35 validation — inspect tomorrow's scheduled run for reduced comp-list blurb rate and improved Live Tracker card quality
 
 ## Next — Noah
+### If blurb quality validates on tomorrow's run
+- Tighten `synthesize.py` morning brief headline: fix spec adherence (10-15 words, correct dominant story selection)
+- Reduce comp-list echo in synthesis sections (synthesize.py MORNING_SYSTEM / EVENING_SYSTEM section prompts)
+
+### If blurb quality still weak after tomorrow's run
+- Investigate whether llama-3.1-8b-instant is capable enough for the relevance_reason task or whether a larger filter model is needed
+- Consider heuristic pre-filtering before LLM calls to reduce article count and allow a heavier model
+
+### Other pending
 - Validate `noah/brief-preferences` on Vercel preview (auth, panel renders, preferences save/load work)
 - Wire saved preferences to filter/modify brief content (preferences UI now exists but has zero impact on briefs)
 - Verify/enable Supabase anon SELECT on `articles` and `briefings` tables

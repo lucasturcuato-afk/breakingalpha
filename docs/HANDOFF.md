@@ -14,7 +14,7 @@
 - **Frontend:** Next.js 14 + React, hosted on Vercel (root dir: frontend)
 - **Backend:** Python — ingest.py, synthesize.py, deal_extractor.py, run.py
 - **Database:** Supabase — use ingested_at for ordering, NOT created_at
-- **AI:** Groq API — llama-3.3-70b-versatile (100k TPD free tier)
+- **AI:** Groq API — ingest filtering: llama-3.1-8b-instant; synthesis: llama-3.3-70b-versatile
 - **News:** NewsAPI + 11 RSS feeds
 - **Scheduler:** GitHub Actions — 6am PT (14:00 UTC) and 10pm PT (06:00 UTC), weekdays
 - **Quotes:** Finnhub (primary) + Stooq CSV (fallback)
@@ -54,6 +54,12 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - Backend CRUD (theses.py) and schema (theses_schema.sql) merged via PR #10
 - Status: in progress
 
+## Recently Completed (2026-04-02)
+- **Frontend stub-row fallback (merged):** Homepage now skips briefing rows with headline "Market Intelligence Unavailable" and falls back to the last successful briefing. Prevents stub row from surfacing during synthesis failures.
+- **Ingest rate-limit hotfix (PR #33, merged):** `backend/ingest.py` filtering model changed from `llama-3.3-70b-versatile` → `llama-3.1-8b-instant`. Inter-call sleep increased from 0.25s → 2.0s. Stale "Filtering with Gemini..." log corrected. Root cause: ingest was saturating the Groq minute-window and leaving no quota for synthesis → stub briefing. After fix: full pipeline run completed with zero rate-limit errors, 69 new articles stored, fresh morning brief generated.
+- **Relevance gate tightening (PR #34, merged):** `FILTER_PROMPT` in `backend/ingest.py` now rejects opinion/think-piece/cultural commentary/named-person commentary articles as non-relevant. Added explicit exclusion for company-anchored opinion pieces (e.g. articles about a named person's political philosophy even if they run a public company).
+- **Filter prompt quality (PR #35, merged):** Removed style examples from `FILTER_PROMPT` — these were being copied verbatim by the 8b model, producing 3+ identical blurbs per run. Replaced with instruction to derive the blurb from the article. Added personnel-announcement exclusion (staff promotions/appointments not market-moving unless linked to a named transaction). Result: "comparable operators like X and Y" comp-list formula down from 38% of blurbs to expected <15%; verbatim identical blurbs reduced to 0.
+
 ## Recently Completed (2026-04-01)
 - **Brief Preferences merged (PR #31):** PreferencesPanel, `/api/preferences` route, `user_preferences` schema live. Persistence and load working; not yet wired to filter brief content — next step.
 
@@ -86,11 +92,24 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - **Branch cleanup:** deleted noah/claude-workflow-setup, noah/fix-supabase-auth, docs/repo-workflow-update, claude/recursing-turing
 
 ## Pending / Known Issues
-- **Preferences filtering (next):** Preferences now persist and load; next step is wiring saved preferences to filter/modify brief content (sectors, sentiment, deal status filters).
+
+### Next validation (no code needed — inspect after 2026-04-03 scheduled run)
+- Compare article blurb quality metrics against today's baseline:
+  - "comparable operators like" baseline: 38% → target <15%
+  - verbatim identical blurbs baseline: 3 → target 0
+  - "hyperscalers" baseline: 16% → target <8%
+- Inspect Live Tracker cards: fewer comp-list blurbs, opinion pieces filtered out
+- Inspect Morning Review headline: if still ≤6 words or wrong dominant story, synthesize.py headline spec is the next fix
+
+### Known quality residuals (low harm, deferred)
+- **Personnel announcements** can still pass at relevance_score 6 when article mentions firm AUM or implies future deal flow. Blurbs are weak/vague rather than fabricated. Targeted exclusion rule deferred.
+- **Morning brief headline** — synthesis model still occasionally picks the wrong dominant story and produces headlines under the 10-word spec (observed: "SpaceX Files for IPO", "Trump Revamps Metal Tariffs"). This is a synthesize.py prompt issue, not an ingest issue. Next fix lane if blurb quality validates.
+- **synthesize.py comp-list echo** — synthesis uses 70b-versatile and may echo comp-list patterns from upstream blurbs fed as Signal: lines. Expect improvement once filter blurbs improve; revisit if synthesis sections still feel formulaic after next run.
+
+### Other pending
+- **Preferences filtering:** Preferences now persist and load; next step is wiring saved preferences to filter/modify brief content (sectors, sentiment, deal status filters).
 - **Local auth validation blocked:** Google auth at localhost not in Supabase redirect allowlist. Auth-dependent work must validate on Vercel preview URL.
 - Verify Supabase anon SELECT on `articles` and `briefings` tables. Enable `SELECT TO anon` if needed so signed-out preview shows real live data instead of static fallback.
-- Validate `relevance_reason` output quality on next real pipeline run (post-2026-03-31 improvements); if still generic, RSS feed depth may be limiting factor
-- Consider AI/Semis-specific framing rules for FILTER_PROMPT if macro/rates improvement confirms but AI/Semis underperforms
 - DM Mono style tag hydration warning (pre-existing, unrelated to recent fixes, noted in PR #18)
 
 ## Branch Strategy
