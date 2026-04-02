@@ -182,7 +182,7 @@ function BriefView({ type }) {
   useEffect(() => {
     async function load() {
       setLoading(true)
-      const { data: bData } = await supabase.from('briefings').select('*').eq('briefing_type', type).order('created_at', { ascending: false }).limit(1)
+      const { data: bData } = await supabase.from('briefings').select('*').eq('briefing_type', type).neq('headline', 'Market Intelligence Unavailable').order('created_at', { ascending: false }).limit(1)
       if (bData?.[0]) setBriefing(bData[0])
       const { data: aData } = await supabase.from('articles').select('*').order('ingested_at', { ascending: false }).limit(100)
       if (aData) {
