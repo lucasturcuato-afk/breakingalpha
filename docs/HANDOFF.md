@@ -14,7 +14,7 @@
 - **Frontend:** Next.js 14 + React, hosted on Vercel (root dir: frontend)
 - **Backend:** Python — ingest.py, synthesize.py, deal_extractor.py, run.py
 - **Database:** Supabase — use ingested_at for ordering, NOT created_at
-- **AI:** Groq API — llama-3.1-8b-instant (500k TPD free tier)
+- **AI:** Groq API — llama-3.3-70b-versatile (100k TPD free tier)
 - **News:** NewsAPI + 11 RSS feeds
 - **Scheduler:** GitHub Actions — 6am PT (14:00 UTC) and 10pm PT (06:00 UTC), weekdays
 - **Quotes:** Finnhub (primary) + Stooq CSV (fallback)
