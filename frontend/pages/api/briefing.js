@@ -156,15 +156,20 @@ export default async function handler(req, res) {
   const hasModulePrefs = (userPreferences?.modules?.length ?? 0) > 0
   const hasSectorPrefs = (userPreferences?.sectors?.length ?? 0) > 0
 
-  // No preferences — return briefing unchanged
-  if (!hasModulePrefs && !hasSectorPrefs) {
-    return res.status(200).json({ briefing: raw, pref_applied: false })
-  }
-
-  // Apply preference shaping
+  // Parse breakdown now so we can expose debug keys in all return paths
   const sections    = safeParseJSON(raw.sections) || {}
   const sectorBreak = safeParseJSON(raw.sector_breakdown) || {}
 
+  // No preferences — return briefing unchanged
+  if (!hasModulePrefs && !hasSectorPrefs) {
+    return res.status(200).json({
+      briefing: raw,
+      pref_applied: false,
+      _debug: { sector_breakdown_keys: Object.keys(sectorBreak), sectors_matched: [] },
+    })
+  }
+
+  // Apply preference shaping
   const shapedSections    = hasModulePrefs
     ? shapeSections(sections, userPreferences.modules)
     : sections
@@ -172,6 +177,13 @@ export default async function handler(req, res) {
   const shapedSectorBreak = hasSectorPrefs
     ? shapeSectorBreakdown(sectorBreak, userPreferences.sectors)
     : sectorBreak
+
+  // Which preference sectors actually found a match in today's breakdown
+  const sectorsMatched = hasSectorPrefs
+    ? Object.keys(sectorBreak).filter(k =>
+        userPreferences.sectors.some(pref => sectorMatchesPreference(k, pref))
+      )
+    : []
 
   // Return shaped briefing. headline / summary / market_tone / top_deals are never touched.
   const briefing = {
@@ -185,5 +197,9 @@ export default async function handler(req, res) {
     pref_applied:  true,
     modules_used:  hasModulePrefs ? userPreferences.modules : [],
     sectors_used:  hasSectorPrefs ? userPreferences.sectors : [],
+    _debug: {
+      sector_breakdown_keys: Object.keys(shapedSectorBreak),
+      sectors_matched:       sectorsMatched,
+    },
   })
 }
