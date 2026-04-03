@@ -6,6 +6,7 @@ import LandingPage from '../components/LandingPage'
 import SignedOutHomepage from '../components/SignedOutHomepage'
 import PreferencesPanel from '../components/PreferencesPanel'
 import { supabase } from '../lib/supabaseClient'
+import { useTheme } from '../context/ThemeContext'
 
 const SECTORS = [
   { key: 'ALL',    label: 'ALL',         value: null,                                  color: '#f59e0b' },
@@ -95,9 +96,9 @@ const EMPTY_ICONS = {
 function EmptyState({ icon, title, subtitle, action, onAction }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '56px 24px', animation: 'emptyFadeIn 500ms ease both' }}>
-      <div style={{ color: 'rgba(255,255,255,0.12)', marginBottom: '16px', opacity: 0.3 }}>{icon}</div>
-      <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '17px', fontWeight: 600, color: 'rgba(255,255,255,0.3)', marginBottom: '6px', textAlign: 'center' }}>{title}</div>
-      {subtitle && <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.18)', textAlign: 'center', maxWidth: '320px', lineHeight: 1.6 }}>{subtitle}</div>}
+      <div style={{ color: 'var(--faint)', marginBottom: '16px', opacity: 0.3 }}>{icon}</div>
+      <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '17px', fontWeight: 600, color: 'var(--tertiary)', marginBottom: '6px', textAlign: 'center' }}>{title}</div>
+      {subtitle && <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'var(--faint)', textAlign: 'center', maxWidth: '320px', lineHeight: 1.6 }}>{subtitle}</div>}
       {action && onAction && (
         <button onClick={onAction} style={{ marginTop: '18px', padding: '8px 20px', borderRadius: '6px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#f59e0b', letterSpacing: '0.08em', transition: 'all 150ms ease' }}>{action}</button>
       )}
@@ -107,7 +108,7 @@ function EmptyState({ icon, title, subtitle, action, onAction }) {
 
 function SkeletonCard({ height = '120px', count = 1 }) {
   return Array.from({ length: count }).map((_, i) => (
-    <div key={i} style={{ height, borderRadius: '10px', background: 'linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.03) 100%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease-in-out infinite', border: '1px solid rgba(255,255,255,0.05)', marginBottom: i < count - 1 ? '10px' : 0 }} />
+    <div key={i} style={{ height, borderRadius: '10px', background: 'linear-gradient(90deg, var(--shimmer-from) 0%, var(--shimmer-to) 50%, var(--shimmer-from) 100%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease-in-out infinite', border: '1px solid var(--divider)', marginBottom: i < count - 1 ? '10px' : 0 }} />
   ))
 }
 
@@ -116,10 +117,10 @@ function SkeletonRows({ rows = 4 }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.03) 100%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease-in-out infinite', flexShrink: 0 }} />
+          <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'linear-gradient(90deg, var(--shimmer-from) 0%, var(--shimmer-to) 50%, var(--shimmer-from) 100%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease-in-out infinite', flexShrink: 0 }} />
           <div style={{ flex: 1 }}>
-            <div style={{ height: '14px', width: `${70 + Math.random() * 30}%`, borderRadius: '4px', background: 'linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.03) 100%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease-in-out infinite', marginBottom: '8px' }} />
-            <div style={{ height: '10px', width: `${40 + Math.random() * 30}%`, borderRadius: '4px', background: 'linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.02) 100%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease-in-out infinite' }} />
+            <div style={{ height: '14px', width: `${70 + Math.random() * 30}%`, borderRadius: '4px', background: 'linear-gradient(90deg, var(--shimmer-from) 0%, var(--shimmer-to) 50%, var(--shimmer-from) 100%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease-in-out infinite', marginBottom: '8px' }} />
+            <div style={{ height: '10px', width: `${40 + Math.random() * 30}%`, borderRadius: '4px', background: 'linear-gradient(90deg, var(--shimmer-from-dim) 0%, var(--shimmer-to-dim) 50%, var(--shimmer-from-dim) 100%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease-in-out infinite' }} />
           </div>
         </div>
       ))}
@@ -130,20 +131,20 @@ function SkeletonRows({ rows = 4 }) {
 // ── Ticker Bar ───────────────────────────────────────────────────────────────
 function TickerBar({ quotes }) {
   if (!quotes || quotes.length === 0) return (
-    <div style={{ background: 'rgba(0,0,0,0.6)', borderBottom: '1px solid rgba(255,255,255,0.06)', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.18)', letterSpacing: '0.1em' }}>FETCHING MARKET DATA...</span>
+    <div style={{ background: 'var(--ticker-bg)', borderBottom: '1px solid var(--divider)', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'var(--faint)', letterSpacing: '0.1em' }}>FETCHING MARKET DATA...</span>
     </div>
   )
   const items = [...quotes, ...quotes, ...quotes]
   return (
-    <div style={{ background: 'rgba(0,0,0,0.7)', borderBottom: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden', height: '32px', display: 'flex', alignItems: 'center', position: 'relative', width: '100%' }}>
-      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '40px', background: 'linear-gradient(to right, #080c18, transparent)', zIndex: 2 }} />
-      <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '40px', background: 'linear-gradient(to left, #080c18, transparent)', zIndex: 2 }} />
+    <div style={{ background: 'var(--ticker-bg)', borderBottom: '1px solid var(--divider)', overflow: 'hidden', height: '32px', display: 'flex', alignItems: 'center', position: 'relative', width: '100%' }}>
+      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '40px', background: 'linear-gradient(to right, var(--ticker-fade-start), transparent)', zIndex: 2 }} />
+      <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '40px', background: 'linear-gradient(to left, var(--ticker-fade-start), transparent)', zIndex: 2 }} />
       <div style={{ display: 'flex', animation: 'scrollTicker 60s linear infinite', whiteSpace: 'nowrap', willChange: 'transform' }}>
         {items.map((q, i) => (
-          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '0 20px', fontSize: '11px', fontFamily: "'DM Mono', monospace", borderRight: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
-            <span style={{ color: 'rgba(255,255,255,0.32)', fontSize: '10px' }}>{q.symbol}</span>
-            <span style={{ color: '#fff', fontWeight: 500 }}>{q.price}</span>
+          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '0 20px', fontSize: '11px', fontFamily: "'DM Mono', monospace", borderRight: '1px solid var(--divider)', flexShrink: 0 }}>
+            <span style={{ color: 'var(--tertiary)', fontSize: '10px' }}>{q.symbol}</span>
+            <span style={{ color: 'var(--heading)', fontWeight: 500 }}>{q.price}</span>
             <span style={{ color: q.pct >= 0 ? '#4ade80' : '#f87171', fontSize: '10px' }}>{q.pct >= 0 ? '▲' : '▼'} {Math.abs(q.pct).toFixed(2)}%</span>
           </span>
         ))}
@@ -173,25 +174,25 @@ function ArticleCard({ article, isNew }) {
   return (
     <div
       onClick={() => setExpanded(!expanded)}
-      style={{ background: isNew ? 'rgba(245,158,11,0.05)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isNew ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '10px', padding: '16px 20px', cursor: 'pointer', marginBottom: '8px', transition: 'all 0.15s' }}
-      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.052)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = isNew ? 'rgba(245,158,11,0.05)' : 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = isNew ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.07)' }}
+      style={{ background: isNew ? 'rgba(245,158,11,0.05)' : 'var(--card-bg)', border: `1px solid ${isNew ? 'rgba(245,158,11,0.25)' : 'var(--filter-inactive-border)'}`, borderRadius: '10px', padding: '16px 20px', cursor: 'pointer', marginBottom: '8px', transition: 'all 0.15s' }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'var(--card-hover-bg)'; e.currentTarget.style.borderColor = 'var(--card-hover-border)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = isNew ? 'rgba(245,158,11,0.05)' : 'var(--card-bg)'; e.currentTarget.style.borderColor = isNew ? 'rgba(245,158,11,0.25)' : 'var(--filter-inactive-border)' }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           {isNew && <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', padding: '1px 6px', borderRadius: '3px', letterSpacing: '0.1em' }}>NEW</span>}
           {article.sector && <SectorPill sector={article.sector} />}
-          {article.source && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)' }}>{article.source}</span>}
+          {article.source && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)' }}>{article.source}</span>}
         </div>
-        {timestamp && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)', flexShrink: 0 }}>{timeAgo(timestamp)}</span>}
+        {timestamp && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', flexShrink: 0 }}>{timeAgo(timestamp)}</span>}
       </div>
-      <h3 style={{ fontSize: '15.5px', fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, color: '#f1f5f9', lineHeight: 1.4, margin: 0 }}>{article.title}</h3>
+      <h3 style={{ fontSize: '15.5px', fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, color: 'var(--heading)', lineHeight: 1.4, margin: 0 }}>{article.title}</h3>
       {expanded && (
         <div style={{ marginTop: '12px' }}>
           {article.relevance_reason && (
             <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline', marginBottom: '10px' }}>
-              <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.3)', letterSpacing: '0.12em', textTransform: 'uppercase', flexShrink: 0 }}>Why it matters</span>
-              <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)', lineHeight: 1.5 }}>{article.relevance_reason}</span>
+              <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', letterSpacing: '0.12em', textTransform: 'uppercase', flexShrink: 0 }}>Why it matters</span>
+              <span style={{ fontSize: '13px', color: 'var(--body)', lineHeight: 1.5 }}>{article.relevance_reason}</span>
             </div>
           )}
           {(companies.length > 0 || article.sector) && (
@@ -205,13 +206,13 @@ function ArticleCard({ article, isNew }) {
             </div>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
-            {article.source && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.35)' }}>{article.source}</span>}
-            {article.published_at && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)' }}>{timeAgo(article.published_at)}</span>}
+            {article.source && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)' }}>{article.source}</span>}
+            {article.published_at && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>{timeAgo(article.published_at)}</span>}
             {article.url && <a href={article.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#60a5fa', textDecoration: 'none' }}>READ SOURCE →</a>}
           </div>
         </div>
       )}
-      <div style={{ marginTop: '7px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)' }}>{expanded ? '↑ collapse' : '↓ expand'}</div>
+      <div style={{ marginTop: '7px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>{expanded ? '↑ collapse' : '↓ expand'}</div>
     </div>
   )
 }
@@ -272,68 +273,85 @@ function BriefView({ type }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-        <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>{type === 'morning' ? '☀ MORNING REVIEW' : '🌙 EVENING WRAP'}</span>
-        {todayLabel && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)' }}>{todayLabel}</span>}
+      {/* ── Hero header ── */}
+      <div style={{ borderBottom: '1px solid rgba(245,158,11,0.15)', paddingBottom: '24px', marginBottom: '28px' }}>
+        <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.18em', marginBottom: '8px' }}>
+          {type === 'morning' ? 'MORNING REVIEW' : 'EVENING WRAP'}
+        </div>
+        <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 'clamp(28px, 3.5vw, 42px)', fontWeight: 300, color: 'var(--heading)', lineHeight: 1.15, letterSpacing: '-0.02em' }}>
+          {todayLabel || 'Today'}
+        </div>
+        <div style={{ width: '40px', height: '2px', background: '#f59e0b', marginTop: '14px', borderRadius: '1px' }} />
       </div>
 
       {briefing ? (
         <>
-          {/* Lead card */}
-          <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.08), rgba(139,92,246,0.04))', border: '1px solid rgba(245,158,11,0.18)', borderRadius: '12px', padding: '28px 32px', marginBottom: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>TODAY'S LEAD</div>
-              <span style={{ padding: '3px 10px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: toneColor, background: toneColor + '18', border: `1px solid ${toneColor}40` }}>{tone}</span>
+          {/* ── Lead story ── */}
+          <div style={{ position: 'relative', background: 'linear-gradient(135deg, rgba(245,158,11,0.06) 0%, rgba(139,92,246,0.03) 50%, rgba(16,185,129,0.02) 100%)', borderLeft: '3px solid #f59e0b', borderRadius: '0 14px 14px 0', padding: '32px 36px', marginBottom: '28px', animation: 'cardSlideIn 400ms ease both' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.18em' }}>TODAY'S LEAD</div>
+              <span style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: toneColor, background: toneColor + '12', border: `1px solid ${toneColor}30`, letterSpacing: '0.08em' }}>{tone}</span>
             </div>
-            <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 'clamp(22px, 2.8vw, 30px)', fontWeight: 700, color: '#f8fafc', lineHeight: 1.3, margin: '0 0 14px 0' }}>{briefing.headline}</h1>
-            <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.65)', lineHeight: 1.78, margin: 0 }}>{briefing.summary}</p>
+            <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 'clamp(24px, 3vw, 32px)', fontWeight: 700, color: 'var(--heading)', lineHeight: 1.25, margin: '0 0 16px 0', letterSpacing: '-0.01em' }}>{briefing.headline}</h1>
+            <p style={{ fontSize: '14.5px', color: 'var(--body)', lineHeight: 1.85, margin: 0, maxWidth: '680px' }}>{briefing.summary}</p>
           </div>
 
-          {/* Top Deals */}
+          {/* ── Top Deals ── */}
           {topDeals.length > 0 && (
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '10px' }}>TOP DEALS TO WATCH</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
+            <div style={{ marginBottom: '32px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', letterSpacing: '0.14em' }}>TOP DEALS TO WATCH</div>
+                <div style={{ flex: 1, height: '1px', background: 'rgba(245,158,11,0.12)' }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '10px' }}>
                 {topDeals.map((deal, i) => (
-                  <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '14px 16px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
-                      <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '15px', fontWeight: 600, color: '#f8fafc' }}>{deal.company}</span>
-                      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#fbbf24', flexShrink: 0, marginLeft: '8px' }}>{deal.value || 'Undisclosed'}</span>
+                  <div key={i} style={{ background: 'var(--card-bg-subtle)', border: '1px solid var(--divider)', borderTop: '2px solid #f59e0b22', borderRadius: '10px', padding: '18px 20px', animation: `cardSlideIn 400ms ease ${i * 60}ms both`, transition: 'transform 150ms ease, border-color 150ms ease' }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = 'rgba(245,158,11,0.18)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = 'var(--divider)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                      <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '16px', fontWeight: 600, color: 'var(--heading)' }}>{deal.company}</span>
+                      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#fbbf24', flexShrink: 0, marginLeft: '8px', fontWeight: 500 }}>{deal.value || 'Undisclosed'}</span>
                     </div>
-                    <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', marginBottom: '5px' }}>{cleanDealType(deal.deal_type)}</div>
-                    <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>{deal.one_liner}</div>
+                    <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', marginBottom: '6px', letterSpacing: '0.06em' }}>{cleanDealType(deal.deal_type)}</div>
+                    <div style={{ fontSize: '12.5px', color: 'var(--secondary)', lineHeight: 1.55 }}>{deal.one_liner}</div>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Analyst sections */}
+          {/* ── Analyst Briefing sections ── */}
           {Object.keys(sections).length > 0 && (
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '10px' }}>ANALYST BRIEFING</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                {Object.entries(sections).map(([key, text]) => (
-                  <div key={key} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '14px 16px', gridColumn: key === 'what_to_watch' || key === 'tomorrow_setup' ? 'span 2' : 'span 1' }}>
-                    <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.12em', marginBottom: '7px' }}>{SECTION_LABELS[key] || key.toUpperCase()}</div>
-                    <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.55)', lineHeight: 1.68, margin: 0 }}>{text}</p>
+            <div style={{ marginBottom: '32px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', letterSpacing: '0.14em' }}>ANALYST BRIEFING</div>
+                <div style={{ flex: 1, height: '1px', background: 'rgba(245,158,11,0.12)' }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                {Object.entries(sections).map(([key, text], i) => (
+                  <div key={key} style={{ background: 'var(--card-bg-subtle)', border: '1px solid var(--divider)', borderRadius: '10px', padding: '20px 22px', gridColumn: key === 'what_to_watch' || key === 'tomorrow_setup' ? 'span 2' : 'span 1', animation: `cardSlideIn 400ms ease ${i * 50}ms both` }}>
+                    <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid rgba(245,158,11,0.1)' }}>{SECTION_LABELS[key] || key.replace(/_/g, ' ').toUpperCase()}</div>
+                    <p style={{ fontSize: '13.5px', color: 'var(--body)', lineHeight: 1.72, margin: 0 }}>{text}</p>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Sector breakdown */}
+          {/* ── Sector Signals ── */}
           {Object.keys(sectorBreak).length > 0 && (
-            <div style={{ marginBottom: '24px' }}>
-              <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '10px' }}>SECTOR SIGNALS</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
-                {Object.entries(sectorBreak).map(([sector, text]) => {
+            <div style={{ marginBottom: '32px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', letterSpacing: '0.14em' }}>SECTOR SIGNALS</div>
+                <div style={{ flex: 1, height: '1px', background: 'rgba(245,158,11,0.12)' }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '10px' }}>
+                {Object.entries(sectorBreak).map(([sector, text], i) => {
                   const color = getSectorColor(sector)
                   return (
-                    <div key={sector} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.055)', borderRadius: '7px', padding: '10px 13px' }}>
-                      <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color, marginBottom: '5px' }}>{sector.split(' ')[0].toUpperCase()}</div>
-                      <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>{text}</div>
+                    <div key={sector} style={{ background: 'var(--card-bg-subtle)', border: '1px solid var(--divider)', borderLeft: `3px solid ${color}40`, borderRadius: '0 10px 10px 0', padding: '14px 18px', animation: `cardSlideIn 400ms ease ${i * 50}ms both` }}>
+                      <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color, marginBottom: '6px', letterSpacing: '0.1em' }}>{sector.split(' ')[0].toUpperCase()}</div>
+                      <div style={{ fontSize: '12.5px', color: 'var(--secondary)', lineHeight: 1.55 }}>{text}</div>
                     </div>
                   )
                 })}
@@ -350,19 +368,19 @@ function BriefView({ type }) {
       )}
 
       {/* Articles feed */}
-      <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em', marginBottom: '10px' }}>TOP STORIES</div>
+      <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', letterSpacing: '0.12em', marginBottom: '10px' }}>TOP STORIES</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
         {SECTORS.map(s => {
           const count = s.key === 'ALL' ? articles.length : (sectorCounts[s.value] || 0)
           const isActive = sectorFilter === s.key
           return (
-            <button key={s.key} onClick={() => setSectorFilter(s.key)} style={{ padding: '4px 11px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', transition: 'all 0.12s', letterSpacing: '0.05em', outline: 'none', border: `1px solid ${isActive ? s.color : 'rgba(255,255,255,0.07)'}`, background: isActive ? s.color + '18' : 'transparent', color: isActive ? s.color : count > 0 ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.2)' }}>
+            <button key={s.key} onClick={() => setSectorFilter(s.key)} style={{ padding: '4px 11px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', transition: 'all 0.12s', letterSpacing: '0.05em', outline: 'none', border: `1px solid ${isActive ? s.color : 'var(--filter-inactive-border)'}`, background: isActive ? s.color + '18' : 'transparent', color: isActive ? s.color : count > 0 ? 'var(--filter-inactive-text)' : 'var(--filter-inactive-text-dim)' }}>
               {s.label}{count > 0 ? ` (${count})` : ''}
             </button>
           )
         })}
       </div>
-      <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '14px' }}>{filtered.length} {filtered.length === 1 ? 'STORY' : 'STORIES'}{sectorFilter !== 'ALL' && ` · ${activeSector?.label}`}</div>
+      <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', marginBottom: '14px' }}>{filtered.length} {filtered.length === 1 ? 'STORY' : 'STORIES'}{sectorFilter !== 'ALL' && ` · ${activeSector?.label}`}</div>
       {filtered.length > 0
         ? filtered.map(a => <ArticleCard key={a.id} article={a} />)
         : <EmptyState icon={EMPTY_ICONS.newspaper} title="No stories in this sector yet" subtitle="Articles will appear here as they are ingested" />}
@@ -466,12 +484,12 @@ function LiveTracker() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
         <div>
           <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '4px' }}>⚡ LIVE NEWS TRACKER</div>
-          <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', margin: 0 }}>
+          <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', margin: 0 }}>
             Auto-refreshes every 60s · {articles.length} stories tracked
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {lastRefresh && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.2)' }}>Updated {timeAgo(lastRefresh)}</span>}
+          {lastRefresh && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>Updated {timeAgo(lastRefresh)}</span>}
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#4ade80', animation: 'pulse 2s infinite' }} />
             <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#4ade80', letterSpacing: '0.1em' }}>LIVE</span>
@@ -481,12 +499,12 @@ function LiveTracker() {
 
       {/* Sort controls */}
       <div style={{ marginBottom: '14px' }}>
-        <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)', letterSpacing: '0.14em', marginBottom: '7px' }}>SORT BY</div>
+        <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.14em', marginBottom: '7px' }}>SORT BY</div>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           {SORT_OPTIONS.map(opt => {
             const isActive = sortBy === opt.key
             return (
-              <button key={opt.key} onClick={() => setSortBy(opt.key)} style={{ padding: '5px 13px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', transition: 'all 0.12s', letterSpacing: '0.06em', outline: 'none', border: `1px solid ${isActive ? '#f59e0b' : 'rgba(255,255,255,0.1)'}`, background: isActive ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.03)', color: isActive ? '#f59e0b' : 'rgba(255,255,255,0.4)' }}>
+              <button key={opt.key} onClick={() => setSortBy(opt.key)} style={{ padding: '5px 13px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', transition: 'all 0.12s', letterSpacing: '0.06em', outline: 'none', border: `1px solid ${isActive ? '#f59e0b' : 'var(--input-border)'}`, background: isActive ? 'rgba(245,158,11,0.12)' : 'var(--card-bg)', color: isActive ? '#f59e0b' : 'var(--filter-inactive-text-muted)' }}>
                 {isActive && '● '}{opt.label}
               </button>
             )
@@ -500,14 +518,14 @@ function LiveTracker() {
           const count = s.key === 'ALL' ? articles.length : (sectorCounts[s.value] || 0)
           const isActive = sectorFilter === s.key
           return (
-            <button key={s.key} onClick={() => setSectorFilter(s.key)} style={{ padding: '4px 11px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', transition: 'all 0.12s', letterSpacing: '0.05em', outline: 'none', border: `1px solid ${isActive ? s.color : 'rgba(255,255,255,0.07)'}`, background: isActive ? s.color + '18' : 'transparent', color: isActive ? s.color : count > 0 ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.2)' }}>
+            <button key={s.key} onClick={() => setSectorFilter(s.key)} style={{ padding: '4px 11px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', transition: 'all 0.12s', letterSpacing: '0.05em', outline: 'none', border: `1px solid ${isActive ? s.color : 'var(--filter-inactive-border)'}`, background: isActive ? s.color + '18' : 'transparent', color: isActive ? s.color : count > 0 ? 'var(--filter-inactive-text)' : 'var(--filter-inactive-text-dim)' }}>
               {s.label}{count > 0 ? ` (${count})` : ''}
             </button>
           )
         })}
       </div>
 
-      <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '14px' }}>
+      <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', marginBottom: '14px' }}>
         {sorted.length} {sorted.length === 1 ? 'STORY' : 'STORIES'}
         {sectorFilter !== 'ALL' && ` · ${activeSector?.label}`}
         {newIds.size > 0 && <span style={{ marginLeft: '10px', color: '#f59e0b' }}>· {newIds.size} new since last visit</span>}
@@ -521,10 +539,10 @@ function LiveTracker() {
         // Time-bucketed view
         BUCKET_ORDER.filter(b => grouped[b]?.length > 0).map(bucket => (
           <div key={bucket} style={{ marginBottom: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', paddingBottom: '8px', borderBottom: `1px solid rgba(255,255,255,0.06)` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid var(--divider)' }}>
               <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: BUCKET_COLORS[bucket], flexShrink: 0, ...(bucket === 'LAST HOUR' ? { animation: 'pulse 2s infinite' } : {}) }} />
               <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: BUCKET_COLORS[bucket], letterSpacing: '0.14em' }}>{bucket}</span>
-              <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)' }}>{grouped[bucket].length} {grouped[bucket].length === 1 ? 'story' : 'stories'}</span>
+              <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>{grouped[bucket].length} {grouped[bucket].length === 1 ? 'story' : 'stories'}</span>
             </div>
             {grouped[bucket].map(a => <ArticleCard key={a.id} article={a} isNew={newIds.has(a.id)} />)}
           </div>
@@ -542,10 +560,10 @@ function LiveTracker() {
           const sentColors = { BULLISH: '#4ade80', NEUTRAL: '#94a3b8', BEARISH: '#f87171' }
           return Object.entries(sentGroups).filter(([, arr]) => arr.length > 0).map(([label, arr]) => (
             <div key={label} style={{ marginBottom: '24px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid var(--divider)' }}>
                 <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: sentColors[label], flexShrink: 0 }} />
                 <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: sentColors[label], letterSpacing: '0.14em' }}>{label}</span>
-                <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)' }}>{arr.length} {arr.length === 1 ? 'story' : 'stories'}</span>
+                <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>{arr.length} {arr.length === 1 ? 'story' : 'stories'}</span>
               </div>
               {arr.map(a => <ArticleCard key={a.id} article={a} isNew={newIds.has(a.id)} />)}
             </div>
@@ -608,33 +626,45 @@ function ThesisBoard() {
     ? new Date(lastGenerated).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
     : null
 
+  const confScore = (conviction) => {
+    const scores = { BULLISH: 82, BEARISH: 74, WATCH: 55 }
+    return scores[conviction] || 50
+  }
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-        <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>📋 THESIS BOARD</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {lastGenTime && (
-            <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)' }}>
-              Last generated: Today {lastGenTime}
-            </span>
-          )}
-          <button
-            onClick={generateTheses}
-            disabled={generating}
-            style={{ padding: '6px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: generating ? 'not-allowed' : 'pointer', border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#f59e0b', letterSpacing: '0.06em', opacity: generating ? 0.5 : 1, transition: 'opacity 0.3s' }}
-          >
-            {generating ? 'GENERATING...' : '⟳ REGENERATE'}
-          </button>
+      {/* ── Header ── */}
+      <div style={{ borderBottom: '1px solid rgba(245,158,11,0.15)', paddingBottom: '20px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.18em', marginBottom: '6px' }}>THESIS BOARD</div>
+            <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '26px', fontWeight: 300, color: 'var(--heading)', letterSpacing: '-0.01em' }}>Investment Theses</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            {lastGenTime && (
+              <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>
+                {lastGenTime}
+              </span>
+            )}
+            <button
+              onClick={generateTheses}
+              disabled={generating}
+              style={{ padding: '8px 18px', borderRadius: '6px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: generating ? 'not-allowed' : 'pointer', border: '1px solid rgba(245,158,11,0.4)', background: generating ? 'rgba(245,158,11,0.04)' : 'rgba(245,158,11,0.1)', color: '#f59e0b', letterSpacing: '0.08em', opacity: generating ? 0.5 : 1, transition: 'all 0.2s' }}
+            >
+              {generating ? 'GENERATING...' : 'REGENERATE'}
+            </button>
+          </div>
         </div>
+        <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', marginTop: '8px' }}>AI-synthesized from live BreakingAlpha signal flow</p>
+        <div style={{ width: '40px', height: '2px', background: '#f59e0b', marginTop: '12px', borderRadius: '1px' }} />
       </div>
-      <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', marginBottom: '22px' }}>AI-generated investment theses synthesized from live BreakingAlpha signal flow</p>
 
       {error && (
-        <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#ef4444', marginBottom: '14px' }}>⚠ {error}</div>
+        <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#ef4444', marginBottom: '14px', padding: '8px 12px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: '6px' }}>⚠ {error}</div>
       )}
 
       {loading ? (
-        <div><SkeletonCard height="120px" count={3} /></div>
+        <div><SkeletonCard height="140px" count={3} /></div>
       ) : theses.length === 0 ? (
         <EmptyState
           icon={EMPTY_ICONS.book}
@@ -644,27 +674,59 @@ function ThesisBoard() {
           onAction={generating ? undefined : generateTheses}
         />
       ) : (
-        theses.map((t, i) => {
-          const conviction = t.conviction || t.signal
-          const convColor = CONVICTION_COLORS[conviction] || '#94a3b8'
-          return (
-            <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '20px 24px', marginBottom: '10px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '17px', fontWeight: 600, color: '#fff', margin: 0 }}>{t.title}</h3>
-                <span style={{ padding: '3px 10px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: convColor, background: convColor + '18', border: `1px solid ${convColor}40`, flexShrink: 0, marginLeft: '12px' }}>{conviction}</span>
-              </div>
-              <p style={{ fontSize: '13px', color: '#9ca3af', lineHeight: 1.6, margin: '0 0 12px 0' }}>{t.rationale || t.thesis}</p>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '8px' }}>
-                {t.sector && <SectorPill sector={t.sector} />}
-                {t.catalyst && (
-                  <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.04em' }}>
-                    ⚡ CATALYST: {t.catalyst}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {theses.map((t, i) => {
+            const conviction = t.conviction || t.signal
+            const convColor = CONVICTION_COLORS[conviction] || '#94a3b8'
+            const score = confScore(conviction)
+            const circumference = 2 * Math.PI * 16
+            const offset = circumference - (score / 100) * circumference
+            return (
+              <div key={i} style={{
+                background: 'var(--card-bg-subtle)',
+                border: '1px solid var(--divider)',
+                borderTop: `2px solid ${convColor}40`,
+                borderRadius: '12px',
+                padding: '24px 28px',
+                animation: `cardSlideIn 400ms ease ${i * 80}ms both`,
+                transition: 'transform 150ms ease, border-color 150ms ease',
+              }}
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = `${convColor}30` }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = 'var(--divider)' }}>
+                <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+                  {/* Donut confidence score */}
+                  <div style={{ flexShrink: 0, position: 'relative', width: '48px', height: '48px' }}>
+                    <svg width="48" height="48" viewBox="0 0 40 40" style={{ transform: 'rotate(-90deg)' }}>
+                      <circle cx="20" cy="20" r="16" fill="none" stroke="var(--divider)" strokeWidth="3" />
+                      <circle cx="20" cy="20" r="16" fill="none" stroke={convColor} strokeWidth="3"
+                        strokeDasharray={circumference} strokeDashoffset={offset}
+                        strokeLinecap="round" style={{ animation: 'donutFill 800ms ease both', animationDelay: `${i * 80 + 200}ms` }} />
+                    </svg>
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontFamily: "'DM Mono', monospace", color: convColor, fontWeight: 500 }}>{score}</div>
                   </div>
-                )}
+                  {/* Content */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px', gap: '12px' }}>
+                      <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '18px', fontWeight: 600, color: 'var(--heading)', margin: 0, lineHeight: 1.3 }}>{t.title}</h3>
+                      <span style={{ padding: '3px 12px', borderRadius: '20px', fontSize: '9px', fontFamily: "'DM Mono', monospace", color: convColor, background: convColor + '12', border: `1px solid ${convColor}25`, flexShrink: 0, letterSpacing: '0.08em' }}>{conviction}</span>
+                    </div>
+                    <p style={{ fontSize: '13.5px', color: 'var(--secondary)', lineHeight: 1.65, margin: '0 0 14px 0' }}>{t.rationale || t.thesis}</p>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {t.sector && <SectorPill sector={t.sector} />}
+                      </div>
+                      {t.catalyst && (
+                        <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.04em', background: 'rgba(245,158,11,0.06)', padding: '3px 10px', borderRadius: '4px', border: '1px solid rgba(245,158,11,0.12)' }}>
+                          CATALYST: {t.catalyst}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          )
-        })
+            )
+          })}
+        </div>
       )}
     </div>
   )
@@ -683,6 +745,8 @@ function DealFlowTracker() {
   const [memoContent, setMemoContent] = useState('')
   const [memoTitle, setMemoTitle]     = useState('')
   const [showMemoModal, setShowMemoModal] = useState(false)
+  const [memoDisplayed, setMemoDisplayed] = useState('')
+  const [memoCopied, setMemoCopied]     = useState(false)
   const [dealAddedSet, setDealAddedSet] = useState(new Set())
 
   const handleAddDealCompany = async (company) => {
@@ -734,6 +798,20 @@ function DealFlowTracker() {
     load()
   }, [])
 
+  // Typewriter effect for memo output
+  useEffect(() => {
+    if (!memoContent || !showMemoModal) { setMemoDisplayed(''); return }
+    setMemoDisplayed('')
+    setMemoCopied(false)
+    let i = 0
+    const id = setInterval(() => {
+      i++
+      setMemoDisplayed(memoContent.slice(0, i))
+      if (i >= memoContent.length) clearInterval(id)
+    }, 12)
+    return () => clearInterval(id)
+  }, [memoContent, showMemoModal])
+
   const handleAddDeal = async () => {
     if (!formData.company.trim()) return
     const newDeal = { ...formData, id: Date.now(), source: 'manual', ingested_at: new Date().toISOString(), updated_at: new Date().toISOString() }
@@ -769,23 +847,23 @@ function DealFlowTracker() {
       <div style={{ marginBottom: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '4px' }}>💼 DEAL FLOW TRACKER</div>
-          <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', margin: 0 }}>AI-extracted deal pipeline · auto-updated from news ingestion</p>
+          <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', margin: 0 }}>AI-extracted deal pipeline · auto-updated from news ingestion</p>
         </div>
         <button onClick={() => setShowForm(f => !f)} style={{ padding: '5px 13px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#f59e0b', flexShrink: 0 }}>+ ADD DEAL</button>
       </div>
 
       {showForm && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '10px', padding: '18px 20px', marginBottom: '16px' }}>
+        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--input-border)', borderRadius: '10px', padding: '18px 20px', marginBottom: '16px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-            <input placeholder="Company *" value={formData.company} onChange={e => setFormData(f => ({ ...f, company: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }} />
-            <input placeholder="Acquirer" value={formData.acquirer} onChange={e => setFormData(f => ({ ...f, acquirer: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }} />
-            <input placeholder="Deal type (e.g. M&A, IPO)" value={formData.deal_type} onChange={e => setFormData(f => ({ ...f, deal_type: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }} />
-            <input placeholder="Value (e.g. $2.5B)" value={formData.value} onChange={e => setFormData(f => ({ ...f, value: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }} />
+            <input placeholder="Company *" value={formData.company} onChange={e => setFormData(f => ({ ...f, company: e.target.value }))} style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'var(--heading)', outline: 'none' }} />
+            <input placeholder="Acquirer" value={formData.acquirer} onChange={e => setFormData(f => ({ ...f, acquirer: e.target.value }))} style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'var(--heading)', outline: 'none' }} />
+            <input placeholder="Deal type (e.g. M&A, IPO)" value={formData.deal_type} onChange={e => setFormData(f => ({ ...f, deal_type: e.target.value }))} style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'var(--heading)', outline: 'none' }} />
+            <input placeholder="Value (e.g. $2.5B)" value={formData.value} onChange={e => setFormData(f => ({ ...f, value: e.target.value }))} style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'var(--heading)', outline: 'none' }} />
           </div>
-          <input placeholder="Notes" value={formData.notes} onChange={e => setFormData(f => ({ ...f, notes: e.target.value }))} style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none', marginBottom: '10px' }} />
+          <input placeholder="Notes" value={formData.notes} onChange={e => setFormData(f => ({ ...f, notes: e.target.value }))} style={{ width: '100%', boxSizing: 'border-box', background: 'var(--input-bg)', border: '1px solid var(--input-border)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'var(--heading)', outline: 'none', marginBottom: '10px' }} />
           <div style={{ display: 'flex', gap: '8px' }}>
             <button onClick={handleAddDeal} style={{ padding: '6px 16px', borderRadius: '4px', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid rgba(245,158,11,0.5)', background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>SAVE DEAL</button>
-            <button onClick={() => setShowForm(false)} style={{ padding: '6px 16px', borderRadius: '4px', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: 'rgba(255,255,255,0.35)' }}>CANCEL</button>
+            <button onClick={() => setShowForm(false)} style={{ padding: '6px 16px', borderRadius: '4px', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid var(--card-border)', background: 'transparent', color: 'var(--tertiary)' }}>CANCEL</button>
           </div>
         </div>
       )}
@@ -799,20 +877,20 @@ function DealFlowTracker() {
               { label: 'CLOSED',          value: stageCounts['closed'] || 0 },
               { label: 'WITH VALUATION',  value: deals.filter(d => d.valuation).length },
             ].map((s, i) => (
-              <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '12px 14px' }}>
-                <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '22px', fontWeight: 700, color: '#f8fafc', marginBottom: '3px' }}>{s.value}</div>
-                <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em' }}>{s.label}</div>
+              <div key={i} style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '8px', padding: '12px 14px' }}>
+                <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '22px', fontWeight: 700, color: 'var(--heading)', marginBottom: '3px' }}>{s.value}</div>
+                <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', letterSpacing: '0.12em' }}>{s.label}</div>
               </div>
             ))}
           </div>
-          <input type="text" placeholder="Search company, acquirer..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '8px', padding: '9px 15px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none', marginBottom: '14px' }} />
+          <input type="text" placeholder="Search company, acquirer..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', background: 'var(--input-bg)', border: '1px solid var(--input-border)', borderRadius: '8px', padding: '9px 15px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'var(--heading)', outline: 'none', marginBottom: '14px' }} />
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '20px' }}>
-            <button onClick={() => setFilterStage('ALL')} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${filterStage === 'ALL' ? '#f59e0b' : 'rgba(255,255,255,0.07)'}`, background: filterStage === 'ALL' ? 'rgba(245,158,11,0.12)' : 'transparent', color: filterStage === 'ALL' ? '#f59e0b' : 'rgba(255,255,255,0.38)' }}>ALL ({deals.length})</button>
+            <button onClick={() => setFilterStage('ALL')} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${filterStage === 'ALL' ? '#f59e0b' : 'var(--filter-inactive-border)'}`, background: filterStage === 'ALL' ? 'rgba(245,158,11,0.12)' : 'transparent', color: filterStage === 'ALL' ? '#f59e0b' : 'var(--filter-inactive-text-mid)' }}>ALL ({deals.length})</button>
             {Object.entries(DEAL_STAGE_MAP).map(([key, s]) => {
               const count = stageCounts[key] || 0
               if (!count) return null
               const isActive = filterStage === key
-              return <button key={key} onClick={() => setFilterStage(key)} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${isActive ? s.color : 'rgba(255,255,255,0.07)'}`, background: isActive ? s.color + '18' : 'transparent', color: isActive ? s.color : 'rgba(255,255,255,0.38)' }}>{s.label} ({count})</button>
+              return <button key={key} onClick={() => setFilterStage(key)} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${isActive ? s.color : 'var(--filter-inactive-border)'}`, background: isActive ? s.color + '18' : 'transparent', color: isActive ? s.color : 'var(--filter-inactive-text-mid)' }}>{s.label} ({count})</button>
             })}
           </div>
         </>
@@ -832,20 +910,20 @@ function DealFlowTracker() {
 
       {!loading && filtered.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '6px' }}>{filtered.length} {filtered.length === 1 ? 'DEAL' : 'DEALS'}{filterStage !== 'ALL' ? ` · ${DEAL_STAGE_MAP[filterStage]?.label}` : ''}</div>
+          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', marginBottom: '6px' }}>{filtered.length} {filtered.length === 1 ? 'DEAL' : 'DEALS'}{filterStage !== 'ALL' ? ` · ${DEAL_STAGE_MAP[filterStage]?.label}` : ''}</div>
           {filtered.map(deal => {
             const stage    = DEAL_STAGE_MAP[deal.stage] || DEAL_STAGE_MAP.rumored
             const secColor = deal.sector ? getSectorColor(deal.sector) : '#64748b'
             const isExp    = expanded === deal.id
             return (
               <div key={deal.id} onClick={() => setExpanded(isExp ? null : deal.id)}
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '16px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)' }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)' }}>
+                style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '10px', padding: '16px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--card-hover-bg)'; e.currentTarget.style.borderColor = 'var(--card-hover-border)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'var(--card-bg)'; e.currentTarget.style.borderColor = 'var(--card-border)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '18px', fontWeight: 700, color: '#f8fafc' }}>{deal.company}</span>
-                    {deal.acquirer && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.3)' }}>← {deal.acquirer}</span>}
+                    <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '18px', fontWeight: 700, color: 'var(--heading)' }}>{deal.company}</span>
+                    {deal.acquirer && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'var(--tertiary)' }}>← {deal.acquirer}</span>}
                     {deal.company && <button onClick={e => { e.stopPropagation(); handleAddDealCompany(deal.company) }} style={{ background: 'none', border: 'none', cursor: dealAddedSet.has(deal.company) ? 'default' : 'pointer', color: '#f59e0b', fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '1px 3px', flexShrink: 0, lineHeight: 1 }}>{dealAddedSet.has(deal.company) ? '✓' : '+'}</button>}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}>
@@ -854,24 +932,24 @@ function DealFlowTracker() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                  {deal.deal_type && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: '3px' }}>{deal.deal_type}</span>}
+                  {deal.deal_type && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'var(--tertiary)', background: 'var(--card-hover-bg)', border: '1px solid var(--card-border)', padding: '2px 8px', borderRadius: '3px' }}>{deal.deal_type}</span>}
                   {deal.sector && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: secColor, background: secColor + '15', border: `1px solid ${secColor}28`, padding: '2px 8px', borderRadius: '3px' }}>{deal.sector.split(' ')[0]}</span>}
-                  <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)' }}>{timeAgo(deal.updated_at)}</span>
+                  <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>{timeAgo(deal.updated_at)}</span>
                   {deal.auto_extracted && <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(245,158,11,0.4)' }}>🤖 AI</span>}
                 </div>
                 {isExp && (
-                  <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--divider)' }}>
                     {deal.thesis && (
                       <div style={{ background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.18)', borderRadius: '6px', padding: '10px 14px', marginBottom: '10px' }}>
                         <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#fbbf24', letterSpacing: '0.12em', marginBottom: '4px' }}>SIGNAL</div>
-                        <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)', margin: 0, lineHeight: 1.55, fontStyle: 'italic' }}>{deal.thesis}</p>
+                        <p style={{ fontSize: '13px', color: 'var(--body)', margin: 0, lineHeight: 1.55, fontStyle: 'italic' }}>{deal.thesis}</p>
                       </div>
                     )}
                     {deal.source_url && <a href={deal.source_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#60a5fa', textDecoration: 'none' }}>READ SOURCE →</a>}
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
-                  <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.15)' }}>{isExp ? '↑ collapse' : '↓ expand'}</span>
+                  <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>{isExp ? '↑ collapse' : '↓ expand'}</span>
                   <button
                     onClick={e => generateMemo(deal, e)}
                     disabled={memoLoading === deal.id}
@@ -886,22 +964,76 @@ function DealFlowTracker() {
       )}
 
       {showMemoModal && (
-        <div onClick={() => setShowMemoModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#0d1424', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '12px', width: '100%', maxWidth: '680px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-              <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>DEAL MEMO — {memoTitle.toUpperCase()}</span>
-              <button onClick={() => setShowMemoModal(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '18px', cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}>×</button>
+        <div onClick={() => setShowMemoModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', animation: 'contentFadeIn 200ms ease' }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '960px', maxHeight: '85vh', display: 'flex', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(245,158,11,0.15)', animation: 'cardSlideIn 350ms ease' }}>
+            {/* Left pane — frosted glass form info */}
+            <div style={{ width: '38%', minWidth: '280px', background: 'rgba(13,13,26,0.85)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', borderRight: '1px solid var(--divider)', padding: '32px 28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div>
+                <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', letterSpacing: '0.16em', marginBottom: '8px' }}>DEAL MEMO</div>
+                <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '28px', fontWeight: 700, color: 'var(--heading)', margin: 0, lineHeight: 1.2 }}>{memoTitle}</h2>
+                <div style={{ width: '40px', height: '2px', background: 'linear-gradient(90deg, #f59e0b, transparent)', margin: '12px 0 0' }} />
+              </div>
+              {/* Deal details */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
+                {[
+                  { label: 'STATUS', value: 'AI-Generated Analysis' },
+                  { label: 'MODEL', value: 'Groq · LLaMA 3' },
+                  { label: 'GENERATED', value: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) },
+                ].map((item, i) => (
+                  <div key={i}>
+                    <div style={{ fontSize: '8px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.14em', marginBottom: '4px' }}>{item.label}</div>
+                    <div style={{ fontSize: '13px', fontFamily: "'DM Mono', monospace", color: 'var(--body)' }}>{item.value}</div>
+                  </div>
+                ))}
+              </div>
+              {/* Ghost Bα monogram */}
+              <div style={{ display: 'flex', justifyContent: 'center', opacity: 0.04, marginTop: 'auto' }}>
+                <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '80px', fontWeight: 700, color: 'var(--heading)', lineHeight: 1 }}>Bα</span>
+              </div>
             </div>
-            <div style={{ overflowY: 'auto', padding: '24px', flex: 1 }}>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '12px', color: 'rgba(255,255,255,0.75)', lineHeight: 1.75, whiteSpace: 'pre-wrap', margin: 0 }}
-                dangerouslySetInnerHTML={{ __html: memoContent.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>') }} />
-            </div>
-            <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-              <button
-                onClick={() => navigator.clipboard.writeText(memoContent)}
-                style={{ padding: '6px 16px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#f59e0b', letterSpacing: '0.06em' }}>
-                COPY TO CLIPBOARD
-              </button>
+            {/* Right pane — memo output */}
+            <div style={{ flex: 1, background: '#0a0a18', display: 'flex', flexDirection: 'column' }}>
+              {/* Toolbar */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 24px', borderBottom: '1px solid var(--divider)', background: 'var(--card-bg-subtle)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: memoDisplayed.length < memoContent.length ? '#f59e0b' : '#10b981', animation: memoDisplayed.length < memoContent.length ? 'cursorBlink 1s infinite' : 'none' }} />
+                  <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)' }}>
+                    {memoDisplayed.length < memoContent.length ? 'GENERATING...' : 'COMPLETE'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(memoContent); setMemoCopied(true); setTimeout(() => setMemoCopied(false), 2000) }}
+                    style={{ padding: '5px 14px', borderRadius: '4px', fontSize: '9px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid rgba(245,158,11,0.35)', background: memoCopied ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.08)', color: memoCopied ? '#10b981' : '#f59e0b', letterSpacing: '0.08em', transition: 'all 150ms ease' }}>
+                    {memoCopied ? '✓ COPIED' : 'COPY'}
+                  </button>
+                  <button
+                    onClick={() => setShowMemoModal(false)}
+                    style={{ padding: '5px 14px', borderRadius: '4px', fontSize: '9px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid var(--card-border)', background: 'transparent', color: 'var(--tertiary)', letterSpacing: '0.08em' }}>
+                    CLOSE
+                  </button>
+                </div>
+              </div>
+              {/* Memo content with typewriter */}
+              <div style={{ overflowY: 'auto', padding: '28px 32px', flex: 1 }}>
+                {!memoDisplayed ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '16px' }}>
+                    <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '48px', fontWeight: 700, color: 'var(--card-bg)' }}>Bα</div>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      {[0, 1, 2].map(j => (
+                        <div key={j} style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#f59e0b', animation: 'cursorBlink 1.2s infinite', animationDelay: `${j * 200}ms` }} />
+                      ))}
+                    </div>
+                    <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.1em' }}>ANALYZING DEAL...</div>
+                  </div>
+                ) : (
+                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '12.5px', color: 'var(--body)', lineHeight: 1.85, whiteSpace: 'pre-wrap' }}
+                    dangerouslySetInnerHTML={{ __html: memoDisplayed.replace(/\*\*(.*?)\*\*/g, '<strong style="color:#f8fafc;font-weight:600">$1</strong>').replace(/\n/g, '<br/>') }} />
+                )}
+                {memoDisplayed && memoDisplayed.length < memoContent.length && (
+                  <span style={{ display: 'inline-block', width: '2px', height: '14px', background: '#f59e0b', marginLeft: '2px', animation: 'cursorBlink 0.8s infinite', verticalAlign: 'text-bottom' }} />
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -977,12 +1109,12 @@ function CompanyIntel() {
   return (
     <div>
       <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '14px' }}>🏢 COMPANY INTEL</div>
-      <input type="text" placeholder="Search companies..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '8px', padding: '9px 15px', fontSize: '13px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none', marginBottom: '18px' }} />
+      <input type="text" placeholder="Search companies..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', background: 'var(--input-bg)', border: '1px solid var(--input-border)', borderRadius: '8px', padding: '9px 15px', fontSize: '13px', fontFamily: "'DM Mono', monospace", color: 'var(--heading)', outline: 'none', marginBottom: '18px' }} />
       {loading ? <div style={{ padding: '20px 0' }}><SkeletonRows rows={6} /></div>
         : filtered.length === 0 ? <EmptyState icon={EMPTY_ICONS.grid} title={search ? 'No matching companies' : 'No data yet'} subtitle={search ? 'Try a different search term' : 'Companies will appear as articles are ingested'} />
         : (<>
           {/* Note: company count differs from deal count — sourced from different Supabase queries */}
-          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '14px' }}>{filtered.length} COMPANIES TRACKED</div>
+          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', marginBottom: '14px' }}>{filtered.length} COMPANIES TRACKED</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(195px, 1fr))', gap: '9px' }}>
             {filtered.slice(0, 60).map((c, i) => {
               const color = c.sectors[0] ? getSectorColor(c.sectors[0]) : '#64748b'
@@ -990,12 +1122,12 @@ function CompanyIntel() {
               return (
                 <div key={i}
                   onClick={() => handleSelectCompany(c)}
-                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '13px 15px', cursor: 'pointer' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.055)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.13)' }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)' }}
+                  style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '8px', padding: '13px 15px', cursor: 'pointer' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--card-hover-bg)'; e.currentTarget.style.borderColor = 'var(--card-hover-border)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'var(--card-bg)'; e.currentTarget.style.borderColor = 'var(--card-border)' }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '7px' }}>
-                    <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '15px', fontWeight: 600, color: '#f1f5f9' }}>{c.name}</span>
+                    <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '15px', fontWeight: 600, color: 'var(--heading)' }}>{c.name}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                       <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '2px 7px', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.22)' }}>{c.mentions}×</span>
                       <button onClick={e => { e.stopPropagation(); handleAddCompany(c.name) }} style={{ background: 'none', border: 'none', cursor: isAdded ? 'default' : 'pointer', color: '#f59e0b', fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '1px 3px', flexShrink: 0, lineHeight: 1 }}>{isAdded ? '✓' : '+'}</button>
@@ -1009,14 +1141,14 @@ function CompanyIntel() {
         </>)}
 
       {selectedCompany && (
-        <div style={{ position: 'fixed', top: '32px', right: 0, width: '480px', height: 'calc(100vh - 32px)', background: '#060a15', borderLeft: '1px solid rgba(255,255,255,0.09)', zIndex: 200, display: 'flex', flexDirection: 'column', overflowY: 'hidden' }}>
+        <div style={{ position: 'fixed', top: '32px', right: 0, width: '480px', height: 'calc(100vh - 32px)', background: 'var(--sidebar-bg)', borderLeft: '1px solid var(--input-border)', zIndex: 200, display: 'flex', flexDirection: 'column', overflowY: 'hidden' }}>
           {/* Panel header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid var(--card-border)', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '20px', fontWeight: 600, color: '#f1f5f9' }}>{selectedCompany.name}</span>
+              <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '20px', fontWeight: 600, color: 'var(--heading)' }}>{selectedCompany.name}</span>
               <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '2px 7px', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.22)' }}>{selectedCompany.mentions}×</span>
             </div>
-            <button onClick={() => setSelectedCompany(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '20px', cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}>×</button>
+            <button onClick={() => setSelectedCompany(null)} style={{ background: 'none', border: 'none', color: 'var(--secondary)', fontSize: '20px', cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}>×</button>
           </div>
           {/* Panel body */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
@@ -1147,25 +1279,25 @@ function Trends() {
   return (
     <div>
       <div style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:'#f59e0b', letterSpacing:'0.14em', marginBottom:'4px' }}>📈 SIGNAL TRENDS</div>
-      <p style={{ fontSize:'12px', fontFamily:"'DM Mono', monospace", color:'rgba(255,255,255,0.28)', marginBottom:'24px' }}>
+      <p style={{ fontSize:'12px', fontFamily:"'DM Mono', monospace", color:'var(--tertiary)', marginBottom:'24px' }}>
         {articles.length} articles · last 24h vs prior 24h
       </p>
 
       {/* Top Company Movers */}
       <div style={{ marginBottom:'28px' }}>
-        <div style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:'rgba(255,255,255,0.28)', letterSpacing:'0.14em', marginBottom:'10px' }}>TOP COMPANY MOVERS · LAST 24H</div>
+        <div style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:'var(--tertiary)', letterSpacing:'0.14em', marginBottom:'10px' }}>TOP COMPANY MOVERS · LAST 24H</div>
         {movers.length === 0
           ? <EmptyState icon={EMPTY_ICONS.trending} title="Not enough data yet" subtitle="Check back after the next ingest cycle" />
           : <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(185px, 1fr))', gap:'8px' }}>
               {movers.map((m, i) => (
-                <div key={i} style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:'8px', padding:'12px 14px' }}>
+                <div key={i} style={{ background:'var(--card-bg)', border:'1px solid var(--card-border)', borderRadius:'8px', padding:'12px 14px' }}>
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'6px' }}>
                     <span style={{ fontFamily:"'Cormorant Garamond', serif", fontSize:'15px', fontWeight:600, color:'#f1f5f9', lineHeight:1.2 }}>{m.name}</span>
                     <span style={{ fontFamily:"'DM Mono', monospace", fontSize:'11px', color: m.delta >= 0 ? '#4ade80' : '#f87171', flexShrink:0, marginLeft:'6px' }}>
                       {m.delta > 0 ? '+' : ''}{m.delta}
                     </span>
                   </div>
-                  <div style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:'rgba(255,255,255,0.3)' }}>
+                  <div style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:'var(--tertiary)' }}>
                     {m.recent} mentions today · {m.prior} prior
                   </div>
                   {m.prior > 0 && (
@@ -1181,30 +1313,30 @@ function Trends() {
 
       {/* Sector Momentum + Sentiment Shift */}
       <div>
-        <div style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:'rgba(255,255,255,0.28)', letterSpacing:'0.14em', marginBottom:'12px' }}>SECTOR MOMENTUM</div>
+        <div style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:'var(--tertiary)', letterSpacing:'0.14em', marginBottom:'12px' }}>SECTOR MOMENTUM</div>
         {sectorStats.map(s => {
           const color   = getSectorColor(s.sector)
           const sent    = sentLabel(s.sentNow)
           const shift   = shiftLabel(s.sentShift)
           const momColor = s.momentum > 0 ? '#4ade80' : s.momentum < 0 ? '#f87171' : '#94a3b8'
           return (
-            <div key={s.sector} style={{ marginBottom:'16px', background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.055)', borderRadius:'8px', padding:'14px 16px' }}>
+            <div key={s.sector} style={{ marginBottom:'16px', background:'var(--card-bg-subtle)', border:'1px solid var(--divider)', borderRadius:'8px', padding:'14px 16px' }}>
               {/* Top row */}
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
-                <span style={{ fontFamily:"'DM Mono', monospace", fontSize:'11px', color:'rgba(255,255,255,0.65)' }}>{s.sector}</span>
+                <span style={{ fontFamily:"'DM Mono', monospace", fontSize:'11px', color:'var(--body)' }}>{s.sector}</span>
                 <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
                   <span style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:sent.color, background:sent.color+'15', border:`1px solid ${sent.color}30`, padding:'2px 7px', borderRadius:'3px' }}>{sent.label}</span>
                   <span style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:shift.color }}>{shift.label}</span>
                 </div>
               </div>
               {/* Bar */}
-              <div style={{ height:'4px', background:'rgba(255,255,255,0.05)', borderRadius:'3px', overflow:'hidden', marginBottom:'8px' }}>
+              <div style={{ height:'4px', background:'var(--card-hover-bg)', borderRadius:'3px', overflow:'hidden', marginBottom:'8px' }}>
                 <div style={{ height:'100%', width:`${(s.recent / maxRecent) * 100}%`, background:`linear-gradient(to right, ${color}60, ${color})`, borderRadius:'3px', transition:'width 0.4s ease' }} />
               </div>
               {/* Stats row */}
               <div style={{ display:'flex', gap:'16px' }}>
-                <span style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:'rgba(255,255,255,0.35)' }}>{s.recent} stories today</span>
-                <span style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:'rgba(255,255,255,0.22)' }}>{s.prior} yesterday</span>
+                <span style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:'var(--tertiary)' }}>{s.recent} stories today</span>
+                <span style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:'var(--faint)' }}>{s.prior} yesterday</span>
                 <span style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:momColor, marginLeft:'auto' }}>
                   {s.momentum > 0 ? '▲' : s.momentum < 0 ? '▼' : '—'} {Math.abs(s.momentum)}% {s.momentum > 0 ? 'MORE' : s.momentum < 0 ? 'LESS' : 'SAME'}
                 </span>
@@ -1232,6 +1364,8 @@ const NAV = [
 
 // ── App ───────────────────────────────────────────────────────────────────────
 export default function Home() {
+  const { theme, toggleTheme } = useTheme()
+  const [themeRotate, setThemeRotate] = useState(false)
   const [activeTab, setActiveTab] = useState('morning')
   const [quotes, setQuotes] = useState([])
   const [marketTime, setMarketTime] = useState('')
@@ -1417,7 +1551,7 @@ export default function Home() {
   if (!user) return <SignedOutHomepage />
 
   return (
-    <div style={{ minHeight: '100vh', background: '#080c18', color: '#f8fafc' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
       <Head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -1425,9 +1559,9 @@ export default function Home() {
       </Head>
       <style>{`
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #080c18; overflow: hidden; }
+        body { background: var(--bg-primary); overflow: hidden; }
         ::-webkit-scrollbar { width: 3px; }
-        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+        ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.25; } }
         @keyframes scrollTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-33.333%); } }
@@ -1436,28 +1570,33 @@ export default function Home() {
         @keyframes contentFadeIn { from { opacity: 0; } to { opacity: 1; } }
         button:focus { outline: none; }
         button:active:not(:disabled) { transform: scale(0.97); }
-        input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.2); }
+        input::placeholder, textarea::placeholder { color: var(--placeholder); }
         input:focus, textarea:focus { border-color: rgba(245,158,11,0.35) !important; box-shadow: 0 0 0 2px rgba(245,158,11,0.08); }
-        .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 16px; border-radius: 6px; border: none; border-left: 2px solid transparent; background: transparent; color: #9ca3af; font-size: 12.5px; font-family: 'DM Mono', monospace; cursor: pointer; text-align: left; transition: all 0.15s ease; margin-bottom: 1px; }
-        .nav-item:hover { background: rgba(245,158,11,0.06); color: #e5e7eb; }
-        .nav-item:hover .nav-icon { color: #f59e0b; }
-        .nav-item.nav-active { background: rgba(245,158,11,0.10); color: #f59e0b; border-left: 2px solid #f59e0b; }
-        .nav-item.nav-active .nav-icon { color: #f59e0b; }
-        .nav-icon { color: #6b7280; display: flex; align-items: center; flex-shrink: 0; transition: color 0.15s ease; }
+        .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 16px; border-radius: 6px; border: none; border-left: 2px solid transparent; background: transparent; color: var(--text-mid); font-size: 12.5px; font-family: 'DM Mono', monospace; cursor: pointer; text-align: left; transition: all 0.15s ease; margin-bottom: 1px; }
+        .nav-item:hover { background: var(--gold-glow); color: var(--text); }
+        .nav-item:hover .nav-icon { color: var(--gold-bright); }
+        .nav-item.nav-active { background: rgba(245,158,11,0.10); color: var(--gold-bright); border-left: 2px solid var(--gold-bright); }
+        .nav-item.nav-active .nav-icon { color: var(--gold-bright); }
+        .nav-icon { color: var(--text-dim); display: flex; align-items: center; flex-shrink: 0; transition: color 0.15s ease; }
         .sector-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-        .sector-row:hover .sector-label { color: #9ca3af; }
+        .sector-row:hover .sector-label { color: var(--text-mid); }
+        :root.light input::placeholder, :root.light textarea::placeholder { color: var(--text-dim); }
+        :root.light ::-webkit-scrollbar-thumb { background: var(--border); }
+        :root.light .nav-item { color: var(--text-mid); }
+        :root.light .nav-item:hover { background: rgba(191,115,0,0.06); color: var(--text); }
+        :root.light .nav-item.nav-active { background: rgba(191,115,0,0.08); color: var(--accent); border-left-color: var(--accent); }
       `}</style>
 
       <TickerBar quotes={quotes} />
 
       <div style={{ display: 'flex', height: 'calc(100vh - 32px)' }}>
         {/* Sidebar */}
-        <div style={{ width: '232px', flexShrink: 0, background: '#060a15', borderRight: '1px solid #0f1623', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
-          <div style={{ padding: '22px 20px 16px', borderBottom: '1px solid #1a2235' }}>
+        <div style={{ width: '232px', flexShrink: 0, background: 'var(--sidebar-bg)', borderRight: '1px solid var(--sidebar-border)', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
+          <div style={{ padding: '22px 20px 16px', borderBottom: '1px solid var(--border)' }}>
             <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '21px', fontWeight: 700 }}>
-              <span style={{ color: '#fff' }}>Breaking</span><span style={{ color: '#f59e0b' }}>Alpha</span>
+              <span style={{ color: 'var(--heading)' }}>Breaking</span><span style={{ color: '#f59e0b' }}>Alpha</span>
             </div>
-            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#4b5563', letterSpacing: '0.15em', marginTop: '3px' }}>MARKET INTELLIGENCE</div>
+            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.15em', marginTop: '3px' }}>MARKET INTELLIGENCE</div>
           </div>
           <nav style={{ padding: '10px 10px' }}>
             {NAV.map(item => (
@@ -1472,18 +1611,18 @@ export default function Home() {
               <AuthButton />
             </div>
           </nav>
-          <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.055)' }}>
-            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#374151', letterSpacing: '0.12em', marginBottom: '10px' }}>SECTORS TRACKED</div>
+          <div style={{ padding: '14px 20px', borderTop: '1px solid var(--divider)' }}>
+            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.12em', marginBottom: '10px' }}>SECTORS TRACKED</div>
             {SIDEBAR_SECTORS.map(s => (
               <div key={s.name} className="sector-row">
                 <div style={{ width: '3px', height: '3px', borderRadius: '1px', background: s.color, flexShrink: 0 }} />
-                <span className="sector-label" style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#6b7280', transition: 'color 0.15s ease' }}>{s.name}</span>
+                <span className="sector-label" style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', transition: 'color 0.15s ease' }}>{s.name}</span>
               </div>
             ))}
           </div>
-          <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.055)' }}>
-            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#374151', letterSpacing: '0.12em', marginBottom: '6px' }}>MARKET TIME</div>
-            <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.38)', lineHeight: 1.6 }}>{marketTime || '—'}</div>
+          <div style={{ padding: '14px 20px', borderTop: '1px solid var(--divider)' }}>
+            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.12em', marginBottom: '6px' }}>MARKET TIME</div>
+            <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', lineHeight: 1.6 }}>{marketTime || '—'}</div>
             <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: marketOpen ? '#4ade80' : '#f87171', animation: 'pulse 2s infinite', flexShrink: 0 }} />
               <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: marketOpen ? '#4ade80' : '#f87171', letterSpacing: '0.1em' }}>US EQUITIES {marketOpen ? 'OPEN' : 'CLOSED'}</span>
@@ -1493,12 +1632,34 @@ export default function Home() {
 
         {/* Main */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ padding: '12px 30px', borderBottom: '1px solid rgba(255,255,255,0.055)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(8,12,24,0.97)', backdropFilter: 'blur(12px)', flexShrink: 0 }}>
+          <div style={{ padding: '12px 30px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--topbar-bg)', backdropFilter: 'blur(12px)', flexShrink: 0 }}>
             <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.16em' }}>
               {NAV.find(n => n.id === activeTab)?.icon} {NAV.find(n => n.id === activeTab)?.label.toUpperCase()}
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.25)' }}>{todayStr}</span>
+              <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)' }}>{todayStr}</span>
+              <button
+                onClick={() => { setThemeRotate(true); toggleTheme(); setTimeout(() => setThemeRotate(false), 350) }}
+                aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+                style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', padding: '5px 7px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'border-color 150ms ease' }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--gold-bright)'}
+                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-mid)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  style={{ transition: 'transform 300ms ease', transform: themeRotate ? 'rotate(360deg)' : 'rotate(0deg)' }}>
+                  {theme === 'dark' ? (
+                    <>
+                      <circle cx="12" cy="12" r="5" />
+                      <line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
+                      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                      <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
+                      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                    </>
+                  ) : (
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                  )}
+                </svg>
+              </button>
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#4ade80', animation: 'pulse 2s infinite' }} />
                 <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#4ade80', letterSpacing: '0.1em' }}>LIVE</span>
@@ -1519,10 +1680,10 @@ export default function Home() {
                 <div>
                   <div style={{ marginBottom: '24px' }}>
                     <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '4px' }}>⭐ WATCHLIST</div>
-                    <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', margin: 0 }}>Track companies, tickers, and sectors. Articles matching your watchlist are boosted in relevance.</p>
+                    <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', margin: 0 }}>Track companies, tickers, and sectors. Articles matching your watchlist are boosted in relevance.</p>
                   </div>
 
-                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '16px 20px', marginBottom: '20px' }}>
+                  <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '10px', padding: '16px 20px', marginBottom: '20px' }}>
                     <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
                       <input
                         type="text"
@@ -1530,39 +1691,39 @@ export default function Home() {
                         value={watchlistInput}
                         onChange={e => { setWatchlistInput(e.target.value); setWatchlistError('') }}
                         onKeyDown={e => { if (e.key === 'Enter' && watchlistInput.trim()) handleWatchlistAdd() }}
-                        style={{ flex: 1, minWidth: '200px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none' }}
+                        style={{ flex: 1, minWidth: '200px', background: 'var(--input-bg)', border: '1px solid var(--input-border)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'var(--heading)', outline: 'none' }}
                       />
                       <button onClick={handleWatchlistAdd} style={{ padding: '8px 18px', borderRadius: '6px', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid rgba(245,158,11,0.5)', background: 'rgba(245,158,11,0.12)', color: '#f59e0b', letterSpacing: '0.06em', flexShrink: 0 }}>ADD</button>
                     </div>
                     {watchlistError && <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#f87171', marginTop: '6px' }}>{watchlistError}</div>}
                     <div style={{ display: 'flex', gap: '6px' }}>
                       {['ticker', 'company', 'sector'].map(t => (
-                        <button key={t} onClick={() => setWatchlistType(t)} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${watchlistType === t ? '#f59e0b' : 'rgba(255,255,255,0.1)'}`, background: watchlistType === t ? 'rgba(245,158,11,0.12)' : 'transparent', color: watchlistType === t ? '#f59e0b' : 'rgba(255,255,255,0.35)' }}>{t.toUpperCase()}</button>
+                        <button key={t} onClick={() => setWatchlistType(t)} style={{ padding: '4px 12px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: `1px solid ${watchlistType === t ? '#f59e0b' : 'var(--input-border)'}`, background: watchlistType === t ? 'rgba(245,158,11,0.12)' : 'transparent', color: watchlistType === t ? '#f59e0b' : 'var(--tertiary)' }}>{t.toUpperCase()}</button>
                       ))}
                     </div>
                   </div>
 
                   <div style={{ marginBottom: '20px' }}>
-                    <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '8px' }}>QUICK ADD SECTOR</div>
+                    <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', letterSpacing: '0.14em', marginBottom: '8px' }}>QUICK ADD SECTOR</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                       {SIDEBAR_SECTORS.map(s => {
                         const isTracked = watchlist.some(e => e.identifier.toLowerCase() === s.name.toLowerCase())
                         return (
-                          <button key={s.name} onClick={() => !isTracked && handleWatchlistAddSector(s.name)} style={{ padding: '4px 11px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: isTracked ? 'default' : 'pointer', border: `1px solid ${isTracked ? 'rgba(255,255,255,0.05)' : s.color + '40'}`, background: isTracked ? 'transparent' : s.color + '12', color: isTracked ? 'rgba(255,255,255,0.18)' : s.color, opacity: isTracked ? 0.5 : 1 }}>{s.name}{isTracked ? ' ✓' : ''}</button>
+                          <button key={s.name} onClick={() => !isTracked && handleWatchlistAddSector(s.name)} style={{ padding: '4px 11px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: isTracked ? 'default' : 'pointer', border: `1px solid ${isTracked ? 'var(--card-hover-bg)' : s.color + '40'}`, background: isTracked ? 'transparent' : s.color + '12', color: isTracked ? 'var(--faint)' : s.color, opacity: isTracked ? 0.5 : 1 }}>{s.name}{isTracked ? ' ✓' : ''}</button>
                         )
                       })}
                     </div>
                   </div>
 
                   <div style={{ marginBottom: '28px' }}>
-                    <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '10px' }}>TRACKING ({watchlist.length})</div>
+                    <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', letterSpacing: '0.14em', marginBottom: '10px' }}>TRACKING ({watchlist.length})</div>
                     {watchlistLoading ? (
                       <div style={{ padding: '10px 0' }}><SkeletonRows rows={3} /></div>
                     ) : watchlist.length === 0 ? (
                       <EmptyState icon={EMPTY_ICONS.bookmark} title="Nothing tracked yet" subtitle="Add a ticker, company, or sector above to start tracking" />
                     ) : watchlist.map(entry => (
-                      <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', marginBottom: '6px' }}>
-                        <span style={{ flex: 1, fontFamily: "'DM Mono', monospace", fontSize: '13px', color: '#f1f5f9' }}>{entry.identifier}</span>
+                      <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', background: 'var(--card-bg-subtle)', border: '1px solid var(--divider)', borderRadius: '6px', marginBottom: '6px' }}>
+                        <span style={{ flex: 1, fontFamily: "'DM Mono', monospace", fontSize: '13px', color: 'var(--heading)' }}>{entry.identifier}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                           {mounted && entry.type === 'ticker' && watchlistPrices[entry.identifier] && (
                             <span style={{
@@ -1579,7 +1740,7 @@ export default function Home() {
                           <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.22)', padding: '2px 5px', borderRadius: '3px', flexShrink: 0 }}>
                             {(entry.type || '').toUpperCase()}
                           </span>
-                          <button onClick={() => handleWatchlistRemove(entry.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.25)', fontSize: '16px', lineHeight: 1, padding: '0 2px', flexShrink: 0 }}>×</button>
+                          <button onClick={() => handleWatchlistRemove(entry.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tertiary)', fontSize: '16px', lineHeight: 1, padding: '0 2px', flexShrink: 0 }}>×</button>
                         </div>
                       </div>
                     ))}
@@ -1587,21 +1748,21 @@ export default function Home() {
 
                   {watchlist.length > 0 && (
                     <div>
-                      <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '10px' }}>WATCHLIST FEED ({watchlistMatches.length})</div>
+                      <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', letterSpacing: '0.14em', marginBottom: '10px' }}>WATCHLIST FEED ({watchlistMatches.length})</div>
                       {watchlistMatches.length === 0 ? (
                         <EmptyState icon={EMPTY_ICONS.newspaper} title="No matching articles yet" subtitle="Recent articles matching your watchlist will appear here" />
                       ) : watchlistMatches.map(a => {
                         const timestamp = a.published_at || a.ingested_at
                         return (
-                          <div key={a.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '12px 16px', marginBottom: '8px' }}>
+                          <div key={a.id} style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '8px', padding: '12px 16px', marginBottom: '8px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                 {a.sector && <SectorPill sector={a.sector} />}
-                                {a.source && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)' }}>{a.source}</span>}
+                                {a.source && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)' }}>{a.source}</span>}
                               </div>
-                              {timestamp && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)', flexShrink: 0 }}>{timeAgo(timestamp)}</span>}
+                              {timestamp && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', flexShrink: 0 }}>{timeAgo(timestamp)}</span>}
                             </div>
-                            <div style={{ fontSize: '15px', fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, color: '#f1f5f9', lineHeight: 1.4 }}>{a.title}</div>
+                            <div style={{ fontSize: '15px', fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, color: 'var(--heading)', lineHeight: 1.4 }}>{a.title}</div>
                           </div>
                         )
                       })}
