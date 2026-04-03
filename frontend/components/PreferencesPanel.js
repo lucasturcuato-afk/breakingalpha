@@ -199,20 +199,17 @@ export default function PreferencesPanel({ user }) {
       {/* Watchlist relevance toggle */}
       <div style={{ marginBottom: '36px' }}>
         <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '12px' }}>PERSONALIZATION</div>
-        <button
-          onClick={() => { setPrioritizeWatchlist(p => !p); setSaved(false) }}
+        <div
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: '14px',
             padding: '14px 16px',
             borderRadius: '8px',
-            border: `1px solid ${prioritizeWatchlist ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.07)'}`,
-            background: prioritizeWatchlist ? 'rgba(59,130,246,0.07)' : 'rgba(255,255,255,0.02)',
-            color: prioritizeWatchlist ? '#f8fafc' : 'rgba(255,255,255,0.45)',
-            cursor: 'pointer',
-            textAlign: 'left',
-            transition: 'all 0.12s',
+            border: '1px solid rgba(255,255,255,0.07)',
+            background: 'rgba(255,255,255,0.02)',
+            opacity: 0.45,
+            cursor: 'not-allowed',
             width: '100%',
           }}
         >
@@ -220,29 +217,30 @@ export default function PreferencesPanel({ user }) {
             width: '32px',
             height: '18px',
             borderRadius: '9px',
-            background: prioritizeWatchlist ? '#3b82f6' : 'rgba(255,255,255,0.1)',
+            background: 'rgba(255,255,255,0.1)',
             position: 'relative',
             flexShrink: 0,
-            transition: 'background 0.15s',
           }}>
             <div style={{
               position: 'absolute',
               top: '3px',
-              left: prioritizeWatchlist ? '17px' : '3px',
+              left: '3px',
               width: '12px',
               height: '12px',
               borderRadius: '50%',
               background: '#fff',
-              transition: 'left 0.15s',
             }} />
           </div>
           <div>
-            <div style={{ fontSize: '13px', fontFamily: "'DM Mono', monospace", fontWeight: 500, marginBottom: '2px' }}>Prioritize watchlist relevance</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+              <span style={{ fontSize: '13px', fontFamily: "'DM Mono', monospace", fontWeight: 500, color: 'rgba(255,255,255,0.45)' }}>Prioritize watchlist relevance</span>
+              <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.1em' }}>COMING SOON</span>
+            </div>
             <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.3)' }}>
               Weight brief coverage toward companies and sectors in your watchlist.
             </div>
           </div>
-        </button>
+        </div>
       </div>
 
       {/* Brief schedule info */}

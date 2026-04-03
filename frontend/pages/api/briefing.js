@@ -1,9 +1,12 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Maps preference panel module names → briefing section keys
+// Maps preference panel module names → briefing section keys.
+// Order here defines canonical priority when multiple modules are selected:
+// modules are sorted by this order so brief section ranking matches the
+// top-to-bottom layout of the preferences panel.
 const MODULE_TO_SECTION = {
-  'Deals & M&A':    'deals_and_ma',
   'Macro & Rates':  'macro_and_rates',
+  'Deals & M&A':    'deals_and_ma',
   'Public Markets': 'public_markets',
   'Sector Signals': 'sector_spotlight',
 }
@@ -12,13 +15,51 @@ const MODULE_TO_SECTION = {
 // should not be displaced from the bottom of the brief by preference shaping.
 const PINNED_LAST = ['what_to_watch', 'tomorrow_setup']
 
+// Aliases for LLM-generated sector_breakdown key abbreviations that the word-
+// filter misses. Keyed by lowercase preference sector name.
+const PREF_ALIASES = {
+  'technology m&a':  ['tech m&a', 'tech'],
+  'venture capital': ['vc'],
+  'private equity':  ['pe', 'buyout', 'lbo'],
+  'geopolitics':     ['geopolit'],
+  'healthcare':      ['biotech', 'pharma', 'life science'],
+  'energy':          ['oil', 'renewable', 'clean energy'],
+  'consumer':        ['retail'],
+}
+
+/**
+ * True if a sector_breakdown key (e.g. "Healthcare & Biotech") matches
+ * a user preference sector (e.g. "Healthcare").
+ *
+ * Two-pass: containment check first (handles "Healthcare" ⊂ "Healthcare & Biotech"
+ * and reverse), then alias fallback for LLM abbreviations like "PE", "VC", "Tech".
+ */
+function sectorMatchesPreference(breakdownSector, prefSector) {
+  const bs = breakdownSector.toLowerCase()
+  const ps = prefSector.toLowerCase()
+
+  // Pass 1: either string contains the other
+  if (bs.includes(ps) || ps.includes(bs)) return true
+
+  // Pass 2: check known LLM abbreviations for this preference
+  const aliases = PREF_ALIASES[ps] ?? []
+  return aliases.some(alias => bs.includes(alias))
+}
+
 /**
  * Reorder sections so preferred modules appear first.
+ * modulePrefs is sorted by canonical MODULE_TO_SECTION order before use,
+ * so the brief section ordering always reflects the panel's top-to-bottom layout
+ * regardless of which order the user toggled modules on.
  * Pinned-last sections (what_to_watch, tomorrow_setup) always stay at the end.
- * Sections not mapped to any preference retain their original relative order.
  */
 function shapeSections(sections, modulePrefs) {
-  const preferredKeys = modulePrefs
+  const canonicalOrder = Object.keys(MODULE_TO_SECTION)
+  const sorted = [...modulePrefs].sort(
+    (a, b) => canonicalOrder.indexOf(a) - canonicalOrder.indexOf(b)
+  )
+
+  const preferredKeys = sorted
     .map(m => MODULE_TO_SECTION[m])
     .filter(k => k && k in sections)
 
@@ -33,17 +74,6 @@ function shapeSections(sections, modulePrefs) {
     result[key] = sections[key]
   }
   return result
-}
-
-/**
- * True if a sector_breakdown key (e.g. "Healthcare & Biotech") matches
- * a user preference sector (e.g. "Healthcare").
- * Uses word-level substring match; skips short words to avoid false positives.
- */
-function sectorMatchesPreference(breakdownSector, prefSector) {
-  const bs = breakdownSector.toLowerCase()
-  const words = prefSector.toLowerCase().split(/\s+/).filter(w => w.length > 3)
-  return words.some(w => bs.includes(w))
 }
 
 /**
