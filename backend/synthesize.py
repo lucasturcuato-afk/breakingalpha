@@ -39,7 +39,7 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
     }
   ],
   "sector_breakdown": {
-    "note": "Only include sectors where the provided articles contain a specific, named signal — omit any sector with nothing concrete. Do not invent signals for uncovered sectors."
+    "Technology M&A": "2-3 sentence narrative on deal activity, named companies, multiples, and strategic signals in this sector. Replace this key with the actual sector name — use as many sector keys as you have real data for. Only include a sector if you can name at least one specific company and state a concrete signal from the articles. Omit sectors with no real data."
   }
 }
 
@@ -78,7 +78,7 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
     }
   ],
   "sector_breakdown": {
-    "note": "Only include sectors where the provided articles contain a specific, named signal — omit any sector with nothing concrete. Do not invent signals for uncovered sectors."
+    "Technology M&A": "2-3 sentence narrative on deal activity, named companies, multiples, and strategic signals in this sector. Replace this key with the actual sector name — use as many sector keys as you have real data for. Only include a sector if you can name at least one specific company and state a concrete signal from the articles. Omit sectors with no real data."
   }
 }
 
@@ -216,6 +216,54 @@ def _select_articles_for_synthesis(
     return spine, floor
 
 
+def _validate_sector_breakdown(sb):
+    """
+    Validate and repair sector_breakdown after parsing.
+
+    The JSON schema example in the system prompt uses 'Technology M&A' as a
+    placeholder key to show the model the expected shape. If the model echoes
+    the schema instruction text as a value (rather than writing a real narrative),
+    that entry is detected and dropped.
+
+    Detection strategy: check the VALUE for instruction-language markers.
+    This catches schema-echo regardless of which key the model used.
+
+    Returns a clean dict of {sector_name: narrative} or {} if nothing valid.
+    """
+    if not isinstance(sb, dict):
+        return {}
+
+    # Phrases that appear in schema instruction text but never in real narratives.
+    INSTRUCTION_MARKERS = (
+        'only include',
+        'do not invent',
+        'omit sectors',
+        'replace this key',
+        'real data for',
+        'concrete signal from the articles',
+    )
+
+    clean = {}
+    skipped = []
+    for k, v in sb.items():
+        if not isinstance(k, str) or not isinstance(v, str):
+            skipped.append(k)
+            continue
+        v_lower = v.lower()
+        if any(marker in v_lower for marker in INSTRUCTION_MARKERS):
+            skipped.append(k)  # schema-echo value — model copied the instruction
+            continue
+        if len(v.strip()) < 20:
+            skipped.append(k)  # too short to be a real narrative
+            continue
+        clean[k] = v
+
+    if skipped:
+        print(f"  ⚠ sector_breakdown: dropped {len(skipped)} invalid key(s): {skipped}")
+
+    return clean
+
+
 def groq_with_backoff(messages, temperature=0.3, max_tokens=2000, max_retries=5):
     """Call Groq with exponential backoff + jitter on 429 rate limit errors."""
     for attempt in range(max_retries):
@@ -309,6 +357,9 @@ def run(brief_type="morning"):
             "sector_breakdown": {}
         }
 
+    sector_breakdown = _validate_sector_breakdown(data.get("sector_breakdown", {}))
+    print(f"  📊 sector_breakdown: {len(sector_breakdown)} sector(s) — {list(sector_breakdown.keys())}")
+
     now = datetime.now(timezone.utc).isoformat()
     row = {
         "briefing_type":    brief_type,
@@ -317,7 +368,7 @@ def run(brief_type="morning"):
         "market_tone":      data.get("market_tone", "NEUTRAL"),
         "sections":         json.dumps(data.get("sections", {})),
         "top_deals":        json.dumps(data.get("top_deals", [])),
-        "sector_breakdown": json.dumps(data.get("sector_breakdown", {})),
+        "sector_breakdown": json.dumps(sector_breakdown),
         "created_at":       now,
     }
 
