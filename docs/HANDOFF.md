@@ -12,7 +12,7 @@
 
 ## Architecture
 - **Frontend:** Next.js 14 + React, hosted on Vercel (root dir: frontend)
-- **Backend:** Python — ingest.py, synthesize.py, deal_extractor.py, run.py
+- **Backend:** Python — ingest.py, synthesize.py, deal_extractor.py, run.py, observe.py (Phase 1 observation layer)
 - **Database:** Supabase — use ingested_at for ordering, NOT created_at
 - **AI:** Groq API — ingest filtering: llama-3.1-8b-instant; synthesis: llama-3.3-70b-versatile
 - **News:** NewsAPI + 11 RSS feeds
@@ -29,6 +29,10 @@
 **theses:** Live in Supabase. Public read/write RLS. CRUD via backend/theses.py. Schema in backend/theses_schema.sql.
 
 **watchlist:** Live in Supabase. Public read/write RLS. CRUD via backend/watchlist.py. Schema in backend/watchlist_schema.sql. Fields: id (uuid), identifier (text), type (enum: ticker/company/sector), created_at, updated_at.
+
+**pipeline_runs:** Phase 1 observation layer. Fields: run_id, timestamp, status, article_count. Populated by backend/observe.py after ingest → synthesize → deal extraction.
+
+**run_articles:** Phase 1 observation layer. Fields: run_id, article_id, selected_reason, provenance_flags. Tracks which articles were selected and marked with provenance status (exact vs. reconstructed/inferred).
 
 ## Environment Variables
 **Backend — GitHub Secrets + backend/.env:**
@@ -49,12 +53,18 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 
 ## In Progress
 
+### Autonomous Improvement Phase 1 — Observation Layer
+- **Run Recorder slice merged (PR #42):** `pipeline_runs` and `run_articles` tables now writing from non-blocking observer hook
+- **Next Phase 1 component:** Brief Critic (article quality scoring post-synthesis)
+- **Not yet built:** Selection Auditor, Trend Mapper, optimizer, rollback, config mutation — these are Phase 2+
+
 ### lucas/thesis-board-live — Thesis Board Frontend
 - Connecting Thesis Board UI to the live `theses` Supabase table
 - Backend CRUD (theses.py) and schema (theses_schema.sql) merged via PR #10
 - Status: in progress
 
 ## Recently Completed (2026-04-02)
+- **Run Recorder Phase 1 observation layer (merged PR #42):** Backend observation layer now live: `backend/observe.py`, `pipeline_runs` table (run_id, timestamp, status, article_count), `run_articles` table (run_id, article_id, selected_reason, provenance_flags). Non-blocking observer hook runs after ingest → synthesize → deal extraction. In Phase 1, selected article rows are reconstructed/inferred and explicitly labeled; future analysis can distinguish exact vs. inferred provenance. Next: validate next scheduled run writes to both tables correctly.
 - **Frontend stub-row fallback (merged):** Homepage now skips briefing rows with headline "Market Intelligence Unavailable" and falls back to the last successful briefing. Prevents stub row from surfacing during synthesis failures.
 - **Ingest rate-limit hotfix (PR #33, merged):** `backend/ingest.py` filtering model changed from `llama-3.3-70b-versatile` → `llama-3.1-8b-instant`. Inter-call sleep increased from 0.25s → 2.0s. Stale "Filtering with Gemini..." log corrected. Root cause: ingest was saturating the Groq minute-window and leaving no quota for synthesis → stub briefing. After fix: full pipeline run completed with zero rate-limit errors, 69 new articles stored, fresh morning brief generated.
 - **Relevance gate tightening (PR #34, merged):** `FILTER_PROMPT` in `backend/ingest.py` now rejects opinion/think-piece/cultural commentary/named-person commentary articles as non-relevant. Added explicit exclusion for company-anchored opinion pieces (e.g. articles about a named person's political philosophy even if they run a public company).
@@ -92,6 +102,10 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - **Branch cleanup:** deleted noah/claude-workflow-setup, noah/fix-supabase-auth, docs/repo-workflow-update, claude/recursing-turing
 
 ## Pending / Known Issues
+
+### Next validation — Phase 1 Run Recorder (no code needed — inspect after 2026-04-03 scheduled run)
+- Confirm next scheduled run writes to `pipeline_runs` and `run_articles` tables with correct row counts and provenance flags
+- Verify observer does not block pipeline completion (non-blocking behavior)
 
 ### Next validation (no code needed — inspect after 2026-04-03 scheduled run)
 - Compare article blurb quality metrics against today's baseline:
