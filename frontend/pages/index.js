@@ -80,6 +80,53 @@ function parseJSON(val) {
   try { return JSON.parse(val) } catch { return null }
 }
 
+// ── Empty State ──────────────────────────────────────────────────────────────
+const EMPTY_ICONS = {
+  newspaper: <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22h16a2 2 0 002-2V4a2 2 0 00-2-2H8a2 2 0 00-2 2v16a2 2 0 01-2 2zm0 0a2 2 0 01-2-2v-9c0-1.1.9-2 2-2h2"/><line x1="10" y1="6" x2="18" y2="6"/><line x1="10" y1="10" x2="18" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/></svg>,
+  briefcase: <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>,
+  book: <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>,
+  bookmark: <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>,
+  trending: <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>,
+  grid: <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>,
+  sun: <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>,
+  moon: <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>,
+}
+
+function EmptyState({ icon, title, subtitle, action, onAction }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '56px 24px', animation: 'emptyFadeIn 500ms ease both' }}>
+      <div style={{ color: 'rgba(255,255,255,0.12)', marginBottom: '16px', opacity: 0.3 }}>{icon}</div>
+      <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '17px', fontWeight: 600, color: 'rgba(255,255,255,0.3)', marginBottom: '6px', textAlign: 'center' }}>{title}</div>
+      {subtitle && <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.18)', textAlign: 'center', maxWidth: '320px', lineHeight: 1.6 }}>{subtitle}</div>}
+      {action && onAction && (
+        <button onClick={onAction} style={{ marginTop: '18px', padding: '8px 20px', borderRadius: '6px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#f59e0b', letterSpacing: '0.08em', transition: 'all 150ms ease' }}>{action}</button>
+      )}
+    </div>
+  )
+}
+
+function SkeletonCard({ height = '120px', count = 1 }) {
+  return Array.from({ length: count }).map((_, i) => (
+    <div key={i} style={{ height, borderRadius: '10px', background: 'linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.03) 100%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease-in-out infinite', border: '1px solid rgba(255,255,255,0.05)', marginBottom: i < count - 1 ? '10px' : 0 }} />
+  ))
+}
+
+function SkeletonRows({ rows = 4 }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.03) 100%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease-in-out infinite', flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ height: '14px', width: `${70 + Math.random() * 30}%`, borderRadius: '4px', background: 'linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.03) 100%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease-in-out infinite', marginBottom: '8px' }} />
+            <div style={{ height: '10px', width: `${40 + Math.random() * 30}%`, borderRadius: '4px', background: 'linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.02) 100%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease-in-out infinite' }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Ticker Bar ───────────────────────────────────────────────────────────────
 function TickerBar({ quotes }) {
   if (!quotes || quotes.length === 0) return (
@@ -200,11 +247,10 @@ function BriefView({ type }) {
   const filtered = sectorFilter === 'ALL' ? articles : articles.filter(a => a.sector === activeSector?.value)
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ width: '28px', height: '28px', border: '2px solid rgba(255,255,255,0.08)', borderTopColor: '#f59e0b', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 14px' }} />
-        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em' }}>LOADING INTEL...</div>
-      </div>
+    <div style={{ padding: '20px 0' }}>
+      <SkeletonCard height="180px" />
+      <div style={{ height: '10px' }} />
+      <SkeletonCard height="100px" count={3} />
     </div>
   )
 
@@ -296,11 +342,11 @@ function BriefView({ type }) {
           )}
         </>
       ) : (
-        <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: '12px', padding: '44px', textAlign: 'center', marginBottom: '28px' }}>
-          <div style={{ fontSize: '30px', marginBottom: '12px' }}>{type === 'morning' ? '☀️' : '🌙'}</div>
-          <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '20px', color: 'rgba(255,255,255,0.35)', marginBottom: '8px' }}>No {type} brief yet</div>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.22)' }}>{type === 'morning' ? 'Publishes weekdays at 6:00 AM PT' : 'Publishes weekdays at 10:00 PM PT'}</div>
-        </div>
+        <EmptyState
+          icon={type === 'morning' ? EMPTY_ICONS.sun : EMPTY_ICONS.moon}
+          title={`No ${type} brief yet`}
+          subtitle={type === 'morning' ? 'Publishes weekdays at 6:00 AM PT' : 'Publishes weekdays at 10:00 PM PT'}
+        />
       )}
 
       {/* Articles feed */}
@@ -319,7 +365,7 @@ function BriefView({ type }) {
       <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '14px' }}>{filtered.length} {filtered.length === 1 ? 'STORY' : 'STORIES'}{sectorFilter !== 'ALL' && ` · ${activeSector?.label}`}</div>
       {filtered.length > 0
         ? filtered.map(a => <ArticleCard key={a.id} article={a} />)
-        : <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>NO STORIES IN THIS SECTOR YET</div>}
+        : <EmptyState icon={EMPTY_ICONS.newspaper} title="No stories in this sector yet" subtitle="Articles will appear here as they are ingested" />}
     </div>
   )
 }
@@ -468,14 +514,9 @@ function LiveTracker() {
       </div>
 
       {loading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px' }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ width: '28px', height: '28px', border: '2px solid rgba(255,255,255,0.08)', borderTopColor: '#f59e0b', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 14px' }} />
-            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em' }}>LOADING FEED...</div>
-          </div>
-        </div>
+        <div style={{ padding: '10px 0' }}><SkeletonCard height="90px" count={4} /></div>
       ) : sorted.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>NO STORIES IN THIS SECTOR YET</div>
+        <EmptyState icon={EMPTY_ICONS.newspaper} title="No stories in this sector yet" subtitle="Articles will appear here as they are ingested" />
       ) : useBuckets ? (
         // Time-bucketed view
         BUCKET_ORDER.filter(b => grouped[b]?.length > 0).map(bucket => (
@@ -593,23 +634,15 @@ function ThesisBoard() {
       )}
 
       {loading ? (
-        <div>
-          {[0, 1, 2].map(i => (
-            <div key={i} style={{ height: '120px', borderRadius: '4px', background: '#1a2235', marginBottom: '10px', animation: 'pulse 1.5s ease-in-out infinite', opacity: 0.6 }} />
-          ))}
-        </div>
+        <div><SkeletonCard height="120px" count={3} /></div>
       ) : theses.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 0' }}>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '13px', color: 'rgba(255,255,255,0.35)', marginBottom: '8px' }}>No theses generated yet</div>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)', marginBottom: '24px' }}>Click REGENERATE to generate today's investment theses from live market data</div>
-          <button
-            onClick={generateTheses}
-            disabled={generating}
-            style={{ padding: '10px 24px', borderRadius: '6px', fontSize: '11px', fontFamily: "'DM Mono', monospace", cursor: generating ? 'not-allowed' : 'pointer', border: '1px solid rgba(245,158,11,0.5)', background: 'rgba(245,158,11,0.12)', color: '#f59e0b', letterSpacing: '0.08em' }}
-          >
-            {generating ? 'GENERATING...' : 'GENERATE THESES'}
-          </button>
-        </div>
+        <EmptyState
+          icon={EMPTY_ICONS.book}
+          title="No theses generated yet"
+          subtitle="Generate today's investment theses from live market data"
+          action={generating ? 'GENERATING...' : 'GENERATE THESES'}
+          onAction={generating ? undefined : generateTheses}
+        />
       ) : (
         theses.map((t, i) => {
           const conviction = t.conviction || t.signal
@@ -786,20 +819,15 @@ function DealFlowTracker() {
       )}
 
       {loading && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px' }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ width: '28px', height: '28px', border: '2px solid rgba(255,255,255,0.08)', borderTopColor: '#f59e0b', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 14px' }} />
-            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em' }}>LOADING PIPELINE...</div>
-          </div>
-        </div>
+        <div style={{ padding: '10px 0' }}><SkeletonCard height="80px" count={4} /></div>
       )}
 
       {!loading && deals.length === 0 && (
-        <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.06), rgba(59,130,246,0.04))', border: '1px solid rgba(245,158,11,0.14)', borderRadius: '12px', padding: '32px', marginTop: '16px' }}>
-          <div style={{ fontSize: '28px', marginBottom: '14px' }}>💼</div>
-          <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '22px', color: '#f8fafc', margin: '0 0 12px 0' }}>Deal pipeline populating...</h2>
-          <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.55)', lineHeight: 1.75, margin: '0 0 18px 0' }}>AI is extracting deals from ingested articles. If this is your first run, make sure the <span style={{ color: '#f59e0b', fontFamily: "'DM Mono', monospace" }}>deal_flow</span> table exists in Supabase and RLS read policy is enabled.</p>
-        </div>
+        <EmptyState
+          icon={EMPTY_ICONS.briefcase}
+          title="Deal pipeline populating"
+          subtitle="AI is extracting deals from ingested articles. Check back shortly."
+        />
       )}
 
       {!loading && filtered.length > 0 && (
@@ -950,8 +978,8 @@ function CompanyIntel() {
     <div>
       <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '14px' }}>🏢 COMPANY INTEL</div>
       <input type="text" placeholder="Search companies..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '8px', padding: '9px 15px', fontSize: '13px', fontFamily: "'DM Mono', monospace", color: '#fff', outline: 'none', marginBottom: '18px' }} />
-      {loading ? <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>LOADING...</div>
-        : filtered.length === 0 ? <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>{search ? 'NO MATCH' : 'NO DATA YET'}</div>
+      {loading ? <div style={{ padding: '20px 0' }}><SkeletonRows rows={6} /></div>
+        : filtered.length === 0 ? <EmptyState icon={EMPTY_ICONS.grid} title={search ? 'No matching companies' : 'No data yet'} subtitle={search ? 'Try a different search term' : 'Companies will appear as articles are ingested'} />
         : (<>
           {/* Note: company count differs from deal count — sourced from different Supabase queries */}
           <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '14px' }}>{filtered.length} COMPANIES TRACKED</div>
@@ -993,12 +1021,7 @@ function CompanyIntel() {
           {/* Panel body */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
             {companyArticlesLoading ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px' }}>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ width: '28px', height: '28px', border: '2px solid rgba(255,255,255,0.08)', borderTopColor: '#f59e0b', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 14px' }} />
-                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em' }}>LOADING...</div>
-                </div>
-              </div>
+              <div style={{ padding: '20px 0' }}><SkeletonCard height="80px" count={3} /></div>
             ) : (
               <>
                 {selectedCompany.sectors.length > 0 && (
@@ -1011,7 +1034,7 @@ function CompanyIntel() {
                 </div>
                 {companyArticles.length > 0
                   ? companyArticles.map(a => <ArticleCard key={a.id} article={a} />)
-                  : <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>NO ARTICLES FOUND</div>
+                  : <EmptyState icon={EMPTY_ICONS.newspaper} title="No articles found" subtitle="No recent articles mention this company" />
                 }
               </>
             )}
@@ -1118,12 +1141,7 @@ function Trends() {
   }
 
   if (loading) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'200px' }}>
-      <div style={{ textAlign:'center' }}>
-        <div style={{ width:'28px', height:'28px', border:'2px solid rgba(255,255,255,0.08)', borderTopColor:'#f59e0b', borderRadius:'50%', animation:'spin 0.8s linear infinite', margin:'0 auto 14px' }} />
-        <div style={{ fontFamily:"'DM Mono', monospace", fontSize:'11px', color:'rgba(255,255,255,0.28)', letterSpacing:'0.12em' }}>LOADING TRENDS...</div>
-      </div>
-    </div>
+    <div style={{ padding: '20px 0' }}><SkeletonCard height="100px" count={3} /></div>
   )
 
   return (
@@ -1137,7 +1155,7 @@ function Trends() {
       <div style={{ marginBottom:'28px' }}>
         <div style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:'rgba(255,255,255,0.28)', letterSpacing:'0.14em', marginBottom:'10px' }}>TOP COMPANY MOVERS · LAST 24H</div>
         {movers.length === 0
-          ? <div style={{ fontSize:'12px', fontFamily:"'DM Mono', monospace", color:'rgba(255,255,255,0.18)', padding:'20px 0' }}>Not enough data yet — check back after next ingest</div>
+          ? <EmptyState icon={EMPTY_ICONS.trending} title="Not enough data yet" subtitle="Check back after the next ingest cycle" />
           : <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(185px, 1fr))', gap:'8px' }}>
               {movers.map((m, i) => (
                 <div key={i} style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:'8px', padding:'12px 14px' }}>
@@ -1413,8 +1431,13 @@ export default function Home() {
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.25; } }
         @keyframes scrollTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-33.333%); } }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        @keyframes emptyFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes contentFadeIn { from { opacity: 0; } to { opacity: 1; } }
         button:focus { outline: none; }
+        button:active:not(:disabled) { transform: scale(0.97); }
         input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.2); }
+        input:focus, textarea:focus { border-color: rgba(245,158,11,0.35) !important; box-shadow: 0 0 0 2px rgba(245,158,11,0.08); }
         .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 16px; border-radius: 6px; border: none; border-left: 2px solid transparent; background: transparent; color: #9ca3af; font-size: 12.5px; font-family: 'DM Mono', monospace; cursor: pointer; text-align: left; transition: all 0.15s ease; margin-bottom: 1px; }
         .nav-item:hover { background: rgba(245,158,11,0.06); color: #e5e7eb; }
         .nav-item:hover .nav-icon { color: #f59e0b; }
@@ -1483,7 +1506,7 @@ export default function Home() {
             </div>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '30px' }}>
-            <div style={{ maxWidth: '860px' }}>
+            <div key={activeTab} style={{ maxWidth: '860px', animation: 'contentFadeIn 200ms ease' }}>
               {activeTab === 'morning'   && <BriefView type="morning" />}
               {activeTab === 'live'      && <LiveTracker />}
               {activeTab === 'evening'   && <BriefView type="evening" />}
@@ -1534,9 +1557,9 @@ export default function Home() {
                   <div style={{ marginBottom: '28px' }}>
                     <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '10px' }}>TRACKING ({watchlist.length})</div>
                     {watchlistLoading ? (
-                      <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)', padding: '16px 0' }}>Loading watchlist...</div>
+                      <div style={{ padding: '10px 0' }}><SkeletonRows rows={3} /></div>
                     ) : watchlist.length === 0 ? (
-                      <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)', padding: '16px 0' }}>Nothing tracked yet. Add a ticker, company, or sector above.</div>
+                      <EmptyState icon={EMPTY_ICONS.bookmark} title="Nothing tracked yet" subtitle="Add a ticker, company, or sector above to start tracking" />
                     ) : watchlist.map(entry => (
                       <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', marginBottom: '6px' }}>
                         <span style={{ flex: 1, fontFamily: "'DM Mono', monospace", fontSize: '13px', color: '#f1f5f9' }}>{entry.identifier}</span>
@@ -1566,7 +1589,7 @@ export default function Home() {
                     <div>
                       <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '10px' }}>WATCHLIST FEED ({watchlistMatches.length})</div>
                       {watchlistMatches.length === 0 ? (
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)', padding: '16px 0' }}>No recent articles match your watchlist yet.</div>
+                        <EmptyState icon={EMPTY_ICONS.newspaper} title="No matching articles yet" subtitle="Recent articles matching your watchlist will appear here" />
                       ) : watchlistMatches.map(a => {
                         const timestamp = a.published_at || a.ingested_at
                         return (
