@@ -701,12 +701,15 @@ function LiveTracker() {
 }
 
 // ── Thesis Board ─────────────────────────────────────────────────────────────
-function ThesisDetailPanel({ thesis, onClose }) {
+function ThesisDetailPanel({ thesis: initialThesis, onClose }) {
+  const [thesis, setThesis] = useState(initialThesis)
   const [articles, setArticles] = useState([])
   const [loadingArticles, setLoadingArticles] = useState(true)
-  const [catalystNote, setCatalystNote] = useState('')
-  const [evidence, setEvidence] = useState([])
+  const [catalystNote, setCatalystNote] = useState(initialThesis.catalyst_note || '')
+  const [evidence, setEvidence] = useState(initialThesis.evidence_chain || [])
   const [loadingAI, setLoadingAI] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
+  const [aiInferred, setAiInferred] = useState(false)
 
   const conviction = thesis.conviction || thesis.signal
   const COLORS = { BULLISH: '#10b981', BEARISH: '#ef4444', WATCH: '#f59e0b' }
@@ -715,6 +718,9 @@ function ThesisDetailPanel({ thesis, onClose }) {
   const score = scores[conviction] || 50
   const circumference = 2 * Math.PI * 22
   const TYPE_COLORS = { support: '#10b981', context: '#f59e0b', risk: '#ef4444' }
+
+  const wordCount = (thesis.rationale || '').split(/\s+/).filter(Boolean).length
+  const needsUpgrade = wordCount < 100 || !catalystNote
 
   useEffect(() => {
     async function loadRelated() {
@@ -726,14 +732,22 @@ function ThesisDetailPanel({ thesis, onClose }) {
       setArticles(fetched)
       setLoadingArticles(false)
 
-      // Enrich with AI
+      // If thesis already has stored enrichment, use it
+      if (initialThesis.catalyst_note && initialThesis.evidence_chain?.length > 0) {
+        setCatalystNote(initialThesis.catalyst_note)
+        setEvidence(initialThesis.evidence_chain)
+        return
+      }
+
+      // Otherwise generate on the fly and save back
       if (fetched.length > 0) {
         setLoadingAI(true)
+        setAiInferred(true)
         try {
           const res = await fetch('/api/thesis-detail', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ thesis, articles: fetched })
+            body: JSON.stringify({ thesis, articles: fetched, thesisId: thesis.id })
           })
           const enriched = await res.json()
           if (enriched.catalyst_note) setCatalystNote(enriched.catalyst_note)
@@ -743,7 +757,29 @@ function ThesisDetailPanel({ thesis, onClose }) {
       }
     }
     loadRelated()
-  }, [thesis])
+  }, [initialThesis])
+
+  async function handleRegenerate() {
+    if (!thesis.id || regenerating) return
+    setRegenerating(true)
+    try {
+      const res = await fetch('/api/thesis-regenerate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thesisId: thesis.id })
+      })
+      const data = await res.json()
+      if (data.thesis) {
+        setThesis(data.thesis)
+        if (data.thesis.catalyst_note) setCatalystNote(data.thesis.catalyst_note)
+        if (data.thesis.evidence_chain) {
+          setEvidence(data.thesis.evidence_chain)
+          setAiInferred(true)
+        }
+      }
+    } catch (e) { /* silent */ }
+    setRegenerating(false)
+  }
 
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose() }
@@ -785,31 +821,36 @@ function ThesisDetailPanel({ thesis, onClose }) {
           {/* Full analysis */}
           <div style={{ marginBottom: '24px' }}>
             <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.14em', marginBottom: '10px' }}>ANALYSIS</div>
-            <p style={{ fontSize: '14px', color: 'var(--body)', lineHeight: 1.75, margin: 0 }}>{thesis.rationale || thesis.thesis || 'No detailed analysis available.'}</p>
+            {regenerating ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 0' }}>
+                <div style={{ width: '10px', height: '10px', border: '2px solid var(--faint)', borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>Regenerating analysis...</span>
+              </div>
+            ) : (
+              <p style={{ fontSize: '14px', color: 'var(--body)', lineHeight: 1.75, margin: 0 }}>{thesis.rationale || thesis.thesis || 'No detailed analysis available.'}</p>
+            )}
           </div>
 
           {/* Catalyst + AI-generated note */}
-          {thesis.catalyst && (
-            <div style={{ borderLeft: '3px solid #f59e0b', paddingLeft: '18px', marginBottom: '24px' }}>
-              <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '8px' }}>CATALYST</div>
-              <div style={{ fontSize: '13px', color: 'var(--heading)', lineHeight: 1.5, marginBottom: '12px', fontWeight: 500 }}>{thesis.catalyst}</div>
-              {/* AI-generated catalyst note */}
-              {loadingAI && !catalystNote ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ width: '10px', height: '10px', border: '2px solid #f59e0b', borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
-                  <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>Generating catalyst analysis...</span>
-                </div>
-              ) : catalystNote ? (
-                <div style={{ background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.12)', borderRadius: '8px', padding: '12px 14px' }}>
-                  <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.10em', marginBottom: '6px' }}>CATALYST NOTE</div>
-                  <p style={{ fontSize: '12.5px', color: 'var(--body)', lineHeight: 1.65, margin: 0 }}>{catalystNote}</p>
-                </div>
-              ) : null}
-            </div>
-          )}
+          <div style={{ borderLeft: '3px solid #f59e0b', paddingLeft: '18px', marginBottom: '24px' }}>
+            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '8px' }}>CATALYST</div>
+            <div style={{ fontSize: '13px', color: 'var(--heading)', lineHeight: 1.5, marginBottom: '12px', fontWeight: 500 }}>{thesis.catalyst || 'No catalyst specified'}</div>
+            {/* AI-generated catalyst note */}
+            {loadingAI && !catalystNote ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '10px', height: '10px', border: '2px solid #f59e0b', borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>Generating catalyst insight...</span>
+              </div>
+            ) : catalystNote ? (
+              <div style={{ background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.12)', borderRadius: '8px', padding: '12px 14px' }}>
+                <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.10em', marginBottom: '6px' }}>CATALYST NOTE</div>
+                <p style={{ fontSize: '12.5px', color: 'var(--body)', lineHeight: 1.65, margin: 0 }}>{catalystNote}</p>
+              </div>
+            ) : null}
+          </div>
 
-          {/* Meta */}
-          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+          {/* Meta + Regenerate button */}
+          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
             {thesis.generated_at && (
               <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>
                 Generated {new Date(thesis.generated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at {new Date(thesis.generated_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
@@ -817,6 +858,15 @@ function ThesisDetailPanel({ thesis, onClose }) {
             )}
             {thesis.source && (
               <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>{thesis.source}</div>
+            )}
+            {needsUpgrade && thesis.id && (
+              <button
+                onClick={handleRegenerate}
+                disabled={regenerating}
+                style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: regenerating ? 'var(--faint)' : '#f59e0b', background: regenerating ? 'transparent' : 'rgba(245,158,11,0.06)', border: `1px solid ${regenerating ? 'var(--divider)' : 'rgba(245,158,11,0.2)'}`, borderRadius: '4px', padding: '4px 10px', cursor: regenerating ? 'not-allowed' : 'pointer', letterSpacing: '0.06em', transition: 'all 0.15s' }}
+              >
+                {regenerating ? 'UPGRADING...' : 'REGENERATE ANALYSIS'}
+              </button>
             )}
           </div>
         </div>
@@ -833,6 +883,14 @@ function ThesisDetailPanel({ thesis, onClose }) {
               {/* Timeline line */}
               <div style={{ position: 'absolute', left: '7px', top: '8px', bottom: '0', width: '2px', background: 'var(--divider)' }} />
 
+              {/* Loading state for evidence chain */}
+              {loadingAI && evidence.length === 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', paddingLeft: '4px' }}>
+                  <div style={{ width: '10px', height: '10px', border: '2px solid #f59e0b', borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                  <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>Building evidence chain...</span>
+                </div>
+              )}
+
               {articles.map((a, i) => {
                 const ev = evidence[i] || evidence.find(e => e.article_index === i)
                 const evType = ev?.type || 'context'
@@ -846,13 +904,18 @@ function ThesisDetailPanel({ thesis, onClose }) {
                     <div style={{ position: 'absolute', left: '-20px', top: '6px', width: '12px', height: '12px', borderRadius: '50%', background: evColor + '20', border: `2px solid ${evColor}`, zIndex: 1 }} />
 
                     <div style={{ padding: '10px 12px', borderRadius: '8px', transition: 'background 0.12s' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--card-hover-bg)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                      {/* Connector label */}
-                      {evLabel && (
-                        <span style={{ display: 'inline-block', fontSize: '9px', fontFamily: "'DM Mono', monospace", color: evColor, background: evColor + '12', border: `1px solid ${evColor}30`, padding: '2px 8px', borderRadius: '3px', letterSpacing: '0.04em', marginBottom: '6px' }}>{evLabel}</span>
-                      )}
-                      {loadingAI && !evLabel && (
-                        <div style={{ height: '18px', width: '90px', background: 'linear-gradient(90deg, var(--shimmer-from), var(--shimmer-to), var(--shimmer-from))', backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite', borderRadius: '3px', marginBottom: '6px' }} />
-                      )}
+                      {/* Connector label + AI-inferred tag */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', minHeight: '18px' }}>
+                        {evLabel && (
+                          <span style={{ display: 'inline-block', fontSize: '9px', fontFamily: "'DM Mono', monospace", color: evColor, background: evColor + '12', border: `1px solid ${evColor}30`, padding: '2px 8px', borderRadius: '3px', letterSpacing: '0.04em' }}>{evLabel}</span>
+                        )}
+                        {evLabel && aiInferred && (
+                          <span style={{ fontSize: '8px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.06em' }}>AI-INFERRED</span>
+                        )}
+                        {loadingAI && !evLabel && (
+                          <div style={{ height: '18px', width: '90px', background: 'linear-gradient(90deg, var(--shimmer-from), var(--shimmer-to), var(--shimmer-from))', backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite', borderRadius: '3px' }} />
+                        )}
+                      </div>
 
                       <div style={{ fontSize: '13px', color: 'var(--heading)', lineHeight: 1.4, marginBottom: '4px', fontWeight: 500 }}>{a.title}</div>
 
