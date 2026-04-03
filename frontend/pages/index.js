@@ -336,7 +336,7 @@ function BriefSidebar({ onNavigate }) {
 }
 
 // ── Morning / Evening Brief (detailed analyst style) ─────────────────────────
-function BriefView({ type, onNavigate }) {
+function BriefView({ type, onNavigate, watchlist, watchlistPrices, watchlistPricesLoading }) {
   const [briefing, setBriefing] = useState(null)
   const [articles, setArticles] = useState([])
   const [loading, setLoading] = useState(true)
@@ -506,7 +506,7 @@ function BriefView({ type, onNavigate }) {
     </>
     )}
     </div>
-    <BriefSidebar onNavigate={onNavigate} />
+    <BriefSidebar onNavigate={onNavigate} watchlist={watchlist} watchlistPrices={watchlistPrices} watchlistPricesLoading={watchlistPricesLoading} />
     </div>
   )
 }
@@ -2085,9 +2085,9 @@ export default function Home() {
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '30px' }}>
             <div key={activeTab} style={{ animation: 'contentFadeIn 200ms ease' }}>
-              {activeTab === 'morning'   && <BriefView type="morning" onNavigate={setActiveTab} />}
+              {activeTab === 'morning'   && <BriefView type="morning" onNavigate={setActiveTab} watchlist={watchlist} watchlistPrices={watchlistPrices} watchlistPricesLoading={watchlistPricesLoading} />}
               {activeTab === 'live'      && <LiveTracker />}
-              {activeTab === 'evening'   && <BriefView type="evening" onNavigate={setActiveTab} />}
+              {activeTab === 'evening'   && <BriefView type="evening" onNavigate={setActiveTab} watchlist={watchlist} watchlistPrices={watchlistPrices} watchlistPricesLoading={watchlistPricesLoading} />}
               {activeTab === 'dealflow'  && <DealFlowTracker />}
               {activeTab === 'thesis'    && <ThesisBoard />}
               {activeTab === 'companies' && <CompanyIntel />}
