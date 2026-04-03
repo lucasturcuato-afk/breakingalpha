@@ -217,10 +217,13 @@ function ArticleCard({ article, isNew }) {
   )
 }
 
-// ── Brief Sidebar (theses + sectors for Morning/Evening) ─────────────────────
-function BriefSidebar({ onNavigate, watchlist, watchlistPrices, watchlistPricesLoading }) {
+// ── Brief Sidebar (theses + self-contained watchlist for Morning/Evening) ────
+function BriefSidebar({ onNavigate }) {
   const [theses, setTheses] = useState([])
   const [loading, setLoading] = useState(true)
+  const [wlEntries, setWlEntries] = useState([])
+  const [wlPrices, setWlPrices] = useState({})
+  const [wlLoading, setWlLoading] = useState(true)
   const COLORS = { BULLISH: '#10b981', BEARISH: '#ef4444', WATCH: '#f59e0b' }
 
   useEffect(() => {
@@ -228,11 +231,35 @@ function BriefSidebar({ onNavigate, watchlist, watchlistPrices, watchlistPricesL
       try {
         const { data } = await supabase.from('theses').select('*').order('generated_at', { ascending: false }).limit(3)
         if (data) setTheses(data)
-      } catch (e) { /* sectors still show */ }
+      } catch (e) { /* silent */ }
       setLoading(false)
     }
     load()
   }, [])
+
+  // Self-contained watchlist fetch — no dependency on parent state
+  useEffect(() => {
+    async function loadWatchlist() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) { setWlLoading(false); return }
+        const res = await fetch('/api/watchlist', { headers: { Authorization: `Bearer ${session.access_token}` } })
+        const { entries } = await res.json()
+        const items = entries || []
+        setWlEntries(items)
+        const tickers = items.filter(e => e.type === 'ticker').map(e => e.identifier)
+        if (tickers.length > 0) {
+          const qRes = await fetch(`/api/watchlist-quotes?symbols=${tickers.join(',')}`)
+          const qData = await qRes.json()
+          if (qData.quotes) setWlPrices(qData.quotes)
+        }
+      } catch (e) { /* silent */ }
+      setWlLoading(false)
+    }
+    loadWatchlist()
+  }, [])
+
+  const tickerEntries = wlEntries.filter(e => e.type === 'ticker')
 
   return (
     <div className="brief-sidebar" style={{ position: 'sticky', top: '24px', display: 'flex', flexDirection: 'column', gap: '24px', alignSelf: 'start' }}>
@@ -264,24 +291,35 @@ function BriefSidebar({ onNavigate, watchlist, watchlistPrices, watchlistPricesL
         <button onClick={() => onNavigate && onNavigate('thesis')} style={{ display: 'block', marginTop: '12px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', padding: 0, letterSpacing: '0.04em' }}>View all →</button>
       </div>
 
-      {/* Watchlist */}
+      {/* Watchlist — self-contained */}
       <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
-        <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '12px' }}>WATCHLIST</div>
-        {watchlistPricesLoading ? (
-          <SkeletonCard height="28px" count={4} />
-        ) : !watchlist || watchlist.filter(e => e.type === 'ticker').length === 0 ? (
-          <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', lineHeight: 1.6 }}>Add stocks to your watchlist to track them here</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+          <div style={{ width: '3px', height: '12px', background: '#f59e0b', borderRadius: '1px' }} />
+          <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>WATCHLIST</div>
+        </div>
+        {wlLoading ? (
+          <SkeletonCard height="36px" count={4} />
+        ) : tickerEntries.length === 0 ? (
+          <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', lineHeight: 1.6 }}>No stocks in watchlist yet</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {watchlist.filter(e => e.type === 'ticker').map(entry => {
-              const q = watchlistPrices?.[entry.identifier]
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            {tickerEntries.map(entry => {
+              const q = wlPrices[entry.identifier]
+              const up = q && q.pct >= 0
+              const pctColor = up ? '#10b981' : '#ef4444'
+              const pctBg = up ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.10)'
               return (
-                <div key={entry.id || entry.identifier} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--divider)' }}>
-                  <span style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", fontWeight: 600, color: 'var(--heading)' }}>{entry.identifier}</span>
+                <div key={entry.id || entry.identifier} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 8px', borderRadius: '6px', transition: 'background 0.12s' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--card-hover-bg)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", fontWeight: 600, color: 'var(--heading)' }}>{entry.identifier}</div>
+                  </div>
                   {q ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                       <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--body)' }}>{q.price}</span>
-                      <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", fontWeight: 500, color: q.pct >= 0 ? '#10b981' : '#ef4444' }}>{q.pct >= 0 ? '+' : ''}{q.pct}%</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10px', fontFamily: "'DM Mono', monospace", fontWeight: 500, color: pctColor, background: pctBg, padding: '2px 7px', borderRadius: '4px' }}>
+                        <svg width="8" height="8" viewBox="0 0 8 8" fill="none" style={{ transform: up ? 'none' : 'rotate(180deg)' }}><path d="M4 1L7 5H1L4 1Z" fill={pctColor} /></svg>
+                        {up ? '+' : ''}{q.pct}%
+                      </span>
                     </div>
                   ) : (
                     <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>—</span>
@@ -298,7 +336,7 @@ function BriefSidebar({ onNavigate, watchlist, watchlistPrices, watchlistPricesL
 }
 
 // ── Morning / Evening Brief (detailed analyst style) ─────────────────────────
-function BriefView({ type, onNavigate, watchlist, watchlistPrices, watchlistPricesLoading }) {
+function BriefView({ type, onNavigate }) {
   const [briefing, setBriefing] = useState(null)
   const [articles, setArticles] = useState([])
   const [loading, setLoading] = useState(true)
@@ -468,7 +506,7 @@ function BriefView({ type, onNavigate, watchlist, watchlistPrices, watchlistPric
     </>
     )}
     </div>
-    <BriefSidebar onNavigate={onNavigate} watchlist={watchlist} watchlistPrices={watchlistPrices} watchlistPricesLoading={watchlistPricesLoading} />
+    <BriefSidebar onNavigate={onNavigate} />
     </div>
   )
 }
@@ -666,6 +704,9 @@ function LiveTracker() {
 function ThesisDetailPanel({ thesis, onClose }) {
   const [articles, setArticles] = useState([])
   const [loadingArticles, setLoadingArticles] = useState(true)
+  const [catalystNote, setCatalystNote] = useState('')
+  const [evidence, setEvidence] = useState([])
+  const [loadingAI, setLoadingAI] = useState(false)
 
   const conviction = thesis.conviction || thesis.signal
   const COLORS = { BULLISH: '#10b981', BEARISH: '#ef4444', WATCH: '#f59e0b' }
@@ -673,6 +714,7 @@ function ThesisDetailPanel({ thesis, onClose }) {
   const scores = { BULLISH: 82, BEARISH: 74, WATCH: 55 }
   const score = scores[conviction] || 50
   const circumference = 2 * Math.PI * 22
+  const TYPE_COLORS = { support: '#10b981', context: '#f59e0b', risk: '#ef4444' }
 
   useEffect(() => {
     async function loadRelated() {
@@ -680,8 +722,25 @@ function ThesisDetailPanel({ thesis, onClose }) {
       const query = supabase.from('articles').select('id, title, source, sector, published_at, ingested_at, summary, url').order('ingested_at', { ascending: false }).limit(8)
       if (thesis.sector) query.eq('sector', thesis.sector)
       const { data } = await query
-      setArticles(data || [])
+      const fetched = data || []
+      setArticles(fetched)
       setLoadingArticles(false)
+
+      // Enrich with AI
+      if (fetched.length > 0) {
+        setLoadingAI(true)
+        try {
+          const res = await fetch('/api/thesis-detail', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ thesis, articles: fetched })
+          })
+          const enriched = await res.json()
+          if (enriched.catalyst_note) setCatalystNote(enriched.catalyst_note)
+          if (enriched.evidence) setEvidence(enriched.evidence)
+        } catch (e) { /* graceful fallback */ }
+        setLoadingAI(false)
+      }
     }
     loadRelated()
   }, [thesis])
@@ -696,7 +755,7 @@ function ThesisDetailPanel({ thesis, onClose }) {
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'var(--overlay-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'contentFadeIn 150ms ease' }}>
       <div onClick={e => e.stopPropagation()} className="thesis-detail-panel" style={{ width: '92vw', maxWidth: '1100px', height: '85vh', maxHeight: '750px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '14px', display: 'grid', gridTemplateColumns: '60% 40%', overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
 
-        {/* Left — Thesis Summary */}
+        {/* Left — Full Thesis Analysis */}
         <div style={{ padding: '32px', overflowY: 'auto', borderRight: '1px solid var(--divider)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -729,11 +788,23 @@ function ThesisDetailPanel({ thesis, onClose }) {
             <p style={{ fontSize: '14px', color: 'var(--body)', lineHeight: 1.75, margin: 0 }}>{thesis.rationale || thesis.thesis || 'No detailed analysis available.'}</p>
           </div>
 
-          {/* Catalyst */}
+          {/* Catalyst + AI-generated note */}
           {thesis.catalyst && (
-            <div style={{ padding: '14px 18px', background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: '8px', marginBottom: '24px' }}>
-              <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '6px' }}>CATALYST</div>
-              <div style={{ fontSize: '13px', color: 'var(--body)', lineHeight: 1.5 }}>{thesis.catalyst}</div>
+            <div style={{ borderLeft: '3px solid #f59e0b', paddingLeft: '18px', marginBottom: '24px' }}>
+              <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '8px' }}>CATALYST</div>
+              <div style={{ fontSize: '13px', color: 'var(--heading)', lineHeight: 1.5, marginBottom: '12px', fontWeight: 500 }}>{thesis.catalyst}</div>
+              {/* AI-generated catalyst note */}
+              {loadingAI && !catalystNote ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '10px', height: '10px', border: '2px solid #f59e0b', borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                  <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>Generating catalyst analysis...</span>
+                </div>
+              ) : catalystNote ? (
+                <div style={{ background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.12)', borderRadius: '8px', padding: '12px 14px' }}>
+                  <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.10em', marginBottom: '6px' }}>CATALYST NOTE</div>
+                  <p style={{ fontSize: '12.5px', color: 'var(--body)', lineHeight: 1.65, margin: 0 }}>{catalystNote}</p>
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -750,36 +821,85 @@ function ThesisDetailPanel({ thesis, onClose }) {
           </div>
         </div>
 
-        {/* Right — Related News */}
+        {/* Right — Evidence Chain */}
         <div style={{ padding: '32px', overflowY: 'auto', background: 'var(--card-bg-subtle)' }}>
-          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '16px' }}>RELATED NEWS</div>
+          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '20px' }}>EVIDENCE CHAIN</div>
           {loadingArticles ? (
-            <SkeletonCard height="60px" count={4} />
+            <SkeletonCard height="80px" count={4} />
           ) : articles.length === 0 ? (
             <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', lineHeight: 1.6 }}>No related articles found for this sector.</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {articles.map((a, i) => (
-                <a key={a.id || i} href={a.url || '#'} target={a.url ? '_blank' : undefined} rel="noopener noreferrer" style={{ display: 'block', padding: '12px 14px', borderRadius: '8px', transition: 'background 0.15s', textDecoration: 'none', cursor: a.url ? 'pointer' : 'default' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--card-hover-bg)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                  <div style={{ fontSize: '13px', color: 'var(--heading)', lineHeight: 1.4, marginBottom: '6px', fontWeight: 500 }}>{a.title}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {a.source && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--secondary)' }}>{a.source}</span>}
-                    {(a.published_at || a.ingested_at) && (
-                      <>
-                        <span style={{ fontSize: '10px', color: 'var(--faint)' }}>·</span>
-                        <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>
-                          {new Date(a.published_at || a.ingested_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        </span>
-                      </>
-                    )}
+            <div style={{ position: 'relative', paddingLeft: '24px' }}>
+              {/* Timeline line */}
+              <div style={{ position: 'absolute', left: '7px', top: '8px', bottom: '0', width: '2px', background: 'var(--divider)' }} />
+
+              {articles.map((a, i) => {
+                const ev = evidence[i] || evidence.find(e => e.article_index === i)
+                const evType = ev?.type || 'context'
+                const evColor = TYPE_COLORS[evType] || '#f59e0b'
+                const evLabel = ev?.label || ''
+                const evBridge = ev?.bridge || ''
+
+                return (
+                  <div key={a.id || i} style={{ position: 'relative', marginBottom: '4px', paddingBottom: '16px' }}>
+                    {/* Timeline dot */}
+                    <div style={{ position: 'absolute', left: '-20px', top: '6px', width: '12px', height: '12px', borderRadius: '50%', background: evColor + '20', border: `2px solid ${evColor}`, zIndex: 1 }} />
+
+                    <div style={{ padding: '10px 12px', borderRadius: '8px', transition: 'background 0.12s' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--card-hover-bg)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                      {/* Connector label */}
+                      {evLabel && (
+                        <span style={{ display: 'inline-block', fontSize: '9px', fontFamily: "'DM Mono', monospace", color: evColor, background: evColor + '12', border: `1px solid ${evColor}30`, padding: '2px 8px', borderRadius: '3px', letterSpacing: '0.04em', marginBottom: '6px' }}>{evLabel}</span>
+                      )}
+                      {loadingAI && !evLabel && (
+                        <div style={{ height: '18px', width: '90px', background: 'linear-gradient(90deg, var(--shimmer-from), var(--shimmer-to), var(--shimmer-from))', backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite', borderRadius: '3px', marginBottom: '6px' }} />
+                      )}
+
+                      <div style={{ fontSize: '13px', color: 'var(--heading)', lineHeight: 1.4, marginBottom: '4px', fontWeight: 500 }}>{a.title}</div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: evBridge ? '6px' : '0' }}>
+                        {a.source && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--secondary)' }}>{a.source}</span>}
+                        {(a.published_at || a.ingested_at) && (
+                          <>
+                            <span style={{ fontSize: '10px', color: 'var(--faint)' }}>·</span>
+                            <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>{new Date(a.published_at || a.ingested_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                          </>
+                        )}
+                        {a.url && (
+                          <>
+                            <span style={{ fontSize: '10px', color: 'var(--faint)' }}>·</span>
+                            <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', textDecoration: 'none' }}>→ Read</a>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Reasoning bridge */}
+                      {evBridge && (
+                        <p style={{ fontSize: '11px', fontStyle: 'italic', color: 'var(--tertiary)', lineHeight: 1.5, margin: 0 }}>{evBridge}</p>
+                      )}
+                      {loadingAI && !evBridge && (
+                        <div style={{ height: '14px', width: '100%', background: 'linear-gradient(90deg, var(--shimmer-from), var(--shimmer-to), var(--shimmer-from))', backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite', borderRadius: '3px', marginTop: '4px' }} />
+                      )}
+                    </div>
                   </div>
-                </a>
-              ))}
+                )
+              })}
+
+              {/* Thesis conclusion — final timeline node */}
+              <div style={{ position: 'relative', marginTop: '4px' }}>
+                <div style={{ position: 'absolute', left: '-22px', top: '12px', width: '16px', height: '16px', borderRadius: '50%', background: '#f59e0b20', border: '2px solid #f59e0b', zIndex: 1 }}>
+                  <div style={{ position: 'absolute', inset: '3px', borderRadius: '50%', background: '#f59e0b' }} />
+                </div>
+                <div style={{ padding: '14px 16px', background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.20)', borderRadius: '10px' }}>
+                  <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.12em', marginBottom: '6px' }}>THESIS CONCLUSION</div>
+                  <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '15px', fontWeight: 600, color: 'var(--heading)', lineHeight: 1.35 }}>{thesis.title}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                    <span style={{ padding: '2px 10px', borderRadius: '12px', fontSize: '9px', fontFamily: "'DM Mono', monospace", color: convColor, background: convColor + '12', border: `1px solid ${convColor}25`, letterSpacing: '0.06em' }}>{conviction}</span>
+                    <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>Score: {score}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
-          <div style={{ marginTop: '20px', padding: '12px', background: 'var(--card-bg)', border: '1px solid var(--divider)', borderRadius: '8px' }}>
-            <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', lineHeight: 1.6 }}>Sources that informed this thesis are matched by sector from the BreakingAlpha signal flow.</div>
-          </div>
         </div>
       </div>
     </div>
@@ -1830,13 +1950,29 @@ export default function Home() {
             </div>
           </nav>
           <div style={{ padding: '14px 20px', borderTop: '1px solid var(--divider)' }}>
-            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.12em', marginBottom: '10px' }}>SECTORS TRACKED</div>
-            {SIDEBAR_SECTORS.map(s => (
-              <div key={s.name} className="sector-row">
-                <div style={{ width: '3px', height: '3px', borderRadius: '1px', background: s.color, flexShrink: 0 }} />
-                <span className="sector-label" style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', transition: 'color 0.15s ease' }}>{s.name}</span>
-              </div>
-            ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+              <div style={{ width: '3px', height: '10px', background: '#f59e0b', borderRadius: '1px' }} />
+              <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.12em' }}>WATCHLIST</div>
+            </div>
+            {watchlist.filter(e => e.type === 'ticker').length === 0 ? (
+              <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', lineHeight: 1.6 }}>No tickers tracked</div>
+            ) : (
+              watchlist.filter(e => e.type === 'ticker').slice(0, 6).map(entry => {
+                const q = watchlistPrices[entry.identifier]
+                const up = q && q.pct >= 0
+                const pctColor = up ? '#10b981' : '#ef4444'
+                return (
+                  <div key={entry.id || entry.identifier} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 0' }}>
+                    <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--body)', fontWeight: 500 }}>{entry.identifier}</span>
+                    {q ? (
+                      <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: pctColor }}>{up ? '+' : ''}{q.pct}%</span>
+                    ) : (
+                      <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>—</span>
+                    )}
+                  </div>
+                )
+              })
+            )}
           </div>
           <div style={{ padding: '14px 20px', borderTop: '1px solid var(--divider)' }}>
             <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.12em', marginBottom: '6px' }}>MARKET TIME</div>
@@ -1886,9 +2022,9 @@ export default function Home() {
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '30px' }}>
             <div key={activeTab} style={{ animation: 'contentFadeIn 200ms ease' }}>
-              {activeTab === 'morning'   && <BriefView type="morning" onNavigate={setActiveTab} watchlist={watchlist} watchlistPrices={watchlistPrices} watchlistPricesLoading={watchlistPricesLoading} />}
+              {activeTab === 'morning'   && <BriefView type="morning" onNavigate={setActiveTab} />}
               {activeTab === 'live'      && <LiveTracker />}
-              {activeTab === 'evening'   && <BriefView type="evening" onNavigate={setActiveTab} watchlist={watchlist} watchlistPrices={watchlistPrices} watchlistPricesLoading={watchlistPricesLoading} />}
+              {activeTab === 'evening'   && <BriefView type="evening" onNavigate={setActiveTab} />}
               {activeTab === 'dealflow'  && <DealFlowTracker />}
               {activeTab === 'thesis'    && <ThesisBoard />}
               {activeTab === 'companies' && <CompanyIntel />}
