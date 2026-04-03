@@ -4,8 +4,8 @@ Fetches from 15+ sources, scores relevance across all sectors,
 stores in Supabase.
 """
 
-import os, json, time, requests, feedparser
-from datetime import datetime, timezone
+import os, json, re, time, requests, feedparser
+from datetime import datetime, timezone, timedelta
 from supabase import create_client
 from groq import Groq, RateLimitError
 from dotenv import load_dotenv
@@ -165,10 +165,27 @@ def upsert_company(name, themes, sentiment):
         return None
 
 
+def _normalize_title(title):
+    """Lowercase, strip punctuation, collapse whitespace for exact-title dedup."""
+    t = title.lower()
+    t = re.sub(r"[^\w\s]", "", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
 def store_article(article, analysis):
     try:
         if supabase.table("articles").select("id").eq("url", article["url"]).execute().data:
             return None
+
+        # Title dedup: skip if same normalized title stored in last 24h
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        recent = supabase.table("articles").select("title").gte("ingested_at", cutoff).execute().data or []
+        norm_new = _normalize_title(article["title"])
+        for row in recent:
+            if _normalize_title(row.get("title", "")) == norm_new:
+                print(f"  ⊘ Title dedup skip: {article['title'][:70]}")
+                return None
         r = supabase.table("articles").insert({
             "title": article["title"],
             "summary": article["summary"] or "",
