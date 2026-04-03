@@ -55,9 +55,13 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 
 ### Autonomous Improvement Phase 1 — Observation Layer
 - **Run Recorder slice merged (PR #42):** `pipeline_runs` and `run_articles` tables now writing from non-blocking observer hook
-- **Brief Critic slice merged (PR #47):** Heuristic-only quality scorer; writes one row per pipeline run to `brief_quality_scores` (headline word count, banned phrase hits, sections present, top deals count, status, soft flags). No LLM calls. Non-blocking try/except in pipeline step 5. **CRITICAL:** `brief_quality_scores_schema.sql` must be applied manually in Supabase SQL editor before live rows accumulate.
-- **Next Phase 1 component:** Selection Auditor (identify missed stories)
+- **Brief Critic slice merged (PR #47):** Heuristic-only quality scorer; writes one row per pipeline run to `brief_quality_scores` (headline word count, banned phrase hits, sections present, top deals count, status, soft flags). No LLM calls. Non-blocking try/except in pipeline step 5. ✓ **VALIDATED (2026-04-03):** Schema applied; first live row written successfully.
+- **Next Phase 1 component:** Selection Auditor (reads `run_articles`, flags high-scoring candidates not selected, writes to `missed_story_candidates` table; no synthesize.py changes)
 - **Not yet built:** Trend Mapper, optimizer, rollback, config mutation — these are Phase 2+
+
+## Recently Completed (2026-04-03 — Brief Critic validation)
+
+**Brief Critic schema applied and live validation complete:** `brief_quality_scores_schema.sql` applied to Supabase; manual pipeline run (`python3.11 run.py morning`) confirmed all 5 steps completed with exit code 0; first live row written with all metrics correct (headline_pass, banned_phrase_hits, sections_present/omitted, top_deals_count, status).
 
 ## Recently Completed (2026-04-03 — Brief Critic merged)
 
@@ -167,10 +171,6 @@ CREATE POLICY "Public update" ON theses FOR UPDATE USING (true) WITH CHECK (true
 - **Branch cleanup:** deleted noah/claude-workflow-setup, noah/fix-supabase-auth, docs/repo-workflow-update, claude/recursing-turing
 
 ## Pending / Known Issues
-
-### Next validation — Phase 1 Run Recorder (no code needed — inspect after 2026-04-03 scheduled run)
-- Confirm next scheduled run writes to `pipeline_runs` and `run_articles` tables with correct row counts and provenance flags
-- Verify observer does not block pipeline completion (non-blocking behavior)
 
 ### Next validation (no code needed — inspect after next scheduled run)
 - Compare article blurb quality metrics against baseline:
