@@ -125,6 +125,97 @@ def _diversify_articles(articles, sector_cap=4, company_cap=2, total=20):
     return selected
 
 
+# Minimum relevance_score for a floor (breadth) article to be included.
+# All stored articles have score >= 6 (ingest filter), but score-6 articles
+# are borderline — their summaries are often weak. Score 7+ means the article
+# has a genuine market implication worth surfacing as sector context.
+FLOOR_MIN_SCORE = 7
+
+
+def _select_articles_for_synthesis(
+    articles,
+    spine_count=12,
+    floor_count=6,
+    spine_sector_cap=3,
+    company_cap=2,
+):
+    """
+    Two-bucket article selection for synthesis input.
+
+    Spine (spine_count slots): depth-first greedy walk, sector_cap=spine_sector_cap.
+    Captures the dominant editorial stories with enough per-sector depth for
+    the LLM to write concrete analysis. sector_cap=3 (vs old 4) allows up to
+    4 distinct sectors in 12 articles.
+
+    Floor (up to floor_count slots): one best article per sector NOT already in
+    the spine, minimum score FLOOR_MIN_SCORE. Ensures the LLM sees at least one
+    data point from each active sector today, increasing the chance that any
+    given sector appears in sector_breakdown and analyst sections.
+
+    Returns (spine, floor) so the caller can format them with different
+    summary truncation: spine gets full context, floor gets shorter context
+    since they are breadth signals, not primary stories.
+
+    articles must already be sorted by relevance_score descending.
+    """
+    from collections import defaultdict
+
+    def _parse_companies(a):
+        companies = a.get("companies") or []
+        if isinstance(companies, str):
+            try:
+                return json.loads(companies)
+            except Exception:
+                return []
+        return companies
+
+    # ── Spine: greedy walk, sector_cap=spine_sector_cap ───────────────────────
+    sector_counts  = defaultdict(int)
+    company_counts = defaultdict(int)
+    spine     = []
+    spine_ids = set()
+
+    for a in articles:
+        sector    = a.get("sector") or ""
+        companies = _parse_companies(a)
+
+        if sector_counts[sector] >= spine_sector_cap:
+            continue
+        if companies and any(company_counts[c] >= company_cap for c in companies):
+            continue
+
+        spine.append(a)
+        spine_ids.add(id(a))
+        sector_counts[sector] += 1
+        for c in companies:
+            company_counts[c] += 1
+
+        if len(spine) >= spine_count:
+            break
+
+    # ── Floor: one best article per uncovered sector ───────────────────────────
+    # articles is already score-sorted, so the first eligible article per sector
+    # is automatically the highest-scoring one for that sector.
+    covered_sectors = {a.get("sector") or "" for a in spine}
+    best_per_sector = {}
+
+    for a in articles:
+        if id(a) in spine_ids:
+            continue
+        score  = a.get("relevance_score") or 0
+        sector = a.get("sector") or ""
+        if not sector or sector in covered_sectors:
+            continue
+        if score < FLOOR_MIN_SCORE:
+            continue
+        if sector not in best_per_sector:
+            best_per_sector[sector] = a  # first = highest score for this sector
+
+    floor = list(best_per_sector.values())[:floor_count]
+
+    return spine, floor
+
+
 def groq_with_backoff(messages, temperature=0.3, max_tokens=2000, max_retries=5):
     """Call Groq with exponential backoff + jitter on 429 rate limit errors."""
     for attempt in range(max_retries):
@@ -168,14 +259,26 @@ def run(brief_type="morning"):
             .execute()
         articles = resp.data or []
 
-    articles = _diversify_articles(articles, sector_cap=4, company_cap=2, total=20)
-    print(f"  📰 Using {len(articles)} articles for synthesis (diversified from pool of up to 60)")
+    spine, floor = _select_articles_for_synthesis(articles)
+    print(f"  📰 Synthesis input: {len(spine)} spine + {len(floor)} floor articles "
+          f"({len(spine) + len(floor)} total, from pool of up to 60)")
 
-    article_text = "\n\n".join([
+    # Spine: full summary context (300 chars) — these are the dominant stories
+    spine_texts = [
         f"[{a.get('sector','')}] {a.get('title','')}\n{(a.get('summary','') or '')[:300]}"
         + (f"\nSignal: {a['relevance_reason']}" if a.get('relevance_reason') else "")
-        for a in articles
-    ])
+        for a in spine
+    ]
+    # Floor: shortened summary (150 chars) — breadth signals, not lead stories
+    floor_texts = [
+        f"[{a.get('sector','')}] {a.get('title','')}\n{(a.get('summary','') or '')[:150]}"
+        + (f"\nSignal: {a['relevance_reason']}" if a.get('relevance_reason') else "")
+        for a in floor
+    ]
+
+    article_text = "\n\n".join(spine_texts)
+    if floor_texts:
+        article_text += "\n\n--- ADDITIONAL SECTOR SIGNALS ---\n\n" + "\n\n".join(floor_texts)
 
     system = MORNING_SYSTEM if brief_type == "morning" else EVENING_SYSTEM
 
