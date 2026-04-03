@@ -218,7 +218,7 @@ function ArticleCard({ article, isNew }) {
 }
 
 // ── Brief Sidebar (theses + sectors for Morning/Evening) ─────────────────────
-function BriefSidebar({ onNavigate }) {
+function BriefSidebar({ onNavigate, watchlist, watchlistPrices, watchlistPricesLoading }) {
   const [theses, setTheses] = useState([])
   const [loading, setLoading] = useState(true)
   const COLORS = { BULLISH: '#10b981', BEARISH: '#ef4444', WATCH: '#f59e0b' }
@@ -264,24 +264,41 @@ function BriefSidebar({ onNavigate }) {
         <button onClick={() => onNavigate && onNavigate('thesis')} style={{ display: 'block', marginTop: '12px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', padding: 0, letterSpacing: '0.04em' }}>View all →</button>
       </div>
 
-      {/* Sectors */}
+      {/* Watchlist */}
       <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
-        <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '12px' }}>SECTORS</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          {SIDEBAR_SECTORS.map(s => (
-            <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-              <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--body)' }}>{s.name}</span>
-            </div>
-          ))}
-        </div>
+        <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '12px' }}>WATCHLIST</div>
+        {watchlistPricesLoading ? (
+          <SkeletonCard height="28px" count={4} />
+        ) : !watchlist || watchlist.filter(e => e.type === 'ticker').length === 0 ? (
+          <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', lineHeight: 1.6 }}>Add stocks to your watchlist to track them here</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {watchlist.filter(e => e.type === 'ticker').map(entry => {
+              const q = watchlistPrices?.[entry.identifier]
+              return (
+                <div key={entry.id || entry.identifier} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--divider)' }}>
+                  <span style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", fontWeight: 600, color: 'var(--heading)' }}>{entry.identifier}</span>
+                  {q ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--body)' }}>{q.price}</span>
+                      <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", fontWeight: 500, color: q.pct >= 0 ? '#10b981' : '#ef4444' }}>{q.pct >= 0 ? '+' : ''}{q.pct}%</span>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>—</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <button onClick={() => onNavigate && onNavigate('watchlist')} style={{ display: 'block', marginTop: '12px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', padding: 0, letterSpacing: '0.04em' }}>Manage watchlist →</button>
       </div>
     </div>
   )
 }
 
 // ── Morning / Evening Brief (detailed analyst style) ─────────────────────────
-function BriefView({ type, onNavigate }) {
+function BriefView({ type, onNavigate, watchlist, watchlistPrices, watchlistPricesLoading }) {
   const [briefing, setBriefing] = useState(null)
   const [articles, setArticles] = useState([])
   const [loading, setLoading] = useState(true)
@@ -451,7 +468,7 @@ function BriefView({ type, onNavigate }) {
     </>
     )}
     </div>
-    <BriefSidebar onNavigate={onNavigate} />
+    <BriefSidebar onNavigate={onNavigate} watchlist={watchlist} watchlistPrices={watchlistPrices} watchlistPricesLoading={watchlistPricesLoading} />
     </div>
   )
 }
@@ -646,12 +663,136 @@ function LiveTracker() {
 }
 
 // ── Thesis Board ─────────────────────────────────────────────────────────────
+function ThesisDetailPanel({ thesis, onClose }) {
+  const [articles, setArticles] = useState([])
+  const [loadingArticles, setLoadingArticles] = useState(true)
+
+  const conviction = thesis.conviction || thesis.signal
+  const COLORS = { BULLISH: '#10b981', BEARISH: '#ef4444', WATCH: '#f59e0b' }
+  const convColor = COLORS[conviction] || '#94a3b8'
+  const scores = { BULLISH: 82, BEARISH: 74, WATCH: 55 }
+  const score = scores[conviction] || 50
+  const circumference = 2 * Math.PI * 22
+
+  useEffect(() => {
+    async function loadRelated() {
+      setLoadingArticles(true)
+      const query = supabase.from('articles').select('id, title, source, sector, published_at, ingested_at, summary, url').order('ingested_at', { ascending: false }).limit(8)
+      if (thesis.sector) query.eq('sector', thesis.sector)
+      const { data } = await query
+      setArticles(data || [])
+      setLoadingArticles(false)
+    }
+    loadRelated()
+  }, [thesis])
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'var(--overlay-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'contentFadeIn 150ms ease' }}>
+      <div onClick={e => e.stopPropagation()} className="thesis-detail-panel" style={{ width: '92vw', maxWidth: '1100px', height: '85vh', maxHeight: '750px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '14px', display: 'grid', gridTemplateColumns: '60% 40%', overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
+
+        {/* Left — Thesis Summary */}
+        <div style={{ padding: '32px', overflowY: 'auto', borderRight: '1px solid var(--divider)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span style={{ padding: '4px 14px', borderRadius: '20px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: convColor, background: convColor + '12', border: `1px solid ${convColor}25`, letterSpacing: '0.08em' }}>{conviction}</span>
+              {thesis.sector && <SectorPill sector={thesis.sector} />}
+            </div>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--faint)', fontSize: '20px', lineHeight: 1, padding: '4px', transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color = 'var(--heading)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--faint)'}>✕</button>
+          </div>
+
+          <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '28px', fontWeight: 600, color: 'var(--heading)', lineHeight: 1.25, marginBottom: '24px', letterSpacing: '-0.01em' }}>{thesis.title}</h2>
+
+          {/* Conviction donut */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '24px', padding: '16px', background: 'var(--card-bg)', border: '1px solid var(--divider)', borderRadius: '10px' }}>
+            <div style={{ position: 'relative', width: '56px', height: '56px', flexShrink: 0 }}>
+              <svg width="56" height="56" viewBox="0 0 52 52" style={{ transform: 'rotate(-90deg)' }}>
+                <circle cx="26" cy="26" r="22" fill="none" stroke="var(--divider)" strokeWidth="3" />
+                <circle cx="26" cy="26" r="22" fill="none" stroke={convColor} strokeWidth="3" strokeDasharray={circumference} strokeDashoffset={circumference - (score / 100) * circumference} strokeLinecap="round" style={{ animation: 'donutFill 800ms ease both' }} />
+              </svg>
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontFamily: "'DM Mono', monospace", color: convColor, fontWeight: 600 }}>{score}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.12em', marginBottom: '2px' }}>CONVICTION SCORE</div>
+              <div style={{ fontSize: '13px', fontFamily: "'DM Mono', monospace", color: convColor, fontWeight: 500 }}>{conviction}</div>
+            </div>
+          </div>
+
+          {/* Full analysis */}
+          <div style={{ marginBottom: '24px' }}>
+            <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.14em', marginBottom: '10px' }}>ANALYSIS</div>
+            <p style={{ fontSize: '14px', color: 'var(--body)', lineHeight: 1.75, margin: 0 }}>{thesis.rationale || thesis.thesis || 'No detailed analysis available.'}</p>
+          </div>
+
+          {/* Catalyst */}
+          {thesis.catalyst && (
+            <div style={{ padding: '14px 18px', background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: '8px', marginBottom: '24px' }}>
+              <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '6px' }}>CATALYST</div>
+              <div style={{ fontSize: '13px', color: 'var(--body)', lineHeight: 1.5 }}>{thesis.catalyst}</div>
+            </div>
+          )}
+
+          {/* Meta */}
+          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+            {thesis.generated_at && (
+              <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>
+                Generated {new Date(thesis.generated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at {new Date(thesis.generated_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+              </div>
+            )}
+            {thesis.source && (
+              <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>{thesis.source}</div>
+            )}
+          </div>
+        </div>
+
+        {/* Right — Related News */}
+        <div style={{ padding: '32px', overflowY: 'auto', background: 'var(--card-bg-subtle)' }}>
+          <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '16px' }}>RELATED NEWS</div>
+          {loadingArticles ? (
+            <SkeletonCard height="60px" count={4} />
+          ) : articles.length === 0 ? (
+            <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', lineHeight: 1.6 }}>No related articles found for this sector.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {articles.map((a, i) => (
+                <a key={a.id || i} href={a.url || '#'} target={a.url ? '_blank' : undefined} rel="noopener noreferrer" style={{ display: 'block', padding: '12px 14px', borderRadius: '8px', transition: 'background 0.15s', textDecoration: 'none', cursor: a.url ? 'pointer' : 'default' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--card-hover-bg)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  <div style={{ fontSize: '13px', color: 'var(--heading)', lineHeight: 1.4, marginBottom: '6px', fontWeight: 500 }}>{a.title}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {a.source && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--secondary)' }}>{a.source}</span>}
+                    {(a.published_at || a.ingested_at) && (
+                      <>
+                        <span style={{ fontSize: '10px', color: 'var(--faint)' }}>·</span>
+                        <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>
+                          {new Date(a.published_at || a.ingested_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </a>
+              ))}
+            </div>
+          )}
+          <div style={{ marginTop: '20px', padding: '12px', background: 'var(--card-bg)', border: '1px solid var(--divider)', borderRadius: '8px' }}>
+            <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', lineHeight: 1.6 }}>Sources that informed this thesis are matched by sector from the BreakingAlpha signal flow.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ThesisBoard() {
   const [theses, setTheses] = useState([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [lastGenerated, setLastGenerated] = useState(null)
   const [error, setError] = useState(null)
+  const [selectedThesis, setSelectedThesis] = useState(null)
 
   const CONVICTION_COLORS = { BULLISH: '#10b981', BEARISH: '#ef4444', WATCH: '#f59e0b' }
 
@@ -750,7 +891,7 @@ function ThesisBoard() {
             const circumference = 2 * Math.PI * 16
             const offset = circumference - (score / 100) * circumference
             return (
-              <div key={i} style={{
+              <div key={i} onClick={() => setSelectedThesis(t)} style={{
                 background: 'var(--card-bg-subtle)',
                 border: '1px solid var(--divider)',
                 borderTop: `2px solid ${convColor}40`,
@@ -758,6 +899,7 @@ function ThesisBoard() {
                 padding: '24px 28px',
                 animation: `cardSlideIn 400ms ease ${i * 80}ms both`,
                 transition: 'transform 150ms ease, border-color 150ms ease',
+                cursor: 'pointer',
               }}
                 onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = `${convColor}30` }}
                 onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = 'var(--divider)' }}>
@@ -796,6 +938,7 @@ function ThesisBoard() {
           })}
         </div>
       )}
+      {selectedThesis && <ThesisDetailPanel thesis={selectedThesis} onClose={() => setSelectedThesis(null)} />}
     </div>
   )
 }
@@ -1658,6 +1801,7 @@ export default function Home() {
         @media (max-width: 768px) {
           .brief-layout { grid-template-columns: 1fr !important; }
           .brief-sidebar { display: none !important; }
+          .thesis-detail-panel { grid-template-columns: 1fr !important; height: 90vh !important; max-height: none !important; }
         }
       `}</style>
 
@@ -1742,9 +1886,9 @@ export default function Home() {
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '30px' }}>
             <div key={activeTab} style={{ animation: 'contentFadeIn 200ms ease' }}>
-              {activeTab === 'morning'   && <BriefView type="morning" onNavigate={setActiveTab} />}
+              {activeTab === 'morning'   && <BriefView type="morning" onNavigate={setActiveTab} watchlist={watchlist} watchlistPrices={watchlistPrices} watchlistPricesLoading={watchlistPricesLoading} />}
               {activeTab === 'live'      && <LiveTracker />}
-              {activeTab === 'evening'   && <BriefView type="evening" onNavigate={setActiveTab} />}
+              {activeTab === 'evening'   && <BriefView type="evening" onNavigate={setActiveTab} watchlist={watchlist} watchlistPrices={watchlistPrices} watchlistPricesLoading={watchlistPricesLoading} />}
               {activeTab === 'dealflow'  && <DealFlowTracker />}
               {activeTab === 'thesis'    && <ThesisBoard />}
               {activeTab === 'companies' && <CompanyIntel />}
