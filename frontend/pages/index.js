@@ -6,6 +6,7 @@ import LandingPage from '../components/LandingPage'
 import SignedOutHomepage from '../components/SignedOutHomepage'
 import PreferencesPanel from '../components/PreferencesPanel'
 import { supabase } from '../lib/supabaseClient'
+import memoStyles from '../components/DealMemo.module.css'
 
 const SECTORS = [
   { key: 'ALL',    label: 'ALL',         value: null,                                  color: '#f59e0b' },
@@ -650,6 +651,9 @@ function DealFlowTracker() {
   const [memoContent, setMemoContent] = useState('')
   const [memoTitle, setMemoTitle]     = useState('')
   const [showMemoModal, setShowMemoModal] = useState(false)
+  const [memoForm, setMemoForm]       = useState({ company: '', acquirer: '', deal_type: '', value: '', sector: '', description: '' })
+  const [memoPhase, setMemoPhase]     = useState('idle')
+  const [displayedMemo, setDisplayedMemo] = useState('')
   const [dealAddedSet, setDealAddedSet] = useState(new Set())
 
   const handleAddDealCompany = async (company) => {
@@ -665,6 +669,19 @@ function DealFlowTracker() {
 
   const generateMemo = async (deal, e) => {
     e.stopPropagation()
+    const form = {
+      company: deal.company || '',
+      acquirer: deal.acquirer || '',
+      deal_type: deal.deal_type || '',
+      value: deal.value || deal.valuation || '',
+      sector: deal.sector || '',
+      description: deal.summary || deal.notes || '',
+    }
+    setMemoForm(form)
+    setMemoTitle(deal.company)
+    setShowMemoModal(true)
+    setMemoPhase('generating')
+    setDisplayedMemo('')
     setMemoLoading(deal.id)
     try {
       const res = await fetch('/api/memo', {
@@ -682,14 +699,56 @@ function DealFlowTracker() {
       const data = await res.json()
       if (data.memo) {
         setMemoContent(data.memo)
-        setMemoTitle(deal.company)
-        setShowMemoModal(true)
+        setMemoPhase('complete')
       }
     } catch (err) {
       console.error('Memo generation failed:', err)
+      setMemoPhase('idle')
     }
     setMemoLoading(null)
   }
+
+  const handleMemoFormSubmit = async () => {
+    if (!memoForm.company.trim()) return
+    setMemoPhase('generating')
+    setDisplayedMemo('')
+    setMemoTitle(memoForm.company)
+    try {
+      const res = await fetch('/api/memo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company: memoForm.company,
+          acquirer: memoForm.acquirer,
+          deal_type: memoForm.deal_type,
+          value: memoForm.value,
+          sector: memoForm.sector,
+          description: memoForm.description,
+        }),
+      })
+      const data = await res.json()
+      if (data.memo) {
+        setMemoContent(data.memo)
+        setMemoPhase('complete')
+      }
+    } catch (err) {
+      console.error('Memo generation failed:', err)
+      setMemoPhase('idle')
+    }
+  }
+
+  // Typewriter effect for memo output
+  useEffect(() => {
+    if (memoPhase !== 'complete' || !memoContent) return
+    setDisplayedMemo('')
+    let i = 0
+    const timer = setInterval(() => {
+      i += 1
+      setDisplayedMemo(memoContent.slice(0, i))
+      if (i >= memoContent.length) clearInterval(timer)
+    }, 20)
+    return () => clearInterval(timer)
+  }, [memoContent, memoPhase])
 
   useEffect(() => {
     async function load() {
@@ -858,23 +917,97 @@ function DealFlowTracker() {
       )}
 
       {showMemoModal && (
-        <div onClick={() => setShowMemoModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#0d1424', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '12px', width: '100%', maxWidth: '680px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-              <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>DEAL MEMO — {memoTitle.toUpperCase()}</span>
-              <button onClick={() => setShowMemoModal(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '18px', cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}>×</button>
+        <div className={memoStyles.overlay}>
+          {/* ── Left: Form Panel ── */}
+          <div className={memoStyles.formPanel}>
+            <div className={memoStyles.formCard}>
+              <div className={memoStyles.formHeader}>
+                <span className={memoStyles.sectionTitle}>DEAL PARAMETERS</span>
+                <button className={memoStyles.closeBtn} onClick={() => { setShowMemoModal(false); setMemoPhase('idle') }} aria-label="Close memo generator">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M11 3L3 11M3 3l8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                </button>
+              </div>
+              <div className={memoStyles.formFields}>
+                <div className={memoStyles.inputGroup}>
+                  <input className={memoStyles.input} placeholder=" " value={memoForm.company} onChange={e => setMemoForm(f => ({ ...f, company: e.target.value }))} />
+                  <label className={memoStyles.floatingLabel}>Company</label>
+                </div>
+                <div className={memoStyles.inputGroup}>
+                  <input className={memoStyles.input} placeholder=" " value={memoForm.acquirer} onChange={e => setMemoForm(f => ({ ...f, acquirer: e.target.value }))} />
+                  <label className={memoStyles.floatingLabel}>Acquirer</label>
+                </div>
+                <div className={memoStyles.inputGroup}>
+                  <input className={memoStyles.input} placeholder=" " value={memoForm.deal_type} onChange={e => setMemoForm(f => ({ ...f, deal_type: e.target.value }))} />
+                  <label className={memoStyles.floatingLabel}>Deal Type</label>
+                </div>
+                <div className={memoStyles.inputGroup}>
+                  <input className={memoStyles.input} placeholder=" " value={memoForm.value} onChange={e => setMemoForm(f => ({ ...f, value: e.target.value }))} />
+                  <label className={memoStyles.floatingLabel}>Valuation</label>
+                </div>
+                <div className={memoStyles.inputGroup}>
+                  <input className={memoStyles.input} placeholder=" " value={memoForm.sector} onChange={e => setMemoForm(f => ({ ...f, sector: e.target.value }))} />
+                  <label className={memoStyles.floatingLabel}>Sector</label>
+                </div>
+                <div className={memoStyles.inputGroup}>
+                  <textarea className={memoStyles.textarea} placeholder=" " rows={3} value={memoForm.description} onChange={e => setMemoForm(f => ({ ...f, description: e.target.value }))} />
+                  <label className={memoStyles.floatingLabel}>Description / Notes</label>
+                </div>
+                <button className={memoStyles.submitBtn} onClick={handleMemoFormSubmit} disabled={memoPhase === 'generating' || !memoForm.company.trim()}>
+                  {memoPhase === 'generating' ? <><span className={memoStyles.btnSpinner} /> GENERATING...</> : 'GENERATE MEMO'}
+                </button>
+              </div>
             </div>
-            <div style={{ overflowY: 'auto', padding: '24px', flex: 1 }}>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '12px', color: 'rgba(255,255,255,0.75)', lineHeight: 1.75, whiteSpace: 'pre-wrap', margin: 0 }}
-                dangerouslySetInnerHTML={{ __html: memoContent.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>') }} />
-            </div>
-            <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-              <button
-                onClick={() => navigator.clipboard.writeText(memoContent)}
-                style={{ padding: '6px 16px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#f59e0b', letterSpacing: '0.06em' }}>
-                COPY TO CLIPBOARD
-              </button>
-            </div>
+          </div>
+
+          {/* ── Divider ── */}
+          <div className={memoStyles.divider} />
+
+          {/* ── Right: Output Panel ── */}
+          <div className={memoStyles.outputPanel}>
+            {memoPhase === 'complete' || displayedMemo ? (
+              <>
+                <div className={memoStyles.toolbar}>
+                  <span className={memoStyles.toolbarTitle}>DEAL MEMO — {(memoTitle || '').toUpperCase()}</span>
+                  <div className={memoStyles.toolbarActions}>
+                    <button className={memoStyles.toolbarBtn} onClick={() => navigator.clipboard.writeText(memoContent)}>
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="4" y="4" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="1.2"/><path d="M8 4V2.5A1.5 1.5 0 006.5 1h-4A1.5 1.5 0 001 2.5v4A1.5 1.5 0 002.5 8H4" stroke="currentColor" strokeWidth="1.2"/></svg>
+                      COPY
+                    </button>
+                    <button className={memoStyles.toolbarBtn} onClick={() => {
+                      const blob = new Blob([memoContent], { type: 'text/plain' })
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement('a')
+                      a.href = url
+                      a.download = `memo-${(memoTitle || 'deal').toLowerCase().replace(/\s+/g, '-')}.txt`
+                      a.click()
+                      URL.revokeObjectURL(url)
+                    }}>
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v7M3 6l3 3 3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/><path d="M1 9v1.5A1.5 1.5 0 002.5 12h7a1.5 1.5 0 001.5-1.5V9" stroke="currentColor" strokeWidth="1.2"/></svg>
+                      EXPORT
+                    </button>
+                  </div>
+                </div>
+                <div className={memoStyles.outputContent}>
+                  <div className={memoStyles.memoText}
+                    dangerouslySetInnerHTML={{ __html: displayedMemo.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>') }} />
+                  {displayedMemo.length < memoContent.length && <span className={memoStyles.typingCursor} />}
+                </div>
+              </>
+            ) : memoPhase === 'generating' ? (
+              <div className={memoStyles.generatingState}>
+                <div className={memoStyles.generatingDots}>
+                  <div className={memoStyles.generatingDot} />
+                  <div className={memoStyles.generatingDot} />
+                  <div className={memoStyles.generatingDot} />
+                </div>
+                <span className={memoStyles.generatingText}>GENERATING MEMO...</span>
+              </div>
+            ) : (
+              <div className={memoStyles.ghostState}>
+                <div className={memoStyles.ghostMonogram}>B&#945;</div>
+                <p className={memoStyles.ghostText}>Configure parameters and generate your memo</p>
+              </div>
+            )}
           </div>
         </div>
       )}
