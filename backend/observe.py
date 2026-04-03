@@ -168,11 +168,11 @@ def record_run(brief_type, started_at, ingest_count=None):
               f"selected={selected_count}, duration={duration_s:.1f}s")
     except Exception as e:
         print(f"  [observe] failed to insert pipeline_runs row: {e}")
-        return
+        return None
 
     # --- Insert run_articles rows (candidates + selected) ----------------
     if not pool:
-        return
+        return run_id
 
     article_rows = [
         {
@@ -195,3 +195,5 @@ def record_run(brief_type, started_at, ingest_count=None):
               f"source=reconstructed)")
     except Exception as e:
         print(f"  [observe] run_articles insert failed (run row still saved): {e}")
+
+    return run_id

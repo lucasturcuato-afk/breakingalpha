@@ -8,7 +8,7 @@
 - **Not in scope yet:** Optimizer, rollback, config mutation, persona logic, and engagement optimization.
 - **Important constraint:** Avoid `backend/synthesize.py` if possible due to open PR overlap.
 - **Source of truth:** This document governs autonomous-improvement work.
-- **Implementation status:** Planning only. Do not implement from this document until explicitly instructed.
+- **Implementation status:** Phase 1 in progress. Run Recorder built and merged (PR #42). Brief Critic, Selection Auditor, and Trend Mapper not yet built.
 
 ---
 
@@ -66,11 +66,22 @@ This means the next step is not inventing a new product category. It is wrapping
 
 **We are currently in Phase 1 — Observation only.**
 
+### Completed
+
+- **Run Recorder** (PR #42, merged) — `backend/observe.py` + non-blocking hook in `backend/run.py`; writes one row to `pipeline_runs` and per-article rows to `run_articles` after each pipeline run; selected article provenance is reconstructed/inferred from ingest output
+
+### Still pending (Phase 1)
+
+- Brief Critic
+- Selection Auditor
+- Trend Mapper
+- scheduled automatic post-run jobs
+- daily and weekly summaries for operators
+
 ### Current goal
 
-Build the observation layer that can:
+Complete the remaining observation components:
 
-- record every run
 - critique every run
 - audit missed or weakly selected stories
 - map persistent and emerging trend clusters
@@ -212,10 +223,13 @@ The autonomous-improvement layer should stay materially lighter than the main co
 
 ### Phase 1 — Observation
 
-- create the new Supabase observation tables
-- build Run Recorder, Brief Critic, Selection Auditor, and Trend Mapper
-- schedule automatic post-run jobs
-- write daily and weekly summaries
+- [x] Create Supabase observation tables (`pipeline_runs`, `run_articles`)
+- [x] Build Run Recorder — `backend/observe.py` + hook in `backend/run.py` (PR #42)
+- [ ] Build Brief Critic
+- [ ] Build Selection Auditor
+- [ ] Build Trend Mapper
+- [ ] Schedule automatic post-run jobs
+- [ ] Write daily and weekly summaries
 
 ### Phase 2 — Safe Autonomy
 
