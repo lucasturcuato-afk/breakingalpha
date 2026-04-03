@@ -182,8 +182,14 @@ function BriefView({ type }) {
   useEffect(() => {
     async function load() {
       setLoading(true)
-      const { data: bData } = await supabase.from('briefings').select('*').eq('briefing_type', type).neq('headline', 'Market Intelligence Unavailable').order('created_at', { ascending: false }).limit(1)
-      if (bData?.[0]) setBriefing(bData[0])
+      const { data: { session } } = await supabase.auth.getSession()
+      const briefingRes = await fetch(`/api/briefing?type=${type}`, {
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+      })
+      if (briefingRes.ok) {
+        const briefingData = await briefingRes.json()
+        if (briefingData?.briefing) setBriefing(briefingData.briefing)
+      }
       const { data: aData } = await supabase.from('articles').select('*').order('ingested_at', { ascending: false }).limit(100)
       if (aData) {
         setArticles(aData)
