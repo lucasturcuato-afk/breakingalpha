@@ -272,7 +272,7 @@ function BriefView({ type }) {
   }
 
   return (
-    <div>
+    <div style={{ maxWidth: '900px' }}>
       {/* ── Hero header ── */}
       <div style={{ borderBottom: '1px solid rgba(245,158,11,0.15)', paddingBottom: '24px', marginBottom: '28px' }}>
         <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.18em', marginBottom: '8px' }}>
@@ -1283,8 +1283,9 @@ function Trends() {
         {articles.length} articles · last 24h vs prior 24h
       </p>
 
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'24px', alignItems:'start' }}>
       {/* Top Company Movers */}
-      <div style={{ marginBottom:'28px' }}>
+      <div>
         <div style={{ fontSize:'10px', fontFamily:"'DM Mono', monospace", color:'var(--tertiary)', letterSpacing:'0.14em', marginBottom:'10px' }}>TOP COMPANY MOVERS · LAST 24H</div>
         {movers.length === 0
           ? <EmptyState icon={EMPTY_ICONS.trending} title="Not enough data yet" subtitle="Check back after the next ingest cycle" />
@@ -1292,7 +1293,7 @@ function Trends() {
               {movers.map((m, i) => (
                 <div key={i} style={{ background:'var(--card-bg)', border:'1px solid var(--card-border)', borderRadius:'8px', padding:'12px 14px' }}>
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'6px' }}>
-                    <span style={{ fontFamily:"'Cormorant Garamond', serif", fontSize:'15px', fontWeight:600, color:'#f1f5f9', lineHeight:1.2 }}>{m.name}</span>
+                    <span style={{ fontFamily:"'Cormorant Garamond', serif", fontSize:'15px', fontWeight:600, color:'var(--heading)', lineHeight:1.2 }}>{m.name}</span>
                     <span style={{ fontFamily:"'DM Mono', monospace", fontSize:'11px', color: m.delta >= 0 ? '#4ade80' : '#f87171', flexShrink:0, marginLeft:'6px' }}>
                       {m.delta > 0 ? '+' : ''}{m.delta}
                     </span>
@@ -1344,6 +1345,7 @@ function Trends() {
             </div>
           )
         })}
+      </div>
       </div>
     </div>
   )
@@ -1667,7 +1669,7 @@ export default function Home() {
             </div>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '30px' }}>
-            <div key={activeTab} style={{ maxWidth: '860px', animation: 'contentFadeIn 200ms ease' }}>
+            <div key={activeTab} style={{ animation: 'contentFadeIn 200ms ease' }}>
               {activeTab === 'morning'   && <BriefView type="morning" />}
               {activeTab === 'live'      && <LiveTracker />}
               {activeTab === 'evening'   && <BriefView type="evening" />}
