@@ -225,8 +225,10 @@ function BriefSidebar({ onNavigate }) {
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from('theses').select('*').order('generated_at', { ascending: false }).limit(3)
-      if (data) setTheses(data)
+      try {
+        const { data } = await supabase.from('theses').select('*').order('generated_at', { ascending: false }).limit(3)
+        if (data) setTheses(data)
+      } catch (e) { /* sectors still show */ }
       setLoading(false)
     }
     load()
@@ -308,14 +310,6 @@ function BriefView({ type, onNavigate }) {
   const activeSector = SECTORS.find(s => s.key === sectorFilter)
   const filtered = sectorFilter === 'ALL' ? articles : articles.filter(a => a.sector === activeSector?.value)
 
-  if (loading) return (
-    <div style={{ padding: '20px 0' }}>
-      <SkeletonCard height="180px" />
-      <div style={{ height: '10px' }} />
-      <SkeletonCard height="100px" count={3} />
-    </div>
-  )
-
   const sections    = parseJSON(briefing?.sections) || {}
   const topDeals    = parseJSON(briefing?.top_deals) || []
   const sectorBreak = parseJSON(briefing?.sector_breakdown) || {}
@@ -335,6 +329,14 @@ function BriefView({ type, onNavigate }) {
   return (
     <div className="brief-layout" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '24px' }}>
     <div>
+    {loading ? (
+      <div style={{ padding: '20px 0' }}>
+        <SkeletonCard height="180px" />
+        <div style={{ height: '10px' }} />
+        <SkeletonCard height="100px" count={3} />
+      </div>
+    ) : (
+    <>
       {/* ── Hero header ── */}
       <div style={{ borderBottom: '1px solid rgba(245,158,11,0.15)', paddingBottom: '24px', marginBottom: '28px' }}>
         <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.18em', marginBottom: '8px' }}>
@@ -446,6 +448,8 @@ function BriefView({ type, onNavigate }) {
       {filtered.length > 0
         ? filtered.map(a => <ArticleCard key={a.id} article={a} />)
         : <EmptyState icon={EMPTY_ICONS.newspaper} title="No stories in this sector yet" subtitle="Articles will appear here as they are ingested" />}
+    </>
+    )}
     </div>
     <BriefSidebar onNavigate={onNavigate} />
     </div>
