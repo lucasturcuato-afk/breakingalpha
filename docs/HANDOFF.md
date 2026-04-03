@@ -60,6 +60,24 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 
 ## Recently Completed (2026-04-03)
 
+### SESSION: April 3, 2026 — Noah
+**PRs merged: #44 (headline-spec), #45 (title dedup)**
+
+1. **Morning headline selection tightened (PR #44 — `backend/synthesize.py`)**
+   - Added `HEADLINE SELECTION` pre-step to `MORNING_SYSTEM`: model must rank all articles by market significance (largest dollar figure → broadest macro signal → widest sector development) before writing any JSON
+   - Rewrote `headline` field instruction: explicit 10–15 word enforcement, banned vague labels, BAD/GOOD examples, direct link to pre-step dominant story
+   - Validated via narrow `synthesize.py morning` run — produced "Microsoft Unveils $10 Billion AI Investment Package for Japan" (11 words, named entity, dollar figure, geography)
+   - Evening system prompt unchanged; morning only
+
+2. **Conservative storage-layer title dedup (PR #45 — `backend/ingest.py`)**
+   - Added `_normalize_title()`: lowercase → strip punctuation → collapse whitespace
+   - `store_article()` now queries article titles ingested in last 24h, skips insert if normalized title matches any existing row
+   - Logs skipped articles: `⊘ Title dedup skip: <title>`
+   - No schema changes; no fuzzy matching; no external libraries
+   - Intentionally conservative — exact normalized title match only; near-duplicates with materially different wording still survive
+
+---
+
 ### SESSION: April 3, 2026 — Lucas
 **BRANCH:** Merged to main
 
@@ -149,18 +167,21 @@ CREATE POLICY "Public update" ON theses FOR UPDATE USING (true) WITH CHECK (true
 - Confirm next scheduled run writes to `pipeline_runs` and `run_articles` tables with correct row counts and provenance flags
 - Verify observer does not block pipeline completion (non-blocking behavior)
 
-### Next validation (no code needed — inspect after 2026-04-03 scheduled run)
-- Compare article blurb quality metrics against today's baseline:
+### Next validation (no code needed — inspect after next scheduled run)
+- Compare article blurb quality metrics against baseline:
   - "comparable operators like" baseline: 38% → target <15%
   - verbatim identical blurbs baseline: 3 → target 0
   - "hyperscalers" baseline: 16% → target <8%
 - Inspect Live Tracker cards: fewer comp-list blurbs, opinion pieces filtered out
-- Inspect Morning Review headline: if still ≤6 words or wrong dominant story, synthesize.py headline spec is the next fix
+- Inspect Morning Review headline: should now be 10–15 words, named entity, dominant story — headline-spec PR #44 is the active fix
+- Inspect ingest logs for `⊘ Title dedup skip:` lines — confirms title dedup (PR #45) is firing on same-story duplicates
 
 ### Known quality residuals (low harm, deferred)
 - **Personnel announcements** can still pass at relevance_score 6 when article mentions firm AUM or implies future deal flow. Blurbs are weak/vague rather than fabricated. Targeted exclusion rule deferred.
-- **Morning brief headline** — synthesis model still occasionally picks the wrong dominant story and produces headlines under the 10-word spec (observed: "SpaceX Files for IPO", "Trump Revamps Metal Tariffs"). This is a synthesize.py prompt issue, not an ingest issue. Next fix lane if blurb quality validates.
+- **Near-duplicate stories with different wording** — title dedup (PR #45) catches exact normalized matches; stories where Reuters and AP use materially different headline phrasing for the same underlying event still both survive. Fuzzy/semantic dedup is the next step if this remains noisy.
 - **synthesize.py comp-list echo** — synthesis uses 70b-versatile and may echo comp-list patterns from upstream blurbs fed as Signal: lines. Expect improvement once filter blurbs improve; revisit if synthesis sections still feel formulaic after next run.
+- **Weak "What to watch" section** — this section still occasionally produces generic forward-looking statements rather than named catalysts with binary outcomes. Prompt tightening deferred.
+- **Residual false-positive relevance hits** — some articles score ≥6 on a marginal read-through signal rather than a primary market event. Gate tuning deferred.
 
 ### Other pending
 - **Preferences filtering:** Preferences now persist and load; next step is wiring saved preferences to filter/modify brief content (sectors, sentiment, deal status filters).
