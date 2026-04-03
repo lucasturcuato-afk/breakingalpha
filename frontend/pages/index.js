@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Head from 'next/head'
+import briefStyles from '../components/BriefView.module.css'
 import AuthButton from '../components/AuthButton'
 import OnboardingModal from '../components/OnboardingModal'
 import LandingPage from '../components/LandingPage'
@@ -170,14 +171,37 @@ function ArticleCard({ article, isNew }) {
 }
 
 // ── Morning / Evening Brief (detailed analyst style) ─────────────────────────
-function BriefView({ type }) {
+// ── Scroll-reveal wrapper ────────────────────────────────────────────────────
+function ScrollReveal({ children, className }) {
+  const ref = useRef(null)
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.disconnect() } },
+      { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+  return (
+    <div ref={ref} className={`${briefStyles.section} ${visible ? briefStyles.sectionVisible : ''} ${className || ''}`}>
+      {children}
+    </div>
+  )
+}
+
+function BriefView({ type, marketOpen, onNavigate }) {
   const [briefing, setBriefing] = useState(null)
   const [articles, setArticles] = useState([])
   const [loading, setLoading] = useState(true)
   const [sectorFilter, setSectorFilter] = useState('ALL')
   const [sectorCounts, setSectorCounts] = useState({})
   const [todayLabel, setTodayLabel] = useState('')
-  useEffect(() => { setTodayLabel(new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })) }, [])
+  useEffect(() => {
+    setTodayLabel(new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase())
+  }, [])
 
   useEffect(() => {
     async function load() {
@@ -199,127 +223,199 @@ function BriefView({ type }) {
   const activeSector = SECTORS.find(s => s.key === sectorFilter)
   const filtered = sectorFilter === 'ALL' ? articles : articles.filter(a => a.sector === activeSector?.value)
 
-  if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ width: '28px', height: '28px', border: '2px solid rgba(255,255,255,0.08)', borderTopColor: '#f59e0b', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 14px' }} />
-        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em' }}>LOADING INTEL...</div>
-      </div>
-    </div>
-  )
-
-  const sections    = parseJSON(briefing?.sections) || {}
-  const topDeals    = parseJSON(briefing?.top_deals) || []
-  const sectorBreak = parseJSON(briefing?.sector_breakdown) || {}
-  const tone        = briefing?.market_tone || 'NEUTRAL'
-  const toneColor   = TONE_COLORS[tone] || '#94a3b8'
-
   const SECTION_LABELS = {
-    deals_and_ma:    '💼 DEALS & M&A',
-    public_markets:  '📊 PUBLIC MARKETS',
-    macro_and_rates: '🏦 MACRO & RATES',
-    geopolitics:     '🌍 GEOPOLITICS',
-    sector_spotlight:'🔦 SECTOR SPOTLIGHT',
-    what_to_watch:   '👁 WHAT TO WATCH',
-    tomorrow_setup:  '🌅 TOMORROW\'S SETUP',
+    deals_and_ma:    'DEALS & M&A',
+    public_markets:  'PUBLIC MARKETS',
+    macro_and_rates: 'MACRO & RATES',
+    geopolitics:     'GEOPOLITICS',
+    sector_spotlight:'SECTOR SPOTLIGHT',
+    what_to_watch:   'WHAT TO WATCH',
+    tomorrow_setup:  'TOMORROW\'S SETUP',
   }
+
+  const pageTitle = type === 'morning' ? 'MORNING REVIEW' : 'EVENING WRAP'
+  const otherType = type === 'morning' ? 'evening' : 'morning'
+  const otherLabel = type === 'morning' ? 'EVENING WRAP' : 'MORNING REVIEW'
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-        <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>{type === 'morning' ? '☀ MORNING REVIEW' : '🌙 EVENING WRAP'}</span>
-        {todayLabel && <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.22)' }}>{todayLabel}</span>}
-      </div>
-
-      {briefing ? (
-        <>
-          {/* Lead card */}
-          <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.08), rgba(139,92,246,0.04))', border: '1px solid rgba(245,158,11,0.18)', borderRadius: '12px', padding: '28px 32px', marginBottom: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em' }}>TODAY'S LEAD</div>
-              <span style={{ padding: '3px 10px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: toneColor, background: toneColor + '18', border: `1px solid ${toneColor}40` }}>{tone}</span>
-            </div>
-            <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 'clamp(22px, 2.8vw, 30px)', fontWeight: 700, color: '#f8fafc', lineHeight: 1.3, margin: '0 0 14px 0' }}>{briefing.headline}</h1>
-            <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.65)', lineHeight: 1.78, margin: 0 }}>{briefing.summary}</p>
-          </div>
-
-          {/* Top Deals */}
-          {topDeals.length > 0 && (
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '10px' }}>TOP DEALS TO WATCH</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
-                {topDeals.map((deal, i) => (
-                  <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '14px 16px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
-                      <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '15px', fontWeight: 600, color: '#f8fafc' }}>{deal.company}</span>
-                      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#fbbf24', flexShrink: 0, marginLeft: '8px' }}>{deal.value || 'Undisclosed'}</span>
-                    </div>
-                    <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', marginBottom: '5px' }}>{cleanDealType(deal.deal_type)}</div>
-                    <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>{deal.one_liner}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Analyst sections */}
-          {Object.keys(sections).length > 0 && (
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '10px' }}>ANALYST BRIEFING</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                {Object.entries(sections).map(([key, text]) => (
-                  <div key={key} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '14px 16px', gridColumn: key === 'what_to_watch' || key === 'tomorrow_setup' ? 'span 2' : 'span 1' }}>
-                    <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.12em', marginBottom: '7px' }}>{SECTION_LABELS[key] || key.toUpperCase()}</div>
-                    <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.55)', lineHeight: 1.68, margin: 0 }}>{text}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Sector breakdown */}
-          {Object.keys(sectorBreak).length > 0 && (
-            <div style={{ marginBottom: '24px' }}>
-              <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', marginBottom: '10px' }}>SECTOR SIGNALS</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
-                {Object.entries(sectorBreak).map(([sector, text]) => {
-                  const color = getSectorColor(sector)
-                  return (
-                    <div key={sector} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.055)', borderRadius: '7px', padding: '10px 13px' }}>
-                      <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color, marginBottom: '5px' }}>{sector.split(' ')[0].toUpperCase()}</div>
-                      <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>{text}</div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-        </>
-      ) : (
-        <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: '12px', padding: '44px', textAlign: 'center', marginBottom: '28px' }}>
-          <div style={{ fontSize: '30px', marginBottom: '12px' }}>{type === 'morning' ? '☀️' : '🌙'}</div>
-          <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '20px', color: 'rgba(255,255,255,0.35)', marginBottom: '8px' }}>No {type} brief yet</div>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.22)' }}>{type === 'morning' ? 'Publishes weekdays at 6:00 AM PT' : 'Publishes weekdays at 10:00 PM PT'}</div>
+      {/* ══════════ Hero Section ══════════ */}
+      <div className={briefStyles.hero}>
+        <div className={briefStyles.heroBg} aria-hidden="true" />
+        <div className={briefStyles.heroContent}>
+          {todayLabel && <span className={briefStyles.heroDate}>{todayLabel}</span>}
+          <h1 className={briefStyles.heroTitle}>{pageTitle}</h1>
+          <div className={briefStyles.heroAccent} />
         </div>
-      )}
-
-      {/* Articles feed */}
-      <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em', marginBottom: '10px' }}>TOP STORIES</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
-        {SECTORS.map(s => {
-          const count = s.key === 'ALL' ? articles.length : (sectorCounts[s.value] || 0)
-          const isActive = sectorFilter === s.key
-          return (
-            <button key={s.key} onClick={() => setSectorFilter(s.key)} style={{ padding: '4px 11px', borderRadius: '4px', fontSize: '10px', fontFamily: "'DM Mono', monospace", cursor: 'pointer', transition: 'all 0.12s', letterSpacing: '0.05em', outline: 'none', border: `1px solid ${isActive ? s.color : 'rgba(255,255,255,0.07)'}`, background: isActive ? s.color + '18' : 'transparent', color: isActive ? s.color : count > 0 ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.2)' }}>
-              {s.label}{count > 0 ? ` (${count})` : ''}
-            </button>
-          )
-        })}
+        <div className={briefStyles.heroRight}>
+          {marketOpen !== null && (
+            <div className={briefStyles.marketPill}>
+              <span className={`${briefStyles.marketDot} ${marketOpen ? briefStyles.marketDotOpen : briefStyles.marketDotClosed}`} />
+              <span style={{ color: marketOpen ? 'var(--ba-green)' : 'var(--ba-red)' }}>
+                {marketOpen ? 'MARKET OPEN' : 'MARKET CLOSED'}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
-      <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'rgba(255,255,255,0.18)', marginBottom: '14px' }}>{filtered.length} {filtered.length === 1 ? 'STORY' : 'STORIES'}{sectorFilter !== 'ALL' && ` · ${activeSector?.label}`}</div>
-      {filtered.length > 0
-        ? filtered.map(a => <ArticleCard key={a.id} article={a} />)
-        : <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>NO STORIES IN THIS SECTOR YET</div>}
+
+      {/* ══════════ Content ══════════ */}
+      <div className={briefStyles.content}>
+        {loading ? (
+          <div className={briefStyles.loading}>
+            <div className={briefStyles.loadingInner}>
+              <div className={briefStyles.spinner} />
+              <div className={briefStyles.loadingText}>LOADING INTEL...</div>
+            </div>
+          </div>
+        ) : briefing ? (
+          <>
+            {/* ── Lead Card ── */}
+            <ScrollReveal>
+              {(() => {
+                const sections    = parseJSON(briefing?.sections) || {}
+                const topDeals    = parseJSON(briefing?.top_deals) || []
+                const sectorBreak = parseJSON(briefing?.sector_breakdown) || {}
+                const tone        = briefing?.market_tone || 'NEUTRAL'
+                const toneColor   = TONE_COLORS[tone] || '#94a3b8'
+                return (
+                  <>
+                    <div className={briefStyles.leadCard}>
+                      <div className={briefStyles.leadCardInner}>
+                        <div className={briefStyles.leadTopRow}>
+                          <span className={briefStyles.leadLabel}>TODAY&apos;S LEAD</span>
+                          <span className={briefStyles.toneBadge} style={{ color: toneColor, background: toneColor + '1a', borderColor: toneColor + '40' }}>{tone}</span>
+                        </div>
+                        <h2 className={briefStyles.leadHeadline}>{briefing.headline}</h2>
+                        <p className={briefStyles.leadSummary}>{briefing.summary}</p>
+                      </div>
+                    </div>
+
+                    {/* ── Top Deals ── */}
+                    {topDeals.length > 0 && (
+                      <ScrollReveal>
+                        <div className={briefStyles.sectionHeader}>TOP DEALS TO WATCH</div>
+                        <div className={briefStyles.dealsGrid}>
+                          {topDeals.map((deal, i) => (
+                            <div key={i} className={briefStyles.dealCard}>
+                              <div className={briefStyles.dealTopRow}>
+                                <span className={briefStyles.dealCompany}>{deal.company}</span>
+                                <span className={briefStyles.dealValue}>{deal.value || 'Undisclosed'}</span>
+                              </div>
+                              <div className={briefStyles.dealType}>{cleanDealType(deal.deal_type)}</div>
+                              <div className={briefStyles.dealOneLiner}>{deal.one_liner}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollReveal>
+                    )}
+
+                    {/* ── Analyst Briefing ── */}
+                    {Object.keys(sections).length > 0 && (
+                      <ScrollReveal>
+                        <div className={briefStyles.sectionHeader}>ANALYST BRIEFING</div>
+                        <div className={briefStyles.analystGrid}>
+                          {Object.entries(sections).map(([key, text]) => {
+                            const isWide = key === 'what_to_watch' || key === 'tomorrow_setup'
+                            return (
+                              <div key={key} className={isWide ? briefStyles.analystCardWide : briefStyles.analystCard}>
+                                <div className={briefStyles.analystLabel}>{SECTION_LABELS[key] || key.replace(/_/g, ' ').toUpperCase()}</div>
+                                {(key === 'what_to_watch' || key === 'tomorrow_setup') ? (
+                                  <div className={briefStyles.blockquote}><p>{text}</p></div>
+                                ) : (
+                                  <p className={briefStyles.analystText}>{text}</p>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </ScrollReveal>
+                    )}
+
+                    {/* ── Sector Breakdown ── */}
+                    {Object.keys(sectorBreak).length > 0 && (
+                      <ScrollReveal>
+                        <div className={briefStyles.sectionHeader}>SECTOR SIGNALS</div>
+                        <div className={briefStyles.sectorGrid}>
+                          {Object.entries(sectorBreak).map(([sector, text]) => {
+                            const color = getSectorColor(sector)
+                            return (
+                              <div key={sector} className={briefStyles.sectorCard}>
+                                <div className={briefStyles.sectorLabel} style={{ color }}>{sector.split(' ')[0].toUpperCase()}</div>
+                                <div className={briefStyles.sectorText}>{text}</div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </ScrollReveal>
+                    )}
+                  </>
+                )
+              })()}
+            </ScrollReveal>
+          </>
+        ) : (
+          <div className={briefStyles.emptyState}>
+            <div className={briefStyles.emptyIcon}>
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                {type === 'morning'
+                  ? <><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></>
+                  : <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                }
+              </svg>
+            </div>
+            <div className={briefStyles.emptyTitle}>No {type} brief yet</div>
+            <div className={briefStyles.emptySubtext}>
+              {type === 'morning' ? 'Publishes weekdays at 6:00 AM PT' : 'Publishes weekdays at 10:00 PM PT'}
+            </div>
+          </div>
+        )}
+
+        {/* ══════════ Articles Feed ══════════ */}
+        <ScrollReveal>
+          <div className={briefStyles.storiesLabel}>TOP STORIES</div>
+          <div className={briefStyles.filterBar}>
+            {SECTORS.map(s => {
+              const count = s.key === 'ALL' ? articles.length : (sectorCounts[s.value] || 0)
+              const isActive = sectorFilter === s.key
+              return (
+                <button
+                  key={s.key}
+                  onClick={() => setSectorFilter(s.key)}
+                  className={briefStyles.filterBtn}
+                  style={{
+                    border: `1px solid ${isActive ? s.color : 'var(--ba-border)'}`,
+                    background: isActive ? s.color + '1a' : 'transparent',
+                    color: isActive ? s.color : count > 0 ? 'var(--ba-text-3)' : 'var(--ba-text-4)',
+                  }}
+                >
+                  {s.label}{count > 0 ? ` (${count})` : ''}
+                </button>
+              )
+            })}
+          </div>
+          <div className={briefStyles.storyCount}>
+            {filtered.length} {filtered.length === 1 ? 'STORY' : 'STORIES'}{sectorFilter !== 'ALL' && ` \u00b7 ${activeSector?.label}`}
+          </div>
+          {filtered.length > 0
+            ? filtered.map(a => <ArticleCard key={a.id} article={a} />)
+            : <div className={briefStyles.noStories}>NO STORIES IN THIS SECTOR YET</div>
+          }
+        </ScrollReveal>
+
+        {/* ══════════ Footer ══════════ */}
+        <div className={briefStyles.footer}>
+          <span className={briefStyles.footerBadge}>
+            <span className={briefStyles.footerDot} />
+            GENERATED BY BREAKINGALPHA AI
+          </span>
+          {onNavigate && (
+            <button className={briefStyles.footerLink} onClick={() => onNavigate(otherType)}>
+              VIEW {otherLabel} &rarr;
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -1484,9 +1580,9 @@ export default function Home() {
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '30px' }}>
             <div style={{ maxWidth: '860px' }}>
-              {activeTab === 'morning'   && <BriefView type="morning" />}
+              {activeTab === 'morning'   && <BriefView type="morning" marketOpen={marketOpen} onNavigate={setActiveTab} />}
               {activeTab === 'live'      && <LiveTracker />}
-              {activeTab === 'evening'   && <BriefView type="evening" />}
+              {activeTab === 'evening'   && <BriefView type="evening" marketOpen={marketOpen} onNavigate={setActiveTab} />}
               {activeTab === 'dealflow'  && <DealFlowTracker />}
               {activeTab === 'thesis'    && <ThesisBoard />}
               {activeTab === 'companies' && <CompanyIntel />}

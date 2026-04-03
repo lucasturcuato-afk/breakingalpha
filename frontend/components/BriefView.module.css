@@ -1,0 +1,580 @@
+/* ── BriefView.module.css ─────────────────────────────────────────────────
+   Premium financial newsletter / editorial layout.
+   Hero section, editorial typography, scroll-reveal sections.
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* ── Hero Section ── */
+.hero {
+  position: relative;
+  width: calc(100% + 60px);
+  margin: -30px -30px 0;
+  padding: 36px 40px 32px;
+  min-height: 180px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--ba-border);
+  animation: heroIn 500ms ease both;
+}
+
+@keyframes heroIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Animated gradient background */
+.heroBg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 60% 80% at 10% 90%, var(--ba-amber-muted) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 70% at 80% 20%, rgba(88,166,255,0.06) 0%, transparent 60%),
+    var(--ba-bg);
+  animation: heroPulse 12s ease-in-out infinite alternate;
+}
+
+@keyframes heroPulse {
+  0%   { opacity: 0.7; }
+  50%  { opacity: 1; }
+  100% { opacity: 0.8; }
+}
+
+.heroContent {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.heroDate {
+  font-family: var(--ba-font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ba-text-3);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.heroTitle {
+  font-family: var(--ba-font-heading);
+  font-size: clamp(24px, 3vw, 32px);
+  font-weight: 700;
+  color: var(--ba-text);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0;
+}
+
+.heroAccent {
+  width: 48px;
+  height: 3px;
+  background: var(--ba-amber);
+  border-radius: 2px;
+  margin-top: 4px;
+}
+
+.heroRight {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+
+.marketPill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--ba-radius-full);
+  background: var(--ba-surface);
+  border: 1px solid var(--ba-border);
+  font-size: 9px;
+  font-family: var(--ba-font-mono);
+  letter-spacing: 0.12em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.marketDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.marketDotOpen {
+  background: var(--ba-green);
+  animation: ba-pulse 2s ease-in-out infinite;
+}
+
+.marketDotClosed {
+  background: var(--ba-red);
+  opacity: 0.7;
+}
+
+/* ── Content Container ── */
+.content {
+  max-width: 900px;
+  margin: 0 auto;
+  padding-top: 28px;
+}
+
+/* ── Loading State ── */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 300px;
+}
+
+.loadingInner {
+  text-align: center;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--ba-border);
+  border-top-color: var(--ba-amber);
+  border-radius: 50%;
+  animation: ba-spin 0.8s linear infinite;
+  margin: 0 auto 14px;
+}
+
+.loadingText {
+  font-family: var(--ba-font-mono);
+  font-size: 11px;
+  color: var(--ba-text-4);
+  letter-spacing: 0.12em;
+}
+
+/* ── Section Header ── */
+.sectionHeader {
+  font-size: 10px;
+  font-family: var(--ba-font-mono);
+  color: var(--ba-amber);
+  letter-spacing: 0.16em;
+  font-weight: 500;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ba-amber-dim);
+  margin-bottom: 16px;
+  text-transform: uppercase;
+}
+
+/* ── Scroll-reveal section wrapper ── */
+.section {
+  margin-bottom: 28px;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 400ms ease, transform 400ms ease;
+}
+
+.sectionVisible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── Lead Card ── */
+.leadCard {
+  background: var(--ba-surface);
+  border: 1px solid var(--ba-border);
+  border-radius: var(--ba-radius-lg);
+  padding: 28px 32px;
+  margin-bottom: 28px;
+  position: relative;
+  overflow: hidden;
+}
+
+.leadCard::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 100% at 0% 100%, var(--ba-amber-subtle) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 80% at 100% 0%, rgba(139,92,246,0.04) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.leadCardInner {
+  position: relative;
+  z-index: 1;
+}
+
+.leadTopRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.leadLabel {
+  font-size: 10px;
+  font-family: var(--ba-font-mono);
+  color: var(--ba-amber);
+  letter-spacing: 0.14em;
+  font-weight: 500;
+}
+
+.toneBadge {
+  padding: 3px 10px;
+  border-radius: var(--ba-radius);
+  font-size: 10px;
+  font-family: var(--ba-font-mono);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  border: 1px solid;
+}
+
+.leadHeadline {
+  font-family: var(--ba-font-display);
+  font-size: clamp(22px, 2.8vw, 30px);
+  font-weight: 700;
+  color: var(--ba-text);
+  line-height: 1.3;
+  margin: 0 0 14px 0;
+}
+
+.leadSummary {
+  font-family: var(--ba-font-sans);
+  font-size: 15px;
+  color: var(--ba-text-2);
+  line-height: 1.7;
+  margin: 0;
+}
+
+/* ── Deal Cards Grid ── */
+.dealsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.dealCard {
+  background: var(--ba-surface);
+  border: 1px solid var(--ba-border);
+  border-radius: var(--ba-radius-md);
+  padding: 16px 18px;
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.dealCard:hover {
+  transform: translateY(-2px);
+  border-color: var(--ba-border-2);
+  box-shadow: var(--ba-shadow-sm);
+}
+
+.dealTopRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 6px;
+  gap: 8px;
+}
+
+.dealCompany {
+  font-family: var(--ba-font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ba-text);
+}
+
+.dealValue {
+  font-family: var(--ba-font-mono);
+  font-size: 11px;
+  color: var(--ba-amber-bright);
+  flex-shrink: 0;
+}
+
+.dealType {
+  font-size: 9px;
+  font-family: var(--ba-font-mono);
+  color: var(--ba-amber);
+  margin-bottom: 5px;
+  letter-spacing: 0.06em;
+}
+
+.dealOneLiner {
+  font-size: 12px;
+  font-family: var(--ba-font-sans);
+  color: var(--ba-text-3);
+  line-height: 1.55;
+}
+
+/* ── Analyst Sections Grid ── */
+.analystGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.analystCard {
+  background: var(--ba-surface);
+  border: 1px solid var(--ba-border);
+  border-radius: var(--ba-radius-md);
+  padding: 16px 18px;
+}
+
+.analystCardWide {
+  composes: analystCard;
+  grid-column: span 2;
+}
+
+.analystLabel {
+  font-size: 9px;
+  font-family: var(--ba-font-mono);
+  color: var(--ba-amber);
+  letter-spacing: 0.12em;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.analystText {
+  font-family: var(--ba-font-sans);
+  font-size: 13px;
+  color: var(--ba-text-2);
+  line-height: 1.7;
+  margin: 0;
+}
+
+/* ── Blockquote highlights ── */
+.blockquote {
+  border-left: 3px solid var(--ba-amber);
+  padding: 12px 18px;
+  margin: 12px 0;
+  background: var(--ba-amber-subtle);
+  border-radius: 0 var(--ba-radius) var(--ba-radius) 0;
+}
+
+.blockquote p {
+  font-family: var(--ba-font-sans);
+  font-size: 13px;
+  color: var(--ba-text-2);
+  line-height: 1.65;
+  margin: 0;
+  font-style: italic;
+}
+
+/* ── Sector Breakdown ── */
+.sectorGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.sectorCard {
+  background: var(--ba-surface);
+  border: 1px solid var(--ba-border);
+  border-radius: var(--ba-radius-md);
+  padding: 12px 16px;
+  transition: transform 180ms ease, border-color 180ms ease;
+}
+
+.sectorCard:hover {
+  transform: translateY(-1px);
+  border-color: var(--ba-border-2);
+}
+
+.sectorLabel {
+  font-size: 9px;
+  font-family: var(--ba-font-mono);
+  letter-spacing: 0.06em;
+  margin-bottom: 5px;
+  font-weight: 500;
+}
+
+.sectorText {
+  font-size: 12px;
+  font-family: var(--ba-font-sans);
+  color: var(--ba-text-3);
+  line-height: 1.55;
+}
+
+/* ── Empty State ── */
+.emptyState {
+  background: var(--ba-surface);
+  border: 1px dashed var(--ba-border);
+  border-radius: var(--ba-radius-lg);
+  padding: 48px;
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.emptyIcon {
+  color: var(--ba-text-4);
+  margin-bottom: 14px;
+  opacity: 0.5;
+}
+
+.emptyTitle {
+  font-family: var(--ba-font-display);
+  font-size: 20px;
+  color: var(--ba-text-3);
+  margin-bottom: 8px;
+}
+
+.emptySubtext {
+  font-family: var(--ba-font-mono);
+  font-size: 11px;
+  color: var(--ba-text-4);
+}
+
+/* ── Articles Feed ── */
+.storiesLabel {
+  font-size: 10px;
+  font-family: var(--ba-font-mono);
+  color: var(--ba-amber);
+  letter-spacing: 0.14em;
+  font-weight: 500;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ba-amber-dim);
+  margin-bottom: 12px;
+}
+
+.filterBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.filterBtn {
+  padding: 4px 11px;
+  border-radius: var(--ba-radius);
+  font-size: 10px;
+  font-family: var(--ba-font-mono);
+  cursor: pointer;
+  transition: all 120ms ease;
+  letter-spacing: 0.05em;
+  outline: none;
+}
+
+.filterBtn:focus-visible {
+  outline: 1.5px solid var(--ba-amber);
+  outline-offset: 2px;
+}
+
+.storyCount {
+  font-size: 10px;
+  font-family: var(--ba-font-mono);
+  color: var(--ba-text-4);
+  margin-bottom: 14px;
+}
+
+.noStories {
+  text-align: center;
+  padding: 60px 0;
+  font-family: var(--ba-font-mono);
+  font-size: 11px;
+  color: var(--ba-text-4);
+}
+
+/* ── Footer ── */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 20px;
+  border-top: 1px solid var(--ba-border);
+  margin-top: 32px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.footerBadge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  font-family: var(--ba-font-mono);
+  color: var(--ba-text-4);
+  letter-spacing: 0.08em;
+}
+
+.footerDot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ba-amber-dim);
+  flex-shrink: 0;
+}
+
+.footerLink {
+  font-size: 10px;
+  font-family: var(--ba-font-mono);
+  color: var(--ba-text-4);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  transition: color 120ms ease;
+}
+
+.footerLink:hover {
+  color: var(--ba-amber);
+}
+
+.footerLink:focus-visible {
+  outline: 1.5px solid var(--ba-amber);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .hero {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 28px 24px 24px;
+    width: calc(100% + 48px);
+    margin: -24px -24px 0;
+    min-height: auto;
+  }
+
+  .heroRight {
+    align-self: flex-start;
+  }
+
+  .analystGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .analystCardWide {
+    grid-column: span 1;
+  }
+
+  .leadCard {
+    padding: 22px 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero {
+    width: calc(100% + 32px);
+    margin: -16px -16px 0;
+    padding: 24px 16px 20px;
+  }
+
+  .dealsGrid,
+  .sectorGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .section {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .heroBg {
+    animation: none;
+  }
+}
