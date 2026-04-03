@@ -8,11 +8,11 @@
 - Article card UI with relevance chips, timestamps, and relevance_reason display live in production
 - Signed-out landing page + auth gate live in production (PR #28); onboarding modal custom ticker chip removal now functional
 - Signed-out preview mode (PR #29) merged to main; shows Morning Review + top articles to anon users; pending RLS verification for live data
-- Lucas has `lucas/thesis-board-live` in progress — Thesis Board frontend
+- Watchlist panel, thesis detail modal, and self-contained sidebar fixes merged to main (2026-04-03)
 
 ## Architecture
 - **Frontend:** Next.js 14 + React, hosted on Vercel (root dir: frontend)
-- **Backend:** Python — ingest.py, synthesize.py, deal_extractor.py, run.py
+- **Backend:** Python — ingest.py, synthesize.py, deal_extractor.py, run.py, observe.py (Phase 1 observation layer)
 - **Database:** Supabase — use ingested_at for ordering, NOT created_at
 - **AI:** Groq API — ingest filtering: llama-3.1-8b-instant; synthesis: llama-3.3-70b-versatile
 - **News:** NewsAPI + 11 RSS feeds
@@ -26,9 +26,13 @@
 
 **deal_flow:** RLS enabled, public read policy. Fields: company, acquirer, deal_type, status, value, notes, source, ingested_at
 
-**theses:** Live in Supabase. Public read/write RLS. CRUD via backend/theses.py. Schema in backend/theses_schema.sql.
+**theses:** Live in Supabase. Public read/write/update RLS. CRUD via backend/theses.py. Schema in backend/theses_schema.sql. Fields: id (uuid), title, conviction, rationale, sector, catalyst, catalyst_note (text), evidence_chain (jsonb), generated_at, source.
 
 **watchlist:** Live in Supabase. Public read/write RLS. CRUD via backend/watchlist.py. Schema in backend/watchlist_schema.sql. Fields: id (uuid), identifier (text), type (enum: ticker/company/sector), created_at, updated_at.
+
+**pipeline_runs:** Phase 1 observation layer. Fields: run_id, timestamp, status, article_count. Populated by backend/observe.py after ingest → synthesize → deal extraction.
+
+**run_articles:** Phase 1 observation layer. Fields: run_id, article_id, selected_reason, provenance_flags. Tracks which articles were selected and marked with provenance status (exact vs. reconstructed/inferred).
 
 ## Environment Variables
 **Backend — GitHub Secrets + backend/.env:**
@@ -42,19 +46,85 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 2. Live Tracker — 150+ articles, real-time, sector filters, auto-refreshes 60s
 3. Evening Wrap — end-of-day brief, same format as morning
 4. Deal Flow — 180+ deals tracked, manual entry via ADD DEAL saves to Supabase
-5. Thesis Board — Supabase backend live, frontend in progress (lucas/thesis-board-live)
+5. Thesis Board — Live. AI-generated theses from Groq, conviction scores, regenerate button, click-to-expand detail modal with catalyst notes + evidence chain
 6. Company Intel — 187 companies auto-extracted, sorted by mention frequency
 7. Trends — signal momentum, sector velocity, top company movers
 8. Watchlist — live. Personalized per user. Google SSO auth gate. Onboarding modal on first sign-in. Ticker/company/sector tracking, matched articles feed, live prices, nav badge.
 
 ## In Progress
 
-### lucas/thesis-board-live — Thesis Board Frontend
-- Connecting Thesis Board UI to the live `theses` Supabase table
-- Backend CRUD (theses.py) and schema (theses_schema.sql) merged via PR #10
-- Status: in progress
+### Autonomous Improvement Phase 1 — Observation Layer
+- **Run Recorder slice merged (PR #42):** `pipeline_runs` and `run_articles` tables now writing from non-blocking observer hook
+- **Next Phase 1 component:** Brief Critic (article quality scoring post-synthesis)
+- **Not yet built:** Selection Auditor, Trend Mapper, optimizer, rollback, config mutation — these are Phase 2+
+
+## Recently Completed (2026-04-03)
+
+### SESSION: April 3, 2026 — Noah
+**PRs merged: #44 (headline-spec), #45 (title dedup)**
+
+1. **Morning headline selection tightened (PR #44 — `backend/synthesize.py`)**
+   - Added `HEADLINE SELECTION` pre-step to `MORNING_SYSTEM`: model must rank all articles by market significance (largest dollar figure → broadest macro signal → widest sector development) before writing any JSON
+   - Rewrote `headline` field instruction: explicit 10–15 word enforcement, banned vague labels, BAD/GOOD examples, direct link to pre-step dominant story
+   - Validated via narrow `synthesize.py morning` run — produced "Microsoft Unveils $10 Billion AI Investment Package for Japan" (11 words, named entity, dollar figure, geography)
+   - Evening system prompt unchanged; morning only
+
+2. **Conservative storage-layer title dedup (PR #45 — `backend/ingest.py`)**
+   - Added `_normalize_title()`: lowercase → strip punctuation → collapse whitespace
+   - `store_article()` now queries article titles ingested in last 24h, skips insert if normalized title matches any existing row
+   - Logs skipped articles: `⊘ Title dedup skip: <title>`
+   - No schema changes; no fuzzy matching; no external libraries
+   - Intentionally conservative — exact normalized title match only; near-duplicates with materially different wording still survive
+
+---
+
+### SESSION: April 3, 2026 — Lucas
+**BRANCH:** Merged to main
+
+**FEATURES SHIPPED:**
+
+1. **Watchlist Panel — Morning Review & Evening Wrap right sidebar**
+   - SECTORS box replaced with live WATCHLIST panel
+   - Shows ticker, price, and % change pill (green/red) for each watchlisted stock
+   - Component fetches from Supabase on mount, independent of Watchlist page
+   - Shows "No tickers tracked" empty state when watchlist is empty
+   - Also appears in left sidebar as mini watchlist summary (up to 6 tickers with % change)
+
+2. **Thesis Board Split-Panel Detail Modal**
+   - Clicking any thesis card opens a full modal overlay
+   - LEFT (60%): title, sentiment badge, conviction donut score, sector pill, full analysis body, Catalyst label + Catalyst Note block
+   - RIGHT (40%): Evidence Chain — vertical timeline with colored dots (green=support, yellow=context, red=risk), article headline, source, date, reasoning bridge sentence, → Read link
+   - Modal closes via X button, Escape key, or clicking overlay; responsive (single column on mobile)
+
+3. **Thesis Detail Upgrades (catalyst + analysis quality)**
+   - Catalyst Note: 3-4 sentence Goldman Sachs/Bloomberg Intelligence tone — covers WHAT/WHY/WATCH/REACTION with specific figures and company names from source articles
+   - Analysis body: upgraded to 6-8 sentences, 120-160 words, Bloomberg Intelligence sector brief style
+   - Empty state fallback: if `catalyst_note` or `evidence_chain` missing on old theses, generates on-the-fly via Groq and saves back to Supabase
+   - "REGENERATE ANALYSIS" button appears in modal for theses with short analysis (<100 words) or missing catalyst_note
+   - New `/api/thesis-detail.js` — upgraded Groq prompt, saves enrichment back to Supabase via `thesisId` param
+   - New `/api/thesis-regenerate.js` — full single-thesis regeneration (analysis + catalyst + evidence), two Groq calls, saves to Supabase
+   - `/api/theses.js` — main REGENERATE pipeline now generates `catalyst_note` and `evidence_chain` at creation time; max tokens increased 1200→4000
+   - Security audit confirmed: no API keys exposed on frontend; all Groq calls go through `/api/` server-side routes
+
+**SUPABASE SQL REQUIRED** (run if not already done):
+```sql
+ALTER TABLE theses ADD COLUMN IF NOT EXISTS catalyst_note text;
+ALTER TABLE theses ADD COLUMN IF NOT EXISTS evidence_chain jsonb;
+CREATE POLICY "Public update" ON theses FOR UPDATE USING (true) WITH CHECK (true);
+```
+
+**KNOWN REMAINING ISSUES:**
+- Watchlist panel shows "No tickers tracked" on left sidebar even when watchlist has stocks — likely auth timing issue, low priority
+- Evidence chain on older theses uses AI-inferred articles labeled "AI-INFERRED" — will self-correct as theses are regenerated
+- `SIDEBAR_SECTORS` constant is no longer used in the left nav — can be cleaned up
+
+**NEXT SESSION PRIORITIES:**
+- Run the Supabase SQL above if not done
+- Hit REGENERATE on the Thesis Board to generate a fresh batch with upgraded prompts and full evidence chains
+- Consider adding stock performance sparklines to the Watchlist panel (7-day mini chart per ticker)
 
 ## Recently Completed (2026-04-02)
+- **Run Recorder Phase 1 observation layer (merged PR #42):** Backend observation layer now live: `backend/observe.py`, `pipeline_runs` table (run_id, timestamp, status, article_count), `run_articles` table (run_id, article_id, selected_reason, provenance_flags). Non-blocking observer hook runs after ingest → synthesize → deal extraction. In Phase 1, selected article rows are reconstructed/inferred and explicitly labeled; future analysis can distinguish exact vs. inferred provenance. Next: validate next scheduled run writes to both tables correctly.
 - **Frontend stub-row fallback (merged):** Homepage now skips briefing rows with headline "Market Intelligence Unavailable" and falls back to the last successful briefing. Prevents stub row from surfacing during synthesis failures.
 - **Ingest rate-limit hotfix (PR #33, merged):** `backend/ingest.py` filtering model changed from `llama-3.3-70b-versatile` → `llama-3.1-8b-instant`. Inter-call sleep increased from 0.25s → 2.0s. Stale "Filtering with Gemini..." log corrected. Root cause: ingest was saturating the Groq minute-window and leaving no quota for synthesis → stub briefing. After fix: full pipeline run completed with zero rate-limit errors, 69 new articles stored, fresh morning brief generated.
 - **Relevance gate tightening (PR #34, merged):** `FILTER_PROMPT` in `backend/ingest.py` now rejects opinion/think-piece/cultural commentary/named-person commentary articles as non-relevant. Added explicit exclusion for company-anchored opinion pieces (e.g. articles about a named person's political philosophy even if they run a public company).
@@ -93,18 +163,25 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 
 ## Pending / Known Issues
 
-### Next validation (no code needed — inspect after 2026-04-03 scheduled run)
-- Compare article blurb quality metrics against today's baseline:
+### Next validation — Phase 1 Run Recorder (no code needed — inspect after 2026-04-03 scheduled run)
+- Confirm next scheduled run writes to `pipeline_runs` and `run_articles` tables with correct row counts and provenance flags
+- Verify observer does not block pipeline completion (non-blocking behavior)
+
+### Next validation (no code needed — inspect after next scheduled run)
+- Compare article blurb quality metrics against baseline:
   - "comparable operators like" baseline: 38% → target <15%
   - verbatim identical blurbs baseline: 3 → target 0
   - "hyperscalers" baseline: 16% → target <8%
 - Inspect Live Tracker cards: fewer comp-list blurbs, opinion pieces filtered out
-- Inspect Morning Review headline: if still ≤6 words or wrong dominant story, synthesize.py headline spec is the next fix
+- Inspect Morning Review headline: should now be 10–15 words, named entity, dominant story — headline-spec PR #44 is the active fix
+- Inspect ingest logs for `⊘ Title dedup skip:` lines — confirms title dedup (PR #45) is firing on same-story duplicates
 
 ### Known quality residuals (low harm, deferred)
 - **Personnel announcements** can still pass at relevance_score 6 when article mentions firm AUM or implies future deal flow. Blurbs are weak/vague rather than fabricated. Targeted exclusion rule deferred.
-- **Morning brief headline** — synthesis model still occasionally picks the wrong dominant story and produces headlines under the 10-word spec (observed: "SpaceX Files for IPO", "Trump Revamps Metal Tariffs"). This is a synthesize.py prompt issue, not an ingest issue. Next fix lane if blurb quality validates.
+- **Near-duplicate stories with different wording** — title dedup (PR #45) catches exact normalized matches; stories where Reuters and AP use materially different headline phrasing for the same underlying event still both survive. Fuzzy/semantic dedup is the next step if this remains noisy.
 - **synthesize.py comp-list echo** — synthesis uses 70b-versatile and may echo comp-list patterns from upstream blurbs fed as Signal: lines. Expect improvement once filter blurbs improve; revisit if synthesis sections still feel formulaic after next run.
+- **Weak "What to watch" section** — this section still occasionally produces generic forward-looking statements rather than named catalysts with binary outcomes. Prompt tightening deferred.
+- **Residual false-positive relevance hits** — some articles score ≥6 on a marginal read-through signal rather than a primary market event. Gate tuning deferred.
 
 ### Other pending
 - **Preferences filtering:** Preferences now persist and load; next step is wiring saved preferences to filter/modify brief content (sectors, sentiment, deal status filters).

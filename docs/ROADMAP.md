@@ -22,20 +22,27 @@
 - Ingest rate-limit hotfix — filtering model → llama-3.1-8b-instant, sleep 0.25s → 2.0s; zero 429 errors observed on full validation run
 - Relevance gate tightening — opinion/think-piece/cultural commentary articles rejected; named-person commentary excluded
 - Filter prompt quality — style examples removed (eliminated verbatim blurb copying); personnel announcements excluded from relevance gate
+- Autonomous Improvement Phase 1 — Run Recorder: `observe.py` + non-blocking hook in `run.py`; writes to `pipeline_runs` and `run_articles` in Supabase after each pipeline run (PR #42)
+- Morning headline selection tightened — `HEADLINE SELECTION` pre-step added to `MORNING_SYSTEM`; forces story ranking by dollar figure → macro signal → sector breadth before output; headline field instruction rewritten with explicit word count, banned patterns, and BAD/GOOD examples (PR #44)
+- Conservative storage-layer title dedup — `_normalize_title()` added to `ingest.py`; `store_article()` skips insert if normalized title matches any article ingested in last 24h; exact match only, no fuzzy logic, no schema changes (PR #45)
 
 ## In Progress
 - Thesis Board frontend — Lucas (lucas/thesis-board-live)
 - Brief preferences wiring — Noah (PR #31 merged; UI exists but not yet filtering/affecting brief content)
-- Post-PR #35 validation — inspect tomorrow's scheduled run for reduced comp-list blurb rate and improved Live Tracker card quality
+- Autonomous Improvement Phase 1 — Observation layer (Run Recorder merged; next: Brief Critic)
 
 ## Next — Noah
-### If blurb quality validates on tomorrow's run
-- Tighten `synthesize.py` morning brief headline: fix spec adherence (10-15 words, correct dominant story selection)
-- Reduce comp-list echo in synthesis sections (synthesize.py MORNING_SYSTEM / EVENING_SYSTEM section prompts)
+### Autonomous Improvement Phase 1 (current focus)
+- Validate Run Recorder: confirm next scheduled run writes rows to `pipeline_runs` and `run_articles`
+- Build next Phase 1 observation component: Brief Critic (scores brief quality per run)
+- Phase 2+ (optimizer, rollback, config mutation) deferred until observation layer is complete
 
-### If blurb quality still weak after tomorrow's run
-- Investigate whether llama-3.1-8b-instant is capable enough for the relevance_reason task or whether a larger filter model is needed
-- Consider heuristic pre-filtering before LLM calls to reduce article count and allow a heavier model
+### Brief quality (residual — in priority order)
+- **Near-duplicate stories with different wording** — exact-title dedup is live (PR #45); same story under materially different headlines still survives; next step is fuzzy/semantic dedup if this remains noisy
+- **Residual comp-list echo in synthesis sections** — 70b-versatile synthesis echoes comp-list patterns from upstream Signal lines; expect reduction after blurb quality improves; revisit if sections still feel formulaic
+- **Weak "What to watch" section** — occasional generic forward-looking statements instead of named catalysts with binary outcomes; tighten prompt
+- **Residual false-positive relevance hits** — some articles score ≥6 on marginal read-through signal, not a primary market event; gate tuning deferred
+- Evening system headline prompt still uses the older, looser spec (only morning was updated in PR #44)
 
 ### Other pending
 - Validate `noah/brief-preferences` on Vercel preview (auth, panel renders, preferences save/load work)
