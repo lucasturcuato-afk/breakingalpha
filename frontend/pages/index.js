@@ -217,8 +217,69 @@ function ArticleCard({ article, isNew }) {
   )
 }
 
+// ── Brief Sidebar (theses + sectors for Morning/Evening) ─────────────────────
+function BriefSidebar({ onNavigate }) {
+  const [theses, setTheses] = useState([])
+  const [loading, setLoading] = useState(true)
+  const COLORS = { BULLISH: '#10b981', BEARISH: '#ef4444', WATCH: '#f59e0b' }
+
+  useEffect(() => {
+    async function load() {
+      const { data } = await supabase.from('theses').select('*').order('generated_at', { ascending: false }).limit(3)
+      if (data) setTheses(data)
+      setLoading(false)
+    }
+    load()
+  }, [])
+
+  return (
+    <div className="brief-sidebar" style={{ position: 'sticky', top: '24px', display: 'flex', flexDirection: 'column', gap: '24px', alignSelf: 'start' }}>
+      {/* Theses */}
+      <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
+        <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '12px' }}>TODAY'S THESES</div>
+        {loading ? (
+          <SkeletonCard height="60px" count={3} />
+        ) : theses.length === 0 ? (
+          <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>No theses yet</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {theses.map((t, i) => {
+              const conviction = t.conviction || t.signal || 'WATCH'
+              const color = COLORS[conviction] || '#f59e0b'
+              const text = t.rationale || t.thesis || ''
+              return (
+                <div key={i} style={{ borderLeft: `3px solid ${color}`, paddingLeft: '10px', paddingTop: '4px', paddingBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '8px', fontFamily: "'DM Mono', monospace", color, background: color + '15', border: `1px solid ${color}30`, padding: '1px 6px', borderRadius: '3px', letterSpacing: '0.06em' }}>{conviction}</span>
+                  </div>
+                  <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '13.5px', fontWeight: 600, color: 'var(--heading)', lineHeight: 1.3, marginBottom: '3px' }}>{t.title}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--secondary)', lineHeight: 1.5 }}>{text.length > 80 ? text.slice(0, 80) + '...' : text}</div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <button onClick={() => onNavigate && onNavigate('thesis')} style={{ display: 'block', marginTop: '12px', fontSize: '10px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', padding: 0, letterSpacing: '0.04em' }}>View all →</button>
+      </div>
+
+      {/* Sectors */}
+      <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
+        <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.14em', marginBottom: '12px' }}>SECTORS</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {SIDEBAR_SECTORS.map(s => (
+            <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+              <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--body)' }}>{s.name}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Morning / Evening Brief (detailed analyst style) ─────────────────────────
-function BriefView({ type }) {
+function BriefView({ type, onNavigate }) {
   const [briefing, setBriefing] = useState(null)
   const [articles, setArticles] = useState([])
   const [loading, setLoading] = useState(true)
@@ -272,7 +333,8 @@ function BriefView({ type }) {
   }
 
   return (
-    <div style={{ maxWidth: '900px' }}>
+    <div className="brief-layout" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '24px' }}>
+    <div>
       {/* ── Hero header ── */}
       <div style={{ borderBottom: '1px solid rgba(245,158,11,0.15)', paddingBottom: '24px', marginBottom: '28px' }}>
         <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.18em', marginBottom: '8px' }}>
@@ -384,6 +446,8 @@ function BriefView({ type }) {
       {filtered.length > 0
         ? filtered.map(a => <ArticleCard key={a.id} article={a} />)
         : <EmptyState icon={EMPTY_ICONS.newspaper} title="No stories in this sector yet" subtitle="Articles will appear here as they are ingested" />}
+    </div>
+    <BriefSidebar onNavigate={onNavigate} />
     </div>
   )
 }
@@ -1587,6 +1651,10 @@ export default function Home() {
         :root.light .nav-item { color: var(--text-mid); }
         :root.light .nav-item:hover { background: rgba(191,115,0,0.06); color: var(--text); }
         :root.light .nav-item.nav-active { background: rgba(191,115,0,0.08); color: var(--accent); border-left-color: var(--accent); }
+        @media (max-width: 768px) {
+          .brief-layout { grid-template-columns: 1fr !important; }
+          .brief-sidebar { display: none !important; }
+        }
       `}</style>
 
       <TickerBar quotes={quotes} />
@@ -1670,9 +1738,9 @@ export default function Home() {
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '30px' }}>
             <div key={activeTab} style={{ animation: 'contentFadeIn 200ms ease' }}>
-              {activeTab === 'morning'   && <BriefView type="morning" />}
+              {activeTab === 'morning'   && <BriefView type="morning" onNavigate={setActiveTab} />}
               {activeTab === 'live'      && <LiveTracker />}
-              {activeTab === 'evening'   && <BriefView type="evening" />}
+              {activeTab === 'evening'   && <BriefView type="evening" onNavigate={setActiveTab} />}
               {activeTab === 'dealflow'  && <DealFlowTracker />}
               {activeTab === 'thesis'    && <ThesisBoard />}
               {activeTab === 'companies' && <CompanyIntel />}
