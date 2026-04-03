@@ -182,13 +182,17 @@ function BriefView({ type }) {
   useEffect(() => {
     async function load() {
       setLoading(true)
-      const { data: { session } } = await supabase.auth.getSession()
-      const briefingRes = await fetch(`/api/briefing?type=${type}`, {
-        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
-      })
-      if (briefingRes.ok) {
-        const briefingData = await briefingRes.json()
-        if (briefingData?.briefing) setBriefing(briefingData.briefing)
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const briefingRes = await fetch(`/api/briefing?type=${type}`, {
+          headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+        })
+        if (briefingRes.ok) {
+          const briefingData = await briefingRes.json()
+          if (briefingData?.briefing) setBriefing(briefingData.briefing)
+        }
+      } catch {
+        // API failure or malformed JSON — leave briefing null, render placeholder
       }
       const { data: aData } = await supabase.from('articles').select('*').order('ingested_at', { ascending: false }).limit(100)
       if (aData) {
