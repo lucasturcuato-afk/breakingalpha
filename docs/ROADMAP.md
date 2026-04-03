@@ -23,6 +23,7 @@
 - Relevance gate tightening — opinion/think-piece/cultural commentary articles rejected; named-person commentary excluded
 - Filter prompt quality — style examples removed (eliminated verbatim blurb copying); personnel announcements excluded from relevance gate
 - Autonomous Improvement Phase 1 — Run Recorder: `observe.py` + non-blocking hook in `run.py`; writes to `pipeline_runs` and `run_articles` in Supabase after each pipeline run (PR #42)
+- Autonomous Improvement Phase 1 — Brief Critic: Heuristic-only quality scorer, non-blocking step 5 in pipeline, writes to `brief_quality_scores` per run (PR #47)
 - Morning headline selection tightened — `HEADLINE SELECTION` pre-step added to `MORNING_SYSTEM`; forces story ranking by dollar figure → macro signal → sector breadth before output; headline field instruction rewritten with explicit word count, banned patterns, and BAD/GOOD examples (PR #44)
 - Conservative storage-layer title dedup — `_normalize_title()` added to `ingest.py`; `store_article()` skips insert if normalized title matches any article ingested in last 24h; exact match only, no fuzzy logic, no schema changes (PR #45)
 
@@ -34,7 +35,8 @@
 ## Next — Noah
 ### Autonomous Improvement Phase 1 (current focus)
 - Validate Run Recorder: confirm next scheduled run writes rows to `pipeline_runs` and `run_articles`
-- Build next Phase 1 observation component: Brief Critic (scores brief quality per run)
+- Validate Brief Critic: confirm `brief_quality_scores` rows accumulate after Supabase schema SQL is applied
+- Build next Phase 1 observation component: Selection Auditor (identify missed stories)
 - Phase 2+ (optimizer, rollback, config mutation) deferred until observation layer is complete
 
 ### Brief quality (residual — in priority order)

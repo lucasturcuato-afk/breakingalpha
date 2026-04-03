@@ -69,10 +69,10 @@ This means the next step is not inventing a new product category. It is wrapping
 ### Completed
 
 - **Run Recorder** (PR #42, merged) — `backend/observe.py` + non-blocking hook in `backend/run.py`; writes one row to `pipeline_runs` and per-article rows to `run_articles` after each pipeline run; selected article provenance is reconstructed/inferred from ingest output
+- **Brief Critic** (PR #47, merged) — Heuristic-only quality scorer with deterministic text checks. Non-blocking step 5 in pipeline. Writes one row per run to `brief_quality_scores` table (headline_word_count, banned_phrase_hits, sections_present, top_deals_count, status, soft_flags). observe.py now returns run_id for FK linking.
 
 ### Still pending (Phase 1)
 
-- Brief Critic
 - Selection Auditor
 - Trend Mapper
 - scheduled automatic post-run jobs
@@ -225,7 +225,7 @@ The autonomous-improvement layer should stay materially lighter than the main co
 
 - [x] Create Supabase observation tables (`pipeline_runs`, `run_articles`)
 - [x] Build Run Recorder — `backend/observe.py` + hook in `backend/run.py` (PR #42)
-- [ ] Build Brief Critic
+- [x] Build Brief Critic — `backend/critique.py` + hook in `backend/run.py` (PR #47)
 - [ ] Build Selection Auditor
 - [ ] Build Trend Mapper
 - [ ] Schedule automatic post-run jobs

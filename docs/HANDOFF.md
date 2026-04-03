@@ -55,10 +55,15 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 
 ### Autonomous Improvement Phase 1 — Observation Layer
 - **Run Recorder slice merged (PR #42):** `pipeline_runs` and `run_articles` tables now writing from non-blocking observer hook
-- **Next Phase 1 component:** Brief Critic (article quality scoring post-synthesis)
-- **Not yet built:** Selection Auditor, Trend Mapper, optimizer, rollback, config mutation — these are Phase 2+
+- **Brief Critic slice merged (PR #47):** Heuristic-only quality scorer; writes one row per pipeline run to `brief_quality_scores` (headline word count, banned phrase hits, sections present, top deals count, status, soft flags). No LLM calls. Non-blocking try/except in pipeline step 5. **CRITICAL:** `brief_quality_scores_schema.sql` must be applied manually in Supabase SQL editor before live rows accumulate.
+- **Next Phase 1 component:** Selection Auditor (identify missed stories)
+- **Not yet built:** Trend Mapper, optimizer, rollback, config mutation — these are Phase 2+
 
-## Recently Completed (2026-04-03)
+## Recently Completed (2026-04-03 — Brief Critic merged)
+
+**Brief Critic Phase 1 heuristic-only quality scorer merged (PR #47):** Deterministic text checks on headline word count, banned phrases, section presence, top deals count. Writes one row to `brief_quality_scores` per run as non-blocking pipeline step 5. `observe.py` now returns `run_id` for FK linking. Supabase schema SQL must be applied manually.
+
+---
 
 ### SESSION: April 3, 2026 — Noah
 **PRs merged: #44 (headline-spec), #45 (title dedup)**
