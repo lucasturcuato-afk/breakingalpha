@@ -9,6 +9,8 @@
 - Signed-out landing page + auth gate live in production (PR #28); onboarding modal custom ticker chip removal now functional
 - Signed-out preview mode (PR #29) merged to main; shows Morning Review + top articles to anon users; pending RLS verification for live data
 - Watchlist panel, thesis detail modal, and self-contained sidebar fixes merged to main (2026-04-03)
+- Preferences wiring merged (PR #36): `/api/briefing` reorders sections/sector_breakdown by user preferences; anon users unaffected
+- Sector classification fixed (2026-04-04): ingest filter validation + SECTORS name alignment; old blank-sector rows not backfilled
 
 ## Architecture
 - **Frontend:** Next.js 14 + React, hosted on Vercel (root dir: frontend)
@@ -63,6 +65,10 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 - **Selection Auditor V1 merged (PR #48):** Run-level selection quality recorder; reads `run_articles` for each run, computes score miss signals and sector concentration, writes one row to `selection_audit`. Run-level only — no per-article missed-story claims. All rows carry `provenance='reconstructed'`. No LLM calls. Non-blocking step 6 in pipeline. ✓ **VALIDATED (2026-04-03):** Schema applied; live row confirmed with real metrics.
 - **Next Phase 1 component:** Trend Mapper
 - **Not yet built:** Trend Mapper, optimizer, rollback, config mutation — these are Phase 2+
+
+## Recently Completed (2026-04-04)
+
+**Preferences wiring (PR #36) merged and sector classification fixed:** `/api/briefing` route now returns preference-shaped responses for signed-in users, reordering sections and sector_breakdown keys by user module + sector selections. Sector classification collapse diagnosed: filter model 8b-instant was dropping `sector` key entirely (40% → 10% population on Apr 2–4). Fixed via explicit sector instruction + schema validation in ingest.py; sector names matched exactly against SECTORS list. SECTORS updated: "Real Estate & Infrastructure" → "Real Estate & REITs" to match frontend pill. Validation pending: inspect logs for `[?]` frequency, confirm new articles have valid sector values. Note: old blank-sector rows not backfilled.
 
 ## Recently Completed (2026-04-03 — Selection Auditor V1 validated)
 
@@ -182,6 +188,12 @@ CREATE POLICY "Public update" ON theses FOR UPDATE USING (true) WITH CHECK (true
 ## Pending / Known Issues
 
 ### Next validation (no code needed — inspect after next scheduled run)
+- **Sector classification recovery (after sector-key-drop fix on 2026-04-04):**
+  - Inspect ingest pipeline logs for `[?]` frequency — should drop materially below 40%
+  - Inspect Supabase `articles` table: sample recent articles for materially improved `sector` field population (was ~10%, target >80%)
+  - Inspect Morning Review / Live Tracker category pill counts on newly ingested content — should show non-empty pills for Deals & M&A, Tech, etc. (previously empty)
+  - Expect preference module reordering (`/api/briefing`) to become more useful as sector population stabilizes (was masked by null sectors)
+  - Note: old blank-sector rows will NOT auto-repair; only new/re-ingested articles will populate correctly
 - Compare article blurb quality metrics against baseline:
   - "comparable operators like" baseline: 38% → target <15%
   - verbatim identical blurbs baseline: 3 → target 0
@@ -198,7 +210,7 @@ CREATE POLICY "Public update" ON theses FOR UPDATE USING (true) WITH CHECK (true
 - **Residual false-positive relevance hits** — some articles score ≥6 on a marginal read-through signal rather than a primary market event. Gate tuning deferred.
 
 ### Other pending
-- **Preferences filtering:** Preferences now persist and load; next step is wiring saved preferences to filter/modify brief content (sectors, sentiment, deal status filters).
+- **Watchlist preference toggle:** Disabled in PreferencesPanel ("COMING SOON"); watchlist is live but preferences wiring for watchlist-based brief filtering not yet implemented.
 - **Local auth validation blocked:** Google auth at localhost not in Supabase redirect allowlist. Auth-dependent work must validate on Vercel preview URL.
 - Verify Supabase anon SELECT on `articles` and `briefings` tables. Enable `SELECT TO anon` if needed so signed-out preview shows real live data instead of static fallback.
 - DM Mono style tag hydration warning (pre-existing, unrelated to recent fixes, noted in PR #18)
