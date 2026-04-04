@@ -35,6 +35,53 @@ const SIDEBAR_SECTORS = [
   { name: 'Consumer & Retail', color: '#a78bfa' },
 ]
 
+// Normalize article sector strings from Supabase to SECTORS[].value
+// Articles may have short names ("Technology M&A"), full names, or slight variations
+const SECTOR_MAP = (() => {
+  const map = {}
+  SECTORS.forEach(s => {
+    if (!s.value) return
+    // exact lowercase match
+    map[s.value.toLowerCase()] = s.value
+    // partial matches: first word(s) before "&"
+    const parts = s.value.toLowerCase().split('&').map(p => p.trim())
+    parts.forEach(p => { if (p.length > 3) map[p] = s.value })
+    // common short forms
+  })
+  // Explicit short-form aliases
+  map['technology m&a'] = 'Technology M&A & Investment Banking'
+  map['tech m&a'] = 'Technology M&A & Investment Banking'
+  map['venture capital'] = 'Venture Capital & Startup Funding'
+  map['private equity'] = 'Private Equity & Buyouts'
+  map['public markets'] = 'Public Markets & Earnings'
+  map['geopolitics'] = 'Geopolitics & Macro'
+  map['geo & macro'] = 'Geopolitics & Macro'
+  map['real estate'] = 'Real Estate & REITs'
+  map['fintech'] = 'Fintech & Crypto'
+  map['healthcare'] = 'Healthcare & Biotech'
+  map['energy'] = 'Energy & Climate'
+  map['consumer'] = 'Consumer & Retail'
+  map['general'] = null
+  return map
+})()
+
+function normalizeArticleSector(article) {
+  const raw = (article.sector || article.category || '').trim()
+  if (!raw) return null
+  // Try exact match first
+  const exactSector = SECTORS.find(s => s.value === raw)
+  if (exactSector) return exactSector.value
+  // Try map lookup
+  const mapped = SECTOR_MAP[raw.toLowerCase()]
+  if (mapped !== undefined) return mapped
+  // Try partial/fuzzy: check if raw starts with any known value prefix
+  for (const s of SECTORS) {
+    if (!s.value) continue
+    if (raw.toLowerCase().startsWith(s.value.toLowerCase().split('&')[0].trim())) return s.value
+  }
+  return null
+}
+
 const DEAL_STAGE_MAP = {
   rumored:   { label: 'RUMORED',   color: '#94a3b8' },
   announced: { label: 'ANNOUNCED', color: '#fbbf24' },
@@ -364,7 +411,7 @@ function BriefView({ type, onNavigate, watchlist, watchlistPrices, watchlistPric
       if (aData) {
         setArticles(aData)
         const counts = {}
-        aData.forEach(a => { if (a.sector) counts[a.sector] = (counts[a.sector] || 0) + 1 })
+        aData.forEach(a => { const ns = normalizeArticleSector(a); if (ns) counts[ns] = (counts[ns] || 0) + 1 })
         setSectorCounts(counts)
       }
       setLoading(false)
@@ -373,7 +420,7 @@ function BriefView({ type, onNavigate, watchlist, watchlistPrices, watchlistPric
   }, [type])
 
   const activeSector = SECTORS.find(s => s.key === sectorFilter)
-  const filtered = sectorFilter === 'ALL' ? articles : articles.filter(a => a.sector === activeSector?.value)
+  const filtered = sectorFilter === 'ALL' ? articles : articles.filter(a => normalizeArticleSector(a) === activeSector?.value)
 
   const sections    = parseJSON(briefing?.sections) || {}
   const topDeals    = parseJSON(briefing?.top_deals) || []
@@ -515,7 +562,7 @@ function BriefView({ type, onNavigate, watchlist, watchlistPrices, watchlistPric
           ? (() => {
               const sectorGroups = {}
               filtered.forEach(a => {
-                const sec = a.sector || 'General'
+                const sec = normalizeArticleSector(a) || 'General'
                 if (!sectorGroups[sec]) sectorGroups[sec] = []
                 sectorGroups[sec].push(a)
               })
@@ -592,7 +639,7 @@ function LiveTracker() {
       knownIds.current = incoming
       setArticles(data)
       const counts = {}
-      data.forEach(a => { if (a.sector) counts[a.sector] = (counts[a.sector] || 0) + 1 })
+      data.forEach(a => { const ns = normalizeArticleSector(a); if (ns) counts[ns] = (counts[ns] || 0) + 1 })
       setSectorCounts(counts)
       setLastRefresh(new Date())
     }
@@ -607,7 +654,7 @@ function LiveTracker() {
 
   // Filter by sector
   const activeSector = SECTORS.find(s => s.key === sectorFilter)
-  const filtered = sectorFilter === 'ALL' ? articles : articles.filter(a => a.sector === activeSector?.value)
+  const filtered = sectorFilter === 'ALL' ? articles : articles.filter(a => normalizeArticleSector(a) === activeSector?.value)
 
   // Sort
   const sorted = [...filtered].sort((a, b) => {
@@ -1136,7 +1183,27 @@ function ThesisBoard() {
                       <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '18px', fontWeight: 600, color: 'var(--heading)', margin: 0, lineHeight: 1.3 }}>{t.title}</h3>
                       <span style={{ padding: '3px 12px', borderRadius: '20px', fontSize: '9px', fontFamily: "'DM Mono', monospace", color: convColor, background: convColor + '12', border: `1px solid ${convColor}25`, flexShrink: 0, letterSpacing: '0.08em' }}>{conviction}</span>
                     </div>
-                    <p style={{ fontSize: '13.5px', color: 'var(--secondary)', lineHeight: 1.65, margin: '0 0 14px 0' }}>{t.rationale || t.thesis}</p>
+                    <p style={{ fontSize: '13.5px', color: (t.rationale || t.thesis) ? 'var(--secondary)' : 'var(--faint)', lineHeight: 1.65, margin: '0 0 14px 0', fontStyle: (t.rationale || t.thesis) ? 'normal' : 'italic' }}>
+                      {t.rationale || t.thesis || 'Thesis summary pending AI analysis'}
+                    </p>
+                    {/* Evidence tracking */}
+                    {(() => {
+                      const ev = t.evidence_chain || []
+                      const supportCount = ev.filter(e => e.type === 'support').length
+                      const riskCount = ev.filter(e => e.type === 'risk').length
+                      const contextCount = ev.filter(e => e.type === 'context').length
+                      return ev.length > 0 ? (
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                          {supportCount > 0 && <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#4ade80', background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.15)', padding: '2px 8px', borderRadius: '3px' }}>{supportCount} SUPPORTING</span>}
+                          {riskCount > 0 && <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f87171', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.15)', padding: '2px 8px', borderRadius: '3px' }}>{riskCount} RISK</span>}
+                          {contextCount > 0 && <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#94a3b8', background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.15)', padding: '2px 8px', borderRadius: '3px' }}>{contextCount} CONTEXT</span>}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', fontStyle: 'italic', marginBottom: '12px' }}>
+                          No evidence tracked yet — articles will appear here as they are ingested
+                        </div>
+                      )
+                    })()}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         {t.sector && <SectorPill sector={t.sector} />}
@@ -1174,6 +1241,7 @@ function DealFlowTracker() {
   const [showMemoModal, setShowMemoModal] = useState(false)
   const [memoDisplayed, setMemoDisplayed] = useState('')
   const [memoCopied, setMemoCopied]     = useState(false)
+  const [memoError, setMemoError]       = useState('')
   const [dealAddedSet, setDealAddedSet] = useState(new Set())
 
   const handleAddDealCompany = async (company) => {
@@ -1189,6 +1257,7 @@ function DealFlowTracker() {
 
   const generateMemo = async (deal, e) => {
     e.stopPropagation()
+    setMemoError('')
     setMemoLoading(deal.id)
     try {
       const res = await fetch('/api/memo', {
@@ -1203,14 +1272,23 @@ function DealFlowTracker() {
           description: deal.summary || deal.notes,
         }),
       })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        setMemoError(errData.error || `Memo generation failed (${res.status})`)
+        setMemoLoading(null)
+        return
+      }
       const data = await res.json()
       if (data.memo) {
         setMemoContent(data.memo)
         setMemoTitle(deal.company)
         setShowMemoModal(true)
+      } else {
+        setMemoError('No memo content returned — try again')
       }
     } catch (err) {
       console.error('Memo generation failed:', err)
+      setMemoError('Network error — check connection and try again')
     }
     setMemoLoading(null)
   }
@@ -1321,6 +1399,13 @@ function DealFlowTracker() {
             })}
           </div>
         </>
+      )}
+
+      {memoError && (
+        <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#ef4444', marginBottom: '14px', padding: '8px 12px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>⚠ {memoError}</span>
+          <button onClick={() => setMemoError('')} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontFamily: "'DM Mono', monospace", fontSize: '11px' }}>✕</button>
+        </div>
       )}
 
       {loading && (
