@@ -24,19 +24,19 @@
 - Filter prompt quality — style examples removed (eliminated verbatim blurb copying); personnel announcements excluded from relevance gate
 - Autonomous Improvement Phase 1 — Run Recorder: `observe.py` + non-blocking hook in `run.py`; writes to `pipeline_runs` and `run_articles` in Supabase after each pipeline run (PR #42)
 - Autonomous Improvement Phase 1 — Brief Critic: Heuristic-only quality scorer, non-blocking step 5 in pipeline, writes to `brief_quality_scores` per run (PR #47)
+- Autonomous Improvement Phase 1 — Selection Auditor V1: Run-level selection quality recorder, non-blocking step 6 in pipeline, writes to `selection_audit` per run; provenance='reconstructed', no per-article claims, no LLM calls (PR #48, validated live 2026-04-03)
 - Morning headline selection tightened — `HEADLINE SELECTION` pre-step added to `MORNING_SYSTEM`; forces story ranking by dollar figure → macro signal → sector breadth before output; headline field instruction rewritten with explicit word count, banned patterns, and BAD/GOOD examples (PR #44)
 - Conservative storage-layer title dedup — `_normalize_title()` added to `ingest.py`; `store_article()` skips insert if normalized title matches any article ingested in last 24h; exact match only, no fuzzy logic, no schema changes (PR #45)
 
 ## In Progress
 - Thesis Board frontend — Lucas (lucas/thesis-board-live)
 - Brief preferences wiring — Noah (PR #31 merged; UI exists but not yet filtering/affecting brief content)
-- Autonomous Improvement Phase 1 — Observation layer (Run Recorder merged; next: Brief Critic)
+- Autonomous Improvement Phase 1 — Observation layer (Run Recorder, Brief Critic, Selection Auditor V1 all merged and live; next: Trend Mapper)
 
 ## Next — Noah
 ### Autonomous Improvement Phase 1 (current focus)
-- Validate Run Recorder: confirm next scheduled run writes rows to `pipeline_runs` and `run_articles`
-- Validate Brief Critic: confirm `brief_quality_scores` rows accumulate after Supabase schema SQL is applied
-- Build next Phase 1 observation component: Selection Auditor (identify missed stories)
+- Run Recorder, Brief Critic, Selection Auditor V1 all live and validated ✓
+- Build next Phase 1 component: Trend Mapper (cluster related articles into persistent/emerging narratives)
 - Phase 2+ (optimizer, rollback, config mutation) deferred until observation layer is complete
 
 ### Brief quality (residual — in priority order)
