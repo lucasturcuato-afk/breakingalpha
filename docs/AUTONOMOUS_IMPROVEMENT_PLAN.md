@@ -2,12 +2,12 @@
 
 ## Implementation Contract
 
-- **Current phase:** Phase 1 — Observation only
-- **Current goal:** Record every run, critique every run, audit selection quality, and map trend clusters.
-- **In scope now:** Run recording, post-run critique, selection auditing, trend mapping, memory writing, and implementation planning for the observation layer.
+- **Current phase:** Phase 1 — Observation complete; moving to Phase 1 summaries
+- **Current goal:** Record every run, critique every run, audit selection quality, and map trend clusters. ✓ Complete. Next: daily and weekly operator summaries.
+- **In scope now:** Scheduled automatic post-run jobs, daily and weekly summaries for operators.
 - **Not in scope yet:** Optimizer, rollback, config mutation, persona logic, and engagement optimization.
 - **Source of truth:** This document governs autonomous-improvement work.
-- **Implementation status:** Phase 1 in progress. Run Recorder (PR #42), Brief Critic (PR #47), and Selection Auditor V1 (PR #48) all built, merged, and live. Trend Mapper not yet built.
+- **Implementation status:** Phase 1 observation layer complete. Run Recorder (PR #42), Brief Critic (PR #47), Selection Auditor V1 (PR #48), and Trend Mapper (PR #51) all built, merged, and live-validated. Next: scheduled summaries.
 
 ---
 
@@ -65,26 +65,24 @@ This means the next step is not inventing a new product category. It is wrapping
 
 **We are currently in Phase 1 — Observation only.**
 
-### Completed
+### Completed (Phase 1 Observation Layer)
 
 - **Run Recorder** (PR #42, merged) — `backend/observe.py` + non-blocking hook in `backend/run.py`; writes one row to `pipeline_runs` and per-article rows to `run_articles` after each pipeline run; selected article provenance is reconstructed/inferred from ingest output
 - **Brief Critic** (PR #47, merged) — Heuristic-only quality scorer with deterministic text checks. Non-blocking step 5 in pipeline. Writes one row per run to `brief_quality_scores` table (headline_word_count, banned_phrase_hits, sections_present, top_deals_count, status, soft_flags). observe.py now returns run_id for FK linking. Validated live 2026-04-03.
 - **Selection Auditor V1** (PR #48, merged) — Run-level only. `backend/audit.py` + non-blocking step 6 in pipeline. Reads `run_articles` for the given run, computes selection quality metrics (candidate/selected counts, score miss signals, sector concentration flag), and writes one row to `selection_audit`. All rows carry `provenance='reconstructed'`. No per-article claims. No LLM calls. Validated end-to-end live 2026-04-03.
+- **Trend Mapper Phase 1** (PR #51, merged & live-validated 2026-04-04) — `backend/trend_mapper.py` clusters related articles into persistent/emerging narratives. Non-blocking step [7/7] in pipeline. Pure-logic clustering, mover ranking, volatility scoring. Live validation: morning run fired [7/7] TREND MAP, wrote 6 clusters to trend_clusters table, 1 underrepresented cluster flagged. First run had lookback=0, all clusters marked "emerging". Supabase schema applied.
 
-### Still pending (Phase 1)
+### Still pending (Phase 1 summaries)
 
-- Trend Mapper
 - scheduled automatic post-run jobs
 - daily and weekly summaries for operators
 
 ### Current goal
 
-Complete the remaining observation components:
+Complete Phase 1 summary automation:
 
-- critique every run
-- audit missed or weakly selected stories
-- map persistent and emerging trend clusters
-- write structured memory and metrics for later analysis
+- scheduled daily summary (top trends, sector momentum, key misses, quality metrics)
+- scheduled weekly summary (week-over-week trend progression, missed narratives, operator alerts)
 
 ### What is in scope now
 
@@ -220,13 +218,16 @@ The autonomous-improvement layer should stay materially lighter than the main co
 
 ## 13. Build Sequence
 
-### Phase 1 — Observation
+### Phase 1 — Observation (complete ✓)
 
 - [x] Create Supabase observation tables (`pipeline_runs`, `run_articles`)
 - [x] Build Run Recorder — `backend/observe.py` + hook in `backend/run.py` (PR #42)
 - [x] Build Brief Critic — `backend/critique.py` + hook in `backend/run.py` (PR #47)
 - [x] Build Selection Auditor V1 — `backend/audit.py` + hook in `backend/run.py` (PR #48); run-level only, provenance='reconstructed', validated live 2026-04-03
-- [ ] Build Trend Mapper
+- [x] Build Trend Mapper — `backend/trend_mapper.py` + hook in `backend/run.py` (PR #51); live-validated 2026-04-04 with real pipeline run
+
+### Phase 1 — Summaries (in progress)
+
 - [ ] Schedule automatic post-run jobs
 - [ ] Write daily and weekly summaries
 

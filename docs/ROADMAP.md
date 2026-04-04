@@ -30,16 +30,16 @@
 - Preferences wiring — `/api/briefing` route live, returns preference-shaped briefings; module preferences reorder sections, sector preferences reorder sector_breakdown; watchlist preference toggle deferred (PR #36)
 - Sector classification fix — explicit sector instruction + validation in ingest.py; sector names aligned to SECTORS list; old blank-sector rows not backfilled (2026-04-04)
 - sector_breakdown schema-echo fix — fixed "note" key parsing bug in synthesize.py system prompts; added _validate_sector_breakdown() parser hardening (PR #43)
+- Autonomous Improvement Phase 1 — Trend Mapper: `backend/trend_mapper.py` built and merged (PR #51); clusters related articles into persistent/emerging narratives; non-blocking step 7 in pipeline; live-validated 2026-04-04 (6 clusters written to trend_clusters table, 1 underrepresented cluster flagged, all "emerging" due to first-run lookback=0)
 
 ## In Progress
 - Thesis Board frontend — Lucas (lucas/thesis-board-live)
-- Autonomous Improvement Phase 1 — Observation layer (Run Recorder, Brief Critic, Selection Auditor V1 all merged and live; next: Trend Mapper)
 
 ## Next — Noah
-### Autonomous Improvement Phase 1 (current focus)
-- Run Recorder, Brief Critic, Selection Auditor V1 all live and validated ✓
-- Build next Phase 1 component: Trend Mapper (cluster related articles into persistent/emerging narratives)
-- Phase 2+ (optimizer, rollback, config mutation) deferred until observation layer is complete
+### Autonomous Improvement Phase 1 (observation layer complete ✓)
+- Run Recorder ✓, Brief Critic ✓, Selection Auditor V1 ✓, Trend Mapper ✓ — all live and validated
+- **Next Phase 1 work:** Scheduled automatic post-run jobs (daily/weekly operator summaries)
+- Phase 2+ (optimizer, rollback, config mutation) deferred until Phase 1 summaries are live
 
 ### Brief quality (residual — in priority order)
 - **Near-duplicate stories with different wording** — exact-title dedup is live (PR #45); same story under materially different headlines still survives; next step is fuzzy/semantic dedup if this remains noisy
