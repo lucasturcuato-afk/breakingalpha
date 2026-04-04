@@ -1173,7 +1173,27 @@ function ThesisBoard() {
                       <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '18px', fontWeight: 600, color: 'var(--heading)', margin: 0, lineHeight: 1.3 }}>{t.title}</h3>
                       <span style={{ padding: '3px 12px', borderRadius: '20px', fontSize: '9px', fontFamily: "'DM Mono', monospace", color: convColor, background: convColor + '12', border: `1px solid ${convColor}25`, flexShrink: 0, letterSpacing: '0.08em' }}>{conviction}</span>
                     </div>
-                    <p style={{ fontSize: '13.5px', color: 'var(--secondary)', lineHeight: 1.65, margin: '0 0 14px 0' }}>{t.rationale || t.thesis}</p>
+                    <p style={{ fontSize: '13.5px', color: (t.rationale || t.thesis) ? 'var(--secondary)' : 'var(--faint)', lineHeight: 1.65, margin: '0 0 14px 0', fontStyle: (t.rationale || t.thesis) ? 'normal' : 'italic' }}>
+                      {t.rationale || t.thesis || 'Thesis summary pending AI analysis'}
+                    </p>
+                    {/* Evidence tracking */}
+                    {(() => {
+                      const ev = t.evidence_chain || []
+                      const supportCount = ev.filter(e => e.type === 'support').length
+                      const riskCount = ev.filter(e => e.type === 'risk').length
+                      const contextCount = ev.filter(e => e.type === 'context').length
+                      return ev.length > 0 ? (
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                          {supportCount > 0 && <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#4ade80', background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.15)', padding: '2px 8px', borderRadius: '3px' }}>{supportCount} SUPPORTING</span>}
+                          {riskCount > 0 && <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f87171', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.15)', padding: '2px 8px', borderRadius: '3px' }}>{riskCount} RISK</span>}
+                          {contextCount > 0 && <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#94a3b8', background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.15)', padding: '2px 8px', borderRadius: '3px' }}>{contextCount} CONTEXT</span>}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', fontStyle: 'italic', marginBottom: '12px' }}>
+                          No evidence tracked yet — articles will appear here as they are ingested
+                        </div>
+                      )
+                    })()}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         {t.sector && <SectorPill sector={t.sector} />}
@@ -1211,6 +1231,7 @@ function DealFlowTracker() {
   const [showMemoModal, setShowMemoModal] = useState(false)
   const [memoDisplayed, setMemoDisplayed] = useState('')
   const [memoCopied, setMemoCopied]     = useState(false)
+  const [memoError, setMemoError]       = useState('')
   const [dealAddedSet, setDealAddedSet] = useState(new Set())
 
   const handleAddDealCompany = async (company) => {
@@ -1226,6 +1247,7 @@ function DealFlowTracker() {
 
   const generateMemo = async (deal, e) => {
     e.stopPropagation()
+    setMemoError('')
     setMemoLoading(deal.id)
     try {
       const res = await fetch('/api/memo', {
@@ -1240,14 +1262,23 @@ function DealFlowTracker() {
           description: deal.summary || deal.notes,
         }),
       })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        setMemoError(errData.error || `Memo generation failed (${res.status})`)
+        setMemoLoading(null)
+        return
+      }
       const data = await res.json()
       if (data.memo) {
         setMemoContent(data.memo)
         setMemoTitle(deal.company)
         setShowMemoModal(true)
+      } else {
+        setMemoError('No memo content returned — try again')
       }
     } catch (err) {
       console.error('Memo generation failed:', err)
+      setMemoError('Network error — check connection and try again')
     }
     setMemoLoading(null)
   }
@@ -1358,6 +1389,13 @@ function DealFlowTracker() {
             })}
           </div>
         </>
+      )}
+
+      {memoError && (
+        <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#ef4444', marginBottom: '14px', padding: '8px 12px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>⚠ {memoError}</span>
+          <button onClick={() => setMemoError('')} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontFamily: "'DM Mono', monospace", fontSize: '11px' }}>✕</button>
+        </div>
       )}
 
       {loading && (
