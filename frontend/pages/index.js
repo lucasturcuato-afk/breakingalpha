@@ -35,6 +35,53 @@ const SIDEBAR_SECTORS = [
   { name: 'Consumer & Retail', color: '#a78bfa' },
 ]
 
+// Normalize article sector strings from Supabase to SECTORS[].value
+// Articles may have short names ("Technology M&A"), full names, or slight variations
+const SECTOR_MAP = (() => {
+  const map = {}
+  SECTORS.forEach(s => {
+    if (!s.value) return
+    // exact lowercase match
+    map[s.value.toLowerCase()] = s.value
+    // partial matches: first word(s) before "&"
+    const parts = s.value.toLowerCase().split('&').map(p => p.trim())
+    parts.forEach(p => { if (p.length > 3) map[p] = s.value })
+    // common short forms
+  })
+  // Explicit short-form aliases
+  map['technology m&a'] = 'Technology M&A & Investment Banking'
+  map['tech m&a'] = 'Technology M&A & Investment Banking'
+  map['venture capital'] = 'Venture Capital & Startup Funding'
+  map['private equity'] = 'Private Equity & Buyouts'
+  map['public markets'] = 'Public Markets & Earnings'
+  map['geopolitics'] = 'Geopolitics & Macro'
+  map['geo & macro'] = 'Geopolitics & Macro'
+  map['real estate'] = 'Real Estate & REITs'
+  map['fintech'] = 'Fintech & Crypto'
+  map['healthcare'] = 'Healthcare & Biotech'
+  map['energy'] = 'Energy & Climate'
+  map['consumer'] = 'Consumer & Retail'
+  map['general'] = null
+  return map
+})()
+
+function normalizeArticleSector(article) {
+  const raw = (article.sector || article.category || '').trim()
+  if (!raw) return null
+  // Try exact match first
+  const exactSector = SECTORS.find(s => s.value === raw)
+  if (exactSector) return exactSector.value
+  // Try map lookup
+  const mapped = SECTOR_MAP[raw.toLowerCase()]
+  if (mapped !== undefined) return mapped
+  // Try partial/fuzzy: check if raw starts with any known value prefix
+  for (const s of SECTORS) {
+    if (!s.value) continue
+    if (raw.toLowerCase().startsWith(s.value.toLowerCase().split('&')[0].trim())) return s.value
+  }
+  return null
+}
+
 const DEAL_STAGE_MAP = {
   rumored:   { label: 'RUMORED',   color: '#94a3b8' },
   announced: { label: 'ANNOUNCED', color: '#fbbf24' },
@@ -354,7 +401,7 @@ function BriefView({ type, onNavigate, watchlist, watchlistPrices, watchlistPric
       if (aData) {
         setArticles(aData)
         const counts = {}
-        aData.forEach(a => { if (a.sector) counts[a.sector] = (counts[a.sector] || 0) + 1 })
+        aData.forEach(a => { const ns = normalizeArticleSector(a); if (ns) counts[ns] = (counts[ns] || 0) + 1 })
         setSectorCounts(counts)
       }
       setLoading(false)
@@ -363,7 +410,7 @@ function BriefView({ type, onNavigate, watchlist, watchlistPrices, watchlistPric
   }, [type])
 
   const activeSector = SECTORS.find(s => s.key === sectorFilter)
-  const filtered = sectorFilter === 'ALL' ? articles : articles.filter(a => a.sector === activeSector?.value)
+  const filtered = sectorFilter === 'ALL' ? articles : articles.filter(a => normalizeArticleSector(a) === activeSector?.value)
 
   const sections    = parseJSON(briefing?.sections) || {}
   const topDeals    = parseJSON(briefing?.top_deals) || []
@@ -505,7 +552,7 @@ function BriefView({ type, onNavigate, watchlist, watchlistPrices, watchlistPric
           ? (() => {
               const sectorGroups = {}
               filtered.forEach(a => {
-                const sec = a.sector || 'General'
+                const sec = normalizeArticleSector(a) || 'General'
                 if (!sectorGroups[sec]) sectorGroups[sec] = []
                 sectorGroups[sec].push(a)
               })
@@ -582,7 +629,7 @@ function LiveTracker() {
       knownIds.current = incoming
       setArticles(data)
       const counts = {}
-      data.forEach(a => { if (a.sector) counts[a.sector] = (counts[a.sector] || 0) + 1 })
+      data.forEach(a => { const ns = normalizeArticleSector(a); if (ns) counts[ns] = (counts[ns] || 0) + 1 })
       setSectorCounts(counts)
       setLastRefresh(new Date())
     }
@@ -597,7 +644,7 @@ function LiveTracker() {
 
   // Filter by sector
   const activeSector = SECTORS.find(s => s.key === sectorFilter)
-  const filtered = sectorFilter === 'ALL' ? articles : articles.filter(a => a.sector === activeSector?.value)
+  const filtered = sectorFilter === 'ALL' ? articles : articles.filter(a => normalizeArticleSector(a) === activeSector?.value)
 
   // Sort
   const sorted = [...filtered].sort((a, b) => {
