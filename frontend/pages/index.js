@@ -348,8 +348,18 @@ function BriefView({ type, onNavigate, watchlist, watchlistPrices, watchlistPric
   useEffect(() => {
     async function load() {
       setLoading(true)
-      const { data: bData } = await supabase.from('briefings').select('*').eq('briefing_type', type).neq('headline', 'Market Intelligence Unavailable').order('created_at', { ascending: false }).limit(1)
-      if (bData?.[0]) setBriefing(bData[0])
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const briefingRes = await fetch(`/api/briefing?type=${type}`, {
+          headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+        })
+        if (briefingRes.ok) {
+          const briefingData = await briefingRes.json()
+          if (briefingData?.briefing) setBriefing(briefingData.briefing)
+        }
+      } catch {
+        // API failure or malformed JSON — leave briefing null, render placeholder
+      }
       const { data: aData } = await supabase.from('articles').select('*').order('ingested_at', { ascending: false }).limit(100)
       if (aData) {
         setArticles(aData)
@@ -501,8 +511,31 @@ function BriefView({ type, onNavigate, watchlist, watchlistPrices, watchlistPric
       </div>
       <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', marginBottom: '14px' }}>{filtered.length} {filtered.length === 1 ? 'STORY' : 'STORIES'}{sectorFilter !== 'ALL' && ` · ${activeSector?.label}`}</div>
       {filtered.length > 0
-        ? filtered.map(a => <ArticleCard key={a.id} article={a} />)
-        : <EmptyState icon={EMPTY_ICONS.newspaper} title="No stories in this sector yet" subtitle="Articles will appear here as they are ingested" />}
+        ? sectorFilter === 'ALL'
+          ? (() => {
+              const sectorGroups = {}
+              filtered.forEach(a => {
+                const sec = a.sector || 'General'
+                if (!sectorGroups[sec]) sectorGroups[sec] = []
+                sectorGroups[sec].push(a)
+              })
+              return Object.entries(sectorGroups).map(([sector, arts]) => {
+                const sColor = SECTORS.find(s => s.value === sector)?.color || '#64748b'
+                const sLabel = SECTORS.find(s => s.value === sector)?.label || sector.split(' ')[0].toUpperCase()
+                return (
+                  <div key={sector} style={{ marginBottom: '20px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px solid var(--divider)' }}>
+                      <div style={{ width: '6px', height: '6px', borderRadius: '2px', background: sColor, flexShrink: 0 }} />
+                      <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: sColor, letterSpacing: '0.14em' }}>{sLabel}</span>
+                      <span style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>{arts.length}</span>
+                    </div>
+                    {arts.map(a => <ArticleCard key={a.id} article={a} />)}
+                  </div>
+                )
+              })
+            })()
+          : filtered.map(a => <ArticleCard key={a.id} article={a} />)
+        : <EmptyState icon={EMPTY_ICONS.newspaper} title={`No ${activeSector?.label || 'sector'} stories available yet`} subtitle="Articles will appear here as they are ingested" />}
     </>
     )}
     </div>
@@ -657,7 +690,7 @@ function LiveTracker() {
       {loading ? (
         <div style={{ padding: '10px 0' }}><SkeletonCard height="90px" count={4} /></div>
       ) : sorted.length === 0 ? (
-        <EmptyState icon={EMPTY_ICONS.newspaper} title="No stories in this sector yet" subtitle="Articles will appear here as they are ingested" />
+        <EmptyState icon={EMPTY_ICONS.newspaper} title={`No ${activeSector?.label || 'sector'} stories available yet`} subtitle="Articles will appear here as they are ingested" />
       ) : useBuckets ? (
         // Time-bucketed view
         BUCKET_ORDER.filter(b => grouped[b]?.length > 0).map(bucket => (
@@ -1780,6 +1813,7 @@ export default function Home() {
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
@@ -1992,26 +2026,41 @@ export default function Home() {
 
       <div style={{ display: 'flex', height: 'calc(100vh - 32px)' }}>
         {/* Sidebar */}
-        <div style={{ width: '232px', flexShrink: 0, background: 'var(--sidebar-bg)', borderRight: '1px solid var(--sidebar-border)', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
-          <div style={{ padding: '22px 20px 16px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ width: sidebarCollapsed ? '48px' : '260px', maxWidth: '25vw', flexShrink: 0, background: 'var(--sidebar-bg)', borderRight: '1px solid var(--sidebar-border)', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto', overflowX: 'hidden', transition: 'width 200ms ease', position: 'relative' }}>
+          {/* Collapse toggle */}
+          <button
+            onClick={() => setSidebarCollapsed(c => !c)}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            style={{ position: 'absolute', top: '50%', right: '-12px', transform: 'translateY(-50%)', zIndex: 10, width: '24px', height: '24px', borderRadius: '50%', background: 'var(--sidebar-bg)', border: '1px solid var(--sidebar-border)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, boxShadow: '0 1px 4px rgba(0,0,0,0.15)' }}
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-mid)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              {sidebarCollapsed
+                ? <polyline points="3,1 7,5 3,9" />
+                : <polyline points="7,1 3,5 7,9" />}
+            </svg>
+          </button>
+          <div style={{ padding: sidebarCollapsed ? '22px 8px 16px' : '22px 20px 16px', borderBottom: '1px solid var(--border)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
             <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '21px', fontWeight: 700 }}>
-              <span style={{ color: 'var(--heading)' }}>Breaking</span><span style={{ color: '#f59e0b' }}>Alpha</span>
+              {sidebarCollapsed
+                ? <span style={{ color: '#f59e0b' }}>B</span>
+                : <><span style={{ color: 'var(--heading)' }}>Breaking</span><span style={{ color: '#f59e0b' }}>Alpha</span></>}
             </div>
-            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.15em', marginTop: '3px' }}>MARKET INTELLIGENCE</div>
+            {!sidebarCollapsed && <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.15em', marginTop: '3px' }}>MARKET INTELLIGENCE</div>}
           </div>
-          <nav style={{ padding: '10px 10px' }}>
+          <nav style={{ padding: sidebarCollapsed ? '10px 4px' : '10px 10px' }}>
             {NAV.map(item => (
-              <button key={item.id} onClick={() => setActiveTab(item.id)} className={`nav-item${activeTab === item.id ? ' nav-active' : ''}`}>
+              <button key={item.id} onClick={() => setActiveTab(item.id)} className={`nav-item${activeTab === item.id ? ' nav-active' : ''}`} title={sidebarCollapsed ? item.label : undefined} style={sidebarCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined}>
                 <span className="nav-icon">{item.icon}</span>
-                {item.label}
-                {item.id === 'live' && <span style={{ marginLeft: 'auto', width: '5px', height: '5px', borderRadius: '50%', background: '#4ade80', animation: 'pulse 2s infinite', flexShrink: 0 }} />}
-                {item.id === 'watchlist' && watchlistBadge > 0 && <span style={{ marginLeft: 'auto', background: '#f59e0b', color: '#000', fontSize: '9px', fontFamily: "'DM Mono', monospace", fontWeight: 700, padding: '1px 5px', borderRadius: '8px', flexShrink: 0 }}>{watchlistBadge}</span>}
+                {!sidebarCollapsed && item.label}
+                {!sidebarCollapsed && item.id === 'live' && <span style={{ marginLeft: 'auto', width: '5px', height: '5px', borderRadius: '50%', background: '#4ade80', animation: 'pulse 2s infinite', flexShrink: 0 }} />}
+                {!sidebarCollapsed && item.id === 'watchlist' && watchlistBadge > 0 && <span style={{ marginLeft: 'auto', background: '#f59e0b', color: '#000', fontSize: '9px', fontFamily: "'DM Mono', monospace", fontWeight: 700, padding: '1px 5px', borderRadius: '8px', flexShrink: 0 }}>{watchlistBadge}</span>}
               </button>
             ))}
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+            {!sidebarCollapsed && <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
               <AuthButton />
-            </div>
+            </div>}
           </nav>
+          {!sidebarCollapsed && (
           <div style={{ padding: '14px 20px', borderTop: '1px solid var(--divider)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
               <div style={{ width: '3px', height: '10px', background: '#f59e0b', borderRadius: '1px' }} />
@@ -2037,6 +2086,8 @@ export default function Home() {
               })
             )}
           </div>
+          )}
+          {!sidebarCollapsed && (
           <div style={{ padding: '14px 20px', borderTop: '1px solid var(--divider)' }}>
             <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.12em', marginBottom: '6px' }}>MARKET TIME</div>
             <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', lineHeight: 1.6 }}>{marketTime || '—'}</div>
@@ -2045,6 +2096,7 @@ export default function Home() {
               <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: marketOpen ? '#4ade80' : '#f87171', letterSpacing: '0.1em' }}>US EQUITIES {marketOpen ? 'OPEN' : 'CLOSED'}</span>
             </div>
           </div>
+          )}
         </div>
 
         {/* Main */}

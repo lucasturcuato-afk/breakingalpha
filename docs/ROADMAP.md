@@ -27,10 +27,12 @@
 - Autonomous Improvement Phase 1 — Selection Auditor V1: Run-level selection quality recorder, non-blocking step 6 in pipeline, writes to `selection_audit` per run; provenance='reconstructed', no per-article claims, no LLM calls (PR #48, validated live 2026-04-03)
 - Morning headline selection tightened — `HEADLINE SELECTION` pre-step added to `MORNING_SYSTEM`; forces story ranking by dollar figure → macro signal → sector breadth before output; headline field instruction rewritten with explicit word count, banned patterns, and BAD/GOOD examples (PR #44)
 - Conservative storage-layer title dedup — `_normalize_title()` added to `ingest.py`; `store_article()` skips insert if normalized title matches any article ingested in last 24h; exact match only, no fuzzy logic, no schema changes (PR #45)
+- Preferences wiring — `/api/briefing` route live, returns preference-shaped briefings; module preferences reorder sections, sector preferences reorder sector_breakdown; watchlist preference toggle deferred (PR #36)
+- Sector classification fix — explicit sector instruction + validation in ingest.py; sector names aligned to SECTORS list; old blank-sector rows not backfilled (2026-04-04)
+- sector_breakdown schema-echo fix — fixed "note" key parsing bug in synthesize.py system prompts; added _validate_sector_breakdown() parser hardening (PR #43)
 
 ## In Progress
 - Thesis Board frontend — Lucas (lucas/thesis-board-live)
-- Brief preferences wiring — Noah (PR #31 merged; UI exists but not yet filtering/affecting brief content)
 - Autonomous Improvement Phase 1 — Observation layer (Run Recorder, Brief Critic, Selection Auditor V1 all merged and live; next: Trend Mapper)
 
 ## Next — Noah
@@ -45,10 +47,9 @@
 - **Weak "What to watch" section** — occasional generic forward-looking statements instead of named catalysts with binary outcomes; tighten prompt
 - **Residual false-positive relevance hits** — some articles score ≥6 on marginal read-through signal, not a primary market event; gate tuning deferred
 - Evening system headline prompt still uses the older, looser spec (only morning was updated in PR #44)
+- **Sector preference visibility recovery** — sector_breakdown reordering by user preference now live, but visibility depends on new article accumulation with valid sectors (forward-only, no backfill); expect gradual improvement as ingest populates sectors on new articles; low priority
 
 ### Other pending
-- Validate `noah/brief-preferences` on Vercel preview (auth, panel renders, preferences save/load work)
-- Wire saved preferences to filter/modify brief content (preferences UI now exists but has zero impact on briefs)
 - Verify/enable Supabase anon SELECT on `articles` and `briefings` tables
 - Article cards structured display — headline, why it matters, impacted name/theme, source, timestamp (fields already in schema, zero backend work)
 - Today feed "Watchlist Only" toggle — filter articles client-side to watchlist-matched items
@@ -56,6 +57,7 @@
 - Google OAuth consent screen branding (app name, logo, domain) — defer until launch-ready
 - Clean stale routes and unused code paths in frontend
 - Tighten Supabase query consistency (confirm all tables use ingested_at not created_at)
+- **Watchlist preference toggle wiring** — toggle is disabled in UI ("COMING SOON"); deferred pending validation of sector classification stability
 
 ## Next — Lucas
 - Thesis Board frontend PR and merge
