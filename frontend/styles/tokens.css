@@ -1,0 +1,119 @@
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+/*
+ * ═══════════════════════════════════════════════════════════════
+ *  SIGNALERA — Design Tokens
+ *  Single source of truth. All UI references these variables.
+ *  Never hardcode a color, radius, or timing value.
+ * ═══════════════════════════════════════════════════════════════
+ */
+
+@layer base {
+  :root {
+    /* ── Surfaces ── */
+    --sig-bg-base: #0a0a0b;
+    --sig-bg-surface: #111113;
+    --sig-bg-elevated: #1a1a1e;
+    --sig-bg-overlay: #222228;
+
+    /* ── Borders ── */
+    --sig-border-subtle: #1e1e24;
+    --sig-border-default: #2a2a32;
+    --sig-border-strong: #3a3a46;
+
+    /* ── Text ── */
+    --sig-text-primary: #f0f0f4;
+    --sig-text-secondary: #9090a0;
+    --sig-text-muted: #5a5a6a;
+
+    /* ── Signal (green — live data, active states) ── */
+    --sig-signal-500: #22c55e;
+    --sig-signal-400: #4ade80;
+    --sig-signal-600: #16a34a;
+    --sig-signal-muted: rgba(34, 197, 94, 0.1);
+
+    /* ── Semantic accents ── */
+    --sig-live-red: #ef4444;
+    --sig-draft-amber: #f59e0b;
+    --sig-ai-violet: #8b5cf6;
+    --sig-ai-muted: rgba(139, 92, 246, 0.08);
+    --sig-meta-slate: #64748b;
+
+    /* ── Data-type treatments (left-border + bg tint) ── */
+    --sig-data-live-border: var(--sig-signal-500);
+    --sig-data-live-bg: var(--sig-signal-muted);
+    --sig-data-research-border: var(--sig-draft-amber);
+    --sig-data-research-bg: rgba(245, 158, 11, 0.06);
+    --sig-data-ai-border: var(--sig-ai-violet);
+    --sig-data-ai-bg: var(--sig-ai-muted);
+    --sig-data-meta-border: var(--sig-meta-slate);
+    --sig-data-meta-bg: rgba(100, 116, 139, 0.06);
+
+    /* ── Typography ── */
+    --sig-font-display: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+    --sig-font-body: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+    --sig-font-mono: var(--font-geist-mono), ui-monospace, 'SFMono-Regular', monospace;
+
+    /* ── Radii ── */
+    --sig-radius-sm: 4px;
+    --sig-radius-md: 6px;
+    --sig-radius-lg: 8px;
+    --sig-radius-xl: 12px;
+
+    /* ── Motion ── */
+    --sig-duration-fast: 100ms;
+    --sig-duration-base: 150ms;
+    --sig-duration-slow: 200ms;
+    --sig-ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+    /* ── Focus ring ── */
+    --sig-focus-ring: 0 0 0 2px var(--sig-bg-base), 0 0 0 4px var(--sig-signal-500);
+  }
+
+  /* ── Scoped base for new Signalera components ── */
+  .sig {
+    background-color: var(--sig-bg-base);
+    color: var(--sig-text-primary);
+    font-family: var(--sig-font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+ *  Utility classes — data-type visual treatments
+ *  Usage: <div class="sig-data-live"> or <div class="sig-data-ai">
+ * ═══════════════════════════════════════════════════════════════ */
+
+@utility sig-data-live {
+  border-left: 3px solid var(--sig-data-live-border);
+  background-color: var(--sig-data-live-bg);
+}
+
+@utility sig-data-research {
+  border-left: 3px solid var(--sig-data-research-border);
+  background-color: var(--sig-data-research-bg);
+}
+
+@utility sig-data-ai {
+  border-left: 3px solid var(--sig-data-ai-border);
+  background-color: var(--sig-data-ai-bg);
+}
+
+@utility sig-data-meta {
+  border-left: 3px solid var(--sig-data-meta-border);
+  background-color: var(--sig-data-meta-bg);
+}
+
+@utility sig-mono {
+  font-family: var(--sig-font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+@utility sig-transition {
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+  transition-duration: var(--sig-duration-base);
+  transition-timing-function: var(--sig-ease);
+}

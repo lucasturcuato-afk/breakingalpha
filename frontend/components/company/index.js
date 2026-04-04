@@ -1,0 +1,5 @@
+export { default as CompanyHeader } from './CompanyHeader'
+export { default as CompanyTabs } from './CompanyTabs'
+export { default as CompanyDevelopments } from './CompanyDevelopments'
+export { default as CompanyResearch } from './CompanyResearch'
+export { default as CompanyMetadata } from './CompanyMetadata'
