@@ -62,15 +62,16 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 ## In Progress
 
 ### Autonomous Improvement Phase 1 — Observation Layer
-- **Run Recorder slice merged (PR #42):** `pipeline_runs` and `run_articles` tables now writing from non-blocking observer hook
-- **Brief Critic slice merged (PR #47):** Heuristic-only quality scorer; writes one row per pipeline run to `brief_quality_scores` (headline word count, banned phrase hits, sections present, top deals count, status, soft flags). No LLM calls. Non-blocking try/except in pipeline step 5. ✓ **VALIDATED (2026-04-03)**
-- **Selection Auditor V1 merged (PR #48):** Run-level selection quality recorder; reads `run_articles` for each run, computes score miss signals and sector concentration, writes one row to `selection_audit`. Run-level only — no per-article missed-story claims. All rows carry `provenance='reconstructed'`. No LLM calls. Non-blocking step 6 in pipeline. ✓ **VALIDATED (2026-04-03):** Schema applied; live row confirmed with real metrics.
-- **Trend Mapper Phase 1 — IN PROGRESS:** `backend/trend_mapper.py` built; `backend/trend_clusters_schema.sql` written. Non-blocking step [7/7] added to pipeline. All pure-logic functions unit tested. Live row construction validated against production run data. **BLOCKER:** Schema not yet applied to Supabase — must be applied before first live insertion and PR validation.
+- **Trend Mapper Phase 1 ✓ MERGED & LIVE-VALIDATED (2026-04-04):** `backend/trend_mapper.py` built and merged (PR #51). `backend/trend_clusters_schema.sql` applied to Supabase. Non-blocking step [7/7] in pipeline. Live morning run confirmed: [7/7] TREND MAP fired, 6 clusters written to trend_clusters table, 1 underrepresented cluster flagged. First run had lookback=0, so all clusters marked as "emerging". **Phase 1 observation layer complete.** Next: scheduled automatic post-run jobs and daily/weekly operator summaries.
 - **Not yet built:** Optimizer, rollback, config mutation — these are Phase 2+
 
 ## Recently Completed (2026-04-03 — Trend Mapper Phase 1 built)
 
 **Trend Mapper Phase 1 — 7th observation layer component:** Built `backend/trend_mapper.py` (cluster formation, mover ranking, volatility scoring) and `backend/trend_clusters_schema.sql`. Integrated as non-blocking [7/7] pipeline step in `run.py`. All pure-logic unit tests passed. Live row construction validated against production run data. Blocker: Supabase schema application required before branch can be validated end-to-end.
+
+## Recently Completed (2026-04-04 — Trend Mapper Phase 1 live-validated and merged)
+
+**Phase 1 observation layer complete:** Trend Mapper (PR #51) merged to main. Manual morning pipeline run confirmed: [7/7] TREND MAP fired, 6 clusters written to trend_clusters table, 1 underrepresented cluster flagged. First run had lookback=0, so all clusters marked as "emerging". Next steps: scheduled automatic post-run jobs and daily/weekly operator summaries.
 
 ## Recently Completed (2026-04-04)
 
@@ -194,7 +195,7 @@ CREATE POLICY "Public update" ON theses FOR UPDATE USING (true) WITH CHECK (true
 ## Pending / Known Issues
 
 ### Blockers
-- **Trend Mapper schema application:** `backend/trend_clusters_schema.sql` must be applied to Supabase before branch noah/trend-mapper-v1 can be validated end-to-end. Schema creation + first live row insertion will trigger any column/type issues. **Action:** Apply schema to Supabase dev environment, run pipeline, confirm row writes correctly.
+(none active)
 
 ### Next validation (no code needed — inspect after next scheduled run)
 - **Sector classification recovery (after sector-key-drop fix on 2026-04-04):**
