@@ -40,7 +40,7 @@ SECTORS = [
     "Private Equity & Buyouts",
     "Public Markets & Earnings",
     "Geopolitics & Macro",
-    "Real Estate & Infrastructure",
+    "Real Estate & REITs",
     "Fintech & Crypto",
     "Healthcare & Biotech",
     "Energy & Climate",
@@ -55,12 +55,15 @@ Source: {source}
 
 Relevant topics include: M&A deals, IPOs, fundraising, valuations, earnings, market movements, geopolitical events affecting markets, macro trends, regulatory changes, PE/VC activity, public company news, economic data.
 
+SECTOR (required): Pick exactly one sector from this list that best fits the article's primary topic. Copy the name character-for-character — no abbreviations, no combining, no rewording.
+Allowed sectors: {sectors}
+
 Respond ONLY in valid JSON:
 {{
   "relevant": true/false,
   "relevance_score": 1-10,
   "relevance_reason": "GATE — apply before writing: If this article is primarily an opinion piece, profile, cultural commentary, or trend piece with no named transaction, earnings result, financing event, guidance change, regulatory action, or specific market-moving event — set relevant: false and leave this field as an empty string. Do not fabricate a read-through. Articles discussing a named person's political views, cultural influence, public commentary, or personal philosophy are not market-moving events even if that person runs a public or private company — set relevant: false. Internal staff promotions, appointments, hires, or departures are not market-moving events unless the article explicitly links the change to a named transaction, fundraising event, earnings event, guidance change, or regulatory action — if no such link exists, set relevant: false. For articles that pass the gate: 1-2 sentences max. Lead with the concrete market implication — the named deal, specific dollar figure, rate level, or event — not a description of what happened. Only name comp companies or sector read-throughs if the mechanism directly follows from what this article reports; do not append a comp list just to fill the format. Use specific company names, dollar figures, or named sectors where available. BANNED outputs — never write these: vague taxonomy ('this is relevant to PE / VC / financial markets / investing'), article restatements that just paraphrase the headline, fabricated comp lists, filler like 'this matters because it is a transaction in private equity'. For macro or rates articles, state the concrete effect on deal economics — LBO spreads, floating-rate credit costs, buyout multiples, M&A financing conditions, or risk appetite for new deals — never write that rates moved, banks are impacted, or that interest rates affect markets generally. Write as a buy-side analyst flagging a signal to a portfolio manager.",
-  "sector": "one of: {sectors}",
+  "sector": "<copy one sector name exactly from the allowed list above>",
   "companies": ["Company A", "Company B"],
   "themes": ["M&A", "IPO", "Earnings", "Macro", "Geopolitics", "VC", "PE", "Regulation", "AI", "Crypto"],
   "sentiment": "bullish/bearish/neutral",
@@ -197,7 +200,7 @@ def store_article(article, analysis):
             "companies": analysis.get("companies", []),
             "themes": analysis.get("themes", []),
             "sentiment": analysis.get("sentiment", "neutral"),
-            "sector": analysis.get("sector", ""),
+            "sector": analysis.get("sector", "") if analysis.get("sector", "") in SECTORS else "",
             "deal_type": analysis.get("deal_type")
         }).execute()
         article_id = r.data[0]["id"]
