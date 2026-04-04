@@ -20,12 +20,28 @@ no config mutation is built here.
 
 Clustering approach
 -------------------
-Articles are compared pairwise using structured metadata first:
-  - sector match           (weight 0.35 — strongest structured signal)
-  - company Jaccard        (weight 0.30 — shared companies → related stories)
-  - theme Jaccard          (weight 0.20 — shared themes → related narratives)
-  - deal_type match        (weight 0.05 — shared deal type is a weak corroborator)
-  - title token Jaccard    (weight 0.10 — normalized, stop-word-stripped)
+Articles are compared pairwise using structured metadata first, with
+relevance_reason as a consistently-available secondary text signal:
+
+  Component                Weight  Notes
+  ─────────────────────────────────────────────────────────────────────
+  companies Jaccard        0.28   strongest narrative signal
+  relevance_reason Jaccard 0.25   populated for ~100% of articles
+  sector match             0.20   coarse category; reduced to prevent
+                                  sector-alone over-merging
+  themes Jaccard           0.17   tag-based; sparsely populated
+  title token Jaccard      0.07   tiebreaker only; structurally limited
+  deal_type match          0.03   very weak corroborator
+  ─────────────────────────────────────────────────────────────────────
+  Total                    1.00
+
+relevance_reason is the LLM-generated ingest signal description. It names
+entities and market mechanisms in domain-specific language and is present
+for effectively every article that passes the ingest filter, even when
+sector/companies/themes are not populated.
+
+sector weight was reduced from 0.35 (original) to 0.20 so that a broad
+sector tag alone cannot push a pair to the 0.28 threshold.
 
 Connected components (union-find) over pairs exceeding SIMILARITY_THRESHOLD
 produce clusters. Single-article groups are discarded. Each cluster is scored
@@ -73,11 +89,14 @@ SIMILARITY_THRESHOLD = 0.28
 MIN_CLUSTER_SIZE = 2
 
 # Pairwise similarity component weights — must sum to 1.0
-W_SECTOR       = 0.35
-W_COMPANIES    = 0.30
-W_THEMES       = 0.20
-W_TITLE_TOKENS = 0.10
-W_DEAL_TYPE    = 0.05
+# See module docstring for full rationale. Do not adjust W_SECTOR above 0.25
+# without verifying that over-merging on broad sector tags does not recur.
+W_COMPANIES    = 0.28   # strongest narrative signal
+W_REL_REASON   = 0.25   # most consistently populated field (~100% of articles)
+W_SECTOR       = 0.20   # reduced: sector alone must not nearly reach threshold
+W_THEMES       = 0.17   # tag-based; sparsely populated in current pipeline
+W_TITLE_TOKENS = 0.07   # tiebreaker; cannot substitute for missing metadata
+W_DEAL_TYPE    = 0.03   # very weak corroborator
 
 # A cluster is "persistent" if its cluster_key appeared in >= this many of
 # the LOOKBACK_RUN_COUNT prior runs. 2/7 is a deliberately low bar —
@@ -90,15 +109,33 @@ PERSISTENCE_MIN_RUNS = 2
 UNDERREPRESENTED_STRENGTH_FLOOR = 0.35
 
 # Stop words stripped from title tokens before Jaccard comparison.
-# Chosen to remove function words and very common financial/news words
-# that contribute noise rather than signal to article relatedness.
+# Focuses on function words only — for titles, common financial nouns like
+# "market" or "company" can still carry signal (e.g. "Market Maker" or
+# "Company X Acquires"). Longer than typical to cover news-headline patterns.
 TITLE_STOP_WORDS = frozenset({
     "a", "an", "the", "and", "or", "of", "in", "on", "at", "to", "for",
     "with", "by", "from", "as", "is", "was", "be", "are", "were", "its",
     "it", "this", "that", "has", "have", "had", "been", "will", "would",
     "could", "may", "new", "us", "says", "said", "after", "over", "up",
-    "amid", "into", "than", "more", "set", "vs", "per", "than", "amid",
-    "amid", "amid", "how", "why", "what", "when", "where", "who",
+    "amid", "into", "than", "more", "set", "vs", "per", "how", "why",
+    "what", "when", "where", "who", "can", "not", "but", "all", "now",
+})
+
+# Stop words for relevance_reason tokens — extends TITLE_STOP_WORDS with
+# boilerplate phrases common to LLM-generated ingest signals that would
+# inflate Jaccard similarity between unrelated articles.
+# "article" appears as a generic prefix in most relevance_reasons.
+# "impact" / "impacts" are near-universal and don't distinguish narratives.
+# Deliberately conservative — domain nouns (oil, rates, defense) are kept.
+_REL_REASON_STOP_WORDS = TITLE_STOP_WORDS | frozenset({
+    "article", "articles",
+    "report", "reports", "reporting",
+    "impact", "impacts", "impacting",
+    "also", "such", "while", "due", "given", "further",
+    "potential", "potentially", "significant", "significantly",
+    "related", "linked", "particularly", "especially",
+    "suggest", "suggests", "indicate", "indicates",
+    "which", "whose", "thus", "hence",
 })
 
 
@@ -144,6 +181,30 @@ def _title_tokens(title):
     return frozenset(t for t in tokens if len(t) >= 3 and t not in TITLE_STOP_WORDS)
 
 
+def _relevance_reason_tokens(text):
+    """
+    Tokenize relevance_reason into lowercase alphabetic tokens using an
+    expanded stop-word list that removes LLM-generated boilerplate.
+
+    relevance_reason is the ingest-pipeline signal description — e.g.:
+      "A geopolitical event affecting energy infrastructure in the Gulf
+       could pressure crude prices and ripple into defense stocks."
+
+    Uses _REL_REASON_STOP_WORDS (superset of TITLE_STOP_WORDS) to strip
+    boilerplate LLM phrasing that inflates Jaccard between unrelated articles
+    ("article", "impact", "report", "potential", etc.).
+
+    Minimum token length is 4 (one longer than title tokens) to reduce noise
+    from short generic words that survived the stop-word filter.
+
+    Returns a frozenset.
+    """
+    if not text:
+        return frozenset()
+    tokens = re.findall(r"[a-z]+", text.lower())
+    return frozenset(t for t in tokens if len(t) >= 4 and t not in _REL_REASON_STOP_WORDS)
+
+
 def _jaccard(a, b):
     """
     Jaccard similarity between two sets or lists.
@@ -163,18 +224,23 @@ def _normalize_article(raw):
     """
     Normalize a raw Supabase article row into a consistent working dict.
     All list fields are parsed; None fields become safe defaults.
-    title_tokens is pre-computed for repeated pairwise use.
+    Token sets are pre-computed for repeated pairwise use in build_clusters.
+
+    relevance_reason_tokens is the most robustly available text signal:
+    it is present for effectively every article that passes the ingest filter,
+    even when sector/companies/themes are unpopulated.
     """
     return {
-        "id":              raw.get("id"),
-        "title":           raw.get("title") or "",
-        "source":          (raw.get("source") or "").strip().lower(),
-        "relevance_score": raw.get("relevance_score"),
-        "companies":       _safe_list(raw.get("companies")),
-        "themes":          _safe_list(raw.get("themes")),
-        "sector":          (raw.get("sector") or "").strip().lower(),
-        "deal_type":       (raw.get("deal_type") or "").strip().lower(),
-        "title_tokens":    _title_tokens(raw.get("title")),
+        "id":                    raw.get("id"),
+        "title":                 raw.get("title") or "",
+        "source":                (raw.get("source") or "").strip().lower(),
+        "relevance_score":       raw.get("relevance_score"),
+        "companies":             _safe_list(raw.get("companies")),
+        "themes":                _safe_list(raw.get("themes")),
+        "sector":                (raw.get("sector") or "").strip().lower(),
+        "deal_type":             (raw.get("deal_type") or "").strip().lower(),
+        "title_tokens":          _title_tokens(raw.get("title")),
+        "rel_reason_tokens":     _relevance_reason_tokens(raw.get("relevance_reason")),
     }
 
 
@@ -186,41 +252,50 @@ def compute_pairwise_similarity(a, b):
     """
     Return a combined similarity score [0, 1] between two normalized articles.
 
-    Component scores:
-      sector_match       — 1.0 if both non-empty and equal, else 0.0
-      companies_jaccard  — Jaccard on company lists (both directions matter)
-      themes_jaccard     — Jaccard on theme lists
-      deal_type_sim      — 0.5 if both non-empty and equal (partial credit)
-      title_token_jaccard — Jaccard on stop-word-stripped title tokens
+    Components (see module docstring for weight rationale):
+      companies_jaccard    — Jaccard on company name lists
+      rel_reason_jaccard   — Jaccard on relevance_reason token sets
+      sector_match         — 1.0 if both non-empty and equal, else 0.0
+      themes_jaccard       — Jaccard on theme lists
+      title_token_jaccard  — Jaccard on stop-word-stripped title tokens
+      deal_type_sim        — 0.5 if both non-empty and equal (partial credit)
 
-    Weighted by W_* constants defined at module top.
+    All components return 0.0 when both inputs are empty — empty fields do
+    not inflate similarity between articles that happen to both lack metadata.
+
     Returns a float ∈ [0, 1].
     """
-    # Sector match (strongest structured signal — same sector = same market area)
+    # Company overlap (strongest narrative signal — same company → same story)
+    companies_sim = _jaccard(a["companies"], b["companies"])
+
+    # Relevance_reason overlap — domain-specific ingest signal, ~100% populated.
+    # Uses _REL_REASON_STOP_WORDS to filter boilerplate before comparison.
+    rel_reason_sim = _jaccard(a["rel_reason_tokens"], b["rel_reason_tokens"])
+
+    # Sector match — coarse category signal. Reduced weight so sector alone
+    # cannot push an unrelated pair across the threshold.
     sa = a["sector"]
     sb = b["sector"]
     sector_match = 1.0 if (sa and sb and sa == sb) else 0.0
 
-    # Company overlap (two articles naming the same company are likely related)
-    companies_sim = _jaccard(a["companies"], b["companies"])
-
-    # Theme overlap (shared themes indicate a shared narrative frame)
+    # Theme overlap
     themes_sim = _jaccard(a["themes"], b["themes"])
 
-    # Deal type (partial credit — same deal type corroborates but is not sufficient)
+    # Title tokens — tiebreaker; cannot substitute for missing metadata
+    title_sim = _jaccard(a["title_tokens"], b["title_tokens"])
+
+    # Deal type — partial credit; same type weakly corroborates
     da = a["deal_type"]
     db = b["deal_type"]
     deal_type_sim = 0.5 if (da and db and da == db) else 0.0
 
-    # Title token overlap (last resort signal; down-weighted due to noise)
-    title_sim = _jaccard(a["title_tokens"], b["title_tokens"])
-
     return (
-        W_SECTOR       * sector_match
-        + W_COMPANIES  * companies_sim
+        W_COMPANIES    * companies_sim
+        + W_REL_REASON * rel_reason_sim
+        + W_SECTOR     * sector_match
         + W_THEMES     * themes_sim
-        + W_DEAL_TYPE  * deal_type_sim
         + W_TITLE_TOKENS * title_sim
+        + W_DEAL_TYPE  * deal_type_sim
     )
 
 
@@ -719,7 +794,7 @@ def fetch_run_context(run_id, brief_type, started_at_iso):
                     supabase.table("articles")
                     .select(
                         "id, title, source, relevance_score, "
-                        "companies, themes, sector, deal_type"
+                        "companies, themes, sector, deal_type, relevance_reason"
                     )
                     .in_("id", chunk)
                     .execute()
