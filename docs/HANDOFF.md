@@ -12,7 +12,7 @@
 
 ## Architecture
 - **Frontend:** Next.js 14 + React, hosted on Vercel (root dir: frontend)
-- **Backend:** Python — ingest.py, synthesize.py, deal_extractor.py, run.py, observe.py (Phase 1 observation layer)
+- **Backend:** Python — ingest.py, synthesize.py, deal_extractor.py, run.py, observe.py, critique.py, audit.py (Phase 1 observation layer)
 - **Database:** Supabase — use ingested_at for ordering, NOT created_at
 - **AI:** Groq API — ingest filtering: llama-3.1-8b-instant; synthesis: llama-3.3-70b-versatile
 - **News:** NewsAPI + 11 RSS feeds
@@ -33,6 +33,10 @@
 **pipeline_runs:** Phase 1 observation layer. Fields: run_id, timestamp, status, article_count. Populated by backend/observe.py after ingest → synthesize → deal extraction.
 
 **run_articles:** Phase 1 observation layer. Fields: run_id, article_id, selected_reason, provenance_flags. Tracks which articles were selected and marked with provenance status (exact vs. reconstructed/inferred).
+
+**brief_quality_scores:** Phase 1 observation layer. One row per pipeline run. Fields: run_id, brief_type, headline_word_count, headline_pass, banned_phrase_hits, what_to_watch_banned_hits, sections_present, sections_omitted, top_deals_count, status, soft_flags. Written by backend/critique.py (non-blocking step 5).
+
+**selection_audit:** Phase 1 observation layer. One row per pipeline run. Fields: run_id, brief_type, candidate_count, selected_count, target_count, score_10_not_selected, score_8_plus_not_selected, top_unselected_score, min_selected_score, mean_selected_score, sector_counts_selected (jsonb), sector_concentration_flag, provenance. All rows carry provenance='reconstructed'. Written by backend/audit.py (non-blocking step 6).
 
 ## Environment Variables
 **Backend — GitHub Secrets + backend/.env:**
@@ -55,9 +59,14 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 
 ### Autonomous Improvement Phase 1 — Observation Layer
 - **Run Recorder slice merged (PR #42):** `pipeline_runs` and `run_articles` tables now writing from non-blocking observer hook
-- **Brief Critic slice merged (PR #47):** Heuristic-only quality scorer; writes one row per pipeline run to `brief_quality_scores` (headline word count, banned phrase hits, sections present, top deals count, status, soft flags). No LLM calls. Non-blocking try/except in pipeline step 5. ✓ **VALIDATED (2026-04-03):** Schema applied; first live row written successfully.
-- **Next Phase 1 component:** Selection Auditor (reads `run_articles`, flags high-scoring candidates not selected, writes to `missed_story_candidates` table; no synthesize.py changes)
+- **Brief Critic slice merged (PR #47):** Heuristic-only quality scorer; writes one row per pipeline run to `brief_quality_scores` (headline word count, banned phrase hits, sections present, top deals count, status, soft flags). No LLM calls. Non-blocking try/except in pipeline step 5. ✓ **VALIDATED (2026-04-03)**
+- **Selection Auditor V1 merged (PR #48):** Run-level selection quality recorder; reads `run_articles` for each run, computes score miss signals and sector concentration, writes one row to `selection_audit`. Run-level only — no per-article missed-story claims. All rows carry `provenance='reconstructed'`. No LLM calls. Non-blocking step 6 in pipeline. ✓ **VALIDATED (2026-04-03):** Schema applied; live row confirmed with real metrics.
+- **Next Phase 1 component:** Trend Mapper
 - **Not yet built:** Trend Mapper, optimizer, rollback, config mutation — these are Phase 2+
+
+## Recently Completed (2026-04-03 — Selection Auditor V1 validated)
+
+**Selection Auditor V1 merged (PR #48) and validated end-to-end:** `backend/audit.py` + `backend/selection_audit_schema.sql` merged to main. `selection_audit` schema applied to Supabase. Manual pipeline run confirmed `[6/6] AUDIT` step fired and wrote a live row to `selection_audit` with correct metrics (candidates=53, selected=7/20, score10_miss=3, score8+_miss=43, top_unselected=10, concentration=False, provenance='reconstructed'). Pipeline 6-step sequencing confirmed working end-to-end. No optimizer, rollback, or per-article claims in scope.
 
 ## Recently Completed (2026-04-03 — Brief Critic validation)
 
