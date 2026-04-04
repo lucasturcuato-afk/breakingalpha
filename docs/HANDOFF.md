@@ -40,7 +40,7 @@
 
 **selection_audit:** Phase 1 observation layer. One row per pipeline run. Fields: run_id, brief_type, candidate_count, selected_count, target_count, score_10_not_selected, score_8_plus_not_selected, top_unselected_score, min_selected_score, mean_selected_score, sector_counts_selected (jsonb), sector_concentration_flag, provenance. All rows carry provenance='reconstructed'. Written by backend/audit.py (non-blocking step 6).
 
-**trend_clusters:** Phase 1 observation layer. One row per pipeline run. Fields: run_id, brief_type, num_clusters, num_movers, top_mover_sector, top_mover_company, top_mover_recent_score, volatility_pct. Written by backend/trend_mapper.py (non-blocking step 7). **SCHEMA NOT YET APPLIED TO SUPABASE.**
+**trend_clusters:** Phase 1 observation layer. One row per pipeline run. Fields: run_id, brief_type, num_clusters, num_movers, top_mover_sector, top_mover_company, top_mover_recent_score, volatility_pct. Written by backend/trend_mapper.py (non-blocking step 7). Schema live in Supabase; live-validated 2026-04-04 (6 clusters written, 1 underrepresented flagged).
 
 ## Environment Variables
 **Backend — GitHub Secrets + backend/.env:**
@@ -62,7 +62,7 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 ## In Progress
 
 ### Autonomous Improvement Phase 1 — Observation Layer ✓ COMPLETE
-- **Phase 1 observation layer fully deployed:** `backend/observe.py`, `backend/critique.py`, `backend/audit.py`, `backend/trend_mapper.py`, `backend/summarize.py` integrated as non-blocking pipeline steps [1–8]. All tables live in Supabase. `summarize.py` consolidates phase 1 metrics (brief_quality_scores, selection_audit, trend_clusters) into human-readable digest to stdout after each run. Next: Phase 2+ (optimizer, rollback, config mutation, scheduled automatic post-run jobs)
+- **Phase 1 observation layer fully deployed:** `backend/observe.py`, `backend/critique.py`, `backend/audit.py`, `backend/trend_mapper.py`, `backend/summarize.py` integrated as non-blocking pipeline steps [1–8]. All tables live in Supabase. `summarize.py` consolidates phase 1 metrics (brief_quality_scores, selection_audit, trend_clusters) into human-readable digest to stdout after each run. Next: weekly cross-run summary (Phase 1 Summaries); optimizer/rollback/config mutation deferred to Phase 2+.
 
 ## Recently Completed (2026-04-03 — Trend Mapper Phase 1 built)
 
