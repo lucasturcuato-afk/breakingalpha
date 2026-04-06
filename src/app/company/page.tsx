@@ -75,6 +75,51 @@ const CANONICAL: Record<string, string> = {
   "berkshire hathaway inc": "Berkshire Hathaway",
 };
 
+// Company industry map — what the company IS, not what stories cover it.
+// Only hardcode what we can state with confidence. Unmapped companies get no identity line.
+const COMPANY_INDUSTRY: Record<string, string> = {
+  // Semiconductors & Hardware
+  "NVIDIA":              "Semiconductors",
+  "Intel":               "Semiconductors",
+  // Consumer & Enterprise Technology
+  "Apple":               "Consumer Technology",
+  "Microsoft":           "Technology",
+  "Alphabet":            "Technology",
+  "Meta":                "Technology",
+  "Amazon":              "Technology / E-Commerce",
+  "Tesla":               "Electric Vehicles",
+  "Salesforce":          "Enterprise Software",
+  "Oracle":              "Enterprise Technology",
+  "Palantir":            "Data Analytics",
+  "IBM":                 "Technology",
+  // Artificial Intelligence
+  "OpenAI":              "Artificial Intelligence",
+  "Anthropic":           "Artificial Intelligence",
+  // Aerospace & Defense
+  "Lockheed Martin":     "Aerospace & Defense",
+  "Boeing":              "Aerospace & Defense",
+  "Raytheon":            "Aerospace & Defense",
+  "Northrop Grumman":    "Aerospace & Defense",
+  "SpaceX":              "Aerospace",
+  "General Dynamics":    "Aerospace & Defense",
+  // Financial Services
+  "JPMorgan Chase":      "Financial Services",
+  "Goldman Sachs":       "Investment Banking",
+  "Morgan Stanley":      "Investment Banking",
+  "Bank of America":     "Financial Services",
+  "Berkshire Hathaway":  "Diversified Financials",
+  "BlackRock":           "Asset Management",
+  "Visa":                "Financial Technology",
+  "Mastercard":          "Financial Technology",
+  // Healthcare & Pharma
+  "Pfizer":              "Pharmaceuticals",
+  "Johnson & Johnson":   "Healthcare",
+  // Energy & Consumer
+  "ExxonMobil":          "Energy",
+  "Chevron":             "Energy",
+  "Walmart":             "Consumer Retail",
+};
+
 function canonicalize(name: string): string {
   const key = name.trim().toLowerCase().replace(/[.,]$/g, "");
   return CANONICAL[key] ?? name.trim();
@@ -186,12 +231,17 @@ export default function CompanyIntelPage() {
     [companyArticles],
   );
 
-  // Pre-labeled memo content string — model receives classified sections, not a flat list
+  // Pre-labeled memo content string — model receives classified sections, not a flat list.
+  // COMPANY INDUSTRY comes from the hardcoded map (what the company IS).
+  // COVERAGE THEMES comes from article-sector aggregation (what stories cover it).
+  // These are intentionally kept separate so the model cannot conflate them.
   const memoContent = useMemo(() => {
     if (!selectedCompany) return "";
+    const industry = COMPANY_INDUSTRY[selectedCompany.name] ?? "Unknown";
     return [
       `COMPANY: ${selectedCompany.name}`,
-      `SECTOR(S): ${selectedCompany.sectors.join(", ")}`,
+      `COMPANY INDUSTRY: ${industry}`,
+      `COVERAGE THEMES: ${selectedCompany.sectors.join(", ")}`,
       `MENTIONS: ${selectedCompany.mentions}`,
       ``,
       `DIRECT COMPANY ARTICLES (${directArticles.length}):`,
@@ -347,16 +397,19 @@ export default function CompanyIntelPage() {
                       </span>
                     </div>
                     {company.sectors.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {company.sectors.slice(0, 2).map((s) => (
-                          <span
-                            key={s}
-                            style={getSectorStyle(s)}
-                            className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide"
-                          >
-                            {s}
-                          </span>
-                        ))}
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-data text-[8px] uppercase tracking-widest text-text-faint">Coverage</span>
+                        <div className="flex flex-wrap gap-1">
+                          {company.sectors.slice(0, 2).map((s) => (
+                            <span
+                              key={s}
+                              style={getSectorStyle(s)}
+                              className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide"
+                            >
+                              {s}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </button>
@@ -390,18 +443,23 @@ export default function CompanyIntelPage() {
 
             {/* Panel body */}
             <div className="flex-1 overflow-y-auto px-5 py-4">
-              {/* Sectors */}
+              {/* Coverage Themes — article-derived topic tags, not company identity */}
               {selectedCompany.sectors.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                  {selectedCompany.sectors.map((s) => (
-                    <span
-                      key={s}
-                      style={getSectorStyle(s)}
-                      className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
-                    >
-                      {s}
-                    </span>
-                  ))}
+                <div className="mb-4">
+                  <p className="font-data text-[9px] uppercase tracking-widest text-text-muted font-semibold mb-1.5">
+                    Coverage Themes
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedCompany.sectors.map((s) => (
+                      <span
+                        key={s}
+                        style={getSectorStyle(s)}
+                        className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
+                      >
+                        {s}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -514,27 +572,33 @@ export default function CompanyIntelPage() {
           type="company"
           systemPrompt={`You are a sector analyst writing a company intelligence brief for ${selectedCompany.name}.
 
-The articles below are pre-classified. DIRECT COMPANY ARTICLES are articles where ${selectedCompany.name} is the primary subject. SECTOR CONTEXT ARTICLES are articles where it appears as a secondary mention. Use this classification exactly — do not re-classify.
+The input provides two separate fields:
+- COMPANY INDUSTRY: what the company actually is. Use this for identity.
+- COVERAGE THEMES: what kinds of stories are currently covering it. Do not use this for identity.
 
-Output exactly five sections:
+The articles are pre-classified as DIRECT (primary subject) or SECTOR CONTEXT (secondary mention).
+
+Output the following sections:
 
 **Company Brief**
-One sentence: company name, sector from the SECTOR(S) field, primary business. Use the sector label exactly as written — do not infer business type from the company name alone.
+Only include this section if COMPANY INDUSTRY is not "Unknown".
+One sentence: company name, its COMPANY INDUSTRY, and primary business. Example: "Lockheed Martin is a U.S. Aerospace & Defense company focused on advanced weapons systems and government contracts."
+If COMPANY INDUSTRY is "Unknown": omit this section entirely. Do not write it, do not guess, do not use COVERAGE THEMES as a substitute.
 
 **Recent Developments**
-Summarize only from DIRECT COMPANY ARTICLES. If that section says "None": write "No direct company developments in the current feed." Do not substitute content from Sector Context.
+Summarize only from DIRECT COMPANY ARTICLES. If that section says "None": write "No direct company developments in the current feed." Do not substitute from Sector Context.
 
 **Sector Context**
 Summarize SECTOR CONTEXT ARTICLES as industry backdrop. 2–3 sentences.
 
 **Key Watchpoints**
-2–3 watchpoints derived only from Direct articles: open deals, pending decisions, or named upcoming events stated in the text. If Direct says "None": write "Insufficient direct coverage to identify specific watchpoints."
+2–3 watchpoints from Direct articles only: open deals, pending decisions, named upcoming events. If Direct says "None": write "Insufficient direct coverage to identify specific watchpoints."
 
 **Signal Quality**
 One label: "Strong company-specific coverage" / "Limited direct evidence" / "Mostly sector context"
-One sentence explaining what the user should trust in this memo.
+One sentence.
 
-Rules: No article numbers or positions. No phrases: "may benefit", "positioned to", "could potentially". Facts and figures from the input only. Under 300 words.`}
+Rules: No article numbers. No phrases: "may benefit", "positioned to", "could potentially". Facts and figures from input only. Under 300 words.`}
         />
       )}
     </AppShell>
