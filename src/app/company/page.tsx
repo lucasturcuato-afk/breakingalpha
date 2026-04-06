@@ -120,15 +120,18 @@ export default function CompanyIntelPage() {
     async function loadArticles() {
       try {
         const name = selectedCompany!.name;
+        // companies column is jsonb (Python list → Supabase jsonb).
+        // Use contains (@>) to check array membership — ilike does not work on jsonb.
         const { data: articles } = await getSupabase()
           .from("articles")
           .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies")
-          .ilike("companies", `%${name}%`)
+          .contains("companies", [name])
           .order("ingested_at", { ascending: false })
-          .limit(100);
+          .limit(200);
 
         if (articles) {
           const nameLower = name.toLowerCase();
+          // Client-side exact-match is secondary guard for any case normalisation edge cases
           const matched = articles.filter((a) => {
             const cos = parseCompanies(a.companies);
             return cos.some((c) => c.toLowerCase() === nameLower);

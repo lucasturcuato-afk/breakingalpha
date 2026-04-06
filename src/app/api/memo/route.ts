@@ -4,7 +4,21 @@ import Groq from "groq-sdk";
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const TYPE_PROMPTS: Record<string, string> = {
-  deal: "You are an M&A analyst. Write a concise deal memo using ONLY the facts provided in the input. Do NOT invent or infer any figures, parties, valuations, or recommendations that are not explicitly stated. If a field says 'Undisclosed' or is absent, state 'Undisclosed' — never fabricate a number or name. Sections: Deal Overview, Strategic Rationale, Key Risks. Include a Valuation section ONLY if an actual value is present in the input; omit it otherwise. Under 300 words.",
+  deal: `You are a senior M&A analyst. Write a sharp deal memo with exactly these 4 sections in this order:
+
+**Deal Snapshot**
+Bullet list of facts from the input only: Target, Acquirer, Type, Value, Status, Sector. Use "Undisclosed" for missing facts. No commentary here.
+
+**Why It Makes Sense**
+Infer the likely strategic logic from the deal type, sector, size, and any context provided. Use grounded cautious language — "appears aimed at…", "likely reflects…", "suggests a push into…", "fits a pattern of…". This section must always be substantive. Never write "no rationale provided" or equivalent filler.
+
+**Why It Matters**
+State the investor, operator, or market implication in 2–3 concrete sentences. Do not repeat Snapshot facts unless they directly drive the implication.
+
+**What To Watch**
+List 2–3 grounded watchpoints: regulatory approvals, financing risk, integration complexity, signaling for the sector, execution timeline, or whether this implies broader deal activity. Infer from the deal type and sector. Never write generic placeholders.
+
+Hard rules: no invented counterparties, dollar figures, or valuation assumptions beyond what is provided. No recommendation section. No standalone valuation section. No empty sections. Under 320 words.`,
   thesis: "You are a buy-side equity research analyst. Write an investment thesis memo using ONLY the facts provided. Do NOT invent price targets, ratings, or figures not present in the input. Sections: Core Thesis, Supporting Evidence, Bear Case, Catalysts to Watch. Under 300 words.",
   brief: "You are a market strategist. Write a market brief: Key Macro Takeaway, Sector Implications, Risk Flags. Under 300 words.",
   article: "You are a financial analyst. Summarize market implications using only what is stated: What Happened, Market Impact, Actionable Insight. Under 250 words.",
@@ -36,7 +50,7 @@ export async function POST(request: NextRequest) {
           { role: "system", content: system },
           { role: "user", content: truncated },
         ],
-        max_tokens: 600,
+        max_tokens: 750,
         temperature: 0.35,
       });
 

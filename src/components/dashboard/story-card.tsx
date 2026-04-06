@@ -12,6 +12,37 @@ import { Sparkles, Plus, MessageSquare, Loader2 } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
 import type { BadgeVariant } from "@/components/ui/badge";
 
+// ---------------------------------------------------------------------------
+// Thesis match helpers — used by both card variants
+// ---------------------------------------------------------------------------
+
+const STOP_WORDS = new Set([
+  "the","a","an","and","or","but","in","on","at","to","for","of","with","by",
+  "from","as","is","are","was","were","be","been","has","have","had","will",
+  "would","could","should","may","might","this","that","these","those","it",
+  "its","i","we","they","he","she","you","new","says","said","after","over",
+  "amid","amid","amid","amid","s","its",
+]);
+
+function keyTerms(text: string): Set<string> {
+  return new Set(
+    text.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !STOP_WORDS.has(w))
+  );
+}
+
+function termOverlap(a: Set<string>, b: Set<string>): number {
+  let n = 0;
+  for (const w of a) if (b.has(w)) n++;
+  return n;
+}
+
+// Minimum meaningful term overlap required to navigate to an existing thesis.
+// Score < MATCH_THRESHOLD → toast instead of redirect.
+const MATCH_THRESHOLD = 2;
+
 export interface StoryData {
   id: string;
   title: string;
@@ -168,15 +199,32 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
                     const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
                     const { data: theses } = await supabase
                       .from("theses")
-                      .select("id, sector, title")
+                      .select("id, sector, title, rationale")
                       .neq("status", "archived");
+
                     const sector = (story.sector || "").toLowerCase();
-                    const match = theses?.find((t) => (t.sector || "").toLowerCase() === sector);
-                    if (match) {
-                      router.push(`/thesis-board?thesis=${match.id}`);
-                    } else {
+                    const sameSector = (theses || []).filter(
+                      (t) => (t.sector || "").toLowerCase() === sector
+                    );
+
+                    if (sameSector.length === 0) {
                       setThesisToast("No existing thesis for this sector — visit Thesis Board to build one");
-                      setTimeout(() => setThesisToast(""), 3000);
+                      setTimeout(() => setThesisToast(""), 3500);
+                    } else {
+                      // Score each same-sector thesis by term overlap with story title + summary
+                      const storyTerms = keyTerms(`${story.title} ${story.summary || ""}`);
+                      const scored = sameSector.map((t) => ({
+                        id: t.id,
+                        score: termOverlap(storyTerms, keyTerms(`${t.title} ${t.rationale || ""}`)),
+                      })).sort((a, b) => b.score - a.score);
+
+                      const best = scored[0];
+                      if (best.score >= MATCH_THRESHOLD) {
+                        router.push(`/thesis-board?thesis=${best.id}`);
+                      } else {
+                        setThesisToast("No closely related thesis found — visit Thesis Board to build one");
+                        setTimeout(() => setThesisToast(""), 3500);
+                      }
                     }
                   } catch (err) {
                     console.error("Thesis match error:", err);
@@ -327,15 +375,31 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
                       const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
                       const { data: theses } = await supabase
                         .from("theses")
-                        .select("id, sector, title")
+                        .select("id, sector, title, rationale")
                         .neq("status", "archived");
+
                       const sector = (story.sector || "").toLowerCase();
-                      const match = theses?.find((t) => (t.sector || "").toLowerCase() === sector);
-                      if (match) {
-                        router.push(`/thesis-board?thesis=${match.id}`);
-                      } else {
+                      const sameSector = (theses || []).filter(
+                        (t) => (t.sector || "").toLowerCase() === sector
+                      );
+
+                      if (sameSector.length === 0) {
                         setThesisToast("No existing thesis for this sector — visit Thesis Board to build one");
-                        setTimeout(() => setThesisToast(""), 3000);
+                        setTimeout(() => setThesisToast(""), 3500);
+                      } else {
+                        const storyTerms = keyTerms(`${story.title} ${story.summary || ""}`);
+                        const scored = sameSector.map((t) => ({
+                          id: t.id,
+                          score: termOverlap(storyTerms, keyTerms(`${t.title} ${t.rationale || ""}`)),
+                        })).sort((a, b) => b.score - a.score);
+
+                        const best = scored[0];
+                        if (best.score >= MATCH_THRESHOLD) {
+                          router.push(`/thesis-board?thesis=${best.id}`);
+                        } else {
+                          setThesisToast("No closely related thesis found — visit Thesis Board to build one");
+                          setTimeout(() => setThesisToast(""), 3500);
+                        }
                       }
                     } catch (err) {
                       console.error("Thesis match error:", err);
