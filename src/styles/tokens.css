@@ -1,0 +1,94 @@
+/* ============================================
+   Signalera Design Tokens
+   ============================================
+   4px base grid · All colors referenced via CSS custom properties
+   Never hardcode a color — always use a token.
+   ============================================ */
+
+:root {
+  /* ── Core palette ── */
+  --cream: #fffdf9;
+  --parchment: #faf7f2;
+  --parchment-mid: #faf5ed;
+  --espresso: #1a1208;
+  --espresso-light: #3d2b1f;
+
+  /* ── Gold system ── */
+  --gold: #c9922a;
+  --gold-light: #e8b84b;
+  --gold-dark: #8a5a10;
+  --gold-muted: #c9922a18;
+  --gold-border: #c9922a33;
+
+  /* ── Border system ── */
+  --border-base: #ede8df;
+  --border-subtle: #f0ebe0;
+  --border-hover: #c9922a44;
+
+  /* ── Text system ── */
+  --text-primary: #1a1208;
+  --text-secondary: #8a7a60;
+  --text-muted: #b0a080;
+  --text-faint: #c8bfa8;
+
+  /* ── Semantic / signal ── */
+  --signal-up: #16a34a;
+  --signal-dn: #dc2626;
+  --signal-warn: #f59e0b;
+  --signal-ai: #7c3aed;
+
+  /* ── Spacing (4px base grid) ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ── Radii ── */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 9px;
+  --radius-xl: 12px;
+  --radius-2xl: 14px;
+
+  /* ── Motion ── */
+  --duration-fast: 100ms;
+  --duration-base: 150ms;
+  --duration-slow: 250ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── Layout constants ── */
+  --sidebar-width: 236px;
+  --topbar-height: 52px;
+  --moodbar-height: 36px;
+  --right-panel-width: 268px;
+}
+
+/* ── Dark mode overrides ── */
+html.dark {
+  --cream: #0f0c07;
+  --parchment: #0a0a0b;
+  --parchment-mid: #1a1208;
+  --espresso: #f5f0e8;
+  --espresso-light: #d4c8b0;
+
+  --gold: #d4a03a;
+  --gold-light: #e8b84b;
+  --gold-dark: #c9922a;
+  --gold-muted: #c9922a18;
+  --gold-border: #c9922a44;
+
+  --border-base: #2a2010;
+  --border-subtle: #1e1a0f;
+  --border-hover: #c9922a55;
+
+  --text-primary: #f5f0e8;
+  --text-secondary: #c0a870;
+  --text-muted: #8a7a60;
+  --text-faint: #5a4a2a;
+}

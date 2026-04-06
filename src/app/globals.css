@@ -1,26 +1,178 @@
 @import "tailwindcss";
+@import "../styles/tokens.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@variant dark (&:where(.dark, .dark *));
+
+/* ============================================
+   Tailwind v4 Theme — Signalera Design System
+   ============================================ */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* ── Fonts ── */
+  --font-display: var(--font-playfair-display);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+
+  /* ── Core palette ── */
+  --color-cream: var(--cream);
+  --color-parchment: var(--parchment);
+  --color-parchment-mid: var(--parchment-mid);
+  --color-espresso: var(--espresso);
+  --color-espresso-light: var(--espresso-light);
+
+  /* ── Gold system ── */
+  --color-gold: var(--gold);
+  --color-gold-light: var(--gold-light);
+  --color-gold-dark: var(--gold-dark);
+  --color-gold-muted: var(--gold-muted);
+  --color-gold-border: var(--gold-border);
+
+  /* ── Borders ── */
+  --color-border-base: var(--border-base);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-hover: var(--border-hover);
+
+  /* ── Text ── */
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-faint: var(--text-faint);
+
+  /* ── Semantic signals ── */
+  --color-signal-up: var(--signal-up);
+  --color-signal-dn: var(--signal-dn);
+  --color-signal-warn: var(--signal-warn);
+  --color-signal-ai: var(--signal-ai);
+
+  /* ── Spacing (4px grid) ── */
+  --spacing-1: var(--space-1);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --spacing-5: var(--space-5);
+  --spacing-6: var(--space-6);
+  --spacing-8: var(--space-8);
+  --spacing-10: var(--space-10);
+  --spacing-12: var(--space-12);
+  --spacing-16: var(--space-16);
+
+  /* ── Border radius ── */
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+
+  /* ── Layout constants ── */
+  --spacing-sidebar: var(--sidebar-width);
+  --spacing-topbar: var(--topbar-height);
+  --spacing-moodbar: var(--moodbar-height);
+  --spacing-right-panel: var(--right-panel-width);
+
+  /* ── Transition durations ── */
+  --duration-fast: var(--duration-fast);
+  --duration-base: var(--duration-base);
+  --duration-slow: var(--duration-slow);
+
+  /* ── Easing ── */
+  --ease-out: var(--ease-out);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ============================================
+   Base styles
+   ============================================ */
+
+@layer base {
+  body {
+    background: var(--parchment);
+    color: var(--text-primary);
+    font-family: var(--font-inter), sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2 {
+    font-family: var(--font-playfair-display), serif;
+  }
+  h3, h4, h5, h6 {
+    font-family: var(--font-inter), sans-serif;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ── Font utility classes ── */
+
+.font-display {
+  font-family: var(--font-playfair-display), serif;
+}
+
+.font-body {
+  font-family: var(--font-inter), sans-serif;
+}
+
+.font-data {
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Data type visual treatments ── */
+
+.treatment-live {
+  border-left: 3px solid var(--gold);
+  background: var(--gold-muted);
+}
+
+.treatment-ai {
+  border-left: 3px solid var(--signal-ai);
+  background: #7c3aed0a;
+}
+
+.treatment-working {
+  border-left: 3px solid var(--signal-warn);
+}
+
+.treatment-read {
+  opacity: 0.72;
+}
+
+/* ── Scrollbar styling ── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-base);
+  border-radius: var(--radius-lg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+}
+
+/* ── Selection ── */
+
+::selection {
+  background: var(--gold-muted);
+  color: var(--espresso);
+}
+
+/* ── Dark mode card utility ── */
+html.dark .bg-white {
+  background-color: #111108;
+}
+
+/* ── Keyframe animations ── */
+
+@keyframes ticker-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-33.333%);
+  }
 }
