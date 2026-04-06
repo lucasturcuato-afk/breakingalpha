@@ -203,7 +203,7 @@ export default function CompanyIntelPage() {
             });
           });
 
-          setCompanyArticles(matched.map((a) => ({
+          const mapped = matched.map((a) => ({
             id: a.id,
             title: a.title,
             source: a.source,
@@ -212,7 +212,16 @@ export default function CompanyIntelPage() {
             summary: a.summary,
             published_at: a.published_at || a.ingested_at,
             url: a.url,
-          })));
+          }));
+
+          // Instrumentation — remove after preview validation
+          console.log(`[CompanyIntel:articles] "${name}" → ${mapped.length} articles matched`);
+          console.log(`[CompanyIntel:articles] titles (first 10):`, mapped.slice(0, 10).map((a, i) => `${i + 1}. ${a.title}`));
+          console.log(`[CompanyIntel:articles] raw companies on first 5 matched articles:`,
+            matched.slice(0, 5).map((a) => ({ title: a.title, companies: parseCompanies(a.companies) }))
+          );
+
+          setCompanyArticles(mapped);
         }
       } catch (e) {
         console.error("Failed to load company articles:", e);
@@ -374,6 +383,11 @@ export default function CompanyIntelPage() {
                         setTimeout(() => setMemoToast(""), 3000);
                         return;
                       }
+                      // Instrumentation — remove after preview validation
+                      const contentStr = `COMPANY: ${selectedCompany!.name}\nSECTOR(S): ${selectedCompany!.sectors.join(", ")}\nMENTIONS: ${selectedCompany!.mentions}\n\nARTICLES:\n${companyArticles.slice(0, 10).map((a, i) => `${i + 1}. ${a.title}${a.summary ? " — " + a.summary : ""}`).join("\n\n")}`;
+                      console.log(`[CompanyIntel:memo] content length BEFORE slice: ${contentStr.length}`);
+                      console.log(`[CompanyIntel:memo] content SENT to model (1500 char slice):\n---\n${contentStr.slice(0, 1500)}\n---`);
+                      console.log(`[CompanyIntel:memo] articles cut off by 1500 limit: articles after char 1500 are excluded. Last included article index: ~${Math.floor((1500 - 70) / 333)}`);
                       setMemoOpen(true);
                     }}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gold text-cream font-sans text-[11px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
