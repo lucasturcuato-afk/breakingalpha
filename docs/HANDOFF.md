@@ -40,7 +40,7 @@
 
 **selection_audit:** Phase 1 observation layer. One row per pipeline run. Fields: run_id, brief_type, candidate_count, selected_count, target_count, score_10_not_selected, score_8_plus_not_selected, top_unselected_score, min_selected_score, mean_selected_score, sector_counts_selected (jsonb), sector_concentration_flag, provenance. All rows carry provenance='reconstructed'. Written by backend/audit.py (non-blocking step 6).
 
-**trend_clusters:** Phase 1 observation layer. One row per pipeline run. Fields: run_id, brief_type, num_clusters, num_movers, top_mover_sector, top_mover_company, top_mover_recent_score, volatility_pct. Written by backend/trend_mapper.py (non-blocking step 7). **SCHEMA NOT YET APPLIED TO SUPABASE.**
+**trend_clusters:** Phase 1 observation layer. One row per pipeline run. Fields: run_id, brief_type, num_clusters, num_movers, top_mover_sector, top_mover_company, top_mover_recent_score, volatility_pct. Written by backend/trend_mapper.py (non-blocking step 7). Schema live in Supabase; live-validated 2026-04-04 (6 clusters written, 1 underrepresented flagged).
 
 ## Environment Variables
 **Backend — GitHub Secrets + backend/.env:**
@@ -61,9 +61,8 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 
 ## In Progress
 
-### Autonomous Improvement Phase 1 — Observation Layer
-- **Trend Mapper Phase 1 ✓ MERGED & LIVE-VALIDATED (2026-04-04):** `backend/trend_mapper.py` built and merged (PR #51). `backend/trend_clusters_schema.sql` applied to Supabase. Non-blocking step [7/7] in pipeline. Live morning run confirmed: [7/7] TREND MAP fired, 6 clusters written to trend_clusters table, 1 underrepresented cluster flagged. First run had lookback=0, so all clusters marked as "emerging". **Phase 1 observation layer complete.** Next: scheduled automatic post-run jobs and daily/weekly operator summaries.
-- **Not yet built:** Optimizer, rollback, config mutation — these are Phase 2+
+### Autonomous Improvement Phase 1 — Observation Layer ✓ COMPLETE
+- **Phase 1 observation layer fully deployed:** `backend/observe.py`, `backend/critique.py`, `backend/audit.py`, `backend/trend_mapper.py`, `backend/summarize.py` integrated as non-blocking pipeline steps [1–8]. All tables live in Supabase. `summarize.py` consolidates phase 1 metrics (brief_quality_scores, selection_audit, trend_clusters) into human-readable digest to stdout after each run. Next: weekly cross-run summary (Phase 1 Summaries); optimizer/rollback/config mutation deferred to Phase 2+.
 
 ## Recently Completed (2026-04-03 — Trend Mapper Phase 1 built)
 
@@ -74,6 +73,10 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 **Phase 1 observation layer complete:** Trend Mapper (PR #51) merged to main. Manual morning pipeline run confirmed: [7/7] TREND MAP fired, 6 clusters written to trend_clusters table, 1 underrepresented cluster flagged. First run had lookback=0, so all clusters marked as "emerging". Next steps: scheduled automatic post-run jobs and daily/weekly operator summaries.
 
 ## Recently Completed (2026-04-04)
+
+**Post-run operator summary (Phase 1 step 8) built:** `backend/summarize.py` reads brief_quality_scores, selection_audit, trend_clusters for current run_id and prints consolidated digest to stdout (headline pass/fail, banned phrase hits, section presence, article selection metrics, sector concentration flag, cluster count, volatility). Integrated as non-blocking [8/8] step in pipeline. No schema changes, no LLM calls. Branch: noah/post-run-summary, ready for PR.
+
+## Recently Completed (2026-04-04 — earlier)
 
 **Preferences wiring (PR #36) merged and sector classification fixed:** `/api/briefing` route now returns preference-shaped responses for signed-in users, reordering sections and sector_breakdown keys by user module + sector selections. Sector classification collapse diagnosed: filter model 8b-instant was dropping `sector` key entirely (40% → 10% population on Apr 2–4). Fixed via explicit sector instruction + schema validation in ingest.py; sector names matched exactly against SECTORS list. SECTORS updated: "Real Estate & Infrastructure" → "Real Estate & REITs" to match frontend pill. Validation pending: inspect logs for `[?]` frequency, confirm new articles have valid sector values. Note: old blank-sector rows not backfilled.
 

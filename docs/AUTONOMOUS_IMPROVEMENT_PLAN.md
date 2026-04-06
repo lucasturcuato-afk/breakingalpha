@@ -2,12 +2,12 @@
 
 ## Implementation Contract
 
-- **Current phase:** Phase 1 — Observation complete; moving to Phase 1 summaries
-- **Current goal:** Record every run, critique every run, audit selection quality, and map trend clusters. ✓ Complete. Next: daily and weekly operator summaries.
-- **In scope now:** Scheduled automatic post-run jobs, daily and weekly summaries for operators.
+- **Current phase:** Phase 1 — Observation complete; summaries in progress
+- **Current goal:** Record every run, critique every run, audit selection quality, map trend clusters, and surface consolidated operator digests after each run. ✓ Observation complete. Post-run summary built. Next: weekly cross-run summary.
+- **In scope now:** Post-run operator summary (built), weekly cross-run summary (pending).
 - **Not in scope yet:** Optimizer, rollback, config mutation, persona logic, and engagement optimization.
 - **Source of truth:** This document governs autonomous-improvement work.
-- **Implementation status:** Phase 1 observation layer complete. Run Recorder (PR #42), Brief Critic (PR #47), Selection Auditor V1 (PR #48), and Trend Mapper (PR #51) all built, merged, and live-validated. Next: scheduled summaries.
+- **Implementation status:** Phase 1 observation layer complete. Run Recorder (PR #42), Brief Critic (PR #47), Selection Auditor V1 (PR #48), Trend Mapper (PR #51) all built, merged, and live-validated. Post-run operator summary (summarize.py, step [8/8]) built and pending merge.
 
 ---
 
@@ -228,8 +228,8 @@ The autonomous-improvement layer should stay materially lighter than the main co
 
 ### Phase 1 — Summaries (in progress)
 
-- [ ] Schedule automatic post-run jobs
-- [ ] Write daily and weekly summaries
+- [x] Post-run operator summary — `backend/summarize.py` + step [8/8] in `backend/run.py`; reads `brief_quality_scores`, `selection_audit`, `trend_clusters` for the current run_id and prints a consolidated digest to the pipeline log (GitHub Actions); no LLM calls, no new schema, non-blocking
+- [ ] Weekly cross-run summary (aggregate quality trends across 5+ runs)
 
 ### Phase 2 — Safe Autonomy
 
