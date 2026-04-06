@@ -5,8 +5,9 @@ import { stripHtml } from "@/lib/strip-html";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { createBrowserClient } from "@supabase/ssr";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Plus, MessageSquare, ExternalLink, Bookmark, BookmarkCheck } from "lucide-react";
+import { Sparkles, Plus, MessageSquare, ExternalLink, Bookmark, BookmarkCheck, Loader2 } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
 import type { StoryData } from "@/components/dashboard";
 import type { BadgeVariant } from "@/components/ui/badge";
@@ -50,6 +51,8 @@ export function FeedRow({ story, onBookmark }: FeedRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [memoOpen, setMemoOpen] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
+  const [thesisLoading, setThesisLoading] = useState(false);
+  const [thesisToast, setThesisToast] = useState("");
   const saved = story.saved ?? false;
   const router = useRouter();
 
@@ -143,14 +146,54 @@ export function FeedRow({ story, onBookmark }: FeedRowProps) {
                 <Sparkles size={11} />
                 Generate Memo
               </button>
-              <button
-                type="button"
-                onClick={() => router.push("/thesis-board")}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment border border-border-base font-sans text-[11px] font-medium text-text-secondary hover:border-border-hover transition-colors cursor-pointer"
-              >
-                <Plus size={11} />
-                Thesis
-              </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  disabled={thesisLoading}
+                  onClick={async () => {
+                    setThesisLoading(true);
+                    setThesisToast("");
+                    try {
+                      const supabase = createBrowserClient(
+                        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+                      );
+                      const { data: theses } = await supabase
+                        .from("theses")
+                        .select("id, sector, title")
+                        .neq("status", "archived");
+
+                      const sector = (story.sector || "").toLowerCase();
+                      const match = theses?.find(
+                        (t) => (t.sector || "").toLowerCase() === sector,
+                      );
+
+                      if (match) {
+                        router.push(`/thesis-board?thesis=${match.id}`);
+                      } else {
+                        setThesisToast("No thesis yet — this article hasn't been linked to a thesis");
+                        setTimeout(() => setThesisToast(""), 3000);
+                      }
+                    } catch (err) {
+                      console.error("Thesis match error:", err);
+                    } finally {
+                      setThesisLoading(false);
+                    }
+                  }}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment border border-border-base font-sans text-[11px] font-medium text-text-secondary hover:border-border-hover transition-colors cursor-pointer",
+                    "disabled:opacity-50 disabled:cursor-not-allowed",
+                  )}
+                >
+                  {thesisLoading ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+                  Thesis
+                </button>
+                {thesisToast && (
+                  <div className="absolute -top-8 left-0 whitespace-nowrap bg-espresso text-cream font-sans text-[10px] px-2.5 py-1 rounded-md z-10">
+                    {thesisToast}
+                  </div>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => {

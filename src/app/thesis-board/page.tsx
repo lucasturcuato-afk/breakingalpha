@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import { ThesisList } from "@/components/thesis/ThesisList";
 import { ThesisDetailPanel } from "@/components/thesis/thesis-detail-panel";
@@ -40,6 +41,7 @@ function convictionToSentiment(conviction: string): string {
 }
 
 export default function ThesisBoardPage() {
+  const searchParams = useSearchParams();
   const [theses, setTheses] = useState<ThesisItem[]>([]);
   const [convictionFilter, setConvictionFilter] = useState<ConvictionFilter>("all");
   const [loading, setLoading] = useState(true);
@@ -50,6 +52,14 @@ export default function ThesisBoardPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [archivedTheses, setArchivedTheses] = useState<ThesisItem[]>([]);
   const [archivedRefreshKey, setArchivedRefreshKey] = useState(0);
+
+  // Auto-select thesis from query param
+  useEffect(() => {
+    const thesisId = searchParams.get("thesis");
+    if (thesisId) {
+      setSelectedId(thesisId);
+    }
+  }, [searchParams]);
 
   const fetchTheses = useCallback(async () => {
     try {
