@@ -64,11 +64,14 @@ GROQ_API_KEY, NEWS_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
 6. **Per-session user isolation** — sidebar, greeting, settings all read from `supabase.auth.getUser()` live, no hardcoded values
 7. **Watchlist API auth** — replaced hardcoded `USER_ID = "signalera_user_lucas"` with real authenticated user from cookies via createServerClient
 8. **Thesis button wiring** — Live Feed "Thesis" button fetches theses, matches article sector, navigates to `/thesis-board?thesis=<id>` or shows "No thesis yet" toast. Thesis board reads `?thesis=` param and auto-selects.
+9. **Weekly cross-run operator summary (PR #55)** — `backend/weekly_summary.py` aggregates observation metrics across the last 5 pipeline runs; surfaces selection quality trends, brief quality patterns, cluster momentum. Merged and production-validated.
+10. **Phase 1 hardening — observe.py reconstruction fix (PR #56)** — `_reconstruct_selected()` rewritten to mirror current `synthesize._select_articles_for_synthesis()` (spine=12, floor=6, sector_cap=3, floor_min=7). `audit.py` `_TARGET_COUNT` corrected 20→18. Stale `_diversify_articles` reconstruction logic replaced. No schema changes.
 
 ### Still Broken / In Progress
 - **Watchlist add may still fail** — API route is now authed correctly, but RLS policies may need updating in Supabase to match `auth.uid()` instead of the old hardcoded user_id. Check Supabase RLS on `watchlist` table.
 - **Google OAuth consent screen** shows Supabase project name instead of "Signalera" — update in Google Cloud Console > OAuth consent screen
 - **StoryCard Thesis button** (dashboard story cards) still inserts a new thesis directly instead of matching existing ones — only FeedRow button was updated
+- **Post-merge validation needed for PR #56** — after next scheduled pipeline run, confirm in Actions logs: `[6/8] AUDIT` prints `selected=N/18` (not N/20), and `[8/8] SUMMARY` Selection Quality shows `sel/18`. Run: `gh workflow run schedule.yml --field mode=morning`
 
 ## Nav Tabs
 1. Dashboard — greeting, stat cards, top stories

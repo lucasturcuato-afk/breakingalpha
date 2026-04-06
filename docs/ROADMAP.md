@@ -32,15 +32,18 @@
 - sector_breakdown schema-echo fix — fixed "note" key parsing bug in synthesize.py system prompts; added _validate_sector_breakdown() parser hardening (PR #43)
 - Autonomous Improvement Phase 1 — Trend Mapper: `backend/trend_mapper.py` built and merged (PR #51); clusters related articles into persistent/emerging narratives; non-blocking step 7 in pipeline; live-validated 2026-04-04 (6 clusters written to trend_clusters table, 1 underrepresented cluster flagged, all "emerging" due to first-run lookback=0)
 - Autonomous Improvement Phase 1 — Post-run operator summary: `backend/summarize.py` merged (PR #54); reads brief_quality_scores, selection_audit, trend_clusters for current run_id; prints consolidated digest to stdout (headline pass/fail, banned phrase hits, section presence, article selection metrics, sector concentration flag, cluster count, volatility). Trend Intelligence summary fixed: was querying phantom columns, now correctly aggregates cluster metrics. All three summary sections (Brief Quality, Selection Quality, Trend Intelligence) validated live 2026-04-05 (GitHub Actions 24016130118)
+- Autonomous Improvement Phase 1 — Weekly cross-run operator summary: `backend/weekly_summary.py` merged (PR #55); aggregates observation metrics across last 5 pipeline runs; surfaces selection quality trends, brief quality patterns, cluster momentum; production-validated
+- Thesis Board frontend — Thesis button wiring merged (lucas/thesis-board-live): Live Feed "Thesis" button fetches theses, matches article sector, navigates to `/thesis-board?thesis=<id>`; thesis board auto-selects from URL param
+- Signalera V2 rebrand — full rebrand shipped: logo, fonts (Playfair Display + Inter + JetBrains Mono), gold #F5A623 accent, auth middleware, PKCE OAuth flow, per-session user isolation, watchlist API auth fix
+- Phase 1 hardening — observe.py reconstruction accuracy fix (PR #56): `_reconstruct_selected()` rewritten to mirror current spine+floor selector (spine=12, floor=6, sector_cap=3, floor_min=7); `audit.py` `_TARGET_COUNT` corrected 20→18; stale `_diversify_articles` logic removed
 
 ## In Progress
-- Thesis Board frontend — Lucas (lucas/thesis-board-live)
+(none)
 
 ## Next — Noah
-### Autonomous Improvement Phase 1 (observation + post-run summary complete ✓)
-- Run Recorder ✓, Brief Critic ✓, Selection Auditor V1 ✓, Trend Mapper ✓, Post-run Summary ✓ — all live and validated
-- **Next Phase 1 work:** Weekly cross-run summary (aggregate observation metrics across 5 pipeline runs, identify patterns, surface operator insights)
-- Phase 2+ (optimizer, rollback, config mutation) deferred until Phase 1 summaries are complete
+### Autonomous Improvement Phase 1 (complete ✓)
+- Run Recorder ✓, Brief Critic ✓, Selection Auditor V1 ✓, Trend Mapper ✓, Post-run Summary ✓, Weekly Cross-run Summary ✓, Reconstruction Accuracy Fix ✓ — all live and validated
+- Phase 2+ (optimizer, rollback, config mutation) deferred — Phase 1 is complete
 
 ### Brief quality (residual — in priority order)
 - **Near-duplicate stories with different wording** — exact-title dedup is live (PR #45); same story under materially different headlines still survives; next step is fuzzy/semantic dedup if this remains noisy
@@ -61,8 +64,8 @@
 - **Watchlist preference toggle wiring** — toggle is disabled in UI ("COMING SOON"); deferred pending validation of sector classification stability
 
 ## Next — Lucas
-- Thesis Board frontend PR and merge
 - UI polish pass across all tabs
+- Fix StoryCard Thesis button (dashboard story cards inserts new thesis instead of matching existing ones)
 
 ## Later
 - Additional data enrichment features (sector one-pagers, yahoo_finance.py integration)
