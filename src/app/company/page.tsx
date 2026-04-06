@@ -241,7 +241,6 @@ export default function CompanyIntelPage() {
     return [
       `COMPANY: ${selectedCompany.name}`,
       `COMPANY INDUSTRY: ${industry}`,
-      `COVERAGE THEMES: ${selectedCompany.sectors.join(", ")}`,
       `MENTIONS: ${selectedCompany.mentions}`,
       ``,
       `DIRECT COMPANY ARTICLES (${directArticles.length}):`,
@@ -396,22 +395,6 @@ export default function CompanyIntelPage() {
                         {company.mentions}x
                       </span>
                     </div>
-                    {company.sectors.length > 0 && (
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-data text-[8px] uppercase tracking-widest text-text-faint">Coverage</span>
-                        <div className="flex flex-wrap gap-1">
-                          {company.sectors.slice(0, 2).map((s) => (
-                            <span
-                              key={s}
-                              style={getSectorStyle(s)}
-                              className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide"
-                            >
-                              {s}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </button>
                 ))}
               </div>
@@ -443,25 +426,6 @@ export default function CompanyIntelPage() {
 
             {/* Panel body */}
             <div className="flex-1 overflow-y-auto px-5 py-4">
-              {/* Coverage Themes — article-derived topic tags, not company identity */}
-              {selectedCompany.sectors.length > 0 && (
-                <div className="mb-4">
-                  <p className="font-data text-[9px] uppercase tracking-widest text-text-muted font-semibold mb-1.5">
-                    Coverage Themes
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedCompany.sectors.map((s) => (
-                      <span
-                        key={s}
-                        style={getSectorStyle(s)}
-                        className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
-                      >
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* Actions */}
               <div className="flex items-center gap-2 mb-4">
