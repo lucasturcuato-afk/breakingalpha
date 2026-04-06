@@ -92,19 +92,20 @@ def print_summary(brief_type, run_id):
         print(f"  [summary] selection_audit fetch failed: {e}")
 
     # --- Trend clusters ------------------------------------------------------
-    trends = None
+    # trend_clusters has one row per cluster (not one row per run).
+    # Fetch all rows for this run and aggregate in Python.
+    trend_rows = []
     try:
         resp = (
             supabase.table("trend_clusters")
             .select(
-                "num_clusters, num_movers, top_mover_sector, "
-                "top_mover_company, volatility_pct"
+                "cluster_type, label, strength_score, "
+                "underrepresented_flag, novelty_score"
             )
             .eq("run_id", run_id)
-            .limit(1)
             .execute()
         )
-        trends = resp.data[0] if resp.data else None
+        trend_rows = resp.data or []
     except Exception as e:
         print(f"  [summary] trend_clusters fetch failed: {e}")
 
@@ -168,20 +169,25 @@ def print_summary(brief_type, run_id):
 
     lines.append("")
 
-    # Trends block
-    if trends:
-        num_c = trends.get("num_clusters", "?")
-        num_m = trends.get("num_movers", "?")
-        top_sec = trends.get("top_mover_sector") or "—"
-        top_co = trends.get("top_mover_company") or "—"
-        vol = trends.get("volatility_pct")
-        vol_str = f"{vol:.0f}%" if vol is not None else "n/a"
+    # Trends block — aggregate from per-cluster rows
+    if trend_rows:
+        total = len(trend_rows)
+        persistent = sum(1 for r in trend_rows if r.get("cluster_type") == "persistent")
+        emerging   = sum(1 for r in trend_rows if r.get("cluster_type") == "emerging")
+        underrep   = sum(1 for r in trend_rows if r.get("underrepresented_flag"))
+        nov_vals   = [r["novelty_score"] for r in trend_rows if r.get("novelty_score") is not None]
+        mean_nov   = f"{sum(nov_vals)/len(nov_vals):.2f}" if nov_vals else "n/a"
+        top_cluster = max(trend_rows, key=lambda r: r.get("strength_score") or 0)
+        top_label  = top_cluster.get("label") or "—"
 
+        other = total - persistent - emerging
+        other_str = f", other={other}" if other else ""
         lines += [
             f"  Trend Intelligence",
-            f"    Clusters:         {num_c}  |  movers: {num_m}",
-            f"    Top mover:        {top_sec} / {top_co}",
-            f"    Volatility:       {vol_str}",
+            f"    Clusters:         {total}  (persistent={persistent}, emerging={emerging}{other_str})",
+            f"    Underrepresented: {underrep}",
+            f"    Mean novelty:     {mean_nov}",
+            f"    Strongest:        {top_label}",
         ]
     else:
         lines.append("  Trend Intelligence  [no data]")
