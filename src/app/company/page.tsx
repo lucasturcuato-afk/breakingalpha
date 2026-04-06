@@ -138,16 +138,6 @@ export default function CompanyIntelPage() {
           }))
           .sort((a, b) => b.mentions - a.mentions);
 
-        // Instrumentation: log top-20 company entries and raw→canonical samples
-        // Remove after preview validation.
-        console.log("[CompanyIntel] top-20 after canonicalization:", list.slice(0, 20).map(c => `${c.name} (${c.mentions}x)`));
-        const googleGroup = list.find(c => c.name === "Alphabet");
-        const rawGoogle = list.find(c => c.name === "Google");
-        const rawAlphabet = list.find(c => c.name.toLowerCase().includes("alphabet") && c.name !== "Alphabet");
-        console.log("[CompanyIntel] 'Alphabet' group:", googleGroup ? `${googleGroup.mentions}x` : "not found");
-        console.log("[CompanyIntel] raw 'Google' card:", rawGoogle ? `${rawGoogle.mentions}x — DUPLICATE STILL PRESENT` : "correctly merged");
-        console.log("[CompanyIntel] raw 'Alphabet' variant:", rawAlphabet ? `${rawAlphabet.name} — ${rawAlphabet.mentions}x` : "none");
-
         setCompanies(list);
       } catch (e) {
         console.error("Failed to build company list:", e);
@@ -213,13 +203,6 @@ export default function CompanyIntelPage() {
             published_at: a.published_at || a.ingested_at,
             url: a.url,
           }));
-
-          // Instrumentation — remove after preview validation
-          console.log(`[CompanyIntel:articles] "${name}" → ${mapped.length} articles matched`);
-          console.log(`[CompanyIntel:articles] titles (first 10):`, mapped.slice(0, 10).map((a, i) => `${i + 1}. ${a.title}`));
-          console.log(`[CompanyIntel:articles] raw companies on first 5 matched articles:`,
-            matched.slice(0, 5).map((a) => ({ title: a.title, companies: parseCompanies(a.companies) }))
-          );
 
           setCompanyArticles(mapped);
         }
@@ -383,11 +366,6 @@ export default function CompanyIntelPage() {
                         setTimeout(() => setMemoToast(""), 3000);
                         return;
                       }
-                      // Instrumentation — remove after preview validation
-                      const contentStr = `COMPANY: ${selectedCompany!.name}\nSECTOR(S): ${selectedCompany!.sectors.join(", ")}\nMENTIONS: ${selectedCompany!.mentions}\n\nARTICLES:\n${companyArticles.slice(0, 10).map((a, i) => `${i + 1}. ${a.title}${a.summary ? " — " + a.summary : ""}`).join("\n\n")}`;
-                      console.log(`[CompanyIntel:memo] content length BEFORE slice: ${contentStr.length}`);
-                      console.log(`[CompanyIntel:memo] content SENT to model (1500 char slice):\n---\n${contentStr.slice(0, 1500)}\n---`);
-                      console.log(`[CompanyIntel:memo] articles cut off by 1500 limit: articles after char 1500 are excluded. Last included article index: ~${Math.floor((1500 - 70) / 333)}`);
                       setMemoOpen(true);
                     }}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gold text-cream font-sans text-[11px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
@@ -490,12 +468,9 @@ Only articles where ${selectedCompany.name} is the primary subject (a contract, 
 **Sector Context**
 Articles where ${selectedCompany.name} is a secondary mention in a broader industry, policy, or macro story. Describe these as sector backdrop, not company events.
 
-**Evidence Signal**
-Three lines, exactly:
-Direct evidence: [count] article(s) where ${selectedCompany.name} is the primary subject
-Context evidence: [count] article(s) where ${selectedCompany.name} is a secondary mention
-Confidence: High (2+ direct) / Medium (1 direct) / Low (0 direct)
-Then one plain-English sentence explaining what the user should trust and what is limited. Examples: "Current coverage is mostly sector backdrop, with limited company-specific reporting." / "This memo is supported by [N] company-primary articles." / "The signal is mostly indirect and should be treated as directional context, not a high-confidence company update."
+**Signal Quality**
+Choose exactly one label from: "Strong company-specific coverage" / "Limited direct evidence" / "Mostly sector context"
+Then one sentence telling the user how to read this memo. Do not use numbers or confidence scores.
 
 RULES: Never reference articles by number. Banned phrases: "may benefit", "may be involved", "could potentially", "positioned to", "likely to see growth". Cite specific facts (contract names, dollar amounts, program names) from the provided text only. Under 280 words.`}
         />
