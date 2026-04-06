@@ -1,29 +1,56 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 
-const USER_ID = "signalera_user_lucas";
-
-function getSupabase() {
-  return createClient(
+async function getSupabaseWithUser() {
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return cookieStore.getAll(); },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options),
+          );
+        },
+      },
+    },
   );
+
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) {
+    console.error("Watchlist auth error:", error?.message ?? "no user");
+    return { supabase, user: null };
+  }
+  return { supabase, user };
 }
 
 export async function GET() {
-  const supabase = getSupabase();
+  const { supabase, user } = await getSupabaseWithUser();
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
 
   const { data, error } = await supabase
     .from("watchlist")
     .select("*")
-    .eq("user_id", USER_ID)
+    .eq("user_id", user.id)
     .order("created_at", { ascending: false });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (error) {
+    console.error("Watchlist GET error:", error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json({ entries: data || [] });
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = getSupabase();
+  const { supabase, user } = await getSupabaseWithUser();
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
 
   const { identifier, type } = await request.json();
   if (!identifier || !type)
@@ -39,7 +66,7 @@ export async function POST(request: NextRequest) {
     .select("id")
     .eq("identifier", normalizedIdentifier)
     .eq("type", type)
-    .eq("user_id", USER_ID)
+    .eq("user_id", user.id)
     .single();
   if (existing)
     return NextResponse.json(
@@ -73,19 +100,24 @@ export async function POST(request: NextRequest) {
       {
         identifier: normalizedIdentifier,
         type,
-        user_id: USER_ID,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        user_id: user.id,
       },
     ])
     .select()
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (error) {
+    console.error("Watchlist INSERT error:", error.message, error.details, error.hint);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json({ entry: data });
 }
 
 export async function DELETE(request: NextRequest) {
-  const supabase = getSupabase();
+  const { supabase, user } = await getSupabaseWithUser();
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
 
   const { id } = await request.json();
   if (!id)
@@ -95,9 +127,13 @@ export async function DELETE(request: NextRequest) {
     .from("watchlist")
     .delete()
     .eq("id", id)
-    .eq("user_id", USER_ID)
+    .eq("user_id", user.id)
     .select()
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (error) {
+    console.error("Watchlist DELETE error:", error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json({ entry: data });
 }
