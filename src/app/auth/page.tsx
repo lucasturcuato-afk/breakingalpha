@@ -3,18 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import {
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  Zap,
-  BarChart3,
-  Target,
-  CheckCircle2,
-} from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, Check } from "lucide-react";
 
 type AuthMode = "signin" | "signup";
 
@@ -42,10 +31,8 @@ export default function AuthPage() {
     const supabase = getSupabase();
 
     if (mode === "signin") {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { error: signInError } =
+        await supabase.auth.signInWithPassword({ email, password });
       if (signInError) {
         setError(signInError.message);
         setLoading(false);
@@ -53,10 +40,8 @@ export default function AuthPage() {
         window.location.href = "/dashboard";
       }
     } else {
-      const { error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-      });
+      const { error: signUpError } =
+        await supabase.auth.signUp({ email, password });
       if (signUpError) {
         setError(signUpError.message);
         setLoading(false);
@@ -78,157 +63,129 @@ export default function AuthPage() {
   }
 
   const features = [
-    {
-      icon: Zap,
-      title: "AI Market Intelligence",
-      desc: "Real-time signals powered by advanced language models",
-    },
-    {
-      icon: BarChart3,
-      title: "Live Signal Feed",
-      desc: "Institutional-grade alerts before they hit the wire",
-    },
-    {
-      icon: Target,
-      title: "Deal Flow Tracking",
-      desc: "Track opportunities from thesis to execution",
-    },
+    "Live AI-generated market signals",
+    "Real-time deal flow and M&A tracking",
+    "AI thesis board updated as markets move",
   ];
 
   return (
-    <div className="min-h-screen flex bg-[#0a0a0b]">
-      {/* ── Left panel: Brand + Features ── */}
-      <div className="hidden lg:flex lg:w-[60%] relative flex-col justify-between p-12 overflow-hidden">
-        {/* Background texture */}
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0f0c07] via-[#0a0a0b] to-[#1a1208]" />
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle at 1px 1px, #c9922a 1px, transparent 0)",
-            backgroundSize: "32px 32px",
-          }}
-        />
-
-        {/* Dashboard blur preview */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-[40%] -translate-y-1/2 w-[700px] h-[500px] rounded-2xl border border-[#c9922a22] bg-[#1a120811] backdrop-blur-sm overflow-hidden opacity-20">
-          <div className="p-6 space-y-4">
-            <div className="flex gap-3">
-              <div className="h-3 w-24 rounded bg-[#c9922a33]" />
-              <div className="h-3 w-16 rounded bg-[#c9922a1a]" />
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              {[...Array(6)].map((_, i) => (
-                <div
-                  key={i}
-                  className="h-20 rounded-lg bg-[#c9922a0a] border border-[#c9922a11]"
-                />
-              ))}
-            </div>
-            <div className="space-y-2">
-              {[...Array(4)].map((_, i) => (
-                <div
-                  key={i}
-                  className="h-8 rounded bg-[#c9922a08] border border-[#c9922a0a]"
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="relative z-10">
+    <div className="min-h-screen flex">
+      {/* ── Left panel: Brand + Features (55%) ── */}
+      <div
+        className="hidden lg:flex lg:w-[55%] relative flex-col justify-between p-12"
+        style={{ backgroundColor: "#0d0d0d" }}
+      >
+        {/* Logo */}
+        <div className="relative z-10 flex items-center gap-3">
           <img
-            src="/logo.png"
-            alt="Signalera"
-            className="brightness-110 contrast-95"
-            style={{
-              height: "48px",
-              width: "auto",
-              objectFit: "contain",
-            }}
+            src="/logo-icon.png"
+            alt=""
+            style={{ height: "36px", width: "auto", objectFit: "contain" }}
           />
+          <span
+            className="font-display text-[32px] font-bold leading-none"
+            style={{ letterSpacing: "-0.02em" }}
+          >
+            <span style={{ color: "#ffffff" }}>Signal</span>
+            <span style={{ color: "#F5A623" }}>era</span>
+          </span>
         </div>
 
-        <div className="relative z-10 max-w-md">
-          <p className="font-display text-[40px] leading-[1.15] tracking-tight text-[#f5f0e8]">
-            Where Markets
+        {/* Center content */}
+        <div className="relative z-10 max-w-lg">
+          <h1
+            className="font-display leading-[1.1] tracking-tight"
+            style={{ fontSize: "44px", color: "#ffffff" }}
+          >
+            Institutional-grade
             <br />
-            <span className="text-[#c9922a]">Make Sense</span>
-          </p>
-          <p className="mt-4 text-[15px] leading-relaxed text-[#8a7a60]">
-            Signalera synthesizes thousands of market signals into
-            institutional-grade intelligence — so you see the story before the
-            street does.
+            market intelligence.
+          </h1>
+          <p
+            className="mt-5 leading-relaxed"
+            style={{ fontSize: "16px", color: "#9ca3af", fontFamily: "var(--font-inter, Inter, sans-serif)" }}
+          >
+            Join analysts tracking signals that move markets.
           </p>
 
-          <div className="mt-10 space-y-5">
-            {features.map((f) => (
-              <div key={f.title} className="flex items-start gap-4">
-                <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-[#c9922a14] border border-[#c9922a22] flex items-center justify-center">
-                  <f.icon size={16} className="text-[#c9922a]" />
+          <div className="mt-10 space-y-4">
+            {features.map((text) => (
+              <div key={text} className="flex items-center gap-3">
+                <div
+                  className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: "rgba(245, 166, 35, 0.15)" }}
+                >
+                  <Check size={12} style={{ color: "#F5A623" }} />
                 </div>
-                <div>
-                  <p className="text-[13px] font-semibold text-[#f5f0e8]">
-                    {f.title}
-                  </p>
-                  <p className="text-[12px] text-[#8a7a60] mt-0.5">{f.desc}</p>
-                </div>
+                <span
+                  style={{
+                    fontSize: "15px",
+                    color: "#d1d5db",
+                    fontFamily: "var(--font-inter, Inter, sans-serif)",
+                  }}
+                >
+                  {text}
+                </span>
               </div>
             ))}
           </div>
         </div>
 
+        {/* Bottom */}
         <div className="relative z-10">
-          <p className="text-[11px] text-[#5a4a2a]">
-            &copy; {new Date().getFullYear()} Signalera. All rights reserved.
+          <p style={{ fontSize: "12px", color: "#4b5563" }}>
+            Trusted by analysts at top-tier firms
           </p>
         </div>
       </div>
 
-      {/* ── Right panel: Auth card ── */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12 lg:w-[40%]">
-        <div className="w-full max-w-[400px]">
+      {/* ── Right panel: Auth card (45%) ── */}
+      <div
+        className="flex-1 flex items-center justify-center px-6 py-12 lg:w-[45%]"
+        style={{ backgroundColor: "#111111" }}
+      >
+        <div className="w-full max-w-[420px]">
           {/* Mobile logo */}
-          <div className="lg:hidden text-center mb-8">
+          <div className="lg:hidden flex items-center justify-center gap-2 mb-10">
             <img
-              src="/logo.png"
-              alt="Signalera"
-              className="brightness-110 contrast-95"
-              style={{
-                height: "40px",
-                width: "auto",
-                objectFit: "contain",
-                margin: "0 auto",
-                display: "block",
-              }}
+              src="/logo-icon.png"
+              alt=""
+              style={{ height: "28px", width: "auto", objectFit: "contain" }}
             />
+            <span
+              className="font-display text-[24px] font-bold leading-none"
+            >
+              <span style={{ color: "#ffffff" }}>Signal</span>
+              <span style={{ color: "#F5A623" }}>era</span>
+            </span>
           </div>
 
-          {/* Headlines */}
-          <div className="mb-8">
-            <h1 className="font-display text-[24px] leading-tight tracking-tight text-[#f5f0e8]">
-              Institutional-grade market intelligence.
-            </h1>
-            <p className="mt-2 text-[13px] text-[#8a7a60]">
-              Join analysts tracking signals that move markets.
-            </p>
-          </div>
-
-          {/* Signup success state */}
+          {/* Signup success */}
           {signupSuccess ? (
-            <div className="rounded-2xl border border-[#c9922a33] bg-[#c9922a0a] p-6 text-center">
-              <CheckCircle2
-                size={32}
-                className="text-[#c9922a] mx-auto mb-3"
-              />
-              <p className="text-[15px] font-semibold text-[#f5f0e8]">
+            <div
+              className="rounded-2xl p-10 text-center"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(245,167,35,0.2)",
+              }}
+            >
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4"
+                style={{ backgroundColor: "rgba(245, 166, 35, 0.15)" }}
+              >
+                <Check size={24} style={{ color: "#F5A623" }} />
+              </div>
+              <p
+                className="font-display"
+                style={{ fontSize: "20px", color: "#ffffff" }}
+              >
                 Check your email
               </p>
-              <p className="mt-2 text-[13px] text-[#8a7a60] leading-relaxed">
-                We sent a confirmation link to{" "}
-                <span className="text-[#c9922a]">{email}</span>. Click it to
-                activate your account.
+              <p
+                className="mt-3 leading-relaxed"
+                style={{ fontSize: "14px", color: "#9ca3af" }}
+              >
+                Check your email to confirm your account.
               </p>
               <button
                 type="button"
@@ -236,16 +193,30 @@ export default function AuthPage() {
                   setSignupSuccess(false);
                   setMode("signin");
                 }}
-                className="mt-4 text-[12px] text-[#c9922a] hover:text-[#e8b84b] transition-colors cursor-pointer"
+                className="mt-5 cursor-pointer transition-colors"
+                style={{ fontSize: "13px", color: "#F5A623" }}
               >
                 Back to sign in
               </button>
             </div>
           ) : (
-            /* Auth card */
-            <div className="rounded-2xl border border-[#2a2010] bg-[#0f0c07]/80 backdrop-blur-xl p-6">
+            <div
+              className="rounded-2xl"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(245,167,35,0.2)",
+                borderRadius: "16px",
+                padding: "40px",
+              }}
+            >
               {/* Mode toggle */}
-              <div className="flex items-center gap-1 bg-[#1a1208] border border-[#2a2010] rounded-lg p-0.5 mb-6">
+              <div
+                className="flex items-center gap-1 rounded-lg p-0.5 mb-7"
+                style={{
+                  backgroundColor: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                }}
+              >
                 <button
                   type="button"
                   onClick={() => {
@@ -253,11 +224,14 @@ export default function AuthPage() {
                     setError(null);
                   }}
                   className={cn(
-                    "flex-1 py-2 rounded-md font-sans text-[12px] font-semibold transition-all cursor-pointer",
-                    mode === "signin"
-                      ? "bg-[#c9922a] text-[#0a0a0b]"
-                      : "text-[#8a7a60] hover:text-[#f5f0e8]",
+                    "flex-1 py-2.5 rounded-md text-[13px] font-semibold transition-all cursor-pointer",
                   )}
+                  style={{
+                    fontFamily: "var(--font-inter, Inter, sans-serif)",
+                    backgroundColor:
+                      mode === "signin" ? "#F5A623" : "transparent",
+                    color: mode === "signin" ? "#0d0d0d" : "#6b7280",
+                  }}
                 >
                   Sign In
                 </button>
@@ -268,11 +242,14 @@ export default function AuthPage() {
                     setError(null);
                   }}
                   className={cn(
-                    "flex-1 py-2 rounded-md font-sans text-[12px] font-semibold transition-all cursor-pointer",
-                    mode === "signup"
-                      ? "bg-[#c9922a] text-[#0a0a0b]"
-                      : "text-[#8a7a60] hover:text-[#f5f0e8]",
+                    "flex-1 py-2.5 rounded-md text-[13px] font-semibold transition-all cursor-pointer",
                   )}
+                  style={{
+                    fontFamily: "var(--font-inter, Inter, sans-serif)",
+                    backgroundColor:
+                      mode === "signup" ? "#F5A623" : "transparent",
+                    color: mode === "signup" ? "#0d0d0d" : "#6b7280",
+                  }}
                 >
                   Create Account
                 </button>
@@ -282,13 +259,15 @@ export default function AuthPage() {
               <button
                 type="button"
                 onClick={handleGoogleSSO}
-                className={cn(
-                  "w-full flex items-center justify-center gap-2 h-10 rounded-lg",
-                  "border border-[#2a2010] bg-[#1a1208]",
-                  "font-sans text-[13px] font-medium text-[#f5f0e8]",
-                  "hover:border-[#c9922a44] hover:bg-[#1a120899] transition-all",
-                  "cursor-pointer",
-                )}
+                className="w-full flex items-center justify-center gap-2 h-11 rounded-lg transition-all cursor-pointer"
+                style={{
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  backgroundColor: "rgba(255,255,255,0.04)",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  color: "#e5e7eb",
+                  fontFamily: "var(--font-inter, Inter, sans-serif)",
+                }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24">
                   <path
@@ -312,18 +291,37 @@ export default function AuthPage() {
               </button>
 
               {/* Divider */}
-              <div className="flex items-center gap-3 my-5">
-                <div className="flex-1 h-px bg-[#2a2010]" />
-                <span className="font-sans text-[10px] text-[#5a4a2a] uppercase tracking-widest">
+              <div className="flex items-center gap-3 my-6">
+                <div
+                  className="flex-1 h-px"
+                  style={{ backgroundColor: "rgba(255,255,255,0.08)" }}
+                />
+                <span
+                  className="uppercase tracking-widest"
+                  style={{
+                    fontSize: "10px",
+                    color: "#4b5563",
+                    fontFamily: "var(--font-inter, Inter, sans-serif)",
+                  }}
+                >
                   or
                 </span>
-                <div className="flex-1 h-px bg-[#2a2010]" />
+                <div
+                  className="flex-1 h-px"
+                  style={{ backgroundColor: "rgba(255,255,255,0.08)" }}
+                />
               </div>
 
               {/* Error */}
               {error && (
-                <div className="mb-4 rounded-lg bg-[#dc262611] border border-[#dc262633] px-3 py-2">
-                  <p className="text-[12px] text-[#dc2626]">{error}</p>
+                <div
+                  className="mb-4 rounded-lg px-3 py-2.5"
+                  style={{
+                    backgroundColor: "rgba(220, 38, 38, 0.08)",
+                    border: "1px solid rgba(220, 38, 38, 0.2)",
+                  }}
+                >
+                  <p style={{ fontSize: "12px", color: "#ef4444" }}>{error}</p>
                 </div>
               )}
 
@@ -331,8 +329,9 @@ export default function AuthPage() {
               <form onSubmit={handleSubmit} className="space-y-3">
                 <div className="relative">
                   <Mail
-                    size={14}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5a4a2a]"
+                    size={15}
+                    className="absolute left-3 top-1/2 -translate-y-1/2"
+                    style={{ color: "#4b5563" }}
                   />
                   <input
                     type="email"
@@ -340,13 +339,21 @@ export default function AuthPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Email address"
                     required
-                    className="w-full h-10 pl-9 pr-3 rounded-lg border border-[#2a2010] bg-[#1a1208] text-[13px] text-[#f5f0e8] placeholder:text-[#5a4a2a] focus:outline-none focus:border-[#c9922a44] transition-colors"
+                    className="w-full h-11 pl-10 pr-3 rounded-lg transition-colors focus:outline-none"
+                    style={{
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      backgroundColor: "rgba(255,255,255,0.04)",
+                      fontSize: "13px",
+                      color: "#f3f4f6",
+                      fontFamily: "var(--font-inter, Inter, sans-serif)",
+                    }}
                   />
                 </div>
                 <div className="relative">
                   <Lock
-                    size={14}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5a4a2a]"
+                    size={15}
+                    className="absolute left-3 top-1/2 -translate-y-1/2"
+                    style={{ color: "#4b5563" }}
                   />
                   <input
                     type={showPassword ? "text" : "password"}
@@ -354,14 +361,22 @@ export default function AuthPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Password"
                     required
-                    className="w-full h-10 pl-9 pr-9 rounded-lg border border-[#2a2010] bg-[#1a1208] text-[13px] text-[#f5f0e8] placeholder:text-[#5a4a2a] focus:outline-none focus:border-[#c9922a44] transition-colors"
+                    className="w-full h-11 pl-10 pr-10 rounded-lg transition-colors focus:outline-none"
+                    style={{
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      backgroundColor: "rgba(255,255,255,0.04)",
+                      fontSize: "13px",
+                      color: "#f3f4f6",
+                      fontFamily: "var(--font-inter, Inter, sans-serif)",
+                    }}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#5a4a2a] hover:text-[#8a7a60] cursor-pointer"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer transition-colors"
+                    style={{ color: "#4b5563" }}
                   >
-                    {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 </div>
 
@@ -369,7 +384,12 @@ export default function AuthPage() {
                   <div className="text-right">
                     <button
                       type="button"
-                      className="font-sans text-[11px] text-[#c9922a] hover:text-[#e8b84b] transition-colors cursor-pointer"
+                      className="cursor-pointer transition-colors"
+                      style={{
+                        fontSize: "12px",
+                        color: "#F5A623",
+                        fontFamily: "var(--font-inter, Inter, sans-serif)",
+                      }}
                     >
                       Forgot password?
                     </button>
@@ -379,11 +399,13 @@ export default function AuthPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className={cn(
-                    "w-full h-10 rounded-lg font-sans text-[13px] font-semibold transition-all cursor-pointer",
-                    "bg-[#c9922a] text-[#0a0a0b] hover:bg-[#e8b84b]",
-                    "disabled:opacity-50 disabled:cursor-not-allowed",
-                  )}
+                  className="w-full h-11 rounded-lg font-semibold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    fontSize: "13px",
+                    backgroundColor: "#F5A623",
+                    color: "#0d0d0d",
+                    fontFamily: "var(--font-inter, Inter, sans-serif)",
+                  }}
                 >
                   {loading
                     ? "Please wait..."
@@ -396,7 +418,14 @@ export default function AuthPage() {
           )}
 
           {/* Footer */}
-          <p className="text-center mt-5 font-sans text-[11px] text-[#5a4a2a]">
+          <p
+            className="text-center mt-6"
+            style={{
+              fontSize: "11px",
+              color: "#4b5563",
+              fontFamily: "var(--font-inter, Inter, sans-serif)",
+            }}
+          >
             By continuing, you agree to Signalera&apos;s Terms of Service and
             Privacy Policy.
           </p>
