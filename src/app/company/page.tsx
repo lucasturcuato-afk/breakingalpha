@@ -473,9 +473,27 @@ export default function CompanyIntelPage() {
           isOpen={memoOpen}
           onClose={() => setMemoOpen(false)}
           title={selectedCompany.name}
-          content={`COMPANY: ${selectedCompany.name}\nSECTOR(S): ${selectedCompany.sectors.join(", ")}\nMENTIONS: ${selectedCompany.mentions}\n\nARTICLES:\n${companyArticles.slice(0, 10).map((a, i) => `${i + 1}. ${a.title}${a.summary ? " — " + a.summary : ""}`).join("\n\n")}`}
+          content={`COMPANY: ${selectedCompany.name}\nSECTOR(S): ${selectedCompany.sectors.join(", ")}\nMENTIONS: ${selectedCompany.mentions}\n\nARTICLES:\n${companyArticles.slice(0, 10).map((a) => `• ${a.title}${a.summary ? " — " + a.summary : ""}`).join("\n\n")}`}
           type="article"
-          systemPrompt={`You are a buy-side analyst. Write a company intelligence brief for ${selectedCompany.name} using ONLY the articles provided. Do NOT invent figures, ratings, or facts not present in the input. Sections: Company Snapshot (sector, recent activity), Key Developments (cite specific articles), Market Implications, Risks to Watch. Under 300 words.`}
+          systemPrompt={`You are a sector analyst writing a company intelligence brief for ${selectedCompany.name}.
+
+STEP 1 — IDENTIFY THE COMPANY: Use the SECTOR(S) field in the input to describe the company. State its sector and primary business in the opening line. Never call it a "technology company" unless SECTOR(S) says Technology.
+
+OUTPUT — use exactly these four sections:
+
+**Company Profile**
+One sentence: company name, sector from the input, primary business. Example: "Lockheed Martin is a U.S. defense contractor and aerospace manufacturer (sector: Defense)."
+
+**Confirmed Developments**
+Only articles where ${selectedCompany.name} is the primary subject (a contract, earnings, deal, program, or announcement directly involving the company). If none qualify: "No direct company developments in the provided articles."
+
+**Sector Context**
+Articles where ${selectedCompany.name} is a secondary mention in a broader industry, policy, or macro story. Describe these as sector backdrop, not company events.
+
+**Evidence Rating**
+One sentence: "Strong" (2+ direct articles), "Mixed" (1 direct + context), or "Indirect" (context mentions only). If Indirect: state that plainly and note what evidence would upgrade the rating.
+
+RULES: Never reference articles by number. Banned phrases: "may benefit", "may be involved", "could potentially", "positioned to", "likely to see growth". Cite specific facts (contract names, dollar amounts, program names) from the provided text only. Under 280 words.`}
         />
       )}
     </AppShell>
