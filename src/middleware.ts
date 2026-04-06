@@ -22,7 +22,9 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   const isAuthPage = request.nextUrl.pathname === '/auth'
-  const isPublicPath = request.nextUrl.pathname === '/'
+  const isPublicPath =
+    request.nextUrl.pathname === '/' ||
+    request.nextUrl.pathname.startsWith('/auth/callback')
 
   if (!user && !isAuthPage && !isPublicPath) {
     const url = request.nextUrl.clone()
