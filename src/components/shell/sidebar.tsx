@@ -17,6 +17,7 @@ import {
   TrendingUp,
   Star,
   Settings,
+  LogOut,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -124,6 +125,22 @@ export function Sidebar({
           <Link href="/settings" aria-label="Settings">
             <Settings size={14} className="text-text-faint hover:text-text-muted transition-colors" />
           </Link>
+          <button
+            type="button"
+            title="Sign out"
+            aria-label="Sign out"
+            className="text-text-faint hover:text-signal-dn transition-colors cursor-pointer"
+            onClick={async () => {
+              const supabase = createBrowserClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+              );
+              await supabase.auth.signOut();
+              window.location.href = "/";
+            }}
+          >
+            <LogOut size={14} />
+          </button>
         </div>
       </div>
     </aside>

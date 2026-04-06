@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import { ThesisList } from "@/components/thesis/ThesisList";
@@ -40,7 +40,7 @@ function convictionToSentiment(conviction: string): string {
   }
 }
 
-export default function ThesisBoardPage() {
+function ThesisBoardContent() {
   const searchParams = useSearchParams();
   const [theses, setTheses] = useState<ThesisItem[]>([]);
   const [convictionFilter, setConvictionFilter] = useState<ConvictionFilter>("all");
@@ -367,5 +367,13 @@ export default function ThesisBoardPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+export default function ThesisBoardPage() {
+  return (
+    <Suspense>
+      <ThesisBoardContent />
+    </Suspense>
   );
 }

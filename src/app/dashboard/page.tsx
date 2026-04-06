@@ -18,6 +18,7 @@ import {
   OnboardingBanner,
 } from "@/components/dashboard";
 import type { StoryData } from "@/components/dashboard";
+import { OnboardingGate } from "@/components/onboarding/onboarding-gate";
 import Link from "next/link";
 
 // Mock data — will be replaced with real API calls
@@ -94,6 +95,9 @@ export default function DashboardPage() {
       }
     >
       <div className="p-6 space-y-5 max-w-[960px]">
+        {/* Onboarding modal — shown on first session, persists data to DB */}
+        <OnboardingGate />
+
         {/* Onboarding banner */}
         <OnboardingBanner />
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, type ReactNode } from "react";
+import { createBrowserClient } from "@supabase/ssr";
 import { Sidebar } from "./sidebar";
 import { MoodBar, type MoodType } from "./mood-bar";
 import { Topbar } from "./topbar";
@@ -38,6 +39,25 @@ export function AppShell({
 }: AppShellProps) {
   const [panelOpen, setPanelOpen] = useState(true);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [userInitials, setUserInitials] = useState("–");
+
+  useEffect(() => {
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      const name = user.user_metadata?.full_name || user.email?.split("@")[0] || "";
+      const initials = name
+        .split(" ")
+        .map((w: string) => w[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2);
+      setUserInitials(initials || "–");
+    });
+  }, []);
 
   // Persist panel state
   useEffect(() => {
@@ -77,6 +97,7 @@ export function AppShell({
         {/* Topbar */}
         <Topbar
           pageTitle={pageTitle}
+          userInitials={userInitials}
           notifications={mockNotifications}
           onCommandOpen={() => setCommandOpen(true)}
         />
