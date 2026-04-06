@@ -129,7 +129,7 @@ export function Sidebar({
             type="button"
             title="Sign out"
             aria-label="Sign out"
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-text-muted hover:text-signal-dn hover:bg-signal-dn/8 transition-colors cursor-pointer text-[10px] font-sans font-medium"
+            className="text-text-faint hover:text-signal-dn transition-colors cursor-pointer"
             onClick={async () => {
               const supabase = createBrowserClient(
                 process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -139,8 +139,7 @@ export function Sidebar({
               window.location.href = "/";
             }}
           >
-            <LogOut size={12} />
-            <span>Sign out</span>
+            <LogOut size={14} />
           </button>
         </div>
       </div>
