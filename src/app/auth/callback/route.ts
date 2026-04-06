@@ -9,6 +9,7 @@ export async function GET(request: NextRequest) {
   const error = searchParams.get('error')
 
   if (error) {
+    console.error('OAuth callback error:', error)
     return NextResponse.redirect(`${origin}/auth?error=${error}`)
   }
 
@@ -28,13 +29,13 @@ export async function GET(request: NextRequest) {
         },
       }
     )
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-    if (!error) {
+    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+    if (!exchangeError) {
       return NextResponse.redirect(`${origin}/dashboard`)
     }
+    console.error('Exchange error:', exchangeError.message)
     return NextResponse.redirect(`${origin}/auth?error=exchange_failed`)
   }
 
-  // Hash fragment flow — client-side only, redirect to handler page
-  return NextResponse.redirect(`${origin}/auth/callback/client`)
+  return NextResponse.redirect(`${origin}/auth?error=no_code`)
 }

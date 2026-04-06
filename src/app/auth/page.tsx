@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 import { cn } from "@/lib/utils";
 import { Mail, Lock, Eye, EyeOff, Check } from "lucide-react";
 
 type AuthMode = "signin" | "signup";
 
 function getSupabase() {
-  return createClient(
+  return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
@@ -53,13 +53,22 @@ export default function AuthPage() {
   }
 
   async function handleGoogleSSO() {
-    const supabase = getSupabase();
-    await supabase.auth.signInWithOAuth({
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback/client`,
+        redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: {
+          access_type: "offline",
+          prompt: "consent",
+        },
       },
     });
+    if (error) console.error("OAuth error:", error.message);
   }
 
   const features = [
