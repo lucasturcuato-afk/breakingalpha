@@ -490,8 +490,12 @@ Only articles where ${selectedCompany.name} is the primary subject (a contract, 
 **Sector Context**
 Articles where ${selectedCompany.name} is a secondary mention in a broader industry, policy, or macro story. Describe these as sector backdrop, not company events.
 
-**Evidence Rating**
-One sentence: "Strong" (2+ direct articles), "Mixed" (1 direct + context), or "Indirect" (context mentions only). If Indirect: state that plainly and note what evidence would upgrade the rating.
+**Evidence Signal**
+Three lines, exactly:
+Direct evidence: [count] article(s) where ${selectedCompany.name} is the primary subject
+Context evidence: [count] article(s) where ${selectedCompany.name} is a secondary mention
+Confidence: High (2+ direct) / Medium (1 direct) / Low (0 direct)
+Then one plain-English sentence explaining what the user should trust and what is limited. Examples: "Current coverage is mostly sector backdrop, with limited company-specific reporting." / "This memo is supported by [N] company-primary articles." / "The signal is mostly indirect and should be treated as directional context, not a high-confidence company update."
 
 RULES: Never reference articles by number. Banned phrases: "may benefit", "may be involved", "could potentially", "positioned to", "likely to see growth". Cite specific facts (contract names, dollar amounts, program names) from the provided text only. Under 280 words.`}
         />
