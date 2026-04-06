@@ -34,6 +34,8 @@ interface CompanyArticle {
   summary?: string;
   published_at?: string;
   url?: string;
+  primary_company?: string | null;
+  _isDirect: boolean;
 }
 
 // Canonical name map — keys are lowercase variants, value is display name
@@ -93,6 +95,25 @@ function timeAgo(dateStr: string): string {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
+}
+
+// Returns true if rawName (from the primary_company DB field) resolves to canonicalName
+// using the same canonicalize + prefix logic as article-company matching.
+function matchesCanonical(rawName: string, canonicalName: string): boolean {
+  const rawCanon = canonicalize(rawName).toLowerCase();
+  const targetLower = canonicalName.toLowerCase();
+  if (rawCanon === targetLower) return true;
+  if (targetLower.length >= 5 && rawCanon.startsWith(targetLower)) return true;
+  if (rawCanon.length >= 5 && targetLower.startsWith(rawCanon)) return true;
+  return false;
+}
+
+function formatArticleList(arts: CompanyArticle[]): string {
+  if (arts.length === 0) return "None";
+  return arts
+    .slice(0, 6)
+    .map((a) => `• ${a.title}${a.summary ? " — " + a.summary : ""}`)
+    .join("\n\n");
 }
 
 export default function CompanyIntelPage() {
@@ -155,6 +176,32 @@ export default function CompanyIntelPage() {
     return companies.filter((c) => c.name.toLowerCase().includes(q));
   }, [companies, search]);
 
+  // Pre-classified article buckets (computed from _isDirect flag on each article)
+  const directArticles = useMemo(
+    () => companyArticles.filter((a) => a._isDirect),
+    [companyArticles],
+  );
+  const contextArticles = useMemo(
+    () => companyArticles.filter((a) => !a._isDirect),
+    [companyArticles],
+  );
+
+  // Pre-labeled memo content string — model receives classified sections, not a flat list
+  const memoContent = useMemo(() => {
+    if (!selectedCompany) return "";
+    return [
+      `COMPANY: ${selectedCompany.name}`,
+      `SECTOR(S): ${selectedCompany.sectors.join(", ")}`,
+      `MENTIONS: ${selectedCompany.mentions}`,
+      ``,
+      `DIRECT COMPANY ARTICLES (${directArticles.length}):`,
+      formatArticleList(directArticles),
+      ``,
+      `SECTOR CONTEXT ARTICLES (${contextArticles.length}):`,
+      formatArticleList(contextArticles),
+    ].join("\n");
+  }, [selectedCompany, directArticles, contextArticles]);
+
   // Load articles when a company is selected
   useEffect(() => {
     if (!selectedCompany) return;
@@ -170,7 +217,7 @@ export default function CompanyIntelPage() {
         const sectors = selectedCompany!.sectors;
         let q = getSupabase()
           .from("articles")
-          .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies")
+          .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies, primary_company")
           .order("ingested_at", { ascending: false })
           .limit(500);
         if (sectors.length === 1) q = q.eq("sector", sectors[0]);
@@ -193,16 +240,28 @@ export default function CompanyIntelPage() {
             });
           });
 
-          const mapped = matched.map((a) => ({
-            id: a.id,
-            title: a.title,
-            source: a.source,
-            sector: a.sector,
-            sentiment: a.sentiment,
-            summary: a.summary,
-            published_at: a.published_at || a.ingested_at,
-            url: a.url,
-          }));
+          const mapped = matched.map((a) => {
+            // Direct classification:
+            // - primary_company present → use matchesCanonical (post-migration articles)
+            // - primary_company absent → conservative fallback: only Direct if this
+            //   company is the SOLE entity mentioned in the article. Any multi-company
+            //   article without primary_company is treated as Context.
+            const isDirect = a.primary_company
+              ? matchesCanonical(a.primary_company, name)
+              : parseCompanies(a.companies).length === 1;
+            return {
+              id: a.id,
+              title: a.title,
+              source: a.source,
+              sector: a.sector,
+              sentiment: a.sentiment,
+              summary: a.summary,
+              published_at: a.published_at || a.ingested_at,
+              url: a.url,
+              primary_company: a.primary_company ?? null,
+              _isDirect: isDirect,
+            };
+          });
 
           setCompanyArticles(mapped);
         }
@@ -451,28 +510,31 @@ export default function CompanyIntelPage() {
           isOpen={memoOpen}
           onClose={() => setMemoOpen(false)}
           title={selectedCompany.name}
-          content={`COMPANY: ${selectedCompany.name}\nSECTOR(S): ${selectedCompany.sectors.join(", ")}\nMENTIONS: ${selectedCompany.mentions}\n\nARTICLES:\n${companyArticles.slice(0, 10).map((a) => `• ${a.title}${a.summary ? " — " + a.summary : ""}`).join("\n\n")}`}
-          type="article"
+          content={memoContent}
+          type="company"
           systemPrompt={`You are a sector analyst writing a company intelligence brief for ${selectedCompany.name}.
 
-STEP 1 — IDENTIFY THE COMPANY: Use the SECTOR(S) field in the input to describe the company. State its sector and primary business in the opening line. Never call it a "technology company" unless SECTOR(S) says Technology.
+The articles below are pre-classified. DIRECT COMPANY ARTICLES are articles where ${selectedCompany.name} is the primary subject. SECTOR CONTEXT ARTICLES are articles where it appears as a secondary mention. Use this classification exactly — do not re-classify.
 
-OUTPUT — use exactly these four sections:
+Output exactly five sections:
 
-**Company Profile**
-One sentence: company name, sector from the input, primary business. Example: "Lockheed Martin is a U.S. defense contractor and aerospace manufacturer (sector: Defense)."
+**Company Brief**
+One sentence: company name, sector from the SECTOR(S) field, primary business. Use the sector label exactly as written — do not infer business type from the company name alone.
 
-**Confirmed Developments**
-Only articles where ${selectedCompany.name} is the primary subject (a contract, earnings, deal, program, or announcement directly involving the company). If none qualify: "No direct company developments in the provided articles."
+**Recent Developments**
+Summarize only from DIRECT COMPANY ARTICLES. If that section says "None": write "No direct company developments in the current feed." Do not substitute content from Sector Context.
 
 **Sector Context**
-Articles where ${selectedCompany.name} is a secondary mention in a broader industry, policy, or macro story. Describe these as sector backdrop, not company events.
+Summarize SECTOR CONTEXT ARTICLES as industry backdrop. 2–3 sentences.
+
+**Key Watchpoints**
+2–3 watchpoints derived only from Direct articles: open deals, pending decisions, or named upcoming events stated in the text. If Direct says "None": write "Insufficient direct coverage to identify specific watchpoints."
 
 **Signal Quality**
-Choose exactly one label from: "Strong company-specific coverage" / "Limited direct evidence" / "Mostly sector context"
-Then one sentence telling the user how to read this memo. Do not use numbers or confidence scores.
+One label: "Strong company-specific coverage" / "Limited direct evidence" / "Mostly sector context"
+One sentence explaining what the user should trust in this memo.
 
-RULES: Never reference articles by number. Banned phrases: "may benefit", "may be involved", "could potentially", "positioned to", "likely to see growth". Cite specific facts (contract names, dollar amounts, program names) from the provided text only. Under 280 words.`}
+Rules: No article numbers or positions. No phrases: "may benefit", "positioned to", "could potentially". Facts and figures from the input only. Under 300 words.`}
         />
       )}
     </AppShell>

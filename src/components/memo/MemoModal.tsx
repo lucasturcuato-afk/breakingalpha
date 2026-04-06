@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { X, Copy, Check, Download, Loader2 } from "lucide-react";
 
-export type MemoType = "deal" | "thesis" | "brief" | "article";
+export type MemoType = "deal" | "thesis" | "brief" | "article" | "company";
 
 interface MemoModalProps {
   isOpen: boolean;
@@ -21,6 +21,7 @@ const TYPE_LABELS: Record<MemoType, string> = {
   thesis: "Thesis Memo",
   brief: "Market Brief",
   article: "Article Analysis",
+  company: "Company Brief",
 };
 
 export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt }: MemoModalProps) {

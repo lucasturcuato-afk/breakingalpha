@@ -67,7 +67,8 @@ Respond ONLY in valid JSON:
   "companies": ["Company A", "Company B"],
   "themes": ["M&A", "IPO", "Earnings", "Macro", "Geopolitics", "VC", "PE", "Regulation", "AI", "Crypto"],
   "sentiment": "bullish/bearish/neutral",
-  "deal_type": "M&A/IPO/Funding/Earnings/Macro/Geopolitical/Other or null"
+  "deal_type": "M&A/IPO/Funding/Earnings/Macro/Geopolitical/Other or null",
+  "primary_company": "If this article is primarily about one specific named company — covering its earnings result, contract award, IPO, acquisition, or a named announcement by that company — copy that company name exactly as it appears in the companies array above. If this article covers a sector trend, government policy, macroeconomic event, or multiple-company topic with no single primary subject, return null. Return null when uncertain. Never invent a name not present in the companies array."
 }}"""
 
 
@@ -201,7 +202,8 @@ def store_article(article, analysis):
             "themes": analysis.get("themes", []),
             "sentiment": analysis.get("sentiment", "neutral"),
             "sector": analysis.get("sector", "") if analysis.get("sector", "") in SECTORS else "",
-            "deal_type": analysis.get("deal_type")
+            "deal_type": analysis.get("deal_type"),
+            "primary_company": analysis.get("primary_company"),
         }).execute()
         article_id = r.data[0]["id"]
         for company in analysis.get("companies", []):
