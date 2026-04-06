@@ -62,7 +62,11 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 ## In Progress
 
 ### Autonomous Improvement Phase 1 — Observation Layer ✓ COMPLETE
-- **Phase 1 observation layer fully deployed:** `backend/observe.py`, `backend/critique.py`, `backend/audit.py`, `backend/trend_mapper.py`, `backend/summarize.py` integrated as non-blocking pipeline steps [1–8]. All tables live in Supabase. `summarize.py` consolidates phase 1 metrics (brief_quality_scores, selection_audit, trend_clusters) into human-readable digest to stdout after each run. Next: weekly cross-run summary (Phase 1 Summaries); optimizer/rollback/config mutation deferred to Phase 2+.
+- **Phase 1 observation layer fully deployed and validated:** `backend/observe.py`, `backend/critique.py`, `backend/audit.py`, `backend/trend_mapper.py`, `backend/summarize.py` integrated as non-blocking pipeline steps [1–8]. All tables live in Supabase. `summarize.py` consolidates phase 1 metrics (brief_quality_scores, selection_audit, trend_clusters) into human-readable digest to stdout after each run. Trend Intelligence fixed: was querying phantom columns, now correctly reads cluster_type/label/strength_score/underrepresented_flag/novelty_score from schema and aggregates per-cluster rows. GitHub Actions run 24016130118 validated: Brief Quality, Selection Quality, and Trend Intelligence all printing real production data. Next: weekly cross-run summary (Phase 1 Summaries); optimizer/rollback/config mutation deferred to Phase 2+.
+
+## Recently Completed (2026-04-05)
+
+**Trend Intelligence summary fixed (Phase 1 step 8 finalized):** Branch `fix/trend-intelligence-summary` merged (PR #54). Bug: `summarize.py` was querying phantom columns that never existed in `trend_clusters` schema, causing silent 42703 errors and empty Trend Intelligence output. Fixed: corrected SELECT to real columns (cluster_type, label, strength_score, underrepresented_flag, novelty_score); removed erroneous .limit(1); added Python aggregation across all per-cluster rows. Production validation (GitHub Actions 24016130118): all three summary sections now print real data — Brief Quality, Selection Quality, and Trend Intelligence all operational. Phase 1 observation layer + operator summary complete and validated.
 
 ## Recently Completed (2026-04-03 — Trend Mapper Phase 1 built)
 
