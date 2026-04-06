@@ -373,13 +373,20 @@ export function LandingPage() {
             </button>
           </div>
 
-          {/* Lead story — fully visible */}
-          <LeadStoryCard story={previewStories[0]} />
-
-          {/* Compact stories — 2 visible */}
-          <div className="mt-2 space-y-0">
-            <CompactStoryCard story={previewStories[1]} number={2} />
-            <CompactStoryCard story={previewStories[2]} number={3} />
+          {/* Lead story + 2 compact stories — visible but actions intercepted */}
+          {/* onClickCapture fires before child handlers, routing all clicks to /auth */}
+          <div
+            onClickCapture={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              window.location.href = "/auth";
+            }}
+          >
+            <LeadStoryCard story={previewStories[0]} />
+            <div className="mt-2 space-y-0">
+              <CompactStoryCard story={previewStories[1]} number={2} />
+              <CompactStoryCard story={previewStories[2]} number={3} />
+            </div>
           </div>
 
           {/* Gated stories */}

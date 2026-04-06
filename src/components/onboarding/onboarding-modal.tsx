@@ -48,24 +48,9 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
     return false;
   }
 
-  async function handleSkip() {
-    // Write empty preferences so this modal doesn't reappear
-    try {
-      const supabase = getSupabase();
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.access_token) {
-        await fetch("/api/preferences", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ sectors: [], modules: [], prioritize_watchlist: false }),
-        });
-      }
-    } catch {
-      // Non-fatal — we still dismiss
-    }
+  function handleSkip() {
+    // Gate re-check is localStorage-only, so just set the flag and dismiss.
+    // Do not overwrite any existing preferences the user may already have.
     localStorage.setItem("signalera_onboarded", "true");
     onComplete();
   }
