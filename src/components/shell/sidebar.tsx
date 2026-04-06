@@ -1,8 +1,10 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import { createBrowserClient } from "@supabase/ssr";
 
 import {
   LayoutGrid,
@@ -43,18 +45,37 @@ const researchNav: NavItem[] = [
 
 interface SidebarProps {
   unreadCount?: number;
-  userName?: string;
-  userRole?: string;
-  userInitials?: string;
 }
 
 export function Sidebar({
   unreadCount = 0,
-  userName = "Lucas T.",
-  userRole = "Analyst",
-  userInitials = "LT",
 }: SidebarProps) {
   const pathname = usePathname();
+  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
+
+  useEffect(() => {
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        setUser({
+          name: user.user_metadata?.full_name || user.email?.split("@")[0] || "User",
+          email: user.email || "",
+        });
+      }
+    });
+  }, []);
+
+  const userName = user?.name || "User";
+  const userInitials = userName
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+  const userRole = user?.email ? "Analyst" : "";
 
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-[var(--sidebar-width)] bg-cream border-r border-border-base flex flex-col z-40">
