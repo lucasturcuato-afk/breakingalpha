@@ -119,17 +119,19 @@ export default function CompanyIntelPage() {
 
     async function loadArticles() {
       try {
+        const name = selectedCompany!.name;
         const { data: articles } = await getSupabase()
           .from("articles")
           .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies")
-          .order("relevance_score", { ascending: false })
-          .limit(50);
+          .ilike("companies", `%${name}%`)
+          .order("ingested_at", { ascending: false })
+          .limit(100);
 
         if (articles) {
-          const name = selectedCompany!.name.toLowerCase();
+          const nameLower = name.toLowerCase();
           const matched = articles.filter((a) => {
             const cos = parseCompanies(a.companies);
-            return cos.some((c) => c.toLowerCase() === name);
+            return cos.some((c) => c.toLowerCase() === nameLower);
           });
 
           setCompanyArticles(matched.map((a) => ({

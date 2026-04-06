@@ -77,7 +77,15 @@ export default function WatchlistPage() {
     try {
       const res = await fetch("/api/watchlist");
       const { entries } = await res.json();
-      const newEntries = entries || [];
+      // Deduplicate by (normalized identifier, type) — handles any legacy duplicates
+      // already in the DB from the old batch insert path
+      const seen = new Set<string>();
+      const newEntries = (entries || []).filter((e: WatchlistEntry) => {
+        const key = `${e.identifier.toUpperCase()}::${e.type}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
       setWatchlist(newEntries);
 
       // Fetch prices for tickers

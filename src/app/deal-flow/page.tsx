@@ -644,7 +644,16 @@ function DealFlowContent() {
           isOpen={true}
           onClose={() => setMemoDeal(null)}
           title={memoDeal.company}
-          content={[memoDeal.company, memoDeal.deal_type, memoDeal.notes, memoDeal.summary].filter(Boolean).join("\n\n")}
+          content={[
+            `TARGET: ${memoDeal.company}`,
+            `ACQUIRER: ${memoDeal.acquirer || "Undisclosed"}`,
+            `TYPE: ${memoDeal.deal_type || "Undisclosed"}`,
+            `VALUE: ${memoDeal.value || memoDeal.valuation || "Undisclosed"}`,
+            `STATUS: ${memoDeal.stage || memoDeal.status || "Undisclosed"}`,
+            `SECTOR: ${memoDeal.sector || "Undisclosed"}`,
+            memoDeal.notes ? `NOTES: ${memoDeal.notes}` : null,
+            memoDeal.summary ? `CONTEXT: ${memoDeal.summary}` : null,
+          ].filter(Boolean).join("\n")}
           type="deal"
         />
       )}

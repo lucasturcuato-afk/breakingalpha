@@ -107,10 +107,13 @@ export default function MorningBriefPage() {
           });
         }
 
-        // Fetch recent articles for top stories
+        // Fetch top stories: scoped to last 48h so daily pages feel daily.
+        // Uses ingested_at per schema convention (not created_at).
+        const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
         const { data: articles } = await getSupabase()
           .from("articles")
           .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies")
+          .gte("ingested_at", cutoff48h)
           .order("relevance_score", { ascending: false })
           .limit(8);
 

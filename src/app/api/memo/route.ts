@@ -4,10 +4,10 @@ import Groq from "groq-sdk";
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const TYPE_PROMPTS: Record<string, string> = {
-  deal: "You are an M&A analyst. Write a concise deal memo: Deal Overview, Strategic Rationale, Key Risks, Valuation Considerations, Recommendation. Use bullet points. Under 300 words.",
-  thesis: "You are a buy-side equity research analyst. Write an investment thesis memo: Core Thesis, Supporting Evidence, Bear Case, Catalysts to Watch, Position Sizing. Be analytical. Under 300 words.",
-  brief: "You are a market strategist. Write a market brief: Key Macro Takeaway, Sector Implications, Trade Ideas, Risk Flags. Under 300 words.",
-  article: "You are a financial analyst. Summarize market implications: What Happened, Market Impact, Actionable Insight. Under 250 words.",
+  deal: "You are an M&A analyst. Write a concise deal memo using ONLY the facts provided in the input. Do NOT invent or infer any figures, parties, valuations, or recommendations that are not explicitly stated. If a field says 'Undisclosed' or is absent, state 'Undisclosed' — never fabricate a number or name. Sections: Deal Overview, Strategic Rationale, Key Risks. Include a Valuation section ONLY if an actual value is present in the input; omit it otherwise. Under 300 words.",
+  thesis: "You are a buy-side equity research analyst. Write an investment thesis memo using ONLY the facts provided. Do NOT invent price targets, ratings, or figures not present in the input. Sections: Core Thesis, Supporting Evidence, Bear Case, Catalysts to Watch. Under 300 words.",
+  brief: "You are a market strategist. Write a market brief: Key Macro Takeaway, Sector Implications, Risk Flags. Under 300 words.",
+  article: "You are a financial analyst. Summarize market implications using only what is stated: What Happened, Market Impact, Actionable Insight. Under 250 words.",
 };
 
 export async function POST(request: NextRequest) {
