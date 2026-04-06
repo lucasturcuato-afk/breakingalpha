@@ -34,27 +34,38 @@ supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_K
 MODEL_INGEST = "llama-3.1-8b-instant"
 MODEL_SYNTH  = "llama-3.3-70b-versatile"
 
-# Mirrors the caps in synthesize._diversify_articles().
-# If synthesize.py changes these values, update here too.
-_SECTOR_CAP = 4
-_COMPANY_CAP = 2
-_TOTAL       = 20
-_POOL_LIMIT  = 60
+# Mirrors synthesize._select_articles_for_synthesis() — the current production
+# article selector. Update these if synthesize.py changes its selection params.
+# Old logic (_diversify_articles, sector_cap=4, total=20) was replaced by PR #37.
+_SPINE_SECTOR_CAP = 3    # max articles per sector in the spine (dominant stories)
+_SPINE_COUNT      = 12   # max spine articles
+_FLOOR_COUNT      = 6    # max floor articles (breadth: one per uncovered sector)
+_FLOOR_MIN_SCORE  = 7    # min relevance_score for a floor article to qualify
+_COMPANY_CAP      = 2    # max articles per company (applied to spine only)
+_POOL_LIMIT       = 60   # article pool size fetched from Supabase (same as synthesize.py)
 
 
 def _reconstruct_selected(pool):
     """
-    Replays the same diversify-and-cap logic used in synthesize.py to
-    approximate which articles were passed to the synthesis model.
+    Replays the two-bucket spine+floor selection logic used in
+    synthesize._select_articles_for_synthesis() to approximate which articles
+    were passed to the synthesis model.
 
-    Returns a list of article dicts (up to _TOTAL items) drawn from pool,
-    which should already be sorted by relevance_score descending.
+    Spine (up to _SPINE_COUNT): greedy walk over the score-sorted pool with
+    per-sector cap of _SPINE_SECTOR_CAP and per-company cap of _COMPANY_CAP.
+    Captures the dominant editorial stories.
 
-    All rows produced from this function carry selection_source='reconstructed'.
+    Floor (up to _FLOOR_COUNT): one best article per sector NOT already covered
+    by the spine, minimum score _FLOOR_MIN_SCORE. Adds breadth coverage for
+    sectors absent from the spine.
+
+    Returns spine + floor combined. All rows produced from this function carry
+    selection_source='reconstructed'.
     """
     sector_counts  = defaultdict(int)
     company_counts = defaultdict(int)
-    selected = []
+    spine     = []
+    spine_ids = set()
 
     for a in pool:
         sector    = a.get("sector") or ""
@@ -65,20 +76,41 @@ def _reconstruct_selected(pool):
             except Exception:
                 companies = []
 
-        if sector_counts[sector] >= _SECTOR_CAP:
+        if sector_counts[sector] >= _SPINE_SECTOR_CAP:
             continue
         if companies and any(company_counts[c] >= _COMPANY_CAP for c in companies):
             continue
 
-        selected.append(a)
+        spine.append(a)
+        spine_ids.add(a.get("id"))
         sector_counts[sector] += 1
         for c in companies:
             company_counts[c] += 1
 
-        if len(selected) >= _TOTAL:
+        if len(spine) >= _SPINE_COUNT:
             break
 
-    return selected
+    # Floor: one best (highest-scoring) article per sector not in the spine.
+    # Pool is already score-sorted desc, so the first eligible article per
+    # sector encountered is automatically the best for that sector.
+    covered_sectors = {a.get("sector") or "" for a in spine}
+    best_per_sector = {}
+
+    for a in pool:
+        if a.get("id") in spine_ids:
+            continue
+        score  = a.get("relevance_score") or 0
+        sector = a.get("sector") or ""
+        if not sector or sector in covered_sectors:
+            continue
+        if score < _FLOOR_MIN_SCORE:
+            continue
+        if sector not in best_per_sector:
+            best_per_sector[sector] = a  # first = highest score for this sector
+
+    floor = list(best_per_sector.values())[:_FLOOR_COUNT]
+
+    return spine + floor
 
 
 def record_run(brief_type, started_at, ingest_count=None):
