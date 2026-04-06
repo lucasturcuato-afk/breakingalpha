@@ -1,7 +1,9 @@
 export function stripHtml(html: string | null | undefined): string {
   if (!html) return "";
   return html
-    .replace(/<[^>]*>/g, " ")
+    .replace(/<[^>]*>/g, " ")        // strip HTML tags
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")  // markdown links [text](url) → text
+    .replace(/https?:\/\/\S+/g, "")  // bare URLs
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")

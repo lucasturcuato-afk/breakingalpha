@@ -36,6 +36,48 @@ interface CompanyArticle {
   url?: string;
 }
 
+// Canonical name map — keys are lowercase variants, value is display name
+const CANONICAL: Record<string, string> = {
+  nvidia: "NVIDIA",
+  "nvidia corporation": "NVIDIA",
+  "nvidia corp": "NVIDIA",
+  alphabet: "Alphabet",
+  "alphabet inc": "Alphabet",
+  "alphabet inc.": "Alphabet",
+  google: "Alphabet",
+  "google llc": "Alphabet",
+  "google inc": "Alphabet",
+  meta: "Meta",
+  "meta platforms": "Meta",
+  "meta platforms inc": "Meta",
+  "meta platforms, inc.": "Meta",
+  facebook: "Meta",
+  "amazon.com": "Amazon",
+  "amazon.com inc": "Amazon",
+  "amazon.com, inc.": "Amazon",
+  amazon: "Amazon",
+  "apple inc": "Apple",
+  "apple inc.": "Apple",
+  apple: "Apple",
+  "microsoft corporation": "Microsoft",
+  "microsoft corp": "Microsoft",
+  microsoft: "Microsoft",
+  "jpmorgan chase": "JPMorgan Chase",
+  "jpmorgan chase & co": "JPMorgan Chase",
+  "jp morgan": "JPMorgan Chase",
+  "jpmorgan": "JPMorgan Chase",
+  "goldman sachs": "Goldman Sachs",
+  "goldman sachs group": "Goldman Sachs",
+  "the goldman sachs group": "Goldman Sachs",
+  "berkshire hathaway": "Berkshire Hathaway",
+  "berkshire hathaway inc": "Berkshire Hathaway",
+};
+
+function canonicalize(name: string): string {
+  const key = name.trim().toLowerCase().replace(/[.,]$/g, "");
+  return CANONICAL[key] ?? name.trim();
+}
+
 function parseCompanies(cos: unknown): string[] {
   if (!cos) return [];
   if (typeof cos === "string") {
@@ -62,6 +104,7 @@ export default function CompanyIntelPage() {
   const [companyArticles, setCompanyArticles] = useState<CompanyArticle[]>([]);
   const [articlesLoading, setArticlesLoading] = useState(false);
   const [memoOpen, setMemoOpen] = useState(false);
+  const [memoToast, setMemoToast] = useState("");
 
   // Build company list from article mentions
   useEffect(() => {
@@ -78,8 +121,9 @@ export default function CompanyIntelPage() {
         const compMap: Record<string, { mentions: number; sectors: Set<string> }> = {};
         articles.forEach((a) => {
           const cos = parseCompanies(a.companies);
-          cos.forEach((c) => {
-            if (!c || c.length < 2) return;
+          cos.forEach((raw) => {
+            if (!raw || raw.length < 2) return;
+            const c = canonicalize(raw);
             if (!compMap[c]) compMap[c] = { mentions: 0, sectors: new Set() };
             compMap[c].mentions++;
             if (a.sector) compMap[c].sectors.add(a.sector);
@@ -93,6 +137,16 @@ export default function CompanyIntelPage() {
             sectors: Array.from(data.sectors),
           }))
           .sort((a, b) => b.mentions - a.mentions);
+
+        // Instrumentation: log top-20 company entries and raw→canonical samples
+        // Remove after preview validation.
+        console.log("[CompanyIntel] top-20 after canonicalization:", list.slice(0, 20).map(c => `${c.name} (${c.mentions}x)`));
+        const googleGroup = list.find(c => c.name === "Alphabet");
+        const rawGoogle = list.find(c => c.name === "Google");
+        const rawAlphabet = list.find(c => c.name.toLowerCase().includes("alphabet") && c.name !== "Alphabet");
+        console.log("[CompanyIntel] 'Alphabet' group:", googleGroup ? `${googleGroup.mentions}x` : "not found");
+        console.log("[CompanyIntel] raw 'Google' card:", rawGoogle ? `${rawGoogle.mentions}x — DUPLICATE STILL PRESENT` : "correctly merged");
+        console.log("[CompanyIntel] raw 'Alphabet' variant:", rawAlphabet ? `${rawAlphabet.name} — ${rawAlphabet.mentions}x` : "none");
 
         setCompanies(list);
       } catch (e) {
@@ -120,21 +174,33 @@ export default function CompanyIntelPage() {
     async function loadArticles() {
       try {
         const name = selectedCompany!.name;
-        // companies column is jsonb (Python list → Supabase jsonb).
-        // Use contains (@>) to check array membership — ilike does not work on jsonb.
-        const { data: articles } = await getSupabase()
+        // Fetch a broad set then filter client-side using canonicalize(), so that
+        // alias variants in the DB (e.g. "Nvidia" vs "NVIDIA") all resolve correctly.
+        // Prefer sector-scoped fetch when the company maps to a single sector.
+        const sectors = selectedCompany!.sectors;
+        let q = getSupabase()
           .from("articles")
           .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies")
-          .contains("companies", [name])
           .order("ingested_at", { ascending: false })
-          .limit(200);
+          .limit(500);
+        if (sectors.length === 1) q = q.eq("sector", sectors[0]);
+        const { data: articles } = await q;
 
         if (articles) {
           const nameLower = name.toLowerCase();
-          // Client-side exact-match is secondary guard for any case normalisation edge cases
+          // Match any article whose companies array contains an entry that resolves
+          // to this canonical name OR is a prefix/suffix variant of it.
+          // e.g. "Lockheed Martin" matches "Lockheed Martin Corporation"
           const matched = articles.filter((a) => {
             const cos = parseCompanies(a.companies);
-            return cos.some((c) => c.toLowerCase() === nameLower);
+            return cos.some((c) => {
+              const cCanon = canonicalize(c).toLowerCase();
+              if (cCanon === nameLower) return true;
+              // Prefix match (min 5 chars to avoid false positives like "Ford")
+              if (nameLower.length >= 5 && cCanon.startsWith(nameLower)) return true;
+              if (cCanon.length >= 5 && nameLower.startsWith(cCanon)) return true;
+              return false;
+            });
           });
 
           setCompanyArticles(matched.map((a) => ({
@@ -298,14 +364,29 @@ export default function CompanyIntelPage() {
                   <Bookmark size={11} />
                   Add to Watchlist
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setMemoOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gold text-cream font-sans text-[11px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
-                >
-                  <Sparkles size={11} />
-                  Generate Memo
-                </button>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (articlesLoading) return;
+                      if (companyArticles.length === 0) {
+                        setMemoToast("No articles found for this company — memo cannot be grounded");
+                        setTimeout(() => setMemoToast(""), 3000);
+                        return;
+                      }
+                      setMemoOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gold text-cream font-sans text-[11px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
+                  >
+                    <Sparkles size={11} />
+                    Generate Memo
+                  </button>
+                  {memoToast && (
+                    <div className="absolute -top-9 left-0 whitespace-nowrap bg-espresso text-cream font-sans text-[10px] px-2.5 py-1.5 rounded-md z-10">
+                      {memoToast}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Articles header */}
@@ -378,8 +459,9 @@ export default function CompanyIntelPage() {
           isOpen={memoOpen}
           onClose={() => setMemoOpen(false)}
           title={selectedCompany.name}
-          content={`${selectedCompany.name} — ${selectedCompany.sectors.join(", ")}\nMentions: ${selectedCompany.mentions}\n\n${companyArticles.slice(0, 10).map((a) => `${a.title}${a.summary ? ": " + a.summary : ""}`).join("\n\n")}`}
+          content={`COMPANY: ${selectedCompany.name}\nSECTOR(S): ${selectedCompany.sectors.join(", ")}\nMENTIONS: ${selectedCompany.mentions}\n\nARTICLES:\n${companyArticles.slice(0, 10).map((a, i) => `${i + 1}. ${a.title}${a.summary ? " — " + a.summary : ""}`).join("\n\n")}`}
           type="article"
+          systemPrompt={`You are a buy-side analyst. Write a company intelligence brief for ${selectedCompany.name} using ONLY the articles provided. Do NOT invent figures, ratings, or facts not present in the input. Sections: Company Snapshot (sector, recent activity), Key Developments (cite specific articles), Market Implications, Risks to Watch. Under 300 words.`}
         />
       )}
     </AppShell>

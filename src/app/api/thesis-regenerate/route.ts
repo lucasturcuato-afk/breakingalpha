@@ -30,14 +30,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const query = supabase
+    let query = supabase
       .from("articles")
       .select(
         "id, title, source, sector, published_at, ingested_at, summary, url, companies, sentiment"
       )
       .order("ingested_at", { ascending: false })
       .limit(12);
-    if (thesis.sector) query.eq("sector", thesis.sector);
+    if (thesis.sector) query = query.eq("sector", thesis.sector);
     const { data: articles } = await query;
     const articleList = (articles || []).slice(0, 8);
 

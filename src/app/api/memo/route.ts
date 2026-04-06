@@ -10,15 +10,15 @@ const TYPE_PROMPTS: Record<string, string> = {
 Bullet list of facts from the input only: Target, Acquirer, Type, Value, Status, Sector. Use "Undisclosed" for missing facts. No commentary here.
 
 **Why It Makes Sense**
-Infer the likely strategic logic from the deal type, sector, size, and any context provided. Use grounded cautious language — "appears aimed at…", "likely reflects…", "suggests a push into…", "fits a pattern of…". This section must always be substantive. Never write "no rationale provided" or equivalent filler.
+Infer the likely strategic logic from the deal type, sector, size, and any NOTES/CONTEXT in the input. Use grounded cautious language — "appears aimed at…", "likely reflects…", "suggests a push into…". This section must always be substantive and specific to THIS deal. Banned phrases: "wave of consolidation", "consolidation trend", "broader consolidation", "part of a trend", "fits a broader pattern", "reflects broader", "amid a wave", "signals a trend". If you cannot be specific, describe what the acquirer likely gains from this specific target.
 
 **Why It Matters**
-State the investor, operator, or market implication in 2–3 concrete sentences. Do not repeat Snapshot facts unless they directly drive the implication.
+State the investor, operator, or market implication in 2–3 concrete sentences tied to the specific companies and sector. Do not write generic macro commentary. Do not repeat Snapshot facts unless they directly drive the implication.
 
 **What To Watch**
-List 2–3 grounded watchpoints: regulatory approvals, financing risk, integration complexity, signaling for the sector, execution timeline, or whether this implies broader deal activity. Infer from the deal type and sector. Never write generic placeholders.
+List 2–3 grounded watchpoints specific to THIS deal: regulatory approvals for this sector, financing risk based on the disclosed value, integration complexity between these two entities, or execution timeline for this transaction type. Never write generic watchpoints that could apply to any M&A deal.
 
-Hard rules: no invented counterparties, dollar figures, or valuation assumptions beyond what is provided. No recommendation section. No standalone valuation section. No empty sections. Under 320 words.`,
+Hard rules: no invented counterparties, dollar figures, or valuation assumptions beyond what is provided. No recommendation section. No standalone valuation section. No empty sections. Every sentence must reference something specific from the input. Under 320 words.`,
   thesis: "You are a buy-side equity research analyst. Write an investment thesis memo using ONLY the facts provided. Do NOT invent price targets, ratings, or figures not present in the input. Sections: Core Thesis, Supporting Evidence, Bear Case, Catalysts to Watch. Under 300 words.",
   brief: "You are a market strategist. Write a market brief: Key Macro Takeaway, Sector Implications, Risk Flags. Under 300 words.",
   article: "You are a financial analyst. Summarize market implications using only what is stated: What Happened, Market Impact, Actionable Insight. Under 250 words.",

@@ -13,6 +13,7 @@ interface MemoModalProps {
   title: string;
   content: string;
   type: MemoType;
+  systemPrompt?: string;
 }
 
 const TYPE_LABELS: Record<MemoType, string> = {
@@ -22,7 +23,7 @@ const TYPE_LABELS: Record<MemoType, string> = {
   article: "Article Analysis",
 };
 
-export function MemoModal({ isOpen, onClose, title, content, type }: MemoModalProps) {
+export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt }: MemoModalProps) {
   const [mounted, setMounted] = useState(false);
   const [memo, setMemo] = useState("");
   const [displayed, setDisplayed] = useState("");
@@ -48,7 +49,7 @@ export function MemoModal({ isOpen, onClose, title, content, type }: MemoModalPr
         const res = await fetch("/api/memo", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: content.slice(0, 800), type }),
+          body: JSON.stringify({ content: content.slice(0, 1500), type, ...(systemPrompt ? { systemPrompt } : {}) }),
         });
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));

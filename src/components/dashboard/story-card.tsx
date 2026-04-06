@@ -299,7 +299,6 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
       )}
       onMouseEnter={() => setExpanded(true)}
       onMouseLeave={() => setExpanded(false)}
-      onClick={() => setExpanded((prev) => !prev)}
     >
       <div className="flex items-start gap-3">
         {/* Unread indicator */}
