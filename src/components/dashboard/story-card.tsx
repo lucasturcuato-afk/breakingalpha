@@ -12,6 +12,37 @@ import { Sparkles, Plus, MessageSquare, Loader2 } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
 import type { BadgeVariant } from "@/components/ui/badge";
 
+// ---------------------------------------------------------------------------
+// Thesis match helpers — used by both card variants
+// ---------------------------------------------------------------------------
+
+const STOP_WORDS = new Set([
+  "the","a","an","and","or","but","in","on","at","to","for","of","with","by",
+  "from","as","is","are","was","were","be","been","has","have","had","will",
+  "would","could","should","may","might","this","that","these","those","it",
+  "its","i","we","they","he","she","you","new","says","said","after","over",
+  "amid","amid","amid","amid","s","its",
+]);
+
+function keyTerms(text: string): Set<string> {
+  return new Set(
+    text.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !STOP_WORDS.has(w))
+  );
+}
+
+function termOverlap(a: Set<string>, b: Set<string>): number {
+  let n = 0;
+  for (const w of a) if (b.has(w)) n++;
+  return n;
+}
+
+// Minimum meaningful term overlap required to navigate to an existing thesis.
+// Score < MATCH_THRESHOLD → toast instead of redirect.
+const MATCH_THRESHOLD = 2;
+
 export interface StoryData {
   id: string;
   title: string;
@@ -66,6 +97,7 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
   const [saved, setSaved] = useState(story.saved ?? false);
   const [memoOpen, setMemoOpen] = useState(false);
   const [addingThesis, setAddingThesis] = useState(false);
+  const [thesisToast, setThesisToast] = useState("");
   const router = useRouter();
 
   return (
@@ -155,43 +187,65 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
               <Sparkles size={11} />
               Generate Memo
             </button>
-            <button
-              type="button"
-              disabled={addingThesis}
-              onClick={async (e) => {
-                e.stopPropagation();
-                setAddingThesis(true);
-                try {
-                  const conviction = story.sentiment?.toLowerCase() === "positive" || story.sentiment?.toLowerCase() === "bullish"
-                    ? "BULLISH"
-                    : story.sentiment?.toLowerCase() === "negative" || story.sentiment?.toLowerCase() === "bearish"
-                    ? "BEARISH"
-                    : "WATCH";
-                  const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
-                  await supabase.from("theses").insert({
-                    title: story.title,
-                    conviction,
-                    sector: story.sector || "General",
-                    rationale: story.summary || "",
-                    source: story.source,
-                    status: "new-signal",
-                    generated_at: new Date().toISOString(),
-                  });
-                  router.push("/thesis-board");
-                } catch (err) {
-                  console.error("Failed to add thesis:", err);
-                } finally {
-                  setAddingThesis(false);
-                }
-              }}
-              className={cn(
-                "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment-mid border border-border-base font-sans text-[11px] font-medium text-text-secondary hover:border-border-hover transition-colors cursor-pointer",
-                "disabled:opacity-50 disabled:cursor-not-allowed",
+            <div className="relative">
+              <button
+                type="button"
+                disabled={addingThesis}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  setAddingThesis(true);
+                  setThesisToast("");
+                  try {
+                    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+                    const { data: theses } = await supabase
+                      .from("theses")
+                      .select("id, sector, title, rationale")
+                      .neq("status", "archived");
+
+                    const sector = (story.sector || "").toLowerCase();
+                    const sameSector = (theses || []).filter(
+                      (t) => (t.sector || "").toLowerCase() === sector
+                    );
+
+                    if (sameSector.length === 0) {
+                      setThesisToast("No existing thesis for this sector — visit Thesis Board to build one");
+                      setTimeout(() => setThesisToast(""), 3500);
+                    } else {
+                      // Score each same-sector thesis by term overlap with story title + summary
+                      const storyTerms = keyTerms(`${story.title} ${story.summary || ""}`);
+                      const scored = sameSector.map((t) => ({
+                        id: t.id,
+                        score: termOverlap(storyTerms, keyTerms(`${t.title} ${t.rationale || ""}`)),
+                      })).sort((a, b) => b.score - a.score);
+
+                      const best = scored[0];
+                      if (best.score >= MATCH_THRESHOLD) {
+                        router.push(`/thesis-board?thesis=${best.id}`);
+                      } else {
+                        setThesisToast("No closely related thesis found — visit Thesis Board to build one");
+                        setTimeout(() => setThesisToast(""), 3500);
+                      }
+                    }
+                  } catch (err) {
+                    console.error("Thesis match error:", err);
+                  } finally {
+                    setAddingThesis(false);
+                  }
+                }}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment-mid border border-border-base font-sans text-[11px] font-medium text-text-secondary hover:border-border-hover transition-colors cursor-pointer",
+                  "disabled:opacity-50 disabled:cursor-not-allowed",
+                )}
+              >
+                {addingThesis ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+                {addingThesis ? "Matching..." : "Thesis"}
+              </button>
+              {thesisToast && (
+                <div className="absolute -top-8 left-0 whitespace-nowrap bg-espresso text-cream font-sans text-[10px] px-2.5 py-1 rounded-md z-10">
+                  {thesisToast}
+                </div>
               )}
-            >
-              {addingThesis ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
-              {addingThesis ? "Adding..." : "Thesis"}
-            </button>
+            </div>
             <button
               type="button"
               onClick={() => {
@@ -227,6 +281,7 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
   const [expanded, setExpanded] = useState(false);
   const [memoOpen, setMemoOpen] = useState(false);
   const [addingThesis, setAddingThesis] = useState(false);
+  const [thesisToast, setThesisToast] = useState("");
   const router = useRouter();
 
   // Reset expanded when story changes
@@ -244,7 +299,6 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
       )}
       onMouseEnter={() => setExpanded(true)}
       onMouseLeave={() => setExpanded(false)}
-      onClick={() => setExpanded((prev) => !prev)}
     >
       <div className="flex items-start gap-3">
         {/* Unread indicator */}
@@ -308,43 +362,64 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
                 <Sparkles size={11} />
                 Generate Memo
               </button>
-              <button
-                type="button"
-                disabled={addingThesis}
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  setAddingThesis(true);
-                  try {
-                    const conviction = story.sentiment?.toLowerCase() === "positive" || story.sentiment?.toLowerCase() === "bullish"
-                      ? "BULLISH"
-                      : story.sentiment?.toLowerCase() === "negative" || story.sentiment?.toLowerCase() === "bearish"
-                      ? "BEARISH"
-                      : "WATCH";
-                    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
-                    await supabase.from("theses").insert({
-                      title: story.title,
-                      conviction,
-                      sector: story.sector || "General",
-                      rationale: story.summary || "",
-                      source: story.source,
-                      status: "new-signal",
-                      generated_at: new Date().toISOString(),
-                    });
-                    router.push("/thesis-board");
-                  } catch (err) {
-                    console.error("Failed to add thesis:", err);
-                  } finally {
-                    setAddingThesis(false);
-                  }
-                }}
-                className={cn(
-                  "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment border border-border-base font-sans text-[11px] font-medium text-text-secondary hover:border-border-hover transition-colors cursor-pointer",
-                  "disabled:opacity-50 disabled:cursor-not-allowed",
+              <div className="relative">
+                <button
+                  type="button"
+                  disabled={addingThesis}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    setAddingThesis(true);
+                    setThesisToast("");
+                    try {
+                      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+                      const { data: theses } = await supabase
+                        .from("theses")
+                        .select("id, sector, title, rationale")
+                        .neq("status", "archived");
+
+                      const sector = (story.sector || "").toLowerCase();
+                      const sameSector = (theses || []).filter(
+                        (t) => (t.sector || "").toLowerCase() === sector
+                      );
+
+                      if (sameSector.length === 0) {
+                        setThesisToast("No existing thesis for this sector — visit Thesis Board to build one");
+                        setTimeout(() => setThesisToast(""), 3500);
+                      } else {
+                        const storyTerms = keyTerms(`${story.title} ${story.summary || ""}`);
+                        const scored = sameSector.map((t) => ({
+                          id: t.id,
+                          score: termOverlap(storyTerms, keyTerms(`${t.title} ${t.rationale || ""}`)),
+                        })).sort((a, b) => b.score - a.score);
+
+                        const best = scored[0];
+                        if (best.score >= MATCH_THRESHOLD) {
+                          router.push(`/thesis-board?thesis=${best.id}`);
+                        } else {
+                          setThesisToast("No closely related thesis found — visit Thesis Board to build one");
+                          setTimeout(() => setThesisToast(""), 3500);
+                        }
+                      }
+                    } catch (err) {
+                      console.error("Thesis match error:", err);
+                    } finally {
+                      setAddingThesis(false);
+                    }
+                  }}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment border border-border-base font-sans text-[11px] font-medium text-text-secondary hover:border-border-hover transition-colors cursor-pointer",
+                    "disabled:opacity-50 disabled:cursor-not-allowed",
+                  )}
+                >
+                  {addingThesis ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+                  {addingThesis ? "Matching..." : "Thesis"}
+                </button>
+                {thesisToast && (
+                  <div className="absolute -top-8 left-0 whitespace-nowrap bg-espresso text-cream font-sans text-[10px] px-2.5 py-1 rounded-md z-10">
+                    {thesisToast}
+                  </div>
                 )}
-              >
-                {addingThesis ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
-                {addingThesis ? "Adding..." : "Thesis"}
-              </button>
+              </div>
               <button
                 type="button"
                 onClick={(e) => {

@@ -71,9 +71,10 @@ interface ThesisDetailPanelProps {
   thesis: ThesisItem | null;
   articles: any[];
   onArchive: (id: string) => void;
+  onRegenerate?: () => void;
 }
 
-export function ThesisDetailPanel({ thesis, articles, onArchive }: ThesisDetailPanelProps) {
+export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }: ThesisDetailPanelProps) {
   const [noteText, setNoteText] = useState("");
   const [noteSaved, setNoteSaved] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
@@ -184,6 +185,8 @@ export function ThesisDetailPanel({ thesis, articles, onArchive }: ThesisDetailP
       });
       if (!res.ok) throw new Error(`API error: ${res.status}`);
       showToast("Regenerated");
+      // Notify parent to re-fetch theses so catalyst_note and rationale update in UI
+      onRegenerate?.();
     } catch (e) {
       console.error(e);
       showToast("Failed to regenerate");

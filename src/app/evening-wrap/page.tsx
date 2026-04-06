@@ -60,6 +60,7 @@ export default function EveningWrapPage() {
   const [loading, setLoading] = useState(true);
   const [sectorFilter, setSectorFilter] = useState<string | null>(null);
   const [stories, setStories] = useState<StoryData[]>([]);
+  const [storiesLabel, setStoriesLabel] = useState("Today's Top Stories");
   const [memoOpen, setMemoOpen] = useState(false);
   const [memoTitle, setMemoTitle] = useState("");
   const [memoContent, setMemoContent] = useState("");
@@ -88,11 +89,31 @@ export default function EveningWrapPage() {
           });
         }
 
-        const { data: articles } = await getSupabase()
+        // Fetch top stories: 24h window primary (Today's Top Stories).
+        // Falls back to 48h if fewer than 3 fresh articles, labelled "Recent Stories".
+        // Uses ingested_at per schema convention (not created_at).
+        const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+
+        let { data: articles } = await getSupabase()
           .from("articles")
           .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies")
+          .gte("ingested_at", cutoff24h)
           .order("relevance_score", { ascending: false })
           .limit(8);
+
+        let label = "Today's Top Stories";
+        if ((articles?.length ?? 0) < 3) {
+          const { data: fallback } = await getSupabase()
+            .from("articles")
+            .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies")
+            .gte("ingested_at", cutoff48h)
+            .order("relevance_score", { ascending: false })
+            .limit(8);
+          articles = fallback;
+          label = "Recent Stories";
+        }
+        setStoriesLabel(label);
 
         if (articles) {
           setStories(articles.map((a) => ({
@@ -326,7 +347,7 @@ export default function EveningWrapPage() {
             {stories.length > 0 && (
               <section>
                 <h2 className="font-sans text-[10px] uppercase tracking-widest font-bold text-text-muted mb-3">
-                  Today&apos;s Top Stories
+                  {storiesLabel}
                 </h2>
                 <LeadStoryCard story={stories[0]} />
                 <div className="mt-2">
