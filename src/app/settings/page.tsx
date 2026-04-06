@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { User, Bell, Puzzle, Palette, Users, Save, Check } from "lucide-react";
 import { useTheme } from "@/components/providers/theme-provider";
+import { createBrowserClient } from "@supabase/ssr";
 
 type SettingsTab = "profile" | "notifications" | "integrations" | "appearance" | "team";
 
@@ -76,23 +77,32 @@ export default function SettingsPage() {
 
 /* ── Profile ── */
 function ProfileTab() {
-  const [name, setName] = useState("Lucas Turcuato");
-  const [email, setEmail] = useState("lucas@signalera.com");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [role, setRole] = useState("Analyst");
   const [selectedSectors, setSelectedSectors] = useState<string[]>(["Technology M&A", "Public Markets", "Venture Capital"]);
   const [selectedModules, setSelectedModules] = useState<string[]>(["Macro & Rates", "Deals & M&A"]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // Load preferences from API + localStorage on mount
+  // Load profile from live auth session + preferences from API
   useEffect(() => {
-    // Load profile from localStorage
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        setName(user.user_metadata?.full_name || user.email?.split("@")[0] || "");
+        setEmail(user.email || "");
+      }
+    });
+
+    // Load role from localStorage (user-editable)
     try {
       const stored = localStorage.getItem("signalera_profile");
       if (stored) {
         const p = JSON.parse(stored);
-        if (p.name) setName(p.name);
-        if (p.email) setEmail(p.email);
         if (p.role) setRole(p.role);
       }
     } catch { /* ignore */ }

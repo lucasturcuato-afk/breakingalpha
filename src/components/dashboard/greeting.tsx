@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createBrowserClient } from "@supabase/ssr";
 
 interface GreetingProps {
-  firstName?: string;
   storyCount?: number;
   context?: string;
 }
@@ -36,13 +36,30 @@ function formatDate(): string {
 }
 
 export function Greeting({
-  firstName = "there",
   storyCount = 0,
   context = "markets are adjusting to new data.",
 }: GreetingProps) {
   const [mounted, setMounted] = useState(false);
+  const [userName, setUserName] = useState("there");
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        const name =
+          user.user_metadata?.full_name?.split(" ")[0] ||
+          user.user_metadata?.name?.split(" ")[0] ||
+          user.email?.split("@")[0] ||
+          "there";
+        setUserName(name);
+      }
+    });
+  }, []);
 
   // Prevent hydration mismatch — render placeholder until client
   if (!mounted) {
@@ -65,7 +82,7 @@ export function Greeting({
         {dateStr} · {marketStatus}
       </p>
       <h2 className="font-display text-[28px] font-extrabold text-espresso mt-1 leading-tight">
-        Good {timeOfDay}, {firstName}.
+        Good {timeOfDay}, {userName}.
       </h2>
       <p className="font-sans text-[13px] text-text-secondary mt-1">
         {storyCount > 0

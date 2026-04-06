@@ -102,7 +102,6 @@ export default function DashboardPage() {
 
         {/* Greeting */}
         <Greeting
-          firstName="Lucas"
           storyCount={14}
           context="markets are adjusting to new export policy data."
         />
