@@ -36,6 +36,10 @@
 - Thesis Board frontend — Thesis button wiring merged (lucas/thesis-board-live): Live Feed "Thesis" button fetches theses, matches article sector, navigates to `/thesis-board?thesis=<id>`; thesis board auto-selects from URL param
 - Signalera V2 rebrand — full rebrand shipped: logo, fonts (Playfair Display + Inter + JetBrains Mono), gold #F5A623 accent, auth middleware, PKCE OAuth flow, per-session user isolation, watchlist API auth fix
 - Phase 1 hardening — observe.py reconstruction accuracy fix (PR #56): `_reconstruct_selected()` rewritten to mirror current spine+floor selector (spine=12, floor=6, sector_cap=3, floor_min=7); `audit.py` `_TARGET_COUNT` corrected 20→18; stale `_diversify_articles` logic removed
+- Company Intel major overhaul — `primary_company` ingest field, Direct/Context pre-classification, COMPANY_INDUSTRY hardcoded map (34 entries), Signal Quality controlled labels (Strong/Limited/Mostly sector context), removed Coverage Themes from UI
+- Morning Brief hover fix — removed onClick toggle from CompactStoryCard outer div
+- Thesis Board fixes — `.order("ingested_at")` (was "published_at"), onRegenerate callback chains parent fetchTheses() for catalyst note refresh, sector filter bug fixed (was discarding query return value)
+- Backend synthesize.py cross-topic ban — banned phrases ("while", "as", "amid", "alongside") removed when joining unrelated topics in morning/evening briefs
 
 ## In Progress
 (none)

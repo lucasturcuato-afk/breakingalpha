@@ -41,7 +41,7 @@ GROQ_API_KEY, NEWS_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
 - **Supabase URL Config:** Site URL = `https://breakingalpha.vercel.app`; Additional Redirect URLs must include `https://*.vercel.app/**` for preview deployments to work with Google OAuth
 
 ## Supabase Schema
-**articles:** id, title, summary, content, url, source, published_at, ingested_at, relevance_score, relevance_reason, companies, themes, sentiment, sector, deal_type
+**articles:** id, title, summary, content, url, source, published_at, ingested_at, relevance_score, relevance_reason, companies, themes, sentiment, sector, deal_type, primary_company (TEXT, nullable)
 
 **briefings:** briefing_type, headline, summary, created_at, market_tone (text), sections (jsonb), top_deals (jsonb), sector_breakdown (jsonb)
 
@@ -52,6 +52,9 @@ GROQ_API_KEY, NEWS_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
 **watchlist:** id (uuid), user_id, identifier (text), type (enum: ticker/company/sector), created_at, updated_at. User-scoped RLS (read/insert/delete own rows).
 
 **pipeline_runs, run_articles, brief_quality_scores, selection_audit, trend_clusters:** Phase 1 observation layer tables — see git history for schemas.
+
+## Recently Completed (2026-04-06)
+Company Intel major overhaul: `primary_company` field at ingest, Direct/Context pre-classification, COMPANY_INDUSTRY hardcoded map (34 entries), Signal Quality controlled labels. Removed Coverage Themes from UI. Fixed Morning Brief hover, Thesis Board ordering + regenerate callback, synthesize.py cross-topic ban.
 
 ## What Was Done This Session (2026-04-06) — PR #57 merged to main
 
@@ -79,12 +82,16 @@ GROQ_API_KEY, NEWS_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
 9. **Weekly cross-run operator summary (PR #55)** — `backend/weekly_summary.py` aggregates observation metrics across the last 5 pipeline runs; surfaces selection quality trends, brief quality patterns, cluster momentum. Merged and production-validated.
 10. **Phase 1 hardening — observe.py reconstruction fix (PR #56)** — `_reconstruct_selected()` rewritten to mirror current `synthesize._select_articles_for_synthesis()` (spine=12, floor=6, sector_cap=3, floor_min=7). `audit.py` `_TARGET_COUNT` corrected 20→18. Stale `_diversify_articles` reconstruction logic replaced. No schema changes.
 
-### Still Broken / In Progress
+## Pending / Known Issues
+- **Supabase schema migration** — `ALTER TABLE articles ADD COLUMN IF NOT EXISTS primary_company TEXT;` must be run on prod Supabase before articles ingest post-merge. Old articles will use conservative Direct fallback.
 - **Supabase redirect allowlist** — Preview OAuth (Vercel preview deployments) requires `https://*.vercel.app/**` in Supabase → Authentication → URL Configuration → Additional Redirect URLs. Must be set manually in Supabase dashboard.
 - **Watchlist add may still fail** — API route is now authed correctly, but RLS policies may need updating in Supabase to match `auth.uid()` instead of the old hardcoded user_id. Check Supabase RLS on `watchlist` table.
 - **Google OAuth consent screen** shows Supabase project name instead of "Signalera" — update in Google Cloud Console > OAuth consent screen
 - **StoryCard Thesis button** (dashboard story cards) still inserts a new thesis directly instead of matching existing ones — only FeedRow button was updated
-- **Post-merge validation needed for PR #56** — after next scheduled pipeline run, confirm in Actions logs: `[6/8] AUDIT` prints `selected=N/18` (not N/20), and `[8/8] SUMMARY` Selection Quality shows `sel/18`. Run: `gh workflow run schedule.yml --field mode=morning`
+- **COMPANY_INDUSTRY map** (34 entries, hardcoded) should eventually migrate to `company_profiles` Supabase table (ticker, description, source fields) for broader coverage
+- **Key Watchpoints / Sector Context thin for low-coverage companies** — article data quality issue, not a code issue; defer until article ingest improves
+- **Article inputs constrained to 500-char RSS summaries** — memo depth limited; full content archival deferred
+- **Earnings calendar integration** — requires ticker field + FMP/Polygon API; deferred
 
 ## Nav Tabs
 1. Dashboard — greeting, stat cards, top stories
