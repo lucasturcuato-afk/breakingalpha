@@ -9,6 +9,7 @@ import { WatchlistStep } from "./watchlist-step";
 import { Button } from "@/components/ui/button";
 
 interface OnboardingModalProps {
+  userId: string;
   onComplete: () => void;
 }
 
@@ -19,7 +20,7 @@ function getSupabase() {
   );
 }
 
-export function OnboardingModal({ onComplete }: OnboardingModalProps) {
+export function OnboardingModal({ userId, onComplete }: OnboardingModalProps) {
   const [step, setStep] = useState(1);
   const [role, setRole] = useState<string | null>(null);
   const [sectors, setSectors] = useState<string[]>([]);
@@ -49,9 +50,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
   }
 
   function handleSkip() {
-    // Gate re-check is localStorage-only, so just set the flag and dismiss.
-    // Do not overwrite any existing preferences the user may already have.
-    localStorage.setItem("signalera_onboarded", "true");
+    localStorage.setItem(`signalera_onboarded_${userId}`, "true");
     onComplete();
   }
 
@@ -119,7 +118,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
         }
       }
 
-      localStorage.setItem("signalera_onboarded", "true");
+      localStorage.setItem(`signalera_onboarded_${userId}`, "true");
       onComplete();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
