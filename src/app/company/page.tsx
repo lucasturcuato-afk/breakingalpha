@@ -35,6 +35,7 @@ interface CompanyArticle {
   published_at?: string;
   url?: string;
   primary_company?: string | null;
+  relevance_score?: number;
   _isDirect: boolean;
 }
 
@@ -157,7 +158,10 @@ function formatArticleList(arts: CompanyArticle[]): string {
   if (arts.length === 0) return "None";
   return arts
     .slice(0, 6)
-    .map((a) => `• ${a.title}${a.summary ? " — " + a.summary : ""}`)
+    .map((a) => {
+      const summary = a.summary ? ` — ${a.summary.slice(0, 120)}` : "";
+      return `• ${a.title}${summary}`;
+    })
     .join("\n\n");
 }
 
@@ -233,21 +237,38 @@ export default function CompanyIntelPage() {
 
   // Pre-labeled memo content string — model receives classified sections, not a flat list.
   // COMPANY INDUSTRY comes from the hardcoded map (what the company IS).
-  // COVERAGE THEMES comes from article-sector aggregation (what stories cover it).
-  // These are intentionally kept separate so the model cannot conflate them.
+  // SIGNAL QUALITY is computed deterministically from direct article count — not delegated to the model.
   const memoContent = useMemo(() => {
     if (!selectedCompany) return "";
     const industry = COMPANY_INDUSTRY[selectedCompany.name] ?? "Unknown";
+
+    // Sort each bucket by relevance_score DESC, then published_at DESC as tie-breaker.
+    // This ensures the highest-signal articles reach the model, not just the newest.
+    const byRelevance = (arts: CompanyArticle[]) =>
+      [...arts].sort((a, b) => {
+        const scoreDiff = (b.relevance_score ?? 5) - (a.relevance_score ?? 5);
+        if (scoreDiff !== 0) return scoreDiff;
+        const dateA = a.published_at ? new Date(a.published_at).getTime() : 0;
+        const dateB = b.published_at ? new Date(b.published_at).getTime() : 0;
+        return dateB - dateA;
+      });
+
+    // Deterministic signal quality — computed here, not guessed by the model.
+    const signalLabel =
+      directArticles.length >= 3 ? "Strong company-specific coverage"
+      : directArticles.length >= 1 ? "Limited direct evidence"
+      : "Mostly sector context";
+
     return [
       `COMPANY: ${selectedCompany.name}`,
       `COMPANY INDUSTRY: ${industry}`,
-      `MENTIONS: ${selectedCompany.mentions}`,
+      `SIGNAL QUALITY: ${signalLabel}`,
       ``,
       `DIRECT COMPANY ARTICLES (${directArticles.length}):`,
-      formatArticleList(directArticles),
+      formatArticleList(byRelevance(directArticles)),
       ``,
       `SECTOR CONTEXT ARTICLES (${contextArticles.length}):`,
-      formatArticleList(contextArticles),
+      formatArticleList(byRelevance(contextArticles)),
     ].join("\n");
   }, [selectedCompany, directArticles, contextArticles]);
 
@@ -266,7 +287,7 @@ export default function CompanyIntelPage() {
         const sectors = selectedCompany!.sectors;
         let q = getSupabase()
           .from("articles")
-          .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies, primary_company")
+          .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies, primary_company, relevance_score")
           .order("ingested_at", { ascending: false })
           .limit(500);
         if (sectors.length === 1) q = q.eq("sector", sectors[0]);
@@ -308,6 +329,7 @@ export default function CompanyIntelPage() {
               published_at: a.published_at || a.ingested_at,
               url: a.url,
               primary_company: a.primary_company ?? null,
+              relevance_score: typeof a.relevance_score === "number" ? a.relevance_score : undefined,
               _isDirect: isDirect,
             };
           });
@@ -447,6 +469,11 @@ export default function CompanyIntelPage() {
                         setTimeout(() => setMemoToast(""), 3000);
                         return;
                       }
+                      if (directArticles.length === 0) {
+                        setMemoToast("No direct company coverage in the current feed — cannot generate a grounded brief");
+                        setTimeout(() => setMemoToast(""), 4000);
+                        return;
+                      }
                       setMemoOpen(true);
                     }}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gold text-cream font-sans text-[11px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
@@ -466,6 +493,18 @@ export default function CompanyIntelPage() {
               <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">
                 Articles Mentioning {selectedCompany.name.toUpperCase()} ({companyArticles.length})
               </p>
+
+              {/* Sparse-evidence notice — shown when articles exist but none are direct */}
+              {!articlesLoading && companyArticles.length > 0 && directArticles.length === 0 && (
+                <div className="mb-4 px-3 py-2.5 rounded-xl border border-border-base bg-parchment-mid">
+                  <p className="font-sans text-[11px] font-semibold text-text-primary leading-snug">
+                    No direct coverage in the current feed window.
+                  </p>
+                  <p className="font-sans text-[11px] text-text-secondary leading-snug mt-0.5">
+                    {selectedCompany.name} appears as a secondary mention in {contextArticles.length} sector article{contextArticles.length !== 1 ? "s" : ""}. A grounded brief cannot be generated.
+                  </p>
+                </div>
+              )}
 
               {/* Articles */}
               {articlesLoading ? (
@@ -536,9 +575,9 @@ export default function CompanyIntelPage() {
           type="company"
           systemPrompt={`You are a sector analyst writing a company intelligence brief for ${selectedCompany.name}.
 
-The input provides two separate fields:
+The input provides:
 - COMPANY INDUSTRY: what the company actually is. Use this for identity.
-- COVERAGE THEMES: what kinds of stories are currently covering it. Do not use this for identity.
+- SIGNAL QUALITY: pre-computed evidence label — use verbatim in the Signal Quality section.
 
 The articles are pre-classified as DIRECT (primary subject) or SECTOR CONTEXT (secondary mention).
 
@@ -547,7 +586,7 @@ Output the following sections:
 **Company Brief**
 Only include this section if COMPANY INDUSTRY is not "Unknown".
 One sentence: company name, its COMPANY INDUSTRY, and primary business. Example: "Lockheed Martin is a U.S. Aerospace & Defense company focused on advanced weapons systems and government contracts."
-If COMPANY INDUSTRY is "Unknown": omit this section entirely. Do not write it, do not guess, do not use COVERAGE THEMES as a substitute.
+If COMPANY INDUSTRY is "Unknown": omit this section entirely. Do not write it, do not guess.
 
 **Recent Developments**
 Summarize only from DIRECT COMPANY ARTICLES. If that section says "None": write "No direct company developments in the current feed." Do not substitute from Sector Context.
@@ -559,8 +598,7 @@ Summarize SECTOR CONTEXT ARTICLES as industry backdrop. 2–3 sentences.
 2–3 watchpoints from Direct articles only: open deals, pending decisions, named upcoming events. If Direct says "None": write "Insufficient direct coverage to identify specific watchpoints."
 
 **Signal Quality**
-One label: "Strong company-specific coverage" / "Limited direct evidence" / "Mostly sector context"
-One sentence.
+Use the SIGNAL QUALITY label from the input exactly as written. One sentence on what the evidence covers.
 
 Rules: No article numbers. No phrases: "may benefit", "positioned to", "could potentially". Facts and figures from input only. Under 300 words.`}
         />

@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
   // New path: type-based memo with content string
   if (content || systemPrompt) {
     const system = systemPrompt || TYPE_PROMPTS[type] || TYPE_PROMPTS.article;
-    const truncated = (content || "").slice(0, 1500);
+    const truncated = (content || "").slice(0, 4000);
 
     try {
       const completion = await groq.chat.completions.create({

@@ -50,7 +50,7 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt 
         const res = await fetch("/api/memo", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: content.slice(0, 1500), type, ...(systemPrompt ? { systemPrompt } : {}) }),
+          body: JSON.stringify({ content, type, ...(systemPrompt ? { systemPrompt } : {}) }),
         });
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
