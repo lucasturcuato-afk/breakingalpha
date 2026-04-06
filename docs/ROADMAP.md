@@ -31,15 +31,16 @@
 - Sector classification fix — explicit sector instruction + validation in ingest.py; sector names aligned to SECTORS list; old blank-sector rows not backfilled (2026-04-04)
 - sector_breakdown schema-echo fix — fixed "note" key parsing bug in synthesize.py system prompts; added _validate_sector_breakdown() parser hardening (PR #43)
 - Autonomous Improvement Phase 1 — Trend Mapper: `backend/trend_mapper.py` built and merged (PR #51); clusters related articles into persistent/emerging narratives; non-blocking step 7 in pipeline; live-validated 2026-04-04 (6 clusters written to trend_clusters table, 1 underrepresented cluster flagged, all "emerging" due to first-run lookback=0)
+- Autonomous Improvement Phase 1 — Post-run operator summary: `backend/summarize.py` merged (PR #54); reads brief_quality_scores, selection_audit, trend_clusters for current run_id; prints consolidated digest to stdout (headline pass/fail, banned phrase hits, section presence, article selection metrics, sector concentration flag, cluster count, volatility). Trend Intelligence summary fixed: was querying phantom columns, now correctly aggregates cluster metrics. All three summary sections (Brief Quality, Selection Quality, Trend Intelligence) validated live 2026-04-05 (GitHub Actions 24016130118)
 
 ## In Progress
 - Thesis Board frontend — Lucas (lucas/thesis-board-live)
 
 ## Next — Noah
-### Autonomous Improvement Phase 1 (observation layer complete ✓)
-- Run Recorder ✓, Brief Critic ✓, Selection Auditor V1 ✓, Trend Mapper ✓ — all live and validated
-- **Next Phase 1 work:** Scheduled automatic post-run jobs (daily/weekly operator summaries)
-- Phase 2+ (optimizer, rollback, config mutation) deferred until Phase 1 summaries are live
+### Autonomous Improvement Phase 1 (observation + post-run summary complete ✓)
+- Run Recorder ✓, Brief Critic ✓, Selection Auditor V1 ✓, Trend Mapper ✓, Post-run Summary ✓ — all live and validated
+- **Next Phase 1 work:** Weekly cross-run summary (aggregate observation metrics across 5 pipeline runs, identify patterns, surface operator insights)
+- Phase 2+ (optimizer, rollback, config mutation) deferred until Phase 1 summaries are complete
 
 ### Brief quality (residual — in priority order)
 - **Near-duplicate stories with different wording** — exact-title dedup is live (PR #45); same story under materially different headlines still survives; next step is fuzzy/semantic dedup if this remains noisy

@@ -1,0 +1,48 @@
+name: BreakingAlpha Weekly Summary
+
+on:
+  schedule:
+    - cron: '0 15 * * 1'   # Monday 7am PT (15:00 UTC)
+  workflow_dispatch:
+    inputs:
+      brief_type:
+        description: 'morning or evening'
+        default: 'morning'
+        type: choice
+        options: [morning, evening]
+      lookback:
+        description: 'Number of recent runs to include (default 10)'
+        default: '10'
+        type: string
+
+jobs:
+  weekly-summary:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Determine inputs
+        id: inputs
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "brief_type=${{ github.event.inputs.brief_type }}" >> $GITHUB_OUTPUT
+            echo "lookback=${{ github.event.inputs.lookback }}" >> $GITHUB_OUTPUT
+          else
+            echo "brief_type=morning" >> $GITHUB_OUTPUT
+            echo "lookback=10" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run weekly summary
+        working-directory: backend
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: python weekly_summary.py ${{ steps.inputs.outputs.brief_type }} ${{ steps.inputs.outputs.lookback }}
