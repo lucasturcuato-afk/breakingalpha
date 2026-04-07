@@ -54,7 +54,7 @@ GROQ_API_KEY, NEWS_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
 **pipeline_runs, run_articles, brief_quality_scores, selection_audit, trend_clusters:** Phase 1 observation layer tables — see git history for schemas.
 
 ## Recently Completed (2026-04-06)
-Company Intel major overhaul: `primary_company` field at ingest, Direct/Context pre-classification, COMPANY_INDUSTRY hardcoded map (34 entries), Signal Quality controlled labels. Removed Coverage Themes from UI. Fixed Morning Brief hover, Thesis Board ordering + regenerate callback, synthesize.py cross-topic ban.
+Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with COMPANY_IDENTITY structured map (industry + pre-built analyst brief), injected analyst-quality sentences verbatim, tightened prompt instructions (Current Context/What To Watch prohibited from naming events outside article list). Classification hardening arc complete (primary_company matching, tiered gates, isSubjectOfTitle). 35 companies covered; prompt leakage resolved.
 
 ## What Was Done This Session (2026-04-06) — PR #57 merged to main
 
@@ -88,7 +88,7 @@ Company Intel major overhaul: `primary_company` field at ingest, Direct/Context 
 - **Watchlist add may still fail** — API route is now authed correctly, but RLS policies may need updating in Supabase to match `auth.uid()` instead of the old hardcoded user_id. Check Supabase RLS on `watchlist` table.
 - **Google OAuth consent screen** shows Supabase project name instead of "Signalera" — update in Google Cloud Console > OAuth consent screen
 - **StoryCard Thesis button** (dashboard story cards) still inserts a new thesis directly instead of matching existing ones — only FeedRow button was updated
-- **COMPANY_INDUSTRY map** (34 entries, hardcoded) should eventually migrate to `company_profiles` Supabase table (ticker, description, source fields) for broader coverage
+- **COMPANY_IDENTITY map** (35 entries, hardcoded) should eventually migrate to `company_profiles` Supabase table (ticker, industry, brief, source fields) for broader coverage
 - **Key Watchpoints / Sector Context thin for low-coverage companies** — article data quality issue, not a code issue; defer until article ingest improves
 - **Article inputs constrained to 500-char RSS summaries** — memo depth limited; full content archival deferred
 - **Earnings calendar integration** — requires ticker field + FMP/Polygon API; deferred
