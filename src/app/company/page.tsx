@@ -35,7 +35,12 @@ interface CompanyArticle {
   published_at?: string;
   url?: string;
   primary_company?: string | null;
-  _isDirect: boolean;
+  relevance_score?: number;
+  deal_type?: string | null;
+  // True when the article describes a company-specific event (earnings, funding, M&A, IPO,
+  // contract award, product launch). Distinct from "company is primary subject" — a geopolitical
+  // story where NVIDIA is the primary subject is NOT a development.
+  _isDevelopment: boolean;
 }
 
 // Canonical name map — keys are lowercase variants, value is display name
@@ -75,49 +80,53 @@ const CANONICAL: Record<string, string> = {
   "berkshire hathaway inc": "Berkshire Hathaway",
 };
 
-// Company industry map — what the company IS, not what stories cover it.
-// Only hardcode what we can state with confidence. Unmapped companies get no identity line.
-const COMPANY_INDUSTRY: Record<string, string> = {
+// Company identity map — curated, bounded descriptions of what each company IS and DOES.
+// `industry` is used as a content-type label in memoContent.
+// `brief` is injected verbatim into the Company Brief section — no model generation.
+// Only include companies where we can state the description with confidence.
+// Unmapped companies get no Company Brief section.
+interface CompanyIdentity { industry: string; brief: string; }
+const COMPANY_IDENTITY: Record<string, CompanyIdentity> = {
   // Semiconductors & Hardware
-  "NVIDIA":              "Semiconductors",
-  "Intel":               "Semiconductors",
+  "NVIDIA":           { industry: "Semiconductors",        brief: "NVIDIA designs GPUs and accelerated computing platforms used in AI training, data center infrastructure, gaming, and professional visualization." },
+  "Intel":            { industry: "Semiconductors",        brief: "Intel designs and manufactures CPUs, GPUs, and networking chips for computing, data center, and AI workloads." },
   // Consumer & Enterprise Technology
-  "Apple":               "Consumer Technology",
-  "Microsoft":           "Technology",
-  "Alphabet":            "Technology",
-  "Meta":                "Technology",
-  "Amazon":              "Technology / E-Commerce",
-  "Tesla":               "Electric Vehicles",
-  "Salesforce":          "Enterprise Software",
-  "Oracle":              "Enterprise Technology",
-  "Palantir":            "Data Analytics",
-  "IBM":                 "Technology",
+  "Apple":            { industry: "Consumer Technology",   brief: "Apple designs consumer electronics, software, and services — including iPhone, Mac, and iPad — anchored by its tightly integrated hardware-software ecosystem." },
+  "Microsoft":        { industry: "Technology",            brief: "Microsoft develops operating systems, enterprise software, and cloud infrastructure (Azure), serving enterprise and consumer markets globally." },
+  "Alphabet":         { industry: "Technology",            brief: "Alphabet operates Google Search, YouTube, and Google Cloud; it generates revenue primarily from digital advertising and cloud services." },
+  "Meta":             { industry: "Technology",            brief: "Meta operates Facebook, Instagram, and WhatsApp, generating revenue primarily from digital advertising across its family of social apps." },
+  "Amazon":           { industry: "Technology / E-Commerce", brief: "Amazon operates the world's largest e-commerce marketplace and cloud infrastructure platform (AWS), with additional businesses in logistics, advertising, and streaming." },
+  "Tesla":            { industry: "Electric Vehicles",     brief: "Tesla designs and manufactures electric vehicles, energy storage systems, and solar products, and develops autonomous driving software." },
+  "Salesforce":       { industry: "Enterprise Software",   brief: "Salesforce provides cloud-based CRM software and enterprise applications for sales, service, marketing, and commerce teams." },
+  "Oracle":           { industry: "Enterprise Technology", brief: "Oracle provides enterprise database software, cloud infrastructure, and ERP applications primarily to large enterprises and governments." },
+  "Palantir":         { industry: "Data Analytics",        brief: "Palantir develops AI-powered data analytics platforms for government intelligence agencies and large enterprises." },
+  "IBM":              { industry: "Technology",            brief: "IBM provides hybrid cloud infrastructure, AI software, and IT services primarily to large enterprises and government customers." },
   // Artificial Intelligence
-  "OpenAI":              "Artificial Intelligence",
-  "Anthropic":           "Artificial Intelligence",
+  "OpenAI":           { industry: "Artificial Intelligence", brief: "OpenAI develops large language models and AI systems — including GPT-4 and ChatGPT — offered via API and consumer products." },
+  "Anthropic":        { industry: "Artificial Intelligence", brief: "Anthropic develops AI safety-focused large language models and AI systems, including the Claude family of models." },
   // Aerospace & Defense
-  "Lockheed Martin":     "Aerospace & Defense",
-  "Boeing":              "Aerospace & Defense",
-  "Raytheon":            "Aerospace & Defense",
-  "Northrop Grumman":    "Aerospace & Defense",
-  "SpaceX":              "Aerospace",
-  "General Dynamics":    "Aerospace & Defense",
+  "Lockheed Martin":  { industry: "Aerospace & Defense",   brief: "Lockheed Martin is an aerospace and defense contractor that develops military aircraft, missile systems, space systems, and defense electronics for the U.S. military and allied governments." },
+  "Boeing":           { industry: "Aerospace & Defense",   brief: "Boeing manufactures commercial jetliners, military aircraft, and space systems, and provides defense and aerospace services to government and commercial customers." },
+  "Raytheon":         { industry: "Aerospace & Defense",   brief: "Raytheon develops missile systems, radar, sensors, and defense electronics for the U.S. military and allied governments." },
+  "Northrop Grumman": { industry: "Aerospace & Defense",   brief: "Northrop Grumman develops stealth aircraft, space systems, missile defense, and cybersecurity solutions for U.S. and allied defense programs." },
+  "SpaceX":           { industry: "Aerospace",             brief: "SpaceX develops reusable rockets and spacecraft for satellite deployment, cargo resupply, and crewed missions to the International Space Station." },
+  "General Dynamics": { industry: "Aerospace & Defense",   brief: "General Dynamics manufactures military vehicles, submarines, combat systems, and provides IT services to government customers." },
   // Financial Services
-  "JPMorgan Chase":      "Financial Services",
-  "Goldman Sachs":       "Investment Banking",
-  "Morgan Stanley":      "Investment Banking",
-  "Bank of America":     "Financial Services",
-  "Berkshire Hathaway":  "Diversified Financials",
-  "BlackRock":           "Asset Management",
-  "Visa":                "Financial Technology",
-  "Mastercard":          "Financial Technology",
+  "JPMorgan Chase":   { industry: "Financial Services",    brief: "JPMorgan Chase is the largest U.S. bank by assets, providing investment banking, commercial banking, financial services, and asset management." },
+  "Goldman Sachs":    { industry: "Investment Banking",    brief: "Goldman Sachs provides investment banking, securities trading, asset management, and financial advisory services to institutional and corporate clients globally." },
+  "Morgan Stanley":   { industry: "Investment Banking",    brief: "Morgan Stanley provides investment banking, institutional securities, and wealth management services to governments, corporations, and high-net-worth clients." },
+  "Bank of America":  { industry: "Financial Services",    brief: "Bank of America provides consumer banking, global markets, investment banking, and wealth management services across the U.S. and internationally." },
+  "Berkshire Hathaway": { industry: "Diversified Financials", brief: "Berkshire Hathaway is a diversified holding company with wholly owned businesses across insurance, railroads, utilities, manufacturing, and financial services." },
+  "BlackRock":        { industry: "Asset Management",      brief: "BlackRock is the world's largest asset manager, providing investment management, risk advisory, and financial technology services to institutional and retail investors." },
+  "Visa":             { industry: "Financial Technology",  brief: "Visa operates a global digital payments network connecting consumers, merchants, and financial institutions across more than 200 countries." },
+  "Mastercard":       { industry: "Financial Technology",  brief: "Mastercard operates a global payment processing network and provides digital commerce technology to banks, merchants, and governments." },
   // Healthcare & Pharma
-  "Pfizer":              "Pharmaceuticals",
-  "Johnson & Johnson":   "Healthcare",
+  "Pfizer":           { industry: "Pharmaceuticals",       brief: "Pfizer discovers, develops, and manufactures pharmaceutical drugs and vaccines across oncology, immunology, cardiology, and infectious disease." },
+  "Johnson & Johnson": { industry: "Healthcare",           brief: "Johnson & Johnson develops pharmaceuticals, medical devices, and consumer health products across a broad range of therapeutic areas." },
   // Energy & Consumer
-  "ExxonMobil":          "Energy",
-  "Chevron":             "Energy",
-  "Walmart":             "Consumer Retail",
+  "ExxonMobil":       { industry: "Energy",                brief: "ExxonMobil explores for, produces, refines, and markets petroleum products, natural gas, and petrochemicals globally." },
+  "Chevron":          { industry: "Energy",                brief: "Chevron explores for, produces, and refines petroleum and natural gas, and is expanding into lower-carbon energy businesses." },
+  "Walmart":          { industry: "Consumer Retail",       brief: "Walmart operates the world's largest retail network of physical stores and e-commerce, targeting everyday low prices for mass-market consumers." },
 };
 
 function canonicalize(name: string): string {
@@ -153,11 +162,56 @@ function matchesCanonical(rawName: string, canonicalName: string): boolean {
   return false;
 }
 
+// Returns true if companyName is the grammatical subject of the headline — i.e., the
+// company appears at the very start of the title, followed by a word boundary.
+//
+// Used as a fallback actor signal for Funding/IPO articles where primary_company is null.
+// News headlines about a company's own funding round lead with the company:
+//   "Whoop raises $575M Series G"         → Whoop is subject → true
+//   "WHOOP valued at $10B"                → WHOOP is subject → true
+// Competitor / comparison / context mentions do not lead with the selected company:
+//   "Fractile seeks $200M to challenge NVIDIA" → starts with "Fractile" → false for NVIDIA
+//   "Mistral secures $830M to house NVIDIA chips" → starts with "Mistral" → false for NVIDIA
+//   "NVIDIA-backed startup raises $50M"        → "NVIDIA-" has no space after → false for NVIDIA
+//
+// Word-boundary check: require space, apostrophe, or comma immediately after company name
+// to avoid matching "NVIDIA-backed" or "NVIDIAx" as if NVIDIA were the subject.
+function isSubjectOfTitle(title: string, companyName: string): boolean {
+  const t = title.toLowerCase().trim();
+  const cn = companyName.toLowerCase();
+  // Strip common editorial prefixes so "Report: Whoop raises..." still matches
+  const stripped = t.replace(/^(report|breaking|exclusive|sources?|scoop|update|analysis)[:\s]+["']?/, "").trimStart();
+  return (
+    stripped.startsWith(cn + " ") ||   // "whoop raises..."
+    stripped.startsWith(cn + "'") ||   // "whoop's valuation..."
+    stripped.startsWith(cn + ",")      // "whoop, the startup,..."
+  );
+}
+
+// An article is a development when the company is the ACTOR, not merely a subject or
+// named example. These deal types reliably indicate a company-specific event:
+//   Earnings  — reported results
+//   M&A       — acquiring, merging, or being acquired
+//   Funding   — raising capital (qualifies even with co-mentioned investors)
+//   IPO       — going public
+// "Other" is excluded. It is a junk-drawer tag at ingest that covers both genuine
+// company announcements AND regulatory/enforcement/analyst stories where the company
+// is a subject but not the actor. Stage 1 favors precision — borderline misses are
+// acceptable; development bucket contamination is not.
+const DEVELOPMENT_DEAL_TYPES = new Set(["Earnings", "M&A", "Funding", "IPO"]);
+
+// Tags surfaced in memo evidence so the model can read event type without inferring from prose.
+const TAGGED_DEAL_TYPES = new Set(["Earnings", "M&A", "Funding", "IPO", "Macro", "Geopolitical", "Other"]);
+
 function formatArticleList(arts: CompanyArticle[]): string {
   if (arts.length === 0) return "None";
   return arts
     .slice(0, 6)
-    .map((a) => `• ${a.title}${a.summary ? " — " + a.summary : ""}`)
+    .map((a) => {
+      const tag = a.deal_type && TAGGED_DEAL_TYPES.has(a.deal_type) ? `[${a.deal_type}] ` : "";
+      const summary = a.summary ? ` — ${a.summary.slice(0, 120)}` : "";
+      return `• ${tag}${a.title}${summary}`;
+    })
     .join("\n\n");
 }
 
@@ -221,35 +275,61 @@ export default function CompanyIntelPage() {
     return companies.filter((c) => c.name.toLowerCase().includes(q));
   }, [companies, search]);
 
-  // Pre-classified article buckets (computed from _isDirect flag on each article)
-  const directArticles = useMemo(
-    () => companyArticles.filter((a) => a._isDirect),
+  // Development articles: company-specific events (earnings, funding, M&A, IPO, named announcements).
+  // Context articles: everything else — macro, geopolitical, sector analysis, competitive mentions.
+  const developmentArticles = useMemo(
+    () => companyArticles.filter((a) => a._isDevelopment),
     [companyArticles],
   );
   const contextArticles = useMemo(
-    () => companyArticles.filter((a) => !a._isDirect),
+    () => companyArticles.filter((a) => !a._isDevelopment),
     [companyArticles],
   );
 
-  // Pre-labeled memo content string — model receives classified sections, not a flat list.
-  // COMPANY INDUSTRY comes from the hardcoded map (what the company IS).
-  // COVERAGE THEMES comes from article-sector aggregation (what stories cover it).
-  // These are intentionally kept separate so the model cannot conflate them.
+  // Memo content — model receives explicitly categorized evidence, not a flat article list.
+  // COMPANY INDUSTRY: stable identity (what the company IS).
+  // SIGNAL QUALITY: computed from development article count — never delegated to the model.
+  // COMPANY DEVELOPMENT ARTICLES: articles describing company-specific events only.
+  // SECTOR CONTEXT ARTICLES: everything else mentioning the company.
   const memoContent = useMemo(() => {
     if (!selectedCompany) return "";
-    const industry = COMPANY_INDUSTRY[selectedCompany.name] ?? "Unknown";
+    const industry = COMPANY_IDENTITY[selectedCompany.name]?.industry ?? "Unknown";
+
+    // Sort by relevance_score DESC, then published_at DESC as tie-breaker.
+    // Highest-signal articles reach the model first, not just the most recently ingested.
+    const byRelevance = (arts: CompanyArticle[]) =>
+      [...arts].sort((a, b) => {
+        const scoreDiff = (b.relevance_score ?? 5) - (a.relevance_score ?? 5);
+        if (scoreDiff !== 0) return scoreDiff;
+        const dateA = a.published_at ? new Date(a.published_at).getTime() : 0;
+        const dateB = b.published_at ? new Date(b.published_at).getTime() : 0;
+        return dateB - dateA;
+      });
+
+    // Signal quality computed from development article count — not guessed by the model.
+    const signalLabel =
+      developmentArticles.length >= 2 ? "Strong company-specific coverage"
+      : developmentArticles.length >= 1 ? "Limited direct evidence"
+      : "Mostly sector context";
+
+    // MEMO_MODE tells the model which output structure to use.
+    // developments-led: Recent Developments + Key Watchpoints grounded in company events.
+    // context-led: Coverage Note + Current Context + What To Watch from sector articles only.
+    const memoMode = developmentArticles.length > 0 ? "developments-led" : "context-led";
+
     return [
       `COMPANY: ${selectedCompany.name}`,
       `COMPANY INDUSTRY: ${industry}`,
-      `MENTIONS: ${selectedCompany.mentions}`,
+      `MEMO_MODE: ${memoMode}`,
+      `SIGNAL QUALITY: ${signalLabel}`,
       ``,
-      `DIRECT COMPANY ARTICLES (${directArticles.length}):`,
-      formatArticleList(directArticles),
+      `COMPANY DEVELOPMENT ARTICLES (${developmentArticles.length}):`,
+      formatArticleList(byRelevance(developmentArticles)),
       ``,
       `SECTOR CONTEXT ARTICLES (${contextArticles.length}):`,
-      formatArticleList(contextArticles),
+      formatArticleList(byRelevance(contextArticles)),
     ].join("\n");
-  }, [selectedCompany, directArticles, contextArticles]);
+  }, [selectedCompany, developmentArticles, contextArticles]);
 
   // Load articles when a company is selected
   useEffect(() => {
@@ -260,23 +340,21 @@ export default function CompanyIntelPage() {
     async function loadArticles() {
       try {
         const name = selectedCompany!.name;
-        // Fetch a broad set then filter client-side using canonicalize(), so that
-        // alias variants in the DB (e.g. "Nvidia" vs "NVIDIA") all resolve correctly.
-        // Prefer sector-scoped fetch when the company maps to a single sector.
-        const sectors = selectedCompany!.sectors;
-        let q = getSupabase()
+        // Fetch without sector scoping. The previous sector-scoped optimization silently
+        // dropped valid articles: if a popular sector (e.g. Geopolitics & Macro) had > 500
+        // articles total, the .limit(500) would return only the newest 500 in that sector,
+        // missing older-but-still-valid articles for sparse companies like Lockheed Martin.
+        // Correctness > performance here — filter client-side instead.
+        const { data: articles } = await getSupabase()
           .from("articles")
-          .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies, primary_company")
+          .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies, primary_company, relevance_score, deal_type")
           .order("ingested_at", { ascending: false })
           .limit(500);
-        if (sectors.length === 1) q = q.eq("sector", sectors[0]);
-        const { data: articles } = await q;
 
         if (articles) {
           const nameLower = name.toLowerCase();
-          // Match any article whose companies array contains an entry that resolves
-          // to this canonical name OR is a prefix/suffix variant of it.
-          // e.g. "Lockheed Martin" matches "Lockheed Martin Corporation"
+          // Match articles whose companies[] contains this company (canonical + prefix variants).
+          // e.g. "Lockheed Martin Corporation" resolves to "Lockheed Martin"
           const matched = articles.filter((a) => {
             const cos = parseCompanies(a.companies);
             return cos.some((c) => {
@@ -290,14 +368,36 @@ export default function CompanyIntelPage() {
           });
 
           const mapped = matched.map((a) => {
-            // Direct classification:
-            // - primary_company present → use matchesCanonical (post-migration articles)
-            // - primary_company absent → conservative fallback: only Direct if this
-            //   company is the SOLE entity mentioned in the article. Any multi-company
-            //   article without primary_company is treated as Context.
-            const isDirect = a.primary_company
-              ? matchesCanonical(a.primary_company, name)
-              : parseCompanies(a.companies).length === 1;
+            // Development = the SELECTED COMPANY was the PRIMARY ACTOR in this article.
+            //
+            // STRICT path (Earnings, M&A):
+            //   Require primary_company match. These event types have one clear actor.
+            //   If ingest left primary_company null → ambiguous → context.
+            //
+            // FUNDING/IPO path — three-level actor test:
+            //   Level 1: primary_company is set and matches → clear ingest signal → development
+            //   Level 2: primary_company is null + company is headline subject → actor by title position
+            //     "Whoop raises $575M"          → "whoop " at title start → development ✓
+            //     "Fractile seeks $200M to challenge NVIDIA" → starts "fractile " → context for NVIDIA ✓
+            //     "Mistral secured $830M to house NVIDIA chips" → starts "mistral " → context ✓
+            //     "Korean startup backed by Samsung..." → starts "korean " → context ✓
+            //   Level 3: primary_company is set to a DIFFERENT company → that company is the actor → context
+            //
+            // Everything else → context.
+            const isStrictDevelopment =
+              (a.deal_type === "Earnings" || a.deal_type === "M&A") &&
+              a.primary_company != null &&
+              matchesCanonical(a.primary_company, name);
+
+            const isFundingOrIPO =
+              (a.deal_type === "Funding" || a.deal_type === "IPO") &&
+              (
+                (a.primary_company != null && matchesCanonical(a.primary_company, name)) ||
+                (a.primary_company == null && isSubjectOfTitle(a.title, name))
+              );
+
+            const isDevelopment = isStrictDevelopment || isFundingOrIPO;
+
             return {
               id: a.id,
               title: a.title,
@@ -308,7 +408,9 @@ export default function CompanyIntelPage() {
               published_at: a.published_at || a.ingested_at,
               url: a.url,
               primary_company: a.primary_company ?? null,
-              _isDirect: isDirect,
+              relevance_score: typeof a.relevance_score === "number" ? a.relevance_score : undefined,
+              deal_type: typeof a.deal_type === "string" ? a.deal_type : null,
+              _isDevelopment: isDevelopment,
             };
           });
 
@@ -465,7 +567,24 @@ export default function CompanyIntelPage() {
               {/* Articles header */}
               <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">
                 Articles Mentioning {selectedCompany.name.toUpperCase()} ({companyArticles.length})
+                {!articlesLoading && developmentArticles.length > 0 && (
+                  <span className="ml-2 text-gold normal-case">
+                    · {developmentArticles.length} development{developmentArticles.length !== 1 ? "s" : ""}
+                  </span>
+                )}
               </p>
+
+              {/* Sparse-evidence notice — no development events in current feed window */}
+              {!articlesLoading && companyArticles.length > 0 && developmentArticles.length === 0 && (
+                <div className="mb-4 px-3 py-2.5 rounded-xl border border-border-base bg-parchment-mid">
+                  <p className="font-sans text-[11px] font-semibold text-text-primary leading-snug">
+                    No company events in this feed window.
+                  </p>
+                  <p className="font-sans text-[11px] text-text-secondary leading-snug mt-0.5">
+                    {selectedCompany.name} appears in {contextArticles.length} sector context article{contextArticles.length !== 1 ? "s" : ""} — no earnings, funding, M&A, or IPO found. A context-led brief is available.
+                  </p>
+                </div>
+              )}
 
               {/* Articles */}
               {articlesLoading ? (
@@ -481,46 +600,94 @@ export default function CompanyIntelPage() {
                 />
               ) : (
                 <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                  {companyArticles.map((a) => (
-                    <div
-                      key={a.id}
-                      className="bg-white border border-border-base rounded-xl p-3"
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        {a.sector && (
-                          <span
-                            style={getSectorStyle(a.sector)}
-                            className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide"
-                          >
-                            {a.sector}
-                          </span>
-                        )}
-                        {a.source && (
-                          <span className="font-data text-[9px] text-text-muted">{a.source}</span>
-                        )}
-                        {a.published_at && (
-                          <span className="font-data text-[9px] text-text-faint ml-auto">
-                            {timeAgo(a.published_at)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
-                          {a.title}
-                        </h4>
-                        {a.url && (
-                          <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5">
-                            <ExternalLink size={11} />
-                          </a>
-                        )}
-                      </div>
-                      {a.summary && (
-                        <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
-                          {a.summary}
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                  {/* Company Events group — articles where the company was the actor */}
+                  {developmentArticles.length > 0 && (
+                    <>
+                      <p className="font-data text-[8px] uppercase tracking-widest text-gold font-bold px-0.5 pb-0.5">
+                        Company Events
+                      </p>
+                      {developmentArticles.map((a) => (
+                        <div key={a.id} className="bg-white border border-gold/30 rounded-xl p-3">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-data text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide bg-gold-muted text-gold border border-gold-border flex-shrink-0">
+                              {a.deal_type ?? "Event"}
+                            </span>
+                            {a.source && (
+                              <span className="font-data text-[9px] text-text-muted">{a.source}</span>
+                            )}
+                            {a.published_at && (
+                              <span className="font-data text-[9px] text-text-faint ml-auto">
+                                {timeAgo(a.published_at)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
+                              {a.title}
+                            </h4>
+                            {a.url && (
+                              <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5">
+                                <ExternalLink size={11} />
+                              </a>
+                            )}
+                          </div>
+                          {a.summary && (
+                            <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
+                              {a.summary}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {/* Sector Context group — macro, geopolitical, sector analysis */}
+                  {contextArticles.length > 0 && (
+                    <>
+                      <p className={cn(
+                        "font-data text-[8px] uppercase tracking-widest text-text-faint font-bold px-0.5 pb-0.5",
+                        developmentArticles.length > 0 && "mt-3",
+                      )}>
+                        Sector Context
+                      </p>
+                      {contextArticles.map((a) => (
+                        <div key={a.id} className="bg-white border border-border-base rounded-xl p-3">
+                          <div className="flex items-center gap-2 mb-1">
+                            {a.sector && (
+                              <span
+                                style={getSectorStyle(a.sector)}
+                                className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide"
+                              >
+                                {a.sector}
+                              </span>
+                            )}
+                            {a.source && (
+                              <span className="font-data text-[9px] text-text-muted">{a.source}</span>
+                            )}
+                            {a.published_at && (
+                              <span className="font-data text-[9px] text-text-faint ml-auto">
+                                {timeAgo(a.published_at)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
+                              {a.title}
+                            </h4>
+                            {a.url && (
+                              <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5">
+                                <ExternalLink size={11} />
+                              </a>
+                            )}
+                          </div>
+                          {a.summary && (
+                            <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
+                              {a.summary}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -534,35 +701,45 @@ export default function CompanyIntelPage() {
           title={selectedCompany.name}
           content={memoContent}
           type="company"
-          systemPrompt={`You are a sector analyst writing a company intelligence brief for ${selectedCompany.name}.
+          systemPrompt={(() => {
+            const identity = COMPANY_IDENTITY[selectedCompany.name];
+            const briefBlock = identity
+              ? `**Company Brief**\n${identity.brief}\n\n`
+              : '';
+            return `You are a sector analyst. Write a company intelligence brief for ${selectedCompany.name}. Output only user-facing prose — never reproduce bracketed instructions or meta-directives.
 
-The input provides two separate fields:
-- COMPANY INDUSTRY: what the company actually is. Use this for identity.
-- COVERAGE THEMES: what kinds of stories are currently covering it. Do not use this for identity.
+INPUTS: MEMO_MODE | SIGNAL QUALITY | COMPANY DEVELOPMENT ARTICLES | SECTOR CONTEXT ARTICLES
 
-The articles are pre-classified as DIRECT (primary subject) or SECTOR CONTEXT (secondary mention).
+─── MEMO_MODE = "developments-led" ───
+${briefBlock}**Recent Developments**
+[Facts from COMPANY DEVELOPMENT ARTICLES only. Specific figures, dates, named outcomes. Do not draw from context articles.]
 
-Output the following sections:
-
-**Company Brief**
-Only include this section if COMPANY INDUSTRY is not "Unknown".
-One sentence: company name, its COMPANY INDUSTRY, and primary business. Example: "Lockheed Martin is a U.S. Aerospace & Defense company focused on advanced weapons systems and government contracts."
-If COMPANY INDUSTRY is "Unknown": omit this section entirely. Do not write it, do not guess, do not use COVERAGE THEMES as a substitute.
-
-**Recent Developments**
-Summarize only from DIRECT COMPANY ARTICLES. If that section says "None": write "No direct company developments in the current feed." Do not substitute from Sector Context.
-
-**Sector Context**
-Summarize SECTOR CONTEXT ARTICLES as industry backdrop. 2–3 sentences.
+**Market Context**
+[2–3 sentences using only events named in SECTOR CONTEXT ARTICLES. Do not write generic sector trends. Do not reference events, companies, or data not present in those articles.]
 
 **Key Watchpoints**
-2–3 watchpoints from Direct articles only: open deals, pending decisions, named upcoming events. If Direct says "None": write "Insufficient direct coverage to identify specific watchpoints."
+[1–3 bullets. Each must name a specific upcoming event or unresolved condition from COMPANY DEVELOPMENT ARTICLES. Do not pad with invented milestones.]
 
 **Signal Quality**
-One label: "Strong company-specific coverage" / "Limited direct evidence" / "Mostly sector context"
-One sentence.
+[SIGNAL QUALITY value.] [One sentence on what the evidence covers.]
 
-Rules: No article numbers. No phrases: "may benefit", "positioned to", "could potentially". Facts and figures from input only. Under 300 words.`}
+─── MEMO_MODE = "context-led" ───
+${briefBlock}**Coverage Note**
+No direct company developments found in the current feed window.
+
+**Current Context**
+[2–3 sentences. Use only events, companies, and figures that appear by name in SECTOR CONTEXT ARTICLES. Do not write generic sector narratives. Do not name events not present in the listed articles.]
+
+**What To Watch**
+[2 bullets. Each must name a specific event or condition from SECTOR CONTEXT ARTICLES — e.g., a named regulatory action, contract decision, or macro data release. No generic macro risks. No inferred impact on ${selectedCompany.name}.]
+
+**Signal Quality**
+[SIGNAL QUALITY value.] [One sentence on what the evidence covers.]
+
+─── RULES ───
+Company Brief (if present above): output verbatim — do not rephrase or expand.
+No: "may benefit", "stands to benefit", "is poised to", "faces exposure to", "could". Do not infer ${selectedCompany.name}'s position from partner or competitor activity. Every factual claim must appear in the input. Under 300 words.`;
+          })()}
         />
       )}
     </AppShell>
