@@ -35,7 +35,12 @@ interface CompanyArticle {
   published_at?: string;
   url?: string;
   primary_company?: string | null;
-  _isDirect: boolean;
+  relevance_score?: number;
+  deal_type?: string | null;
+  // True when the article describes a company-specific event (earnings, funding, M&A, IPO,
+  // contract award, product launch). Distinct from "company is primary subject" — a geopolitical
+  // story where NVIDIA is the primary subject is NOT a development.
+  _isDevelopment: boolean;
 }
 
 // Canonical name map — keys are lowercase variants, value is display name
@@ -153,11 +158,30 @@ function matchesCanonical(rawName: string, canonicalName: string): boolean {
   return false;
 }
 
+// An article is a development when the company is the ACTOR, not merely a subject or
+// named example. These deal types reliably indicate a company-specific event:
+//   Earnings  — reported results
+//   M&A       — acquiring, merging, or being acquired
+//   Funding   — raising capital (qualifies even with co-mentioned investors)
+//   IPO       — going public
+// "Other" is excluded. It is a junk-drawer tag at ingest that covers both genuine
+// company announcements AND regulatory/enforcement/analyst stories where the company
+// is a subject but not the actor. Stage 1 favors precision — borderline misses are
+// acceptable; development bucket contamination is not.
+const DEVELOPMENT_DEAL_TYPES = new Set(["Earnings", "M&A", "Funding", "IPO"]);
+
+// Tags surfaced in memo evidence so the model can read event type without inferring from prose.
+const TAGGED_DEAL_TYPES = new Set(["Earnings", "M&A", "Funding", "IPO", "Macro", "Geopolitical", "Other"]);
+
 function formatArticleList(arts: CompanyArticle[]): string {
   if (arts.length === 0) return "None";
   return arts
     .slice(0, 6)
-    .map((a) => `• ${a.title}${a.summary ? " — " + a.summary : ""}`)
+    .map((a) => {
+      const tag = a.deal_type && TAGGED_DEAL_TYPES.has(a.deal_type) ? `[${a.deal_type}] ` : "";
+      const summary = a.summary ? ` — ${a.summary.slice(0, 120)}` : "";
+      return `• ${tag}${a.title}${summary}`;
+    })
     .join("\n\n");
 }
 
@@ -221,35 +245,61 @@ export default function CompanyIntelPage() {
     return companies.filter((c) => c.name.toLowerCase().includes(q));
   }, [companies, search]);
 
-  // Pre-classified article buckets (computed from _isDirect flag on each article)
-  const directArticles = useMemo(
-    () => companyArticles.filter((a) => a._isDirect),
+  // Development articles: company-specific events (earnings, funding, M&A, IPO, named announcements).
+  // Context articles: everything else — macro, geopolitical, sector analysis, competitive mentions.
+  const developmentArticles = useMemo(
+    () => companyArticles.filter((a) => a._isDevelopment),
     [companyArticles],
   );
   const contextArticles = useMemo(
-    () => companyArticles.filter((a) => !a._isDirect),
+    () => companyArticles.filter((a) => !a._isDevelopment),
     [companyArticles],
   );
 
-  // Pre-labeled memo content string — model receives classified sections, not a flat list.
-  // COMPANY INDUSTRY comes from the hardcoded map (what the company IS).
-  // COVERAGE THEMES comes from article-sector aggregation (what stories cover it).
-  // These are intentionally kept separate so the model cannot conflate them.
+  // Memo content — model receives explicitly categorized evidence, not a flat article list.
+  // COMPANY INDUSTRY: stable identity (what the company IS).
+  // SIGNAL QUALITY: computed from development article count — never delegated to the model.
+  // COMPANY DEVELOPMENT ARTICLES: articles describing company-specific events only.
+  // SECTOR CONTEXT ARTICLES: everything else mentioning the company.
   const memoContent = useMemo(() => {
     if (!selectedCompany) return "";
     const industry = COMPANY_INDUSTRY[selectedCompany.name] ?? "Unknown";
+
+    // Sort by relevance_score DESC, then published_at DESC as tie-breaker.
+    // Highest-signal articles reach the model first, not just the most recently ingested.
+    const byRelevance = (arts: CompanyArticle[]) =>
+      [...arts].sort((a, b) => {
+        const scoreDiff = (b.relevance_score ?? 5) - (a.relevance_score ?? 5);
+        if (scoreDiff !== 0) return scoreDiff;
+        const dateA = a.published_at ? new Date(a.published_at).getTime() : 0;
+        const dateB = b.published_at ? new Date(b.published_at).getTime() : 0;
+        return dateB - dateA;
+      });
+
+    // Signal quality computed from development article count — not guessed by the model.
+    const signalLabel =
+      developmentArticles.length >= 2 ? "Strong company-specific coverage"
+      : developmentArticles.length >= 1 ? "Limited direct evidence"
+      : "Mostly sector context";
+
+    // MEMO_MODE tells the model which output structure to use.
+    // developments-led: Recent Developments + Key Watchpoints grounded in company events.
+    // context-led: Coverage Note + Current Context + What To Watch from sector articles only.
+    const memoMode = developmentArticles.length > 0 ? "developments-led" : "context-led";
+
     return [
       `COMPANY: ${selectedCompany.name}`,
       `COMPANY INDUSTRY: ${industry}`,
-      `MENTIONS: ${selectedCompany.mentions}`,
+      `MEMO_MODE: ${memoMode}`,
+      `SIGNAL QUALITY: ${signalLabel}`,
       ``,
-      `DIRECT COMPANY ARTICLES (${directArticles.length}):`,
-      formatArticleList(directArticles),
+      `COMPANY DEVELOPMENT ARTICLES (${developmentArticles.length}):`,
+      formatArticleList(byRelevance(developmentArticles)),
       ``,
       `SECTOR CONTEXT ARTICLES (${contextArticles.length}):`,
-      formatArticleList(contextArticles),
+      formatArticleList(byRelevance(contextArticles)),
     ].join("\n");
-  }, [selectedCompany, directArticles, contextArticles]);
+  }, [selectedCompany, developmentArticles, contextArticles]);
 
   // Load articles when a company is selected
   useEffect(() => {
@@ -260,23 +310,21 @@ export default function CompanyIntelPage() {
     async function loadArticles() {
       try {
         const name = selectedCompany!.name;
-        // Fetch a broad set then filter client-side using canonicalize(), so that
-        // alias variants in the DB (e.g. "Nvidia" vs "NVIDIA") all resolve correctly.
-        // Prefer sector-scoped fetch when the company maps to a single sector.
-        const sectors = selectedCompany!.sectors;
-        let q = getSupabase()
+        // Fetch without sector scoping. The previous sector-scoped optimization silently
+        // dropped valid articles: if a popular sector (e.g. Geopolitics & Macro) had > 500
+        // articles total, the .limit(500) would return only the newest 500 in that sector,
+        // missing older-but-still-valid articles for sparse companies like Lockheed Martin.
+        // Correctness > performance here — filter client-side instead.
+        const { data: articles } = await getSupabase()
           .from("articles")
-          .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies, primary_company")
+          .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies, primary_company, relevance_score, deal_type")
           .order("ingested_at", { ascending: false })
           .limit(500);
-        if (sectors.length === 1) q = q.eq("sector", sectors[0]);
-        const { data: articles } = await q;
 
         if (articles) {
           const nameLower = name.toLowerCase();
-          // Match any article whose companies array contains an entry that resolves
-          // to this canonical name OR is a prefix/suffix variant of it.
-          // e.g. "Lockheed Martin" matches "Lockheed Martin Corporation"
+          // Match articles whose companies[] contains this company (canonical + prefix variants).
+          // e.g. "Lockheed Martin Corporation" resolves to "Lockheed Martin"
           const matched = articles.filter((a) => {
             const cos = parseCompanies(a.companies);
             return cos.some((c) => {
@@ -290,14 +338,17 @@ export default function CompanyIntelPage() {
           });
 
           const mapped = matched.map((a) => {
-            // Direct classification:
-            // - primary_company present → use matchesCanonical (post-migration articles)
-            // - primary_company absent → conservative fallback: only Direct if this
-            //   company is the SOLE entity mentioned in the article. Any multi-company
-            //   article without primary_company is treated as Context.
-            const isDirect = a.primary_company
-              ? matchesCanonical(a.primary_company, name)
-              : parseCompanies(a.companies).length === 1;
+            // Development classification: does this article describe something the company DID?
+            //
+            // Development = company was the ACTOR. deal_type is the gate.
+            // Earnings/M&A/Funding/IPO are unambiguous company events — company appearing
+            // in companies[] is sufficient regardless of primary_company assignment.
+            // "Other" is excluded: it covers contract awards AND regulatory/analyst stories
+            // where the company is the subject but not the actor. Cannot reliably distinguish
+            // at Stage 1 without further ingest signal.
+            const isDevelopment =
+              a.deal_type != null && DEVELOPMENT_DEAL_TYPES.has(a.deal_type);
+
             return {
               id: a.id,
               title: a.title,
@@ -308,7 +359,9 @@ export default function CompanyIntelPage() {
               published_at: a.published_at || a.ingested_at,
               url: a.url,
               primary_company: a.primary_company ?? null,
-              _isDirect: isDirect,
+              relevance_score: typeof a.relevance_score === "number" ? a.relevance_score : undefined,
+              deal_type: typeof a.deal_type === "string" ? a.deal_type : null,
+              _isDevelopment: isDevelopment,
             };
           });
 
@@ -465,7 +518,24 @@ export default function CompanyIntelPage() {
               {/* Articles header */}
               <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">
                 Articles Mentioning {selectedCompany.name.toUpperCase()} ({companyArticles.length})
+                {!articlesLoading && developmentArticles.length > 0 && (
+                  <span className="ml-2 text-gold normal-case">
+                    · {developmentArticles.length} development{developmentArticles.length !== 1 ? "s" : ""}
+                  </span>
+                )}
               </p>
+
+              {/* Sparse-evidence notice — no development events in current feed window */}
+              {!articlesLoading && companyArticles.length > 0 && developmentArticles.length === 0 && (
+                <div className="mb-4 px-3 py-2.5 rounded-xl border border-border-base bg-parchment-mid">
+                  <p className="font-sans text-[11px] font-semibold text-text-primary leading-snug">
+                    No company events in this feed window.
+                  </p>
+                  <p className="font-sans text-[11px] text-text-secondary leading-snug mt-0.5">
+                    {selectedCompany.name} appears in {contextArticles.length} sector context article{contextArticles.length !== 1 ? "s" : ""} — no earnings, funding, M&A, or IPO found. A context-led brief is available.
+                  </p>
+                </div>
+              )}
 
               {/* Articles */}
               {articlesLoading ? (
@@ -481,46 +551,94 @@ export default function CompanyIntelPage() {
                 />
               ) : (
                 <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                  {companyArticles.map((a) => (
-                    <div
-                      key={a.id}
-                      className="bg-white border border-border-base rounded-xl p-3"
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        {a.sector && (
-                          <span
-                            style={getSectorStyle(a.sector)}
-                            className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide"
-                          >
-                            {a.sector}
-                          </span>
-                        )}
-                        {a.source && (
-                          <span className="font-data text-[9px] text-text-muted">{a.source}</span>
-                        )}
-                        {a.published_at && (
-                          <span className="font-data text-[9px] text-text-faint ml-auto">
-                            {timeAgo(a.published_at)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
-                          {a.title}
-                        </h4>
-                        {a.url && (
-                          <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5">
-                            <ExternalLink size={11} />
-                          </a>
-                        )}
-                      </div>
-                      {a.summary && (
-                        <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
-                          {a.summary}
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                  {/* Company Events group — articles where the company was the actor */}
+                  {developmentArticles.length > 0 && (
+                    <>
+                      <p className="font-data text-[8px] uppercase tracking-widest text-gold font-bold px-0.5 pb-0.5">
+                        Company Events
+                      </p>
+                      {developmentArticles.map((a) => (
+                        <div key={a.id} className="bg-white border border-gold/30 rounded-xl p-3">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-data text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide bg-gold-muted text-gold border border-gold-border flex-shrink-0">
+                              {a.deal_type ?? "Event"}
+                            </span>
+                            {a.source && (
+                              <span className="font-data text-[9px] text-text-muted">{a.source}</span>
+                            )}
+                            {a.published_at && (
+                              <span className="font-data text-[9px] text-text-faint ml-auto">
+                                {timeAgo(a.published_at)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
+                              {a.title}
+                            </h4>
+                            {a.url && (
+                              <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5">
+                                <ExternalLink size={11} />
+                              </a>
+                            )}
+                          </div>
+                          {a.summary && (
+                            <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
+                              {a.summary}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {/* Sector Context group — macro, geopolitical, sector analysis */}
+                  {contextArticles.length > 0 && (
+                    <>
+                      <p className={cn(
+                        "font-data text-[8px] uppercase tracking-widest text-text-faint font-bold px-0.5 pb-0.5",
+                        developmentArticles.length > 0 && "mt-3",
+                      )}>
+                        Sector Context
+                      </p>
+                      {contextArticles.map((a) => (
+                        <div key={a.id} className="bg-white border border-border-base rounded-xl p-3">
+                          <div className="flex items-center gap-2 mb-1">
+                            {a.sector && (
+                              <span
+                                style={getSectorStyle(a.sector)}
+                                className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide"
+                              >
+                                {a.sector}
+                              </span>
+                            )}
+                            {a.source && (
+                              <span className="font-data text-[9px] text-text-muted">{a.source}</span>
+                            )}
+                            {a.published_at && (
+                              <span className="font-data text-[9px] text-text-faint ml-auto">
+                                {timeAgo(a.published_at)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
+                              {a.title}
+                            </h4>
+                            {a.url && (
+                              <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5">
+                                <ExternalLink size={11} />
+                              </a>
+                            )}
+                          </div>
+                          {a.summary && (
+                            <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
+                              {a.summary}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -536,33 +654,53 @@ export default function CompanyIntelPage() {
           type="company"
           systemPrompt={`You are a sector analyst writing a company intelligence brief for ${selectedCompany.name}.
 
-The input provides two separate fields:
-- COMPANY INDUSTRY: what the company actually is. Use this for identity.
-- COVERAGE THEMES: what kinds of stories are currently covering it. Do not use this for identity.
+The input contains:
+- MEMO_MODE: "developments-led" or "context-led" — determines the output structure.
+- COMPANY INDUSTRY: what the company IS (identity only, not from articles).
+- SIGNAL QUALITY: pre-computed evidence quality label — copy it verbatim, do not paraphrase.
+- COMPANY DEVELOPMENT ARTICLES: articles where the company was the actor — reported earnings, closed a deal, raised capital, went public. Tagged [Earnings], [M&A], [Funding], [IPO].
+- SECTOR CONTEXT ARTICLES: everything else — macro trends, geopolitical events, sector analysis, competitive commentary.
 
-The articles are pre-classified as DIRECT (primary subject) or SECTOR CONTEXT (secondary mention).
+── MEMO_MODE = "developments-led" ──
 
-Output the following sections:
+Output these sections in order:
 
 **Company Brief**
-Only include this section if COMPANY INDUSTRY is not "Unknown".
-One sentence: company name, its COMPANY INDUSTRY, and primary business. Example: "Lockheed Martin is a U.S. Aerospace & Defense company focused on advanced weapons systems and government contracts."
-If COMPANY INDUSTRY is "Unknown": omit this section entirely. Do not write it, do not guess, do not use COVERAGE THEMES as a substitute.
+Only if COMPANY INDUSTRY is not "Unknown": one sentence — company name, its industry, primary business. Omit entirely if "Unknown".
 
 **Recent Developments**
-Summarize only from DIRECT COMPANY ARTICLES. If that section says "None": write "No direct company developments in the current feed." Do not substitute from Sector Context.
+Summarize only COMPANY DEVELOPMENT ARTICLES. Use specific figures, dates, and named outcomes where present. Do not substitute from context articles.
 
-**Sector Context**
-Summarize SECTOR CONTEXT ARTICLES as industry backdrop. 2–3 sentences.
+**Market Context**
+2–3 sentences from SECTOR CONTEXT ARTICLES as industry backdrop.
 
 **Key Watchpoints**
-2–3 watchpoints from Direct articles only: open deals, pending decisions, named upcoming events. If Direct says "None": write "Insufficient direct coverage to identify specific watchpoints."
+2–3 watchpoints grounded only in COMPANY DEVELOPMENT ARTICLES: open deals, pending decisions, named upcoming events with outcomes at stake.
 
 **Signal Quality**
-One label: "Strong company-specific coverage" / "Limited direct evidence" / "Mostly sector context"
-One sentence.
+Copy the SIGNAL QUALITY value verbatim. One sentence on what the evidence covers.
 
-Rules: No article numbers. No phrases: "may benefit", "positioned to", "could potentially". Facts and figures from input only. Under 300 words.`}
+── MEMO_MODE = "context-led" ──
+
+Output these sections in order:
+
+**Company Brief**
+Only if COMPANY INDUSTRY is not "Unknown": one sentence — company name, its industry, primary business. Omit entirely if "Unknown".
+
+**Coverage Note**
+Write exactly: "No direct company developments found in the current feed window."
+
+**Current Context**
+2–3 sentences from SECTOR CONTEXT ARTICLES: what is happening in the sector and macro environment relevant to this company right now. Reference specific events or conditions named in the articles — do not write generic sector commentary.
+
+**What To Watch**
+2 bullets only. Each bullet must name a specific event, dynamic, or condition from SECTOR CONTEXT ARTICLES above — not a generic observation that could apply to any company in this sector. Do not frame as company actions. Do not invent upcoming events.
+
+**Signal Quality**
+Copy the SIGNAL QUALITY value verbatim. One sentence on what the evidence covers.
+
+── RULES (both modes) ──
+No article numbers or citations. No speculative company actions: no "may acquire", "positioned to benefit", "could announce". Every factual claim must trace to the input. Under 300 words.`}
         />
       )}
     </AppShell>
