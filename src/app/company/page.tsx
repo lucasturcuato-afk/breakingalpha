@@ -80,49 +80,53 @@ const CANONICAL: Record<string, string> = {
   "berkshire hathaway inc": "Berkshire Hathaway",
 };
 
-// Company industry map — what the company IS, not what stories cover it.
-// Only hardcode what we can state with confidence. Unmapped companies get no identity line.
-const COMPANY_INDUSTRY: Record<string, string> = {
+// Company identity map — curated, bounded descriptions of what each company IS and DOES.
+// `industry` is used as a content-type label in memoContent.
+// `brief` is injected verbatim into the Company Brief section — no model generation.
+// Only include companies where we can state the description with confidence.
+// Unmapped companies get no Company Brief section.
+interface CompanyIdentity { industry: string; brief: string; }
+const COMPANY_IDENTITY: Record<string, CompanyIdentity> = {
   // Semiconductors & Hardware
-  "NVIDIA":              "Semiconductors",
-  "Intel":               "Semiconductors",
+  "NVIDIA":           { industry: "Semiconductors",        brief: "NVIDIA designs GPUs and accelerated computing platforms used in AI training, data center infrastructure, gaming, and professional visualization." },
+  "Intel":            { industry: "Semiconductors",        brief: "Intel designs and manufactures CPUs, GPUs, and networking chips for computing, data center, and AI workloads." },
   // Consumer & Enterprise Technology
-  "Apple":               "Consumer Technology",
-  "Microsoft":           "Technology",
-  "Alphabet":            "Technology",
-  "Meta":                "Technology",
-  "Amazon":              "Technology / E-Commerce",
-  "Tesla":               "Electric Vehicles",
-  "Salesforce":          "Enterprise Software",
-  "Oracle":              "Enterprise Technology",
-  "Palantir":            "Data Analytics",
-  "IBM":                 "Technology",
+  "Apple":            { industry: "Consumer Technology",   brief: "Apple designs consumer electronics, software, and services — including iPhone, Mac, and iPad — anchored by its tightly integrated hardware-software ecosystem." },
+  "Microsoft":        { industry: "Technology",            brief: "Microsoft develops operating systems, enterprise software, and cloud infrastructure (Azure), serving enterprise and consumer markets globally." },
+  "Alphabet":         { industry: "Technology",            brief: "Alphabet operates Google Search, YouTube, and Google Cloud; it generates revenue primarily from digital advertising and cloud services." },
+  "Meta":             { industry: "Technology",            brief: "Meta operates Facebook, Instagram, and WhatsApp, generating revenue primarily from digital advertising across its family of social apps." },
+  "Amazon":           { industry: "Technology / E-Commerce", brief: "Amazon operates the world's largest e-commerce marketplace and cloud infrastructure platform (AWS), with additional businesses in logistics, advertising, and streaming." },
+  "Tesla":            { industry: "Electric Vehicles",     brief: "Tesla designs and manufactures electric vehicles, energy storage systems, and solar products, and develops autonomous driving software." },
+  "Salesforce":       { industry: "Enterprise Software",   brief: "Salesforce provides cloud-based CRM software and enterprise applications for sales, service, marketing, and commerce teams." },
+  "Oracle":           { industry: "Enterprise Technology", brief: "Oracle provides enterprise database software, cloud infrastructure, and ERP applications primarily to large enterprises and governments." },
+  "Palantir":         { industry: "Data Analytics",        brief: "Palantir develops AI-powered data analytics platforms for government intelligence agencies and large enterprises." },
+  "IBM":              { industry: "Technology",            brief: "IBM provides hybrid cloud infrastructure, AI software, and IT services primarily to large enterprises and government customers." },
   // Artificial Intelligence
-  "OpenAI":              "Artificial Intelligence",
-  "Anthropic":           "Artificial Intelligence",
+  "OpenAI":           { industry: "Artificial Intelligence", brief: "OpenAI develops large language models and AI systems — including GPT-4 and ChatGPT — offered via API and consumer products." },
+  "Anthropic":        { industry: "Artificial Intelligence", brief: "Anthropic develops AI safety-focused large language models and AI systems, including the Claude family of models." },
   // Aerospace & Defense
-  "Lockheed Martin":     "Aerospace & Defense",
-  "Boeing":              "Aerospace & Defense",
-  "Raytheon":            "Aerospace & Defense",
-  "Northrop Grumman":    "Aerospace & Defense",
-  "SpaceX":              "Aerospace",
-  "General Dynamics":    "Aerospace & Defense",
+  "Lockheed Martin":  { industry: "Aerospace & Defense",   brief: "Lockheed Martin is an aerospace and defense contractor that develops military aircraft, missile systems, space systems, and defense electronics for the U.S. military and allied governments." },
+  "Boeing":           { industry: "Aerospace & Defense",   brief: "Boeing manufactures commercial jetliners, military aircraft, and space systems, and provides defense and aerospace services to government and commercial customers." },
+  "Raytheon":         { industry: "Aerospace & Defense",   brief: "Raytheon develops missile systems, radar, sensors, and defense electronics for the U.S. military and allied governments." },
+  "Northrop Grumman": { industry: "Aerospace & Defense",   brief: "Northrop Grumman develops stealth aircraft, space systems, missile defense, and cybersecurity solutions for U.S. and allied defense programs." },
+  "SpaceX":           { industry: "Aerospace",             brief: "SpaceX develops reusable rockets and spacecraft for satellite deployment, cargo resupply, and crewed missions to the International Space Station." },
+  "General Dynamics": { industry: "Aerospace & Defense",   brief: "General Dynamics manufactures military vehicles, submarines, combat systems, and provides IT services to government customers." },
   // Financial Services
-  "JPMorgan Chase":      "Financial Services",
-  "Goldman Sachs":       "Investment Banking",
-  "Morgan Stanley":      "Investment Banking",
-  "Bank of America":     "Financial Services",
-  "Berkshire Hathaway":  "Diversified Financials",
-  "BlackRock":           "Asset Management",
-  "Visa":                "Financial Technology",
-  "Mastercard":          "Financial Technology",
+  "JPMorgan Chase":   { industry: "Financial Services",    brief: "JPMorgan Chase is the largest U.S. bank by assets, providing investment banking, commercial banking, financial services, and asset management." },
+  "Goldman Sachs":    { industry: "Investment Banking",    brief: "Goldman Sachs provides investment banking, securities trading, asset management, and financial advisory services to institutional and corporate clients globally." },
+  "Morgan Stanley":   { industry: "Investment Banking",    brief: "Morgan Stanley provides investment banking, institutional securities, and wealth management services to governments, corporations, and high-net-worth clients." },
+  "Bank of America":  { industry: "Financial Services",    brief: "Bank of America provides consumer banking, global markets, investment banking, and wealth management services across the U.S. and internationally." },
+  "Berkshire Hathaway": { industry: "Diversified Financials", brief: "Berkshire Hathaway is a diversified holding company with wholly owned businesses across insurance, railroads, utilities, manufacturing, and financial services." },
+  "BlackRock":        { industry: "Asset Management",      brief: "BlackRock is the world's largest asset manager, providing investment management, risk advisory, and financial technology services to institutional and retail investors." },
+  "Visa":             { industry: "Financial Technology",  brief: "Visa operates a global digital payments network connecting consumers, merchants, and financial institutions across more than 200 countries." },
+  "Mastercard":       { industry: "Financial Technology",  brief: "Mastercard operates a global payment processing network and provides digital commerce technology to banks, merchants, and governments." },
   // Healthcare & Pharma
-  "Pfizer":              "Pharmaceuticals",
-  "Johnson & Johnson":   "Healthcare",
+  "Pfizer":           { industry: "Pharmaceuticals",       brief: "Pfizer discovers, develops, and manufactures pharmaceutical drugs and vaccines across oncology, immunology, cardiology, and infectious disease." },
+  "Johnson & Johnson": { industry: "Healthcare",           brief: "Johnson & Johnson develops pharmaceuticals, medical devices, and consumer health products across a broad range of therapeutic areas." },
   // Energy & Consumer
-  "ExxonMobil":          "Energy",
-  "Chevron":             "Energy",
-  "Walmart":             "Consumer Retail",
+  "ExxonMobil":       { industry: "Energy",                brief: "ExxonMobil explores for, produces, refines, and markets petroleum products, natural gas, and petrochemicals globally." },
+  "Chevron":          { industry: "Energy",                brief: "Chevron explores for, produces, and refines petroleum and natural gas, and is expanding into lower-carbon energy businesses." },
+  "Walmart":          { industry: "Consumer Retail",       brief: "Walmart operates the world's largest retail network of physical stores and e-commerce, targeting everyday low prices for mass-market consumers." },
 };
 
 function canonicalize(name: string): string {
@@ -289,7 +293,7 @@ export default function CompanyIntelPage() {
   // SECTOR CONTEXT ARTICLES: everything else mentioning the company.
   const memoContent = useMemo(() => {
     if (!selectedCompany) return "";
-    const industry = COMPANY_INDUSTRY[selectedCompany.name] ?? "Unknown";
+    const industry = COMPANY_IDENTITY[selectedCompany.name]?.industry ?? "Unknown";
 
     // Sort by relevance_score DESC, then published_at DESC as tie-breaker.
     // Highest-signal articles reach the model first, not just the most recently ingested.
@@ -697,46 +701,45 @@ export default function CompanyIntelPage() {
           title={selectedCompany.name}
           content={memoContent}
           type="company"
-          systemPrompt={`You are a sector analyst. Write a company intelligence brief for ${selectedCompany.name}. Output only user-facing prose — never reproduce bracketed instructions or meta-directives.
+          systemPrompt={(() => {
+            const identity = COMPANY_IDENTITY[selectedCompany.name];
+            const briefBlock = identity
+              ? `**Company Brief**\n${identity.brief}\n\n`
+              : '';
+            return `You are a sector analyst. Write a company intelligence brief for ${selectedCompany.name}. Output only user-facing prose — never reproduce bracketed instructions or meta-directives.
 
 INPUTS: MEMO_MODE | SIGNAL QUALITY | COMPANY DEVELOPMENT ARTICLES | SECTOR CONTEXT ARTICLES
 
 ─── MEMO_MODE = "developments-led" ───
-${COMPANY_INDUSTRY[selectedCompany.name] ? `
-**Company Brief**
-${selectedCompany.name} is a ${COMPANY_INDUSTRY[selectedCompany.name]} company. [One phrase: primary business.]
-` : ''}
-**Recent Developments**
-[Facts from COMPANY DEVELOPMENT ARTICLES only. Specific figures, dates, named outcomes. No context articles.]
+${briefBlock}**Recent Developments**
+[Facts from COMPANY DEVELOPMENT ARTICLES only. Specific figures, dates, named outcomes. Do not draw from context articles.]
 
 **Market Context**
-[2–3 sentences from SECTOR CONTEXT ARTICLES as backdrop.]
+[2–3 sentences using only events named in SECTOR CONTEXT ARTICLES. Do not write generic sector trends. Do not reference events, companies, or data not present in those articles.]
 
 **Key Watchpoints**
-[1–3 bullets from COMPANY DEVELOPMENT ARTICLES. Named upcoming events only. Do not pad.]
+[1–3 bullets. Each must name a specific upcoming event or unresolved condition from COMPANY DEVELOPMENT ARTICLES. Do not pad with invented milestones.]
 
 **Signal Quality**
 [SIGNAL QUALITY value.] [One sentence on what the evidence covers.]
 
 ─── MEMO_MODE = "context-led" ───
-${COMPANY_INDUSTRY[selectedCompany.name] ? `
-**Company Brief**
-${selectedCompany.name} is a ${COMPANY_INDUSTRY[selectedCompany.name]} company. [One phrase: primary business.]
-` : ''}
-**Coverage Note**
+${briefBlock}**Coverage Note**
 No direct company developments found in the current feed window.
 
 **Current Context**
-[2–3 sentences from SECTOR CONTEXT ARTICLES. Name specific events — no generic commentary.]
+[2–3 sentences. Use only events, companies, and figures that appear by name in SECTOR CONTEXT ARTICLES. Do not write generic sector narratives. Do not name events not present in the listed articles.]
 
 **What To Watch**
-[2 bullets. Each names a specific event or condition from SECTOR CONTEXT ARTICLES. No inferred company benefit. No invented events.]
+[2 bullets. Each must name a specific event or condition from SECTOR CONTEXT ARTICLES — e.g., a named regulatory action, contract decision, or macro data release. No generic macro risks. No inferred impact on ${selectedCompany.name}.]
 
 **Signal Quality**
 [SIGNAL QUALITY value.] [One sentence on what the evidence covers.]
 
 ─── RULES ───
-No: "may benefit", "stands to benefit", "is poised to", "faces exposure to", "could". Do not infer this company's impact from partner or competitor activity. Every factual claim must appear in the input. Under 300 words.`}
+Company Brief (if present above): output verbatim — do not rephrase or expand.
+No: "may benefit", "stands to benefit", "is poised to", "faces exposure to", "could". Do not infer ${selectedCompany.name}'s position from partner or competitor activity. Every factual claim must appear in the input. Under 300 words.`;
+          })()}
         />
       )}
     </AppShell>
