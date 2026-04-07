@@ -158,6 +158,32 @@ function matchesCanonical(rawName: string, canonicalName: string): boolean {
   return false;
 }
 
+// Returns true if companyName is the grammatical subject of the headline — i.e., the
+// company appears at the very start of the title, followed by a word boundary.
+//
+// Used as a fallback actor signal for Funding/IPO articles where primary_company is null.
+// News headlines about a company's own funding round lead with the company:
+//   "Whoop raises $575M Series G"         → Whoop is subject → true
+//   "WHOOP valued at $10B"                → WHOOP is subject → true
+// Competitor / comparison / context mentions do not lead with the selected company:
+//   "Fractile seeks $200M to challenge NVIDIA" → starts with "Fractile" → false for NVIDIA
+//   "Mistral secures $830M to house NVIDIA chips" → starts with "Mistral" → false for NVIDIA
+//   "NVIDIA-backed startup raises $50M"        → "NVIDIA-" has no space after → false for NVIDIA
+//
+// Word-boundary check: require space, apostrophe, or comma immediately after company name
+// to avoid matching "NVIDIA-backed" or "NVIDIAx" as if NVIDIA were the subject.
+function isSubjectOfTitle(title: string, companyName: string): boolean {
+  const t = title.toLowerCase().trim();
+  const cn = companyName.toLowerCase();
+  // Strip common editorial prefixes so "Report: Whoop raises..." still matches
+  const stripped = t.replace(/^(report|breaking|exclusive|sources?|scoop|update|analysis)[:\s]+["']?/, "").trimStart();
+  return (
+    stripped.startsWith(cn + " ") ||   // "whoop raises..."
+    stripped.startsWith(cn + "'") ||   // "whoop's valuation..."
+    stripped.startsWith(cn + ",")      // "whoop, the startup,..."
+  );
+}
+
 // An article is a development when the company is the ACTOR, not merely a subject or
 // named example. These deal types reliably indicate a company-specific event:
 //   Earnings  — reported results
@@ -337,50 +363,23 @@ export default function CompanyIntelPage() {
             });
           });
 
-          // DEBUG: log raw fields for every matched article so root cause is verifiable
-          // in the browser console. Remove after preview confirms fix.
-          console.group(`[CompanyIntel] matched articles for "${name}" (${matched.length})`);
-          matched.forEach((a) => {
-            const dt = typeof a.deal_type === "string" ? a.deal_type : null;
-            const pc = a.primary_company ?? null;
-            const strictPass =
-              (dt === "Earnings" || dt === "M&A") &&
-              pc != null &&
-              matchesCanonical(pc, name);
-            const relaxedPass =
-              (dt === "Funding" || dt === "IPO") &&
-              (pc == null || matchesCanonical(pc, name));
-            console.log({
-              title: a.title.slice(0, 60),
-              deal_type: dt,
-              primary_company: pc,
-              companies: parseCompanies(a.companies),
-              _isDevelopment: strictPass || relaxedPass,
-              _strictPass: strictPass,
-              _relaxedPass: relaxedPass,
-            });
-          });
-          console.groupEnd();
-
           const mapped = matched.map((a) => {
-            // Development classification: does this article describe something the company DID?
-            //
             // Development = the SELECTED COMPANY was the PRIMARY ACTOR in this article.
-            // Tiered gate — different event types warrant different strictness:
             //
-            // STRICT (Earnings, M&A): require primary_company match.
-            //   These events have one clear actor. null primary_company = genuine ambiguity.
-            //   "Hon Hai Q1 earnings"   → primary_company="Hon Hai"  → context for NVIDIA ✓
-            //   "Apple Q3 results"      → primary_company="Apple"    → development for Apple ✓
+            // STRICT path (Earnings, M&A):
+            //   Require primary_company match. These event types have one clear actor.
+            //   If ingest left primary_company null → ambiguous → context.
             //
-            // RELAXED (Funding, IPO): allow primary_company = null.
-            //   Funding articles name one company raising money; investors co-mentioned cause
-            //   ingest to return null even though the funded company is the unambiguous actor.
-            //   "Whoop raises $575M Series G" → primary_company=null (investors listed) → still
-            //   a Whoop development because Whoop is in companies[] and deal_type="Funding".
-            //   Risk: competitor funding articles with null primary_company and NVIDIA in
-            //   companies[] as context would also qualify. Accept this: it is less wrong
-            //   than zeroing out every startup's own funding events.
+            // FUNDING/IPO path — three-level actor test:
+            //   Level 1: primary_company is set and matches → clear ingest signal → development
+            //   Level 2: primary_company is null + company is headline subject → actor by title position
+            //     "Whoop raises $575M"          → "whoop " at title start → development ✓
+            //     "Fractile seeks $200M to challenge NVIDIA" → starts "fractile " → context for NVIDIA ✓
+            //     "Mistral secured $830M to house NVIDIA chips" → starts "mistral " → context ✓
+            //     "Korean startup backed by Samsung..." → starts "korean " → context ✓
+            //   Level 3: primary_company is set to a DIFFERENT company → that company is the actor → context
+            //
+            // Everything else → context.
             const isStrictDevelopment =
               (a.deal_type === "Earnings" || a.deal_type === "M&A") &&
               a.primary_company != null &&
@@ -388,7 +387,10 @@ export default function CompanyIntelPage() {
 
             const isFundingOrIPO =
               (a.deal_type === "Funding" || a.deal_type === "IPO") &&
-              (a.primary_company == null || matchesCanonical(a.primary_company, name));
+              (
+                (a.primary_company != null && matchesCanonical(a.primary_company, name)) ||
+                (a.primary_company == null && isSubjectOfTitle(a.title, name))
+              );
 
             const isDevelopment = isStrictDevelopment || isFundingOrIPO;
 
