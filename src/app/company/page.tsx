@@ -341,27 +341,31 @@ export default function CompanyIntelPage() {
             // Development classification: does this article describe something the company DID?
             //
             // Development = the SELECTED COMPANY was the PRIMARY ACTOR in this article.
-            // Two gates must both pass:
+            // Tiered gate — different event types warrant different strictness:
             //
-            // 1. deal_type gate — article describes a company-specific event category.
-            //    Earnings/M&A/Funding/IPO are unambiguous. "Other" excluded (junk-drawer).
+            // STRICT (Earnings, M&A): require primary_company match.
+            //   These events have one clear actor. null primary_company = genuine ambiguity.
+            //   "Hon Hai Q1 earnings"   → primary_company="Hon Hai"  → context for NVIDIA ✓
+            //   "Apple Q3 results"      → primary_company="Apple"    → development for Apple ✓
             //
-            // 2. primary_company gate — ingest identified THIS company as the primary
-            //    subject. This prevents partner/competitor/ecosystem articles from
-            //    inflating the development count:
-            //      "Hon Hai Q1 earnings"       → primary_company="Hon Hai"  → context for NVIDIA
-            //      "Korean startup raises $X"  → primary_company=startup    → context for NVIDIA
-            //      "Whoop raises $200M"        → primary_company="Whoop"    → development for Whoop
-            //      "Apple Q3 results"          → primary_company="Apple"    → development for Apple
-            //
-            // Tradeoff: if ingest returned primary_company=null on a genuine event
-            // (ambiguous multi-company article), that article becomes context.
-            // False negatives are acceptable; development bucket contamination is not.
-            const isDevelopment =
-              a.deal_type != null &&
-              DEVELOPMENT_DEAL_TYPES.has(a.deal_type) &&
+            // RELAXED (Funding, IPO): allow primary_company = null.
+            //   Funding articles name one company raising money; investors co-mentioned cause
+            //   ingest to return null even though the funded company is the unambiguous actor.
+            //   "Whoop raises $575M Series G" → primary_company=null (investors listed) → still
+            //   a Whoop development because Whoop is in companies[] and deal_type="Funding".
+            //   Risk: competitor funding articles with null primary_company and NVIDIA in
+            //   companies[] as context would also qualify. Accept this: it is less wrong
+            //   than zeroing out every startup's own funding events.
+            const isStrictDevelopment =
+              (a.deal_type === "Earnings" || a.deal_type === "M&A") &&
               a.primary_company != null &&
               matchesCanonical(a.primary_company, name);
+
+            const isFundingOrIPO =
+              (a.deal_type === "Funding" || a.deal_type === "IPO") &&
+              (a.primary_company == null || matchesCanonical(a.primary_company, name));
+
+            const isDevelopment = isStrictDevelopment || isFundingOrIPO;
 
             return {
               id: a.id,
@@ -666,55 +670,46 @@ export default function CompanyIntelPage() {
           title={selectedCompany.name}
           content={memoContent}
           type="company"
-          systemPrompt={`You are a sector analyst writing a company intelligence brief for ${selectedCompany.name}.
+          systemPrompt={`You are a sector analyst. Write a company intelligence brief for ${selectedCompany.name}. Output only user-facing prose — never reproduce bracketed instructions or meta-directives.
 
-The input contains:
-- MEMO_MODE: "developments-led" or "context-led" — determines the output structure.
-- COMPANY INDUSTRY: what the company IS (identity only, not from articles).
-- SIGNAL QUALITY: pre-computed evidence quality label — copy it verbatim, do not paraphrase.
-- COMPANY DEVELOPMENT ARTICLES: articles where the company was the actor — reported earnings, closed a deal, raised capital, went public. Tagged [Earnings], [M&A], [Funding], [IPO].
-- SECTOR CONTEXT ARTICLES: everything else — macro trends, geopolitical events, sector analysis, competitive commentary.
+INPUTS: MEMO_MODE | SIGNAL QUALITY | COMPANY DEVELOPMENT ARTICLES | SECTOR CONTEXT ARTICLES
 
-── MEMO_MODE = "developments-led" ──
-
-Output these sections in order:
-
+─── MEMO_MODE = "developments-led" ───
+${COMPANY_INDUSTRY[selectedCompany.name] ? `
 **Company Brief**
-Only if COMPANY INDUSTRY is not "Unknown": one sentence — company name, its industry, primary business. Omit entirely if "Unknown".
-
+${selectedCompany.name} is a ${COMPANY_INDUSTRY[selectedCompany.name]} company. [One phrase: primary business.]
+` : ''}
 **Recent Developments**
-Summarize only COMPANY DEVELOPMENT ARTICLES. Use specific figures, dates, and named outcomes where present. Do not substitute from context articles.
+[Facts from COMPANY DEVELOPMENT ARTICLES only. Specific figures, dates, named outcomes. No context articles.]
 
 **Market Context**
-2–3 sentences from SECTOR CONTEXT ARTICLES as industry backdrop.
+[2–3 sentences from SECTOR CONTEXT ARTICLES as backdrop.]
 
 **Key Watchpoints**
-1–3 watchpoints grounded only in COMPANY DEVELOPMENT ARTICLES: open deals, pending decisions, named upcoming events with outcomes at stake. Write only as many as there are grounded events — do not pad to 3 if fewer exist.
+[1–3 bullets from COMPANY DEVELOPMENT ARTICLES. Named upcoming events only. Do not pad.]
 
 **Signal Quality**
-Copy the SIGNAL QUALITY value verbatim. One sentence on what the evidence covers.
+[SIGNAL QUALITY value.] [One sentence on what the evidence covers.]
 
-── MEMO_MODE = "context-led" ──
-
-Output these sections in order:
-
+─── MEMO_MODE = "context-led" ───
+${COMPANY_INDUSTRY[selectedCompany.name] ? `
 **Company Brief**
-Only if COMPANY INDUSTRY is not "Unknown": one sentence — company name, its industry, primary business. Omit entirely if "Unknown".
-
+${selectedCompany.name} is a ${COMPANY_INDUSTRY[selectedCompany.name]} company. [One phrase: primary business.]
+` : ''}
 **Coverage Note**
-Write exactly: "No direct company developments found in the current feed window."
+No direct company developments found in the current feed window.
 
 **Current Context**
-2–3 sentences from SECTOR CONTEXT ARTICLES: what is happening in the sector and macro environment relevant to this company right now. Reference specific events or conditions named in the articles — do not write generic sector commentary.
+[2–3 sentences from SECTOR CONTEXT ARTICLES. Name specific events — no generic commentary.]
 
 **What To Watch**
-2 bullets only. Each bullet must name a specific event, dynamic, or condition from SECTOR CONTEXT ARTICLES above — not a generic observation that could apply to any company in this sector. Do not frame as company actions. Do not invent upcoming events.
+[2 bullets. Each names a specific event or condition from SECTOR CONTEXT ARTICLES. No inferred company benefit. No invented events.]
 
 **Signal Quality**
-Copy the SIGNAL QUALITY value verbatim. One sentence on what the evidence covers.
+[SIGNAL QUALITY value.] [One sentence on what the evidence covers.]
 
-── RULES (both modes) ──
-No article numbers or citations. No speculative company actions: no "may acquire", "positioned to benefit", "could announce", "stands to benefit", "is poised to", "faces exposure to". Do not infer company impact from adjacent context — a partner's earnings or a competitor's launch are not the selected company's developments. Every factual claim must trace explicitly to the input. Under 300 words.`}
+─── RULES ───
+No: "may benefit", "stands to benefit", "is poised to", "faces exposure to", "could". Do not infer this company's impact from partner or competitor activity. Every factual claim must appear in the input. Under 300 words.`}
         />
       )}
     </AppShell>
