@@ -43,7 +43,8 @@ interface CompanyArticle {
   _isDevelopment: boolean;
 }
 
-// Canonical name map — keys are lowercase variants, value is display name
+// Canonical name map — keys are lowercase variants, value is display name.
+// Also used as a second-pass lookup after legal suffix stripping (see canonicalize below).
 const CANONICAL: Record<string, string> = {
   nvidia: "NVIDIA",
   "nvidia corporation": "NVIDIA",
@@ -78,6 +79,24 @@ const CANONICAL: Record<string, string> = {
   "the goldman sachs group": "Goldman Sachs",
   "berkshire hathaway": "Berkshire Hathaway",
   "berkshire hathaway inc": "Berkshire Hathaway",
+  // Marvell — ingest produces "Marvell", "Marvell Technology", "Marvell Technology Inc."
+  // All should merge to one row; suffix stripping handles Inc., CANONICAL handles short form.
+  "marvell": "Marvell Technology",
+  "marvell technology": "Marvell Technology",
+  // Arm — ingest produces "Arm" and "Arm Holdings"
+  "arm": "Arm Holdings",
+  "arm holdings": "Arm Holdings",
+  // Samsung — ingest produces "Samsung" and "Samsung Electronics"
+  "samsung electronics": "Samsung",
+  "samsung electronics co": "Samsung",
+  // SoftBank — ingest produces "SoftBank" and "SoftBank Group"
+  "softbank": "SoftBank",
+  "softbank group": "SoftBank",
+  // Hon Hai / Foxconn — same company, different names in different articles
+  "hon hai": "Foxconn",
+  "hon hai precision": "Foxconn",
+  "hon hai precision industry": "Foxconn",
+  "foxconn": "Foxconn",
 };
 
 // Company identity map — curated, bounded descriptions of what each company IS and DOES.
@@ -129,9 +148,29 @@ const COMPANY_IDENTITY: Record<string, CompanyIdentity> = {
   "Walmart":          { industry: "Consumer Retail",       brief: "Walmart operates the world's largest retail network of physical stores and e-commerce, targeting everyday low prices for mass-market consumers." },
 };
 
+// Legal entity suffixes that never change a company's identity — strip from the end
+// before CANONICAL lookup. Handles "Marvell Technology Inc." → "Marvell Technology",
+// "JPMorgan Chase & Co." → "JPMorgan Chase", "Meta Platforms, Inc." → "Meta Platforms".
+// Only strips known legal suffixes (not brand words like "Technology" or "Systems").
+const LEGAL_SUFFIX_RE = /[,\s]+(inc\.?|corp\.?|corporation|llc|ltd\.?|limited|plc|l\.p\.?|llp|s\.a\.?|n\.v\.?|ag|gmbh)$/i;
+
 function canonicalize(name: string): string {
-  const key = name.trim().toLowerCase().replace(/[.,]$/g, "");
-  return CANONICAL[key] ?? name.trim();
+  const trimmed = name.trim().replace(/[.,]$/g, "");
+  const key = trimmed.toLowerCase();
+
+  // 1. Direct CANONICAL lookup (fastest path, handles all explicitly mapped names)
+  if (CANONICAL[key]) return CANONICAL[key];
+
+  // 2. Strip one legal suffix and retry — handles "Marvell Technology Inc." etc.
+  const stripped = trimmed.replace(LEGAL_SUFFIX_RE, "").trim();
+  if (stripped.length >= 4 && stripped !== trimmed) {
+    const strippedKey = stripped.toLowerCase();
+    if (CANONICAL[strippedKey]) return CANONICAL[strippedKey];
+    // Return suffix-stripped display form as canonical (e.g. "Marvell Technology")
+    return stripped;
+  }
+
+  return trimmed;
 }
 
 function parseCompanies(cos: unknown): string[] {
@@ -290,17 +329,44 @@ export default function CompanyIntelPage() {
     [companyArticles],
   );
 
+  // Context articles filtered for memo synthesis — excludes shadow-mentions.
+  //
+  // Shadow-mention: an article where a DIFFERENT company is the primary_company AND
+  // the selected company is not prominent in the article title. These articles mention
+  // the selected company in passing (via companies[] metadata) but are primarily about
+  // another actor. Feeding them to the model causes:
+  //   - Goldman Sachs memos built from JPMorgan/Jamie Dimon articles
+  //   - Lockheed Martin memos pulling in SpaceX IPO tangents
+  //
+  // Filter logic:
+  //   primary_company = null      → macro/sector article → include (no clear primary actor)
+  //   primary_company = this co.  → high-quality context → include
+  //   primary_company = other co. AND this co. in title → include (this co. is prominent)
+  //   primary_company = other co. AND this co. NOT in title → shadow-mention → exclude
+  //
+  // Panel display is unchanged — all context articles are still shown in the side panel.
+  // Only memo synthesis input is filtered.
+  const memoContextArticles = useMemo(() => {
+    if (!selectedCompany) return [];
+    const nameLower = selectedCompany.name.toLowerCase();
+    return contextArticles.filter((a) => {
+      if (a.primary_company == null) return true;
+      if (matchesCanonical(a.primary_company, selectedCompany.name)) return true;
+      if (a.title.toLowerCase().includes(nameLower)) return true;
+      return false; // shadow-mention: different primary actor, company not in title
+    });
+  }, [selectedCompany, contextArticles]);
+
   // Memo content — model receives explicitly categorized evidence, not a flat article list.
   // COMPANY INDUSTRY: stable identity (what the company IS).
   // SIGNAL QUALITY: computed from development article count — never delegated to the model.
-  // COMPANY DEVELOPMENT ARTICLES: articles describing company-specific events only.
-  // SECTOR CONTEXT ARTICLES: everything else mentioning the company.
+  // DIRECT_CONTEXT_COUNT: count of non-shadow-mention context articles — model uses this
+  //   to determine how many sentences to write and whether to include Watchpoints.
   const memoContent = useMemo(() => {
     if (!selectedCompany) return "";
     const industry = COMPANY_IDENTITY[selectedCompany.name]?.industry ?? "Unknown";
 
     // Sort by relevance_score DESC, then published_at DESC as tie-breaker.
-    // Highest-signal articles reach the model first, not just the most recently ingested.
     const byRelevance = (arts: CompanyArticle[]) =>
       [...arts].sort((a, b) => {
         const scoreDiff = (b.relevance_score ?? 5) - (a.relevance_score ?? 5);
@@ -318,30 +384,29 @@ export default function CompanyIntelPage() {
 
     // MEMO_MODE tells the model which output structure to use.
     // developments-led: Recent Developments + Key Watchpoints grounded in company events.
-    // context-led: Coverage Note + External Signal + Watchpoints from sector articles only.
+    // context-led: Coverage Note + External Signal (count-gated) + Watchpoints (count-gated).
     const memoMode = developmentArticles.length > 0 ? "developments-led" : "context-led";
 
-    // Context-led memos: use top 4 articles (not 6) with longer summaries (220 chars).
-    // Fewer, higher-signal articles force the model to cite specifically rather than
-    // synthesize broadly. Longer summaries give it enough named entities to cite.
-    // Developments-led memos: keep 6 context articles at 120 chars (backdrop, not lead).
+    // For context-led: use filtered memoContextArticles (no shadow-mentions), top 4, 220-char summaries.
+    // For developments-led: context is backdrop — use 6 articles at 120 chars (unchanged).
+    const sortedMemoCtx = byRelevance(memoContextArticles);
     const ctxMaxItems = memoMode === "context-led" ? 4 : 6;
     const ctxSummaryLen = memoMode === "context-led" ? 220 : 120;
-    const sortedCtx = byRelevance(contextArticles);
 
     return [
       `COMPANY: ${selectedCompany.name}`,
       `COMPANY INDUSTRY: ${industry}`,
       `MEMO_MODE: ${memoMode}`,
       `SIGNAL QUALITY: ${signalLabel}`,
+      `DIRECT_CONTEXT_COUNT: ${memoContextArticles.length}`,
       ``,
       `COMPANY DEVELOPMENT ARTICLES (${developmentArticles.length}):`,
       formatArticleList(byRelevance(developmentArticles)),
       ``,
-      `SECTOR CONTEXT ARTICLES (${contextArticles.length} total — showing top ${Math.min(ctxMaxItems, sortedCtx.length)} by relevance):`,
-      formatArticleList(sortedCtx, ctxMaxItems, ctxSummaryLen),
+      `SECTOR CONTEXT ARTICLES (${memoContextArticles.length} direct-context articles for synthesis):`,
+      formatArticleList(sortedMemoCtx, ctxMaxItems, ctxSummaryLen),
     ].join("\n");
-  }, [selectedCompany, developmentArticles, contextArticles]);
+  }, [selectedCompany, developmentArticles, memoContextArticles]);
 
   // Load articles when a company is selected
   useEffect(() => {
@@ -722,16 +787,18 @@ export default function CompanyIntelPage() {
             const briefBlock = identity
               ? `**Company Brief**\n${identity.brief}\n\n`
               : '';
+            // DIRECT_CONTEXT_COUNT is available here via closure — it drives section gating.
+            const directCount = memoContextArticles.length;
             return `You are a sector analyst. Write a company intelligence brief for ${selectedCompany.name}. Output only user-facing prose — never reproduce bracketed instructions or meta-directives.
 
-INPUTS: MEMO_MODE | SIGNAL QUALITY | COMPANY DEVELOPMENT ARTICLES | SECTOR CONTEXT ARTICLES
+INPUTS: MEMO_MODE | SIGNAL QUALITY | DIRECT_CONTEXT_COUNT | COMPANY DEVELOPMENT ARTICLES | SECTOR CONTEXT ARTICLES
 
 ─── MEMO_MODE = "developments-led" ───
 ${briefBlock}**Recent Developments**
 [Facts from COMPANY DEVELOPMENT ARTICLES only. Specific figures, dates, named outcomes. Do not draw from context articles.]
 
 **Market Context**
-[2–3 sentences using only events named in SECTOR CONTEXT ARTICLES. Do not write generic sector trends. Do not reference events, companies, or data not present in those articles.]
+[2–3 sentences using only events named in SECTOR CONTEXT ARTICLES. Do not write generic sector trends. Do not reference events not present in those articles.]
 
 **Key Watchpoints**
 [1–3 bullets. Each must name a specific upcoming event or unresolved condition from COMPANY DEVELOPMENT ARTICLES. Do not pad with invented milestones.]
@@ -743,17 +810,25 @@ ${briefBlock}**Recent Developments**
 ${briefBlock}**Coverage Note**
 No direct company developments found in the current feed window.
 
-**External Signal**
-[Write exactly 2–3 sentences. Each sentence must describe ONE named event from ONE article in SECTOR CONTEXT ARTICLES — citing the specific company name, person, dollar figure, or named outcome that appears in that article's title or summary. Sentence form: "[Named entity from article] [did / reported / announced / launched] [specific named fact from the article]." Do not synthesize multiple articles into one sentence. Do not write general characterizations ("the market is seeing", "adoption is growing", "sector trends"). Do not describe ${selectedCompany.name}'s position, exposure, or outlook — only report what the named entities in the articles did.]
+${directCount === 0
+  ? `**Signal Quality**
+[SIGNAL QUALITY value.] No articles directly covering ${selectedCompany.name}'s sector environment were available in this feed window.`
+  : `**External Signal**
+[DIRECT_CONTEXT_COUNT = ${directCount}. Write exactly ${directCount === 1 ? '1 sentence' : '2–3 sentences'}. Each sentence must describe ONE named event from ONE article in SECTOR CONTEXT ARTICLES — citing the specific company name, person, dollar figure, or named outcome that appears in that article. Sentence form: "[Named entity] [did / reported / announced] [specific named fact]." One article = one sentence. Do not synthesize. Do not write general characterizations ("the market is seeing", "adoption is growing"). Do not describe ${selectedCompany.name}'s position or outlook.]
 
-**Watchpoints**
-[Write 1–2 bullets maximum. Each bullet must identify ONE specific unresolved external condition EXPLICITLY STATED in a SECTOR CONTEXT ARTICLE — a named regulatory proceeding with a decision date, a named pending deal close, a scheduled data release, or an announced policy decision. Name the specific entity or event, not a general theme. Do not write inferences connecting any watchpoint to ${selectedCompany.name}. If only one qualifying condition is visible in the articles, write one bullet only.]
+${directCount >= 2
+  ? `**Watchpoints**
+[DIRECT_CONTEXT_COUNT = ${directCount}. Only include this section if at least one SECTOR CONTEXT ARTICLE explicitly states a named unresolved condition — a regulatory decision with a known date, a pending deal close, a scheduled data release, or an announced policy timeline. If no such condition is explicitly present in the articles, OMIT this section entirely — do not write speculative watchpoints. If present: 1–2 bullets maximum, each naming the specific condition and the entity involved. No inferences about ${selectedCompany.name}.]
 
-**Signal Quality**
-[SIGNAL QUALITY value.] [One sentence listing what article types appear in the feed window — e.g., "The feed contains one competitor funding article and one geopolitical macro article." Do not characterize ${selectedCompany.name}'s position.]
+`
+  : `[OMIT Watchpoints — DIRECT_CONTEXT_COUNT is ${directCount}, insufficient for named unresolved conditions.]
+
+`}**Signal Quality**
+[SIGNAL QUALITY value.] [One sentence listing the article types in this feed window — e.g., "The feed contains one geopolitical macro article and one competitor funding article." Do not characterize ${selectedCompany.name}'s position.]`}
 
 ─── ABSOLUTE RULES (violation invalidates the output) ───
 Company Brief (if shown above): copy it verbatim — do not rephrase, shorten, or add to it.
+DIRECT_CONTEXT_COUNT is a hard gate — it determines exactly how many sentences to write and whether Watchpoints exists.
 BANNED — writing any of these makes the output wrong:
   • "may benefit" / "could benefit" / "stands to benefit" / "is poised to"
   • "faces exposure to" / "could be impacted" / "may be affected" / "faces headwinds"
