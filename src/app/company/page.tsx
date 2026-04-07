@@ -203,13 +203,13 @@ const DEVELOPMENT_DEAL_TYPES = new Set(["Earnings", "M&A", "Funding", "IPO"]);
 // Tags surfaced in memo evidence so the model can read event type without inferring from prose.
 const TAGGED_DEAL_TYPES = new Set(["Earnings", "M&A", "Funding", "IPO", "Macro", "Geopolitical", "Other"]);
 
-function formatArticleList(arts: CompanyArticle[], maxItems = 6, summaryLen = 120): string {
+function formatArticleList(arts: CompanyArticle[]): string {
   if (arts.length === 0) return "None";
   return arts
-    .slice(0, maxItems)
+    .slice(0, 6)
     .map((a) => {
       const tag = a.deal_type && TAGGED_DEAL_TYPES.has(a.deal_type) ? `[${a.deal_type}] ` : "";
-      const summary = a.summary ? ` — ${a.summary.slice(0, summaryLen)}` : "";
+      const summary = a.summary ? ` — ${a.summary.slice(0, 120)}` : "";
       return `• ${tag}${a.title}${summary}`;
     })
     .join("\n\n");
@@ -314,16 +314,8 @@ export default function CompanyIntelPage() {
 
     // MEMO_MODE tells the model which output structure to use.
     // developments-led: Recent Developments + Key Watchpoints grounded in company events.
-    // context-led: Coverage Note + External Signal + Watchpoints from sector articles only.
+    // context-led: Coverage Note + Current Context + What To Watch from sector articles only.
     const memoMode = developmentArticles.length > 0 ? "developments-led" : "context-led";
-
-    // Context-led memos: use top 4 articles (not 6) with longer summaries (220 chars).
-    // Fewer, higher-signal articles force the model to cite specifically rather than
-    // synthesize broadly. Longer summaries give it enough named entities to cite.
-    // Developments-led memos: keep 6 context articles at 120 chars (backdrop, not lead).
-    const ctxMaxItems = memoMode === "context-led" ? 4 : 6;
-    const ctxSummaryLen = memoMode === "context-led" ? 220 : 120;
-    const sortedCtx = byRelevance(contextArticles);
 
     return [
       `COMPANY: ${selectedCompany.name}`,
@@ -334,8 +326,8 @@ export default function CompanyIntelPage() {
       `COMPANY DEVELOPMENT ARTICLES (${developmentArticles.length}):`,
       formatArticleList(byRelevance(developmentArticles)),
       ``,
-      `SECTOR CONTEXT ARTICLES (${contextArticles.length} total — showing top ${Math.min(ctxMaxItems, sortedCtx.length)} by relevance):`,
-      formatArticleList(sortedCtx, ctxMaxItems, ctxSummaryLen),
+      `SECTOR CONTEXT ARTICLES (${contextArticles.length}):`,
+      formatArticleList(byRelevance(contextArticles)),
     ].join("\n");
   }, [selectedCompany, developmentArticles, contextArticles]);
 
@@ -735,23 +727,18 @@ ${briefBlock}**Recent Developments**
 ${briefBlock}**Coverage Note**
 No direct company developments found in the current feed window.
 
-**External Signal**
-[Write exactly 2–3 sentences. Each sentence must describe ONE named event from ONE article in SECTOR CONTEXT ARTICLES — citing the specific company name, person, dollar figure, or named outcome that appears in that article's title or summary. Sentence form: "[Named entity from article] [did / reported / announced / launched] [specific named fact from the article]." Do not synthesize multiple articles into one sentence. Do not write general characterizations ("the market is seeing", "adoption is growing", "sector trends"). Do not describe ${selectedCompany.name}'s position, exposure, or outlook — only report what the named entities in the articles did.]
+**Current Context**
+[2–3 sentences. Use only events, companies, and figures that appear by name in SECTOR CONTEXT ARTICLES. Do not write generic sector narratives. Do not name events not present in the listed articles.]
 
-**Watchpoints**
-[Write 1–2 bullets maximum. Each bullet must identify ONE specific unresolved external condition EXPLICITLY STATED in a SECTOR CONTEXT ARTICLE — a named regulatory proceeding with a decision date, a named pending deal close, a scheduled data release, or an announced policy decision. Name the specific entity or event, not a general theme. Do not write inferences connecting any watchpoint to ${selectedCompany.name}. If only one qualifying condition is visible in the articles, write one bullet only.]
+**What To Watch**
+[2 bullets. Each must name a specific event or condition from SECTOR CONTEXT ARTICLES — e.g., a named regulatory action, contract decision, or macro data release. No generic macro risks. No inferred impact on ${selectedCompany.name}.]
 
 **Signal Quality**
-[SIGNAL QUALITY value.] [One sentence listing what article types appear in the feed window — e.g., "The feed contains one competitor funding article and one geopolitical macro article." Do not characterize ${selectedCompany.name}'s position.]
+[SIGNAL QUALITY value.] [One sentence on what the evidence covers.]
 
-─── ABSOLUTE RULES (violation invalidates the output) ───
-Company Brief (if shown above): copy it verbatim — do not rephrase, shorten, or add to it.
-BANNED — writing any of these makes the output wrong:
-  • "may benefit" / "could benefit" / "stands to benefit" / "is poised to"
-  • "faces exposure to" / "could be impacted" / "may be affected" / "faces headwinds"
-  • "investors should" / "bears watching" / "remains to be seen"
-  • any sentence that connects ${selectedCompany.name} to a context article through causal inference
-Every factual claim must appear verbatim in the provided articles. No invented figures, companies, timelines, or outcomes. Under 300 words. Output section headers and prose only.`;
+─── RULES ───
+Company Brief (if present above): output verbatim — do not rephrase or expand.
+No: "may benefit", "stands to benefit", "is poised to", "faces exposure to", "could". Do not infer ${selectedCompany.name}'s position from partner or competitor activity. Every factual claim must appear in the input. Under 300 words.`;
           })()}
         />
       )}
