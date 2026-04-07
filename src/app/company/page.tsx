@@ -337,6 +337,31 @@ export default function CompanyIntelPage() {
             });
           });
 
+          // DEBUG: log raw fields for every matched article so root cause is verifiable
+          // in the browser console. Remove after preview confirms fix.
+          console.group(`[CompanyIntel] matched articles for "${name}" (${matched.length})`);
+          matched.forEach((a) => {
+            const dt = typeof a.deal_type === "string" ? a.deal_type : null;
+            const pc = a.primary_company ?? null;
+            const strictPass =
+              (dt === "Earnings" || dt === "M&A") &&
+              pc != null &&
+              matchesCanonical(pc, name);
+            const relaxedPass =
+              (dt === "Funding" || dt === "IPO") &&
+              (pc == null || matchesCanonical(pc, name));
+            console.log({
+              title: a.title.slice(0, 60),
+              deal_type: dt,
+              primary_company: pc,
+              companies: parseCompanies(a.companies),
+              _isDevelopment: strictPass || relaxedPass,
+              _strictPass: strictPass,
+              _relaxedPass: relaxedPass,
+            });
+          });
+          console.groupEnd();
+
           const mapped = matched.map((a) => {
             // Development classification: does this article describe something the company DID?
             //
