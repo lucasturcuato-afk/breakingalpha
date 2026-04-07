@@ -340,14 +340,28 @@ export default function CompanyIntelPage() {
           const mapped = matched.map((a) => {
             // Development classification: does this article describe something the company DID?
             //
-            // Development = company was the ACTOR. deal_type is the gate.
-            // Earnings/M&A/Funding/IPO are unambiguous company events — company appearing
-            // in companies[] is sufficient regardless of primary_company assignment.
-            // "Other" is excluded: it covers contract awards AND regulatory/analyst stories
-            // where the company is the subject but not the actor. Cannot reliably distinguish
-            // at Stage 1 without further ingest signal.
+            // Development = the SELECTED COMPANY was the PRIMARY ACTOR in this article.
+            // Two gates must both pass:
+            //
+            // 1. deal_type gate — article describes a company-specific event category.
+            //    Earnings/M&A/Funding/IPO are unambiguous. "Other" excluded (junk-drawer).
+            //
+            // 2. primary_company gate — ingest identified THIS company as the primary
+            //    subject. This prevents partner/competitor/ecosystem articles from
+            //    inflating the development count:
+            //      "Hon Hai Q1 earnings"       → primary_company="Hon Hai"  → context for NVIDIA
+            //      "Korean startup raises $X"  → primary_company=startup    → context for NVIDIA
+            //      "Whoop raises $200M"        → primary_company="Whoop"    → development for Whoop
+            //      "Apple Q3 results"          → primary_company="Apple"    → development for Apple
+            //
+            // Tradeoff: if ingest returned primary_company=null on a genuine event
+            // (ambiguous multi-company article), that article becomes context.
+            // False negatives are acceptable; development bucket contamination is not.
             const isDevelopment =
-              a.deal_type != null && DEVELOPMENT_DEAL_TYPES.has(a.deal_type);
+              a.deal_type != null &&
+              DEVELOPMENT_DEAL_TYPES.has(a.deal_type) &&
+              a.primary_company != null &&
+              matchesCanonical(a.primary_company, name);
 
             return {
               id: a.id,
@@ -675,7 +689,7 @@ Summarize only COMPANY DEVELOPMENT ARTICLES. Use specific figures, dates, and na
 2–3 sentences from SECTOR CONTEXT ARTICLES as industry backdrop.
 
 **Key Watchpoints**
-2–3 watchpoints grounded only in COMPANY DEVELOPMENT ARTICLES: open deals, pending decisions, named upcoming events with outcomes at stake.
+1–3 watchpoints grounded only in COMPANY DEVELOPMENT ARTICLES: open deals, pending decisions, named upcoming events with outcomes at stake. Write only as many as there are grounded events — do not pad to 3 if fewer exist.
 
 **Signal Quality**
 Copy the SIGNAL QUALITY value verbatim. One sentence on what the evidence covers.
@@ -700,7 +714,7 @@ Write exactly: "No direct company developments found in the current feed window.
 Copy the SIGNAL QUALITY value verbatim. One sentence on what the evidence covers.
 
 ── RULES (both modes) ──
-No article numbers or citations. No speculative company actions: no "may acquire", "positioned to benefit", "could announce". Every factual claim must trace to the input. Under 300 words.`}
+No article numbers or citations. No speculative company actions: no "may acquire", "positioned to benefit", "could announce", "stands to benefit", "is poised to", "faces exposure to". Do not infer company impact from adjacent context — a partner's earnings or a competitor's launch are not the selected company's developments. Every factual claim must trace explicitly to the input. Under 300 words.`}
         />
       )}
     </AppShell>
