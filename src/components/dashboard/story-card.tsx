@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/strip-html";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { Badge } from "@/components/ui/badge";
 import { BookmarkButton } from "@/components/ui/bookmark";
@@ -167,7 +167,7 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
                     : story.sentiment?.toLowerCase() === "negative" || story.sentiment?.toLowerCase() === "bearish"
                     ? "BEARISH"
                     : "WATCH";
-                  const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+                  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
                   await supabase.from("theses").insert({
                     title: story.title,
                     conviction,
@@ -320,7 +320,7 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
                       : story.sentiment?.toLowerCase() === "negative" || story.sentiment?.toLowerCase() === "bearish"
                       ? "BEARISH"
                       : "WATCH";
-                    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+                    const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
                     await supabase.from("theses").insert({
                       title: story.title,
                       conviction,

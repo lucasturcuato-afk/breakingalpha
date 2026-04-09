@@ -448,9 +448,18 @@ function IntegrationRow({
         </div>
         <p className="font-sans text-[11px] text-text-muted mt-0.5">{description}</p>
       </div>
-      <Button variant={connected ? "ghost" : "secondary"} size="sm">
-        {connected ? "Disconnect" : "Connect"}
-      </Button>
+      {connected ? (
+        <Button variant="ghost" size="sm">
+          Disconnect
+        </Button>
+      ) : (
+        <div className="flex items-center gap-2">
+          <Badge variant="neutral">Coming soon</Badge>
+          <Button variant="secondary" size="sm" disabled>
+            Connect
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

@@ -18,10 +18,10 @@ import {
   Star,
 } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 
 function getSupabase() {
-  return createClient(
+  return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
@@ -52,7 +52,7 @@ interface Deal {
 type StageFilter = "ALL" | "rumored" | "announced" | "under_loi" | "closed";
 
 const STAGE_CONFIG: Record<string, { label: string; color: string }> = {
-  rumored: { label: "RUMORED", color: "text-amber-600 bg-amber-50 border-amber-200" },
+  rumored: { label: "RUMORED", color: "text-signal-warn bg-signal-warn/10 border-signal-warn/30" },
   announced: { label: "ANNOUNCED", color: "text-signal-up bg-signal-up/10 border-signal-up/30" },
   under_loi: { label: "UNDER LOI", color: "text-blue-600 bg-blue-50 border-blue-200" },
   closed: { label: "CLOSED", color: "text-text-muted bg-parchment-mid border-border-base" },
@@ -61,7 +61,7 @@ const STAGE_CONFIG: Record<string, { label: string; color: string }> = {
 const DEAL_TYPE_COLORS: Record<string, string> = {
   "M&A": "text-blue-600 bg-blue-50 border-blue-200",
   "IPO": "text-violet-600 bg-violet-50 border-violet-200",
-  "Debt Raise": "text-amber-600 bg-amber-50 border-amber-200",
+  "Debt Raise": "text-signal-warn bg-signal-warn/10 border-signal-warn/30",
   "Secondary": "text-text-muted bg-parchment-mid border-border-base",
 };
 
@@ -148,11 +148,15 @@ function DealFlowContent() {
   /* ── Fetch deals ── */
   const fetchDeals = useCallback(async () => {
     try {
-      const { data } = await getSupabase()
+      const { data, error } = await getSupabase()
         .from("deal_flow")
         .select("*")
         .order("updated_at", { ascending: false })
         .limit(200);
+      if (error) {
+        console.error("Deal flow query error:", error.message);
+        return;
+      }
       if (data) setDeals(data);
     } catch (e) {
       console.error("Failed to fetch deals:", e);

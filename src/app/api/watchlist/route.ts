@@ -52,7 +52,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { identifier, type } = await request.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { identifier, type } = body as { identifier?: string; type?: string };
   if (!identifier || !type)
     return NextResponse.json(
       { error: "identifier and type required" },
@@ -119,7 +126,14 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { id } = await request.json();
+  let delBody: Record<string, unknown>;
+  try {
+    delBody = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { id } = delBody as { id?: string };
   if (!id)
     return NextResponse.json({ error: "id required" }, { status: 400 });
 

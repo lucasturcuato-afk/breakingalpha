@@ -18,10 +18,10 @@ import { Moon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { MemoModal } from "@/components/memo/MemoModal";
 import type { StoryData } from "@/components/dashboard";
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 
 function getSupabase() {
-  return createClient(
+  return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
@@ -88,11 +88,12 @@ export default function EveningWrapPage() {
           });
         }
 
-        const { data: articles } = await getSupabase()
+        const { data: articles, error: articlesError } = await getSupabase()
           .from("articles")
           .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies")
           .order("relevance_score", { ascending: false })
           .limit(8);
+        if (articlesError) console.error("Evening wrap articles error:", articlesError.message);
 
         if (articles) {
           setStories(articles.map((a) => ({
@@ -130,7 +131,7 @@ export default function EveningWrapPage() {
     return Object.entries(briefing.sections).map(([key, content]) => ({
       key,
       title: `${SECTION_ICONS[key] || "📋"} ${SECTION_TITLES[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}`,
-      content: content as string,
+      content: (content ?? "") as string,
       fullWidth: key === "what_to_watch" || key === "tomorrow_setup" || key === "closing_thoughts",
     }));
   }, [briefing]);

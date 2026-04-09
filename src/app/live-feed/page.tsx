@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlignLeft, Bookmark, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 import type { FeedFilter } from "@/components/feed";
 import type { StoryData } from "@/components/dashboard";
 
@@ -18,7 +18,7 @@ interface LiveStory extends StoryData {
 }
 
 function getSupabase() {
-  return createClient(
+  return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );

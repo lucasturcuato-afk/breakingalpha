@@ -10,7 +10,7 @@ import { WatchlistStep } from "@/components/onboarding/watchlist-step";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const ONBOARDED_KEY_PREFIX = "ba_onboarded_";
+const ONBOARDED_KEY_PREFIX = "signalera_onboarded_";
 
 export default function OnboardingPage() {
   const router = useRouter();

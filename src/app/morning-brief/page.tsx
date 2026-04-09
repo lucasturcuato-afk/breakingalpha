@@ -20,10 +20,10 @@ import { useRouter } from "next/navigation";
 import { MemoModal } from "@/components/memo/MemoModal";
 import type { StoryData } from "@/components/dashboard";
 import type { DealData } from "@/components/brief";
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 
 function getSupabase() {
-  return createClient(
+  return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
@@ -152,7 +152,7 @@ export default function MorningBriefPage() {
     return Object.entries(briefing.sections).map(([key, content]) => ({
       key,
       title: `${SECTION_ICONS[key] || "\u{1F4CB}"} ${SECTION_TITLES[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}`,
-      content: content as string,
+      content: (content ?? "") as string,
       fullWidth: key === "what_to_watch" || key === "tomorrow_setup",
     }));
   }, [briefing]);

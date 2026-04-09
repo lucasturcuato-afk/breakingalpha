@@ -1,15 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import Groq from "groq-sdk";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseWithUser } from "@/lib/supabase-server";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export async function POST(request: NextRequest) {
-  const { thesis, articles, thesisId } = await request.json();
+  const { supabase, user } = await getSupabaseWithUser();
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { thesis, articles, thesisId } = body as {
+    thesis?: { title?: string; conviction?: string; sector?: string; rationale?: string; catalyst?: string };
+    articles?: Array<{ title: string; source?: string; summary?: string }>;
+    thesisId?: string;
+  };
   if (!thesis)
     return NextResponse.json(
       { error: "thesis is required" },
@@ -19,7 +29,7 @@ export async function POST(request: NextRequest) {
   const articleList = (articles || []).slice(0, 8);
   const articleContext = articleList
     .map(
-      (a: { title: string; source?: string; summary?: string }, i: number) =>
+      (a, i) =>
         `${i + 1}. "${a.title}" (${a.source || "Unknown"})${a.summary ? "\n   Summary: " + a.summary.slice(0, 200) : ""}`
     )
     .join("\n\n");
@@ -51,7 +61,10 @@ Rules: one evidence entry per article (${articleList.length} total), cite specif
       temperature: 0.3,
     });
 
-    const raw = completion.choices[0]?.message?.content || "{}";
+    const raw = completion.choices[0]?.message?.content;
+    if (!raw) {
+      return NextResponse.json({ error: "Groq returned empty response — retry" }, { status: 500 });
+    }
     let parsed: { catalyst_note?: string; evidence?: unknown } = {};
     try {
       parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
@@ -63,13 +76,16 @@ Rules: one evidence entry per article (${articleList.length} total), cite specif
     }
 
     if (thesisId && (parsed.catalyst_note || parsed.evidence)) {
-      try {
-        const updateData: Record<string, unknown> = {};
-        if (parsed.catalyst_note) updateData.catalyst_note = parsed.catalyst_note;
-        if (parsed.evidence) updateData.evidence_chain = parsed.evidence;
-        await supabase.from("theses").update(updateData).eq("id", thesisId);
-      } catch (e) {
-        console.error("Failed to save enrichment to Supabase:", e);
+      const updateData: Record<string, unknown> = {};
+      if (parsed.catalyst_note) updateData.catalyst_note = parsed.catalyst_note;
+      if (parsed.evidence) updateData.evidence_chain = parsed.evidence;
+      const { error: updateErr } = await supabase.from("theses").update(updateData).eq("id", thesisId);
+      if (updateErr) {
+        console.error("Failed to save enrichment to Supabase:", updateErr.message);
+        return NextResponse.json(
+          { error: "Failed to save enrichment", detail: updateErr.message },
+          { status: 500 }
+        );
       }
     }
 

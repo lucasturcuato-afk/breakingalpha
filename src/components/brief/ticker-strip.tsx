@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 
 export interface TickerQuote {
@@ -12,22 +13,49 @@ interface TickerStripProps {
   quotes?: TickerQuote[];
 }
 
-const defaultQuotes: TickerQuote[] = [
-  { symbol: "SPY", price: "448.02", pct: 0.38 },
-  { symbol: "QQQ", price: "378.15", pct: 0.52 },
-  { symbol: "AAPL", price: "189.84", pct: 1.23 },
-  { symbol: "NVDA", price: "875.28", pct: -2.41 },
-  { symbol: "MSFT", price: "378.91", pct: 0.65 },
-  { symbol: "META", price: "485.20", pct: 0.92 },
-  { symbol: "GOOGL", price: "141.80", pct: -0.18 },
-  { symbol: "AMZN", price: "178.25", pct: 1.05 },
-  { symbol: "TSLA", price: "248.42", pct: -1.87 },
-  { symbol: "GLD", price: "192.30", pct: 0.42 },
-  { symbol: "TLT", price: "96.48", pct: 0.28 },
-  { symbol: "BTC", price: "62,480", pct: 2.15 },
-];
+const DEFAULT_SYMBOLS = ["SPY", "QQQ", "AAPL", "NVDA", "MSFT", "META", "GOOGL", "AMZN", "TSLA", "GLD", "TLT", "BTC"];
 
-export function TickerStrip({ quotes = defaultQuotes }: TickerStripProps) {
+const fallbackQuotes: TickerQuote[] = DEFAULT_SYMBOLS.map((s) => ({
+  symbol: s,
+  price: "—",
+  pct: 0,
+}));
+
+export function TickerStrip({ quotes: externalQuotes }: TickerStripProps) {
+  const [liveQuotes, setLiveQuotes] = useState<TickerQuote[]>(fallbackQuotes);
+
+  useEffect(() => {
+    if (externalQuotes) return; // Skip fetch if quotes provided externally
+
+    async function fetchQuotes() {
+      try {
+        const res = await fetch(`/api/watchlist-quotes?symbols=${DEFAULT_SYMBOLS.join(",")}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.quotes) return;
+
+        setLiveQuotes(
+          DEFAULT_SYMBOLS.map((symbol) => {
+            const q = data.quotes[symbol];
+            if (!q) return { symbol, price: "—", pct: 0 };
+            return {
+              symbol,
+              price: typeof q.price === "number" ? q.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(q.price),
+              pct: q.pct ?? 0,
+            };
+          }),
+        );
+      } catch {
+        // Keep fallback quotes on error
+      }
+    }
+
+    fetchQuotes();
+    const interval = setInterval(fetchQuotes, 60_000);
+    return () => clearInterval(interval);
+  }, [externalQuotes]);
+
+  const quotes = externalQuotes || liveQuotes;
   // Triple the items for seamless loop
   const items = [...quotes, ...quotes, ...quotes];
 

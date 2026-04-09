@@ -8,12 +8,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Search, Building2, Bookmark, Sparkles, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { MemoModal } from "@/components/memo/MemoModal";
 
 function getSupabase() {
-  return createClient(
+  return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
@@ -67,12 +67,16 @@ export default function CompanyIntelPage() {
   useEffect(() => {
     async function load() {
       try {
-        const { data: articles } = await getSupabase()
+        const { data: articles, error: articlesErr } = await getSupabase()
           .from("articles")
           .select("companies, sector")
           .order("ingested_at", { ascending: false })
           .limit(500);
 
+        if (articlesErr) {
+          console.error("Company intel query error:", articlesErr.message);
+          return;
+        }
         if (!articles) return;
 
         const compMap: Record<string, { mentions: number; sectors: Set<string> }> = {};
@@ -119,12 +123,16 @@ export default function CompanyIntelPage() {
 
     async function loadArticles() {
       try {
-        const { data: articles } = await getSupabase()
+        const { data: articles, error: detailErr } = await getSupabase()
           .from("articles")
           .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies")
           .order("relevance_score", { ascending: false })
           .limit(50);
 
+        if (detailErr) {
+          console.error("Company articles query error:", detailErr.message);
+          return;
+        }
         if (articles) {
           const name = selectedCompany!.name.toLowerCase();
           const matched = articles.filter((a) => {

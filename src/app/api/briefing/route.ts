@@ -102,11 +102,12 @@ export async function GET(request: NextRequest) {
         data: { user },
       } = await authedClient.auth.getUser();
       if (user) {
-        const { data: prefs } = await authedClient
+        const { data: prefs, error: prefsError } = await authedClient
           .from("user_preferences")
           .select("sectors, modules")
           .eq("user_id", user.id)
           .single();
+        if (prefsError) console.error("Preferences query error:", prefsError.message);
         if (prefs) userPreferences = prefs;
       }
     } catch {
