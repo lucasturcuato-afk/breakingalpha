@@ -52,7 +52,7 @@ export function Sidebar({
   unreadCount = 0,
 }: SidebarProps) {
   const pathname = usePathname();
-  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
+  const [user, setUser] = useState<{ name: string; email: string; role: string } | null>(null);
 
   useEffect(() => {
     const supabase = createBrowserClient(
@@ -64,6 +64,7 @@ export function Sidebar({
         setUser({
           name: user.user_metadata?.full_name || user.email?.split("@")[0] || "User",
           email: user.email || "",
+          role: user.user_metadata?.role || "Analyst",
         });
       }
     });
@@ -76,7 +77,7 @@ export function Sidebar({
     .join("")
     .toUpperCase()
     .slice(0, 2);
-  const userRole = user?.email ? "Analyst" : "";
+  const userRole = user?.role || "";
 
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-[var(--sidebar-width)] bg-cream border-r border-border-base flex flex-col z-40">
@@ -93,7 +94,7 @@ export function Sidebar({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: '22px', fontWeight: 700, fontFamily: '"Playfair Display", serif', letterSpacing: '-0.3px', lineHeight: 1.1, whiteSpace: 'nowrap' }}>
               <span className="text-foreground">Signal</span>
-              <span style={{ color: '#F5A623' }}>era</span>
+              <span className="text-gold">era</span>
             </div>
             <div className="text-muted-foreground" style={{ fontSize: '9px', fontWeight: 500, fontFamily: 'Inter, sans-serif', letterSpacing: '1.5px', textTransform: 'uppercase' as const, lineHeight: 1.4, wordBreak: 'break-word' }}>
               Where Markets Make Sense

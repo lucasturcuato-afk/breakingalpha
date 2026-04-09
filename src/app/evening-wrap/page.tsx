@@ -18,10 +18,10 @@ import { Moon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { MemoModal } from "@/components/memo/MemoModal";
 import type { StoryData } from "@/components/dashboard";
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 
 function getSupabase() {
-  return createClient(
+  return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
@@ -95,12 +95,13 @@ export default function EveningWrapPage() {
         const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
-        let { data: articles } = await getSupabase()
+        let { data: articles, error: articlesError } = await getSupabase()
           .from("articles")
           .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies")
           .gte("ingested_at", cutoff24h)
           .order("relevance_score", { ascending: false })
           .limit(8);
+        if (articlesError) console.error("Evening wrap articles error:", articlesError.message);
 
         let label = "Today's Top Stories";
         if ((articles?.length ?? 0) < 3) {
@@ -151,7 +152,7 @@ export default function EveningWrapPage() {
     return Object.entries(briefing.sections).map(([key, content]) => ({
       key,
       title: `${SECTION_ICONS[key] || "📋"} ${SECTION_TITLES[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}`,
-      content: content as string,
+      content: (content ?? "") as string,
       fullWidth: key === "what_to_watch" || key === "tomorrow_setup" || key === "closing_thoughts",
     }));
   }, [briefing]);

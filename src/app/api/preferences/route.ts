@@ -57,7 +57,23 @@ export async function POST(request: NextRequest) {
   if (userError || !user)
     return NextResponse.json({ error: "Invalid session" }, { status: 401 });
 
-  const { sectors, modules, prioritize_watchlist } = await request.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { sectors, modules, prioritize_watchlist } = body as {
+    sectors?: unknown;
+    modules?: unknown;
+    prioritize_watchlist?: unknown;
+  };
+  if (sectors !== undefined && !Array.isArray(sectors))
+    return NextResponse.json({ error: "sectors must be an array" }, { status: 400 });
+  if (modules !== undefined && !Array.isArray(modules))
+    return NextResponse.json({ error: "modules must be an array" }, { status: 400 });
+
   const { data, error } = await supabase
     .from("user_preferences")
     .upsert(

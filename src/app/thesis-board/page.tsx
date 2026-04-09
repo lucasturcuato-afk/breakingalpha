@@ -9,11 +9,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Sparkles, FileText, Archive } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 import type { ThesisItem, ThesisStatus } from "@/components/thesis";
 
+interface RelatedArticle {
+  id: string;
+  title: string;
+  source?: string;
+  published_at?: string;
+  summary?: string;
+  sentiment?: string;
+  sector?: string;
+}
+
 function getSupabase() {
-  return createClient(
+  return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
@@ -48,7 +58,7 @@ function ThesisBoardContent() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [relatedArticles, setRelatedArticles] = useState<Record<string, any[]>>({});
+  const [relatedArticles, setRelatedArticles] = useState<Record<string, RelatedArticle[]>>({});
   const [showArchived, setShowArchived] = useState(false);
   const [archivedTheses, setArchivedTheses] = useState<ThesisItem[]>([]);
   const [archivedRefreshKey, setArchivedRefreshKey] = useState(0);
@@ -260,15 +270,15 @@ function ThesisBoardContent() {
               {(showArchived
                 ? [
                     { label: "Archived", value: archivedTheses.length, color: "" },
-                    { label: "Bullish", value: archivedTheses.filter((t) => t.conviction === "BULLISH").length, color: "text-green-500" },
-                    { label: "Bearish", value: archivedTheses.filter((t) => t.conviction === "BEARISH").length, color: "text-red-400" },
-                    { label: "Watch", value: archivedTheses.filter((t) => t.conviction === "WATCH").length, color: "text-amber-500" },
+                    { label: "Bullish", value: archivedTheses.filter((t) => t.conviction === "BULLISH").length, color: "text-signal-up" },
+                    { label: "Bearish", value: archivedTheses.filter((t) => t.conviction === "BEARISH").length, color: "text-signal-dn" },
+                    { label: "Watch", value: archivedTheses.filter((t) => t.conviction === "WATCH").length, color: "text-signal-warn" },
                   ]
                 : [
                     { label: "Total signals", value: theses.length, color: "" },
                     { label: "Strong signals", value: strongSignalCount, color: "text-gold" },
-                    { label: "Bullish", value: sentimentCounts.bullish, color: "text-green-500" },
-                    { label: "Bearish", value: sentimentCounts.bearish, color: "text-red-400" },
+                    { label: "Bullish", value: sentimentCounts.bullish, color: "text-signal-up" },
+                    { label: "Bearish", value: sentimentCounts.bearish, color: "text-signal-dn" },
                   ]
               ).map((stat) => (
                 <div key={stat.label} className="bg-parchment-mid rounded-xl p-3 border border-border-base">

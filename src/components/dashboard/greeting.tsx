@@ -21,9 +21,10 @@ function getMarketStatus(): string {
   const h = now.getHours();
   const m = now.getMinutes();
   const mins = h * 60 + m;
-  // Rough EST market hours: 9:30–16:00
+  const MARKET_OPEN_MIN = 570;   // 9:30 AM EST
+  const MARKET_CLOSE_MIN = 960;  // 4:00 PM EST
   if (day === 0 || day === 6) return "Markets Closed";
-  if (mins >= 570 && mins < 960) return "Markets Open";
+  if (mins >= MARKET_OPEN_MIN && mins < MARKET_CLOSE_MIN) return "Markets Open";
   return "Markets Closed";
 }
 

@@ -19,8 +19,15 @@ export async function POST(request: NextRequest) {
   if (authError || !user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { entries } = await request.json();
-  if (!entries?.length)
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { entries } = body as { entries?: unknown[] };
+  if (!Array.isArray(entries) || entries.length === 0)
     return NextResponse.json(
       { error: "entries array required" },
       { status: 400 }

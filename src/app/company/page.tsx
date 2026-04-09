@@ -8,12 +8,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Search, Building2, Bookmark, Sparkles, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { MemoModal } from "@/components/memo/MemoModal";
 
 function getSupabase() {
-  return createClient(
+  return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
@@ -230,12 +230,16 @@ export default function CompanyIntelPage() {
   useEffect(() => {
     async function load() {
       try {
-        const { data: articles } = await getSupabase()
+        const { data: articles, error: articlesErr } = await getSupabase()
           .from("articles")
           .select("companies, sector")
           .order("ingested_at", { ascending: false })
           .limit(500);
 
+        if (articlesErr) {
+          console.error("Company intel query error:", articlesErr.message);
+          return;
+        }
         if (!articles) return;
 
         const compMap: Record<string, { mentions: number; sectors: Set<string> }> = {};
@@ -345,12 +349,16 @@ export default function CompanyIntelPage() {
         // articles total, the .limit(500) would return only the newest 500 in that sector,
         // missing older-but-still-valid articles for sparse companies like Lockheed Martin.
         // Correctness > performance here — filter client-side instead.
-        const { data: articles } = await getSupabase()
+        const { data: articles, error: detailErr } = await getSupabase()
           .from("articles")
           .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies, primary_company, relevance_score, deal_type")
           .order("ingested_at", { ascending: false })
           .limit(500);
 
+        if (detailErr) {
+          console.error("Company articles query error:", detailErr.message);
+          return;
+        }
         if (articles) {
           const nameLower = name.toLowerCase();
           // Match articles whose companies[] contains this company (canonical + prefix variants).

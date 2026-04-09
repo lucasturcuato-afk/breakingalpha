@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { TrendingUp, Sparkles, Plus, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MemoModal } from "@/components/memo/MemoModal";
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 import type { SignalData } from "@/components/trends";
 
 const allSignals: SignalData[] = [
@@ -85,7 +85,7 @@ const allSignals: SignalData[] = [
 const sectors = [...new Set(allSignals.map((s) => s.sector))];
 
 function getSupabase() {
-  return createClient(
+  return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );

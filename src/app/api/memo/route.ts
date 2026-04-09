@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Groq from "groq-sdk";
+import { getSupabaseWithUser } from "@/lib/supabase-server";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -26,7 +27,26 @@ Hard rules: no invented counterparties, dollar figures, or valuation assumptions
 };
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
+  const { user } = await getSupabaseWithUser();
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  let body: {
+    company?: string;
+    acquirer?: string;
+    deal_type?: string;
+    value?: string;
+    sector?: string;
+    description?: string;
+    type?: string;
+    systemPrompt?: string;
+    content?: string;
+  };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
   const {
     company,
     acquirer,
@@ -41,8 +61,8 @@ export async function POST(request: NextRequest) {
 
   // New path: type-based memo with content string
   if (content || systemPrompt) {
-    const system = systemPrompt || TYPE_PROMPTS[type] || TYPE_PROMPTS.article;
-    const truncated = (content || "").slice(0, 4000);
+    const system = systemPrompt || (type ? TYPE_PROMPTS[type] : undefined) || TYPE_PROMPTS.article;
+    const truncated = String(content || "").slice(0, 4000);
 
     try {
       const completion = await groq.chat.completions.create({
@@ -55,7 +75,10 @@ export async function POST(request: NextRequest) {
         temperature: 0.35,
       });
 
-      const memo = completion.choices[0]?.message?.content || "";
+      const memo = completion.choices[0]?.message?.content;
+      if (!memo) {
+        return NextResponse.json({ error: "Groq returned empty memo — retry" }, { status: 500 });
+      }
       return NextResponse.json({ memo });
     } catch (err) {
       console.error("Groq memo error:", err);
@@ -92,7 +115,10 @@ Sections: TRANSACTION OVERVIEW, STRATEGIC RATIONALE, KEY RISKS, ANALYST TAKE. Un
       temperature: 0.35,
     });
 
-    const memo = completion.choices[0]?.message?.content || "";
+    const memo = completion.choices[0]?.message?.content;
+    if (!memo) {
+      return NextResponse.json({ error: "Groq returned empty memo — retry" }, { status: 500 });
+    }
     return NextResponse.json({ memo });
   } catch (err) {
     console.error("Groq memo error:", err);

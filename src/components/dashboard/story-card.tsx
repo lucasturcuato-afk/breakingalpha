@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/strip-html";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { Badge } from "@/components/ui/badge";
 import { BookmarkButton } from "@/components/ui/bookmark";
@@ -196,7 +196,7 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
                   setAddingThesis(true);
                   setThesisToast("");
                   try {
-                    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+                    const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
                     const { data: theses } = await supabase
                       .from("theses")
                       .select("id, sector, title, rationale")
@@ -211,7 +211,6 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
                       setThesisToast("No existing thesis for this sector — visit Thesis Board to build one");
                       setTimeout(() => setThesisToast(""), 3500);
                     } else {
-                      // Score each same-sector thesis by term overlap with story title + summary
                       const storyTerms = keyTerms(`${story.title} ${story.summary || ""}`);
                       const scored = sameSector.map((t) => ({
                         id: t.id,
@@ -371,7 +370,7 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
                     setAddingThesis(true);
                     setThesisToast("");
                     try {
-                      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+                      const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
                       const { data: theses } = await supabase
                         .from("theses")
                         .select("id, sector, title, rationale")

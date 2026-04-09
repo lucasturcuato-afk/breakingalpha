@@ -11,14 +11,8 @@ import type { NotificationItem } from "./notification-dropdown";
 
 const PANEL_STORAGE_KEY = "signalera_right_panel_open";
 
-// Mock notifications for now — will be wired to real data later
-const mockNotifications: NotificationItem[] = [
-  { id: "1", type: "breaking", title: "NVDA drops 4% on export restrictions", timestamp: "2m ago", read: false },
-  { id: "2", type: "signal", title: "New signal: Fed pivot expectations rising", timestamp: "15m ago", read: false },
-  { id: "3", type: "ai-memo", title: "AI Memo ready: AAPL supply chain analysis", timestamp: "1h ago", read: true },
-  { id: "4", type: "vix-alert", title: "VIX spike above 20 — risk-off regime", timestamp: "2h ago", read: true },
-  { id: "5", type: "brief-ready", title: "Morning Brief is ready", timestamp: "6h ago", read: true },
-];
+// Notifications — coming soon, wired to empty for now
+const notifications: NotificationItem[] = [];
 
 interface AppShellProps {
   pageTitle: string;
@@ -98,7 +92,7 @@ export function AppShell({
         <Topbar
           pageTitle={pageTitle}
           userInitials={userInitials}
-          notifications={mockNotifications}
+          notifications={notifications}
           onCommandOpen={() => setCommandOpen(true)}
         />
 

@@ -1,14 +1,33 @@
 import { NextResponse } from "next/server";
 import Groq from "groq-sdk";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseWithUser } from "@/lib/supabase-server";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+
+interface RawThesis {
+  title: string;
+  conviction: string;
+  rationale: string;
+  sector: string;
+  catalyst: string;
+  catalyst_note?: string;
+  evidence_chain?: unknown;
+}
+
+function validateThesis(t: unknown): t is RawThesis {
+  if (!t || typeof t !== "object") return false;
+  const obj = t as Record<string, unknown>;
+  return (
+    typeof obj.title === "string" && obj.title.length > 0 &&
+    typeof obj.conviction === "string" && obj.conviction.length > 0 &&
+    typeof obj.sector === "string" && obj.sector.length > 0
+  );
+}
 
 export async function POST() {
+  const { supabase, user } = await getSupabaseWithUser();
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
   try {
     const { data: articles, error: articlesError } = await supabase
       .from("articles")
@@ -61,10 +80,17 @@ Rules: evidence_chain 2-3 items per thesis, cite exact names/figures from articl
 
     const raw = completion.choices[0]?.message?.content || "[]";
 
-    let theses = [];
+    let theses: RawThesis[] = [];
     try {
       const cleaned = raw.replace(/```json|```/g, "").trim();
-      theses = JSON.parse(cleaned);
+      const parsed = JSON.parse(cleaned);
+      if (!Array.isArray(parsed)) {
+        return NextResponse.json(
+          { error: "AI response was not an array" },
+          { status: 500 }
+        );
+      }
+      theses = parsed.filter(validateThesis);
     } catch {
       console.error("Failed to parse Groq response:", raw);
       return NextResponse.json(
@@ -73,16 +99,15 @@ Rules: evidence_chain 2-3 items per thesis, cite exact names/figures from articl
       );
     }
 
+    if (theses.length === 0) {
+      return NextResponse.json(
+        { error: "Groq returned no valid theses — retry" },
+        { status: 500 }
+      );
+    }
+
     const rows = theses.map(
-      (t: {
-        title: string;
-        conviction: string;
-        rationale: string;
-        sector: string;
-        catalyst: string;
-        catalyst_note?: string;
-        evidence_chain?: unknown;
-      }) => ({
+      (t) => ({
         title: t.title,
         conviction: t.conviction,
         rationale: t.rationale,
@@ -98,6 +123,10 @@ Rules: evidence_chain 2-3 items per thesis, cite exact names/figures from articl
     const { error: insertError } = await supabase.from("theses").insert(rows);
     if (insertError) {
       console.error("Supabase insert error:", insertError);
+      return NextResponse.json(
+        { error: "Failed to save theses", detail: insertError.message },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ theses, count: theses.length });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { getSectorStyle } from "@/lib/sector-colors";
 import type { ThesisItem } from "./thesis-types";
@@ -30,14 +30,24 @@ function convictionToSentiment(conviction: string): string {
   }
 }
 
-function getEvidenceTag(article: any, thesis: ThesisItem) {
+interface RelatedArticle {
+  id: string;
+  title: string;
+  source?: string;
+  published_at?: string;
+  summary?: string;
+  sentiment?: string;
+  sector?: string;
+}
+
+function getEvidenceTag(article: RelatedArticle, thesis: ThesisItem) {
   const as = (article.sentiment || "neutral").toLowerCase();
   const ts = convictionToSentiment(thesis.conviction);
   if (as === ts || (as === "positive" && ts === "bullish") || (as === "negative" && ts === "bearish"))
-    return { label: "Supports", dotColor: "bg-green-400", pillClass: "bg-green-100 text-green-800" };
+    return { label: "Supports", dotColor: "bg-signal-up", pillClass: "bg-signal-up/10 text-signal-up" };
   if ((as === "bullish" && ts === "bearish") || (as === "bearish" && ts === "bullish") || (as === "positive" && ts === "bearish") || (as === "negative" && ts === "bullish"))
-    return { label: "Contradicts", dotColor: "bg-red-400", pillClass: "bg-red-100 text-red-800" };
-  return { label: "Neutral", dotColor: "bg-amber-400", pillClass: "bg-amber-100 text-amber-700" };
+    return { label: "Contradicts", dotColor: "bg-signal-dn", pillClass: "bg-signal-dn/10 text-signal-dn" };
+  return { label: "Neutral", dotColor: "bg-signal-warn", pillClass: "bg-signal-warn/10 text-signal-warn" };
 }
 
 function getSectorSuggestions(sector: string | undefined): string[] {
@@ -54,9 +64,9 @@ function getSectorSuggestions(sector: string | undefined): string[] {
 
 function SentimentBadge({ sentiment }: { sentiment: string }) {
   const map: Record<string, string> = {
-    bullish: "bg-green-100 text-green-800",
-    bearish: "bg-red-100 text-red-800",
-    watch: "bg-amber-100 text-amber-700",
+    bullish: "bg-signal-up/10 text-signal-up",
+    bearish: "bg-signal-dn/10 text-signal-dn",
+    watch: "bg-signal-warn/10 text-signal-warn",
   };
   return (
     <span className={`font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded ${map[sentiment] || map.watch}`}>
@@ -69,7 +79,7 @@ function SentimentBadge({ sentiment }: { sentiment: string }) {
 
 interface ThesisDetailPanelProps {
   thesis: ThesisItem | null;
-  articles: any[];
+  articles: RelatedArticle[];
   onArchive: (id: string) => void;
   onRegenerate?: () => void;
 }
@@ -115,7 +125,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
     if (!thesis?.id || !noteText.trim()) return;
     setSavingNote(true);
     try {
-      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+      const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
       await supabase.from("theses").update({ catalyst_note: noteText }).eq("id", thesis.id);
       showToast("Saved to thesis");
     } catch (e) {
@@ -133,7 +143,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
   const handleArchive = async () => {
     if (!thesis?.id) return;
     try {
-      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+      const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
       await supabase.from("theses").update({ status: "archived" }).eq("id", thesis.id);
       showToast("Archived");
       setTimeout(() => onArchive(thesis.id), 500);
@@ -151,7 +161,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
       const sentiment = convictionToSentiment(thesis.conviction);
       const score = deriveScore(thesis.conviction);
       const evidenceText = articles.length > 0
-        ? articles.map((a: any, i: number) => `${i + 1}. ${a.title} (${a.source ?? ""}, ${a.sentiment ?? "neutral"}) — ${(a.summary ?? "").slice(0, 120)}`).join("\n")
+        ? articles.map((a, i) => `${i + 1}. ${a.title} (${a.source ?? ""}, ${a.sentiment ?? "neutral"}) — ${(a.summary ?? "").slice(0, 120)}`).join("\n")
         : "No related articles available.";
       const res = await fetch("/api/memo", {
         method: "POST",
@@ -285,7 +295,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
             </div>
           ) : (
             <div className="flex flex-col divide-y divide-border-base">
-              {articles.map((article: any) => {
+              {articles.map((article) => {
                 const tag = getEvidenceTag(article, thesis);
                 return (
                   <div key={article.id} className="flex items-start gap-2 py-2">
@@ -331,7 +341,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
             className="w-full min-h-[80px] font-sans text-[12px] text-text-primary bg-parchment-mid border border-border-base rounded-lg px-3 py-2 resize-none focus:outline-none focus:border-gold placeholder:text-text-muted transition-colors"
           />
           <div className="flex items-center justify-between mt-1.5">
-            <span className={`font-sans text-[10px] transition-opacity duration-300 ${noteSaved ? "text-green-500 opacity-100" : "opacity-0"}`}>
+            <span className={`font-sans text-[10px] transition-opacity duration-300 ${noteSaved ? "text-signal-up opacity-100" : "opacity-0"}`}>
               &#10003; Saved
             </span>
             {noteText.trim() && (
@@ -380,7 +390,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
             <button
               type="button"
               onClick={handleArchive}
-              className="font-sans text-[11px] px-2.5 py-1 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors cursor-pointer"
+              className="font-sans text-[11px] px-2.5 py-1 rounded-lg bg-signal-dn text-white hover:bg-signal-dn/80 transition-colors cursor-pointer"
             >
               Yes
             </button>

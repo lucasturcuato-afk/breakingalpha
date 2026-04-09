@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import Groq from "groq-sdk";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseWithUser } from "@/lib/supabase-server";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export async function POST(request: NextRequest) {
-  const { thesisId } = await request.json();
+  const { supabase, user } = await getSupabaseWithUser();
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { thesisId } = body as { thesisId?: string };
   if (!thesisId)
     return NextResponse.json(
       { error: "thesisId is required" },
@@ -67,7 +73,8 @@ Cite specific companies, figures, and deal values from the articles. Structure: 
     });
     const newRationale =
       analysisCompletion.choices[0]?.message?.content?.trim() ||
-      thesis.rationale;
+      thesis.rationale ||
+      "";
 
     // Step 2: Generate catalyst note + evidence chain
     const detailPrompt = `Given this thesis and articles, generate catalyst note and evidence chain.

@@ -13,17 +13,17 @@ interface MoodBarProps {
 const moodConfig: Record<MoodType, { dotColor: string; badgeClass: string; badgeLabel: string }> = {
   "risk-off": {
     dotColor: "bg-signal-dn",
-    badgeClass: "bg-signal-dn/20 text-red-300",
+    badgeClass: "bg-signal-dn/20 text-signal-dn",
     badgeLabel: "Risk-Off",
   },
   "risk-on": {
     dotColor: "bg-signal-up",
-    badgeClass: "bg-signal-up/20 text-green-300",
+    badgeClass: "bg-signal-up/20 text-signal-up",
     badgeLabel: "Risk-On",
   },
   neutral: {
     dotColor: "bg-signal-warn",
-    badgeClass: "bg-signal-warn/20 text-amber-300",
+    badgeClass: "bg-signal-warn/20 text-signal-warn",
     badgeLabel: "Neutral",
   },
 };

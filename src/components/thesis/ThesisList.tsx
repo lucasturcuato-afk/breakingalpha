@@ -104,9 +104,9 @@ export function ThesisList({ theses, selectedId, onSelect, filter, isArchiveView
                 <span
                   className={cn(
                     "text-[9px] px-1.5 py-0.5 rounded font-medium",
-                    sentiment === "bullish" && "bg-green-100 text-green-800",
-                    sentiment === "bearish" && "bg-red-100 text-red-800",
-                    sentiment === "watch" && "bg-amber-100 text-amber-800",
+                    sentiment === "bullish" && "bg-signal-up/10 text-signal-up",
+                    sentiment === "bearish" && "bg-signal-dn/10 text-signal-dn",
+                    sentiment === "watch" && "bg-signal-warn/10 text-signal-warn",
                   )}
                 >
                   {thesis.conviction}
