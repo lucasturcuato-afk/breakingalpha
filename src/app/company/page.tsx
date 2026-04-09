@@ -281,21 +281,29 @@ export default function CompanyIntelPage() {
         }
         if (!articles) return;
 
-        const compMap: Record<string, { mentions: number; sectors: Set<string> }> = {};
+        // Key by lowercase to merge case variants (e.g. "Whoop" + "WHOOP" → one row).
+        // Display form: prefer a mixed-case form over an ALL-CAPS form.
+        const compMap: Record<string, { display: string; mentions: number; sectors: Set<string> }> = {};
         articles.forEach((a) => {
           const cos = parseCompanies(a.companies);
           cos.forEach((raw) => {
             if (!raw || raw.length < 2) return;
-            const c = canonicalize(raw);
-            if (!compMap[c]) compMap[c] = { mentions: 0, sectors: new Set() };
-            compMap[c].mentions++;
-            if (a.sector) compMap[c].sectors.add(a.sector);
+            const display = canonicalize(raw);
+            const key = display.toLowerCase();
+            if (!compMap[key]) {
+              compMap[key] = { display, mentions: 0, sectors: new Set() };
+            } else if (/[a-z]/.test(display) && !/[a-z]/.test(compMap[key].display)) {
+              // Upgrade from ALL-CAPS to mixed-case display form when encountered
+              compMap[key].display = display;
+            }
+            compMap[key].mentions++;
+            if (a.sector) compMap[key].sectors.add(a.sector);
           });
         });
 
         const list = Object.entries(compMap)
-          .map(([name, data]) => ({
-            name,
+          .map(([, data]) => ({
+            name: data.display,
             mentions: data.mentions,
             sectors: Array.from(data.sectors),
           }))
@@ -339,21 +347,37 @@ export default function CompanyIntelPage() {
   //   - Lockheed Martin memos pulling in SpaceX IPO tangents
   //
   // Filter logic:
-  //   primary_company = null      → macro/sector article → include (no clear primary actor)
-  //   primary_company = this co.  → high-quality context → include
-  //   primary_company = other co. AND this co. in title → include (this co. is prominent)
+  //   primary_company = this co.                             → include
+  //   primary_company = other co. AND this co. in title     → include (this co. is prominent)
   //   primary_company = other co. AND this co. NOT in title → shadow-mention → exclude
+  //   primary_company = null AND another canonical co. is subject of title → exclude
+  //     (covers old articles where primary_company was never populated)
+  //   primary_company = null AND no canonical co. is subject → macro/sector → include
+  //
+  // The subject-of-title fallback prevents JPMorgan articles (primary_company=null) from
+  // appearing as Goldman context, and SpaceX articles from appearing as Lockheed context.
   //
   // Panel display is unchanged — all context articles are still shown in the side panel.
   // Only memo synthesis input is filtered.
   const memoContextArticles = useMemo(() => {
     if (!selectedCompany) return [];
     const nameLower = selectedCompany.name.toLowerCase();
+    // Unique canonical display names, excluding the selected company itself
+    const otherCanonicals = [...new Set(Object.values(CANONICAL))].filter(
+      (v) => v.toLowerCase() !== nameLower,
+    );
     return contextArticles.filter((a) => {
-      if (a.primary_company == null) return true;
-      if (matchesCanonical(a.primary_company, selectedCompany.name)) return true;
-      if (a.title.toLowerCase().includes(nameLower)) return true;
-      return false; // shadow-mention: different primary actor, company not in title
+      if (a.primary_company != null) {
+        if (matchesCanonical(a.primary_company, selectedCompany.name)) return true;
+        if (a.title.toLowerCase().includes(nameLower)) return true;
+        return false; // shadow-mention: explicit other primary actor, company not in title
+      }
+      // primary_company is null — check if another known company is the grammatical subject.
+      // If so, this is that company's story, not sector context for the selected company.
+      for (const other of otherCanonicals) {
+        if (isSubjectOfTitle(a.title, other)) return false;
+      }
+      return true; // no canonical company leads the headline → treat as sector context
     });
   }, [selectedCompany, contextArticles]);
 
@@ -801,7 +825,7 @@ ${briefBlock}**Recent Developments**
 [2–3 sentences using only events named in SECTOR CONTEXT ARTICLES. Do not write generic sector trends. Do not reference events not present in those articles.]
 
 **Key Watchpoints**
-[1–3 bullets. Each must name a specific upcoming event or unresolved condition from COMPANY DEVELOPMENT ARTICLES. Do not pad with invented milestones.]
+[1–3 bullets. Each must name a specific upcoming event or unresolved condition that appears explicitly in COMPANY DEVELOPMENT ARTICLES — a named pending decision, scheduled release, or announced milestone. If no such condition is explicitly present in those articles, omit this section entirely. Do not invent watchpoints. Do not speculate.]
 
 **Signal Quality**
 [SIGNAL QUALITY value.] [One sentence on what the evidence covers.]
@@ -816,14 +840,7 @@ ${directCount === 0
   : `**External Signal**
 [DIRECT_CONTEXT_COUNT = ${directCount}. Write exactly ${directCount === 1 ? '1 sentence' : '2–3 sentences'}. Each sentence must describe ONE named event from ONE article in SECTOR CONTEXT ARTICLES — citing the specific company name, person, dollar figure, or named outcome that appears in that article. Sentence form: "[Named entity] [did / reported / announced] [specific named fact]." One article = one sentence. Do not synthesize. Do not write general characterizations ("the market is seeing", "adoption is growing"). Do not describe ${selectedCompany.name}'s position or outlook.]
 
-${directCount >= 2
-  ? `**Watchpoints**
-[DIRECT_CONTEXT_COUNT = ${directCount}. Only include this section if at least one SECTOR CONTEXT ARTICLE explicitly states a named unresolved condition — a regulatory decision with a known date, a pending deal close, a scheduled data release, or an announced policy timeline. If no such condition is explicitly present in the articles, OMIT this section entirely — do not write speculative watchpoints. If present: 1–2 bullets maximum, each naming the specific condition and the entity involved. No inferences about ${selectedCompany.name}.]
-
-`
-  : `[OMIT Watchpoints — DIRECT_CONTEXT_COUNT is ${directCount}, insufficient for named unresolved conditions.]
-
-`}**Signal Quality**
+**Signal Quality**
 [SIGNAL QUALITY value.] [One sentence listing the article types in this feed window — e.g., "The feed contains one geopolitical macro article and one competitor funding article." Do not characterize ${selectedCompany.name}'s position.]`}
 
 ─── ABSOLUTE RULES (violation invalidates the output) ───
