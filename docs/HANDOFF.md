@@ -1,6 +1,6 @@
 # Signalera Handoff
 
-## Current Status (2026-04-05)
+## Current Status (2026-04-06)
 - Live at https://breakingalpha.vercel.app (deploying as Signalera)
 - Full rebrand from BreakingAlpha to Signalera shipped — logo, fonts, theme, auth page
 - Auth middleware protecting all routes — unauthenticated users redirect to /auth
@@ -34,14 +34,14 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 GROQ_API_KEY, NEWS_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
 
 ## Auth Flow
-- `src/middleware.ts` — Supabase SSR server client, redirects unauthenticated to /auth
-- `src/app/auth/page.tsx` — split layout, Google SSO + email/password, createBrowserClient from @supabase/ssr
+- `src/middleware.ts` — `isAuthPage` exact-matches `/auth` only; `/auth/callback` is in `isPublicPath` so OAuth code exchange is never intercepted
+- `src/app/auth/page.tsx` — split layout, Google SSO + email/password, `prompt: "select_account"` for account switching
 - `src/app/auth/callback/route.ts` — PKCE code exchange, redirects to /dashboard
-- Google OAuth redirectTo points to `/auth/callback` with `access_type: offline, prompt: consent`
-- Supabase URL Config: Site URL = `https://breakingalpha.vercel.app`, Redirect URLs includes `/auth/callback`
+- `src/app/page.tsx` — server component: authenticated → redirect /dashboard; unauthenticated → renders LandingPage
+- **Supabase URL Config:** Site URL = `https://breakingalpha.vercel.app`; Additional Redirect URLs must include `https://*.vercel.app/**` for preview deployments to work with Google OAuth
 
 ## Supabase Schema
-**articles:** id, title, summary, content, url, source, published_at, ingested_at, relevance_score, relevance_reason, companies, themes, sentiment, sector, deal_type
+**articles:** id, title, summary, content, url, source, published_at, ingested_at, relevance_score, relevance_reason, companies, themes, sentiment, sector, deal_type, primary_company (TEXT, nullable)
 
 **briefings:** briefing_type, headline, summary, created_at, market_tone (text), sections (jsonb), top_deals (jsonb), sector_breakdown (jsonb)
 
@@ -52,6 +52,21 @@ GROQ_API_KEY, NEWS_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
 **watchlist:** id (uuid), user_id, identifier (text), type (enum: ticker/company/sector), created_at, updated_at. User-scoped RLS (read/insert/delete own rows).
 
 **pipeline_runs, run_articles, brief_quality_scores, selection_audit, trend_clusters:** Phase 1 observation layer tables — see git history for schemas.
+
+## Recently Completed (2026-04-06)
+Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with COMPANY_IDENTITY structured map (industry + pre-built analyst brief), injected analyst-quality sentences verbatim, tightened prompt instructions (Current Context/What To Watch prohibited from naming events outside article list). Classification hardening arc complete (primary_company matching, tiered gates, isSubjectOfTitle). 35 companies covered; prompt leakage resolved.
+
+## What Was Done This Session (2026-04-06) — PR #57 merged to main
+
+### Shipped — Signed-Out Conversion Funnel Restoration
+1. **Landing page** (`src/components/landing/landing-page.tsx`) — signed-out users see a gated Signalera product preview at `/` with hero, stat cards, AI signal bar, story cards, and bottom CTA. Signed-in users still redirect to /dashboard.
+2. **Auth gate** (`src/components/landing/auth-gate.tsx`) — blur+lock overlay wrapper; all gated interactions route to `/auth` instead of hitting raw API endpoints.
+3. **Post-auth onboarding modal** (`src/components/onboarding/onboarding-modal.tsx`) — 3-step flow (Role → Sectors → Watchlist); persists to `/api/preferences` and `/api/watchlist/batch` with Bearer token on completion.
+4. **Onboarding gate** (`src/components/onboarding/onboarding-gate.tsx`) — mounts on dashboard; checks `localStorage.signalera_onboarded_${userId}` (user-scoped, not browser-global); shows modal for first-time users.
+5. **Middleware fix** — `isAuthPage` changed to exact match `/auth`; `/auth/callback` added to `isPublicPath` so OAuth code exchange is never intercepted.
+6. **Avatar initials** — `AppShell` now fetches real user via `getUser()` and derives initials from `full_name` (email prefix fallback); was hardcoded "LT".
+7. **Sidebar user card** — added sign-out button (icon-only, matches Settings icon, no name truncation).
+8. **Vercel build fix** — `src/app/thesis-board/page.tsx` wrapped in Suspense boundary for `useSearchParams`.
 
 ## What Was Done This Session (2026-04-05)
 
@@ -64,11 +79,19 @@ GROQ_API_KEY, NEWS_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
 6. **Per-session user isolation** — sidebar, greeting, settings all read from `supabase.auth.getUser()` live, no hardcoded values
 7. **Watchlist API auth** — replaced hardcoded `USER_ID = "signalera_user_lucas"` with real authenticated user from cookies via createServerClient
 8. **Thesis button wiring** — Live Feed "Thesis" button fetches theses, matches article sector, navigates to `/thesis-board?thesis=<id>` or shows "No thesis yet" toast. Thesis board reads `?thesis=` param and auto-selects.
+9. **Weekly cross-run operator summary (PR #55)** — `backend/weekly_summary.py` aggregates observation metrics across the last 5 pipeline runs; surfaces selection quality trends, brief quality patterns, cluster momentum. Merged and production-validated.
+10. **Phase 1 hardening — observe.py reconstruction fix (PR #56)** — `_reconstruct_selected()` rewritten to mirror current `synthesize._select_articles_for_synthesis()` (spine=12, floor=6, sector_cap=3, floor_min=7). `audit.py` `_TARGET_COUNT` corrected 20→18. Stale `_diversify_articles` reconstruction logic replaced. No schema changes.
 
-### Still Broken / In Progress
+## Pending / Known Issues
+- **Supabase schema migration** — `ALTER TABLE articles ADD COLUMN IF NOT EXISTS primary_company TEXT;` must be run on prod Supabase before articles ingest post-merge. Old articles will use conservative Direct fallback.
+- **Supabase redirect allowlist** — Preview OAuth (Vercel preview deployments) requires `https://*.vercel.app/**` in Supabase → Authentication → URL Configuration → Additional Redirect URLs. Must be set manually in Supabase dashboard.
 - **Watchlist add may still fail** — API route is now authed correctly, but RLS policies may need updating in Supabase to match `auth.uid()` instead of the old hardcoded user_id. Check Supabase RLS on `watchlist` table.
 - **Google OAuth consent screen** shows Supabase project name instead of "Signalera" — update in Google Cloud Console > OAuth consent screen
 - **StoryCard Thesis button** (dashboard story cards) still inserts a new thesis directly instead of matching existing ones — only FeedRow button was updated
+- **COMPANY_IDENTITY map** (35 entries, hardcoded) should eventually migrate to `company_profiles` Supabase table (ticker, industry, brief, source fields) for broader coverage
+- **Key Watchpoints / Sector Context thin for low-coverage companies** — article data quality issue, not a code issue; defer until article ingest improves
+- **Article inputs constrained to 500-char RSS summaries** — memo depth limited; full content archival deferred
+- **Earnings calendar integration** — requires ticker field + FMP/Polygon API; deferred
 
 ## Nav Tabs
 1. Dashboard — greeting, stat cards, top stories

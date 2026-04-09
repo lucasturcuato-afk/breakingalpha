@@ -5,10 +5,25 @@ import { getSupabaseWithUser } from "@/lib/supabase-server";
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const TYPE_PROMPTS: Record<string, string> = {
-  deal: "You are an M&A analyst. Write a concise deal memo: Deal Overview, Strategic Rationale, Key Risks, Valuation Considerations, Recommendation. Use bullet points. Under 300 words.",
-  thesis: "You are a buy-side equity research analyst. Write an investment thesis memo: Core Thesis, Supporting Evidence, Bear Case, Catalysts to Watch, Position Sizing. Be analytical. Under 300 words.",
-  brief: "You are a market strategist. Write a market brief: Key Macro Takeaway, Sector Implications, Trade Ideas, Risk Flags. Under 300 words.",
-  article: "You are a financial analyst. Summarize market implications: What Happened, Market Impact, Actionable Insight. Under 250 words.",
+  deal: `You are a senior M&A analyst. Write a sharp deal memo with exactly these 4 sections in this order:
+
+**Deal Snapshot**
+Bullet list of facts from the input only: Target, Acquirer, Type, Value, Status, Sector. Use "Undisclosed" for missing facts. No commentary here.
+
+**Why It Makes Sense**
+Infer the likely strategic logic from the deal type, sector, size, and any NOTES/CONTEXT in the input. Use grounded cautious language — "appears aimed at…", "likely reflects…", "suggests a push into…". This section must always be substantive and specific to THIS deal. Banned phrases: "wave of consolidation", "consolidation trend", "broader consolidation", "part of a trend", "fits a broader pattern", "reflects broader", "amid a wave", "signals a trend". If you cannot be specific, describe what the acquirer likely gains from this specific target.
+
+**Why It Matters**
+State the investor, operator, or market implication in 2–3 concrete sentences tied to the specific companies and sector. Do not write generic macro commentary. Do not repeat Snapshot facts unless they directly drive the implication.
+
+**What To Watch**
+List 2–3 grounded watchpoints specific to THIS deal: regulatory approvals for this sector, financing risk based on the disclosed value, integration complexity between these two entities, or execution timeline for this transaction type. Never write generic watchpoints that could apply to any M&A deal.
+
+Hard rules: no invented counterparties, dollar figures, or valuation assumptions beyond what is provided. No recommendation section. No standalone valuation section. No empty sections. Every sentence must reference something specific from the input. Under 320 words.`,
+  thesis: "You are a buy-side equity research analyst. Write an investment thesis memo using ONLY the facts provided. Do NOT invent price targets, ratings, or figures not present in the input. Sections: Core Thesis, Supporting Evidence, Bear Case, Catalysts to Watch. Under 300 words.",
+  brief: "You are a market strategist. Write a market brief: Key Macro Takeaway, Sector Implications, Risk Flags. Under 300 words.",
+  article: "You are a financial analyst. Summarize market implications using only what is stated: What Happened, Market Impact, Actionable Insight. Under 250 words.",
+  company: "You are a sector analyst. Write a company intelligence brief. Use only facts from the provided articles. Sections: Company Brief (sector and primary business), Recent Developments (Direct articles only), Sector Context (Context articles as backdrop), Key Watchpoints (2–3 from Direct articles only), Signal Quality (one controlled label + one sentence). Under 300 words.",
 };
 
 export async function POST(request: NextRequest) {
@@ -47,7 +62,7 @@ export async function POST(request: NextRequest) {
   // New path: type-based memo with content string
   if (content || systemPrompt) {
     const system = systemPrompt || (type ? TYPE_PROMPTS[type] : undefined) || TYPE_PROMPTS.article;
-    const truncated = String(content || "").slice(0, 1500);
+    const truncated = String(content || "").slice(0, 4000);
 
     try {
       const completion = await groq.chat.completions.create({
@@ -56,7 +71,7 @@ export async function POST(request: NextRequest) {
           { role: "system", content: system },
           { role: "user", content: truncated },
         ],
-        max_tokens: 600,
+        max_tokens: 750,
         temperature: 0.35,
       });
 

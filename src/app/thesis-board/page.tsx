@@ -50,14 +50,6 @@ function convictionToSentiment(conviction: string): string {
   }
 }
 
-export default function ThesisBoardPage() {
-  return (
-    <Suspense>
-      <ThesisBoardContent />
-    </Suspense>
-  );
-}
-
 function ThesisBoardContent() {
   const searchParams = useSearchParams();
   const [theses, setTheses] = useState<ThesisItem[]>([]);
@@ -123,9 +115,9 @@ function ThesisBoardContent() {
     try {
       const { data } = await getSupabase()
         .from("articles")
-        .select("id, title, source, published_at, summary, sentiment, sector")
+        .select("id, title, source, ingested_at, published_at, summary, sentiment, sector")
         .eq("sector", thesis.sector)
-        .order("published_at", { ascending: false })
+        .order("ingested_at", { ascending: false })
         .limit(8);
       setRelatedArticles((prev) => ({ ...prev, [thesis.id]: data || [] }));
     } catch (e) {
@@ -379,11 +371,24 @@ function ThesisBoardContent() {
                   setSelectedId(remaining[0]?.id ?? null);
                   if (showArchived) setArchivedRefreshKey((k) => k + 1);
                 }}
+                onRegenerate={() => {
+                  // Re-fetch theses so catalyst_note / rationale update in the panel.
+                  // Do NOT clear relatedArticles — would flash blank evidence feed.
+                  fetchTheses();
+                }}
               />
             </div>
           </>
         )}
       </div>
     </AppShell>
+  );
+}
+
+export default function ThesisBoardPage() {
+  return (
+    <Suspense>
+      <ThesisBoardContent />
+    </Suspense>
   );
 }

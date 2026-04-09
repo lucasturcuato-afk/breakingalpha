@@ -33,11 +33,10 @@ from supabase import create_client
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 
-# Reference target for selected set size. Mirrors synthesize._select_articles_for_synthesis
-# (spine_count=12 + floor_count=6 = 18, or legacy _diversify_articles total=20).
-# Used as a fixed reference for how far below target the selection fell.
-# Update manually if synthesize.py changes its target count.
-_TARGET_COUNT = 20
+# Reference target for selected set size. Mirrors synthesize._select_articles_for_synthesis:
+# spine_count=12 + floor_count=6 = 18 maximum. Used as a fixed reference for how far
+# below target the selection fell. Update manually if synthesize.py changes its counts.
+_TARGET_COUNT = 18
 
 # Threshold for sector_concentration_flag: if any single sector accounts for
 # >= this fraction of the selected set, the flag is set True.
