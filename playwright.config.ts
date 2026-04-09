@@ -1,5 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 import path from "path";
+import { config as dotenvConfig } from "dotenv";
+
+// Load .env.local so E2E_USER_EMAIL / E2E_USER_PASSWORD are available
+dotenvConfig({ path: path.resolve(__dirname, ".env.local") });
 
 const AUTH_FILE = path.join(__dirname, "e2e", ".auth", "user.json");
 

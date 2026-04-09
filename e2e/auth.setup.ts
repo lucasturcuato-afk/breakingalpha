@@ -21,14 +21,16 @@ setup("authenticate", async ({ page }) => {
   }
 
   await page.goto("/auth");
-  await expect(page.locator("text=Sign In")).toBeVisible();
+
+  // Wait for auth page to load — use the submit button inside the form
+  await expect(page.locator("form").getByRole("button", { name: "Sign In" })).toBeVisible();
 
   // Fill credentials
   await page.getByPlaceholder("Email address").fill(email);
   await page.getByPlaceholder("Password").fill(password);
 
-  // Submit
-  await page.getByRole("button", { name: "Sign In" }).click();
+  // Submit via the form button (not the tab toggle)
+  await page.locator("form").getByRole("button", { name: "Sign In" }).click();
 
   // Wait for redirect to dashboard
   await page.waitForURL("**/dashboard", { timeout: 15_000 });
