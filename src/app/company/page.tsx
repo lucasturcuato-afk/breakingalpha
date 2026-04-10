@@ -132,6 +132,7 @@ const COMPANY_IDENTITY: Record<string, CompanyIdentity> = {
   // Semiconductors & Hardware
   "NVIDIA":           { industry: "Semiconductors",        brief: "NVIDIA designs GPUs and accelerated computing platforms used in AI training, data center infrastructure, gaming, and professional visualization." },
   "Intel":            { industry: "Semiconductors",        brief: "Intel designs and manufactures CPUs, GPUs, and networking chips for computing, data center, and AI workloads." },
+  "Marvell Technology": { industry: "Semiconductors",      brief: "Marvell Technology designs custom ASICs and networking semiconductors for data centers, 5G carriers, and enterprise storage, with a strategic focus on AI networking and cloud infrastructure acceleration." },
   // Consumer & Enterprise Technology
   "Apple":            { industry: "Consumer Technology",   brief: "Apple designs consumer electronics, software, and services — including iPhone, Mac, and iPad — anchored by its tightly integrated hardware-software ecosystem." },
   "Microsoft":        { industry: "Technology",            brief: "Microsoft develops operating systems, enterprise software, and cloud infrastructure (Azure), serving enterprise and consumer markets globally." },
@@ -840,7 +841,11 @@ export default function CompanyIntelPage() {
           type="company"
           systemPrompt={(() => {
             const identity = COMPANY_IDENTITY[selectedCompany.name];
-            const briefBlock = identity
+            // Company Brief is embedded at the top of EACH MEMO_MODE block so the model
+            // encounters it regardless of which path applies. A separate "ALWAYS FIRST"
+            // section was tried and failed: the model associated it with the developments-led
+            // block (due to proximity) and omitted it on the context-led path.
+            const companyBriefBlock = identity
               ? `**Company Brief**\n${identity.brief}\n\n`
               : '';
             return `You are a sector analyst. Write a company intelligence brief for ${selectedCompany.name}. Output only user-facing prose — never reproduce bracketed instructions or meta-directives.
@@ -848,7 +853,7 @@ export default function CompanyIntelPage() {
 INPUTS: MEMO_MODE | SIGNAL QUALITY | COMPANY DEVELOPMENT ARTICLES | SECTOR CONTEXT ARTICLES
 
 ─── MEMO_MODE = "developments-led" ───
-${briefBlock}**Recent Developments**
+${companyBriefBlock}**Recent Developments**
 [Facts from COMPANY DEVELOPMENT ARTICLES only. Specific figures, dates, named outcomes. Do not draw from context articles.]
 
 **Market Context**
@@ -861,7 +866,7 @@ ${briefBlock}**Recent Developments**
 [SIGNAL QUALITY value.] [One sentence on what the evidence covers.]
 
 ─── MEMO_MODE = "context-led" ───
-${briefBlock}**Coverage Note**
+${companyBriefBlock}**Coverage Note**
 No direct company developments found in the current feed window.
 
 **Current Context**
