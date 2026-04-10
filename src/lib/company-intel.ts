@@ -379,16 +379,19 @@ export function filterAndClassifyArticles(
     const isMaterialCounterparty =
       !isStrictDevelopment &&
       !isFundingOrIPO &&
-      (a.deal_type === "M&A" || a.deal_type === "Funding" || a.deal_type === "IPO") &&
+      // M&A only: catches acquisition targets that appear in object position when
+      // primary_company is null ("Nvidia invests in Marvell" → Marvell as counterparty).
+      // Funding/IPO are excluded because titleNamesCompany cannot distinguish an
+      // investment target from a competitor reference or technology mention — those
+      // cases (fundee with null primary_company) are handled by isFundingOrIPO via
+      // isSubjectOfTitle. Keeping Funding/IPO here causes false positives whenever a
+      // company is named as a challenge target, chip supplier, or comparison benchmark.
+      a.deal_type === "M&A" &&
       a.primary_company == null &&
       titleNamesCompany(a.title, cosRaw, companyName) &&
-      // For M&A, exclude companies that are the grammatical subject of the title.
-      // Subject-position companies in M&A articles with null primary_company are
-      // systematically deal advisors / underwriters ("Goldman Sachs leads $10B buyout"),
-      // not acquisition targets. The material-counterparty path was designed for
-      // investment targets that appear in the object position ("Nvidia invests in Marvell").
-      // Funding and IPO are exempt: those subject cases are handled by isFundingOrIPO already.
-      (a.deal_type !== "M&A" || !isSubjectOfTitle(a.title, companyName));
+      // Exclude subject-position companies: in M&A articles with null primary_company,
+      // the grammatical subject is systematically an advisor/underwriter, not a target.
+      !isSubjectOfTitle(a.title, companyName);
 
     return {
       id: a.id,
