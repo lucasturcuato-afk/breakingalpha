@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import Groq from "groq-sdk";
+import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export async function POST(request: NextRequest) {
   const { supabase, user } = await getSupabaseWithUser();
@@ -54,16 +54,18 @@ Respond ONLY with valid JSON:
 Rules: one evidence entry per article (${articleList.length} total), cite specific companies/figures, no generic statements.`;
 
   try {
-    const completion = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 1200,
-      temperature: 0.3,
+    const completion = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-04-17",
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: {
+        temperature: 0.3,
+        maxOutputTokens: 1200,
+      },
     });
 
-    const raw = completion.choices[0]?.message?.content;
+    const raw = completion.text;
     if (!raw) {
-      return NextResponse.json({ error: "Groq returned empty response — retry" }, { status: 500 });
+      return NextResponse.json({ error: "Gemini returned empty response — retry" }, { status: 500 });
     }
     let parsed: { catalyst_note?: string; evidence?: unknown } = {};
     try {

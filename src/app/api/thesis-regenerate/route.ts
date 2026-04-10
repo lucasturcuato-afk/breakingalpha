@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import Groq from "groq-sdk";
+import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export async function POST(request: NextRequest) {
   const { supabase, user } = await getSupabaseWithUser();
@@ -65,14 +65,16 @@ ${articleContext || "None"}
 
 Cite specific companies, figures, and deal values from the articles. Structure: key data point → sector implications → forward outlook matching ${thesis.conviction} conviction. Respond with ONLY the paragraph text, no labels or markdown.`;
 
-    const analysisCompletion = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
-      messages: [{ role: "user", content: analysisPrompt }],
-      max_tokens: 400,
-      temperature: 0.35,
+    const analysisCompletion = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-04-17",
+      contents: [{ role: "user", parts: [{ text: analysisPrompt }] }],
+      config: {
+        temperature: 0.35,
+        maxOutputTokens: 400,
+      },
     });
     const newRationale =
-      analysisCompletion.choices[0]?.message?.content?.trim() ||
+      analysisCompletion.text?.trim() ||
       thesis.rationale ||
       "";
 
@@ -92,18 +94,20 @@ Respond ONLY with valid JSON:
 }
 Rules: one entry per article (${articleList.length} total), cite specific data.`;
 
-    const detailCompletion = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
-      messages: [{ role: "user", content: detailPrompt }],
-      max_tokens: 1200,
-      temperature: 0.3,
+    const detailCompletion = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-04-17",
+      contents: [{ role: "user", parts: [{ text: detailPrompt }] }],
+      config: {
+        temperature: 0.3,
+        maxOutputTokens: 1200,
+      },
     });
 
     let catalystNote = "";
     let evidenceChain: unknown[] = [];
     try {
       const parsed = JSON.parse(
-        (detailCompletion.choices[0]?.message?.content || "{}")
+        (detailCompletion.text || "{}")
           .replace(/```json|```/g, "")
           .trim()
       );

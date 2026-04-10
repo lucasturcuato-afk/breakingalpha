@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import Groq from "groq-sdk";
+import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const TYPE_PROMPTS: Record<string, string> = {
   deal: `You are a senior M&A analyst. Write a sharp deal memo with exactly these 4 sections in this order:
@@ -65,23 +65,23 @@ export async function POST(request: NextRequest) {
     const truncated = String(content || "").slice(0, 4000);
 
     try {
-      const completion = await groq.chat.completions.create({
-        model: "llama-3.1-8b-instant",
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: truncated },
-        ],
-        max_tokens: 750,
-        temperature: 0.35,
+      const completion = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-04-17",
+        contents: [{ role: "user", parts: [{ text: truncated }] }],
+        config: {
+          systemInstruction: system,
+          temperature: 0.35,
+          maxOutputTokens: 750,
+        },
       });
 
-      const memo = completion.choices[0]?.message?.content;
+      const memo = completion.text;
       if (!memo) {
-        return NextResponse.json({ error: "Groq returned empty memo — retry" }, { status: 500 });
+        return NextResponse.json({ error: "Gemini returned empty memo — retry" }, { status: 500 });
       }
       return NextResponse.json({ memo });
     } catch (err) {
-      console.error("Groq memo error:", err);
+      console.error("Gemini memo error:", err);
       return NextResponse.json(
         { error: "Failed to generate memo" },
         { status: 500 }
@@ -108,20 +108,22 @@ CONTEXT: ${(description || "").slice(0, 400)}
 Sections: TRANSACTION OVERVIEW, STRATEGIC RATIONALE, KEY RISKS, ANALYST TAKE. Under 300 words.`;
 
   try {
-    const completion = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 600,
-      temperature: 0.35,
+    const completion = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-04-17",
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: {
+        temperature: 0.35,
+        maxOutputTokens: 600,
+      },
     });
 
-    const memo = completion.choices[0]?.message?.content;
+    const memo = completion.text;
     if (!memo) {
-      return NextResponse.json({ error: "Groq returned empty memo — retry" }, { status: 500 });
+      return NextResponse.json({ error: "Gemini returned empty memo — retry" }, { status: 500 });
     }
     return NextResponse.json({ memo });
   } catch (err) {
-    console.error("Groq memo error:", err);
+    console.error("Gemini memo error:", err);
     return NextResponse.json(
       { error: "Failed to generate memo" },
       { status: 500 }

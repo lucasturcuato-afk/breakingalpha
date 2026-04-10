@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import Groq from "groq-sdk";
+import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 interface RawThesis {
   title: string;
@@ -72,14 +72,16 @@ Rules:
 - BULLISH/BEARISH only with strong converging signal; WATCH if ambiguous
 - No generic sector overviews`;
 
-    const completion = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 2000,
-      temperature: 0.3,
+    const completion = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-04-17",
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: {
+        temperature: 0.3,
+        maxOutputTokens: 2000,
+      },
     });
 
-    const raw = completion.choices[0]?.message?.content || "[]";
+    const raw = completion.text || "[]";
 
     let theses: RawThesis[] = [];
     try {
@@ -93,7 +95,7 @@ Rules:
       }
       theses = parsed.filter(validateThesis).slice(0, 5);
     } catch {
-      console.error("Failed to parse Groq response:", raw);
+      console.error("Failed to parse Gemini response:", raw);
       return NextResponse.json(
         { error: "Failed to parse thesis response" },
         { status: 500 }
@@ -102,7 +104,7 @@ Rules:
 
     if (theses.length === 0) {
       return NextResponse.json(
-        { error: "Groq returned no valid theses — retry" },
+        { error: "Gemini returned no valid theses — retry" },
         { status: 500 }
       );
     }
