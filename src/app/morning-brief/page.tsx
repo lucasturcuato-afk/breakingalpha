@@ -65,6 +65,7 @@ interface BriefingData {
   top_deals?: TopDeal[];
   deals?: DealData[];
   top_stories?: StoryData[];
+  created_at?: string;
 }
 
 export default function MorningBriefPage() {
@@ -73,6 +74,8 @@ export default function MorningBriefPage() {
   const [sectorFilter, setSectorFilter] = useState<string | null>(null);
   const [stories, setStories] = useState<StoryData[]>([]);
   const [storiesLabel, setStoriesLabel] = useState("Top Stories");
+  const [isStale, setIsStale] = useState(false);
+  const [lastRunStatus, setLastRunStatus] = useState<"success" | "stub" | "error" | null>(null);
   const [memoOpen, setMemoOpen] = useState(false);
   const [memoTitle, setMemoTitle] = useState("");
   const [memoContent, setMemoContent] = useState("");
@@ -105,7 +108,12 @@ export default function MorningBriefPage() {
             sector_breakdown: sectorBreakdown || {},
             top_deals: Array.isArray(topDeals) ? topDeals : [],
             deals: b.deals || [],
+            created_at: b.created_at,
           });
+          setIsStale(data.is_stale === true);
+          if (data.last_attempt_status) {
+            setLastRunStatus(data.last_attempt_status);
+          }
         }
 
         // Fetch top stories: 24h window primary (Top Stories).
@@ -242,6 +250,9 @@ export default function MorningBriefPage() {
               summary={briefing.summary || ""}
               marketTone={briefing.market_tone || "MIXED"}
               storyCount={stories.length}
+              generatedAt={briefing.created_at}
+              isStale={isStale}
+              lastRunStatus={lastRunStatus}
               onGenerateMemo={() => {
                 setLeadMemoContent(
                   [briefing.headline, briefing.summary].filter(Boolean).join("\n\n"),
