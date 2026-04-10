@@ -427,7 +427,7 @@ export default function CompanyIntelPage() {
           .from("articles")
           .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies, primary_company, relevance_score, deal_type")
           .order("ingested_at", { ascending: false })
-          .limit(500);
+          .limit(1500);
 
         if (detailErr) {
           console.error("Company articles query error:", detailErr.message);
