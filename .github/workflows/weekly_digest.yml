@@ -1,0 +1,40 @@
+name: Weekly Digest
+
+on:
+  schedule:
+    - cron: "0 14 * * 0"
+  workflow_dispatch:
+
+jobs:
+  weekly-digest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        brief_type: [morning, evening]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run weekly digest (${{ matrix.brief_type }})
+        working-directory: backend
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python - <<'EOF'
+          import logging
+          logging.basicConfig(level=logging.INFO)
+          from summarize import generate_weekly_digest
+          digest = generate_weekly_digest("${{ matrix.brief_type }}")
+          print(f"Done. Runs: {digest.get('pipeline_health', {}).get('total_runs')}")
+          print(f"Top clusters: {len(digest.get('cluster_intelligence', {}).get('top_clusters', []))}")
+          print(f"Addendum written: {bool(digest.get('thesis_prompt_addendum'))}")
+          EOF
