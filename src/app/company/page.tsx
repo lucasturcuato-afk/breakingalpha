@@ -336,55 +336,6 @@ export default function CompanyIntelPage() {
           }))
           .sort((a, b) => b.mentions - a.mentions);
 
-        // DEBUG — remove before merge
-        // Probe 1: scan raw companies[] arrays for any Lockheed/Marvell string
-        const lmRaw: string[] = [];
-        const mvRaw: string[] = [];
-        let nullCompaniesCount = 0;
-        articles.forEach((a) => {
-          const cos = parseCompanies(a.companies);
-          if (cos.length === 0) nullCompaniesCount++;
-          cos.forEach((c) => {
-            if (c.toLowerCase().includes("lockheed")) lmRaw.push(c);
-            if (c.toLowerCase().includes("marvell")) mvRaw.push(c);
-          });
-        });
-        console.log("[CompanyIntel upstream debug]", {
-          articlesScanned: articles.length,
-          nullOrEmptyCompanies: nullCompaniesCount,
-          lockheedRawForms: lmRaw.length > 0 ? lmRaw : "NONE FOUND",
-          marvellRawForms: mvRaw.length > 0 ? mvRaw : "NONE FOUND",
-        });
-
-        // Probe 2: secondary targeted query — bypasses 500-article window,
-        // checks if recent Lockheed/Marvell articles exist in DB at all
-        const [{ data: lmCheck }, { data: mvCheck }] = await Promise.all([
-          getSupabase()
-            .from("articles")
-            .select("title, companies, ingested_at")
-            .ilike("title", "%Lockheed%")
-            .order("ingested_at", { ascending: false })
-            .limit(5),
-          getSupabase()
-            .from("articles")
-            .select("title, companies, ingested_at")
-            .ilike("title", "%Marvell%")
-            .order("ingested_at", { ascending: false })
-            .limit(5),
-        ]);
-        console.log("[CompanyIntel title-search debug]", {
-          lockheedArticles: lmCheck?.map((a) => ({
-            title: a.title,
-            companies: a.companies,
-            ingested_at: a.ingested_at,
-          })) ?? "QUERY FAILED",
-          marvellArticles: mvCheck?.map((a) => ({
-            title: a.title,
-            companies: a.companies,
-            ingested_at: a.ingested_at,
-          })) ?? "QUERY FAILED",
-        });
-
         setCompanies(list);
       } catch (e) {
         console.error("Failed to build company list:", e);
