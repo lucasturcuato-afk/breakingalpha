@@ -379,7 +379,14 @@ export function filterAndClassifyArticles(
       !isFundingOrIPO &&
       (a.deal_type === "M&A" || a.deal_type === "Funding" || a.deal_type === "IPO") &&
       a.primary_company == null &&
-      titleNamesCompany(a.title, cosRaw, companyName);
+      titleNamesCompany(a.title, cosRaw, companyName) &&
+      // For M&A, exclude companies that are the grammatical subject of the title.
+      // Subject-position companies in M&A articles with null primary_company are
+      // systematically deal advisors / underwriters ("Goldman Sachs leads $10B buyout"),
+      // not acquisition targets. The material-counterparty path was designed for
+      // investment targets that appear in the object position ("Nvidia invests in Marvell").
+      // Funding and IPO are exempt: those subject cases are handled by isFundingOrIPO already.
+      (a.deal_type !== "M&A" || !isSubjectOfTitle(a.title, companyName));
 
     return {
       id: a.id,
@@ -418,11 +425,32 @@ export function buildMemoContent(
   contextArticles: CompanyArticle[],
 ): string {
   const industry = COMPANY_IDENTITY[companyName]?.industry ?? "Unknown";
+
+  // A single M&A development article is insufficient to enter developments-led mode.
+  // M&A articles with null primary_company can still contain advisory/intermediary mentions
+  // that passed the classification filter. Require either:
+  //   (a) at least one Earnings, Funding, or IPO development (direct company events), or
+  //   (b) two or more development articles of any type (signal confirmed by volume)
+  // This prevents a lone M&A mention from producing an overstated "Recent Developments" section.
+  const memoMode = (
+    developmentArticles.some((a) => a.deal_type !== "M&A") ||
+    developmentArticles.length >= 2
+  ) ? "developments-led" : "context-led";
+
+  // When context-led, fold any borderline development articles into the context pool.
+  // This keeps the COMPANY DEVELOPMENT ARTICLES count at 0, making the "No direct
+  // company developments found" coverage note accurate, while still surfacing those
+  // articles to the model under SECTOR CONTEXT ARTICLES.
+  const effectiveDevArts = memoMode === "developments-led" ? developmentArticles : [];
+  const effectiveCtxArts =
+    memoMode === "developments-led"
+      ? contextArticles
+      : [...developmentArticles, ...contextArticles];
+
   const signalLabel =
-    developmentArticles.length >= 2 ? "Strong company-specific coverage"
-    : developmentArticles.length >= 1 ? "Limited direct evidence"
+    effectiveDevArts.length >= 2 ? "Strong company-specific coverage"
+    : effectiveDevArts.length >= 1 ? "Limited direct evidence"
     : "Mostly sector context";
-  const memoMode = developmentArticles.length > 0 ? "developments-led" : "context-led";
 
   return [
     `COMPANY: ${companyName}`,
@@ -430,11 +458,11 @@ export function buildMemoContent(
     `MEMO_MODE: ${memoMode}`,
     `SIGNAL QUALITY: ${signalLabel}`,
     ``,
-    `COMPANY DEVELOPMENT ARTICLES (${developmentArticles.length}):`,
-    formatArticleList(byRelevance(developmentArticles)),
+    `COMPANY DEVELOPMENT ARTICLES (${effectiveDevArts.length}):`,
+    formatArticleList(byRelevance(effectiveDevArts)),
     ``,
-    `SECTOR CONTEXT ARTICLES (${contextArticles.length}):`,
-    formatArticleList(byRelevance(contextArticles)),
+    `SECTOR CONTEXT ARTICLES (${effectiveCtxArts.length}):`,
+    formatArticleList(byRelevance(effectiveCtxArts)),
   ].join("\n");
 }
 
