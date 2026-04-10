@@ -356,6 +356,7 @@ def _gemini_generate(system: str, user_content: str,
             system_instruction=system,
             temperature=temperature,
             max_output_tokens=max_tokens,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         ),
     )
     return (response.text or "").strip()
@@ -625,7 +626,7 @@ def generate_weekly_digest(brief_type: str) -> dict:
                     system=_THESIS_ADDENDUM_SYSTEM,
                     user_content=prompt,
                     temperature=0.3,
-                    max_tokens=800,
+                    max_tokens=1024,
                 )
             except Exception as e:
                 logger.warning("weekly_digest: gemini addendum call failed: %s", e)
