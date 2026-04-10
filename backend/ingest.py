@@ -58,6 +58,8 @@ Relevant topics include: M&A deals, IPOs, fundraising, valuations, earnings, mar
 SECTOR (required): Pick exactly one sector from this list that best fits the article's primary topic. Copy the name character-for-character — no abbreviations, no combining, no rewording.
 Allowed sectors: {sectors}
 
+COMPANIES (required): In the JSON below, "companies" must be a JSON array of strings listing EVERY company explicitly named in the title or summary. Include the primary subject AND all secondary named companies — investors, investment targets, acquirers, merger partners, named competitors, named customers. Examples: for "Company A invests in Company B", list both. For "Company A acquires Company B", list both. For an earnings article, list the reporting company. Return [] only when no specific company name appears anywhere. Never return a string — always return a JSON array.
+
 Respond ONLY in valid JSON:
 {{
   "relevant": true/false,
