@@ -24,10 +24,10 @@ test.describe("Thesis Board", () => {
       await generateBtn.click();
 
       // Should show loading state
-      await expect(page.getByText(/Generating/)).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByText(/Generating/).first()).toBeVisible({ timeout: 5_000 });
 
       // Wait for generation to complete (Groq can take a few seconds)
-      await expect(page.getByText(/Generating/)).not.toBeVisible({
+      await expect(page.getByText(/Generating/).first()).not.toBeVisible({
         timeout: 30_000,
       });
 
@@ -61,13 +61,13 @@ test.describe("Thesis Board", () => {
     await page.goto("/thesis-board");
     await page.waitForTimeout(3_000);
 
-    // Click first thesis card if any exist
-    const firstThesis = page.locator("[class*='cursor-pointer']").first();
+    // Click first thesis card — look for conviction badge containers
+    const firstThesis = page.locator("main [class*='cursor-pointer']").first();
     if (await firstThesis.isVisible().catch(() => false)) {
       await firstThesis.click();
 
       // Detail panel should show rationale or evidence section
-      const detail = page.getByText(/Full Analysis|Live Evidence|Catalyst/);
+      const detail = page.getByText(/Full Analysis|Live Evidence|Catalyst/).first();
       await expect(detail).toBeVisible({ timeout: 5_000 });
     }
   });

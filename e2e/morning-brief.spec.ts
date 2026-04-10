@@ -4,8 +4,8 @@ test.describe("Morning Brief", () => {
   test("loads morning brief page", async ({ page }) => {
     await page.goto("/morning-brief");
 
-    // Should show either briefing content or empty state
-    const header = page.getByText(/Morning/i);
+    // Should show either briefing content or empty state — scope heading to main
+    const header = page.getByRole("heading", { name: /Morning/i }).first();
     const empty = page.getByText(/No morning brief available/);
 
     await expect(header.or(empty)).toBeVisible({ timeout: 15_000 });
@@ -14,10 +14,8 @@ test.describe("Morning Brief", () => {
   test("ticker strip renders with symbols", async ({ page }) => {
     await page.goto("/morning-brief");
 
-    // Ticker strip should show at least one of the default symbols
-    const spy = page.getByText("SPY");
-    const qqq = page.getByText("QQQ");
-    await expect(spy.or(qqq)).toBeVisible({ timeout: 10_000 });
+    // Ticker strip duplicates symbols 3x for scroll animation — just check one
+    await expect(page.getByText("SPY").first()).toBeVisible({ timeout: 10_000 });
   });
 
   test("ticker strip shows prices or fallback dashes", async ({ page }) => {
@@ -34,13 +32,13 @@ test.describe("Morning Brief", () => {
     await page.waitForTimeout(5_000);
 
     // If briefing loaded, section headers should be visible
-    const sectionHeader = page.getByText(/Macro|Deals|Markets|Sector|Watch/i).first();
+    const sectionHeader = page.locator("main").getByText(/Macro|Deals|Markets|Sector|Watch/i).first();
     const empty = page.getByText(/No morning brief available/);
 
     if (await sectionHeader.isVisible().catch(() => false)) {
       // Export and Share buttons should be present
-      await expect(page.getByText(/Export Brief/)).toBeVisible();
-      await expect(page.getByText(/Share/)).toBeVisible();
+      await expect(page.getByText(/Export Brief/).first()).toBeVisible();
+      await expect(page.locator("main").getByText(/Share/).first()).toBeVisible();
     }
   });
 
@@ -48,7 +46,7 @@ test.describe("Morning Brief", () => {
     await page.goto("/morning-brief");
     await page.waitForTimeout(5_000);
 
-    const exportBtn = page.getByText(/Export Brief/);
+    const exportBtn = page.getByText(/Export Brief/).first();
     if (await exportBtn.isVisible().catch(() => false)) {
       const [download] = await Promise.all([
         page.waitForEvent("download", { timeout: 5_000 }).catch(() => null),
@@ -65,7 +63,7 @@ test.describe("Morning Brief", () => {
     await page.goto("/morning-brief");
     await page.waitForTimeout(5_000);
 
-    const shareBtn = page.getByText(/Share/).first();
+    const shareBtn = page.locator("main").getByText(/Share/).first();
     if (await shareBtn.isVisible().catch(() => false)) {
       await shareBtn.click();
       await expect(page.getByText("Link copied")).toBeVisible({ timeout: 3_000 });

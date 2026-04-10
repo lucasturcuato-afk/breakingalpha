@@ -13,7 +13,9 @@ test.describe("Auth Flow", () => {
 
   test("sign in / sign up tab toggle works", async ({ page }) => {
     await page.goto("/auth");
-    await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
+    // Tab toggle button (type="button"), not the form submit
+    const signInTab = page.locator("button[type='button']", { hasText: "Sign In" });
+    await expect(signInTab).toBeVisible();
     await expect(page.getByRole("button", { name: "Create Account" })).toBeVisible();
 
     // Toggle to sign up
@@ -23,7 +25,7 @@ test.describe("Auth Flow", () => {
     await expect(submitBtn).toContainText("Create Account");
 
     // Toggle back to sign in
-    await page.getByRole("button", { name: "Sign In" }).first().click();
+    await signInTab.click();
     await expect(submitBtn).toContainText("Sign In");
   });
 
@@ -31,7 +33,8 @@ test.describe("Auth Flow", () => {
     await page.goto("/auth");
     await page.getByPlaceholder("Email address").fill("nonexistent@test.com");
     await page.getByPlaceholder("Password").fill("wrongpassword");
-    await page.getByRole("button", { name: "Sign In" }).click();
+    // Click the form submit button specifically
+    await page.locator("form").getByRole("button", { name: "Sign In" }).click();
 
     // Should show error message, not redirect
     await expect(page.locator(".text-signal-dn")).toBeVisible({ timeout: 10_000 });

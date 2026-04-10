@@ -681,7 +681,7 @@ export default function CompanyIntelPage() {
                   className="py-8"
                 />
               ) : (
-                <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                <div className="space-y-2">
                   {/* Company Events group — articles where the company was the actor */}
                   {developmentArticles.length > 0 && (
                     <>

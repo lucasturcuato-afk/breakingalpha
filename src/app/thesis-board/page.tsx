@@ -113,6 +113,29 @@ function ThesisBoardContent() {
   const fetchArticlesForThesis = useCallback(async (thesis: ThesisItem) => {
     if (relatedArticles[thesis.id]) return;
     try {
+      // Try supporting_articles first (article IDs stored at generation time)
+      const { data: thesisRow } = await getSupabase()
+        .from("theses")
+        .select("supporting_articles")
+        .eq("id", thesis.id)
+        .single();
+
+      const supportingIds: string[] = Array.isArray(thesisRow?.supporting_articles)
+        ? thesisRow.supporting_articles
+        : [];
+
+      if (supportingIds.length > 0) {
+        const { data } = await getSupabase()
+          .from("articles")
+          .select("id, title, source, ingested_at, published_at, summary, sentiment, sector")
+          .in("id", supportingIds);
+        if (data && data.length > 0) {
+          setRelatedArticles((prev) => ({ ...prev, [thesis.id]: data }));
+          return;
+        }
+      }
+
+      // Fallback: sector-matched articles
       const { data } = await getSupabase()
         .from("articles")
         .select("id, title, source, ingested_at, published_at, summary, sentiment, sector")

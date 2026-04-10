@@ -6,7 +6,7 @@ test.describe("Ticker Strip", () => {
 
     const symbols = ["SPY", "QQQ", "AAPL", "NVDA", "MSFT", "META", "GOOGL", "AMZN", "TSLA", "GLD", "TLT", "BTC"];
 
-    // At least the first few should be visible (some may be scrolled off-screen)
+    // At least the first few should be visible (tripled for scroll animation — use .first())
     for (const sym of symbols.slice(0, 4)) {
       await expect(page.getByText(sym).first()).toBeVisible({ timeout: 10_000 });
     }
@@ -28,7 +28,7 @@ test.describe("Ticker Strip", () => {
     await page.goto("/morning-brief");
     await page.waitForTimeout(5_000);
 
-    // Should show either up or down arrow indicators
+    // Should show either up or down arrow indicators — use .first() for animation duplicates
     const upArrow = page.locator("text=▲").first();
     const downArrow = page.locator("text=▼").first();
 

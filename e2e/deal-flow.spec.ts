@@ -45,14 +45,15 @@ test.describe("Deal Flow", () => {
     if (await addBtn.isVisible()) {
       await addBtn.click();
 
-      // Form fields should appear
-      await expect(page.getByPlaceholder(/Company/i)).toBeVisible({ timeout: 3_000 });
+      // Form field — use exact placeholder to avoid matching the search input
+      const companyField = page.getByRole("textbox", { name: "Company *" });
+      await expect(companyField).toBeVisible({ timeout: 3_000 });
 
       // Cancel should close form
       const cancelBtn = page.getByRole("button", { name: /Cancel/i });
       if (await cancelBtn.isVisible()) {
         await cancelBtn.click();
-        await expect(page.getByPlaceholder(/Company/i)).not.toBeVisible();
+        await expect(companyField).not.toBeVisible();
       }
     }
   });
