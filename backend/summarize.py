@@ -609,6 +609,8 @@ def generate_weekly_digest(brief_type: str) -> dict:
                 prompt = (
                     "Given this weekly pipeline feedback:\n\n"
                     f"```json\n{json.dumps(addendum_input, indent=2)}\n```\n\n"
+                    "If there are more than 5 underrepresented clusters, name only "
+                    "the top 3 by confidence score. Do not list all clusters.\n\n"
                     "Generate a 3-5 sentence addendum that:\n"
                     "1. Instructs the thesis generator to prioritize the top "
                     "underrepresented clusters by their label name.\n"
@@ -623,7 +625,7 @@ def generate_weekly_digest(brief_type: str) -> dict:
                     system=_THESIS_ADDENDUM_SYSTEM,
                     user_content=prompt,
                     temperature=0.3,
-                    max_tokens=400,
+                    max_tokens=800,
                 )
             except Exception as e:
                 logger.warning("weekly_digest: gemini addendum call failed: %s", e)
