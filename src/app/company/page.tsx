@@ -172,6 +172,42 @@ const COMPANY_IDENTITY: Record<string, CompanyIdentity> = {
   "Walmart":          { industry: "Consumer Retail",       brief: "Walmart operates the world's largest retail network of physical stores and e-commerce, targeting everyday low prices for mass-market consumers." },
 };
 
+// Generic terms that appear as standalone words in junk extraction artifacts.
+// Checked against individual words in the lowercased name, not the full string,
+// so "Morgan Stanley" (contains no banned word) passes while "tech companies" fails.
+const JUNK_WORDS = new Set([
+  "companies", "company", "firms", "firm", "startups", "startup",
+  "enterprises", "conglomerates", "banks", "insurers", "retailers",
+  "manufacturers", "providers", "operators", "investors", "funds",
+  "giants", "players", "leaders", "vendors", "competitors",
+]);
+
+// Compound category labels used in journalism that neither word alone would catch.
+// "Big Tech" → "big" and "tech" are both valid name components individually,
+// but the compound phrase always denotes a sector category, never a specific company.
+const JUNK_PHRASES = new Set([
+  "big tech", "big oil", "big pharma",
+]);
+
+// Returns true if the raw extracted string is a category label, descriptive phrase,
+// or extraction artifact rather than a proper entity name. Used as a guard before
+// adding to compMap — defense-in-depth against ingest model failures.
+function isJunkEntityName(raw: string): boolean {
+  // Parenthetical content → category phrase like "Big Tech companies (e.g. Google...)"
+  if (raw.includes("(") || raw.includes(")")) return true;
+  // "e.g." anywhere → explicit list/example syntax, not an entity name
+  if (/\be\.g\./i.test(raw)) return true;
+  // Implausibly long for a company name (legitimate names top out around 60 chars)
+  if (raw.length > 60) return true;
+  const lower = raw.toLowerCase().trim();
+  // Exact-match compound category labels ("Big Tech", "Big Oil", "Big Pharma")
+  if (JUNK_PHRASES.has(lower)) return true;
+  // Any word in the name is a known generic group label
+  const words = lower.split(/[\s,/&]+/).filter(Boolean);
+  if (words.some((w) => JUNK_WORDS.has(w))) return true;
+  return false;
+}
+
 function canonicalize(name: string): string {
   const trimmed = name.trim().replace(/[.,]$/g, "");
   const key = trimmed.toLowerCase();
@@ -356,6 +392,9 @@ export default function CompanyIntelPage() {
           const cos = parseCompanies(a.companies);
           cos.forEach((raw) => {
             if (!raw || raw.length < 2) return;
+            // Reject extraction artifacts: parenthetical lists, "e.g." patterns,
+            // generic group labels, and implausibly long strings.
+            if (isJunkEntityName(raw)) return;
             const display = canonicalize(raw);
             const key = display.toLowerCase();
             if (!compMap[key]) {
