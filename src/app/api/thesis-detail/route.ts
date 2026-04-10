@@ -55,7 +55,7 @@ Rules: one evidence entry per article (${articleList.length} total), cite specif
 
   try {
     const completion = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-04-17",
+      model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       config: {
         temperature: 0.3,

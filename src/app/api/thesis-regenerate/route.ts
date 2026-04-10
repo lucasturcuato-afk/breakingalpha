@@ -66,7 +66,7 @@ ${articleContext || "None"}
 Cite specific companies, figures, and deal values from the articles. Structure: key data point → sector implications → forward outlook matching ${thesis.conviction} conviction. Respond with ONLY the paragraph text, no labels or markdown.`;
 
     const analysisCompletion = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-04-17",
+      model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: analysisPrompt }] }],
       config: {
         temperature: 0.35,
@@ -95,7 +95,7 @@ Respond ONLY with valid JSON:
 Rules: one entry per article (${articleList.length} total), cite specific data.`;
 
     const detailCompletion = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-04-17",
+      model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: detailPrompt }] }],
       config: {
         temperature: 0.3,

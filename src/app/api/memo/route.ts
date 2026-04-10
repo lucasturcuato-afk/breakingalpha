@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
 
     try {
       const completion = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-04-17",
+        model: "gemini-2.5-flash",
         contents: [{ role: "user", parts: [{ text: truncated }] }],
         config: {
           systemInstruction: system,
@@ -109,7 +109,7 @@ Sections: TRANSACTION OVERVIEW, STRATEGIC RATIONALE, KEY RISKS, ANALYST TAKE. Un
 
   try {
     const completion = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-04-17",
+      model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       config: {
         temperature: 0.35,
