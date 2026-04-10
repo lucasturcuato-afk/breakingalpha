@@ -30,30 +30,126 @@ export async function POST() {
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   try {
-    const { data: articles, error: articlesError } = await supabase
-      .from("articles")
-      .select(
-        "id, title, summary, sector, sentiment, companies, deal_type, source"
-      )
-      .order("ingested_at", { ascending: false })
-      .limit(15);
+    let prompt = "";
+    const validIds = new Set<string>();
 
-    if (articlesError) throw articlesError;
-    if (!articles || articles.length === 0) {
-      return NextResponse.json({ theses: [] });
+    // 1. Prefer today's trend_clusters as the structured input
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const { data: latestClusterRow } = await supabase
+      .from("trend_clusters")
+      .select("run_id")
+      .gte("created_at", todayStart.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestClusterRow?.run_id) {
+      const { data: clusters } = await supabase
+        .from("trend_clusters")
+        .select(
+          "label, cluster_type, source_count, top_companies, top_sectors, representative_article_ids, strength_score"
+        )
+        .eq("run_id", latestClusterRow.run_id)
+        .order("strength_score", { ascending: false, nullsFirst: false })
+        .limit(6);
+
+      if (clusters && clusters.length > 0) {
+        // Up to 3 article ids per cluster
+        const clusterArticleIds: string[][] = clusters.map((c) => {
+          const raw = c.representative_article_ids;
+          return Array.isArray(raw) ? (raw as string[]).slice(0, 3) : [];
+        });
+        const allIds = Array.from(new Set(clusterArticleIds.flat()));
+
+        if (allIds.length > 0) {
+          const { data: clusterArticles } = await supabase
+            .from("articles")
+            .select("id, title, summary, sector, ingested_at, content_type")
+            .in("id", allIds);
+
+          if (clusterArticles && clusterArticles.length > 0) {
+            type ClusterArticle = (typeof clusterArticles)[number];
+            clusterArticles.forEach((a) => validIds.add(a.id));
+            const articleMap = new Map<string, ClusterArticle>(
+              clusterArticles.map((a) => [a.id, a])
+            );
+
+            const clusterBlocks = clusters
+              .map((c, i) => {
+                const arts: ClusterArticle[] = clusterArticleIds[i]
+                  .map((id) => articleMap.get(id))
+                  .filter((a): a is ClusterArticle => Boolean(a));
+                const topCompanies = Array.isArray(c.top_companies)
+                  ? (c.top_companies as string[]).slice(0, 5).join(", ")
+                  : "";
+                const topSectors = Array.isArray(c.top_sectors)
+                  ? (c.top_sectors as string[]).slice(0, 3).join(", ")
+                  : "";
+                const articleLines =
+                  arts
+                    .map(
+                      (a) =>
+                        `  - id=${a.id} | ${a.title}${a.summary ? " — " + a.summary.slice(0, 140) : ""}`
+                    )
+                    .join("\n") || "  (no articles resolved)";
+                return `Cluster ${i + 1}: ${c.label || "(unlabeled)"}
+Type: ${c.cluster_type || "unknown"} | Sources: ${c.source_count ?? 0}
+Top companies: ${topCompanies || "—"}
+Top sectors: ${topSectors || "—"}
+Articles:
+${articleLines}`;
+              })
+              .join("\n\n");
+
+            prompt = `You are analyzing ${clusters.length} market narrative clusters from today's news pipeline. Each cluster represents a group of related articles. Generate exactly 3-5 investment theses, one per dominant cluster. For each thesis return:
+- title
+- conviction (HIGH/MEDIUM/WATCH)
+- sector
+- rationale (3-4 sentences with specific companies and data)
+- catalyst
+- supporting_article_ids (array of article IDs from the cluster that support this thesis)
+
+Clusters:
+${clusterBlocks}
+
+Respond ONLY with a JSON array. No markdown. Each thesis MUST include supporting_article_ids — exact UUID strings copied from the id= values in the clusters above. Do NOT invent IDs.
+
+Format: [{"title":"5-8 words","conviction":"HIGH|MEDIUM|WATCH","sector":"Technology M&A|Private Equity|Venture Capital|Public Markets|Geopolitics & Macro|Fintech & Crypto|Healthcare & Biotech|Energy & Climate","rationale":"3-4 sentences citing specific companies and data","catalyst":"Near-term catalyst with timeframe","catalyst_note":"2-3 sentences on why the catalyst matters","supporting_article_ids":["uuid-from-cluster","..."],"evidence_chain":[{"label":"2-4 words","type":"support|context|risk","bridge":"One sentence linking article to thesis"}]}]`;
+          }
+        }
+      }
     }
 
-    const articleContext = articles
-      .map(
-        (a) =>
-          `id=${a.id} | ${a.sector || "General"} | ${a.title}${a.summary ? " — " + a.summary.slice(0, 120) : ""}`
-      )
-      .join("\n");
+    // 2. Fallback: raw article fetch if no clusters were usable
+    if (validIds.size === 0) {
+      const { data: articles, error: articlesError } = await supabase
+        .from("articles")
+        .select(
+          "id, title, summary, sector, sentiment, companies, deal_type, source"
+        )
+        .order("ingested_at", { ascending: false })
+        .limit(15);
 
-    const exampleId1 = articles[0]?.id || "example-uuid";
-    const exampleId2 = articles[1]?.id || "example-uuid-2";
+      if (articlesError) throw articlesError;
+      if (!articles || articles.length === 0) {
+        return NextResponse.json({ theses: [] });
+      }
 
-    const prompt = `You are a senior IB analyst. Generate 3-5 high-conviction investment theses from these articles. Be selective — quality over quantity.
+      articles.forEach((a) => validIds.add(a.id));
+
+      const articleContext = articles
+        .map(
+          (a) =>
+            `id=${a.id} | ${a.sector || "General"} | ${a.title}${a.summary ? " — " + a.summary.slice(0, 120) : ""}`
+        )
+        .join("\n");
+
+      const exampleId1 = articles[0]?.id || "example-uuid";
+      const exampleId2 = articles[1]?.id || "example-uuid-2";
+
+      prompt = `You are a senior IB analyst. Generate 3-5 high-conviction investment theses from these articles. Be selective — quality over quantity.
 
 Each line below is one article: "id=UUID | sector | title — summary". The id is the UUID you MUST copy into supporting_article_ids for theses that cite that article.
 
@@ -71,6 +167,7 @@ Rules:
 - evidence_chain: 2-3 items citing exact names/figures
 - BULLISH/BEARISH only with strong converging signal; WATCH if ambiguous
 - No generic sector overviews`;
+    }
 
     const completion = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-04-17",
@@ -110,16 +207,13 @@ Rules:
     }
 
     // Dedup: delete any AI-generated theses from today before inserting
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const dedupCutoff = new Date();
+    dedupCutoff.setHours(0, 0, 0, 0);
     await supabase
       .from("theses")
       .delete()
       .eq("source", "ai-generated")
-      .gte("generated_at", todayStart.toISOString());
-
-    // Validate supporting_article_ids against actual article IDs
-    const validIds = new Set(articles.map((a) => a.id));
+      .gte("generated_at", dedupCutoff.toISOString());
 
     const rows = theses.map(
       (t) => ({
