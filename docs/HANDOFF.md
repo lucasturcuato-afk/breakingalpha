@@ -7,13 +7,15 @@
 - Google OAuth (PKCE flow) working — callback at /auth/callback
 - Per-session user isolation fixed — greeting, sidebar, settings all read from live auth
 - Pipeline auto-runs 6am PT (morning) and 10pm PT (evening), weekdays
+- **AI provider:** Gemini 2.5 Flash (migrated from Groq 2026-04-10) — ingest, thesis, memo all use genai SDK
+- **Backend SDK:** google.genai (newer SDK, matches frontend pattern)
 
 ## Architecture
 - **Frontend:** Next.js 16 (Turbopack), hosted on Vercel (repo root)
 - **Backend:** Python — ingest.py, synthesize.py, deal_extractor.py, run.py (8-step pipeline: ingest → synthesize → deal extraction → run record → critique → audit → trend map → summary)
 - **Database:** Supabase (project: pnfjelfvtypkpnwpflmv) — use ingested_at for ordering, NOT created_at
-- **AI:** Groq API — ingest filtering: llama-3.1-8b-instant; synthesis: llama-3.3-70b-versatile
-- **News:** NewsAPI + 11 RSS feeds
+- **AI:** Gemini 2.5 Flash (migrated from Groq) — ingest batch filtering, thesis generation, memo synthesis all use google.genai
+- **News:** NewsAPI + 15 RSS feeds (added SEC 8-K, SEC 10-Q, Federal Reserve, PR Newswire)
 - **Scheduler:** GitHub Actions — 6am PT (14:00 UTC) and 10pm PT (06:00 UTC), weekdays
 - **Quotes:** Finnhub (primary) + Stooq CSV (fallback)
 - **Auth:** Supabase Auth — Google OAuth (PKCE), email/password sign-up
@@ -28,10 +30,10 @@
 
 ## Environment Variables
 **Vercel:**
-NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY, GROQ_API_KEY
+NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY, GEMINI_API_KEY
 
 **GitHub Secrets (backend):**
-GROQ_API_KEY, NEWS_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
+GEMINI_API_KEY, NEWS_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
 
 ## Auth Flow
 - `src/middleware.ts` — `isAuthPage` exact-matches `/auth` only; `/auth/callback` is in `isPublicPath` so OAuth code exchange is never intercepted
@@ -54,9 +56,7 @@ GROQ_API_KEY, NEWS_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
 **pipeline_runs, run_articles, brief_quality_scores, selection_audit, trend_clusters:** Phase 1 observation layer tables — see git history for schemas.
 
 ## Recently Completed (2026-04-10)
-- Brief reliability layer shipped (PR #77): freshness check + run-status visibility on dashboard/morning/evening pages; debug endpoint `/api/debug/brief-status` added for diagnostics; GitHub Actions schedule validated; evening wrap headline selection brought to parity with morning spec
-- Company Intel memo quality hardened (PR #75): ranked context articles by company-specific signal (3 new scoring functions), explicit 250-word limit, evidence-driven "What To Watch" bullets
-- Company Intel development classification tightened (PR #74): restricted `isMaterialCounterparty` to M&A only, eliminated 4 NVIDIA false-positives (Funding/IPO articles)
+Full Groq→Gemini 2.5 Flash migration: frontend routes (theses, memo, thesis-detail, thesis-regenerate), backend ingest/synthesize, batch article filtering (166→127 articles, ~18min→2min pipeline), cluster-driven thesis gen, SEC/Fed feeds added, Gemini response parsing hardened (thinkingConfig, multi-fallback JSON), React hydration fix (Math.random()→deterministic), both repos clean on main, gh CLI auth set up.
 
 ## Recently Completed (2026-04-09)
 Frontend debug pass completed: 8 batches (auth-gated 4 API routes, replaced createClient with createBrowserClient in 10 files, added error handling to 7 routes, Supabase/Groq validation fixes, replaced mock data with live queries across dashboard/company/ticker/shell). Resolved 8 merge conflicts (feat/signalera-frontend-v2 ↔ main), set up Playwright E2E suite (10 specs, 48 tests), created VERIFICATION.md (42 manual QA cases). Build clean, 0 TypeScript errors, 27 routes compiled.
@@ -91,7 +91,7 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 10. **Phase 1 hardening — observe.py reconstruction fix (PR #56)** — `_reconstruct_selected()` rewritten to mirror current `synthesize._select_articles_for_synthesis()` (spine=12, floor=6, sector_cap=3, floor_min=7). `audit.py` `_TARGET_COUNT` corrected 20→18. Stale `_diversify_articles` reconstruction logic replaced. No schema changes.
 
 ## Pending / Known Issues
-- **In Progress: fix/brief-freshness-observability** — freshness check + run-status visibility deployed; monitoring for edge cases in scheduler integration
+- **synthesize.py stub brief-quality issue** — hit stub path on today's test run; all sections (deals_and_ma, geopolitics, macro_and_rates, public_markets, sector_spotlight, what_to_watch) reported omitted, 0 top deals. Investigate: Gemini response truncation, synthesis prompt drift, article selection pool shrinkage, or response parsing edge case.
 - **E2E tests need Supabase credentials** — Playwright suite configured (10 specs, 48 tests) but pending valid E2E_USER_EMAIL, E2E_USER_PASSWORD in .env.local to run against real Supabase test user
 - **middleware.ts → proxy.ts** — Next.js 16 deprecation warning; rename `src/middleware.ts` to `src/proxy.ts` (breaking change in v16+)
 - **Google OAuth consent screen** shows Supabase project name instead of "Signalera" — update in Google Cloud Console > OAuth consent screen
