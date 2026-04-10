@@ -43,42 +43,84 @@ interface CompanyArticle {
   _isDevelopment: boolean;
 }
 
-// Canonical name map — keys are lowercase variants, value is display name
+// Canonical name map — keys are lowercase variants, value is preferred display name.
+// Keys must be lowercase. Handles renames (google→Alphabet), short forms (goldman→Goldman Sachs),
+// and legal-suffix variants resolved after suffix stripping (see canonicalize below).
 const CANONICAL: Record<string, string> = {
+  // NVIDIA
   nvidia: "NVIDIA",
   "nvidia corporation": "NVIDIA",
   "nvidia corp": "NVIDIA",
+  // Alphabet / Google
   alphabet: "Alphabet",
   "alphabet inc": "Alphabet",
   "alphabet inc.": "Alphabet",
   google: "Alphabet",
   "google llc": "Alphabet",
   "google inc": "Alphabet",
+  // Meta / Facebook
   meta: "Meta",
   "meta platforms": "Meta",
   "meta platforms inc": "Meta",
   "meta platforms, inc.": "Meta",
   facebook: "Meta",
+  // Amazon
   "amazon.com": "Amazon",
   "amazon.com inc": "Amazon",
   "amazon.com, inc.": "Amazon",
   amazon: "Amazon",
+  // Apple
   "apple inc": "Apple",
   "apple inc.": "Apple",
   apple: "Apple",
+  // Microsoft
   "microsoft corporation": "Microsoft",
   "microsoft corp": "Microsoft",
   microsoft: "Microsoft",
+  // JPMorgan Chase
   "jpmorgan chase": "JPMorgan Chase",
   "jpmorgan chase & co": "JPMorgan Chase",
   "jp morgan": "JPMorgan Chase",
-  "jpmorgan": "JPMorgan Chase",
+  jpmorgan: "JPMorgan Chase",
+  // Goldman Sachs — "goldman" alone in article data = Goldman Sachs
   "goldman sachs": "Goldman Sachs",
   "goldman sachs group": "Goldman Sachs",
   "the goldman sachs group": "Goldman Sachs",
+  goldman: "Goldman Sachs",
+  // Berkshire Hathaway
   "berkshire hathaway": "Berkshire Hathaway",
   "berkshire hathaway inc": "Berkshire Hathaway",
+  // Marvell — ingest produces "Marvell", "Marvell Technology", "Marvell Technology Inc."
+  marvell: "Marvell Technology",
+  "marvell technology": "Marvell Technology",
+  // Lockheed Martin — "Lockheed" alone in article data = Lockheed Martin
+  lockheed: "Lockheed Martin",
+  "lockheed martin": "Lockheed Martin",
+  "lockheed martin corporation": "Lockheed Martin",
+  // Whoop — ingest produces both "Whoop" and "WHOOP"
+  whoop: "Whoop",
+  // Arm Holdings — ingest produces "Arm" and "Arm Holdings"
+  arm: "Arm Holdings",
+  "arm holdings": "Arm Holdings",
+  // Samsung — ingest produces "Samsung" and "Samsung Electronics"
+  "samsung electronics": "Samsung",
+  "samsung electronics co": "Samsung",
+  // SoftBank — ingest produces "SoftBank" and "SoftBank Group"
+  softbank: "SoftBank",
+  "softbank group": "SoftBank",
+  // Foxconn / Hon Hai — same company, different names in different articles
+  foxconn: "Foxconn",
+  "hon hai": "Foxconn",
+  "hon hai precision": "Foxconn",
+  "hon hai precision industry": "Foxconn",
 };
+
+// Legal entity suffixes that are never part of a company's identity.
+// Stripped from the end before a second CANONICAL lookup (see canonicalize).
+// Requires a comma or whitespace before the suffix to avoid false matches on
+// brand words — "SomeCorp" does not match, "Some Corp" does.
+const LEGAL_SUFFIX_RE =
+  /[,\s]+(inc\.?|corp\.?|corporation|llc|ltd\.?|limited|plc|l\.p\.?|llp|s\.a\.?|n\.v\.?|ag|gmbh)$/i;
 
 // Company identity map — curated, bounded descriptions of what each company IS and DOES.
 // `industry` is used as a content-type label in memoContent.
@@ -130,8 +172,26 @@ const COMPANY_IDENTITY: Record<string, CompanyIdentity> = {
 };
 
 function canonicalize(name: string): string {
-  const key = name.trim().toLowerCase().replace(/[.,]$/g, "");
-  return CANONICAL[key] ?? name.trim();
+  const trimmed = name.trim().replace(/[.,]$/g, "");
+  const key = trimmed.toLowerCase();
+
+  // Pass 1: direct CANONICAL lookup — handles explicit aliases and renames
+  if (CANONICAL[key]) return CANONICAL[key];
+
+  // Pass 2: strip one legal suffix, retry CANONICAL lookup.
+  // "Marvell Technology Inc." → "Marvell Technology" → CANONICAL hit.
+  // "Goldman Sachs Group Inc." → "Goldman Sachs Group" → CANONICAL hit.
+  const stripped = trimmed.replace(LEGAL_SUFFIX_RE, "").trim();
+  if (stripped.length >= 4 && stripped !== trimmed) {
+    const strippedKey = stripped.toLowerCase();
+    if (CANONICAL[strippedKey]) return CANONICAL[strippedKey];
+    // No CANONICAL hit after stripping — return the suffix-stripped form as display.
+    // e.g. "Acme Corp." → "Acme" rather than "Acme Corp."
+    return stripped;
+  }
+
+  // Pass 3: fallback — return original trimmed form (original casing preserved)
+  return trimmed;
 }
 
 function parseCompanies(cos: unknown): string[] {
@@ -242,21 +302,35 @@ export default function CompanyIntelPage() {
         }
         if (!articles) return;
 
-        const compMap: Record<string, { mentions: number; sectors: Set<string> }> = {};
+        // Key by display.toLowerCase() so that case variants of the same name
+        // ("Whoop" and "WHOOP", for example) group into one row. canonicalize()
+        // resolves CANONICAL aliases and strips legal suffixes before this point,
+        // so "Marvell Technology Inc." and "Marvell" both produce display
+        // "Marvell Technology" and key "marvell technology".
+        //
+        // When the same key is seen with different casings (neither form in CANONICAL),
+        // prefer a mixed-case display form over an ALL-CAPS form.
+        const compMap: Record<string, { display: string; mentions: number; sectors: Set<string> }> = {};
         articles.forEach((a) => {
           const cos = parseCompanies(a.companies);
           cos.forEach((raw) => {
             if (!raw || raw.length < 2) return;
-            const c = canonicalize(raw);
-            if (!compMap[c]) compMap[c] = { mentions: 0, sectors: new Set() };
-            compMap[c].mentions++;
-            if (a.sector) compMap[c].sectors.add(a.sector);
+            const display = canonicalize(raw);
+            const key = display.toLowerCase();
+            if (!compMap[key]) {
+              compMap[key] = { display, mentions: 0, sectors: new Set() };
+            } else if (/[a-z]/.test(display) && !/[a-z]/.test(compMap[key].display)) {
+              // Upgrade from ALL-CAPS to mixed-case display form when available
+              compMap[key].display = display;
+            }
+            compMap[key].mentions++;
+            if (a.sector) compMap[key].sectors.add(a.sector);
           });
         });
 
         const list = Object.entries(compMap)
-          .map(([name, data]) => ({
-            name,
+          .map(([, data]) => ({
+            name: data.display,
             mentions: data.mentions,
             sectors: Array.from(data.sectors),
           }))
