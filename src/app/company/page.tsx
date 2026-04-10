@@ -336,6 +336,19 @@ export default function CompanyIntelPage() {
           }))
           .sort((a, b) => b.mentions - a.mentions);
 
+        // DEBUG — remove before merge
+        const lmEntry = list.find((c) => c.name.toLowerCase().includes("lockheed"));
+        const mvEntry = list.find((c) => c.name.toLowerCase().includes("marvell"));
+        console.log("[CompanyIntel debug]", {
+          totalDistinct: list.length,
+          "Lockheed Martin": lmEntry
+            ? { name: lmEntry.name, mentions: lmEntry.mentions, rank: list.indexOf(lmEntry) + 1 }
+            : "NOT IN LIST",
+          "Marvell": mvEntry
+            ? { name: mvEntry.name, mentions: mvEntry.mentions, rank: list.indexOf(mvEntry) + 1 }
+            : "NOT IN LIST",
+          top50: list.slice(0, 50).map((c, i) => `#${i + 1} ${c.name} (${c.mentions}x)`),
+        });
         setCompanies(list);
       } catch (e) {
         console.error("Failed to build company list:", e);
