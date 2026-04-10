@@ -35,7 +35,13 @@ RSS_FEEDS = {
     "Defense News":     "https://www.defensenews.com/arc/outboundfeeds/rss/",
     "Breaking Defense": "https://breakingdefense.com/feed/",
     "C4ISRNET":         "https://www.c4isrnet.com/arc/outboundfeeds/rss/",
+    "SEC 8-K":          "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&dateb=&owner=include&count=40&search_text=&output=atom",
+    "SEC 10-Q":         "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=10-Q&dateb=&owner=include&count=10&search_text=&output=atom",
+    "Federal Reserve":  "https://www.federalreserve.gov/feeds/press_all.xml",
+    "PR Newswire":      "https://www.prnewswire.com/rss/news-releases-list.rss",
 }
+
+FULL_TEXT_SOURCES = {"SEC 8-K", "SEC 10-Q", "Federal Reserve"}
 
 SECTORS = [
     "Technology M&A & Investment Banking",
@@ -103,7 +109,8 @@ def fetch_all_articles():
                     "summary": strip_html(e.get("summary", e.get("description", "")))[:500],
                     "url": e.get("link", ""),
                     "source": source,
-                    "published_at": e.get("published", datetime.now(timezone.utc).isoformat())
+                    "published_at": e.get("published", datetime.now(timezone.utc).isoformat()),
+                    "content_type": "full_text" if source in FULL_TEXT_SOURCES else "snippet"
                 })
         except Exception as ex:
             print(f"  RSS error {source}: {ex}")
@@ -122,7 +129,8 @@ def fetch_all_articles():
                     "summary": strip_html(a.get("description", ""))[:500],
                     "url": a.get("url", ""),
                     "source": a.get("source", {}).get("name", "NewsAPI"),
-                    "published_at": a.get("publishedAt", datetime.now(timezone.utc).isoformat())
+                    "published_at": a.get("publishedAt", datetime.now(timezone.utc).isoformat()),
+                    "content_type": "snippet"
                 })
             time.sleep(0.3)
     except Exception as ex:
@@ -224,6 +232,7 @@ def store_article(article, analysis):
             "sector": analysis.get("sector", "") if analysis.get("sector", "") in SECTORS else "",
             "deal_type": analysis.get("deal_type"),
             "primary_company": analysis.get("primary_company"),
+            "content_type": article.get("content_type", "snippet"),
         }).execute()
         article_id = r.data[0]["id"]
         for company in analysis.get("companies", []):
