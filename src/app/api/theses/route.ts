@@ -36,7 +36,7 @@ export async function POST() {
         "id, title, summary, sector, sentiment, companies, deal_type, source"
       )
       .order("ingested_at", { ascending: false })
-      .limit(30);
+      .limit(15);
 
     if (articlesError) throw articlesError;
     if (!articles || articles.length === 0) {
@@ -45,53 +45,37 @@ export async function POST() {
 
     const articleContext = articles
       .map(
-        (a, i) =>
-          `ARTICLE ${i + 1}\n  id: "${a.id}"\n  sector: ${a.sector || "General"}\n  title: "${a.title}"\n  source: ${a.source || "?"}\n  summary: ${a.summary ? a.summary.slice(0, 180) : "N/A"}\n`
+        (a) =>
+          `id=${a.id} | ${a.sector || "General"} | ${a.title}${a.summary ? " — " + a.summary.slice(0, 120) : ""}`
       )
       .join("\n");
 
     const exampleId1 = articles[0]?.id || "example-uuid";
     const exampleId2 = articles[1]?.id || "example-uuid-2";
 
-    const prompt = `You are a senior investment banking analyst at a top-tier firm. Analyze these articles and generate 3-5 high-conviction investment theses.
+    const prompt = `You are a senior IB analyst. Generate 3-5 high-conviction investment theses from these articles. Be selective — quality over quantity.
 
-Be selective. Only surface theses where there is strong signal across multiple articles. Quality over quantity — 3 excellent theses beat 5 mediocre ones.
+Each line below is one article: "id=UUID | sector | title — summary". The id is the UUID you MUST copy into supporting_article_ids for theses that cite that article.
 
 ARTICLES:
 ${articleContext}
 
-IMPORTANT: Each article above has an "id" field (a UUID string like "${exampleId1}"). You MUST copy these exact id strings into supporting_article_ids for each thesis. Do NOT make up IDs — use only the exact id values from the articles above.
+Respond ONLY with a JSON array. No markdown. Each thesis MUST include supporting_article_ids — 2-3 exact UUID strings copied from the id= values above (e.g. "${exampleId1}", "${exampleId2}"). Do NOT invent IDs.
 
-Respond ONLY with a JSON array. No markdown, no code fences, no explanation.
+Format:
+[{"title":"5-8 words","conviction":"BULLISH|BEARISH|WATCH","rationale":"3-4 sentences citing specific companies/figures","sector":"Technology M&A|Private Equity|Venture Capital|Public Markets|Geopolitics & Macro|Fintech & Crypto|Healthcare & Biotech|Energy & Climate","catalyst":"Near-term catalyst with timeframe","catalyst_note":"2-3 sentences on why the catalyst matters","supporting_article_ids":["${exampleId1}","${exampleId2}"],"evidence_chain":[{"label":"2-4 words","type":"support|context|risk","bridge":"One sentence linking article to thesis"}]}]
 
-EXAMPLE (showing correct format — note the real article IDs):
-[
-  {
-    "title": "AI Chip Demand Drives Semiconductor M&A Wave",
-    "conviction": "BULLISH",
-    "rationale": "Multiple semiconductor deals signal accelerating consolidation...",
-    "sector": "Technology M&A",
-    "catalyst": "Q2 earnings reports from NVDA and AMD in late July",
-    "catalyst_note": "Upcoming earnings will reveal AI chip demand trajectory. Strong guidance would validate the consolidation thesis and potentially trigger further M&A.",
-    "supporting_article_ids": ["${exampleId1}", "${exampleId2}"],
-    "evidence_chain": [
-      {"label": "Deal catalyst", "type": "support", "bridge": "Article describes $5B acquisition driven by AI demand."},
-      {"label": "Market context", "type": "context", "bridge": "Semiconductor index up 12% YTD on AI tailwinds."}
-    ]
-  }
-]
-
-RULES:
-- Generate exactly 3-5 theses. No more than 5.
-- supporting_article_ids: MUST contain 2-3 exact UUID strings copied from the article id fields above. This is critical.
-- evidence_chain: 2-3 items per thesis, cite exact names/figures from articles.
-- conviction: BULLISH/BEARISH only when multiple articles converge on a clear signal. Use WATCH when ambiguous.
-- Do NOT generate generic sector overviews. Each thesis must have a specific, testable claim.`;
+Rules:
+- 3-5 theses max
+- supporting_article_ids: 2-3 exact UUIDs from articles above (critical — do not fake)
+- evidence_chain: 2-3 items citing exact names/figures
+- BULLISH/BEARISH only with strong converging signal; WATCH if ambiguous
+- No generic sector overviews`;
 
     const completion = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
       messages: [{ role: "user", content: prompt }],
-      max_tokens: 4000,
+      max_tokens: 2000,
       temperature: 0.3,
     });
 
@@ -108,7 +92,6 @@ RULES:
         );
       }
       theses = parsed.filter(validateThesis).slice(0, 5);
-      console.log("[Theses API] supporting_article_ids from Groq:", theses.map(t => ({ title: t.title.slice(0, 40), ids: t.supporting_article_ids })));
     } catch {
       console.error("Failed to parse Groq response:", raw);
       return NextResponse.json(
