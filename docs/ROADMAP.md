@@ -41,9 +41,13 @@
 - Morning Brief hover fix — removed onClick toggle from CompactStoryCard outer div
 - Thesis Board fixes — `.order("ingested_at")` (was "published_at"), onRegenerate callback chains parent fetchTheses() for catalyst note refresh, sector filter bug fixed (was discarding query return value)
 - Backend synthesize.py cross-topic ban — banned phrases ("while", "as", "amid", "alongside") removed when joining unrelated topics in morning/evening briefs
+- Brief reliability layer — freshness check + run-status visibility on dashboard/morning/evening pages; debug endpoint `/api/debug/brief-status` for pipeline diagnostics; GitHub Actions schedule validated
+- Company Intel development classification tightened — restricted `isMaterialCounterparty` to M&A only, eliminated Funding/IPO false-positives (PR #74)
+- Company Intel memo quality hardened — ranked context articles by company-specific signal (3 new scoring functions), explicit 250-word limit, evidence-driven "What To Watch" (PR #75)
+- Evening Wrap headline selection brought to parity with Morning Brief spec (PR #76)
 
 ## In Progress
-(none)
+- `fix/brief-freshness-observability` — monitoring scheduler integration + debug endpoint usage
 
 ## Next — Noah
 ### Autonomous Improvement Phase 1 (complete ✓)
@@ -53,9 +57,8 @@
 ### Brief quality (residual — in priority order)
 - **Near-duplicate stories with different wording** — exact-title dedup is live (PR #45); same story under materially different headlines still survives; next step is fuzzy/semantic dedup if this remains noisy
 - **Residual comp-list echo in synthesis sections** — 70b-versatile synthesis echoes comp-list patterns from upstream Signal lines; expect reduction after blurb quality improves; revisit if sections still feel formulaic
-- **Weak "What to watch" section** — occasional generic forward-looking statements instead of named catalysts with binary outcomes; tighten prompt
+- **Weak "What to watch" section** — now evidence-driven with named catalysts (PR #75); monitor for any remaining generic statements
 - **Residual false-positive relevance hits** — some articles score ≥6 on marginal read-through signal, not a primary market event; gate tuning deferred
-- Evening system headline prompt still uses the older, looser spec (only morning was updated in PR #44)
 - **Sector preference visibility recovery** — sector_breakdown reordering by user preference now live, but visibility depends on new article accumulation with valid sectors (forward-only, no backfill); expect gradual improvement as ingest populates sectors on new articles; low priority
 
 ### Other pending

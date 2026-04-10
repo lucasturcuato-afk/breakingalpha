@@ -54,7 +54,9 @@ GROQ_API_KEY, NEWS_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
 **pipeline_runs, run_articles, brief_quality_scores, selection_audit, trend_clusters:** Phase 1 observation layer tables — see git history for schemas.
 
 ## Recently Completed (2026-04-10)
-PR #74 & #75 merged: restricted `isMaterialCounterparty` to M&A only (4 NVIDIA false-development articles eliminated); ranked context articles by company-specific signal and sharpened memo prompt (3 new scoring functions, explicit 250-word limit, evidence-driven "What To Watch" bullets).
+- Brief reliability layer shipped (PR #77): freshness check + run-status visibility on dashboard/morning/evening pages; debug endpoint `/api/debug/brief-status` added for diagnostics; GitHub Actions schedule validated; evening wrap headline selection brought to parity with morning spec
+- Company Intel memo quality hardened (PR #75): ranked context articles by company-specific signal (3 new scoring functions), explicit 250-word limit, evidence-driven "What To Watch" bullets
+- Company Intel development classification tightened (PR #74): restricted `isMaterialCounterparty` to M&A only, eliminated 4 NVIDIA false-positives (Funding/IPO articles)
 
 ## Recently Completed (2026-04-09)
 Frontend debug pass completed: 8 batches (auth-gated 4 API routes, replaced createClient with createBrowserClient in 10 files, added error handling to 7 routes, Supabase/Groq validation fixes, replaced mock data with live queries across dashboard/company/ticker/shell). Resolved 8 merge conflicts (feat/signalera-frontend-v2 ↔ main), set up Playwright E2E suite (10 specs, 48 tests), created VERIFICATION.md (42 manual QA cases). Build clean, 0 TypeScript errors, 27 routes compiled.
@@ -89,7 +91,7 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 10. **Phase 1 hardening — observe.py reconstruction fix (PR #56)** — `_reconstruct_selected()` rewritten to mirror current `synthesize._select_articles_for_synthesis()` (spine=12, floor=6, sector_cap=3, floor_min=7). `audit.py` `_TARGET_COUNT` corrected 20→18. Stale `_diversify_articles` reconstruction logic replaced. No schema changes.
 
 ## Pending / Known Issues
-- **Legacy data inconsistency (open)** — ~5 DB rows (Goldman analyst note, 4 NVIDIA Funding/IPO articles) have old incorrect `deal_type`/`primary_company` from before PR #72 prompt fix; won't be corrected until re-ingested or manually backfilled
+- **In Progress: fix/brief-freshness-observability** — freshness check + run-status visibility deployed; monitoring for edge cases in scheduler integration
 - **E2E tests need Supabase credentials** — Playwright suite configured (10 specs, 48 tests) but pending valid E2E_USER_EMAIL, E2E_USER_PASSWORD in .env.local to run against real Supabase test user
 - **middleware.ts → proxy.ts** — Next.js 16 deprecation warning; rename `src/middleware.ts` to `src/proxy.ts` (breaking change in v16+)
 - **Google OAuth consent screen** shows Supabase project name instead of "Signalera" — update in Google Cloud Console > OAuth consent screen
@@ -98,6 +100,7 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 - **Key Watchpoints / Sector Context thin for low-coverage companies** — article data quality issue, not a code issue; defer until article ingest improves
 - **Article inputs constrained to 500-char RSS summaries** — memo depth limited; full content archival deferred
 - **Earnings calendar integration** — requires ticker field + FMP/Polygon API; deferred
+- **Legacy data inconsistency (low priority)** — a few old DB rows have stale `deal_type`/`primary_company`; won't block progress; will correct via re-ingest over time
 
 ## Nav Tabs
 1. Dashboard — greeting, stat cards, top stories
