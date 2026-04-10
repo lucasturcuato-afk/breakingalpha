@@ -39,15 +39,19 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-const sparkSP = [4380, 4395, 4370, 4410, 4425, 4415, 4440, 4455, 4460, 4472, 4468, 4480];
-const sparkVIX = [18.5, 17.2, 16.8, 15.9, 15.2, 14.8, 14.5, 14.1, 14.3, 14.6, 14.2, 14.2];
-const sparkYield = [4.52, 4.48, 4.45, 4.42, 4.40, 4.38, 4.35, 4.33, 4.30, 4.28, 4.25, 4.22];
 const sparkSignals = [3, 5, 2, 7, 4, 8, 6, 9, 5, 11, 8, 14];
+
+interface MarketIndices {
+  spx: { value: string; pct: number } | null;
+  vix: { value: string; pct: number } | null;
+  tnx: { value: string; pct: number } | null;
+}
 
 export default function DashboardPage() {
   const [stories, setStories] = useState<StoryData[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
   const [storyCount, setStoryCount] = useState(0);
+  const [indices, setIndices] = useState<MarketIndices>({ spx: null, vix: null, tnx: null });
 
   useEffect(() => {
     async function loadStories() {
@@ -105,6 +109,24 @@ export default function DashboardPage() {
     loadStories();
   }, []);
 
+  useEffect(() => {
+    async function loadIndices() {
+      try {
+        const res = await fetch("/api/market-indices");
+        if (!res.ok) return;
+        const data = await res.json();
+        setIndices({
+          spx: data.spx ?? null,
+          vix: data.vix ?? null,
+          tnx: data.tnx ?? null,
+        });
+      } catch {
+        // Leave indices as null — cards will show "—"
+      }
+    }
+    loadIndices();
+  }, []);
+
   return (
     <AppShell
       pageTitle="Dashboard"
@@ -145,34 +167,22 @@ export default function DashboardPage() {
         <div className="grid grid-cols-4 gap-2.5">
           <StatCard
             label="S&P 500"
-            value="4,480.22"
-            change={0.38}
+            value={indices.spx?.value ?? "—"}
+            change={indices.spx?.pct ?? 0}
             accentGold
-            sparkData={sparkSP}
-            detailRows={[
-              { label: "Day range", value: "4,370 – 4,482" },
-              { label: "52w high", value: "4,818.62" },
-            ]}
+            detailRows={[]}
           />
           <StatCard
             label="VIX Fear Index"
-            value="14.22"
-            change={-3.12}
-            sparkData={sparkVIX}
-            detailRows={[
-              { label: "5d avg", value: "15.1" },
-              { label: "Regime", value: "Low Vol" },
-            ]}
+            value={indices.vix?.value ?? "—"}
+            change={indices.vix?.pct ?? 0}
+            detailRows={[]}
           />
           <StatCard
             label="10Y Yield"
-            value="4.22%"
-            change={-0.08}
-            sparkData={sparkYield}
-            detailRows={[
-              { label: "30Y spread", value: "+42bps" },
-              { label: "Real rate", value: "1.85%" },
-            ]}
+            value={indices.tnx?.value ?? "—"}
+            change={indices.tnx?.pct ?? 0}
+            detailRows={[]}
           />
           <StatCard
             label="Signals Today"
