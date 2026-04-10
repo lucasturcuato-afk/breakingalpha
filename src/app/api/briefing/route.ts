@@ -120,19 +120,57 @@ export async function GET(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const { data: bData, error } = await supabase
-    .from("briefings")
-    .select("*")
-    .eq("briefing_type", type)
-    .neq("headline", "Market Intelligence Unavailable")
-    .order("created_at", { ascending: false })
-    .limit(1);
+  // Run both queries in parallel — briefing row + latest pipeline_run for this type
+  const [briefingResult, runResult] = await Promise.all([
+    supabase
+      .from("briefings")
+      .select("*")
+      .eq("briefing_type", type)
+      .neq("headline", "Market Intelligence Unavailable")
+      .order("created_at", { ascending: false })
+      .limit(1),
+    supabase
+      .from("pipeline_runs")
+      .select("id, status, started_at, completed_at, duration_s, error_notes, headline_snap")
+      .eq("brief_type", type)
+      .order("started_at", { ascending: false })
+      .limit(1),
+  ]);
+
+  const { data: bData, error } = briefingResult;
+  // pipeline_runs is not in the generated Supabase Database type; cast explicitly.
+  const lastRun = (runResult.data?.[0] ?? null) as {
+    id: string; status: string; started_at: string;
+    completed_at: string | null; duration_s: number | null;
+    error_notes: string | null; headline_snap: string | null;
+  } | null;
 
   if (error || !bData?.[0]) {
-    return NextResponse.json({ briefing: null, pref_applied: false });
+    const emptyResp = NextResponse.json({
+      briefing: null,
+      pref_applied: false,
+      last_attempt_status: lastRun?.status ?? null,
+      last_attempt_started_at: lastRun?.started_at ?? null,
+    });
+    emptyResp.headers.set("Cache-Control", "no-store, no-cache");
+    return emptyResp;
   }
 
   const raw = bData[0];
+
+  // Freshness metadata — how old is this briefing row?
+  const briefingCreatedAt = raw.created_at ? new Date(raw.created_at) : null;
+  const ageMs = briefingCreatedAt ? Date.now() - briefingCreatedAt.getTime() : null;
+  const briefingAgeHours = ageMs !== null ? Math.round(ageMs / 1000 / 60 / 60 * 10) / 10 : null;
+  // Stale = brief is >20 hours old (likely from a prior pipeline run day)
+  const isStale = briefingAgeHours !== null && briefingAgeHours > 20;
+
+  // Operator console log — visible in Vercel function logs
+  console.log(
+    `[briefing/${type}] serving id=${raw.id ?? "?"} created_at=${raw.created_at} ` +
+    `age=${briefingAgeHours}h is_stale=${isStale} ` +
+    `last_run_status=${lastRun?.status ?? "unknown"} last_run_started=${lastRun?.started_at ?? "unknown"}`
+  );
   const hasModulePrefs = (userPreferences?.modules?.length ?? 0) > 0;
   const hasSectorPrefs = (userPreferences?.sectors?.length ?? 0) > 0;
 
@@ -140,14 +178,21 @@ export async function GET(request: NextRequest) {
   const sectorBreak = (safeParseJSON(raw.sector_breakdown) || {}) as Record<string, unknown>;
 
   if (!hasModulePrefs && !hasSectorPrefs) {
-    return NextResponse.json({
+    const resp = NextResponse.json({
       briefing: raw,
       pref_applied: false,
+      briefing_age_hours: briefingAgeHours,
+      is_stale: isStale,
+      last_attempt_status: lastRun?.status ?? null,
+      last_attempt_started_at: lastRun?.started_at ?? null,
+      last_successful_created_at: raw.created_at ?? null,
       _debug: {
         sector_breakdown_keys: Object.keys(sectorBreak),
         sectors_matched: [],
       },
     });
+    resp.headers.set("Cache-Control", "no-store, no-cache");
+    return resp;
   }
 
   const shapedSections = hasModulePrefs
@@ -172,9 +217,14 @@ export async function GET(request: NextRequest) {
     sector_breakdown: shapedSectorBreak,
   };
 
-  return NextResponse.json({
+  const resp = NextResponse.json({
     briefing,
     pref_applied: true,
+    briefing_age_hours: briefingAgeHours,
+    is_stale: isStale,
+    last_attempt_status: lastRun?.status ?? null,
+    last_attempt_started_at: lastRun?.started_at ?? null,
+    last_successful_created_at: raw.created_at ?? null,
     modules_used: hasModulePrefs ? userPreferences!.modules : [],
     sectors_used: hasSectorPrefs ? userPreferences!.sectors : [],
     _debug: {
@@ -182,4 +232,6 @@ export async function GET(request: NextRequest) {
       sectors_matched: sectorsMatched,
     },
   });
+  resp.headers.set("Cache-Control", "no-store, no-cache");
+  return resp;
 }

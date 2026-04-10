@@ -137,6 +137,7 @@ def record_run(brief_type, started_at, ingest_count=None):
     # reserved for Phase 2+ once briefings.id is confirmed.
     headline_snap = None
     status        = "error"
+    error_notes   = None
     try:
         br = supabase.table("briefings") \
             .select("headline, created_at") \
@@ -148,12 +149,17 @@ def record_run(brief_type, started_at, ingest_count=None):
         row = br.data[0] if br.data else None
         if row:
             headline_snap = row.get("headline")
-            status = (
-                "stub"    if headline_snap == "Market Intelligence Unavailable"
-                else "success"
-            )
+            if headline_snap == "Market Intelligence Unavailable":
+                status      = "stub"
+                error_notes = "synthesis_fallback: model error or rate limit caused stub briefing"
+            else:
+                status = "success"
+        else:
+            # synthesize.py threw before writing any row, or wrote nothing at all
+            error_notes = "no_briefing_row_written_since_run_start"
     except Exception as e:
         print(f"  [observe] briefing lookup failed: {e}")
+        error_notes = f"briefing_lookup_error: {str(e)[:200]}"
 
     # --- Fetch the 24h article pool (mirrors synthesize.py query) --------
     cutoff = (completed_at - timedelta(hours=24)).isoformat()
@@ -188,7 +194,7 @@ def record_run(brief_type, started_at, ingest_count=None):
         "selected_count":  selected_count,
         "model_ingest":    MODEL_INGEST,
         "model_synth":     MODEL_SYNTH,
-        "error_notes":     None,
+        "error_notes":     error_notes,
     }
 
     run_id = None

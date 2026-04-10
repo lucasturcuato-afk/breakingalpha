@@ -1,6 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import type { BadgeVariant } from "@/components/ui/badge";
 
+type RunStatus = "success" | "stub" | "error" | null;
+
 interface BriefHeaderProps {
   type: "morning" | "evening";
   headline?: string;
@@ -10,6 +12,9 @@ interface BriefHeaderProps {
   onGenerateMemo?: () => void;
   onAddThesis?: () => void;
   sourceUrl?: string;
+  generatedAt?: string;   // ISO string from briefing.created_at
+  isStale?: boolean;      // true when briefing is >20h old (likely prior day)
+  lastRunStatus?: RunStatus; // last pipeline_runs.status for this brief type
 }
 
 const toneToVariant: Record<string, BadgeVariant> = {
@@ -27,6 +32,13 @@ function formatFullDate(): string {
   });
 }
 
+function formatGeneratedAt(iso: string): string {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  const date = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${time} · ${date}`;
+}
+
 export function BriefHeader({
   type,
   headline = "Markets Navigate Mixed Signals as Policy Uncertainty Rises",
@@ -36,6 +48,9 @@ export function BriefHeader({
   onGenerateMemo,
   onAddThesis,
   sourceUrl,
+  generatedAt,
+  isStale,
+  lastRunStatus,
 }: BriefHeaderProps) {
   const isMorning = type === "morning";
 
@@ -63,7 +78,46 @@ export function BriefHeader({
         style={{ color: 'var(--espresso)', opacity: 0.65 }}
       >
         {storyCount} stories worth your attention
+        {generatedAt && (
+          <span
+            className="ml-3"
+            style={{ fontSize: '11px', opacity: 0.55 }}
+          >
+            {lastRunStatus === "success" && !isStale ? "✅ " : ""}
+            Generated {formatGeneratedAt(generatedAt)}
+          </span>
+        )}
       </p>
+
+      {/* Run-status indicator — driven by pipeline_runs.status when available,
+          falls back to isStale boolean when pipeline_runs data is missing */}
+      {(lastRunStatus === "stub" || lastRunStatus === "error") ? (
+        <div
+          className="mt-3 px-3 py-2 rounded-lg border font-sans text-[11px]"
+          style={{
+            borderColor: 'var(--gold)',
+            background: 'var(--gold-muted)',
+            color: 'var(--espresso)',
+            opacity: 0.85,
+          }}
+        >
+          {lastRunStatus === "stub"
+            ? "⚠ Last run failed — synthesis error during generation. Showing previous brief."
+            : "⚠ Last run failed — pipeline did not complete. Showing previous brief."}
+        </div>
+      ) : lastRunStatus == null && isStale ? (
+        <div
+          className="mt-3 px-3 py-2 rounded-lg border font-sans text-[11px]"
+          style={{
+            borderColor: 'var(--gold)',
+            background: 'var(--gold-muted)',
+            color: 'var(--espresso)',
+            opacity: 0.85,
+          }}
+        >
+          ⚠ Brief may be from a prior session — today&apos;s pipeline run may still be in progress.
+        </div>
+      ) : null}
 
       {/* Lead card */}
       <div
