@@ -58,10 +58,13 @@ export default function DashboardPage() {
       try {
         const supabase = getSupabase();
 
-        // Get count for greeting
+        // Count articles ingested today (since midnight UTC)
+        const todayMidnight = new Date();
+        todayMidnight.setUTCHours(0, 0, 0, 0);
         const { count } = await supabase
           .from("articles")
-          .select("id", { count: "exact", head: true });
+          .select("id", { count: "exact", head: true })
+          .gte("ingested_at", todayMidnight.toISOString());
         setStoryCount(count ?? 0);
 
         // Get top 4 stories
@@ -187,7 +190,7 @@ export default function DashboardPage() {
           <StatCard
             label="Signals Today"
             value={String(storyCount)}
-            change={storyCount > 0 ? 16.67 : 0}
+            change={0}
             accentGold
             sparkData={sparkSignals}
             detailRows={[
