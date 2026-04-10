@@ -294,7 +294,7 @@ export default function CompanyIntelPage() {
           .from("articles")
           .select("companies, sector")
           .order("ingested_at", { ascending: false })
-          .limit(500);
+          .limit(1500);
 
         if (articlesErr) {
           console.error("Company intel query error:", articlesErr.message);
