@@ -46,44 +46,52 @@ export async function POST() {
     const articleContext = articles
       .map(
         (a, i) =>
-          `${i + 1}. [ID:${a.id}] [${a.sector || "General"}] "${a.title}" (${a.source || "?"})${a.summary ? " — " + a.summary.slice(0, 180) : ""}`
+          `ARTICLE ${i + 1}\n  id: "${a.id}"\n  sector: ${a.sector || "General"}\n  title: "${a.title}"\n  source: ${a.source || "?"}\n  summary: ${a.summary ? a.summary.slice(0, 180) : "N/A"}\n`
       )
       .join("\n");
 
+    const exampleId1 = articles[0]?.id || "example-uuid";
+    const exampleId2 = articles[1]?.id || "example-uuid-2";
+
     const prompt = `You are a senior investment banking analyst at a top-tier firm. Analyze these articles and generate 3-5 high-conviction investment theses.
 
-Be selective. Only surface theses where there is strong signal across multiple articles. Do not generate a thesis for every sector. Quality over quantity — 3 excellent theses beat 5 mediocre ones.
+Be selective. Only surface theses where there is strong signal across multiple articles. Quality over quantity — 3 excellent theses beat 5 mediocre ones.
 
 ARTICLES:
 ${articleContext}
 
-Respond ONLY with a JSON array, no markdown:
+IMPORTANT: Each article above has an "id" field (a UUID string like "${exampleId1}"). You MUST copy these exact id strings into supporting_article_ids for each thesis. Do NOT make up IDs — use only the exact id values from the articles above.
+
+Respond ONLY with a JSON array. No markdown, no code fences, no explanation.
+
+EXAMPLE (showing correct format — note the real article IDs):
 [
   {
-    "title": "Specific thesis naming a company, deal, or trend (5-8 words)",
-    "conviction": "BULLISH" or "BEARISH" or "WATCH",
-    "rationale": "3-4 sentence analytical rationale (60-100 words). Must cite specific companies, figures, and deal values from the articles. Structure: key data point → why it matters → sector implications → forward outlook matching conviction level.",
-    "sector": "One of: Technology M&A, Private Equity, Venture Capital, Public Markets, Geopolitics & Macro, Fintech & Crypto, Healthcare & Biotech, Energy & Climate",
-    "catalyst": "Specific near-term catalyst with timeframe (e.g. 'Q2 earnings report', 'regulatory decision by June')",
-    "catalyst_note": "2-3 sentences: what the catalyst is, why it matters structurally, what to watch for.",
-    "supporting_article_ids": ["id1", "id2", "id3"],
+    "title": "AI Chip Demand Drives Semiconductor M&A Wave",
+    "conviction": "BULLISH",
+    "rationale": "Multiple semiconductor deals signal accelerating consolidation...",
+    "sector": "Technology M&A",
+    "catalyst": "Q2 earnings reports from NVDA and AMD in late July",
+    "catalyst_note": "Upcoming earnings will reveal AI chip demand trajectory. Strong guidance would validate the consolidation thesis and potentially trigger further M&A.",
+    "supporting_article_ids": ["${exampleId1}", "${exampleId2}"],
     "evidence_chain": [
-      {"article_index": 0, "label": "2-4 word tag", "type": "support" or "context" or "risk", "bridge": "One sentence connecting article to thesis with specific data."}
+      {"label": "Deal catalyst", "type": "support", "bridge": "Article describes $5B acquisition driven by AI demand."},
+      {"label": "Market context", "type": "context", "bridge": "Semiconductor index up 12% YTD on AI tailwinds."}
     ]
   }
 ]
 
 RULES:
 - Generate exactly 3-5 theses. No more than 5.
-- Each thesis must be supported by at least 2 articles. Include the article IDs (from the [ID:xxx] tags) in supporting_article_ids.
+- supporting_article_ids: MUST contain 2-3 exact UUID strings copied from the article id fields above. This is critical.
 - evidence_chain: 2-3 items per thesis, cite exact names/figures from articles.
-- conviction must reflect signal strength: BULLISH/BEARISH only when multiple articles converge on a clear directional signal. Use WATCH when signal is emerging but ambiguous.
+- conviction: BULLISH/BEARISH only when multiple articles converge on a clear signal. Use WATCH when ambiguous.
 - Do NOT generate generic sector overviews. Each thesis must have a specific, testable claim.`;
 
     const completion = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
       messages: [{ role: "user", content: prompt }],
-      max_tokens: 3000,
+      max_tokens: 4000,
       temperature: 0.3,
     });
 
@@ -100,6 +108,7 @@ RULES:
         );
       }
       theses = parsed.filter(validateThesis).slice(0, 5);
+      console.log("[Theses API] supporting_article_ids from Groq:", theses.map(t => ({ title: t.title.slice(0, 40), ids: t.supporting_article_ids })));
     } catch {
       console.error("Failed to parse Groq response:", raw);
       return NextResponse.json(
