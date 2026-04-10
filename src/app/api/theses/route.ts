@@ -139,6 +139,7 @@ RULES:
         supporting_articles: Array.isArray(t.supporting_article_ids)
           ? t.supporting_article_ids.filter((id) => validIds.has(id))
           : null,
+        status: "new-signal",
         generated_at: new Date().toISOString(),
         source: "ai-generated",
       })
