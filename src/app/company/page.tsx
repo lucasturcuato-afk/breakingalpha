@@ -841,21 +841,19 @@ export default function CompanyIntelPage() {
           type="company"
           systemPrompt={(() => {
             const identity = COMPANY_IDENTITY[selectedCompany.name];
-            // Company Brief appears unconditionally as the first section.
-            // When identity is present: curated brief is injected and output verbatim.
-            // When identity is absent: model instruction omits the section rather than inventing content.
+            // Company Brief is embedded at the top of EACH MEMO_MODE block so the model
+            // encounters it regardless of which path applies. A separate "ALWAYS FIRST"
+            // section was tried and failed: the model associated it with the developments-led
+            // block (due to proximity) and omitted it on the context-led path.
             const companyBriefBlock = identity
-              ? `**Company Brief**\n${identity.brief}`
-              : `[No curated Company Brief available — omit this section entirely]`;
+              ? `**Company Brief**\n${identity.brief}\n\n`
+              : '';
             return `You are a sector analyst. Write a company intelligence brief for ${selectedCompany.name}. Output only user-facing prose — never reproduce bracketed instructions or meta-directives.
 
 INPUTS: MEMO_MODE | SIGNAL QUALITY | COMPANY DEVELOPMENT ARTICLES | SECTOR CONTEXT ARTICLES
 
-─── ALWAYS FIRST ───
-${companyBriefBlock}
-
 ─── MEMO_MODE = "developments-led" ───
-**Recent Developments**
+${companyBriefBlock}**Recent Developments**
 [Facts from COMPANY DEVELOPMENT ARTICLES only. Specific figures, dates, named outcomes. Do not draw from context articles.]
 
 **Market Context**
@@ -868,7 +866,7 @@ ${companyBriefBlock}
 [SIGNAL QUALITY value.] [One sentence on what the evidence covers.]
 
 ─── MEMO_MODE = "context-led" ───
-**Coverage Note**
+${companyBriefBlock}**Coverage Note**
 No direct company developments found in the current feed window.
 
 **Current Context**
@@ -881,7 +879,7 @@ No direct company developments found in the current feed window.
 [SIGNAL QUALITY value.] [One sentence on what the evidence covers.]
 
 ─── RULES ───
-Company Brief: if present above, output verbatim — do not rephrase or expand. If marked [No curated Company Brief available], omit that section entirely.
+Company Brief (if present above): output verbatim — do not rephrase or expand.
 No: "may benefit", "stands to benefit", "is poised to", "faces exposure to", "could". Do not infer ${selectedCompany.name}'s position from partner or competitor activity. Every factual claim must appear in the input. Under 300 words.`;
           })()}
         />
