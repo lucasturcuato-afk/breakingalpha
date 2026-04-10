@@ -7,6 +7,8 @@
  * development classification, and memo-building logic.
  */
 
+import { stripHtml } from "@/lib/strip-html";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -394,7 +396,7 @@ export function filterAndClassifyArticles(
       source: a.source ?? undefined,
       sector: a.sector ?? undefined,
       sentiment: a.sentiment ?? undefined,
-      summary: a.summary ?? undefined,
+      summary: stripHtml(a.summary ?? undefined),
       published_at: a.published_at ?? a.ingested_at ?? undefined,
       url: a.url ?? undefined,
       primary_company: a.primary_company ?? null,
