@@ -1,15 +1,16 @@
 """
 synthesize.py — BreakingAlpha
-Generates a detailed analyst-style morning/evening briefing using Groq.
+Generates a detailed analyst-style morning/evening briefing using Google Gemini.
 """
 
-import os, json, re, time, random
+import os, json, re
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
-from groq import Groq, RateLimitError
+import google.generativeai as genai
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
-groq     = Groq(api_key=os.environ["GROQ_API_KEY"])
+genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+gemini_model = genai.GenerativeModel("gemini-2.0-flash")
 
 MORNING_SYSTEM = """You are a senior investment banking analyst preparing the daily morning briefing for a capital markets team.
 
@@ -268,26 +269,20 @@ def _validate_sector_breakdown(sb):
     return clean
 
 
-def groq_with_backoff(messages, temperature=0.3, max_tokens=2000, max_retries=5):
-    """Call Groq with exponential backoff + jitter on 429 rate limit errors."""
-    for attempt in range(max_retries):
-        try:
-            resp = groq.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            return resp.choices[0].message.content.strip()
-        except RateLimitError:
-            if attempt == max_retries - 1:
-                raise
-            wait = (2 ** attempt) + random.uniform(0, 1)
-            print(f"  ⚠ Groq 429 — waiting {wait:.1f}s (attempt {attempt+1}/{max_retries})")
-            time.sleep(wait)
-        except Exception:
-            raise
-    raise RateLimitError("Groq rate limit: max retries exceeded")
+def gemini_generate(system, user_content, temperature=0.3, max_tokens=2000):
+    """Call Gemini with a system instruction and user prompt."""
+    model = genai.GenerativeModel(
+        "gemini-2.0-flash",
+        system_instruction=system,
+    )
+    response = model.generate_content(
+        user_content,
+        generation_config={
+            "temperature": temperature,
+            "max_output_tokens": max_tokens,
+        },
+    )
+    return (response.text or "").strip()
 
 def run(brief_type="morning"):
     print(f"📝 Synthesizing {brief_type} briefing...")
@@ -336,20 +331,16 @@ def run(brief_type="morning"):
 
     data = None
     try:
-        raw = groq_with_backoff(
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user",   "content": f"Today's articles:\n\n{article_text}"},
-            ],
+        raw = gemini_generate(
+            system=system,
+            user_content=f"Today's articles:\n\n{article_text}",
             temperature=0.3,
             max_tokens=2000,
         )
         raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
         data = json.loads(raw)
-    except RateLimitError:
-        print(f"  ✗ Groq rate limit exhausted after retries — falling back to stub briefing")
     except Exception as e:
-        print(f"  ✗ Groq error: {e} — falling back to stub briefing")
+        print(f"  ✗ Gemini error: {e} — falling back to stub briefing")
 
     if data is None:
         data = {

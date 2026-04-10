@@ -7,14 +7,15 @@ stores in Supabase.
 import os, json, re, time, requests, feedparser, html as _html
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
-from groq import Groq, RateLimitError
+import google.generativeai as genai
 from dotenv import load_dotenv
 from watchlist import boost_watchlist_relevance
 
 load_dotenv()
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
-groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
+genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+gemini_model = genai.GenerativeModel("gemini-2.0-flash")
 
 RSS_FEEDS = {
     "WSJ Markets":      "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
@@ -152,27 +153,16 @@ def filter_article(article):
         source=article["source"],
         sectors=", ".join(SECTORS)
     )
-    for attempt in range(3):
-        try:
-            resp = groq_client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1
-            )
-            text = resp.choices[0].message.content.strip()
-            if text.startswith("```"):
-                text = text.split("```")[1]
-                if text.startswith("json"): text = text[4:]
-            return json.loads(text.strip())
-        except RateLimitError:
-            wait = [5, 10, 20][attempt]
-            print(f"  ⚠ Groq 429 — waiting {wait}s (attempt {attempt+1}/3)")
-            time.sleep(wait)
-        except Exception as ex:
-            print(f"  Filter error: {ex}")
-            return None
-    print(f"  ✗ Groq rate limit exhausted for: {article['title'][:50]}")
-    return None
+    try:
+        response = gemini_model.generate_content(prompt)
+        text = (response.text or "").strip()
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"): text = text[4:]
+        return json.loads(text.strip())
+    except Exception as ex:
+        print(f"  Filter error: {ex}")
+        return None
 
 
 def upsert_company(name, themes, sentiment):
@@ -255,14 +245,13 @@ def run_ingestion():
     articles = fetch_all_articles()
     print(f"  {len(articles)} unique articles")
 
-    print("\n[2/3] Filtering with Groq...")
+    print("\n[2/3] Filtering with Gemini...")
     relevant = []
     for a in articles:
         result = filter_article(a)
         if result and result.get("relevant") and result.get("relevance_score", 0) >= 6:
             relevant.append((a, result))
             print(f"  ✓ [{result['relevance_score']}/10] [{result.get('sector','?')[:20]}] {a['title'][:60]}...")
-        time.sleep(2.0)
 
     print(f"\n[3/3] Storing {len(relevant)} articles...")
     article_ids = [aid for a, r in relevant if (aid := store_article(a, r))]
