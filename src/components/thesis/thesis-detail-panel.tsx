@@ -34,6 +34,7 @@ interface RelatedArticle {
   id: string;
   title: string;
   source?: string;
+  ingested_at?: string;
   published_at?: string;
   summary?: string;
   sentiment?: string;
@@ -302,10 +303,18 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
                     <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${tag.dotColor}`} />
                     <div className="flex-1 min-w-0">
                       <div className="font-sans text-[11px] font-medium text-text-primary leading-snug mb-0.5">{article.title}</div>
+                      {article.summary && (
+                        <div className="font-sans text-[10px] text-text-secondary leading-snug mb-1">
+                          {article.summary.length > 160 ? article.summary.slice(0, 160) + "..." : article.summary}
+                        </div>
+                      )}
                       <div className="flex items-center gap-1.5">
                         <span className="font-sans text-[9px] text-text-muted">
-                          {article.source}{article.published_at ? ` \u00b7 ${relativeTime(article.published_at)}` : ""}
+                          {article.source}{(() => { const d = article.published_at || article.ingested_at; return d ? ` \u00b7 ${relativeTime(d)}` : ""; })()}
                         </span>
+                        {article.sector && (
+                          <span className="font-sans text-[9px] text-text-muted">{article.sector}</span>
+                        )}
                         <span className={`font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded ${tag.pillClass}`}>
                           {tag.label}
                         </span>

@@ -16,6 +16,7 @@ interface RelatedArticle {
   id: string;
   title: string;
   source?: string;
+  ingested_at?: string;
   published_at?: string;
   summary?: string;
   sentiment?: string;
