@@ -175,26 +175,66 @@ Rules:
       config: {
         temperature: 0.3,
         maxOutputTokens: 2000,
+        responseMimeType: "application/json",
       },
     });
 
-    const raw = completion.text || "[]";
+    const raw = completion.text || "";
+    console.log("[theses] Raw Gemini response:", raw);
 
     let theses: RawThesis[] = [];
     try {
       const cleaned = raw.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(cleaned);
+      let parsed: unknown = null;
+
+      // Primary: try parsing the whole cleaned response
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        // Fallback 1: extract first JSON array
+        const arrayMatch = cleaned.match(/\[[\s\S]*\]/);
+        if (arrayMatch) {
+          try {
+            parsed = JSON.parse(arrayMatch[0]);
+          } catch {
+            parsed = null;
+          }
+        }
+        // Fallback 2: extract first JSON object and wrap it
+        if (parsed === null) {
+          const objectMatch = cleaned.match(/\{[\s\S]*\}/);
+          if (objectMatch) {
+            try {
+              const obj = JSON.parse(objectMatch[0]);
+              parsed = Array.isArray(obj) ? obj : [obj];
+            } catch {
+              parsed = null;
+            }
+          }
+        }
+      }
+
+      if (parsed === null) {
+        console.error("[theses] Failed to extract JSON from Gemini response. Raw content:", raw);
+        return NextResponse.json(
+          { error: "Failed to parse thesis response", detail: "No JSON array or object found in Gemini output" },
+          { status: 500 }
+        );
+      }
+
       if (!Array.isArray(parsed)) {
+        console.error("[theses] Parsed response was not an array:", parsed);
         return NextResponse.json(
           { error: "AI response was not an array" },
           { status: 500 }
         );
       }
+
       theses = parsed.filter(validateThesis).slice(0, 5);
-    } catch {
-      console.error("Failed to parse Gemini response:", raw);
+    } catch (parseErr) {
+      console.error("[theses] Unexpected parse error:", parseErr, "Raw content:", raw);
       return NextResponse.json(
-        { error: "Failed to parse thesis response" },
+        { error: "Failed to parse thesis response", detail: parseErr instanceof Error ? parseErr.message : String(parseErr) },
         { status: 500 }
       );
     }
