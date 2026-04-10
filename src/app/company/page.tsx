@@ -248,6 +248,46 @@ function isSubjectOfTitle(title: string, companyName: string): boolean {
   );
 }
 
+// Returns true if the selected company is explicitly named anywhere in the article title —
+// not just as the grammatical subject. Handles short-form raw values: e.g. "Marvell" appears
+// in the title of "Nvidia Invests $2 Billion in Marvell" even though the canonical display
+// name is "Marvell Technology" and the DB raw value is "Marvell Technology Inc."
+//
+// Strategy:
+//   1. Canonical display name substring check (e.g. "marvell technology" in title)
+//   2. For each raw companies[] value that resolves to this company:
+//      a. Full normalized raw form in title (e.g. "marvell technology inc.")
+//      b. First word of raw form, min 6 chars (e.g. "marvell" from "Marvell Technology Inc.")
+//
+// The 6-char minimum on the first-word fallback prevents accidental matches on short generic
+// words like "bank", "tech", "group". Companies with short names (Meta=4, Intel=5) are
+// handled by the direct raw-form check (step 2a, requires ≥ 5 chars).
+function titleNamesCompany(title: string, cosRaw: string[], name: string): boolean {
+  const t = title.toLowerCase();
+  const nameLower = name.toLowerCase();
+
+  // 1. Canonical display name in title
+  if (nameLower.length >= 5 && t.includes(nameLower)) return true;
+
+  // 2. Each raw companies[] value that resolves to this company
+  for (const raw of cosRaw) {
+    const cCanon = canonicalize(raw).toLowerCase();
+    const isOurCompany =
+      cCanon === nameLower ||
+      (nameLower.length >= 5 && cCanon.startsWith(nameLower)) ||
+      (cCanon.length >= 5 && nameLower.startsWith(cCanon));
+    if (!isOurCompany) continue;
+
+    const rawNorm = raw.trim().replace(/[.,]$/g, "").toLowerCase();
+    // 2a. Full raw form
+    if (rawNorm.length >= 5 && t.includes(rawNorm)) return true;
+    // 2b. First word of raw form — "Marvell Technology Inc." → "marvell" found in title
+    const firstWord = rawNorm.split(/\s+/)[0];
+    if (firstWord.length >= 6 && t.includes(firstWord)) return true;
+  }
+  return false;
+}
+
 // An article is a development when the company is the ACTOR, not merely a subject or
 // named example. These deal types reliably indicate a company-specific event:
 //   Earnings  — reported results
@@ -450,11 +490,11 @@ export default function CompanyIntelPage() {
           });
 
           const mapped = matched.map((a) => {
-            // Development = the SELECTED COMPANY was the PRIMARY ACTOR in this article.
+            // Development = the SELECTED COMPANY was involved in a concrete, named event.
             //
-            // STRICT path (Earnings, M&A):
+            // STRICT path (Earnings, M&A with known actor):
             //   Require primary_company match. These event types have one clear actor.
-            //   If ingest left primary_company null → ambiguous → context.
+            //   If ingest left primary_company null → fall through to material-counterparty check.
             //
             // FUNDING/IPO path — three-level actor test:
             //   Level 1: primary_company is set and matches → clear ingest signal → development
@@ -464,6 +504,14 @@ export default function CompanyIntelPage() {
             //     "Mistral secured $830M to house NVIDIA chips" → starts "mistral " → context ✓
             //     "Korean startup backed by Samsung..." → starts "korean " → context ✓
             //   Level 3: primary_company is set to a DIFFERENT company → that company is the actor → context
+            //
+            // MATERIAL COUNTERPARTY path (M&A / Funding / IPO, primary_company null):
+            //   Handles cases where the selected company is the named target/investee in a deal,
+            //   not the actor. Primary_company left null by ingest for ambiguous multi-party deals.
+            //   Guard: company must appear explicitly in the article title — not just companies[].
+            //   This separates named counterparties from incidental sector mentions:
+            //     "Nvidia Invests $2 Billion in Marvell" → "marvell" in title → development for Marvell ✓
+            //     "Arms makers eye windfall as war drains stockpiles" → "lockheed" not in title → context ✓
             //
             // Everything else → context.
             const isStrictDevelopment =
@@ -478,7 +526,14 @@ export default function CompanyIntelPage() {
                 (a.primary_company == null && isSubjectOfTitle(a.title, name))
               );
 
-            const isDevelopment = isStrictDevelopment || isFundingOrIPO;
+            const isMaterialCounterparty =
+              !isStrictDevelopment &&
+              !isFundingOrIPO &&
+              (a.deal_type === "M&A" || a.deal_type === "Funding" || a.deal_type === "IPO") &&
+              a.primary_company == null &&
+              titleNamesCompany(a.title, parseCompanies(a.companies), name);
+
+            const isDevelopment = isStrictDevelopment || isFundingOrIPO || isMaterialCounterparty;
 
             return {
               id: a.id,
