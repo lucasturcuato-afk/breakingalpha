@@ -5,6 +5,7 @@ import OnboardingModal from '../components/OnboardingModal'
 import LandingPage from '../components/LandingPage'
 import SignedOutHomepage from '../components/SignedOutHomepage'
 import PreferencesPanel from '../components/PreferencesPanel'
+import NavRail from '../components/shell/NavRail'
 import { supabase } from '../lib/supabaseClient'
 import { useTheme } from '../context/ThemeContext'
 
@@ -1898,7 +1899,6 @@ export default function Home() {
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [showOnboarding, setShowOnboarding] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
@@ -2110,79 +2110,16 @@ export default function Home() {
       <TickerBar quotes={quotes} />
 
       <div style={{ display: 'flex', height: 'calc(100vh - 32px)' }}>
-        {/* Sidebar */}
-        <div style={{ width: sidebarCollapsed ? '48px' : '260px', maxWidth: '25vw', flexShrink: 0, background: 'var(--sidebar-bg)', borderRight: '1px solid var(--sidebar-border)', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto', overflowX: 'hidden', transition: 'width 200ms ease', position: 'relative' }}>
-          {/* Collapse toggle */}
-          <button
-            onClick={() => setSidebarCollapsed(c => !c)}
-            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            style={{ position: 'absolute', top: '50%', right: '-12px', transform: 'translateY(-50%)', zIndex: 10, width: '24px', height: '24px', borderRadius: '50%', background: 'var(--sidebar-bg)', border: '1px solid var(--sidebar-border)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, boxShadow: '0 1px 4px rgba(0,0,0,0.15)' }}
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-mid)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              {sidebarCollapsed
-                ? <polyline points="3,1 7,5 3,9" />
-                : <polyline points="7,1 3,5 7,9" />}
-            </svg>
-          </button>
-          <div style={{ padding: sidebarCollapsed ? '22px 8px 16px' : '22px 20px 16px', borderBottom: '1px solid var(--border)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-            <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '21px', fontWeight: 700 }}>
-              {sidebarCollapsed
-                ? <span style={{ color: '#f59e0b' }}>B</span>
-                : <><span style={{ color: 'var(--heading)' }}>Breaking</span><span style={{ color: '#f59e0b' }}>Alpha</span></>}
-            </div>
-            {!sidebarCollapsed && <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.15em', marginTop: '3px' }}>MARKET INTELLIGENCE</div>}
-          </div>
-          <nav style={{ padding: sidebarCollapsed ? '10px 4px' : '10px 10px' }}>
-            {NAV.map(item => (
-              <button key={item.id} onClick={() => setActiveTab(item.id)} className={`nav-item${activeTab === item.id ? ' nav-active' : ''}`} title={sidebarCollapsed ? item.label : undefined} style={sidebarCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined}>
-                <span className="nav-icon">{item.icon}</span>
-                {!sidebarCollapsed && item.label}
-                {!sidebarCollapsed && item.id === 'live' && <span style={{ marginLeft: 'auto', width: '5px', height: '5px', borderRadius: '50%', background: '#4ade80', animation: 'pulse 2s infinite', flexShrink: 0 }} />}
-                {!sidebarCollapsed && item.id === 'watchlist' && watchlistBadge > 0 && <span style={{ marginLeft: 'auto', background: '#f59e0b', color: '#000', fontSize: '9px', fontFamily: "'DM Mono', monospace", fontWeight: 700, padding: '1px 5px', borderRadius: '8px', flexShrink: 0 }}>{watchlistBadge}</span>}
-              </button>
-            ))}
-            {!sidebarCollapsed && <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
-              <AuthButton />
-            </div>}
-          </nav>
-          {!sidebarCollapsed && (
-          <div style={{ padding: '14px 20px', borderTop: '1px solid var(--divider)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
-              <div style={{ width: '3px', height: '10px', background: '#f59e0b', borderRadius: '1px' }} />
-              <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: '#f59e0b', letterSpacing: '0.12em' }}>WATCHLIST</div>
-            </div>
-            {watchlist.filter(e => e.type === 'ticker').length === 0 ? (
-              <div style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', lineHeight: 1.6 }}>No tickers tracked</div>
-            ) : (
-              watchlist.filter(e => e.type === 'ticker').slice(0, 6).map(entry => {
-                const q = watchlistPrices[entry.identifier]
-                const up = q && q.pct >= 0
-                const pctColor = up ? '#10b981' : '#ef4444'
-                return (
-                  <div key={entry.id || entry.identifier} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 0' }}>
-                    <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--body)', fontWeight: 500 }}>{entry.identifier}</span>
-                    {q ? (
-                      <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: pctColor }}>{up ? '+' : ''}{q.pct}%</span>
-                    ) : (
-                      <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)' }}>—</span>
-                    )}
-                  </div>
-                )
-              })
-            )}
-          </div>
-          )}
-          {!sidebarCollapsed && (
-          <div style={{ padding: '14px 20px', borderTop: '1px solid var(--divider)' }}>
-            <div style={{ fontSize: '9px', fontFamily: "'DM Mono', monospace", color: 'var(--faint)', letterSpacing: '0.12em', marginBottom: '6px' }}>MARKET TIME</div>
-            <div style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--tertiary)', lineHeight: 1.6 }}>{marketTime || '—'}</div>
-            <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: marketOpen ? '#4ade80' : '#f87171', animation: 'pulse 2s infinite', flexShrink: 0 }} />
-              <span style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: marketOpen ? '#4ade80' : '#f87171', letterSpacing: '0.1em' }}>US EQUITIES {marketOpen ? 'OPEN' : 'CLOSED'}</span>
-            </div>
-          </div>
-          )}
-        </div>
+        {/* Sidebar — extracted to NavRail with Signalera tokens */}
+        <NavRail
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          watchlist={watchlist}
+          watchlistPrices={watchlistPrices}
+          watchlistBadge={watchlistBadge}
+          marketTime={marketTime}
+          marketOpen={marketOpen}
+        />
 
         {/* Main */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
