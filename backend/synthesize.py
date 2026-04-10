@@ -6,11 +6,12 @@ Generates a detailed analyst-style morning/evening briefing using Google Gemini.
 import os, json, re
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-gemini_model = genai.GenerativeModel("gemini-2.0-flash")
+gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+GEMINI_MODEL = "gemini-2.5-flash"
 
 MORNING_SYSTEM = """You are a senior investment banking analyst preparing the daily morning briefing for a capital markets team.
 
@@ -271,16 +272,14 @@ def _validate_sector_breakdown(sb):
 
 def gemini_generate(system, user_content, temperature=0.3, max_tokens=2000):
     """Call Gemini with a system instruction and user prompt."""
-    model = genai.GenerativeModel(
-        "gemini-2.0-flash",
-        system_instruction=system,
-    )
-    response = model.generate_content(
-        user_content,
-        generation_config={
-            "temperature": temperature,
-            "max_output_tokens": max_tokens,
-        },
+    response = gemini_client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=user_content,
+        config=types.GenerateContentConfig(
+            system_instruction=system,
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+        ),
     )
     return (response.text or "").strip()
 

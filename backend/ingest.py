@@ -7,15 +7,16 @@ stores in Supabase.
 import os, json, re, time, requests, feedparser, html as _html
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 from watchlist import boost_watchlist_relevance
 
 load_dotenv()
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-gemini_model = genai.GenerativeModel("gemini-2.0-flash")
+gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+GEMINI_MODEL = "gemini-2.5-flash"
 
 RSS_FEEDS = {
     "WSJ Markets":      "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
@@ -81,6 +82,39 @@ Respond ONLY in valid JSON:
   "sentiment": "bullish/bearish/neutral",
   "deal_type": "Classify as exactly one of these — apply the first definition that matches: M&A (a named company is acquiring, merging with, or being acquired by another named company), IPO (a specific named company is going public), Funding (a named company is receiving investment capital — a venture round, private equity investment, debt financing, or fundraising raise; the company receiving the money determines the type), Earnings (ONLY a company's own officially reported financial results — revenue figures, EPS, net income, or forward guidance issued as part of a formal results announcement; NEVER apply Earnings to analyst recommendations, investment theses, portfolio manager commentary, market outlooks, or forecasts — those are Other), Macro (central bank decisions, interest rate policy, inflation data, GDP, tariff or trade policy affecting broad markets — not specific to one company), Geopolitical (wars, sanctions, elections, cross-border disputes with market impact), Other (regulatory action, product launch, contract award, partnership announcement, legal settlement, personnel change, analyst note, market commentary — use this as a catch-all for anything that does not clearly fit the above). Return null only if the article is so general it fits none of these. Default to Other over null.",
   "primary_company": "The single company that is the MAIN ACTOR of the event this article covers — the company doing the action, not a company that is merely named or mentioned. Apply these rules in order: (1) Funding/IPO: primary_company is the company RECEIVING the investment or going public — not the investor, not a chip or technology supplier the article mentions, not a competitor named for comparison. Example: 'Mistral raises $830M to house Nvidia chips' → primary_company is Mistral, not Nvidia. (2) M&A: primary_company is the acquirer or the acquisition target — whichever is the article's central subject. Example: 'Goldman leads buyout of PortfolioCo' → primary_company is PortfolioCo (the target), not Goldman (the advisor). (3) Earnings: primary_company is the company that issued the results. (4) Commentary or market opinion: if a company's employee, analyst, or executive is quoted giving views on markets, sectors, or other companies — but the article is NOT about that company's own named event — return null. Example: 'Goldman's analyst recommends semiconductors' → null. (5) When one company is clearly driving the event and others are mentioned incidentally as suppliers, partners, advisors, or comparisons, always name the driving company. Return null only when two or more companies are genuinely co-equal actors with no single driver (e.g. a true joint venture announced by both parties equally). Never invent a name not present in the companies array."
+}}"""
+
+
+BATCH_FILTER_PROMPT = """You are a senior analyst at a top investment firm. Analyze EACH article in the batch below and score it for relevance to financial markets and investing.
+
+Relevant topics include: M&A deals, IPOs, fundraising, valuations, earnings, market movements, geopolitical events affecting markets, macro trends, regulatory changes, PE/VC activity, public company news, economic data.
+
+SECTOR RULE: Pick exactly one sector per article from this list — copy it character-for-character, no abbreviations, no combining, no rewording.
+Allowed sectors: {sectors}
+
+COMPANIES RULE: "companies" must be a JSON array of strings listing EVERY specific company, fund, or firm explicitly named in the title or summary. Each entry must be a proper entity name. Include the primary subject AND all secondary named entities: investors, investment targets, acquirers, merger partners, named competitors, named customers, named advisors. Good examples: "Nvidia invests in Marvell" → ["Nvidia", "Marvell"]. Return [] only when no specific company, fund, or firm name appears verbatim in the title or summary. Never return a string — always an array. BANNED: category labels ("Big Tech", "tech giants", "big banks"), descriptive group phrases ("major companies", "leading firms"), any string containing "e.g." or parenthetical examples, plural group labels like "companies"/"startups"/"firms" used as a name, invented or fabricated entity names.
+
+RELEVANCE_REASON GATE (apply before writing): If an article is primarily an opinion piece, profile, cultural commentary, or trend piece with no named transaction, earnings result, financing event, guidance change, regulatory action, or specific market-moving event — set relevant: false and leave relevance_reason as an empty string. Do not fabricate a read-through. Articles discussing a named person's political views, cultural influence, public commentary, or personal philosophy are not market-moving events even if that person runs a company — set relevant: false. Internal staff promotions, appointments, hires, or departures are not market-moving unless explicitly linked to a named transaction, fundraising, earnings, guidance, or regulatory action. For articles that pass the gate: 1-2 sentences max. Lead with the concrete market implication — the named deal, specific dollar figure, rate level, or event. Use specific company names, dollar figures, or named sectors. Write as a buy-side analyst flagging a signal to a portfolio manager. BANNED outputs: vague taxonomy ('relevant to PE/VC/financial markets'), article restatements, fabricated comp lists, filler like 'this matters because it is a transaction in private equity'. For macro/rates articles, state the concrete effect on deal economics — LBO spreads, floating-rate credit costs, buyout multiples, M&A financing, risk appetite — never write that rates moved or that interest rates affect markets generally.
+
+DEAL_TYPE RULE (apply first matching definition): M&A (named company acquiring/merging with/being acquired by another named company), IPO (named company going public), Funding (named company receiving investment capital — VC round, PE investment, debt financing, or fundraising raise), Earnings (ONLY a company's own officially reported financial results — revenue, EPS, net income, or forward guidance issued as part of a formal results announcement; NEVER apply Earnings to analyst recommendations, investment theses, PM commentary, market outlooks, or forecasts — those are Other), Macro (central bank decisions, interest rate policy, inflation data, GDP, tariff/trade policy affecting broad markets), Geopolitical (wars, sanctions, elections, cross-border disputes with market impact), Other (regulatory action, product launch, contract award, partnership, legal settlement, personnel change, analyst note, market commentary — catch-all). Return null only if the article fits none. Default to Other over null.
+
+PRIMARY_COMPANY RULE: The single company that is the MAIN ACTOR of the event. (1) Funding/IPO: the company RECEIVING the investment or going public — not the investor, not a supplier, not a competitor named for comparison. (2) M&A: the acquirer or target — whichever is the central subject. (3) Earnings: the company that issued the results. (4) Commentary/market opinion where a company's employee, analyst, or executive is quoted giving views on OTHER companies or markets — return null. (5) When one company is clearly driving the event and others are mentioned incidentally as suppliers/partners/advisors/comparisons, always name the driving company. Return null only for genuine co-equal actors (e.g. a true joint venture). Never invent a name not present in the companies array.
+
+ARTICLES (each prefixed with its 0-based index in square brackets):
+{articles_block}
+
+Respond ONLY with a valid JSON array containing EXACTLY {n} objects, one per article, in the same order as the input. Do not include any text before or after the array. Each object must have exactly these fields:
+{{
+  "index": <int, the 0-based index from the article list>,
+  "relevant": true or false,
+  "relevance_score": 1-10,
+  "relevance_reason": "...",
+  "sector": "<one allowed sector, character-for-character>",
+  "companies": ["Company A", "Company B"],
+  "themes": ["M&A", "IPO", "Earnings", "Macro", "Geopolitics", "VC", "PE", "Regulation", "AI", "Crypto"],
+  "sentiment": "bullish" or "bearish" or "neutral",
+  "deal_type": "M&A" or "IPO" or "Funding" or "Earnings" or "Macro" or "Geopolitical" or "Other" or null,
+  "primary_company": "..." or null
 }}"""
 
 
@@ -154,7 +188,10 @@ def filter_article(article):
         sectors=", ".join(SECTORS)
     )
     try:
-        response = gemini_model.generate_content(prompt)
+        response = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+        )
         text = (response.text or "").strip()
         if text.startswith("```"):
             text = text.split("```")[1]
@@ -163,6 +200,73 @@ def filter_article(article):
     except Exception as ex:
         print(f"  Filter error: {ex}")
         return None
+
+
+def filter_articles_batch(articles):
+    """Score a batch of articles in a single Gemini call.
+
+    Returns a list of analysis dicts aligned by index with `articles`.
+    Any slots the model fails to return are back-filled with per-article calls.
+    If the entire batch call fails, falls back to per-article filtering.
+    """
+    if not articles:
+        return []
+
+    lines = []
+    for i, a in enumerate(articles):
+        title = (a.get("title") or "").replace("\n", " ").strip()
+        summary = (a.get("summary") or "").replace("\n", " ").strip()[:400]
+        source = a.get("source") or ""
+        lines.append(f"[{i}] SOURCE: {source} | TITLE: {title} | SUMMARY: {summary}")
+    articles_block = "\n".join(lines)
+
+    prompt = BATCH_FILTER_PROMPT.format(
+        sectors=", ".join(SECTORS),
+        articles_block=articles_block,
+        n=len(articles),
+    )
+
+    try:
+        response = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.2,
+                max_output_tokens=65536,
+                response_mime_type="application/json",
+            ),
+        )
+        text = (response.text or "").strip()
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+            text = text.strip()
+        # Extract the JSON array if the model wrapped it in prose
+        m = re.search(r"\[[\s\S]*\]", text)
+        if m:
+            text = m.group(0)
+        parsed = json.loads(text)
+        if not isinstance(parsed, list):
+            raise ValueError("Batch response was not a JSON array")
+
+        results = [None] * len(articles)
+        for item in parsed:
+            if not isinstance(item, dict):
+                continue
+            idx = item.get("index")
+            if isinstance(idx, int) and 0 <= idx < len(articles) and results[idx] is None:
+                results[idx] = item
+
+        missing = [i for i, r in enumerate(results) if r is None]
+        if missing:
+            print(f"  ⚠ Batch returned {len(parsed)}/{len(articles)} results, filling {len(missing)} individually...")
+            for i in missing:
+                results[i] = filter_article(articles[i])
+        return results
+    except Exception as ex:
+        print(f"  Batch filter error ({ex}); falling back to per-article...")
+        return [filter_article(a) for a in articles]
 
 
 def upsert_company(name, themes, sentiment):
@@ -245,10 +349,10 @@ def run_ingestion():
     articles = fetch_all_articles()
     print(f"  {len(articles)} unique articles")
 
-    print("\n[2/3] Filtering with Gemini...")
+    print(f"\n[2/3] Filtering {len(articles)} articles with Gemini (batch)...")
+    results = filter_articles_batch(articles)
     relevant = []
-    for a in articles:
-        result = filter_article(a)
+    for a, result in zip(articles, results):
         if result and result.get("relevant") and result.get("relevance_score", 0) >= 6:
             relevant.append((a, result))
             print(f"  ✓ [{result['relevance_score']}/10] [{result.get('sector','?')[:20]}] {a['title'][:60]}...")
