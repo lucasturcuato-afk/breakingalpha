@@ -330,10 +330,10 @@ export const TAGGED_DEAL_TYPES = new Set(["Earnings", "M&A", "Funding", "IPO", "
 export function formatArticleList(arts: CompanyArticle[]): string {
   if (arts.length === 0) return "None";
   return arts
-    .slice(0, 6)
+    .slice(0, 8) // safety cap; callers should pre-slice to their desired limit
     .map((a) => {
       const tag = a.deal_type && TAGGED_DEAL_TYPES.has(a.deal_type) ? `[${a.deal_type}] ` : "";
-      const summary = a.summary ? ` — ${a.summary.slice(0, 120)}` : "";
+      const summary = a.summary ? ` — ${a.summary.slice(0, 180)}` : "";
       return `• ${tag}${a.title}${summary}`;
     })
     .join("\n\n");
@@ -424,6 +424,85 @@ function byRelevance(arts: CompanyArticle[]): CompanyArticle[] {
   });
 }
 
+// Company-specific relevance score for context article ranking.
+// Distinct from `relevance_score` (Groq's general financial-market signal).
+// Gives +3 for full company name in title, +2 for first significant word (handles
+// "Goldman" matching "Goldman Sachs"), +2 for development deal types, +1 for high
+// general relevance. Max possible score is 6.
+function contextScore(a: CompanyArticle, companyName: string): number {
+  let score = 0;
+  const titleLower = a.title.toLowerCase();
+  const nameLower = companyName.toLowerCase();
+
+  if (titleLower.includes(nameLower)) {
+    score += 3; // full canonical name in title
+  } else {
+    const firstWord = nameLower.split(/\s+/)[0];
+    if (firstWord.length >= 5 && titleLower.includes(firstWord)) {
+      score += 2; // significant first word (e.g. "Goldman" for "Goldman Sachs")
+    }
+  }
+
+  if (a.deal_type != null && DEVELOPMENT_DEAL_TYPES.has(a.deal_type)) score += 2;
+  if ((a.relevance_score ?? 0) >= 8) score += 1;
+
+  return score;
+}
+
+// Rank context articles by company-specific signal, then filter noise.
+// Returns at most 4 articles — fewer, higher-quality articles produce sharper
+// memo synthesis than a longer list of mixed-signal items.
+function selectContextArticles(arts: CompanyArticle[], companyName: string): CompanyArticle[] {
+  const ranked = [...arts].sort((a, b) => {
+    const csDiff = contextScore(b, companyName) - contextScore(a, companyName);
+    if (csDiff !== 0) return csDiff;
+    // Tiebreak: general relevance, then recency
+    const relDiff = (b.relevance_score ?? 5) - (a.relevance_score ?? 5);
+    if (relDiff !== 0) return relDiff;
+    return (b.published_at ? new Date(b.published_at).getTime() : 0)
+         - (a.published_at ? new Date(a.published_at).getTime() : 0);
+  });
+
+  // If at least 4 articles have company-specific signal (score > 0), drop
+  // zero-signal articles so the model isn't diluted by incidental mentions.
+  // Conservative: only filter when ≥4 signal articles remain without them.
+  const withSignal = ranked.filter((a) => contextScore(a, companyName) > 0);
+  const pool = withSignal.length >= 4 ? withSignal : ranked;
+
+  return pool.slice(0, 4);
+}
+
+// Build a descriptive signal quality label that tells the model what the evidence
+// actually covers — richer than the former three-way "Strong/Limited/Mostly sector".
+function buildSignalLabel(
+  effectiveDevArts: CompanyArticle[],
+  effectiveCtxArts: CompanyArticle[],
+  companyName: string,
+): string {
+  if (effectiveDevArts.length === 0) {
+    const nameLower = companyName.toLowerCase();
+    const firstWord = nameLower.split(/\s+/)[0];
+    const titleNamed = effectiveCtxArts.filter((a) => {
+      const t = a.title.toLowerCase();
+      return t.includes(nameLower) || (firstWord.length >= 5 && t.includes(firstWord));
+    }).length;
+    if (effectiveCtxArts.length === 0) return `No articles found for ${companyName} in current window`;
+    const plural = effectiveCtxArts.length === 1 ? "article" : "articles";
+    if (titleNamed >= 1) {
+      return `No direct events — ${effectiveCtxArts.length} context ${plural}, ${titleNamed} with ${companyName} in title`;
+    }
+    return `No direct events — ${effectiveCtxArts.length} context ${plural}, ${companyName} mentioned incidentally`;
+  }
+
+  const types = [
+    ...new Set(effectiveDevArts.map((a) => a.deal_type).filter((dt): dt is string => dt != null)),
+  ];
+  const typeStr = types.length > 0 ? ` (${types.join(", ")})` : "";
+  const plural = effectiveDevArts.length === 1 ? "event" : "events";
+  if (effectiveDevArts.length >= 2) return `${effectiveDevArts.length} direct company ${plural}${typeStr}`;
+  return `1 direct company ${plural}${typeStr} — limited direct evidence`;
+}
+
 export function buildMemoContent(
   companyName: string,
   developmentArticles: CompanyArticle[],
@@ -447,15 +526,16 @@ export function buildMemoContent(
   // company developments found" coverage note accurate, while still surfacing those
   // articles to the model under SECTOR CONTEXT ARTICLES.
   const effectiveDevArts = memoMode === "developments-led" ? developmentArticles : [];
-  const effectiveCtxArts =
+  const rawCtxArts =
     memoMode === "developments-led"
       ? contextArticles
       : [...developmentArticles, ...contextArticles];
 
-  const signalLabel =
-    effectiveDevArts.length >= 2 ? "Strong company-specific coverage"
-    : effectiveDevArts.length >= 1 ? "Limited direct evidence"
-    : "Mostly sector context";
+  // Rank context articles by company-specific relevance and cap at 4.
+  // Fewer, higher-signal articles produce sharper synthesis than a longer diluted list.
+  const effectiveCtxArts = selectContextArticles(rawCtxArts, companyName);
+
+  const signalLabel = buildSignalLabel(effectiveDevArts, effectiveCtxArts, companyName);
 
   return [
     `COMPANY: ${companyName}`,
@@ -464,10 +544,10 @@ export function buildMemoContent(
     `SIGNAL QUALITY: ${signalLabel}`,
     ``,
     `COMPANY DEVELOPMENT ARTICLES (${effectiveDevArts.length}):`,
-    formatArticleList(byRelevance(effectiveDevArts)),
+    formatArticleList(byRelevance(effectiveDevArts).slice(0, 6)),
     ``,
     `SECTOR CONTEXT ARTICLES (${effectiveCtxArts.length}):`,
-    formatArticleList(byRelevance(effectiveCtxArts)),
+    formatArticleList(effectiveCtxArts), // already ranked by selectContextArticles
   ].join("\n");
 }
 
@@ -485,28 +565,28 @@ ${companyBriefBlock}**Recent Developments**
 [Facts from COMPANY DEVELOPMENT ARTICLES only. Specific figures, dates, named outcomes. Do not draw from context articles.]
 
 **Market Context**
-[2–3 sentences using only events named in SECTOR CONTEXT ARTICLES. Do not write generic sector trends. Do not reference events, companies, or data not present in those articles.]
+[2 sentences using only events named in SECTOR CONTEXT ARTICLES. Do not write generic sector trends. Do not reference events, companies, or data not present in those articles.]
 
 **Key Watchpoints**
-[1–3 bullets. Each must name a specific upcoming event or unresolved condition from COMPANY DEVELOPMENT ARTICLES. Do not pad with invented milestones.]
+[1–2 bullets. Name the most specific unresolved condition or next event from COMPANY DEVELOPMENT ARTICLES — a pending approval, upcoming report date, deal close, or named guidance range. Do not restate what already happened. Write one bullet if only one concrete watchpoint exists in the evidence.]
 
 **Signal Quality**
-[SIGNAL QUALITY value.] [One sentence on what the evidence covers.]
+[Reproduce SIGNAL QUALITY value verbatim. No added prose.]
 
 ─── MEMO_MODE = "context-led" ───
 ${companyBriefBlock}**Coverage Note**
 No direct company developments found in the current feed window.
 
 **Current Context**
-[2–3 sentences. Use only events, companies, and figures that appear by name in SECTOR CONTEXT ARTICLES. Do not write generic sector narratives. Do not name events not present in the listed articles.]
+[2 sentences. Draw from the SECTOR CONTEXT ARTICLES where ${companyName} is most directly named — prefer articles where it appears in the title. Every figure, deal, and company named must appear in those articles. Do not write generic sector narratives.]
 
 **What To Watch**
-[2 bullets. Each must name a specific event or condition from SECTOR CONTEXT ARTICLES — e.g., a named regulatory action, contract decision, or macro data release. No generic macro risks. No inferred impact on ${companyName}.]
+[1–2 bullets. Each must name a specific upcoming event or condition from SECTOR CONTEXT ARTICLES — a named contract decision, regulatory action, or data release. Write one bullet if only one article names a concrete forward-looking signal. Do not add a generic sector-risk bullet to fill space.]
 
 **Signal Quality**
-[SIGNAL QUALITY value.] [One sentence on what the evidence covers.]
+[Reproduce SIGNAL QUALITY value verbatim. No added prose.]
 
 ─── RULES ───
 Company Brief (if present above): output verbatim — do not rephrase or expand.
-No: "may benefit", "stands to benefit", "is poised to", "faces exposure to", "could". Do not infer ${companyName}'s position from partner or competitor activity. Every factual claim must appear in the input. Under 300 words.`;
+No: "may benefit", "stands to benefit", "is poised to", "faces exposure to", "could". Do not infer ${companyName}'s position from partner or competitor activity. Every factual claim must appear in the input. Under 250 words.`;
 }
