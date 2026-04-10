@@ -37,7 +37,7 @@ export async function POST() {
 
     const { data: latestClusterRow } = await supabase
       .from("trend_clusters")
-      .select("run_id")
+      .select("run_id, brief_type")
       .gte("created_at", lookbackIso)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -130,6 +130,44 @@ ${articleLines}`;
       })
       .join("\n\n");
 
+    // Fetch weekly pipeline feedback addendum — non-blocking, best-effort.
+    // If weekly_digests is empty, brief_type is unknown, the query fails,
+    // or no addendum exists for this brief_type, thesis generation continues
+    // normally with no addendum. Never blocks or crashes the main flow.
+    let thesisAddendum: string | null = null;
+    try {
+      const briefType = latestClusterRow.brief_type;
+      if (typeof briefType === "string" && briefType.length > 0) {
+        const { data: addendumRow, error: addendumErr } = await supabase
+          .from("weekly_digests")
+          .select("thesis_prompt_addendum")
+          .eq("brief_type", briefType)
+          .order("generated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (addendumErr) {
+          console.log(
+            "[theses] weekly_digests lookup failed (continuing):",
+            addendumErr.message
+          );
+        } else if (addendumRow?.thesis_prompt_addendum) {
+          thesisAddendum = addendumRow.thesis_prompt_addendum as string;
+          console.log(
+            `[theses] Injecting weekly pipeline feedback addendum for brief_type=${briefType}`
+          );
+        }
+      }
+    } catch (addendumErr) {
+      console.log(
+        "[theses] weekly_digests lookup threw (continuing):",
+        addendumErr instanceof Error ? addendumErr.message : String(addendumErr)
+      );
+    }
+
+    const addendumBlock = thesisAddendum
+      ? `WEEKLY PIPELINE FEEDBACK — incorporate into thesis framing:\n${thesisAddendum}\n\n`
+      : "";
+
     const prompt = `You are a senior investment banking analyst at a top-tier firm (Goldman Sachs, Blackstone, KKR level). You have been given today's market narrative clusters, each representing a group of related news articles that have been algorithmically clustered by topic, company, and sector.
 
 Your job is to synthesize these clusters into 3-5 high-conviction investment theses that a portfolio manager or deal team would actually act on.
@@ -160,7 +198,7 @@ Return a JSON array only. Each object must have exactly these fields:
   supporting_article_ids: string[] (minimum 2 article IDs)
 }
 
-CLUSTERS:
+${addendumBlock}CLUSTERS:
 ${clusterBlocks}`;
 
     const completion = await ai.models.generateContent({
