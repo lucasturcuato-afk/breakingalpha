@@ -170,6 +170,7 @@ ${clusterBlocks}`;
         temperature: 0.3,
         maxOutputTokens: 2000,
         responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
       },
     });
 

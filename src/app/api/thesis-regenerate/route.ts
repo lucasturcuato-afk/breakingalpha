@@ -71,6 +71,7 @@ Cite specific companies, figures, and deal values from the articles. Structure: 
       config: {
         temperature: 0.35,
         maxOutputTokens: 400,
+        thinkingConfig: { thinkingBudget: 0 },
       },
     });
     const newRationale =
@@ -100,17 +101,19 @@ Rules: one entry per article (${articleList.length} total), cite specific data.`
       config: {
         temperature: 0.3,
         maxOutputTokens: 1200,
+        thinkingConfig: { thinkingBudget: 0 },
       },
     });
 
     let catalystNote = "";
     let evidenceChain: unknown[] = [];
     try {
-      const parsed = JSON.parse(
-        (detailCompletion.text || "{}")
-          .replace(/```json|```/g, "")
-          .trim()
-      );
+      const cleaned = (detailCompletion.text || "{}")
+        .replace(/```json|```/g, "")
+        .trim();
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("No JSON object found in response");
+      const parsed = JSON.parse(jsonMatch[0]);
       catalystNote = parsed.catalyst_note || "";
       evidenceChain = parsed.evidence || [];
     } catch {

@@ -60,6 +60,7 @@ Rules: one evidence entry per article (${articleList.length} total), cite specif
       config: {
         temperature: 0.3,
         maxOutputTokens: 1200,
+        thinkingConfig: { thinkingBudget: 0 },
       },
     });
 
@@ -69,7 +70,10 @@ Rules: one evidence entry per article (${articleList.length} total), cite specif
     }
     let parsed: { catalyst_note?: string; evidence?: unknown } = {};
     try {
-      parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+      const cleaned = raw.replace(/```json|```/g, "").trim();
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("No JSON object found in response");
+      parsed = JSON.parse(jsonMatch[0]);
     } catch {
       return NextResponse.json(
         { error: "Failed to parse AI response" },

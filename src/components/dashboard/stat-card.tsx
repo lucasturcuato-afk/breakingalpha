@@ -99,7 +99,7 @@ export function StatCard({
                 <div
                   key={i}
                   className="flex-1 rounded-t-sm bg-border-subtle"
-                  style={{ height: `${20 + Math.random() * 60}%` }}
+                  style={{ height: `${20 + ((i * 37) % 60)}%` }}
                 />
               ))
             )}

@@ -72,6 +72,7 @@ export async function POST(request: NextRequest) {
           systemInstruction: system,
           temperature: 0.35,
           maxOutputTokens: 750,
+          thinkingConfig: { thinkingBudget: 0 },
         },
       });
 
@@ -114,6 +115,7 @@ Sections: TRANSACTION OVERVIEW, STRATEGIC RATIONALE, KEY RISKS, ANALYST TAKE. Un
       config: {
         temperature: 0.35,
         maxOutputTokens: 600,
+        thinkingConfig: { thinkingBudget: 0 },
       },
     });
 
