@@ -4,7 +4,7 @@ Fetches from 15+ sources, scores relevance across all sectors,
 stores in Supabase.
 """
 
-import os, json, re, time, requests, feedparser
+import os, json, re, time, requests, feedparser, html as _html
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
 from groq import Groq, RateLimitError
@@ -77,6 +77,21 @@ Respond ONLY in valid JSON:
 }}"""
 
 
+def strip_html(text: str) -> str:
+    """Strip HTML tags, decode entities, remove bare URLs, collapse whitespace.
+    Mirrors the logic in src/lib/strip-html.ts so stored summaries are clean
+    for both LLM extraction and downstream UI rendering."""
+    if not text:
+        return ""
+    text = re.sub(r"<[^>]+>", " ", text)                          # remove tags
+    text = _html.unescape(text)                                    # decode &amp; &#038; etc.
+    text = re.sub(r"https?://\S+", "", text)                       # bare URLs add no signal
+    text = re.sub(r"\s*The post .+? appeared first on .+?\.\s*$",  # PE Hub boilerplate
+                  "", text, flags=re.DOTALL)
+    text = re.sub(r"\s{2,}", " ", text)                            # collapse whitespace
+    return text.strip()
+
+
 def fetch_all_articles():
     articles = []
     for source, url in RSS_FEEDS.items():
@@ -85,7 +100,7 @@ def fetch_all_articles():
             for e in feed.entries[:8]:
                 articles.append({
                     "title": e.get("title", ""),
-                    "summary": e.get("summary", e.get("description", ""))[:500],
+                    "summary": strip_html(e.get("summary", e.get("description", "")))[:500],
                     "url": e.get("link", ""),
                     "source": source,
                     "published_at": e.get("published", datetime.now(timezone.utc).isoformat())
@@ -104,7 +119,7 @@ def fetch_all_articles():
             for a in r.json().get("articles", []):
                 articles.append({
                     "title": a.get("title", ""),
-                    "summary": a.get("description", "")[:500],
+                    "summary": strip_html(a.get("description", ""))[:500],
                     "url": a.get("url", ""),
                     "source": a.get("source", {}).get("name", "NewsAPI"),
                     "published_at": a.get("publishedAt", datetime.now(timezone.utc).isoformat())
