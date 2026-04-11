@@ -598,6 +598,15 @@ def generate_weekly_digest(brief_type: str) -> dict:
         digest["gemini_digest"] = gemini_digest
 
         # ---- Gemini call 2: thesis prompt addendum ---------------------
+        # Pull top patterns from pattern_library so the addendum can cite
+        # real win rates from graded thesis history. Never blocks on failure.
+        top_pattern_rows: list[dict] = []
+        try:
+            import pattern_memory  # local import — avoid circular import at boot
+            top_pattern_rows = pattern_memory.top_patterns(limit=5, min_n=5)
+        except Exception as e:
+            logger.warning("weekly_digest: top patterns lookup failed: %s", e)
+
         thesis_addendum = ""
         if gemini_client is not None:
             try:
@@ -606,6 +615,7 @@ def generate_weekly_digest(brief_type: str) -> dict:
                     "underrepresented_clusters": underrepresented_clusters,
                     "recurring_themes": recurring_themes,
                     "total_missed_score10": int(total_missed_score10),
+                    "top_patterns": top_pattern_rows,
                 }
                 prompt = (
                     "Given this weekly pipeline feedback:\n\n"
@@ -617,7 +627,11 @@ def generate_weekly_digest(brief_type: str) -> dict:
                     "underrepresented clusters by their label name.\n"
                     "2. Warns against any patterns matching the recurring soft flags.\n"
                     "3. Notes the most recurring market themes to weave into "
-                    "thesis framing.\n\n"
+                    "thesis framing.\n"
+                    "4. If top_patterns is non-empty, cite at least one historical "
+                    "pattern with its exact win_rate (e.g. 'Energy theses on 30d "
+                    "horizon with positive analyst consensus confirm at 71%') so "
+                    "the generator can calibrate confidence based on prior graded theses.\n\n"
                     "Format: a single plain paragraph, no headers, no bullets, "
                     "no preamble. This text will be appended directly to a thesis "
                     "generation system prompt."
