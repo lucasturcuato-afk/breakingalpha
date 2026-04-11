@@ -97,6 +97,9 @@ function ThesisBoardContent() {
           status: (t.status as ThesisStatus) || "new-signal",
           updatedAt: t.generated_at ? timeAgo(t.generated_at) : "recently",
           source: t.source,
+          bear_case: t.bear_case ?? null,
+          adversarial_score: t.adversarial_score ?? null,
+          passed_adversarial: t.passed_adversarial ?? null,
         }));
         setTheses(mapped);
       }
@@ -209,6 +212,9 @@ function ThesisBoardContent() {
             status: "archived" as ThesisStatus,
             updatedAt: t.generated_at ? timeAgo(t.generated_at) : "recently",
             source: t.source,
+            bear_case: t.bear_case ?? null,
+            adversarial_score: t.adversarial_score ?? null,
+            passed_adversarial: t.passed_adversarial ?? null,
           })));
         }
       } catch (e) {
