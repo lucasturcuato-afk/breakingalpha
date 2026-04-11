@@ -1,7 +1,7 @@
 """
 run.py  —  BreakingAlpha pipeline orchestrator
 Order: ingest → synthesize → extract deals → observe → critique → audit →
-       trend_map → summarize → thesis_grader → pattern_memory
+       trend_map → summarize → thesis_grader → pattern_memory → adversarial
 """
 
 import sys
@@ -16,6 +16,7 @@ import trend_mapper
 import summarize
 import thesis_grader
 import pattern_memory
+import adversarial
 
 if __name__ == "__main__":
     brief_type = sys.argv[1] if len(sys.argv) > 1 else "morning"
@@ -59,23 +60,29 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"  ⚠ Trend Mapper failed (pipeline unaffected): {e}")
 
-    print("\n[8/10] SUMMARY")
+    print("\n[8/11] SUMMARY")
     try:
         summarize.print_summary(brief_type, run_id=run_id)
     except Exception as e:
         print(f"  ⚠ Summary failed (pipeline unaffected): {e}")
 
-    print("\n[9/10] THESIS GRADING")
+    print("\n[9/11] THESIS GRADING")
     try:
         thesis_grader.main()
     except Exception as e:
         print(f"  ⚠ Thesis grader failed (pipeline unaffected): {e}")
 
-    print("\n[10/10] PATTERN MEMORY")
+    print("\n[10/11] PATTERN MEMORY")
     try:
         pattern_memory.main()
     except Exception as e:
         print(f"  ⚠ Pattern memory failed (pipeline unaffected): {e}")
+
+    print("\n[11/11] ADVERSARIAL REVIEW")
+    try:
+        adversarial.main()
+    except Exception as e:
+        print(f"  ⚠ Adversarial review failed (pipeline unaffected): {e}")
 
     print("\n" + "=" * 50)
     print("✅ Pipeline complete")
