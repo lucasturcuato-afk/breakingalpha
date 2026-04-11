@@ -39,14 +39,6 @@ jobs:
             echo "mode=evening" >> $GITHUB_OUTPUT
           fi
 
-      - name: Debug secrets
-        run: |
-          echo "GEMINI_API_KEY length: ${#GEMINI_API_KEY}"
-          echo "SUPABASE_URL length: ${#SUPABASE_URL}"
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-
       - name: Run pipeline
         working-directory: backend
         env:
