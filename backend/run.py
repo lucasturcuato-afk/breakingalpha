@@ -1,7 +1,8 @@
 """
 run.py  —  BreakingAlpha pipeline orchestrator
 Order: ingest → synthesize → extract deals → observe → critique → audit →
-       trend_map → summarize → thesis_grader → pattern_memory → adversarial
+       trend_map → summarize → thesis_grader → pattern_memory →
+       source_credibility → adversarial
 """
 
 import sys
@@ -16,6 +17,7 @@ import trend_mapper
 import summarize
 import thesis_grader
 import pattern_memory
+import source_credibility
 import adversarial
 
 if __name__ == "__main__":
@@ -26,59 +28,65 @@ if __name__ == "__main__":
     print(f"🌅 BreakingAlpha Pipeline — {brief_type.upper()} RUN")
     print("=" * 50)
 
-    print("\n[1/8] INGEST")
+    print("\n[1/12] INGEST")
     ingest_count = run_ingest()
 
-    print("\n[2/8] SYNTHESIZE")
+    print("\n[2/12] SYNTHESIZE")
     run_synthesize(brief_type)
 
-    print("\n[3/8] DEAL EXTRACTION")
+    print("\n[3/12] DEAL EXTRACTION")
     run_deal_extractor()
 
-    print("\n[4/8] OBSERVE")
+    print("\n[4/12] OBSERVE")
     run_id = None
     try:
         run_id = observe.record_run(brief_type, started_at, ingest_count=ingest_count)
     except Exception as e:
         print(f"  ⚠ Observer failed (pipeline unaffected): {e}")
 
-    print("\n[5/8] CRITIQUE")
+    print("\n[5/12] CRITIQUE")
     try:
         critique.score_run(brief_type, started_at, run_id=run_id)
     except Exception as e:
         print(f"  ⚠ Critic failed (pipeline unaffected): {e}")
 
-    print("\n[6/8] AUDIT")
+    print("\n[6/12] AUDIT")
     try:
         audit.audit_run(brief_type, run_id=run_id)
     except Exception as e:
         print(f"  ⚠ Auditor failed (pipeline unaffected): {e}")
 
-    print("\n[7/8] TREND MAP")
+    print("\n[7/12] TREND MAP")
     try:
         trend_mapper.map_trends(brief_type, started_at, run_id=run_id)
     except Exception as e:
         print(f"  ⚠ Trend Mapper failed (pipeline unaffected): {e}")
 
-    print("\n[8/11] SUMMARY")
+    print("\n[8/12] SUMMARY")
     try:
         summarize.print_summary(brief_type, run_id=run_id)
     except Exception as e:
         print(f"  ⚠ Summary failed (pipeline unaffected): {e}")
 
-    print("\n[9/11] THESIS GRADING")
+    print("\n[9/12] THESIS GRADING")
     try:
         thesis_grader.main()
     except Exception as e:
         print(f"  ⚠ Thesis grader failed (pipeline unaffected): {e}")
 
-    print("\n[10/11] PATTERN MEMORY")
+    print("\n[10/12] PATTERN MEMORY")
     try:
         pattern_memory.main()
     except Exception as e:
         print(f"  ⚠ Pattern memory failed (pipeline unaffected): {e}")
 
-    print("\n[11/11] ADVERSARIAL REVIEW")
+    print("\n[11/12] SOURCE CREDIBILITY")
+    try:
+        source_credibility.main()
+    except Exception as e:
+        print(f"  ⚠ Source credibility failed (pipeline unaffected): {e}")
+
+    print("\n[12/12] ADVERSARIAL REVIEW")
     try:
         adversarial.main()
     except Exception as e:
