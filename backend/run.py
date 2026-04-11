@@ -3,10 +3,16 @@ run.py  —  BreakingAlpha pipeline orchestrator
 Order: ingest → synthesize → extract deals → observe → critique → audit →
        trend_map → summarize → thesis_grader → pattern_memory →
        source_credibility → adversarial
+
+Gating:
+  - thesis_grader / pattern_memory / source_credibility → morning runs only
+  - adversarial → Sunday morning only (weekly)
 """
 
+import logging
 import sys
 from datetime import datetime, timezone
+
 from ingest import run_ingestion as run_ingest
 from synthesize import run as run_synthesize
 from deal_extractor import run as run_deal_extractor
@@ -19,6 +25,18 @@ import thesis_grader
 import pattern_memory
 import source_credibility
 import adversarial
+
+logger = logging.getLogger("run")
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+
+def _is_sunday_morning(brief_type: str) -> bool:
+    return (
+        brief_type == "morning"
+        and datetime.now(timezone.utc).weekday() == 6
+    )
+
 
 if __name__ == "__main__":
     brief_type = sys.argv[1] if len(sys.argv) > 1 else "morning"
@@ -69,28 +87,40 @@ if __name__ == "__main__":
         print(f"  ⚠ Summary failed (pipeline unaffected): {e}")
 
     print("\n[9/12] THESIS GRADING")
-    try:
-        thesis_grader.main()
-    except Exception as e:
-        print(f"  ⚠ Thesis grader failed (pipeline unaffected): {e}")
+    if brief_type == "morning":
+        try:
+            thesis_grader.main()
+        except Exception as e:
+            logger.warning("thesis_grader step failed: %s", e)
+    else:
+        logger.info("thesis_grader: skipped (morning only)")
 
     print("\n[10/12] PATTERN MEMORY")
-    try:
-        pattern_memory.main()
-    except Exception as e:
-        print(f"  ⚠ Pattern memory failed (pipeline unaffected): {e}")
+    if brief_type == "morning":
+        try:
+            pattern_memory.main()
+        except Exception as e:
+            logger.warning("pattern_memory step failed: %s", e)
+    else:
+        logger.info("pattern_memory: skipped (morning only)")
 
     print("\n[11/12] SOURCE CREDIBILITY")
-    try:
-        source_credibility.main()
-    except Exception as e:
-        print(f"  ⚠ Source credibility failed (pipeline unaffected): {e}")
+    if brief_type == "morning":
+        try:
+            source_credibility.main()
+        except Exception as e:
+            logger.warning("source_credibility step failed: %s", e)
+    else:
+        logger.info("source_credibility: skipped (morning only)")
 
     print("\n[12/12] ADVERSARIAL REVIEW")
-    try:
-        adversarial.main()
-    except Exception as e:
-        print(f"  ⚠ Adversarial review failed (pipeline unaffected): {e}")
+    if _is_sunday_morning(brief_type):
+        try:
+            adversarial.main()
+        except Exception as e:
+            logger.warning("adversarial step failed: %s", e)
+    else:
+        logger.info("adversarial: skipped (Sunday morning only)")
 
     print("\n" + "=" * 50)
     print("✅ Pipeline complete")
