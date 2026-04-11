@@ -180,6 +180,44 @@ ${articleLines}`;
       ? `WEEKLY PIPELINE FEEDBACK — incorporate into thesis framing:\n${thesisAddendum}\n\n`
       : "";
 
+    // Phase 6: inject high-win-rate historical patterns so Gemini knows
+    // which (sector, horizon, dominant_signal) combinations have actually
+    // paid off historically. Best-effort — never blocks generation.
+    let patternBlock = "";
+    try {
+      const { data: patternRows, error: patternErr } = await supabase
+        .from("pattern_library")
+        .select("sector, horizon, dominant_signal, n_observed, n_confirmed, win_rate")
+        .gte("n_observed", 5)
+        .order("win_rate", { ascending: false })
+        .limit(5);
+      if (patternErr) {
+        console.log(
+          "[theses] pattern_library lookup failed (continuing):",
+          patternErr.message
+        );
+      } else if (patternRows && patternRows.length > 0) {
+        const lines = patternRows
+          .map((p) => {
+            const wr =
+              typeof p.win_rate === "number"
+                ? (p.win_rate * 100).toFixed(0) + "%"
+                : "—";
+            return `  - ${p.sector || "Unknown"} / ${p.horizon || "30d"} / ${p.dominant_signal || "mixed"}: ${p.n_confirmed ?? 0}/${p.n_observed ?? 0} confirmed (${wr})`;
+          })
+          .join("\n");
+        patternBlock = `HISTORICAL PATTERN PERFORMANCE — prefer thesis framings that match high-win-rate patterns below. Each line is (sector / horizon / dominant_signal) with the historical confirm rate:\n${lines}\n\n`;
+        console.log(
+          `[theses] Injecting ${patternRows.length} historical patterns into prompt`
+        );
+      }
+    } catch (patternErr) {
+      console.log(
+        "[theses] pattern_library lookup threw (continuing):",
+        patternErr instanceof Error ? patternErr.message : String(patternErr)
+      );
+    }
+
     const prompt = `You are a senior investment banking analyst at a top-tier firm (Goldman Sachs, Blackstone, KKR level). You have been given today's market narrative clusters, each representing a group of related news articles that have been algorithmically clustered by topic, company, and sector.
 
 Your job is to synthesize these clusters into 3-5 high-conviction investment theses that a portfolio manager or deal team would actually act on.
@@ -213,7 +251,7 @@ Return a JSON array only. Each object must have exactly these fields:
   verifiable_signal: string (ONE sentence stating a concrete, falsifiable outcome that will confirm or invalidate the thesis — e.g. "AAPL closes above $230 within 30 days" or "TSLA Q2 earnings beat consensus by >5%")
 }
 
-${addendumBlock}CLUSTERS:
+${addendumBlock}${patternBlock}CLUSTERS:
 ${clusterBlocks}`;
 
     const completion = await ai.models.generateContent({
