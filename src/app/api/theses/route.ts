@@ -13,6 +13,10 @@ interface RawThesis {
   catalyst_note?: string;
   evidence_chain?: unknown;
   supporting_article_ids?: string[];
+  // Phase 2: autonomous grading fields extracted by Gemini
+  ticker?: string | null;
+  horizon?: "7d" | "30d" | "90d";
+  verifiable_signal?: string;
 }
 
 function validateThesis(t: unknown): t is RawThesis {
@@ -23,6 +27,14 @@ function validateThesis(t: unknown): t is RawThesis {
     typeof obj.conviction === "string" && obj.conviction.length > 0 &&
     typeof obj.sector === "string" && obj.sector.length > 0
   );
+}
+
+// Phase 2: compute check_after from generated_at + horizon
+function computeCheckAfter(generatedAtIso: string, horizon: string | undefined): string {
+  const days = horizon === "7d" ? 7 : horizon === "90d" ? 90 : 30;
+  const d = new Date(generatedAtIso);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString();
 }
 
 export async function POST() {
@@ -195,7 +207,10 @@ Return a JSON array only. Each object must have exactly these fields:
   sector: string,
   rationale: string (3-4 sentences, specific companies and data),
   catalyst: string (1-2 sentences, what triggered this),
-  supporting_article_ids: string[] (minimum 2 article IDs)
+  supporting_article_ids: string[] (minimum 2 article IDs),
+  ticker: string | null (single primary US ticker this thesis can be graded against — e.g. "AAPL", "MSFT", or null if the thesis is macro/sector and has no one primary ticker),
+  horizon: "7d" | "30d" | "90d" (how long until this thesis should be graded — match the catalyst timing),
+  verifiable_signal: string (ONE sentence stating a concrete, falsifiable outcome that will confirm or invalidate the thesis — e.g. "AAPL closes above $230 within 30 days" or "TSLA Q2 earnings beat consensus by >5%")
 }
 
 ${addendumBlock}CLUSTERS:
@@ -288,22 +303,34 @@ ${clusterBlocks}`;
       .eq("source", "ai-generated")
       .gte("generated_at", dedupCutoff.toISOString());
 
+    const generatedAtIso = new Date().toISOString();
     const rows = theses.map(
-      (t) => ({
-        title: t.title,
-        conviction: t.conviction,
-        rationale: t.rationale,
-        sector: t.sector,
-        catalyst: t.catalyst,
-        catalyst_note: t.catalyst_note || null,
-        evidence_chain: t.evidence_chain || null,
-        supporting_articles: Array.isArray(t.supporting_article_ids)
-          ? t.supporting_article_ids.filter((id) => validIds.has(id))
-          : null,
-        status: "new-signal",
-        generated_at: new Date().toISOString(),
-        source: "ai-generated",
-      })
+      (t) => {
+        const horizon = t.horizon === "7d" || t.horizon === "90d" ? t.horizon : "30d";
+        const ticker = typeof t.ticker === "string" && t.ticker.trim().length > 0
+          ? t.ticker.trim().toUpperCase()
+          : null;
+        return {
+          title: t.title,
+          conviction: t.conviction,
+          rationale: t.rationale,
+          sector: t.sector,
+          catalyst: t.catalyst,
+          catalyst_note: t.catalyst_note || null,
+          evidence_chain: t.evidence_chain || null,
+          supporting_articles: Array.isArray(t.supporting_article_ids)
+            ? t.supporting_article_ids.filter((id) => validIds.has(id))
+            : null,
+          status: "new-signal",
+          generated_at: generatedAtIso,
+          source: "ai-generated",
+          // Phase 2: autonomous grading fields
+          ticker,
+          horizon,
+          verifiable_signal: typeof t.verifiable_signal === "string" ? t.verifiable_signal : null,
+          check_after: computeCheckAfter(generatedAtIso, horizon),
+        };
+      }
     );
 
     const { error: insertError } = await supabase.from("theses").insert(rows);
