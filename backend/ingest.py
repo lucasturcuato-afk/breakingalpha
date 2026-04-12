@@ -118,6 +118,57 @@ Respond ONLY with a valid JSON array containing EXACTLY {n} objects, one per art
 }}"""
 
 
+# ---------------------------------------------------------------------------
+# Entity quality gate — blocks currencies, countries, government bodies,
+# and law firms from being written to the companies / company_mentions tables.
+# ---------------------------------------------------------------------------
+
+_CURRENCY_BLOCKLIST = {
+    "bitcoin", "ethereum", "usd", "btc", "eth", "usdc", "usdt", "crypto",
+    "tether", "ripple", "solana", "dogecoin", "litecoin", "binance coin",
+}
+
+_COUNTRY_BLOCKLIST = {
+    "iran", "china", "russia", "usa", "united states", "united states of america",
+    "uk", "united kingdom", "israel", "north korea", "south korea", "germany",
+    "france", "japan", "india", "brazil", "australia", "canada", "mexico",
+    "turkey", "saudi arabia", "ukraine", "taiwan", "pakistan", "egypt",
+    "indonesia", "nigeria", "south africa", "argentina",
+}
+
+_GOV_SUBSTRINGS = [
+    "department of", "ministry of", "federal reserve", "sec ", "the sec",
+    "fda", "congress", "senate", "white house", "pentagon", "nato",
+    "european union", "world bank", "imf", "cia", "fbi", "doj",
+    "department of justice", "department of defense", "u.s. army",
+    "u.s. navy", "u.s. air force", "treasury department",
+    "internal revenue", "federal bureau",
+]
+
+_LAW_SUBSTRINGS = [
+    "law offices of", "law office of", " llp", " & associates",
+    "attorneys at law", "legal group", "law group", " p.c.", " pllc",
+    "law firm", "legal counsel",
+]
+
+
+def is_blocked_entity(name: str) -> bool:
+    """Return True if the entity name is a currency, country, government body,
+    or law firm that should not be written to the companies table."""
+    low = name.lower().strip()
+    if low in _CURRENCY_BLOCKLIST:
+        return True
+    if low in _COUNTRY_BLOCKLIST:
+        return True
+    for pat in _GOV_SUBSTRINGS:
+        if pat in low:
+            return True
+    for pat in _LAW_SUBSTRINGS:
+        if pat in low:
+            return True
+    return False
+
+
 def strip_html(text: str) -> str:
     """Strip HTML tags, decode entities, remove bare URLs, collapse whitespace.
     Mirrors the logic in src/lib/strip-html.ts so stored summaries are clean
@@ -330,6 +381,9 @@ def store_article(article, analysis):
         }).execute()
         article_id = r.data[0]["id"]
         for company in analysis.get("companies", []):
+            if is_blocked_entity(company):
+                print(f"  ⊘ Blocked entity: {company}")
+                continue
             cid = upsert_company(company, analysis.get("themes", []), analysis.get("sentiment", "neutral"))
             if cid:
                 supabase.table("company_mentions").insert({
