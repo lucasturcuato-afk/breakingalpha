@@ -21,7 +21,7 @@ _DROP_DESCRIPTION_KEYWORDS = [
     "country", "sovereign state", "nation state", "government", "federal agency",
     "regulatory agency", "independent agency", "government agency", "central bank",
     "military branch", "armed forces", "intelligence agency",
-    "person", "human", "politician", "head of state", "president of",
+    "natural person", "human", "politician", "head of state", "president of",
     "prime minister", "secretary of", "businessman",  # individuals often described as "businessman"
     "cryptocurrency", "digital currency", "crypto asset", "digital cash",
     "stock market index", "stock index", "financial index", "market index",
@@ -44,7 +44,7 @@ _KEEP_DESCRIPTION_KEYWORDS = [
 # These are heuristics for abstract phrases the model shouldn't have extracted.
 _NO_RESULT_DROP_SUBSTRINGS = [
     "makers", "sector", "model for", "backed by", "drone", " card",
-    " stocks", " stock ", "party", " forces", "military", "trust vehicle",
+    " stocks", " stock ", " party", " forces", "military", "trust vehicle",
     "fund vehicle", " index", "currency", "bloc", " coalition",
 ]
 
