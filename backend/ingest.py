@@ -118,6 +118,107 @@ Respond ONLY with a valid JSON array containing EXACTLY {n} objects, one per art
 }}"""
 
 
+# ---------------------------------------------------------------------------
+# Entity quality gate — blocks currencies, countries, government bodies,
+# and law firms from being written to the companies / company_mentions tables.
+# ---------------------------------------------------------------------------
+
+_CURRENCY_BLOCKLIST = {
+    "bitcoin", "ethereum", "usd", "btc", "eth", "usdc", "usdt", "crypto",
+    "tether", "ripple", "solana", "dogecoin", "litecoin", "binance coin",
+    "binance", "eur", "gbp", "yuan", "yen", "cny", "jpy", "euro",
+}
+
+_COUNTRY_BLOCKLIST = {
+    "iran", "china", "russia", "usa", "united states", "united states of america",
+    "uk", "united kingdom", "israel", "north korea", "south korea", "germany",
+    "france", "japan", "india", "brazil", "australia", "canada", "mexico",
+    "turkey", "saudi arabia", "ukraine", "taiwan", "pakistan", "egypt",
+    "indonesia", "nigeria", "south africa", "argentina",
+}
+
+_GOV_SUBSTRINGS = [
+    "department of", "ministry of", "federal reserve", "sec ", "the sec",
+    "congress", "senate", "white house", "pentagon",
+    "european union", "world bank",
+    "department of justice", "department of defense", "u.s. army",
+    "u.s. navy", "u.s. air force", "treasury department",
+    "internal revenue", "federal bureau",
+    "securities and exchange commission",
+    "federal trade commission",
+    "federal deposit insurance",
+    "consumer financial protection",
+    "international monetary fund",
+    "european commission",
+    "european central bank",
+    "bank of england",
+    "bank of japan",
+    "bank of canada",
+    "reserve bank of",
+]
+
+_GOV_ACRONYM_RE = re.compile(r"\b(cia|imf|nato|doj|fbi|fda|ftc|cfpb|cftc|finra|fdic|occ)\b")
+
+_LAW_SUBSTRINGS = [
+    "law offices of", "law office of", " llp", " & associates",
+    "attorneys at law", "legal group", "law group", " p.c.", " pllc",
+    "law firm", "legal counsel",
+]
+
+
+def is_blocked_entity(name: str) -> bool:
+    """Return True if the entity name is a currency, country, government body,
+    or law firm that should not be written to the companies table."""
+    low = name.lower().strip()
+    if low in _CURRENCY_BLOCKLIST:
+        return True
+    if low in _COUNTRY_BLOCKLIST:
+        return True
+    if _GOV_ACRONYM_RE.search(low):
+        return True
+    for pat in _GOV_SUBSTRINGS:
+        if pat in low:
+            return True
+    for pat in _LAW_SUBSTRINGS:
+        if pat in low:
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Ingest keyword blocklist — pre-filters articles before Gemini batch scoring
+# to avoid wasting API tokens on class-action / law-firm PRs.
+# ---------------------------------------------------------------------------
+
+_INGEST_KEYWORD_BLOCKLIST = (
+    # Class-action and shareholder lawsuit boilerplate
+    "securities class action",
+    "class action lawsuit",
+    "shareholder lawsuit",
+    "lead plaintiff deadline",
+    "lead plaintiff",
+    "remind investors",
+    "encourages investors to contact",
+    "securities fraud investigation",
+    "loss recovery",
+    "no cost to investors",
+    # Investigation announcement boilerplate
+    "announces investigation into",
+    "filing deadline",
+)
+
+
+def matches_ingest_blocklist(article: dict) -> bool:
+    """Return True if the article's title or summary matches any blocked phrase.
+    Logs the matched phrase and article title for audit purposes."""
+    text = ((article.get("title") or "") + " " + (article.get("summary") or "")).lower()
+    for phrase in _INGEST_KEYWORD_BLOCKLIST:
+        if phrase in text:
+            print(f"  ⊘ Blocklist skip [{phrase!r}]: {article.get('title', '')[:80]}")
+            return True
+    return False
+
+
 def strip_html(text: str) -> str:
     """Strip HTML tags, decode entities, remove bare URLs, collapse whitespace.
     Mirrors the logic in src/lib/strip-html.ts so stored summaries are clean
@@ -330,6 +431,9 @@ def store_article(article, analysis):
         }).execute()
         article_id = r.data[0]["id"]
         for company in analysis.get("companies", []):
+            if is_blocked_entity(company):
+                print(f"  ⊘ Blocked entity: {company}")
+                continue
             cid = upsert_company(company, analysis.get("themes", []), analysis.get("sentiment", "neutral"))
             if cid:
                 supabase.table("company_mentions").insert({
@@ -345,11 +449,15 @@ def store_article(article, analysis):
 
 def run_ingestion():
     print(f"\n{'='*60}\nBreakingAlpha Ingestion — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n{'='*60}")
-    print("\n[1/3] Fetching articles...")
+    print("\n[1/4] Fetching articles...")
     articles = fetch_all_articles()
     print(f"  {len(articles)} unique articles")
 
-    print(f"\n[2/3] Filtering {len(articles)} articles with Gemini (batch)...")
+    print(f"\n[2/4] Pre-filtering {len(articles)} articles against keyword blocklist...")
+    articles = [a for a in articles if not matches_ingest_blocklist(a)]
+    print(f"  {len(articles)} articles after keyword pre-filter")
+
+    print(f"\n[3/4] Filtering {len(articles)} articles with Gemini (batch)...")
     results = filter_articles_batch(articles)
     relevant = []
     for a, result in zip(articles, results):
@@ -357,7 +465,7 @@ def run_ingestion():
             relevant.append((a, result))
             print(f"  ✓ [{result['relevance_score']}/10] [{result.get('sector','?')[:20]}] {a['title'][:60]}...")
 
-    print(f"\n[3/3] Storing {len(relevant)} articles...")
+    print(f"\n[4/4] Storing {len(relevant)} articles...")
     article_ids = [aid for a, r in relevant if (aid := store_article(a, r))]
     stored = len(article_ids)
     print(f"\n✅ Done — {stored} new articles stored")
