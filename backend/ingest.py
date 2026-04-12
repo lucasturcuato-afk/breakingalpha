@@ -11,6 +11,7 @@ from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 from watchlist import boost_watchlist_relevance
+from wikidata import is_valid_company
 
 load_dotenv()
 
@@ -69,7 +70,22 @@ Relevant topics include: M&A deals, IPOs, fundraising, valuations, earnings, mar
 SECTOR (required): Pick exactly one sector from this list that best fits the article's primary topic. Copy the name character-for-character — no abbreviations, no combining, no rewording.
 Allowed sectors: {sectors}
 
-COMPANIES (required): In the JSON below, "companies" must be a JSON array of strings listing EVERY specific company, fund, or firm explicitly named in the title or summary. Each entry must be a proper entity name — the actual name of a specific organization. Include the primary subject AND all secondary named entities: investors, investment targets, acquirers, merger partners, named competitors, named customers, named advisors. Good examples: "Nvidia invests in Marvell" → ["Nvidia", "Marvell"]. "Goldman leads Apple bond offering" → ["Goldman Sachs", "Apple"]. "RGP survey finds CFOs say..." → ["RGP"]. Return [] only when no specific company, fund, or firm name appears anywhere in the title or summary. Never return a string — always return a JSON array. BANNED from this array — never include: category labels ("Big Tech", "tech giants", "big banks"), descriptive group phrases ("major companies", "leading firms"), any string containing "e.g." or parenthetical examples, plural group labels like "companies" or "startups" or "firms" used as a name, invented or fabricated entity names not present verbatim in the title or summary.
+COMPANIES (required): Return a JSON array of entity objects. Each object must have exactly two fields: "name" (the entity name, verbatim from the title or summary) and "entity_type" (must be the string "company" — see definition below). Only include entities where you are confident entity_type is "company". Default to exclusion when uncertain.
+
+COMPANY definition: A for-profit or non-profit private organization, publicly traded corporation, startup, or financial institution that has employees, operates a business, and would have a LinkedIn company page.
+
+EXCLUDE — never include an entity that falls into any of these categories:
+- Individual people, executives, politicians, or named persons (e.g. "Elon Musk", "Xi Jinping", "Trump")
+- Countries, nation-states, territories, or regions (e.g. "China", "Iran", "Vietnam", "Greece")
+- Government agencies, regulatory bodies, courts, or military branches (e.g. "NASA", "FAA", "Pentagon", "Space Force", "U.S. Navy", "Federal Reserve", "SEC", "DOJ")
+- Currencies or crypto assets (e.g. "Bitcoin", "Ethereum", "USD")
+- Stock market indexes (e.g. "S&P 500", "Nifty 50", "Nasdaq", "Sensex")
+- Abstract noun phrases describing a concept, trend, or group rather than a named organization (e.g. "Ukrainian drone makers", "Russia's energy sector", "Foundation AI model for plants", "Candy stocks")
+- Software products, AI models, or platforms — include the company that owns them, not the product (e.g. use "OpenAI" not "ChatGPT"; use "Anthropic" not "Claude"; use "Microsoft" not "Windows")
+- Named investment vehicles, SPVs, trusts, or sovereign wealth funds (e.g. "Blackstone Digital Infrastructure Trust", "Abu Dhabi Investment Authority", "GIC") — use the parent firm ("Blackstone") if it is the primary actor
+- Political parties, religious institutions, advocacy organizations (e.g. "Republican Party", "Heritage Foundation")
+
+Good examples: "Nvidia invests in Marvell" → [{"name": "Nvidia", "entity_type": "company"}, {"name": "Marvell", "entity_type": "company"}]. "Goldman leads Apple bond offering" → [{"name": "Goldman Sachs", "entity_type": "company"}, {"name": "Apple", "entity_type": "company"}]. "Fed raises rates amid China tension" → [] (no companies — Fed is a government body, China is a country). Return [] when no entities pass the definition.
 
 Respond ONLY in valid JSON:
 {{
@@ -77,7 +93,7 @@ Respond ONLY in valid JSON:
   "relevance_score": 1-10,
   "relevance_reason": "GATE — apply before writing: If this article is primarily an opinion piece, profile, cultural commentary, or trend piece with no named transaction, earnings result, financing event, guidance change, regulatory action, or specific market-moving event — set relevant: false and leave this field as an empty string. Do not fabricate a read-through. Articles discussing a named person's political views, cultural influence, public commentary, or personal philosophy are not market-moving events even if that person runs a public or private company — set relevant: false. Internal staff promotions, appointments, hires, or departures are not market-moving events unless the article explicitly links the change to a named transaction, fundraising event, earnings event, guidance change, or regulatory action — if no such link exists, set relevant: false. For articles that pass the gate: 1-2 sentences max. Lead with the concrete market implication — the named deal, specific dollar figure, rate level, or event — not a description of what happened. Only name comp companies or sector read-throughs if the mechanism directly follows from what this article reports; do not append a comp list just to fill the format. Use specific company names, dollar figures, or named sectors where available. BANNED outputs — never write these: vague taxonomy ('this is relevant to PE / VC / financial markets / investing'), article restatements that just paraphrase the headline, fabricated comp lists, filler like 'this matters because it is a transaction in private equity'. For macro or rates articles, state the concrete effect on deal economics — LBO spreads, floating-rate credit costs, buyout multiples, M&A financing conditions, or risk appetite for new deals — never write that rates moved, banks are impacted, or that interest rates affect markets generally. Write as a buy-side analyst flagging a signal to a portfolio manager.",
   "sector": "<copy one sector name exactly from the allowed list above>",
-  "companies": ["Company A", "Company B"],
+  "companies": [{"name": "Company A", "entity_type": "company"}],
   "themes": ["M&A", "IPO", "Earnings", "Macro", "Geopolitics", "VC", "PE", "Regulation", "AI", "Crypto"],
   "sentiment": "bullish/bearish/neutral",
   "deal_type": "Classify as exactly one of these — apply the first definition that matches: M&A (a named company is acquiring, merging with, or being acquired by another named company), IPO (a specific named company is going public), Funding (a named company is receiving investment capital — a venture round, private equity investment, debt financing, or fundraising raise; the company receiving the money determines the type), Earnings (ONLY a company's own officially reported financial results — revenue figures, EPS, net income, or forward guidance issued as part of a formal results announcement; NEVER apply Earnings to analyst recommendations, investment theses, portfolio manager commentary, market outlooks, or forecasts — those are Other), Macro (central bank decisions, interest rate policy, inflation data, GDP, tariff or trade policy affecting broad markets — not specific to one company), Geopolitical (wars, sanctions, elections, cross-border disputes with market impact), Other (regulatory action, product launch, contract award, partnership announcement, legal settlement, personnel change, analyst note, market commentary — use this as a catch-all for anything that does not clearly fit the above). Return null only if the article is so general it fits none of these. Default to Other over null.",
@@ -92,7 +108,22 @@ Relevant topics include: M&A deals, IPOs, fundraising, valuations, earnings, mar
 SECTOR RULE: Pick exactly one sector per article from this list — copy it character-for-character, no abbreviations, no combining, no rewording.
 Allowed sectors: {sectors}
 
-COMPANIES RULE: "companies" must be a JSON array of strings listing EVERY specific company, fund, or firm explicitly named in the title or summary. Each entry must be a proper entity name. Include the primary subject AND all secondary named entities: investors, investment targets, acquirers, merger partners, named competitors, named customers, named advisors. Good examples: "Nvidia invests in Marvell" → ["Nvidia", "Marvell"]. Return [] only when no specific company, fund, or firm name appears verbatim in the title or summary. Never return a string — always an array. BANNED: category labels ("Big Tech", "tech giants", "big banks"), descriptive group phrases ("major companies", "leading firms"), any string containing "e.g." or parenthetical examples, plural group labels like "companies"/"startups"/"firms" used as a name, invented or fabricated entity names.
+COMPANIES RULE: Return a JSON array of entity objects. Each object must have exactly: "name" (verbatim from title or summary) and "entity_type" (must equal "company"). Only include entities where you are confident entity_type is "company". Default to exclusion when uncertain.
+
+COMPANY = a for-profit or non-profit private organization, publicly traded corporation, startup, or financial institution with employees and a business operation (would have a LinkedIn company page).
+
+EXCLUDE — do not include:
+- People (executives, politicians, named individuals — e.g. "Elon Musk", "Xi Jinping", "Trump")
+- Countries or regions ("China", "Iran", "Vietnam", "Greece", "the Gulf")
+- Government bodies, regulators, military branches ("NASA", "FAA", "Pentagon", "Space Force", "U.S. Navy", "Federal Reserve", "SEC", "DOJ", "FOMC")
+- Currencies and crypto ("Bitcoin", "USD", "ETH")
+- Stock indexes ("S&P 500", "Nifty 50", "Nasdaq", "Sensex", "Nikkei")
+- Abstract phrases ("Ukrainian drone makers", "Russia's energy sector", "Candy stocks", "Foundation AI model for plants")
+- Software products or AI models — include the owning company instead ("OpenAI" not "ChatGPT", "Microsoft" not "Windows", "Anthropic" not "Claude")
+- Investment vehicles, SPVs, sovereign wealth funds ("Blackstone Digital Infrastructure Trust", "Abu Dhabi Investment Authority", "GIC") — use parent firm if applicable
+- Political parties, advocacy groups, religious institutions
+
+Good: "Nvidia invests in Marvell" → [{"name":"Nvidia","entity_type":"company"},{"name":"Marvell","entity_type":"company"}]. "Fed raises rates amid China tension" → []. Return [] when no entities pass the definition.
 
 RELEVANCE_REASON GATE (apply before writing): If an article is primarily an opinion piece, profile, cultural commentary, or trend piece with no named transaction, earnings result, financing event, guidance change, regulatory action, or specific market-moving event — set relevant: false and leave relevance_reason as an empty string. Do not fabricate a read-through. Articles discussing a named person's political views, cultural influence, public commentary, or personal philosophy are not market-moving events even if that person runs a company — set relevant: false. Internal staff promotions, appointments, hires, or departures are not market-moving unless explicitly linked to a named transaction, fundraising, earnings, guidance, or regulatory action. For articles that pass the gate: 1-2 sentences max. Lead with the concrete market implication — the named deal, specific dollar figure, rate level, or event. Use specific company names, dollar figures, or named sectors. Write as a buy-side analyst flagging a signal to a portfolio manager. BANNED outputs: vague taxonomy ('relevant to PE/VC/financial markets'), article restatements, fabricated comp lists, filler like 'this matters because it is a transaction in private equity'. For macro/rates articles, state the concrete effect on deal economics — LBO spreads, floating-rate credit costs, buyout multiples, M&A financing, risk appetite — never write that rates moved or that interest rates affect markets generally.
 
@@ -110,7 +141,7 @@ Respond ONLY with a valid JSON array containing EXACTLY {n} objects, one per art
   "relevance_score": 1-10,
   "relevance_reason": "...",
   "sector": "<one allowed sector, character-for-character>",
-  "companies": ["Company A", "Company B"],
+  "companies": [{"name": "Company A", "entity_type": "company"}],
   "themes": ["M&A", "IPO", "Earnings", "Macro", "Geopolitics", "VC", "PE", "Regulation", "AI", "Crypto"],
   "sentiment": "bullish" or "bearish" or "neutral",
   "deal_type": "M&A" or "IPO" or "Funding" or "Earnings" or "Macro" or "Geopolitical" or "Other" or null,
@@ -157,7 +188,7 @@ _GOV_SUBSTRINGS = [
     "reserve bank of",
 ]
 
-_GOV_ACRONYM_RE = re.compile(r"\b(cia|imf|nato|doj|fbi|fda|ftc|cfpb|cftc|finra|fdic|occ)\b")
+_GOV_ACRONYM_RE = re.compile(r"\b(cia|imf|nato|doj|fbi|fda|ftc|cfpb|cftc|finra|fdic|occ|nasa|faa)\b")
 
 _LAW_SUBSTRINGS = [
     "law offices of", "law office of", " llp", " & associates",
@@ -217,6 +248,34 @@ def matches_ingest_blocklist(article: dict) -> bool:
             print(f"  ⊘ Blocklist skip [{phrase!r}]: {article.get('title', '')[:80]}")
             return True
     return False
+
+
+def extract_company_names(companies_raw: list) -> list[str]:
+    """Parse Gemini's companies field.
+
+    Handles two formats:
+      New format: [{"name": "Acme Corp", "entity_type": "company"}, ...]
+      Old format: ["Acme Corp", ...]  (fallback — model may not comply immediately)
+
+    Returns a flat list of company name strings, filtering out any objects where
+    entity_type != "company".
+    """
+    if not companies_raw:
+        return []
+    names = []
+    for item in companies_raw:
+        if isinstance(item, str):
+            # Old format — include as-is; downstream blocklists handle quality
+            if item.strip():
+                names.append(item.strip())
+        elif isinstance(item, dict):
+            # New format — only include if entity_type is explicitly "company"
+            if item.get("entity_type") == "company":
+                name = (item.get("name") or "").strip()
+                if name:
+                    names.append(name)
+        # Any other type (int, bool, etc.) — skip silently
+    return names
 
 
 def strip_html(text: str) -> str:
@@ -413,6 +472,7 @@ def store_article(article, analysis):
             if _normalize_title(row.get("title", "")) == norm_new:
                 print(f"  ⊘ Title dedup skip: {article['title'][:70]}")
                 return None
+        companies = extract_company_names(analysis.get("companies", []))
         r = supabase.table("articles").insert({
             "title": article["title"],
             "summary": article["summary"] or "",
@@ -421,7 +481,7 @@ def store_article(article, analysis):
             "published_at": article["published_at"],
             "relevance_score": analysis["relevance_score"],
             "relevance_reason": analysis.get("relevance_reason", ""),
-            "companies": analysis.get("companies", []),
+            "companies": companies,
             "themes": analysis.get("themes", []),
             "sentiment": analysis.get("sentiment", "neutral"),
             "sector": analysis.get("sector", "") if analysis.get("sector", "") in SECTORS else "",
@@ -430,9 +490,11 @@ def store_article(article, analysis):
             "content_type": article.get("content_type", "snippet"),
         }).execute()
         article_id = r.data[0]["id"]
-        for company in analysis.get("companies", []):
+        for company in companies:
             if is_blocked_entity(company):
                 print(f"  ⊘ Blocked entity: {company}")
+                continue
+            if not is_valid_company(company, supabase):
                 continue
             cid = upsert_company(company, analysis.get("themes", []), analysis.get("sentiment", "neutral"))
             if cid:
