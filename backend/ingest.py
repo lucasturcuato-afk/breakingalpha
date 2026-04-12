@@ -190,12 +190,22 @@ def is_blocked_entity(name: str) -> bool:
 # to avoid wasting API tokens on class-action / law-firm PRs.
 # ---------------------------------------------------------------------------
 
-_INGEST_KEYWORD_BLOCKLIST = [
+_INGEST_KEYWORD_BLOCKLIST = (
+    # Class-action and shareholder lawsuit boilerplate
     "securities class action",
+    "class action lawsuit",
+    "shareholder lawsuit",
+    "lead plaintiff deadline",
+    "lead plaintiff",
+    "remind investors",
     "encourages investors to contact",
+    "securities fraud investigation",
+    "loss recovery",
+    "no cost to investors",
+    # Investigation announcement boilerplate
     "announces investigation into",
     "filing deadline",
-]
+)
 
 
 def matches_ingest_blocklist(article: dict) -> bool:
@@ -439,15 +449,15 @@ def store_article(article, analysis):
 
 def run_ingestion():
     print(f"\n{'='*60}\nBreakingAlpha Ingestion — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n{'='*60}")
-    print("\n[1/3] Fetching articles...")
+    print("\n[1/4] Fetching articles...")
     articles = fetch_all_articles()
     print(f"  {len(articles)} unique articles")
 
-    print(f"\n[1.5/3] Pre-filtering {len(articles)} articles against keyword blocklist...")
+    print(f"\n[2/4] Pre-filtering {len(articles)} articles against keyword blocklist...")
     articles = [a for a in articles if not matches_ingest_blocklist(a)]
     print(f"  {len(articles)} articles after keyword pre-filter")
 
-    print(f"\n[2/3] Filtering {len(articles)} articles with Gemini (batch)...")
+    print(f"\n[3/4] Filtering {len(articles)} articles with Gemini (batch)...")
     results = filter_articles_batch(articles)
     relevant = []
     for a, result in zip(articles, results):
@@ -455,7 +465,7 @@ def run_ingestion():
             relevant.append((a, result))
             print(f"  ✓ [{result['relevance_score']}/10] [{result.get('sector','?')[:20]}] {a['title'][:60]}...")
 
-    print(f"\n[3/3] Storing {len(relevant)} articles...")
+    print(f"\n[4/4] Storing {len(relevant)} articles...")
     article_ids = [aid for a, r in relevant if (aid := store_article(a, r))]
     stored = len(article_ids)
     print(f"\n✅ Done — {stored} new articles stored")
