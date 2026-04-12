@@ -55,6 +55,59 @@ GEMINI_API_KEY, NEWS_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
 
 **pipeline_runs, run_articles, brief_quality_scores, selection_audit, trend_clusters:** Phase 1 observation layer tables — see git history for schemas.
 
+## Full Diagnostic Audit (2026-04-10)
+
+### What Was Audited
+Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend pages, all API routes, all GitHub Actions workflows, all LLM prompts, Supabase query patterns, and output quality against paid-user value-add standard.
+
+### Key Findings
+
+**Pipeline Health — CRITICAL**
+- `schedule.yml` does NOT provide `GEMINI_API_KEY` to the pipeline. Backend code (ingest.py, synthesize.py) was migrated to Gemini but the CI workflow still only provides `GROQ_API_KEY`. The pipeline cannot run until this is fixed.
+- `deal_extractor.py` still uses Groq (llama-3.1-8b-instant) — intentional or needs migration.
+- `observe.py` model metadata constants are stale (still say llama-3.1-8b-instant / llama-3.3-70b-versatile).
+- No retry on synthesis Gemini call — single transient error produces stub briefing.
+
+**Frontend**
+- Dashboard "Signals Today" shows 0 — likely because pipeline hasn't run (GEMINI_API_KEY issue), plus timezone handling could cause edge cases.
+- Dashboard mood block, AI Signal Bar are hardcoded static strings.
+- Trends page is entirely hardcoded with 12 static signals — no live data.
+- CompactStoryCard expands on hover only, not click (touch device issue).
+- Company Intel route `/company` is correctly mapped in sidebar (not a code bug).
+
+**Data Integrity**
+- All Supabase queries correctly use `ingested_at` for article ordering.
+- `briefings` table correctly uses `created_at` for its own timestamps.
+- RLS on `articles` and `briefings` needs verification for anon SELECT.
+
+**Output Quality — PRIMARY CONCERN**
+- Company Intel memo prompt instructs model to output Company Brief verbatim (Wikipedia-level description) and describe facts without interpretation. Produces "I could have Googled this" output.
+- Morning/Evening Brief section prompts are well-structured but lack a conviction requirement — sections describe what happened without stating what it means.
+- Thesis generation prompt is the best in the codebase (testable claims, IB-grade language) but lacks action statements.
+
+### Prompt Changes Recommended (Priority Order)
+1. **Company Intel prompt** — Replace "output verbatim" Company Brief with analyst positioning. Add "so what" and conviction to Recent Developments and Key Watchpoints. (Effort: M)
+2. **Synthesis section prompts** — Add conviction sentence rule to all sections: end with position, not description. (Effort: S)
+3. **Thesis prompt** — Add action statement requirement: what to buy/sell/watch and what invalidates. (Effort: S)
+4. **Cross-section coherence rule** — Connect macro signals to deal implications across sections. (Effort: S)
+
+### Immediate Action Required
+1. Add `GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}` to schedule.yml env block
+2. Verify `google-genai` is in requirements.txt (or add `pip install google-genai` to workflow)
+3. Keep `GROQ_API_KEY` in schedule.yml (still needed for deal_extractor.py)
+
+### Waiting on Lucas
+- Thesis Board UI upgrade (in progress)
+- Autonomous improvement loop (scope unknown, may ship this weekend)
+- Do NOT modify: thesis-board/page.tsx, /api/theses/route.ts
+
+### Open Questions
+1. Has GEMINI_API_KEY been added as a GitHub Secret?
+2. Is deal_extractor.py staying on Groq intentionally?
+3. What is Lucas's scope for the autonomous improvement loop?
+4. Are there active paying users? (determines urgency of fixes)
+5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
+
 ## Recently Completed (2026-04-10)
 Full Groq→Gemini 2.5 Flash migration: frontend routes (theses, memo, thesis-detail, thesis-regenerate), backend ingest/synthesize, batch article filtering (166→127 articles, ~18min→2min pipeline), cluster-driven thesis gen, SEC/Fed feeds added, Gemini response parsing hardened (thinkingConfig, multi-fallback JSON), React hydration fix (Math.random()→deterministic), both repos clean on main, gh CLI auth set up.
 
