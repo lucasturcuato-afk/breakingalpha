@@ -185,6 +185,30 @@ def is_blocked_entity(name: str) -> bool:
     return False
 
 
+# ---------------------------------------------------------------------------
+# Ingest keyword blocklist — pre-filters articles before Gemini batch scoring
+# to avoid wasting API tokens on class-action / law-firm PRs.
+# ---------------------------------------------------------------------------
+
+_INGEST_KEYWORD_BLOCKLIST = [
+    "securities class action",
+    "encourages investors to contact",
+    "announces investigation into",
+    "filing deadline",
+]
+
+
+def matches_ingest_blocklist(article: dict) -> bool:
+    """Return True if the article's title or summary matches any blocked phrase.
+    Logs the matched phrase and article title for audit purposes."""
+    text = ((article.get("title") or "") + " " + (article.get("summary") or "")).lower()
+    for phrase in _INGEST_KEYWORD_BLOCKLIST:
+        if phrase in text:
+            print(f"  ⊘ Blocklist skip [{phrase!r}]: {article.get('title', '')[:80]}")
+            return True
+    return False
+
+
 def strip_html(text: str) -> str:
     """Strip HTML tags, decode entities, remove bare URLs, collapse whitespace.
     Mirrors the logic in src/lib/strip-html.ts so stored summaries are clean
@@ -418,6 +442,10 @@ def run_ingestion():
     print("\n[1/3] Fetching articles...")
     articles = fetch_all_articles()
     print(f"  {len(articles)} unique articles")
+
+    print(f"\n[1.5/3] Pre-filtering {len(articles)} articles against keyword blocklist...")
+    articles = [a for a in articles if not matches_ingest_blocklist(a)]
+    print(f"  {len(articles)} articles after keyword pre-filter")
 
     print(f"\n[2/3] Filtering {len(articles)} articles with Gemini (batch)...")
     results = filter_articles_batch(articles)
