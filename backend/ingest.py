@@ -11,6 +11,7 @@ from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 from watchlist import boost_watchlist_relevance
+from wikidata import is_valid_company
 
 load_dotenv()
 
@@ -249,6 +250,34 @@ def matches_ingest_blocklist(article: dict) -> bool:
     return False
 
 
+def extract_company_names(companies_raw: list) -> list[str]:
+    """Parse Gemini's companies field.
+
+    Handles two formats:
+      New format: [{"name": "Acme Corp", "entity_type": "company"}, ...]
+      Old format: ["Acme Corp", ...]  (fallback — model may not comply immediately)
+
+    Returns a flat list of company name strings, filtering out any objects where
+    entity_type != "company".
+    """
+    if not companies_raw:
+        return []
+    names = []
+    for item in companies_raw:
+        if isinstance(item, str):
+            # Old format — include as-is; downstream blocklists handle quality
+            if item.strip():
+                names.append(item.strip())
+        elif isinstance(item, dict):
+            # New format — only include if entity_type is explicitly "company"
+            if item.get("entity_type") == "company":
+                name = (item.get("name") or "").strip()
+                if name:
+                    names.append(name)
+        # Any other type (int, bool, etc.) — skip silently
+    return names
+
+
 def strip_html(text: str) -> str:
     """Strip HTML tags, decode entities, remove bare URLs, collapse whitespace.
     Mirrors the logic in src/lib/strip-html.ts so stored summaries are clean
@@ -451,7 +480,7 @@ def store_article(article, analysis):
             "published_at": article["published_at"],
             "relevance_score": analysis["relevance_score"],
             "relevance_reason": analysis.get("relevance_reason", ""),
-            "companies": analysis.get("companies", []),
+            "companies": extract_company_names(analysis.get("companies", [])),
             "themes": analysis.get("themes", []),
             "sentiment": analysis.get("sentiment", "neutral"),
             "sector": analysis.get("sector", "") if analysis.get("sector", "") in SECTORS else "",
@@ -460,9 +489,11 @@ def store_article(article, analysis):
             "content_type": article.get("content_type", "snippet"),
         }).execute()
         article_id = r.data[0]["id"]
-        for company in analysis.get("companies", []):
+        for company in extract_company_names(analysis.get("companies", [])):
             if is_blocked_entity(company):
                 print(f"  ⊘ Blocked entity: {company}")
+                continue
+            if not is_valid_company(company, supabase):
                 continue
             cid = upsert_company(company, analysis.get("themes", []), analysis.get("sentiment", "neutral"))
             if cid:
