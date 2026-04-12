@@ -1,6 +1,6 @@
 # Signalera Handoff
 
-## Current Status (2026-04-10)
+## Current Status (2026-04-11)
 - Live at https://breakingalpha.vercel.app (deploying as Signalera)
 - Full rebrand from BreakingAlpha to Signalera shipped — logo, fonts, theme, auth page
 - Auth middleware protecting all routes — unauthenticated users redirect to /auth
@@ -62,8 +62,8 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 
 ### Key Findings
 
-**Pipeline Health — CRITICAL**
-- `schedule.yml` does NOT provide `GEMINI_API_KEY` to the pipeline. Backend code (ingest.py, synthesize.py) was migrated to Gemini but the CI workflow still only provides `GROQ_API_KEY`. The pipeline cannot run until this is fixed.
+**Pipeline Health — CRITICAL (RESOLVED 2026-04-11)**
+- ~~`schedule.yml` does NOT provide `GEMINI_API_KEY` to the pipeline~~. **RESOLVED:** Lucas's e9e235a commit added GEMINI_API_KEY to schedule.yml env block (2026-04-11).
 - `deal_extractor.py` still uses Groq (llama-3.1-8b-instant) — intentional or needs migration.
 - `observe.py` model metadata constants are stale (still say llama-3.1-8b-instant / llama-3.3-70b-versatile).
 - No retry on synthesis Gemini call — single transient error produces stub briefing.
@@ -91,15 +91,15 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 3. **Thesis prompt** — Add action statement requirement: what to buy/sell/watch and what invalidates. (Effort: S)
 4. **Cross-section coherence rule** — Connect macro signals to deal implications across sections. (Effort: S)
 
-### Immediate Action Required
-1. Add `GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}` to schedule.yml env block
-2. Verify `google-genai` is in requirements.txt (or add `pip install google-genai` to workflow)
-3. Keep `GROQ_API_KEY` in schedule.yml (still needed for deal_extractor.py)
+### Immediate Action Required (2026-04-10, PARTIALLY RESOLVED)
+1. ~~Add `GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}` to schedule.yml env block~~ — DONE (e9e235a)
+2. Verify `google-genai` is in requirements.txt (or add `pip install google-genai` to workflow) — Verify in next run
+3. Keep `GROQ_API_KEY` in schedule.yml (still needed for deal_extractor.py) — Still active
 
 ### Waiting on Lucas
-- Thesis Board UI upgrade (in progress)
-- Autonomous improvement loop (scope unknown, may ship this weekend)
-- Do NOT modify: thesis-board/page.tsx, /api/theses/route.ts
+- ~~Thesis Board UI upgrade (in progress)~~ — DONE: phases 2–6 shipped with grading, pattern memory, adversarial testing, source credibility, pattern library feedback
+- ~~Autonomous improvement loop (scope unknown)~~ — DONE: implemented across phases 2–6
+- Do NOT modify: thesis-board/page.tsx, /api/theses/route.ts (until next Lucas cycle)
 
 ### Open Questions
 1. Has GEMINI_API_KEY been added as a GitHub Secret?
@@ -107,6 +107,9 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 3. What is Lucas's scope for the autonomous improvement loop?
 4. Are there active paying users? (determines urgency of fixes)
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
+
+## Recently Completed (2026-04-11)
+PR #78 (feat/company-intel-prompt-rewrite) iterative refinement: 8 cumulative prompt rule updates to buildMemoSystemPrompt() — analyst brief opener rule (proper noun required, "The" banned), low-recognition company carve-out (exception format), What Just Changed development filter (dollar figure/counterparty/product required), Cross-Signals binary verdict rule (exact format), What To Do With This bullet structure (if/then format, 75-word cap), sourcing discipline (all figures traceable to article pool), length rule (signal density not target), em-dash ban, expanded banned phrase list. Validated against live Supabase pools (NVIDIA 20 articles + Anthropic 20 articles); all figures sourced, no training knowledge leakage. Lucas's phases 2–6 commits merged in (thesis grading, pattern memory, adversarial testing, source credibility, pattern library feedback); GEMINI_API_KEY pipeline bug (previously critical) resolved via Lucas's e9e235a commit.
 
 ## Recently Completed (2026-04-10)
 Full Groq→Gemini 2.5 Flash migration: frontend routes (theses, memo, thesis-detail, thesis-regenerate), backend ingest/synthesize, batch article filtering (166→127 articles, ~18min→2min pipeline), cluster-driven thesis gen, SEC/Fed feeds added, Gemini response parsing hardened (thinkingConfig, multi-fallback JSON), React hydration fix (Math.random()→deterministic), both repos clean on main, gh CLI auth set up.
@@ -144,13 +147,14 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 10. **Phase 1 hardening — observe.py reconstruction fix (PR #56)** — `_reconstruct_selected()` rewritten to mirror current `synthesize._select_articles_for_synthesis()` (spine=12, floor=6, sector_cap=3, floor_min=7). `audit.py` `_TARGET_COUNT` corrected 20→18. Stale `_diversify_articles` reconstruction logic replaced. No schema changes.
 
 ## Pending / Known Issues
-- **synthesize.py stub brief-quality issue** — hit stub path on today's test run; all sections (deals_and_ma, geopolitics, macro_and_rates, public_markets, sector_spotlight, what_to_watch) reported omitted, 0 top deals. Investigate: Gemini response truncation, synthesis prompt drift, article selection pool shrinkage, or response parsing edge case.
 - **E2E tests need Supabase credentials** — Playwright suite configured (10 specs, 48 tests) but pending valid E2E_USER_EMAIL, E2E_USER_PASSWORD in .env.local to run against real Supabase test user
 - **middleware.ts → proxy.ts** — Next.js 16 deprecation warning; rename `src/middleware.ts` to `src/proxy.ts` (breaking change in v16+)
 - **Google OAuth consent screen** shows Supabase project name instead of "Signalera" — update in Google Cloud Console > OAuth consent screen
 - **StoryCard Thesis button** (dashboard story cards) still inserts a new thesis directly instead of matching existing ones — only FeedRow button was updated
 - **COMPANY_IDENTITY map** (35 entries, hardcoded) should eventually migrate to `company_profiles` Supabase table (ticker, industry, brief, source fields) for broader coverage
-- **Key Watchpoints / Sector Context thin for low-coverage companies** — article data quality issue, not a code issue; defer until article ingest improves
+- **Trends page still hardcoded with static signals** — no live data integration
+- **Dashboard mood block and AI Signal Bar hardcoded static strings** — needs live data source
+- **synthesize.py stub brief-quality issue** — monitor: Gemini response truncation, synthesis prompt drift, article selection pool shrinkage, or response parsing edge case
 - **Article inputs constrained to 500-char RSS summaries** — memo depth limited; full content archival deferred
 - **Earnings calendar integration** — requires ticker field + FMP/Polygon API; deferred
 - **Legacy data inconsistency (low priority)** — a few old DB rows have stale `deal_type`/`primary_company`; won't block progress; will correct via re-ingest over time

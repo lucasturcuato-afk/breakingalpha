@@ -45,9 +45,11 @@
 - Company Intel development classification tightened — restricted `isMaterialCounterparty` to M&A only, eliminated Funding/IPO false-positives (PR #74)
 - Company Intel memo quality hardened — ranked context articles by company-specific signal (3 new scoring functions), explicit 250-word limit, evidence-driven "What To Watch" (PR #75)
 - Evening Wrap headline selection brought to parity with Morning Brief spec (PR #76)
+- Company Intel memo prompt rewrite (PR #78) — 8 cumulative rules: analyst brief opener (proper noun required, "The" banned), low-recognition company carve-out, What Just Changed development filter, Cross-Signals binary verdict, What To Do With This bullet structure, sourcing discipline (all figures traceable to article pool), length rule (signal density), em-dash ban, expanded banned phrase list. Validated against live Supabase pools; no training knowledge leakage.
+- Autonomous Improvement Phase 2–6 (Lucas) — thesis grading (Finnhub + Gemini), pattern memory, adversarial bear-case testing, source credibility weighting, pattern library feedback loop; all integrated into pipeline and thesis display
 
 ## In Progress
-- `fix/brief-freshness-observability` — monitoring scheduler integration + debug endpoint usage
+- None currently tracked
 
 ## Next — Noah
 ### Autonomous Improvement Phase 1 (complete ✓)
@@ -72,8 +74,8 @@
 - **Watchlist preference toggle wiring** — toggle is disabled in UI ("COMING SOON"); deferred pending validation of sector classification stability
 
 ## Next — Lucas
-- UI polish pass across all tabs
 - Fix StoryCard Thesis button (dashboard story cards inserts new thesis instead of matching existing ones)
+- UI polish pass across all tabs
 
 ## Later
 - Additional data enrichment features (sector one-pagers, yahoo_finance.py integration)
