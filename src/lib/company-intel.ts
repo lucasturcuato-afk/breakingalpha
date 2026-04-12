@@ -217,6 +217,42 @@ export const JUNK_PHRASES = new Set([
   "big tech", "big oil", "big pharma",
 ]);
 
+// Exact-match sets — currencies and countries should never appear as company names
+const CURRENCY_BLOCKLIST = new Set([
+  "bitcoin", "ethereum", "usd", "btc", "eth", "usdc", "usdt", "crypto",
+  "tether", "ripple", "solana", "dogecoin", "litecoin", "binance coin",
+  "binance", "eur", "gbp", "yuan", "yen", "cny", "jpy", "euro",
+]);
+
+const COUNTRY_BLOCKLIST = new Set([
+  "iran", "china", "russia", "usa", "united states", "united states of america",
+  "uk", "united kingdom", "israel", "north korea", "south korea", "germany",
+  "france", "japan", "india", "brazil", "australia", "canada", "mexico",
+  "turkey", "saudi arabia", "ukraine", "taiwan", "pakistan", "egypt",
+  "indonesia", "nigeria", "south africa", "argentina",
+]);
+
+// Substring-match patterns for government bodies and law firms
+const GOV_SUBSTRINGS = [
+  "department of", "ministry of", "federal reserve", "sec ", "the sec",
+  " fda", "congress", "senate", "white house", "pentagon", " nato",
+  "european union", "world bank", " imf", " cia", " fbi", " doj",
+  "department of justice", "department of defense", "u.s. army",
+  "u.s. navy", "u.s. air force", "treasury department",
+  "internal revenue", "federal bureau",
+  "securities and exchange commission", "federal trade commission",
+  "federal deposit insurance", "consumer financial protection",
+  "international monetary fund", "european commission",
+  "european central bank", "bank of england", "bank of japan",
+  "bank of canada", "reserve bank of",
+];
+
+const LAW_SUBSTRINGS = [
+  "law offices of", "law office of", "llp", " & associates",
+  "attorneys at law", "legal group", "law group", "p.c.", "pllc",
+  "law firm", "legal counsel",
+];
+
 export function isJunkEntityName(raw: string): boolean {
   if (raw.includes("(") || raw.includes(")")) return true;
   if (/\be\.g\./i.test(raw)) return true;
@@ -225,6 +261,12 @@ export function isJunkEntityName(raw: string): boolean {
   if (JUNK_PHRASES.has(lower)) return true;
   const words = lower.split(/[\s,/&]+/).filter(Boolean);
   if (words.some((w) => JUNK_WORDS.has(w))) return true;
+  // Currencies and countries — exact match
+  if (CURRENCY_BLOCKLIST.has(lower)) return true;
+  if (COUNTRY_BLOCKLIST.has(lower)) return true;
+  // Government bodies and law firms — substring match
+  if (GOV_SUBSTRINGS.some((pat) => lower.includes(pat))) return true;
+  if (LAW_SUBSTRINGS.some((pat) => lower.includes(pat))) return true;
   return false;
 }
 
