@@ -219,7 +219,7 @@ export default function CompanyIntelPage() {
               />
             ) : (
               <div className="grid grid-cols-2 gap-2">
-                {filtered.slice(0, 40).map((company) => (
+                {filtered.map((company) => (
                   <button
                     key={company.name}
                     type="button"
