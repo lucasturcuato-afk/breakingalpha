@@ -270,7 +270,7 @@ def _validate_sector_breakdown(sb):
     return clean
 
 
-def gemini_generate(system, user_content, temperature=0.3, max_tokens=2000):
+def gemini_generate(system, user_content, temperature=0.3, max_tokens=4096):
     """Call Gemini with a system instruction and user prompt."""
     response = gemini_client.models.generate_content(
         model=GEMINI_MODEL,
@@ -279,6 +279,7 @@ def gemini_generate(system, user_content, temperature=0.3, max_tokens=2000):
             system_instruction=system,
             temperature=temperature,
             max_output_tokens=max_tokens,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
             response_mime_type="application/json",
         ),
     )
@@ -336,7 +337,7 @@ def run(brief_type="morning"):
             system=system,
             user_content=f"Today's articles:\n\n{article_text}",
             temperature=0.3,
-            max_tokens=2000,
+            max_tokens=4096,
         )
         raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
         try:
