@@ -210,11 +210,15 @@ export const JUNK_WORDS = new Set([
   "enterprises", "conglomerates", "banks", "insurers", "retailers",
   "manufacturers", "providers", "operators", "investors", "funds",
   "giants", "players", "leaders", "vendors", "competitors",
+  // Common generic words that are never standalone company names
+  "news", "army", "navy", "military", "windows", "linux", "also",
+  "sterling", "united", "senior",
 ]);
 
 // Compound category labels that neither word alone would catch.
 export const JUNK_PHRASES = new Set([
   "big tech", "big oil", "big pharma",
+  "wall street",
 ]);
 
 // Exact-match sets — currencies and countries should never appear as company names
@@ -245,12 +249,40 @@ const GOV_SUBSTRINGS = [
   "international monetary fund", "european commission",
   "european central bank", "bank of england", "bank of japan",
   "bank of canada", "reserve bank of",
+  // Military branches and additional government bodies
+  "space force", "air force", "us navy", "postal service",
+  "open market committee", "comptroller of the currency",
+  "defense intelligence", "homeland security",
 ];
 
 const LAW_SUBSTRINGS = [
   "law offices of", "law office of", "llp", " & associates",
   "attorneys at law", "legal group", "law group", "p.c.", "pllc",
   "law firm", "legal counsel",
+];
+
+// Stock market indexes — exact match
+const INDEX_BLOCKLIST = new Set([
+  "nifty 50", "nifty", "sensex", "s&p", "nasdaq", "dow jones", "ftse",
+  "hang seng", "dax", "cac 40", "nikkei", "asx",
+]);
+
+// Named individuals — exact match on lowercased full name
+const PEOPLE_BLOCKLIST = new Set([
+  "xi jinping", "elon musk", "tulsi gabbard", "roger stone", "trump",
+  "michael burry", "trump administration", "starmer", "janet mills",
+  "graham platner", "viktor orban",
+]);
+
+// Known junk entities that slip past pattern matching — exact match catch-all
+const KNOWN_JUNK_ENTITIES = new Set([
+  "howard g. smith", "ims legal strategies", "klb business valuations",
+]);
+
+// Abstract noun phrases — substring match on lowercased name
+const ABSTRACT_SUBSTRINGS = [
+  "drone makers", "energy sector", "kuomintang", "communist party",
+  "heritage foundation", "stocks", "stock",
 ];
 
 export function isJunkEntityName(raw: string): boolean {
@@ -267,6 +299,11 @@ export function isJunkEntityName(raw: string): boolean {
   // Government bodies and law firms — substring match
   if (GOV_SUBSTRINGS.some((pat) => lower.includes(pat))) return true;
   if (LAW_SUBSTRINGS.some((pat) => lower.includes(pat))) return true;
+  // Stock indexes, named individuals, abstract phrases, and known junk entities
+  if (INDEX_BLOCKLIST.has(lower)) return true;
+  if (PEOPLE_BLOCKLIST.has(lower)) return true;
+  if (KNOWN_JUNK_ENTITIES.has(lower)) return true;
+  if (ABSTRACT_SUBSTRINGS.some((pat) => lower.includes(pat))) return true;
   return false;
 }
 
