@@ -279,6 +279,7 @@ def gemini_generate(system, user_content, temperature=0.3, max_tokens=2000):
             system_instruction=system,
             temperature=temperature,
             max_output_tokens=max_tokens,
+            response_mime_type="application/json",
         ),
     )
     return (response.text or "").strip()
@@ -329,6 +330,7 @@ def run(brief_type="morning"):
     system = MORNING_SYSTEM if brief_type == "morning" else EVENING_SYSTEM
 
     data = None
+    raw = ""
     try:
         raw = gemini_generate(
             system=system,
@@ -337,9 +339,20 @@ def run(brief_type="morning"):
             max_tokens=2000,
         )
         raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
-        data = json.loads(raw)
+        try:
+            data = json.loads(raw)
+        except Exception:
+            # tier 2: extract first {...} block
+            match = re.search(r'\{.*\}', raw, re.DOTALL)
+            if match:
+                try:
+                    data = json.loads(match.group())
+                except Exception:
+                    pass
+        if data is None:
+            raise ValueError(f"Could not parse Gemini response as JSON. Raw: {raw[:200]}")
     except Exception as e:
-        print(f"  ✗ Gemini error: {e} — falling back to stub briefing")
+        print(f"  ✗ Gemini error: {e} — raw response: {repr(raw[:200])} — falling back to stub briefing")
 
     if data is None:
         data = {

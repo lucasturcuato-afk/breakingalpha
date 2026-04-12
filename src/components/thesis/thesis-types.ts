@@ -42,6 +42,9 @@ export interface ThesisItem {
   updatedAt: string;
   source?: string;
   articles?: ThesisArticle[];
+  bear_case?: string | null;
+  adversarial_score?: number | null;
+  passed_adversarial?: boolean | null;
 }
 
 export const statusLabels: Record<ThesisStatus, string> = {

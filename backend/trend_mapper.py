@@ -69,6 +69,148 @@ from supabase import create_client
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 
 # ---------------------------------------------------------------------------
+# Phase 5 — source credibility multiplier
+# Each cluster's aggregate strength is nudged by the mean win_rate of its
+# contributing sources. The table is populated by `source_credibility.py`
+# after `thesis_grader` produces outcomes. Until the table has rows we skip
+# the multiplier entirely (returning the original strength untouched) so
+# cold-start runs aren't halved by a blanket 0.5 default.
+# ---------------------------------------------------------------------------
+try:
+    import source_credibility as _src_cred
+except Exception:
+    _src_cred = None
+
+_SOURCE_WIN_RATES: dict[str, float] | None = None
+_SOURCE_WIN_RATES_LOADED = False
+_SOURCE_WIN_RATE_DEFAULT = 0.5
+
+
+def _get_source_win_rates() -> dict[str, float] | None:
+    """Load and cache `{source: win_rate}` for this process. None = skip."""
+    global _SOURCE_WIN_RATES, _SOURCE_WIN_RATES_LOADED
+    if _SOURCE_WIN_RATES_LOADED:
+        return _SOURCE_WIN_RATES
+    _SOURCE_WIN_RATES_LOADED = True
+    if _src_cred is None:
+        _SOURCE_WIN_RATES = None
+        return None
+    try:
+        _SOURCE_WIN_RATES = _src_cred.load_win_rates()
+    except Exception:
+        _SOURCE_WIN_RATES = None
+    return _SOURCE_WIN_RATES
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 — pattern library feedback boost
+# Clusters whose dominant sector matches a high-win-rate historical pattern
+# get a gentle multiplier nudge so they rank above identical-strength
+# clusters with no historical backing. The boost is bounded to [0.9, 1.15]
+# — enough to tie-break reliably, never enough to invert a weaker cluster
+# above a much stronger one.
+# ---------------------------------------------------------------------------
+try:
+    import pattern_memory as _pattern_memory
+except Exception:
+    _pattern_memory = None
+
+_PATTERN_SECTOR_RATES: dict[str, float] | None = None
+_PATTERN_SECTOR_RATES_LOADED = False
+
+
+def _get_pattern_sector_rates() -> dict[str, float] | None:
+    """Return {sector: best_win_rate} across horizons and signals. None = skip."""
+    global _PATTERN_SECTOR_RATES, _PATTERN_SECTOR_RATES_LOADED
+    if _PATTERN_SECTOR_RATES_LOADED:
+        return _PATTERN_SECTOR_RATES
+    _PATTERN_SECTOR_RATES_LOADED = True
+    if _pattern_memory is None:
+        _PATTERN_SECTOR_RATES = None
+        return None
+    try:
+        # Pull up to 200 patterns with n_observed >= 5 and build a
+        # per-sector maximum win rate. query_relevant_patterns is ordered
+        # by win_rate desc so the first hit per sector is the best one.
+        rows = _pattern_memory.query_relevant_patterns(
+            sector=None, horizon=None, min_n=5, limit=200,
+        )
+        best: dict[str, float] = {}
+        for r in rows or []:
+            sector = r.get("sector") or ""
+            wr = r.get("win_rate")
+            if not sector or wr is None:
+                continue
+            try:
+                val = float(wr)
+            except Exception:
+                continue
+            if sector not in best or val > best[sector]:
+                best[sector] = val
+        _PATTERN_SECTOR_RATES = best if best else None
+    except Exception:
+        _PATTERN_SECTOR_RATES = None
+    return _PATTERN_SECTOR_RATES
+
+
+def _apply_pattern_boost(cluster, strength: float) -> float:
+    """
+    Nudge a cluster's strength by its dominant sector's historical win rate.
+    Multiplier = 1 + 0.3 * (win_rate - 0.5) → capped to [0.85, 1.15].
+    Returns strength unchanged when pattern data is missing or inconclusive.
+    """
+    try:
+        rates = _get_pattern_sector_rates()
+        if not rates or not cluster:
+            return strength
+        # Dominant sector = most common non-empty sector in the cluster
+        counts: dict[str, int] = {}
+        for art in cluster:
+            sec = art.get("sector")
+            if sec:
+                counts[sec] = counts.get(sec, 0) + 1
+        if not counts:
+            return strength
+        dominant = max(counts, key=counts.get)
+        wr = rates.get(dominant)
+        if wr is None:
+            return strength
+        mult = 1.0 + 0.3 * (float(wr) - 0.5)
+        mult = max(0.85, min(1.15, mult))
+        return round(max(0.0, min(1.0, float(strength) * mult)), 4)
+    except Exception:
+        return strength
+
+
+def _apply_source_credibility(cluster, strength: float) -> float:
+    """
+    Multiply a cluster's strength by the mean win_rate of its contributing
+    sources. Unknown sources fall back to `_SOURCE_WIN_RATE_DEFAULT` (0.5).
+    Returns the original strength unchanged when the table is missing.
+    """
+    try:
+        rates = _get_source_win_rates()
+        if rates is None:
+            return strength
+        if not cluster:
+            return strength
+        seen: set[str] = set()
+        weights: list[float] = []
+        for art in cluster:
+            src = art.get("source") or ""
+            if not src or src in seen:
+                continue
+            seen.add(src)
+            weights.append(float(rates.get(src, _SOURCE_WIN_RATE_DEFAULT)))
+        if not weights:
+            return strength
+        mult = sum(weights) / len(weights)
+        return round(max(0.0, min(1.0, float(strength) * mult)), 4)
+    except Exception:
+        return strength
+
+
+# ---------------------------------------------------------------------------
 # Tunable constants
 # Adjust these together, with an understanding of the trade-offs documented
 # below each block. Do not tune these individually without inspecting output.
@@ -931,6 +1073,8 @@ def map_trends(brief_type, started_at, run_id=None):
             cluster_key = make_cluster_key(cluster)
             label       = make_cluster_label(cluster)
             strength    = score_cluster_strength(cluster)
+            strength    = _apply_source_credibility(cluster, strength)  # Phase 5
+            strength    = _apply_pattern_boost(cluster, strength)       # Phase 6
             confidence  = score_cluster_confidence(cluster)
 
             cluster_type, matched_run_count, matched_prior_keys = classify_cluster_type(
