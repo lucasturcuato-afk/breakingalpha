@@ -126,6 +126,7 @@ Respond ONLY with a valid JSON array containing EXACTLY {n} objects, one per art
 _CURRENCY_BLOCKLIST = {
     "bitcoin", "ethereum", "usd", "btc", "eth", "usdc", "usdt", "crypto",
     "tether", "ripple", "solana", "dogecoin", "litecoin", "binance coin",
+    "binance", "eur", "gbp", "yuan", "yen", "cny", "jpy", "euro",
 }
 
 _COUNTRY_BLOCKLIST = {
@@ -138,12 +139,25 @@ _COUNTRY_BLOCKLIST = {
 
 _GOV_SUBSTRINGS = [
     "department of", "ministry of", "federal reserve", "sec ", "the sec",
-    "fda", "congress", "senate", "white house", "pentagon", "nato",
-    "european union", "world bank", "imf", "cia", "fbi", "doj",
+    "congress", "senate", "white house", "pentagon",
+    "european union", "world bank",
     "department of justice", "department of defense", "u.s. army",
     "u.s. navy", "u.s. air force", "treasury department",
     "internal revenue", "federal bureau",
+    "securities and exchange commission",
+    "federal trade commission",
+    "federal deposit insurance",
+    "consumer financial protection",
+    "international monetary fund",
+    "european commission",
+    "european central bank",
+    "bank of england",
+    "bank of japan",
+    "bank of canada",
+    "reserve bank of",
 ]
+
+_GOV_ACRONYM_RE = re.compile(r"\b(cia|imf|nato|doj|fbi|fda|ftc|cfpb|cftc|finra|fdic|occ)\b")
 
 _LAW_SUBSTRINGS = [
     "law offices of", "law office of", " llp", " & associates",
@@ -159,6 +173,8 @@ def is_blocked_entity(name: str) -> bool:
     if low in _CURRENCY_BLOCKLIST:
         return True
     if low in _COUNTRY_BLOCKLIST:
+        return True
+    if _GOV_ACRONYM_RE.search(low):
         return True
     for pat in _GOV_SUBSTRINGS:
         if pat in low:
