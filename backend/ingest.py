@@ -188,7 +188,7 @@ _GOV_SUBSTRINGS = [
     "reserve bank of",
 ]
 
-_GOV_ACRONYM_RE = re.compile(r"\b(cia|imf|nato|doj|fbi|fda|ftc|cfpb|cftc|finra|fdic|occ)\b")
+_GOV_ACRONYM_RE = re.compile(r"\b(cia|imf|nato|doj|fbi|fda|ftc|cfpb|cftc|finra|fdic|occ|nasa|faa)\b")
 
 _LAW_SUBSTRINGS = [
     "law offices of", "law office of", " llp", " & associates",
