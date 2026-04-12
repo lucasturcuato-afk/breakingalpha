@@ -19,11 +19,11 @@ _REQUEST_DELAY = 0.15  # seconds between uncached API calls — well within Wiki
 # All checked as substrings on the lowercased Wikidata description.
 _DROP_DESCRIPTION_KEYWORDS = [
     "country", "sovereign state", "nation state", "government", "federal agency",
-    "regulatory agency", "independent agency", "government agency",
+    "regulatory agency", "independent agency", "government agency", "central bank",
     "military branch", "armed forces", "intelligence agency",
     "person", "human", "politician", "head of state", "president of",
     "prime minister", "secretary of", "businessman",  # individuals often described as "businessman"
-    "cryptocurrency", "digital currency", "crypto asset",
+    "cryptocurrency", "digital currency", "crypto asset", "digital cash",
     "stock market index", "stock index", "financial index", "market index",
     "political party", "religious organization", "advocacy group",
     "sovereign wealth fund", "investment trust", "special purpose",
