@@ -2,12 +2,12 @@
 
 ## Implementation Contract
 
-- **Current phase:** Phase 1 — Observation complete; summaries in progress
-- **Current goal:** Record every run, critique every run, audit selection quality, map trend clusters, and surface consolidated operator digests after each run. ✓ Observation complete. Post-run summary built. Next: weekly cross-run summary.
-- **In scope now:** Post-run operator summary (built), weekly cross-run summary (pending).
+- **Current phase:** Phase 1 — Complete. All 12 pipeline steps live and writing to Supabase.
+- **Current goal:** Phase 1 observation layer is fully operational. Next phase is Phase 2 safe autonomy (config versioning, bounded optimizer, rollback window).
+- **In scope now:** Weekly cross-run summary (generate_weekly_digest in summarize.py, standalone cron — not run.py), then Phase 2.
 - **Not in scope yet:** Optimizer, rollback, config mutation, persona logic, and engagement optimization.
 - **Source of truth:** This document governs autonomous-improvement work.
-- **Implementation status:** Phase 1 observation layer complete. Run Recorder (PR #42), Brief Critic (PR #47), Selection Auditor V1 (PR #48), Trend Mapper (PR #51) all built, merged, and live-validated. Post-run operator summary (summarize.py, step [8/8]) built and pending merge.
+- **Implementation status:** Phase 1 complete (all 12 steps). Run Recorder (PR #42), Brief Critic (PR #47), Selection Auditor V1 (PR #48), Trend Mapper (PR #51), summarize.py post-run summary all built and live. Steps 9–12 (thesis_grader, pattern_memory, source_credibility, adversarial) built by Lucas and live as of 2026-04-11. Dual-dimension article taxonomy (industry_verticals + activity_types) live as of PR #85 (2026-04-13).
 
 ---
 
@@ -59,39 +59,71 @@ Breaking Alpha already has many of the ingredients needed for this system:
 
 This means the next step is not inventing a new product category. It is wrapping the existing pipeline in a layer that observes, judges, remembers, and later improves it.
 
-## 5. V1 / Phase 1
+## 5. Phase Status (as of 2026-04-13)
+
+### Live and Complete
+
+All 12 pipeline steps are live, non-blocking, and writing to Supabase on every run:
+
+| Step | Module | Scope | Tables written |
+|------|--------|-------|----------------|
+| 4 | observe.py | every run | pipeline_runs, run_articles |
+| 5 | critique.py | every run | brief_quality_scores |
+| 6 | audit.py | every run | selection_audit |
+| 7 | trend_mapper.py | every run | trend_clusters |
+| 8 | summarize.py | every run | (stdout only — no write) |
+| 9 | thesis_grader.py | morning | theses.outcome |
+| 10 | pattern_memory.py | morning | pattern_library |
+| 11 | source_credibility.py | morning | source_credibility_scores |
+| 12 | adversarial.py | Sunday morning | (log only) |
+
+Article taxonomy is dual-dimension: `industry_verticals` (array) + `activity_types` (array), with `sector` as backward-compat primary vertical. Observation layer uses `industry_verticals[0]` with `sector` fallback throughout.
+
+### Deferred / Phase 2
+
+These items were identified but intentionally deferred — do not treat as bugs:
+
+- `synthesize.py` `sector_breakdown` JSONB keys still use free-text sector names produced by Gemini; no migration planned until Phase 2 briefing schema work
+- `src/components/brief/sector-signal-card.tsx` `sectorColors` map uses old hardcoded sector names matching `sector_breakdown` keys — deferred with the above
+- `summarize.generate_weekly_digest()` is built and tested but needs a dedicated cron trigger (separate from run.py)
+- Thesis button sector matching in `feed-row.tsx` uses `industry_verticals[0]` (updated 2026-04-13) but does not yet search across all verticals — improvement deferred
+
+---
+
+## 6. V1 / Phase 1
 
 ### Phase marker
 
-**We are currently in Phase 1 — Observation only.**
+**Phase 1 is complete. All observation steps are live.**
 
-### Completed (Phase 1 Observation Layer)
+### Completed (Phase 1 Observation Layer — all 12 steps live)
 
-- **Run Recorder** (PR #42, merged) — `backend/observe.py` + non-blocking hook in `backend/run.py`; writes one row to `pipeline_runs` and per-article rows to `run_articles` after each pipeline run; selected article provenance is reconstructed/inferred from ingest output
+- **Run Recorder** (PR #42, merged) — `backend/observe.py` + non-blocking hook in `backend/run.py`; writes one row to `pipeline_runs` and per-article rows to `run_articles` after each pipeline run; selected article provenance is reconstructed/inferred from ingest output. Pool query and selection reconstruction use `industry_verticals[0]` with `sector` fallback to mirror synthesize.py exactly (updated 2026-04-13).
 - **Brief Critic** (PR #47, merged) — Heuristic-only quality scorer with deterministic text checks. Non-blocking step 5 in pipeline. Writes one row per run to `brief_quality_scores` table (headline_word_count, banned_phrase_hits, sections_present, top_deals_count, status, soft_flags). observe.py now returns run_id for FK linking. Validated live 2026-04-03.
 - **Selection Auditor V1** (PR #48, merged) — Run-level only. `backend/audit.py` + non-blocking step 6 in pipeline. Reads `run_articles` for the given run, computes selection quality metrics (candidate/selected counts, score miss signals, sector concentration flag), and writes one row to `selection_audit`. All rows carry `provenance='reconstructed'`. No per-article claims. No LLM calls. Validated end-to-end live 2026-04-03.
-- **Trend Mapper Phase 1** (PR #51, merged & live-validated 2026-04-04) — `backend/trend_mapper.py` clusters related articles into persistent/emerging narratives. Non-blocking step [7/7] in pipeline. Pure-logic clustering, mover ranking, volatility scoring. Live validation: morning run fired [7/7] TREND MAP, wrote 6 clusters to trend_clusters table, 1 underrepresented cluster flagged. First run had lookback=0, all clusters marked "emerging". Supabase schema applied.
+- **Trend Mapper Phase 1** (PR #51, merged & live-validated 2026-04-04) — `backend/trend_mapper.py` clusters related articles into persistent/emerging narratives. Non-blocking step [7/7] in pipeline. Pure-logic clustering, mover ranking, volatility scoring. Live validation: morning run fired [7/7] TREND MAP, wrote 6 clusters to trend_clusters table, 1 underrepresented cluster flagged. First run had lookback=0, all clusters marked "emerging". Supabase schema applied. Article normalization uses `industry_verticals[0]` with `sector` fallback for all cluster key/label/similarity/surfacing logic (updated 2026-04-13).
+- **Post-run Summary** (`backend/summarize.py`, step [8/12]) — Non-blocking. Reads pipeline_runs, brief_quality_scores, selection_audit, trend_clusters for the current run_id and prints a consolidated ASCII box digest to the pipeline log (GitHub Actions). No LLM calls, no new schema.
+- **Thesis Grader** (`backend/thesis_grader.py`, step [9/12], morning only) — Built by Lucas. Grades theses that have a verifiable signal against market outcomes. Writes outcome back to `theses` table. Feeds `pattern_memory` step.
+- **Pattern Memory** (`backend/pattern_memory.py`, step [10/12], morning only) — Built by Lucas. Scans all graded theses, builds aggregate win-rate patterns keyed on `(sector, horizon, dominant_signal)`, upserts to `pattern_library` table. Used by trend_mapper (Phase 6 boost) and summarize.py (weekly digest addendum).
+- **Source Credibility** (`backend/source_credibility.py`, step [11/12], morning only) — Built by Lucas. Computes per-source win rates from graded thesis outcomes. Writes to `source_credibility_scores` table. Used by trend_mapper to weight cluster strength by contributing source quality.
+- **Adversarial Review** (`backend/adversarial.py`, step [12/12], Sunday morning only) — Built by Lucas. Weekly adversarial stress-test of pipeline outputs. Non-blocking.
 
 ### Still pending (Phase 1 summaries)
 
-- scheduled automatic post-run jobs
-- daily and weekly summaries for operators
+- Weekly cross-run summary: `generate_weekly_digest()` in `summarize.py` is built and calls Gemini 2.5 Flash, but is invoked from a separate weekly cron — not from run.py. Writes to `weekly_digests` table. **Not yet wired to a scheduled trigger.**
 
 ### Current goal
 
-Complete Phase 1 summary automation:
-
-- scheduled daily summary (top trends, sector momentum, key misses, quality metrics)
-- scheduled weekly summary (week-over-week trend progression, missed narratives, operator alerts)
+Wire `generate_weekly_digest()` (already built in `summarize.py`) to a scheduled GitHub Actions cron via `workflow_dispatch`, then move to Phase 2.
 
 ### What is in scope now
 
 - Morning Review and Evening Wrap only
-- automatic post-run evaluation
+- automatic post-run evaluation (all 12 steps)
 - automatic selection auditing
-- automatic trend mapping
-- memory writing to Supabase
-- daily and weekly summaries for operators
+- automatic trend mapping with pattern and source credibility boosts
+- memory writing to Supabase (all tables live)
+- weekly digest for operators (built, needs scheduling)
 
 ### What is not in scope now
 
@@ -102,11 +134,7 @@ Complete Phase 1 summary automation:
 - engagement optimization
 - broader product surface expansion
 
-### Practical constraint for implementation
-
-Avoid `backend/synthesize.py` if possible during Phase 1 because of open PR overlap. Prefer additive observation-layer work that minimizes conflict with active synthesis changes.
-
-## 6. Final Version / End-State
+## 7. Final Version / End-State
 
 The final version should be a persistent intelligence engine layered on top of the core pipeline. It should not merely grade completed text. It should improve Breaking Alpha's ability to identify what matters, explain why it matters, detect second-order read-throughs, and recognize early trend formation.
 
@@ -131,50 +159,79 @@ The final version should be a persistent intelligence engine layered on top of t
 - safely improve bounded behavior over time
 - generate a weekly machine-written strategy memo that informs future product work
 
-## 7. Agent Set
+## 8. Agent Set
 
-### Phase 1 agents
+### Phase 1 agents (all live)
 
-1. **Run Recorder**  
+1. **Run Recorder** (`observe.py`, step 4)
    Creates the canonical record for each run: config used, article universe, selected set, surfaced output, timing, errors, and model metadata.
 
-2. **Brief Critic**  
+2. **Brief Critic** (`critique.py`, step 5)
    Scores output quality across headline dominance, analysis depth, specificity, repetition, second-order insight quality, and usefulness of the what-to-watch framing.
 
-3. **Selection Auditor**  
+3. **Selection Auditor** (`audit.py`, step 6)
    Compares the candidate corpus with selected and surfaced stories to identify missed major stories, duplicate angles, weak selections, and underrepresented themes.
 
-4. **Trend Mapper**  
-   Clusters related articles into persistent or emerging narratives and scores whether those trends should have surfaced.
+4. **Trend Mapper** (`trend_mapper.py`, step 7)
+   Clusters related articles into persistent or emerging narratives and scores whether those trends should have surfaced. Uses `industry_verticals[0]` (with `sector` fallback) for all sector-based clustering and pattern matching.
 
-### Later agents
+5. **Post-run Summarizer** (`summarize.py`, step 8)
+   Prints a consolidated operator digest to the pipeline log after every run. No LLM calls, no Supabase writes in post-run mode. Also contains `generate_weekly_digest()` (standalone, not called from run.py) which writes to `weekly_digests`.
 
-5. **Optimizer**  
-   Reviews recent run quality and later proposes or applies bounded config changes such as selection caps, diversity floors, and trend thresholds.
+6. **Thesis Grader** (`thesis_grader.py`, step 9, morning only)
+   Grades theses with verifiable signals against market outcomes. Writes outcome back to `theses` table. Feeds pattern_memory.
 
-6. **Rollback Manager**  
-   Reverts to a prior config when a change worsens quality over the evaluation window.
+7. **Pattern Memory** (`pattern_memory.py`, step 10, morning only)
+   Builds win-rate pattern library keyed on `(sector, horizon, dominant_signal)` from graded theses. Upserts to `pattern_library`. Consulted by trend_mapper (Phase 6 boost) and weekly digest.
 
-7. **Weekly Strategist**  
-   Summarizes what improved, what regressed, what the system keeps missing, and what now deserves manual product work.
+8. **Source Credibility** (`source_credibility.py`, step 11, morning only)
+   Computes per-source win rates from graded thesis outcomes. Writes to `source_credibility_scores`. Used by trend_mapper to weight cluster strength.
 
-## 8. Data Model
+9. **Adversarial Review** (`adversarial.py`, step 12, Sunday morning only)
+   Weekly adversarial stress-test of pipeline outputs. Non-blocking.
 
-Recommended tables:
+### Later agents (Phase 2+)
+
+10. **Optimizer**
+    Reviews recent run quality and later proposes or applies bounded config changes such as selection caps, diversity floors, and trend thresholds.
+
+11. **Rollback Manager**
+    Reverts to a prior config when a change worsens quality over the evaluation window.
+
+12. **Weekly Strategist**
+    Summarizes what improved, what regressed, what the system keeps missing, and what now deserves manual product work.
+
+## 9. Data Model
+
+**Live tables (Phase 1, all exist in Supabase):**
 
 - **`pipeline_runs`** — one row per production run with run type, timing, config version, models used, counts, status, and notes
 - **`run_articles`** — maps each run to candidate, selected, and surfaced articles with score snapshots and selection reasoning
-- **`brief_quality_scores`** — structured critic scores and supporting notes
-- **`missed_story_candidates`** — stories the system believes should have surfaced but did not
-- **`trend_clusters`** — cluster memory, confidence, persistence, and surfacing judgment
+- **`brief_quality_scores`** — structured critic scores and supporting notes (headline_pass, banned_phrase_hits, soft_flags, etc.)
+- **`selection_audit`** — run-level selection quality metrics (score miss signals, sector_counts_selected as `industry_verticals[0]`-keyed JSON, sector_concentration_flag)
+- **`trend_clusters`** — cluster memory, confidence, persistence, and surfacing judgment; top_sectors field stores primary industry vertical per cluster
+- **`pattern_library`** — win-rate patterns keyed on `(sector, horizon, dominant_signal)`, built from graded theses by pattern_memory.py; consulted by trend_mapper and weekly digest
+- **`source_credibility_scores`** — per-source win rates computed from graded thesis outcomes by source_credibility.py; used by trend_mapper to weight cluster strength
+- **`weekly_digests`** — weekly operator digest rows written by summarize.generate_weekly_digest(); includes gemini_digest narrative and thesis_prompt_addendum for autonomous feedback loop
 
-Later-phase tables:
+**Planned but not yet implemented:**
+
+- **`missed_story_candidates`** — stories the system believes should have surfaced but did not (Phase 2+)
+
+**Article taxonomy (live as of PR #85):**
+
+Articles in Supabase now carry two independent arrays instead of a single `sector` string:
+- **`industry_verticals`** — 1–3 values from 11 canonical industry categories (Technology, Healthcare & Biotech, Energy & Oil/Gas, Financial Services, Consumer & Retail, Industrials & Manufacturing, Aerospace & Defense, Real Estate, Media & Telecom, Materials & Mining, Agriculture)
+- **`activity_types`** — 0–3 values from 11 canonical activity categories (M&A, IPO, Earnings, Fundraising, Macro, Geopolitics, Regulation, Public Markets, VC, PE, Restructuring)
+- **`sector`** — backward-compat column, always set to `industry_verticals[0]`; observation layer reads this for legacy compatibility
+
+**Later-phase tables (Phase 2+):**
 
 - **`optimizer_recommendations`** — proposed config changes, rationale, risk, and apply status
 - **`config_versions`** — active and historical config versions with lineage
 - **`experiment_results`** — before/after deltas, verdicts, and rollback status
 
-## 9. Tooling to Prioritize
+## 10. Tooling to Prioritize
 
 The live production loop should run mainly as **Python services + scheduled GitHub Actions + Supabase memory**. Claude Code and related tooling should be used aggressively for development, maintenance, testing, and guardrails, but not as the fragile runtime for every live production decision.
 
@@ -188,7 +245,7 @@ The live production loop should run mainly as **Python services + scheduled GitH
 - GitHub Actions with `schedule` and `workflow_dispatch`
 - GitHub CLI inside Actions for orchestration and ops
 
-## 10. Claude Skills to Build Later
+## 11. Claude Skills to Build Later
 
 These are useful later, not required for current implementation:
 
@@ -199,7 +256,7 @@ These are useful later, not required for current implementation:
 - `/rollback-evaluation`
 - `/schema-health-check`
 
-## 11. Usage and Cost Discipline
+## 12. Usage and Cost Discipline
 
 - store rich raw memory in the database
 - retrieve only the slice needed for the task at hand
@@ -208,7 +265,7 @@ These are useful later, not required for current implementation:
 
 The autonomous-improvement layer should stay materially lighter than the main content-generation pipeline.
 
-## 12. Risks and Controls
+## 13. Risks and Controls
 
 - **Silent quality drift** → use config versioning, experiment tracking, and later automatic rollback
 - **Overfitting to noise** → evaluate over rolling windows, not single runs
@@ -216,20 +273,26 @@ The autonomous-improvement layer should stay materially lighter than the main co
 - **False trend detection** → require cross-source corroboration and persistence thresholds
 - **Over-automation** → keep code, schema, and model changes human-controlled
 
-## 13. Build Sequence
+## 14. Build Sequence
 
-### Phase 1 — Observation (complete ✓)
+### Phase 1 — Observation (complete ✓, all 12 steps live)
 
 - [x] Create Supabase observation tables (`pipeline_runs`, `run_articles`)
-- [x] Build Run Recorder — `backend/observe.py` + hook in `backend/run.py` (PR #42)
+- [x] Build Run Recorder — `backend/observe.py` + hook in `backend/run.py` (PR #42); updated 2026-04-13 to use `industry_verticals[0]` with `sector` fallback
 - [x] Build Brief Critic — `backend/critique.py` + hook in `backend/run.py` (PR #47)
 - [x] Build Selection Auditor V1 — `backend/audit.py` + hook in `backend/run.py` (PR #48); run-level only, provenance='reconstructed', validated live 2026-04-03
-- [x] Build Trend Mapper — `backend/trend_mapper.py` + hook in `backend/run.py` (PR #51); live-validated 2026-04-04 with real pipeline run
+- [x] Build Trend Mapper — `backend/trend_mapper.py` + hook in `backend/run.py` (PR #51); live-validated 2026-04-04; updated 2026-04-13 to use `industry_verticals[0]` with `sector` fallback in `_normalize_article()`
+- [x] Post-run operator summary — `backend/summarize.py` + step [8/12] in `backend/run.py`; reads `brief_quality_scores`, `selection_audit`, `trend_clusters` for the current run_id and prints a consolidated digest to the pipeline log (GitHub Actions); no LLM calls, no new schema, non-blocking
+- [x] Thesis Grader — `backend/thesis_grader.py` + step [9/12], morning only; built by Lucas; grades theses against market outcomes; writes to `theses.outcome`
+- [x] Pattern Memory — `backend/pattern_memory.py` + step [10/12], morning only; built by Lucas; upserts win-rate patterns to `pattern_library`; Phase 6 boost wired into trend_mapper
+- [x] Source Credibility — `backend/source_credibility.py` + step [11/12], morning only; built by Lucas; writes per-source win rates to `source_credibility_scores`; Phase 5 boost wired into trend_mapper
+- [x] Adversarial Review — `backend/adversarial.py` + step [12/12], Sunday morning only; built by Lucas; weekly stress-test, non-blocking
+- [x] Dual-dimension article taxonomy — `industry_verticals` + `activity_types` arrays on all articles, `sector` retained as backward-compat (PR #85, 2026-04-13); observation layer migrated
 
 ### Phase 1 — Summaries (in progress)
 
-- [x] Post-run operator summary — `backend/summarize.py` + step [8/8] in `backend/run.py`; reads `brief_quality_scores`, `selection_audit`, `trend_clusters` for the current run_id and prints a consolidated digest to the pipeline log (GitHub Actions); no LLM calls, no new schema, non-blocking
-- [ ] Weekly cross-run summary (aggregate quality trends across 5+ runs)
+- [x] Post-run operator summary — complete, runs after every pipeline run (step 8)
+- [ ] Weekly cross-run summary — `generate_weekly_digest()` in `summarize.py` built and writing to `weekly_digests`, but not yet wired to a scheduled cron trigger
 
 ### Phase 2 — Safe Autonomy
 
@@ -248,7 +311,7 @@ The autonomous-improvement layer should stay materially lighter than the main co
 - tie the improvement layer into structured alerts, shareable cards, and content systems
 - only after the intelligence core is strong and stable
 
-## 14. Bottom Line
+## 15. Bottom Line
 
 V1 should make Breaking Alpha self-evaluating, memory-backed, trend-aware, and ready for safe improvement. The end-state system should make Breaking Alpha feel less like a news app and more like a market-intelligence organism that gets sharper every week it operates.
 
