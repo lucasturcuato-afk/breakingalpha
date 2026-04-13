@@ -6,7 +6,7 @@
 - Auth middleware protecting all routes — unauthenticated users redirect to /auth
 - Google OAuth (PKCE flow) working — callback at /auth/callback
 - Per-session user isolation fixed — greeting, sidebar, settings all read from live auth
-- Pipeline auto-runs 10:00 UTC / 6am ET (morning) and 02:00 UTC / 10pm ET (evening), weekdays — triggered by **cron-job.org** (not GitHub Actions native cron)
+- Pipeline auto-runs 10:00 UTC / 6am ET (morning) and 04:00 UTC / 8pm PT (evening), weekdays — triggered by **cron-job.org** (not GitHub Actions native cron)
 - **AI provider:** Gemini 2.5 Flash (migrated from Groq 2026-04-10) — ingest, thesis, memo all use genai SDK
 - **Backend SDK:** google.genai (newer SDK, matches frontend pattern)
 - **Entity quality:** Full pipeline wired end-to-end (Gemini typed extraction → blocklist → Wikidata validation → clean_companies), stub briefing issue (PR #82) resolved
@@ -50,7 +50,7 @@ Replaced GitHub Actions native cron on 2026-04-13 — GitHub's built-in schedule
 | Job | cron-job.org title | UTC | ET |
 |-----|--------------------|-----|----|
 | Morning | Signalera Morning Pipeline | 10:00 Mon–Fri | 6am ET |
-| Evening | Signalera Evening Pipeline | 02:00 Tue–Sat | 10pm ET |
+| Evening | Signalera Evening Pipeline | 04:00 Tue–Sat | 8pm PT |
 
 **Request headers (both jobs):**
 - `Authorization: Bearer <PAT>`
