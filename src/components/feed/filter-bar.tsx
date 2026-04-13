@@ -16,6 +16,14 @@ const ACTIVITY_TYPES = [
   "Fundraising", "Crypto & Digital Assets", "Leadership & Operations",
 ];
 
+const INACTIVE_CHIP_STYLE = {
+  backgroundColor: "transparent",
+  color: "#9ca3af",
+  borderColor: "#374151",
+  borderWidth: 1,
+  borderStyle: "solid" as const,
+};
+
 interface FilterBarProps {
   selectedVerticals: string[];
   selectedActivityTypes: string[];
@@ -40,7 +48,7 @@ export function FilterBar({
   alertCount = 0,
 }: FilterBarProps) {
   return (
-    <div className="bg-parchment px-6 pt-2.5 pb-1 space-y-1.5">
+    <div className="bg-parchment px-6 pt-2 pb-1 space-y-1">
       {/* Row 1: Industry Verticals */}
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
         {INDUSTRY_VERTICALS.map((v) => {
@@ -51,19 +59,27 @@ export function FilterBar({
               key={v}
               type="button"
               onClick={() => onVerticalToggle(v)}
-              className={cn(
-                "flex-shrink-0 inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium border",
-                "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)] cursor-pointer",
+              style={
                 isActive
-                  ? `${style.bg} ${style.text} ${style.border}`
-                  : "bg-transparent text-text-faint border-border-subtle hover:text-text-muted hover:border-border-base",
-              )}
+                  ? {
+                      backgroundColor: style.bg,
+                      color: style.text,
+                      borderColor: style.border,
+                      borderWidth: 1,
+                      borderStyle: "solid",
+                    }
+                  : INACTIVE_CHIP_STYLE
+              }
+              className="flex-shrink-0 px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap transition-all cursor-pointer"
             >
               {v}
             </button>
           );
         })}
       </div>
+
+      {/* Subtle separator */}
+      <div className="border-t border-border-subtle/50" />
 
       {/* Row 2: Activity Types */}
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
@@ -75,13 +91,18 @@ export function FilterBar({
               key={a}
               type="button"
               onClick={() => onActivityTypeToggle(a)}
-              className={cn(
-                "flex-shrink-0 inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium border",
-                "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)] cursor-pointer",
+              style={
                 isActive
-                  ? `${style.bg} ${style.text} ${style.border}`
-                  : "bg-transparent text-text-faint border-border-subtle hover:text-text-muted hover:border-border-base",
-              )}
+                  ? {
+                      backgroundColor: style.bg,
+                      color: style.text,
+                      borderColor: style.border,
+                      borderWidth: 1,
+                      borderStyle: "solid",
+                    }
+                  : INACTIVE_CHIP_STYLE
+              }
+              className="flex-shrink-0 px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap transition-all cursor-pointer"
             >
               {a}
             </button>
@@ -90,7 +111,7 @@ export function FilterBar({
       </div>
 
       {/* Row 3: Alerts + Saved toggle buttons */}
-      <div className="flex items-center gap-2 pb-1">
+      <div className="flex items-center gap-2 pb-0.5">
         <button
           type="button"
           onClick={onAlertsToggle}

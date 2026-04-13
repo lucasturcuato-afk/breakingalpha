@@ -127,7 +127,12 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
                   return (
                     <span
                       key={v}
-                      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${style.bg} ${style.text} ${style.border}`}
+                      style={{
+                        backgroundColor: style.bg,
+                        color: style.text,
+                        border: `1px solid ${style.border}`,
+                      }}
+                      className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
                     >
                       {v}
                     </span>
@@ -150,7 +155,12 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
               return (
                 <span
                   key={a}
-                  className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${style.bg} ${style.text} ${style.border}`}
+                  style={{
+                    backgroundColor: style.bg,
+                    color: style.text,
+                    border: `1px solid ${style.border}`,
+                  }}
+                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
                 >
                   {a}
                 </span>
@@ -356,7 +366,12 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
                     return (
                       <span
                         key={v}
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${style.bg} ${style.text} ${style.border}`}
+                        style={{
+                          backgroundColor: style.bg,
+                          color: style.text,
+                          border: `1px solid ${style.border}`,
+                        }}
+                        className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
                       >
                         {v}
                       </span>
@@ -379,7 +394,12 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
                 return (
                   <span
                     key={a}
-                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${style.bg} ${style.text} ${style.border}`}
+                    style={{
+                      backgroundColor: style.bg,
+                      color: style.text,
+                      border: `1px solid ${style.border}`,
+                    }}
+                    className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
                   >
                     {a}
                   </span>
