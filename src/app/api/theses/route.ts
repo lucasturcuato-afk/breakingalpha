@@ -50,6 +50,9 @@ export async function POST() {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
+    console.log("[theses:debug:0] adminSupabase url:", process.env.NEXT_PUBLIC_SUPABASE_URL);
+    console.log("[theses:debug:0] service key present:", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+    console.log("[theses:debug:0] anon key present:", !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
     // 1. Pull the most recent run_id from trend_clusters within the last 48h
     const lookbackIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -61,6 +64,7 @@ export async function POST() {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    console.log("[theses:debug:1] latestClusterRow:", JSON.stringify(latestClusterRow));
 
     if (!latestClusterRow?.run_id) {
       return NextResponse.json(
@@ -78,9 +82,9 @@ export async function POST() {
       .eq("run_id", latestClusterRow.run_id)
       .order("strength_score", { ascending: false, nullsFirst: false })
       .limit(10);
-    console.log("[theses:debug] run_id used:", latestClusterRow?.run_id);
-    console.log("[theses:debug] clusters:", JSON.stringify(clusters));
-    console.log("[theses:debug] clustersError:", JSON.stringify(clustersError));
+    console.log("[theses:debug:2] clusters count:", clusters?.length);
+    console.log("[theses:debug:2] clusters sample:", JSON.stringify(clusters?.[0]));
+    console.log("[theses:debug:2] clustersError:", JSON.stringify(clustersError));
 
     if (!clusters || clusters.length === 0) {
       return NextResponse.json(
@@ -107,6 +111,9 @@ export async function POST() {
       });
     });
 
+    console.log("[theses:debug:3] allIds size:", allIds.size);
+    console.log("[theses:debug:3] allIds sample:", JSON.stringify(Array.from(allIds).slice(0, 3)));
+
     if (allIds.size === 0) {
       return NextResponse.json(
         { error: "No clusters available — pipeline must run first" },
@@ -114,10 +121,11 @@ export async function POST() {
       );
     }
 
-    const { data: clusterArticles } = await supabase
+    const { data: clusterArticles } = await adminSupabase
       .from("articles")
       .select("id, title, summary, sector, ingested_at, content_type")
       .in("id", Array.from(allIds));
+    console.log("[theses:debug:4] clusterArticles count:", clusterArticles?.length);
 
     if (!clusterArticles || clusterArticles.length === 0) {
       return NextResponse.json(
