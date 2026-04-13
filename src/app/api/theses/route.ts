@@ -45,7 +45,7 @@ export async function POST() {
     const validIds = new Set<string>();
 
     // 1. Pull the most recent run_id from trend_clusters within the last 48h
-    const lookbackIso = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const lookbackIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     const { data: latestClusterRow } = await supabase
       .from("trend_clusters")
@@ -57,7 +57,7 @@ export async function POST() {
 
     if (!latestClusterRow?.run_id) {
       return NextResponse.json(
-        { error: "No clusters available — pipeline must run first" },
+        { error: "No pipeline data found in the last 7 days. Please trigger a pipeline run." },
         { status: 503 }
       );
     }
