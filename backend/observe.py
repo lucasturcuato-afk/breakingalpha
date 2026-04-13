@@ -68,7 +68,7 @@ def _reconstruct_selected(pool):
     spine_ids = set()
 
     for a in pool:
-        sector    = a.get("sector") or ""
+        sector    = (a.get("industry_verticals") or [a.get("sector", "")])[0]
         companies = a.get("companies") or []
         if isinstance(companies, str):
             try:
@@ -93,14 +93,14 @@ def _reconstruct_selected(pool):
     # Floor: one best (highest-scoring) article per sector not in the spine.
     # Pool is already score-sorted desc, so the first eligible article per
     # sector encountered is automatically the best for that sector.
-    covered_sectors = {a.get("sector") or "" for a in spine}
+    covered_sectors = {(a.get("industry_verticals") or [a.get("sector", "")])[0] for a in spine}
     best_per_sector = {}
 
     for a in pool:
         if a.get("id") in spine_ids:
             continue
         score  = a.get("relevance_score") or 0
-        sector = a.get("sector") or ""
+        sector = (a.get("industry_verticals") or [a.get("sector", "")])[0]
         if not sector or sector in covered_sectors:
             continue
         if score < _FLOOR_MIN_SCORE:
@@ -166,7 +166,7 @@ def record_run(brief_type, started_at, ingest_count=None):
     pool   = []
     try:
         pool_resp = supabase.table("articles") \
-            .select("id, sector, companies, relevance_score") \
+            .select("id, sector, industry_verticals, companies, relevance_score") \
             .gte("ingested_at", cutoff) \
             .order("relevance_score", desc=True) \
             .limit(_POOL_LIMIT) \

@@ -379,7 +379,7 @@ def _normalize_article(raw):
         "relevance_score":       raw.get("relevance_score"),
         "companies":             _safe_list(raw.get("companies")),
         "themes":                _safe_list(raw.get("themes")),
-        "sector":                (raw.get("sector") or "").strip().lower(),
+        "sector":                ((raw.get("industry_verticals") or [raw.get("sector", "")])[0] or "").strip().lower(),
         "deal_type":             (raw.get("deal_type") or "").strip().lower(),
         "title_tokens":          _title_tokens(raw.get("title")),
         "rel_reason_tokens":     _relevance_reason_tokens(raw.get("relevance_reason")),
@@ -936,7 +936,7 @@ def fetch_run_context(run_id, brief_type, started_at_iso):
                     supabase.table("articles")
                     .select(
                         "id, title, source, relevance_score, "
-                        "companies, themes, sector, deal_type, relevance_reason"
+                        "companies, themes, sector, industry_verticals, deal_type, relevance_reason"
                     )
                     .in_("id", chunk)
                     .execute()

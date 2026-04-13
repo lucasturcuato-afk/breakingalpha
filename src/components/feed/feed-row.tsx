@@ -205,7 +205,7 @@ export function FeedRow({ story, onBookmark }: FeedRowProps) {
                         .select("id, sector, title")
                         .neq("status", "archived");
 
-                      const sector = (story.sector || "").toLowerCase();
+                      const sector = (story.industry_verticals?.[0] ?? story.sector ?? "").toLowerCase();
                       const match = theses?.find(
                         (t) => (t.sector || "").toLowerCase() === sector,
                       );
