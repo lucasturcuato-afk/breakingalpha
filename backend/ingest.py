@@ -472,7 +472,15 @@ def store_article(article, analysis):
             if _normalize_title(row.get("title", "")) == norm_new:
                 print(f"  ⊘ Title dedup skip: {article['title'][:70]}")
                 return None
-        companies = extract_company_names(analysis.get("companies", []))
+        raw_companies = extract_company_names(analysis.get("companies", []))
+        clean_companies = []
+        for company in raw_companies:
+            if is_blocked_entity(company):
+                print(f"  ⊘ Blocked entity: {company}")
+                continue
+            if not is_valid_company(company, supabase):
+                continue
+            clean_companies.append(company)
         r = supabase.table("articles").insert({
             "title": article["title"],
             "summary": article["summary"] or "",
@@ -481,7 +489,7 @@ def store_article(article, analysis):
             "published_at": article["published_at"],
             "relevance_score": analysis["relevance_score"],
             "relevance_reason": analysis.get("relevance_reason", ""),
-            "companies": companies,
+            "companies": clean_companies,
             "themes": analysis.get("themes", []),
             "sentiment": analysis.get("sentiment", "neutral"),
             "sector": analysis.get("sector", "") if analysis.get("sector", "") in SECTORS else "",
@@ -490,12 +498,7 @@ def store_article(article, analysis):
             "content_type": article.get("content_type", "snippet"),
         }).execute()
         article_id = r.data[0]["id"]
-        for company in companies:
-            if is_blocked_entity(company):
-                print(f"  ⊘ Blocked entity: {company}")
-                continue
-            if not is_valid_company(company, supabase):
-                continue
+        for company in clean_companies:
             cid = upsert_company(company, analysis.get("themes", []), analysis.get("sentiment", "neutral"))
             if cid:
                 supabase.table("company_mentions").insert({
