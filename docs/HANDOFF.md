@@ -1,6 +1,6 @@
 # Signalera Handoff
 
-## Current Status (2026-04-11)
+## Current Status (2026-04-12)
 - Live at https://breakingalpha.vercel.app (deploying as Signalera)
 - Full rebrand from BreakingAlpha to Signalera shipped — logo, fonts, theme, auth page
 - Auth middleware protecting all routes — unauthenticated users redirect to /auth
@@ -9,6 +9,7 @@
 - Pipeline auto-runs 6am PT (morning) and 10pm PT (evening), weekdays
 - **AI provider:** Gemini 2.5 Flash (migrated from Groq 2026-04-10) — ingest, thesis, memo all use genai SDK
 - **Backend SDK:** google.genai (newer SDK, matches frontend pattern)
+- **Entity quality:** Full pipeline wired end-to-end (Gemini typed extraction → blocklist → Wikidata validation → clean_companies), stub briefing issue (PR #82) resolved
 
 ## Architecture
 - **Frontend:** Next.js 16 (Turbopack), hosted on Vercel (repo root)
@@ -108,6 +109,9 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 4. Are there active paying users? (determines urgency of fixes)
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
 
+## Recently Completed (2026-04-12)
+PRs #79–#82 entity quality and pipeline stability: PR #79 added blocklist (currencies, countries, gov bodies, law firms) and keyword pre-filter (class action / law firm) to ingest; extended isJunkEntityName() in frontend. PR #80 rewrote Gemini prompt for typed `{name, entity_type}` extraction, added Wikidata validation module with Supabase caching. PR #81 fixed articles.companies being written with raw Gemini output (now uses clean_companies list); fixed KeyError from unescaped braces in prompt. PR #82 fixed stub briefing issue — Gemini thinking tokens consumed max_output_tokens budget; disabled thinking and raised max to 4096. Pipeline now fully wired end-to-end (extraction → blocklist → Wikidata → clean_companies); ready for production validation at scale.
+
 ## Recently Completed (2026-04-11)
 PR #78 (feat/company-intel-prompt-rewrite) iterative refinement: 8 cumulative prompt rule updates to buildMemoSystemPrompt() — analyst brief opener rule (proper noun required, "The" banned), low-recognition company carve-out (exception format), What Just Changed development filter (dollar figure/counterparty/product required), Cross-Signals binary verdict rule (exact format), What To Do With This bullet structure (if/then format, 75-word cap), sourcing discipline (all figures traceable to article pool), length rule (signal density not target), em-dash ban, expanded banned phrase list. Validated against live Supabase pools (NVIDIA 20 articles + Anthropic 20 articles); all figures sourced, no training knowledge leakage. Lucas's phases 2–6 commits merged in (thesis grading, pattern memory, adversarial testing, source credibility, pattern library feedback); GEMINI_API_KEY pipeline bug (previously critical) resolved via Lucas's e9e235a commit.
 
@@ -147,6 +151,7 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 10. **Phase 1 hardening — observe.py reconstruction fix (PR #56)** — `_reconstruct_selected()` rewritten to mirror current `synthesize._select_articles_for_synthesis()` (spine=12, floor=6, sector_cap=3, floor_min=7). `audit.py` `_TARGET_COUNT` corrected 20→18. Stale `_diversify_articles` reconstruction logic replaced. No schema changes.
 
 ## Pending / Known Issues
+- **Wikidata validation at scale** — wikidata_entity_cache now populated on cache misses; needs full ingest run with fresh articles to validate entity quality in production
 - **E2E tests need Supabase credentials** — Playwright suite configured (10 specs, 48 tests) but pending valid E2E_USER_EMAIL, E2E_USER_PASSWORD in .env.local to run against real Supabase test user
 - **middleware.ts → proxy.ts** — Next.js 16 deprecation warning; rename `src/middleware.ts` to `src/proxy.ts` (breaking change in v16+)
 - **Google OAuth consent screen** shows Supabase project name instead of "Signalera" — update in Google Cloud Console > OAuth consent screen
@@ -154,7 +159,6 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 - **COMPANY_IDENTITY map** (35 entries, hardcoded) should eventually migrate to `company_profiles` Supabase table (ticker, industry, brief, source fields) for broader coverage
 - **Trends page still hardcoded with static signals** — no live data integration
 - **Dashboard mood block and AI Signal Bar hardcoded static strings** — needs live data source
-- **synthesize.py stub brief-quality issue** — monitor: Gemini response truncation, synthesis prompt drift, article selection pool shrinkage, or response parsing edge case
 - **Article inputs constrained to 500-char RSS summaries** — memo depth limited; full content archival deferred
 - **Earnings calendar integration** — requires ticker field + FMP/Polygon API; deferred
 - **Legacy data inconsistency (low priority)** — a few old DB rows have stale `deal_type`/`primary_company`; won't block progress; will correct via re-ingest over time
