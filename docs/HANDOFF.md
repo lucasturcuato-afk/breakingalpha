@@ -6,7 +6,7 @@
 - Auth middleware protecting all routes — unauthenticated users redirect to /auth
 - Google OAuth (PKCE flow) working — callback at /auth/callback
 - Per-session user isolation fixed — greeting, sidebar, settings all read from live auth
-- Pipeline auto-runs 6am PT (morning) and 10pm PT (evening), weekdays
+- Pipeline auto-runs 10:00 UTC / 6am ET (morning) and 02:00 UTC / 10pm ET (evening), weekdays — triggered by **cron-job.org** (not GitHub Actions native cron)
 - **AI provider:** Gemini 2.5 Flash (migrated from Groq 2026-04-10) — ingest, thesis, memo all use genai SDK
 - **Backend SDK:** google.genai (newer SDK, matches frontend pattern)
 - **Entity quality:** Full pipeline wired end-to-end (Gemini typed extraction → blocklist → Wikidata validation → clean_companies), stub briefing issue (PR #82) resolved
@@ -17,7 +17,7 @@
 - **Database:** Supabase (project: pnfjelfvtypkpnwpflmv) — use ingested_at for ordering, NOT created_at
 - **AI:** Gemini 2.5 Flash (migrated from Groq) — ingest batch filtering, thesis generation, memo synthesis all use google.genai
 - **News:** NewsAPI + 15 RSS feeds (added SEC 8-K, SEC 10-Q, Federal Reserve, PR Newswire)
-- **Scheduler:** GitHub Actions — 6am PT (14:00 UTC) and 10pm PT (06:00 UTC), weekdays
+- **Scheduler:** cron-job.org → GitHub `workflow_dispatch` (GitHub Actions native cron removed 2026-04-13 — unreliable)
 - **Quotes:** Finnhub (primary) + Stooq CSV (fallback)
 - **Auth:** Supabase Auth — Google OAuth (PKCE), email/password sign-up
 - **Design:** Playfair Display (headings) + Inter (body) + JetBrains Mono (data), gold #F5A623 accent
@@ -35,6 +35,35 @@ NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_FINNHUB_KEY
 
 **GitHub Secrets (backend):**
 GEMINI_API_KEY, NEWS_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
+
+## Pipeline Scheduler (cron-job.org)
+
+Replaced GitHub Actions native cron on 2026-04-13 — GitHub's built-in scheduler is unreliable (silently skips runs, disabled after 60 days inactivity). cron-job.org POSTs to the GitHub `workflow_dispatch` API endpoint instead.
+
+**Dispatch endpoint:**
+`POST https://api.github.com/repos/lucasturcuato-afk/breakingalpha/actions/workflows/schedule.yml/dispatches`
+
+**PAT:** `signalera-cron-dispatch` (classic token, `repo` scope)
+**PAT expiry:** April 13, 2027 — **must be rotated before this date** (github.com/settings/tokens)
+
+**Schedule:**
+| Job | cron-job.org title | UTC | ET |
+|-----|--------------------|-----|----|
+| Morning | Signalera Morning Pipeline | 10:00 Mon–Fri | 6am ET |
+| Evening | Signalera Evening Pipeline | 02:00 Tue–Sat | 10pm ET |
+
+**Request headers (both jobs):**
+- `Authorization: Bearer <PAT>`
+- `Accept: application/vnd.github+json`
+- `Content-Type: application/json`
+
+**Request body (both jobs):** `{"ref":"main"}`
+
+**If runs stop:**
+1. Check cron-job.org execution log — look for non-204 response codes
+2. If 401: PAT expired or revoked → regenerate at github.com/settings/tokens, update both jobs
+3. If 404: workflow file missing from main or repo renamed
+4. If jobs show 204 but no GitHub run appears: check Actions tab for workflow disablement
 
 ## Auth Flow
 - `src/middleware.ts` — `isAuthPage` exact-matches `/auth` only; `/auth/callback` is in `isPublicPath` so OAuth code exchange is never intercepted
