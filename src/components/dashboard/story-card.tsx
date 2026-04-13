@@ -5,7 +5,7 @@ import { stripHtml } from "@/lib/strip-html";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
-import { getSectorStyle } from "@/lib/sector-colors";
+import { getSectorStyle, getVerticalStyle, getActivityTypeStyle } from "@/lib/sector-colors";
 import { Badge } from "@/components/ui/badge";
 import { BookmarkButton } from "@/components/ui/bookmark";
 import { Sparkles, Plus, MessageSquare, Loader2 } from "lucide-react";
@@ -50,6 +50,8 @@ export interface StoryData {
   timestamp: string;
   sentiment: string;
   sector?: string;
+  industry_verticals?: string[];
+  activity_types?: string[];
   summary?: string;
   tags?: string[];
   url?: string;
@@ -117,14 +119,44 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
           <Badge variant={sentimentToVariant(story.sentiment)}>
             {sentimentLabel(story.sentiment)}
           </Badge>
-          {story.sector && (
-            <span
-              style={getSectorStyle(story.sector)}
-              className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
-            >
-              {story.sector}
-            </span>
-          )}
+          <div className="flex flex-wrap gap-1.5">
+            {/* Industry Vertical Pills */}
+            {(story.industry_verticals ?? []).length > 0
+              ? (story.industry_verticals ?? []).map((v) => {
+                  const style = getVerticalStyle(v)
+                  return (
+                    <span
+                      key={v}
+                      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${style.bg} ${style.text} ${style.border}`}
+                    >
+                      {v}
+                    </span>
+                  )
+                })
+              : story.sector
+              ? (
+                  <span
+                    style={getSectorStyle(story.sector)}
+                    className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
+                  >
+                    {story.sector}
+                  </span>
+                )
+              : null
+            }
+            {/* Activity Type Pills */}
+            {(story.activity_types ?? []).map((a) => {
+              const style = getActivityTypeStyle(a)
+              return (
+                <span
+                  key={a}
+                  className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${style.bg} ${style.text} ${style.border}`}
+                >
+                  {a}
+                </span>
+              )
+            })}
+          </div>
           <span className="font-sans text-[11px] text-text-muted font-medium">
             {story.source}
           </span>
@@ -316,14 +348,44 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
             <Badge variant={sentimentToVariant(story.sentiment)} className="text-[8px]">
               {sentimentLabel(story.sentiment)}
             </Badge>
-            {story.sector && (
-              <span
-                style={getSectorStyle(story.sector)}
-                className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide flex-shrink-0"
-              >
-                {story.sector}
-              </span>
-            )}
+            <div className="flex flex-wrap gap-1.5">
+              {/* Industry Vertical Pills */}
+              {(story.industry_verticals ?? []).length > 0
+                ? (story.industry_verticals ?? []).map((v) => {
+                    const style = getVerticalStyle(v)
+                    return (
+                      <span
+                        key={v}
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${style.bg} ${style.text} ${style.border}`}
+                      >
+                        {v}
+                      </span>
+                    )
+                  })
+                : story.sector
+                ? (
+                    <span
+                      style={getSectorStyle(story.sector)}
+                      className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide flex-shrink-0"
+                    >
+                      {story.sector}
+                    </span>
+                  )
+                : null
+              }
+              {/* Activity Type Pills */}
+              {(story.activity_types ?? []).map((a) => {
+                const style = getActivityTypeStyle(a)
+                return (
+                  <span
+                    key={a}
+                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${style.bg} ${style.text} ${style.border}`}
+                  >
+                    {a}
+                  </span>
+                )
+              })}
+            </div>
             <span className="font-sans text-[10px] text-text-muted">
               {story.source}
             </span>
