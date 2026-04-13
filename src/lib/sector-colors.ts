@@ -25,3 +25,14 @@ export function getSectorStyle(sector: string | null | undefined, isDark = false
     ? { backgroundColor: colors.darkBg, color: colors.darkText }
     : { backgroundColor: colors.bg, color: colors.text };
 }
+
+const VERTICAL_STYLE = { bg: "rgba(96, 165, 250, 0.08)", text: "#93c5fd", border: "rgba(96, 165, 250, 0.2)" };
+const ACTIVITY_STYLE = { bg: "rgba(212, 168, 75, 0.08)", text: "#d4a84b", border: "rgba(212, 168, 75, 0.2)" };
+
+export function getVerticalStyle(_vertical: string): { bg: string; text: string; border: string } {
+  return VERTICAL_STYLE;
+}
+
+export function getActivityTypeStyle(_activityType: string): { bg: string; text: string; border: string } {
+  return ACTIVITY_STYLE;
+}

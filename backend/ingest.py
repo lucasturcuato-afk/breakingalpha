@@ -46,18 +46,40 @@ RSS_FEEDS = {
 
 FULL_TEXT_SOURCES = {"SEC 8-K", "SEC 10-Q", "Federal Reserve"}
 
-SECTORS = [
-    "Technology M&A & Investment Banking",
-    "Venture Capital & Startup Funding",
-    "Private Equity & Buyouts",
-    "Public Markets & Earnings",
-    "Geopolitics & Macro",
-    "Real Estate & REITs",
-    "Fintech & Crypto",
+INDUSTRY_VERTICALS = [
+    "Technology",
     "Healthcare & Biotech",
-    "Energy & Climate",
+    "Energy & Oil/Gas",
+    "Financial Services",
     "Consumer & Retail",
+    "Industrials & Manufacturing",
+    "Aerospace & Defense",
+    "Real Estate",
+    "Media & Telecom",
+    "Materials & Mining",
+    "Agriculture",
 ]
+
+ACTIVITY_TYPES = [
+    "Mergers & Acquisitions",
+    "Private Equity",
+    "Venture Capital",
+    "IPO & Capital Markets",
+    "Earnings & Results",
+    "Macro & Policy",
+    "Geopolitics",
+    "Regulation & Legal",
+    "Fundraising",
+    "Crypto & Digital Assets",
+    "Leadership & Operations",
+]
+
+
+def validate_tags(tags: list, whitelist: list, max_count: int = 3) -> list:
+    """Validate tags against a whitelist and cap at max_count."""
+    if not isinstance(tags, list):
+        return []
+    return [t for t in tags if t in whitelist][:max_count]
 
 FILTER_PROMPT = """You are a senior analyst at a top investment firm. Analyze this article and determine its relevance to financial markets and investing.
 
@@ -67,8 +89,11 @@ Source: {source}
 
 Relevant topics include: M&A deals, IPOs, fundraising, valuations, earnings, market movements, geopolitical events affecting markets, macro trends, regulatory changes, PE/VC activity, public company news, economic data.
 
-SECTOR (required): Pick exactly one sector from this list that best fits the article's primary topic. Copy the name character-for-character — no abbreviations, no combining, no rewording.
-Allowed sectors: {sectors}
+INDUSTRY_VERTICALS (required): Return a JSON array of 1-3 values from this exact list — the industry sector(s) the companies or subjects in this article operate in. Copy values character-for-character. Return [] if none clearly apply.
+Allowed values: Technology, Healthcare & Biotech, Energy & Oil/Gas, Financial Services, Consumer & Retail, Industrials & Manufacturing, Aerospace & Defense, Real Estate, Media & Telecom, Materials & Mining, Agriculture
+
+ACTIVITY_TYPES (optional): Return a JSON array of 0-3 values from this exact list — the type of event or activity the article covers. Copy values character-for-character. Return [] if none clearly apply.
+Allowed values: Mergers & Acquisitions, Private Equity, Venture Capital, IPO & Capital Markets, Earnings & Results, Macro & Policy, Geopolitics, Regulation & Legal, Fundraising, Crypto & Digital Assets, Leadership & Operations
 
 COMPANIES (required): Return a JSON array of entity objects. Each object must have exactly two fields: "name" (the entity name, verbatim from the title or summary) and "entity_type" (must be the string "company" — see definition below). Only include entities where you are confident entity_type is "company". Default to exclusion when uncertain.
 
@@ -92,7 +117,8 @@ Respond ONLY in valid JSON:
   "relevant": true/false,
   "relevance_score": 1-10,
   "relevance_reason": "GATE — apply before writing: If this article is primarily an opinion piece, profile, cultural commentary, or trend piece with no named transaction, earnings result, financing event, guidance change, regulatory action, or specific market-moving event — set relevant: false and leave this field as an empty string. Do not fabricate a read-through. Articles discussing a named person's political views, cultural influence, public commentary, or personal philosophy are not market-moving events even if that person runs a public or private company — set relevant: false. Internal staff promotions, appointments, hires, or departures are not market-moving events unless the article explicitly links the change to a named transaction, fundraising event, earnings event, guidance change, or regulatory action — if no such link exists, set relevant: false. For articles that pass the gate: 1-2 sentences max. Lead with the concrete market implication — the named deal, specific dollar figure, rate level, or event — not a description of what happened. Only name comp companies or sector read-throughs if the mechanism directly follows from what this article reports; do not append a comp list just to fill the format. Use specific company names, dollar figures, or named sectors where available. BANNED outputs — never write these: vague taxonomy ('this is relevant to PE / VC / financial markets / investing'), article restatements that just paraphrase the headline, fabricated comp lists, filler like 'this matters because it is a transaction in private equity'. For macro or rates articles, state the concrete effect on deal economics — LBO spreads, floating-rate credit costs, buyout multiples, M&A financing conditions, or risk appetite for new deals — never write that rates moved, banks are impacted, or that interest rates affect markets generally. Write as a buy-side analyst flagging a signal to a portfolio manager.",
-  "sector": "<copy one sector name exactly from the allowed list above>",
+  "industry_verticals": ["<1-3 values from the allowed industry verticals list above>"],
+  "activity_types": ["<0-3 values from the allowed activity types list above>"],
   "companies": [{{"name": "Company A", "entity_type": "company"}}],
   "themes": ["M&A", "IPO", "Earnings", "Macro", "Geopolitics", "VC", "PE", "Regulation", "AI", "Crypto"],
   "sentiment": "bullish/bearish/neutral",
@@ -105,8 +131,11 @@ BATCH_FILTER_PROMPT = """You are a senior analyst at a top investment firm. Anal
 
 Relevant topics include: M&A deals, IPOs, fundraising, valuations, earnings, market movements, geopolitical events affecting markets, macro trends, regulatory changes, PE/VC activity, public company news, economic data.
 
-SECTOR RULE: Pick exactly one sector per article from this list — copy it character-for-character, no abbreviations, no combining, no rewording.
-Allowed sectors: {sectors}
+INDUSTRY_VERTICALS RULE (required per article): Return a JSON array of 1-3 values from this exact list — the industry sector(s) the companies or subjects operate in. Copy values character-for-character. Return [] if none clearly apply.
+Allowed values: Technology, Healthcare & Biotech, Energy & Oil/Gas, Financial Services, Consumer & Retail, Industrials & Manufacturing, Aerospace & Defense, Real Estate, Media & Telecom, Materials & Mining, Agriculture
+
+ACTIVITY_TYPES RULE (optional per article): Return a JSON array of 0-3 values from this exact list — the type of event or activity the article covers. Copy values character-for-character. Return [] if none clearly apply.
+Allowed values: Mergers & Acquisitions, Private Equity, Venture Capital, IPO & Capital Markets, Earnings & Results, Macro & Policy, Geopolitics, Regulation & Legal, Fundraising, Crypto & Digital Assets, Leadership & Operations
 
 COMPANIES RULE: Return a JSON array of entity objects. Each object must have exactly: "name" (verbatim from title or summary) and "entity_type" (must equal "company"). Only include entities where you are confident entity_type is "company". Default to exclusion when uncertain.
 
@@ -140,7 +169,8 @@ Respond ONLY with a valid JSON array containing EXACTLY {n} objects, one per art
   "relevant": true or false,
   "relevance_score": 1-10,
   "relevance_reason": "...",
-  "sector": "<one allowed sector, character-for-character>",
+  "industry_verticals": ["<1-3 values from the allowed industry verticals list>"],
+  "activity_types": ["<0-3 values from the allowed activity types list>"],
   "companies": [{{"name": "Company A", "entity_type": "company"}}],
   "themes": ["M&A", "IPO", "Earnings", "Macro", "Geopolitics", "VC", "PE", "Regulation", "AI", "Crypto"],
   "sentiment": "bullish" or "bearish" or "neutral",
@@ -345,7 +375,6 @@ def filter_article(article):
         title=article["title"],
         summary=article["summary"],
         source=article["source"],
-        sectors=", ".join(SECTORS)
     )
     try:
         response = gemini_client.models.generate_content(
@@ -381,7 +410,6 @@ def filter_articles_batch(articles):
     articles_block = "\n".join(lines)
 
     prompt = BATCH_FILTER_PROMPT.format(
-        sectors=", ".join(SECTORS),
         articles_block=articles_block,
         n=len(articles),
     )
@@ -481,6 +509,14 @@ def store_article(article, analysis):
             if not is_valid_company(company, supabase):
                 continue
             clean_companies.append(company)
+
+        industry_verticals = validate_tags(analysis.get("industry_verticals", []), INDUSTRY_VERTICALS)
+        activity_types = validate_tags(analysis.get("activity_types", []), ACTIVITY_TYPES)
+
+        # Backward compat: write sector as first vertical so synthesize.py and
+        # any frontend code still reading the old column keeps working.
+        sector_fallback = industry_verticals[0] if industry_verticals else ""
+
         r = supabase.table("articles").insert({
             "title": article["title"],
             "summary": article["summary"] or "",
@@ -492,7 +528,9 @@ def store_article(article, analysis):
             "companies": clean_companies,
             "themes": analysis.get("themes", []),
             "sentiment": analysis.get("sentiment", "neutral"),
-            "sector": analysis.get("sector", "") if analysis.get("sector", "") in SECTORS else "",
+            "sector": sector_fallback,
+            "industry_verticals": industry_verticals,
+            "activity_types": activity_types,
             "deal_type": analysis.get("deal_type"),
             "primary_company": analysis.get("primary_company"),
             "content_type": article.get("content_type", "snippet"),

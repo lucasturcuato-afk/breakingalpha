@@ -8,13 +8,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlignLeft, Bookmark, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserClient } from "@supabase/ssr";
-import type { FeedFilter } from "@/components/feed";
 import type { StoryData } from "@/components/dashboard";
 
 interface LiveStory extends StoryData {
   _publishedAt?: string;
   _relevanceScore?: number;
   _sentimentRaw?: string | null;
+  isAlert?: boolean;
 }
 
 function getSupabase() {
@@ -61,26 +61,11 @@ function getTimeBucket(dateStr: string): string {
   return "EARLIER";
 }
 
-const sectorFilterMap: Record<string, FeedFilter> = {
-  "Public Markets": "earnings",
-  "Technology M&A": "m&a",
-  "Technology": "m&a",
-  "Fintech & Crypto": "m&a",
-  "Fintech": "m&a",
-  "Venture Capital": "m&a",
-  "Private Equity": "m&a",
-  "Geopolitics & Macro": "macro",
-  "Macro": "macro",
-  "Healthcare & Biotech": "sector",
-  "Healthcare": "sector",
-  "Energy & Climate": "sector",
-  "Energy": "sector",
-  "Consumer & Retail": "sector",
-  "Real Estate & REITs": "sector",
-};
-
 export default function LiveFeedPage() {
-  const [filter, setFilter] = useState<FeedFilter>("all");
+  const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
+  const [selectedActivityTypes, setSelectedActivityTypes] = useState<string[]>([]);
+  const [showAlertsOnly, setShowAlertsOnly] = useState(false);
+  const [showSavedOnly, setShowSavedOnly] = useState(false);
   const [sort, setSort] = useState<SortOption>("newest");
   const [articles, setArticles] = useState<LiveStory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,7 +95,7 @@ export default function LiveFeedPage() {
     try {
       const { data, error } = await getSupabase()
         .from("articles")
-        .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies, relevance_score")
+        .select("id, title, source, sector, industry_verticals, activity_types, sentiment, summary, published_at, ingested_at, url, companies, relevance_score")
         .order("ingested_at", { ascending: false })
         .limit(100);
 
@@ -124,6 +109,8 @@ export default function LiveFeedPage() {
         timestamp: timeAgo(a.published_at || a.ingested_at),
         sentiment: sentimentFromDb(a.sentiment),
         sector: a.sector || undefined,
+        industry_verticals: a.industry_verticals ?? [],
+        activity_types: a.activity_types ?? [],
         summary: a.summary || undefined,
         tags: (() => {
           let cos = a.companies;
@@ -138,6 +125,10 @@ export default function LiveFeedPage() {
         _publishedAt: a.published_at || a.ingested_at,
         _relevanceScore: a.relevance_score || 0,
         _sentimentRaw: a.sentiment,
+        isAlert: (
+          (a.sentiment?.toLowerCase() === "bearish" || a.sentiment?.toLowerCase() === "negative") &&
+          Date.now() - new Date(a.published_at || a.ingested_at).getTime() < 48 * 3600 * 1000
+        ),
       }));
 
       // Detect new articles since last refresh
@@ -193,29 +184,29 @@ export default function LiveFeedPage() {
     }
   }, [articles, sort]);
 
+  const handleVerticalToggle = useCallback((v: string) => {
+    setSelectedVerticals((prev) => prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]);
+  }, []);
+
+  const handleActivityTypeToggle = useCallback((a: string) => {
+    setSelectedActivityTypes((prev) => prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]);
+  }, []);
+
   // Filter
   const filtered: LiveStory[] = useMemo(() => {
-    if (filter === "all") return sortedArticles;
-    if (filter === "saved") return sortedArticles.filter((s) => savedIds.has(s.id));
-    if (filter === "alerts") return sortedArticles.filter((s) => {
-      const isRecent = Date.now() - new Date(s._publishedAt || "").getTime() < 48 * 3600 * 1000;
-      return (s.sentiment === "risk-off" || s.sentiment === "bearish") && isRecent;
-    });
-    return sortedArticles.filter((s) => s.sector && sectorFilterMap[s.sector] === filter);
-  }, [sortedArticles, filter, savedIds]);
+    return sortedArticles.filter((story) => {
+      if (showSavedOnly && !savedIds.has(story.id)) return false;
+      if (showAlertsOnly && !story.isAlert) return false;
 
-  const counts: Partial<Record<FeedFilter, number>> = useMemo(() => ({
-    all: articles.length,
-    earnings: articles.filter((s) => s.sector && sectorFilterMap[s.sector] === "earnings").length,
-    "m&a": articles.filter((s) => s.sector && sectorFilterMap[s.sector] === "m&a").length,
-    macro: articles.filter((s) => s.sector && sectorFilterMap[s.sector] === "macro").length,
-    sector: articles.filter((s) => s.sector && sectorFilterMap[s.sector] === "sector").length,
-    alerts: articles.filter((s) => {
-      const isRecent = Date.now() - new Date(s._publishedAt || "").getTime() < 48 * 3600 * 1000;
-      return (s.sentiment === "risk-off" || s.sentiment === "bearish") && isRecent;
-    }).length,
-    saved: articles.filter((s) => savedIds.has(s.id)).length,
-  }), [articles, savedIds]);
+      const verticalMatch = selectedVerticals.length === 0 ||
+        (story.industry_verticals ?? []).some((v) => selectedVerticals.includes(v));
+
+      const activityMatch = selectedActivityTypes.length === 0 ||
+        (story.activity_types ?? []).some((a) => selectedActivityTypes.includes(a));
+
+      return verticalMatch && activityMatch;
+    });
+  }, [sortedArticles, savedIds, showSavedOnly, showAlertsOnly, selectedVerticals, selectedActivityTypes]);
 
   // Group by time bucket
   const grouped = useMemo(() => {
@@ -235,41 +226,45 @@ export default function LiveFeedPage() {
     <AppShell pageTitle="Live Feed" mood="risk-off" moodHeadline="Risk-Off regime" moodDetails={["VIX 18.5", "10Y 4.52%"]}>
       {/* Toolbar */}
       <div className="sticky top-0 z-10 bg-parchment border-b border-border-base">
-        <div className="flex items-center justify-between px-6 py-2.5">
-          <FilterBar active={filter} onChange={setFilter} counts={counts} />
-          <div className="flex items-center gap-3 flex-shrink-0 ml-4">
-            {/* Sort dropdown */}
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as SortOption)}
-              className="font-data text-[10px] bg-parchment-mid border border-border-base rounded-lg px-2.5 py-1.5 text-text-secondary cursor-pointer"
-            >
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
-              <option value="relevance">By relevance</option>
-              <option value="sentiment">By sentiment</option>
-            </select>
-
-            {/* Last refresh */}
-            {lastRefresh && (
-              <span className="font-data text-[9px] text-text-faint whitespace-nowrap">
-                Updated {lastRefresh.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-              </span>
-            )}
-
-            {/* Manual refresh */}
-            <button
-              type="button"
-              onClick={() => {
-                setLoading(true);
-                fetchArticles();
-              }}
-              className="p-1.5 rounded-lg hover:bg-parchment-mid transition-colors cursor-pointer"
-              aria-label="Refresh"
-            >
-              <RefreshCw size={12} className={cn("text-text-muted", loading && "animate-spin")} />
-            </button>
-          </div>
+        <FilterBar
+          selectedVerticals={selectedVerticals}
+          selectedActivityTypes={selectedActivityTypes}
+          onVerticalToggle={handleVerticalToggle}
+          onActivityTypeToggle={handleActivityTypeToggle}
+          showAlertsOnly={showAlertsOnly}
+          onAlertsToggle={() => setShowAlertsOnly((prev) => !prev)}
+          showSavedOnly={showSavedOnly}
+          onSavedToggle={() => setShowSavedOnly((prev) => !prev)}
+          alertCount={articles.filter((s) => s.isAlert).length}
+        />
+        {/* Sort + refresh row */}
+        <div className="flex items-center justify-end gap-3 px-6 py-1.5 border-t border-border-subtle">
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortOption)}
+            className="font-data text-[10px] bg-parchment-mid border border-border-base rounded-lg px-2.5 py-1.5 text-text-secondary cursor-pointer"
+          >
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="relevance">By relevance</option>
+            <option value="sentiment">By sentiment</option>
+          </select>
+          {lastRefresh && (
+            <span className="font-data text-[9px] text-text-faint whitespace-nowrap">
+              Updated {lastRefresh.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setLoading(true);
+              fetchArticles();
+            }}
+            className="p-1.5 rounded-lg hover:bg-parchment-mid transition-colors cursor-pointer"
+            aria-label="Refresh"
+          >
+            <RefreshCw size={12} className={cn("text-text-muted", loading && "animate-spin")} />
+          </button>
         </div>
       </div>
 
@@ -289,7 +284,7 @@ export default function LiveFeedPage() {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          filter === "saved" ? (
+          showSavedOnly ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <div className="w-12 h-12 rounded-full bg-parchment-mid flex items-center justify-center">
                 <Bookmark size={20} className="text-text-muted" />
@@ -299,7 +294,7 @@ export default function LiveFeedPage() {
                 Click the bookmark icon on any article to save it to your reading list
               </div>
             </div>
-          ) : filter === "alerts" ? (
+          ) : showAlertsOnly ? (
             <EmptyState
               icon={<AlignLeft size={32} />}
               title="No bearish signals in the last 48 hours"
@@ -316,7 +311,7 @@ export default function LiveFeedPage() {
           grouped.map((group) => (
             <div key={group.label}>
               {/* Time bucket header */}
-              <div className="sticky top-[52px] z-[5] bg-parchment/95 backdrop-blur-sm px-6 py-1.5 border-b border-border-subtle">
+              <div className="sticky top-[108px] z-[5] bg-parchment/95 backdrop-blur-sm px-6 py-1.5 border-b border-border-subtle">
                 <div className="flex items-center gap-2">
                   <span className="font-data text-[9px] font-bold uppercase tracking-widest text-text-muted">
                     {group.label}

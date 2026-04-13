@@ -16,13 +16,16 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [role, setRole] = useState<string | null>(null);
-  const [sectors, setSectors] = useState<string[]>([]);
+  const [verticals, setVerticals] = useState<string[]>([]);
+  const [activityTypes, setActivityTypes] = useState<string[]>([]);
   const [tickers, setTickers] = useState<string[]>([]);
 
-  const toggleSector = useCallback((sector: string) => {
-    setSectors((prev) =>
-      prev.includes(sector) ? prev.filter((s) => s !== sector) : [...prev, sector],
-    );
+  const toggleVertical = useCallback((v: string) => {
+    setVerticals((prev) => prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]);
+  }, []);
+
+  const toggleActivityType = useCallback((a: string) => {
+    setActivityTypes((prev) => prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]);
   }, []);
 
   const addTicker = useCallback((ticker: string) => {
@@ -35,7 +38,7 @@ export default function OnboardingPage() {
 
   function canProceed(): boolean {
     if (step === 1) return role !== null;
-    if (step === 2) return sectors.length > 0;
+    if (step === 2) return verticals.length > 0;
     if (step === 3) return tickers.length >= 3;
     return false;
   }
@@ -71,7 +74,14 @@ export default function OnboardingPage() {
         {/* Card */}
         <div className="bg-white border border-border-base rounded-2xl p-6">
           {step === 1 && <RoleStep selected={role} onSelect={setRole} />}
-          {step === 2 && <SectorsStep selected={sectors} onToggle={toggleSector} />}
+          {step === 2 && (
+            <SectorsStep
+              selectedVerticals={verticals}
+              selectedActivityTypes={activityTypes}
+              onVerticalToggle={toggleVertical}
+              onActivityTypeToggle={toggleActivityType}
+            />
+          )}
           {step === 3 && (
             <WatchlistStep
               tickers={tickers}
