@@ -1,9 +1,6 @@
 name: BreakingAlpha Pipeline
 
 on:
-  schedule:
-    - cron: '0 14 * * 1-5'   # 6am PST / 7am PDT, Mon–Fri (morning)
-    - cron: '0 6 * * 2-6'    # 10pm PST / 11pm PDT, Mon–Fri evenings (fires Tue–Sat UTC)
   workflow_dispatch:
     inputs:
       mode:
