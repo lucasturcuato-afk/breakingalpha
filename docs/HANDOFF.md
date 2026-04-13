@@ -50,7 +50,7 @@ Replaced GitHub Actions native cron on 2026-04-13 — GitHub's built-in schedule
 | Job | cron-job.org title | UTC | ET |
 |-----|--------------------|-----|----|
 | Morning | Signalera Morning Pipeline | 10:00 Mon–Fri | 6am ET |
-| Evening | Signalera Evening Pipeline | 04:00 Tue–Sat | 8pm PT |
+| Evening | Signalera Evening Pipeline | 04:00 Mon–Fri | 8pm PT |
 
 **Request headers (both jobs):**
 - `Authorization: Bearer <PAT>`
