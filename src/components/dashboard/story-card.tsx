@@ -131,8 +131,9 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
                         backgroundColor: style.bg,
                         color: style.text,
                         border: `1px solid ${style.border}`,
+                        borderRadius: "3px",
                       }}
-                      className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                      className="inline-flex items-center px-2 py-0.5 text-xs font-medium"
                     >
                       {v}
                     </span>
@@ -159,8 +160,9 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
                     backgroundColor: style.bg,
                     color: style.text,
                     border: `1px solid ${style.border}`,
+                    borderRadius: "3px",
                   }}
-                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                  className="inline-flex items-center px-2 py-0.5 text-xs font-medium"
                 >
                   {a}
                 </span>
@@ -370,8 +372,9 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
                           backgroundColor: style.bg,
                           color: style.text,
                           border: `1px solid ${style.border}`,
+                          borderRadius: "3px",
                         }}
-                        className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                        className="inline-flex items-center px-2 py-0.5 text-xs font-medium"
                       >
                         {v}
                       </span>
@@ -398,8 +401,9 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
                       backgroundColor: style.bg,
                       color: style.text,
                       border: `1px solid ${style.border}`,
+                      borderRadius: "3px",
                     }}
-                    className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                    className="inline-flex items-center px-2 py-0.5 text-xs font-medium"
                   >
                     {a}
                   </span>
