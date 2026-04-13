@@ -70,7 +70,7 @@ export async function POST() {
     }
 
     // 2. Fetch up to 10 clusters for that run, ranked by strength_score DESC
-    const { data: clusters } = await adminSupabase
+    const { data: clusters, error: clustersError } = await adminSupabase
       .from("trend_clusters")
       .select(
         "label, cluster_type, source_count, strength_score, top_companies, top_sectors, representative_article_ids"
@@ -78,6 +78,9 @@ export async function POST() {
       .eq("run_id", latestClusterRow.run_id)
       .order("strength_score", { ascending: false, nullsFirst: false })
       .limit(10);
+    console.log("[theses:debug] run_id used:", latestClusterRow?.run_id);
+    console.log("[theses:debug] clusters:", JSON.stringify(clusters));
+    console.log("[theses:debug] clustersError:", JSON.stringify(clustersError));
 
     if (!clusters || clusters.length === 0) {
       return NextResponse.json(
