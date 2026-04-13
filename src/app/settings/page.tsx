@@ -21,10 +21,16 @@ const tabs: { key: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { key: "team", label: "Team", icon: <Users size={14} /> },
 ];
 
-const sectors = [
-  "Technology M&A", "Venture Capital", "Private Equity", "Public Markets",
-  "Geopolitics & Macro", "Real Estate & REITs", "Fintech & Crypto",
-  "Healthcare & Biotech", "Energy & Climate", "Consumer & Retail",
+const INDUSTRY_VERTICALS = [
+  "Technology", "Healthcare & Biotech", "Energy & Oil/Gas", "Financial Services",
+  "Consumer & Retail", "Industrials & Manufacturing", "Aerospace & Defense",
+  "Real Estate", "Media & Telecom", "Materials & Mining", "Agriculture",
+];
+
+const ACTIVITY_TYPES = [
+  "Mergers & Acquisitions", "Private Equity", "Venture Capital", "IPO & Capital Markets",
+  "Earnings & Results", "Macro & Policy", "Geopolitics", "Regulation & Legal",
+  "Fundraising", "Crypto & Digital Assets", "Leadership & Operations",
 ];
 
 const modules = [
@@ -80,7 +86,8 @@ function ProfileTab() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("Analyst");
-  const [selectedSectors, setSelectedSectors] = useState<string[]>(["Technology M&A", "Public Markets", "Venture Capital"]);
+  const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
+  const [selectedActivityTypes, setSelectedActivityTypes] = useState<string[]>([]);
   const [selectedModules, setSelectedModules] = useState<string[]>(["Macro & Rates", "Deals & M&A"]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -113,7 +120,8 @@ function ProfileTab() {
         if (!res.ok) return;
         const { preferences } = await res.json();
         if (preferences) {
-          if (preferences.sectors?.length) setSelectedSectors(preferences.sectors);
+          if (preferences.vertical_interests?.length) setSelectedVerticals(preferences.vertical_interests);
+          if (preferences.activity_interests?.length) setSelectedActivityTypes(preferences.activity_interests);
           if (preferences.modules?.length) setSelectedModules(preferences.modules);
         }
       } catch { /* ignore */ }
@@ -133,7 +141,11 @@ function ProfileTab() {
       await fetch("/api/preferences", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sectors: selectedSectors, modules: selectedModules }),
+        body: JSON.stringify({
+          vertical_interests: selectedVerticals,
+          activity_interests: selectedActivityTypes,
+          modules: selectedModules,
+        }),
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -163,22 +175,46 @@ function ProfileTab() {
       <Divider />
 
       <div>
-        <h3 className="font-sans text-[13px] font-bold text-text-primary mb-1">Sector Interests</h3>
+        <h3 className="font-sans text-[13px] font-bold text-text-primary mb-1">Industry Verticals</h3>
         <p className="font-sans text-[11px] text-text-muted mb-3">These shape your morning brief and feed ranking.</p>
         <div className="flex flex-wrap gap-2">
-          {sectors.map((s) => (
+          {INDUSTRY_VERTICALS.map((v) => (
             <button
-              key={s}
+              key={v}
               type="button"
-              onClick={() => toggleItem(s, selectedSectors, setSelectedSectors)}
+              onClick={() => toggleItem(v, selectedVerticals, setSelectedVerticals)}
               className={cn(
                 "px-3 py-1.5 rounded-lg border font-sans text-[11px] font-medium transition-all cursor-pointer",
-                selectedSectors.includes(s)
+                selectedVerticals.includes(v)
                   ? "border-gold bg-gold-muted text-gold-dark"
                   : "border-border-base bg-white text-text-secondary hover:border-border-hover",
               )}
             >
-              {s}
+              {v}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <Divider />
+
+      <div>
+        <h3 className="font-sans text-[13px] font-bold text-text-primary mb-1">Deal & Event Types</h3>
+        <p className="font-sans text-[11px] text-text-muted mb-3">Filter your feed by the types of deals and events you care about.</p>
+        <div className="flex flex-wrap gap-2">
+          {ACTIVITY_TYPES.map((a) => (
+            <button
+              key={a}
+              type="button"
+              onClick={() => toggleItem(a, selectedActivityTypes, setSelectedActivityTypes)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg border font-sans text-[11px] font-medium transition-all cursor-pointer",
+                selectedActivityTypes.includes(a)
+                  ? "border-gold bg-gold-muted text-gold-dark"
+                  : "border-border-base bg-white text-text-secondary hover:border-border-hover",
+              )}
+            >
+              {a}
             </button>
           ))}
         </div>
