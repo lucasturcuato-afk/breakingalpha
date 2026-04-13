@@ -47,6 +47,10 @@
 - Evening Wrap headline selection brought to parity with Morning Brief spec (PR #76)
 - Company Intel memo prompt rewrite (PR #78) — 8 cumulative rules: analyst brief opener (proper noun required, "The" banned), low-recognition company carve-out, What Just Changed development filter, Cross-Signals binary verdict, What To Do With This bullet structure, sourcing discipline (all figures traceable to article pool), length rule (signal density), em-dash ban, expanded banned phrase list. Validated against live Supabase pools; no training knowledge leakage.
 - Autonomous Improvement Phase 2–6 (Lucas) — thesis grading (Finnhub + Gemini), pattern memory, adversarial bear-case testing, source credibility weighting, pattern library feedback loop; all integrated into pipeline and thesis display
+- Stub briefing fix — Gemini thinking tokens were consuming `max_output_tokens` budget; disabled thinking, raised max to 4096 (PR #82)
+- Company Intel entity quality — `is_blocked_entity()` blocklist (currencies, countries, gov bodies, law firms) + `matches_ingest_blocklist()` keyword pre-filter (class action / law firm PRs) in `ingest.py`; `isJunkEntityName()` extended with CURRENCY_BLOCKLIST, COUNTRY_BLOCKLIST, GOV_SUBSTRINGS, LAW_SUBSTRINGS, INDEX_BLOCKLIST, PEOPLE_BLOCKLIST, ABSTRACT_SUBSTRINGS, KNOWN_JUNK_ENTITIES in `company-intel.ts`; `.slice(0, 40)` cap removed from Company Intel page (PR #79)
+- Company Intel entity extraction — Gemini companies prompt rewritten to return typed `{"name", "entity_type"}` objects with strict company definition and 9 exclusion categories; `backend/wikidata.py` added — Wikidata search API validation with Supabase caching via `wikidata_entity_cache` table; `extract_company_names()` helper + Wikidata gate wired into `store_article()`; `nasa` and `faa` added to `_GOV_ACRONYM_RE` (PR #80)
+- Company Intel entity consistency — `articles.companies` column now written with fully filtered `clean_companies` list (blocklist + Wikidata) before insert, matching `company_mentions`; fixes autonomous loop's `trend_mapper.py` Jaccard clustering and `observe.py` deduplication operating on clean data; brace-escaping bug in Gemini prompt fixed (PR #81)
 
 ## In Progress
 - None currently tracked
@@ -64,6 +68,7 @@
 - **Sector preference visibility recovery** — sector_breakdown reordering by user preference now live, but visibility depends on new article accumulation with valid sectors (forward-only, no backfill); expect gradual improvement as ingest populates sectors on new articles; low priority
 
 ### Other pending
+- **Wikidata validation at scale** — `wikidata_entity_cache` is live and populating on cache misses; needs full ingest run with fresh articles to confirm entity quality in production; NASA/FAA have a known Wikidata classification gap (both now caught by `_GOV_ACRONYM_RE` in Python + frontend `isJunkEntityName()`)
 - Verify/enable Supabase anon SELECT on `articles` and `briefings` tables
 - Article cards structured display — headline, why it matters, impacted name/theme, source, timestamp (fields already in schema, zero backend work)
 - Today feed "Watchlist Only" toggle — filter articles client-side to watchlist-matched items
