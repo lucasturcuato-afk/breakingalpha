@@ -132,14 +132,16 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 - Do NOT modify: thesis-board/page.tsx, /api/theses/route.ts (until next Lucas cycle)
 
 ### Open Questions
-1. Has GEMINI_API_KEY been added as a GitHub Secret?
+1. ~~Has GEMINI_API_KEY been added as a GitHub Secret?~~ — RESOLVED: confirmed in schedule.yml env block (e9e235a)
 2. Is deal_extractor.py staying on Groq intentionally?
-3. What is Lucas's scope for the autonomous improvement loop?
+3. ~~What is Lucas's scope for the autonomous improvement loop?~~ — RESOLVED: 12-step pipeline with thesis grading, pattern memory, source credibility, adversarial review (phases 2–6 shipped)
 4. Are there active paying users? (determines urgency of fixes)
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
 
 ## Recently Completed (2026-04-13)
-Dual-dimension sector taxonomy system (phases 2–7): Backend types + color system (phase 2–4, c3c1d22); user preferences UI wiring (phase 7, e857d59); pill rendering in feed/story cards with two-color system (phase 5, 0615a26); full filter bar redesign with terminal-style chips and inline active colors (phase 6, 43cea15); simplified pill rendering to blue verticals + gold activity types (a6ba43f). Branch: feat/dual-dimension-sector-taxonomy (7 commits ahead of main).
+Sector taxonomy migration complete: observe.py, trend_mapper.py, and feed-row.tsx migrated from single `sector` field to dual-dimension taxonomy. observe.py pool query now fetches `industry_verticals` and `_reconstruct_selected()` uses `(industry_verticals or [sector])[0]` to exactly mirror synthesize.py selection logic. trend_mapper.py `fetch_run_context()` fetches `industry_verticals` and `_normalize_article()` resolves sector as `industry_verticals[0]` with fallback — cascades to all 7+ downstream cluster functions (make_cluster_key, make_cluster_label, compute_pairwise_similarity, detect_cluster_surfacing, pattern boost, etc.) without further changes. feed-row.tsx thesis button now uses `industry_verticals[0]` before falling back to `sector`. No Supabase schema changes needed (sector backward-compat column still populated by ingest.py). tsc clean. commit: 1ddb0e0.
+
+Dual-dimension sector taxonomy system (phases 2–7): Backend types + color system (phase 2–4, c3c1d22); user preferences UI wiring (phase 7, e857d59); pill rendering in feed/story cards with two-color system (phase 5, 0615a26); full filter bar redesign with terminal-style chips and inline active colors (phase 6, 43cea15); simplified pill rendering to blue verticals + gold activity types (a6ba43f). Merged to main via PR #85.
 
 ## Recently Completed (2026-04-12)
 PRs #79–#82 entity quality and pipeline stability: PR #79 added blocklist (currencies, countries, gov bodies, law firms) and keyword pre-filter (class action / law firm) to ingest; extended isJunkEntityName() in frontend. PR #80 rewrote Gemini prompt for typed `{name, entity_type}` extraction, added Wikidata validation module with Supabase caching. PR #81 fixed articles.companies being written with raw Gemini output (now uses clean_companies list); fixed KeyError from unescaped braces in prompt. PR #82 fixed stub briefing issue — Gemini thinking tokens consumed max_output_tokens budget; disabled thinking and raised max to 4096. Pipeline now fully wired end-to-end (extraction → blocklist → Wikidata → clean_companies); ready for production validation at scale.
