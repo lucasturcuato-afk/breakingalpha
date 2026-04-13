@@ -94,9 +94,20 @@ export async function POST() {
       const raw = c.representative_article_ids;
       return Array.isArray(raw) ? (raw as string[]).slice(0, 3) : [];
     });
-    const allIds = Array.from(new Set(clusterArticleIds.flat()));
+    const allIds = new Set<string>();
+    clusters.forEach((c) => {
+      const ids = c.representative_article_ids;
+      if (!ids || !Array.isArray(ids)) return;
+      ids.slice(0, 3).forEach((item: unknown) => {
+        if (typeof item === "string") {
+          allIds.add(item);
+        } else if (Array.isArray(item)) {
+          item.forEach((id: string) => allIds.add(id));
+        }
+      });
+    });
 
-    if (allIds.length === 0) {
+    if (allIds.size === 0) {
       return NextResponse.json(
         { error: "No clusters available — pipeline must run first" },
         { status: 503 }
@@ -106,7 +117,7 @@ export async function POST() {
     const { data: clusterArticles } = await supabase
       .from("articles")
       .select("id, title, summary, sector, ingested_at, content_type")
-      .in("id", allIds);
+      .in("id", Array.from(allIds));
 
     if (!clusterArticles || clusterArticles.length === 0) {
       return NextResponse.json(
