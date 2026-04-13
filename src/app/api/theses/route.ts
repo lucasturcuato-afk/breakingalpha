@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
+import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -44,10 +45,16 @@ export async function POST() {
   try {
     const validIds = new Set<string>();
 
+    // Service-role client for pipeline tables (not gated on user session/RLS)
+    const adminSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
     // 1. Pull the most recent run_id from trend_clusters within the last 48h
     const lookbackIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    const { data: latestClusterRow } = await supabase
+    const { data: latestClusterRow } = await adminSupabase
       .from("trend_clusters")
       .select("run_id, brief_type")
       .gte("created_at", lookbackIso)
@@ -63,7 +70,7 @@ export async function POST() {
     }
 
     // 2. Fetch up to 10 clusters for that run, ranked by strength_score DESC
-    const { data: clusters } = await supabase
+    const { data: clusters } = await adminSupabase
       .from("trend_clusters")
       .select(
         "label, cluster_type, source_count, strength_score, top_companies, top_sectors, representative_article_ids"
