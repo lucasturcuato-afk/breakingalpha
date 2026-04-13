@@ -311,7 +311,7 @@ export default function LiveFeedPage() {
           grouped.map((group) => (
             <div key={group.label}>
               {/* Time bucket header */}
-              <div className="sticky top-[134px] z-[5] bg-parchment/95 backdrop-blur-sm px-6 py-1.5 border-b border-border-subtle">
+              <div className="sticky top-[108px] z-[5] bg-parchment/95 backdrop-blur-sm px-6 py-1.5 border-b border-border-subtle">
                 <div className="flex items-center gap-2">
                   <span className="font-data text-[9px] font-bold uppercase tracking-widest text-text-muted">
                     {group.label}

@@ -1,6 +1,7 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { useState } from "react";
+import type { CSSProperties } from "react";
 import { getVerticalStyle, getActivityTypeStyle } from "@/lib/sector-colors";
 import { Bell, Bookmark } from "lucide-react";
 
@@ -16,13 +17,141 @@ const ACTIVITY_TYPES = [
   "Fundraising", "Crypto & Digital Assets", "Leadership & Operations",
 ];
 
-const INACTIVE_CHIP_STYLE = {
+// ── Shared style constants ──────────────────────────────────────────────────
+
+const CHIP_BASE: CSSProperties = {
+  fontSize: "11px",
+  fontWeight: 500,
+  letterSpacing: "0.02em",
+  textTransform: "uppercase",
+  padding: "2px 7px",
+  borderRadius: "3px",
+  whiteSpace: "nowrap",
+  flexShrink: 0,
+  cursor: "pointer",
+  transition: "color 100ms, border-color 100ms",
+  lineHeight: 1.4,
+};
+
+const CHIP_INACTIVE: CSSProperties = {
+  backgroundColor: "transparent",
+  color: "#6b7280",
+  border: "1px solid #2a2a2a",
+};
+
+const CHIP_HOVER: CSSProperties = {
   backgroundColor: "transparent",
   color: "#9ca3af",
-  borderColor: "#374151",
-  borderWidth: 1,
-  borderStyle: "solid" as const,
+  border: "1px solid #4b5563",
 };
+
+const ROW_LABEL: CSSProperties = {
+  fontSize: "9px",
+  fontWeight: 700,
+  letterSpacing: "0.1em",
+  textTransform: "uppercase",
+  color: "#4b5563",
+  width: "64px",
+  flexShrink: 0,
+};
+
+// ── Internal Chip component (owns hover state) ──────────────────────────────
+
+interface ChipProps {
+  label: string;
+  isActive: boolean;
+  activeStyle: { bg: string; text: string; border: string };
+  onToggle: () => void;
+}
+
+function Chip({ label, isActive, activeStyle, onToggle }: ChipProps) {
+  const [hovered, setHovered] = useState(false);
+
+  const dynamicStyle: CSSProperties = isActive
+    ? {
+        backgroundColor: activeStyle.bg,
+        color: activeStyle.text,
+        border: `1px solid ${activeStyle.border}`,
+      }
+    : hovered
+    ? CHIP_HOVER
+    : CHIP_INACTIVE;
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{ ...CHIP_BASE, ...dynamicStyle }}
+    >
+      {label}
+    </button>
+  );
+}
+
+// ── Utility chip (Alerts / Saved) ───────────────────────────────────────────
+
+interface UtilChipProps {
+  label: string;
+  icon: React.ReactNode;
+  isActive: boolean;
+  onToggle: () => void;
+  badge?: number;
+}
+
+function UtilChip({ label, icon, isActive, onToggle, badge }: UtilChipProps) {
+  const [hovered, setHovered] = useState(false);
+
+  const GOLD = "#d4a84b";
+  const dynamicStyle: CSSProperties = isActive
+    ? {
+        backgroundColor: "rgba(212,168,75,0.08)",
+        color: GOLD,
+        border: `1px solid rgba(212,168,75,0.3)`,
+      }
+    : hovered
+    ? CHIP_HOVER
+    : CHIP_INACTIVE;
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        ...CHIP_BASE,
+        ...dynamicStyle,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "4px",
+      }}
+    >
+      {icon}
+      {label}
+      {badge != null && badge > 0 && (
+        <span
+          style={{
+            fontSize: "9px",
+            fontWeight: 700,
+            lineHeight: 1,
+            padding: "1px 4px",
+            borderRadius: "2px",
+            backgroundColor: isActive ? "rgba(212,168,75,0.2)" : "rgba(255,255,255,0.07)",
+            color: isActive ? GOLD : "#6b7280",
+            letterSpacing: 0,
+            textTransform: "none",
+          }}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+// ── FilterBar ───────────────────────────────────────────────────────────────
 
 interface FilterBarProps {
   selectedVerticals: string[];
@@ -48,106 +177,66 @@ export function FilterBar({
   alertCount = 0,
 }: FilterBarProps) {
   return (
-    <div className="bg-parchment px-6 pt-2 pb-1 space-y-1">
-      {/* Row 1: Industry Verticals */}
-      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-        {INDUSTRY_VERTICALS.map((v) => {
-          const isActive = selectedVerticals.includes(v);
-          const style = getVerticalStyle(v);
-          return (
-            <button
+    <div
+      className="bg-parchment"
+      style={{ padding: "6px 16px 5px", borderBottom: "1px solid #1e1e1e" }}
+    >
+      {/* Row 1 — SECTORS */}
+      <div style={{ display: "flex", alignItems: "center", marginBottom: "4px" }}>
+        <span style={ROW_LABEL}>Sectors</span>
+        <div
+          className="no-scrollbar"
+          style={{ display: "flex", alignItems: "center", gap: "6px", overflowX: "auto", flex: 1 }}
+        >
+          {INDUSTRY_VERTICALS.map((v) => (
+            <Chip
               key={v}
-              type="button"
-              onClick={() => onVerticalToggle(v)}
-              style={
-                isActive
-                  ? {
-                      backgroundColor: style.bg,
-                      color: style.text,
-                      borderColor: style.border,
-                      borderWidth: 1,
-                      borderStyle: "solid",
-                    }
-                  : INACTIVE_CHIP_STYLE
-              }
-              className="flex-shrink-0 px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap transition-all cursor-pointer"
-            >
-              {v}
-            </button>
-          );
-        })}
+              label={v}
+              isActive={selectedVerticals.includes(v)}
+              activeStyle={getVerticalStyle(v)}
+              onToggle={() => onVerticalToggle(v)}
+            />
+          ))}
+        </div>
       </div>
 
-      {/* Subtle separator */}
-      <div className="border-t border-border-subtle/50" />
+      {/* Separator */}
+      <div style={{ borderBottom: "1px solid #1a1a1a", marginBottom: "4px" }} />
 
-      {/* Row 2: Activity Types */}
-      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-        {ACTIVITY_TYPES.map((a) => {
-          const isActive = selectedActivityTypes.includes(a);
-          const style = getActivityTypeStyle(a);
-          return (
-            <button
+      {/* Row 2 — ACTIVITY */}
+      <div style={{ display: "flex", alignItems: "center", marginBottom: "4px" }}>
+        <span style={ROW_LABEL}>Activity</span>
+        <div
+          className="no-scrollbar"
+          style={{ display: "flex", alignItems: "center", gap: "6px", overflowX: "auto", flex: 1 }}
+        >
+          {ACTIVITY_TYPES.map((a) => (
+            <Chip
               key={a}
-              type="button"
-              onClick={() => onActivityTypeToggle(a)}
-              style={
-                isActive
-                  ? {
-                      backgroundColor: style.bg,
-                      color: style.text,
-                      borderColor: style.border,
-                      borderWidth: 1,
-                      borderStyle: "solid",
-                    }
-                  : INACTIVE_CHIP_STYLE
-              }
-              className="flex-shrink-0 px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap transition-all cursor-pointer"
-            >
-              {a}
-            </button>
-          );
-        })}
+              label={a}
+              isActive={selectedActivityTypes.includes(a)}
+              activeStyle={getActivityTypeStyle(a)}
+              onToggle={() => onActivityTypeToggle(a)}
+            />
+          ))}
+        </div>
       </div>
 
-      {/* Row 3: Alerts + Saved toggle buttons */}
-      <div className="flex items-center gap-2 pb-0.5">
-        <button
-          type="button"
-          onClick={onAlertsToggle}
-          className={cn(
-            "inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-medium border",
-            "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)] cursor-pointer",
-            showAlertsOnly
-              ? "bg-red-500/10 text-red-400 border-red-500/20"
-              : "bg-transparent text-text-faint border-border-subtle hover:text-text-muted hover:border-border-base",
-          )}
-        >
-          <Bell size={10} />
-          Alerts
-          {alertCount > 0 && (
-            <span className={cn(
-              "text-[9px] font-bold min-w-[16px] h-4 flex items-center justify-center rounded px-1",
-              showAlertsOnly ? "bg-red-500/20 text-red-300" : "bg-border-base text-text-muted",
-            )}>
-              {alertCount}
-            </span>
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={onSavedToggle}
-          className={cn(
-            "inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-medium border",
-            "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)] cursor-pointer",
-            showSavedOnly
-              ? "bg-gold/10 text-gold border-gold/20"
-              : "bg-transparent text-text-faint border-border-subtle hover:text-text-muted hover:border-border-base",
-          )}
-        >
-          <Bookmark size={10} />
-          Saved
-        </button>
+      {/* Row 3 — Utility (right-aligned) */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "6px" }}>
+        <UtilChip
+          label="Alerts"
+          icon={<Bell size={9} />}
+          isActive={showAlertsOnly}
+          onToggle={onAlertsToggle}
+          badge={alertCount}
+        />
+        <UtilChip
+          label="Saved"
+          icon={<Bookmark size={9} />}
+          isActive={showSavedOnly}
+          onToggle={onSavedToggle}
+        />
       </div>
     </div>
   );
