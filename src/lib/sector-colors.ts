@@ -25,3 +25,39 @@ export function getSectorStyle(sector: string | null | undefined, isDark = false
     ? { backgroundColor: colors.darkBg, color: colors.darkText }
     : { backgroundColor: colors.bg, color: colors.text };
 }
+
+export const VERTICAL_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  "Technology":                  { bg: "bg-blue-500/10",    text: "text-blue-400",    border: "border-blue-500/20" },
+  "Healthcare & Biotech":        { bg: "bg-cyan-500/10",    text: "text-cyan-400",    border: "border-cyan-500/20" },
+  "Energy & Oil/Gas":            { bg: "bg-teal-500/10",    text: "text-teal-400",    border: "border-teal-500/20" },
+  "Financial Services":          { bg: "bg-sky-500/10",     text: "text-sky-400",     border: "border-sky-500/20" },
+  "Consumer & Retail":           { bg: "bg-indigo-500/10",  text: "text-indigo-400",  border: "border-indigo-500/20" },
+  "Industrials & Manufacturing": { bg: "bg-slate-500/10",   text: "text-slate-400",   border: "border-slate-500/20" },
+  "Aerospace & Defense":         { bg: "bg-blue-700/10",    text: "text-blue-300",    border: "border-blue-700/20" },
+  "Real Estate":                 { bg: "bg-cyan-700/10",    text: "text-cyan-300",    border: "border-cyan-700/20" },
+  "Media & Telecom":             { bg: "bg-violet-500/10",  text: "text-violet-400",  border: "border-violet-500/20" },
+  "Materials & Mining":          { bg: "bg-slate-600/10",   text: "text-slate-300",   border: "border-slate-600/20" },
+  "Agriculture":                 { bg: "bg-teal-600/10",    text: "text-teal-300",    border: "border-teal-600/20" },
+}
+
+export const ACTIVITY_TYPE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  "Mergers & Acquisitions":  { bg: "bg-amber-500/10",  text: "text-amber-400",  border: "border-amber-500/20" },
+  "Private Equity":          { bg: "bg-orange-500/10", text: "text-orange-400", border: "border-orange-500/20" },
+  "Venture Capital":         { bg: "bg-rose-500/10",   text: "text-rose-400",   border: "border-rose-500/20" },
+  "IPO & Capital Markets":   { bg: "bg-amber-600/10",  text: "text-amber-300",  border: "border-amber-600/20" },
+  "Earnings & Results":      { bg: "bg-yellow-500/10", text: "text-yellow-400", border: "border-yellow-500/20" },
+  "Macro & Policy":          { bg: "bg-orange-600/10", text: "text-orange-300", border: "border-orange-600/20" },
+  "Geopolitics":             { bg: "bg-red-500/10",    text: "text-red-400",    border: "border-red-500/20" },
+  "Regulation & Legal":      { bg: "bg-rose-600/10",   text: "text-rose-300",   border: "border-rose-600/20" },
+  "Fundraising":             { bg: "bg-amber-700/10",  text: "text-amber-200",  border: "border-amber-700/20" },
+  "Crypto & Digital Assets": { bg: "bg-orange-700/10", text: "text-orange-300", border: "border-orange-700/20" },
+  "Leadership & Operations": { bg: "bg-yellow-600/10", text: "text-yellow-300", border: "border-yellow-600/20" },
+}
+
+export function getVerticalStyle(vertical: string): { bg: string; text: string; border: string } {
+  return VERTICAL_COLORS[vertical] ?? { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20" }
+}
+
+export function getActivityTypeStyle(activityType: string): { bg: string; text: string; border: string } {
+  return ACTIVITY_TYPE_COLORS[activityType] ?? { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20" }
+}

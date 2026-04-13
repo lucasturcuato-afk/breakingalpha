@@ -45,6 +45,8 @@ interface MatchedArticle {
   title: string;
   source?: string;
   sector?: string;
+  industry_verticals?: string[];
+  activity_types?: string[];
   published_at?: string;
 }
 
@@ -106,7 +108,7 @@ export default function WatchlistPage() {
         const identifiers = newEntries.map((e: WatchlistEntry) => e.identifier.toLowerCase());
         const { data: articles } = await getSupabase()
           .from("articles")
-          .select("id, title, source, sector, published_at, ingested_at, summary, companies")
+          .select("id, title, source, sector, industry_verticals, activity_types, published_at, ingested_at, summary, companies")
           .order("relevance_score", { ascending: false })
           .limit(50);
 
@@ -124,6 +126,8 @@ export default function WatchlistPage() {
             title: a.title,
             source: a.source,
             sector: a.sector,
+            industry_verticals: a.industry_verticals ?? [],
+            activity_types: a.activity_types ?? [],
             published_at: a.published_at || a.ingested_at,
           })));
         }

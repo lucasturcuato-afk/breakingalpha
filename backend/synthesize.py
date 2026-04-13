@@ -107,7 +107,7 @@ def _diversify_articles(articles, sector_cap=4, company_cap=2, total=20):
     company_counts = defaultdict(int)
     selected = []
     for a in articles:  # already sorted by relevance_score desc
-        sector = a.get("sector") or ""
+        sector = (a.get("industry_verticals") or [a.get("sector", "")])[0]
         companies = a.get("companies") or []
         if isinstance(companies, str):
             try:
@@ -182,7 +182,7 @@ def _select_articles_for_synthesis(
     spine_ids = set()
 
     for a in articles:
-        sector    = a.get("sector") or ""
+        sector    = (a.get("industry_verticals") or [a.get("sector", "")])[0]
         companies = _parse_companies(a)
 
         if sector_counts[sector] >= spine_sector_cap:
@@ -202,14 +202,14 @@ def _select_articles_for_synthesis(
     # ── Floor: one best article per uncovered sector ───────────────────────────
     # articles is already score-sorted, so the first eligible article per sector
     # is automatically the highest-scoring one for that sector.
-    covered_sectors = {a.get("sector") or "" for a in spine}
+    covered_sectors = {(a.get("industry_verticals") or [a.get("sector", "")])[0] for a in spine}
     best_per_sector = {}
 
     for a in articles:
         if id(a) in spine_ids:
             continue
         score  = a.get("relevance_score") or 0
-        sector = a.get("sector") or ""
+        sector = (a.get("industry_verticals") or [a.get("sector", "")])[0]
         if not sector or sector in covered_sectors:
             continue
         if score < FLOOR_MIN_SCORE:
@@ -292,7 +292,7 @@ def run(brief_type="morning"):
     # a single deal cluster or company from dominating the briefing.
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     resp = supabase.table("articles")\
-        .select("title, summary, sector, companies, relevance_score, relevance_reason")\
+        .select("title, summary, sector, industry_verticals, companies, relevance_score, relevance_reason")\
         .gte("ingested_at", cutoff)\
         .order("relevance_score", desc=True)\
         .limit(60)\
@@ -301,7 +301,7 @@ def run(brief_type="morning"):
     articles = resp.data or []
     if not articles:
         resp = supabase.table("articles")\
-            .select("title, summary, sector, companies, relevance_score, relevance_reason")\
+            .select("title, summary, sector, industry_verticals, companies, relevance_score, relevance_reason")\
             .order("ingested_at", desc=True)\
             .limit(60)\
             .execute()

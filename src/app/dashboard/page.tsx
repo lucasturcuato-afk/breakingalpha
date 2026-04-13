@@ -70,7 +70,7 @@ export default function DashboardPage() {
         // Get top 4 stories
         const { data, error } = await supabase
           .from("articles")
-          .select("id, title, source, summary, sector, sentiment, published_at, ingested_at, url, companies")
+          .select("id, title, source, summary, sector, industry_verticals, activity_types, sentiment, published_at, ingested_at, url, companies")
           .order("relevance_score", { ascending: false })
           .order("ingested_at", { ascending: false })
           .limit(4);
@@ -89,6 +89,8 @@ export default function DashboardPage() {
               timestamp: timeAgo(a.published_at || a.ingested_at),
               sentiment: (a.sentiment || "neutral").toLowerCase(),
               sector: a.sector || undefined,
+              industry_verticals: a.industry_verticals ?? [],
+              activity_types: a.activity_types ?? [],
               summary: a.summary || undefined,
               tags: (() => {
                 if (!a.companies) return undefined;
