@@ -98,16 +98,6 @@ export function ThesisList({
               </p>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span
-                  className={cn(
-                    "text-[9px] px-1.5 py-0.5 rounded font-medium",
-                    sentiment === "bullish" && "bg-signal-up/10 text-signal-up",
-                    sentiment === "bearish" && "bg-signal-dn/10 text-signal-dn",
-                    sentiment === "watch" && "bg-signal-warn/10 text-signal-warn",
-                  )}
-                >
-                  {thesis.conviction}
-                </span>
-                <span
                   style={getSectorStyle(thesis.sector)}
                   className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
                 >
