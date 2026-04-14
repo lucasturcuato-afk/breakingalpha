@@ -227,12 +227,13 @@ def run_bear_case(thesis: dict) -> dict | None:
         bear_case = generate_bear_case(thesis, articles)
         scores = score_bull_vs_bear(thesis, bear_case)
 
-        delta = scores["bull"] - scores["bear"]
         passed = scores["bull"] > scores["bear"]
+        # Store the winning side's score (always 0.0–1.0, never negative)
+        winning_score = scores["bull"] if passed else scores["bear"]
 
         update = {
             "bear_case": bear_case or None,
-            "adversarial_score": _r4(delta),
+            "adversarial_score": _r4(winning_score),
             "passed_adversarial": bool(passed),
         }
         supabase.table("theses").update(update).eq("id", thesis_id).execute()
@@ -258,6 +259,27 @@ def main() -> dict | None:
     try:
         if not _preflight_schema():
             return None
+
+        # One-time backfill: reset rows with scores outside 0–1 (old delta
+        # scoring) so they get re-processed with the corrected logic.
+        try:
+            bad = (
+                supabase.table("theses")
+                .select("id")
+                .lt("adversarial_score", 0)
+                .execute()
+            )
+            bad_ids = [r["id"] for r in (bad.data or [])]
+            if bad_ids:
+                for bid in bad_ids:
+                    supabase.table("theses").update({
+                        "adversarial_score": None,
+                        "passed_adversarial": None,
+                    }).eq("id", bid).execute()
+                print(f"  [adversarial] reset {len(bad_ids)} rows with negative scores")
+        except Exception as e:
+            logger.warning("adversarial: backfill reset failed (continuing): %s", e)
+
         resp = (
             supabase.table("theses")
             .select(

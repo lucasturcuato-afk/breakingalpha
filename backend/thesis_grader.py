@@ -155,19 +155,19 @@ def _parse_dt(value) -> datetime | None:
 def _finnhub_get(path: str, params: dict) -> dict | list | None:
     """GET a Finnhub endpoint; return None on any error, 403, or 429."""
     if not FINNHUB_TOKEN:
-        logger.warning("thesis_grader: FINNHUB_API_KEY missing — signal skipped")
+        print(f"  ⚠ Finnhub: FINNHUB_API_KEY missing — {path} skipped")
         return None
     try:
         q = dict(params)
         q["token"] = FINNHUB_TOKEN
         r = requests.get(f"{FINNHUB_BASE}{path}", params=q, timeout=15)
         if r.status_code in (403, 429):
-            logger.warning("thesis_grader: Finnhub %s returned %s", path, r.status_code)
+            print(f"  ⚠ Finnhub {path} returned {r.status_code} (free-tier limit)")
             return None
         r.raise_for_status()
         return r.json()
     except Exception as e:
-        logger.warning("thesis_grader: Finnhub %s failed: %s", path, e)
+        print(f"  ⚠ Finnhub {path} failed: {e}")
         return None
 
 
@@ -417,12 +417,15 @@ def grade_one(thesis: dict) -> dict | None:
     if not thesis_id:
         return None
     if not ticker:
-        logger.info("thesis_grader: thesis %s has no ticker — skipped", thesis_id)
+        print(f"  ⚠ thesis {thesis_id[:8]}… has no ticker — skipped")
         return None
 
     try:
         generated_at = _parse_dt(thesis.get("generated_at")) or datetime.now(timezone.utc)
+        print(f"  → grading {ticker} ({thesis.get('title', '')[:50]}…)")
         signals = build_signal_breakdown(ticker, generated_at)
+        n_signals = sum(1 for v in signals.values() if v is not None)
+        print(f"    signals: {n_signals}/5 fetched (price={_r2(signals.get('price_change_pct'))}, news={signals.get('news_velocity')})")
         verdict = grade_with_gemini(thesis, signals)
         now_iso = datetime.now(timezone.utc).isoformat()
 
@@ -433,6 +436,7 @@ def grade_one(thesis: dict) -> dict | None:
             "signal_breakdown": signals,
         }
         supabase.table("theses").update(update).eq("id", thesis_id).execute()
+        print(f"    ✓ {ticker} → {verdict['verdict']}")
         logger.info(
             "thesis_grader: %s %s → %s (price=%s, news=%s)",
             thesis_id, ticker, verdict["verdict"],
