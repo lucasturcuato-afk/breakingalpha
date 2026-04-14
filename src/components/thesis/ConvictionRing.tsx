@@ -12,30 +12,23 @@ export function ConvictionRing({
   const normalized = (conviction ?? '').toUpperCase()
 
   let color = '#4B5563'
-  let fillPct = 0.2
   let label = '—'
 
   if (normalized === 'HIGH' || normalized === 'BULLISH') {
     color = '#C9A84C'
-    fillPct = 1.0
     label = 'HIGH'
   } else if (normalized === 'MEDIUM') {
     color = '#D97706'
-    fillPct = 0.75
     label = 'MED'
   } else if (normalized === 'WATCH') {
     color = '#6B7280'
-    fillPct = 0.5
     label = 'WATCH'
   } else if (normalized === 'BEARISH') {
     color = '#DC2626'
-    fillPct = 0.25
     label = 'BEAR'
   }
 
-  const degrees = Math.round(fillPct * 360)
-  const thickness = Math.round(size * 0.12)
-  const innerSize = size - thickness * 2
+  const borderSize = Math.max(3, Math.round(size * 0.1))
 
   return (
     <div style={{
@@ -49,24 +42,10 @@ export function ConvictionRing({
         width: size,
         height: size,
         borderRadius: '50%',
-        background: `conic-gradient(
-          ${color} 0deg ${degrees}deg,
-          #2D2D2D ${degrees}deg 360deg
-        )`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        border: `${borderSize}px solid ${color}`,
         flexShrink: 0,
-      }}>
-        <div
-          className="conviction-ring-inner"
-          style={{
-            width: innerSize,
-            height: innerSize,
-            borderRadius: '50%',
-          }}
-        />
-      </div>
+        boxSizing: 'border-box',
+      }} />
       <span style={{
         fontSize: '9px',
         fontFamily: 'Inter, sans-serif',

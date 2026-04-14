@@ -1,30 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
 
-const VALID_STATUSES = new Set([
-  "new-signal",
-  "exploring",
-  "draft-thesis",
-  "needs-evidence",
-  "ready-for-memo",
-  "pending_review",
-  "active",
-  "watch",
-  "archived",
-]);
-
-const VALID_CONVICTIONS = new Set([
-  "HIGH",
-  "MEDIUM",
-  "WATCH",
-  "BULLISH",
-  "BEARISH",
-]);
-
 export async function PATCH(
-  request: NextRequest,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { supabase, user } = await getSupabaseWithUser();
@@ -35,43 +15,36 @@ export async function PATCH(
   try {
     const body = await request.json();
     console.log("PATCH thesis", id, body);
-    const { status, conviction } = body as { status?: string; conviction?: string };
 
-    const update: Record<string, string> = {};
+    const updateData: Record<string, string> = {};
+    if (body.status) updateData.status = body.status;
+    if (body.conviction) updateData.conviction = body.conviction;
 
-    if (status) {
-      if (!VALID_STATUSES.has(status)) {
-        return NextResponse.json({ error: `Invalid status: ${status}` }, { status: 400 });
-      }
-      update.status = status;
+    if (Object.keys(updateData).length === 0) {
+      return Response.json(
+        { error: "No fields to update" },
+        { status: 400 }
+      );
     }
 
-    if (conviction) {
-      if (!VALID_CONVICTIONS.has(conviction)) {
-        return NextResponse.json({ error: `Invalid conviction: ${conviction}` }, { status: 400 });
-      }
-      update.conviction = conviction;
-    }
-
-    if (Object.keys(update).length === 0) {
-      return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
-    }
-
-    console.log("[theses/[id] PATCH] updating", id, "with", update);
     const { data, error } = await supabase
       .from("theses")
-      .update(update)
+      .update(updateData)
       .eq("id", id)
-      .select("*")
+      .select()
       .single();
 
-    console.log("[theses/[id] PATCH] result", { data: !!data, error: error?.message ?? null });
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("PATCH supabase error", error);
+      return Response.json(
+        { error: error.message },
+        { status: 500 }
+      );
     }
-    return NextResponse.json({ thesis: data });
+
+    return Response.json({ thesis: data });
   } catch (e) {
     console.error("[theses/[id] PATCH] error:", e);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+    return Response.json({ error: "Internal error" }, { status: 500 });
   }
 }

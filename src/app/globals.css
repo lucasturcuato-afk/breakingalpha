@@ -178,15 +178,3 @@ html.dark .bg-white {
   }
 }
 
-/* Conviction ring inner circle — adapts to context */
-.conviction-ring-inner {
-  background-color: var(--parchment, #faf7f2);
-}
-/* When ring sits inside cream-bg panels (detail header) */
-.bg-cream .conviction-ring-inner {
-  background-color: var(--cream, #fffdf9);
-}
-/* When ring sits inside selected/mid cards */
-.bg-parchment-mid .conviction-ring-inner {
-  background-color: var(--parchment-mid, #faf5ed);
-}
