@@ -4,12 +4,13 @@ import { useState, useEffect } from "react";
 import { Star, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const DISMISSED_KEY = "signalera_personalization_dismissed";
+const DISMISSED_KEY = "signalera_onboarding_dismissed";
 
 export function PersonalizationBanner() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
     const dismissed = localStorage.getItem(DISMISSED_KEY);
     if (!dismissed) setVisible(true);
   }, []);
@@ -17,7 +18,7 @@ export function PersonalizationBanner() {
   if (!visible) return null;
 
   function dismiss() {
-    localStorage.setItem(DISMISSED_KEY, "true");
+    if (typeof window !== "undefined") localStorage.setItem(DISMISSED_KEY, "true");
     setVisible(false);
   }
 

@@ -89,7 +89,7 @@ export function ThesisList({
             )}
           >
             {/* Conviction ring */}
-            <ConvictionRing conviction={thesis.conviction} />
+            <ConvictionRing conviction={thesis.conviction} score={score} />
 
             {/* Title + badges */}
             <div className="flex-1 min-w-0">

@@ -182,7 +182,7 @@ export function ThesisCard({ thesis, onUpdate, isSelected }: ThesisCardProps) {
       >
         {/* Top row: ring + title + icons */}
         <div className="flex items-start gap-2.5">
-          <ConvictionRing conviction={thesis.conviction} />
+          <ConvictionRing conviction={thesis.conviction} score={score} />
           <div className="flex-1 min-w-0">
             {/* Badges row */}
             <div className="flex items-center gap-1.5 mb-1">
@@ -264,6 +264,22 @@ export function ThesisCard({ thesis, onUpdate, isSelected }: ThesisCardProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="font-data text-[9px] text-text-faint">{thesis.updatedAt}</span>
+            {thesis.outcome && (
+              <span className={`font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded ${
+                thesis.outcome === "confirmed" ? "bg-signal-up/10 text-signal-up" :
+                thesis.outcome === "invalidated" ? "bg-signal-dn/10 text-signal-dn" :
+                "bg-signal-warn/10 text-signal-warn"
+              }`}>
+                {thesis.outcome === "confirmed" ? "✓ Confirmed" :
+                 thesis.outcome === "invalidated" ? "✗ Invalidated" :
+                 "~ Inconclusive"}
+              </span>
+            )}
+            {!thesis.outcome && (
+              <span className="font-sans text-[9px] px-1.5 py-0.5 rounded bg-signal-warn/10 text-signal-warn">
+                ⏳ Pending
+              </span>
+            )}
             {thesis.ticker && (
               <span className="font-data text-[9px] text-gold-dark bg-gold-muted px-1.5 py-0.5 rounded">
                 {thesis.ticker}

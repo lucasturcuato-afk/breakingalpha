@@ -7,8 +7,9 @@ export function OnboardingBanner() {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    const onboarded = localStorage.getItem("signalera_onboarded");
-    setShow(!onboarded);
+    if (typeof window === "undefined") return;
+    const dismissed = localStorage.getItem("signalera_onboarding_dismissed");
+    setShow(!dismissed);
     setMounted(true);
   }, []);
 
@@ -29,7 +30,7 @@ export function OnboardingBanner() {
       <button
         type="button"
         onClick={() => {
-          localStorage.setItem("signalera_onboarded", "true");
+          if (typeof window !== "undefined") localStorage.setItem("signalera_onboarding_dismissed", "true");
           setShow(false);
         }}
         className="text-text-muted hover:text-text-primary text-sm ml-1 cursor-pointer"
