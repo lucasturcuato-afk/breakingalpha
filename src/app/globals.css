@@ -178,3 +178,14 @@ html.dark .bg-white {
   }
 }
 
+/* Conviction ring inner cutout — matches parent surface */
+.conviction-ring-bg {
+  background-color: var(--parchment, #faf7f2);
+}
+.bg-cream .conviction-ring-bg {
+  background-color: var(--cream, #fffdf9);
+}
+.bg-parchment-mid .conviction-ring-bg {
+  background-color: var(--parchment-mid, #faf5ed);
+}
+
