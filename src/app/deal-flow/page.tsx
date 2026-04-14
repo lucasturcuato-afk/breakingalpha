@@ -104,6 +104,11 @@ function getDealStage(deal: Deal): string {
 
 const DEAL_TYPES = ["M&A", "IPO", "Secondary", "Debt Raise", "Other"];
 const STATUSES = ["rumored", "announced", "under_loi", "closed"];
+const SECTORS = [
+  "Technology M&A", "Fintech & Crypto", "Healthcare & Biotech",
+  "Energy & Climate", "Private Equity", "Venture Capital",
+  "Consumer & Retail", "Real Estate & REITs", "Geopolitics & Macro",
+];
 
 const ACTIVITY_TYPES = [
   "Mergers & Acquisitions",
@@ -132,11 +137,34 @@ const ACTIVITY_TYPE_KEYWORDS: Record<string, string[]> = {
   "Crypto & Digital Assets": ["crypto", "digital asset", "fintech & crypto", "blockchain"],
   "Leadership & Operations": ["leadership", "operations", "management"],
 };
-const SECTORS = [
-  "Technology M&A", "Fintech & Crypto", "Healthcare & Biotech",
-  "Energy & Climate", "Private Equity", "Venture Capital",
-  "Consumer & Retail", "Real Estate & REITs", "Geopolitics & Macro",
-];
+
+const INDUSTRY_VERTICALS = [
+  "Technology",
+  "Healthcare & Biotech",
+  "Energy & Oil/Gas",
+  "Financial Services",
+  "Consumer & Retail",
+  "Industrials & Manufacturing",
+  "Aerospace & Defense",
+  "Real Estate",
+  "Media & Telecom",
+  "Materials & Mining",
+  "Agriculture",
+] as const;
+
+const INDUSTRY_VERTICAL_KEYWORDS: Record<string, string[]> = {
+  "Technology": ["technology", "tech", "software", "saas", "semiconductor"],
+  "Healthcare & Biotech": ["healthcare", "biotech", "pharma", "medical", "health"],
+  "Energy & Oil/Gas": ["energy", "oil", "gas", "renewabl", "climate"],
+  "Financial Services": ["financial", "finance", "fintech", "banking", "insurance"],
+  "Consumer & Retail": ["consumer", "retail", "e-commerce", "ecommerce"],
+  "Industrials & Manufacturing": ["industrial", "manufacturing"],
+  "Aerospace & Defense": ["aerospace", "defense", "defence", "military"],
+  "Real Estate": ["real estate", "reit", "property"],
+  "Media & Telecom": ["media", "telecom", "entertainment"],
+  "Materials & Mining": ["materials", "mining", "metals", "commodit"],
+  "Agriculture": ["agricultur", "agri", "farm"],
+};
 
 /* ── Page ── */
 
@@ -160,8 +188,12 @@ function DealFlowContent() {
   // Memo generation
   const [memoDeal, setMemoDeal] = useState<Deal | null>(null);
   const [memoError, setMemoError] = useState("");
+
+  // Filter state
   const [selectedActivityTypes, setSelectedActivityTypes] = useState<string[]>([]);
   const [activityMatchMode, setActivityMatchMode] = useState<"any" | "all">("any");
+  const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
+  const [verticalMatchMode, setVerticalMatchMode] = useState<"any" | "all">("any");
 
   // Add deal form
   const [formData, setFormData] = useState({
@@ -289,9 +321,18 @@ function DealFlowContent() {
           ? selectedActivityTypes.every(check)
           : selectedActivityTypes.some(check);
       }
-      return stageMatch && searchMatch && activityMatch;
+      let verticalMatch = true;
+      if (selectedVerticals.length > 0) {
+        const sector = (d.sector || "").toLowerCase();
+        const check = (v: string) =>
+          INDUSTRY_VERTICAL_KEYWORDS[v]?.some((kw) => sector.includes(kw)) ?? false;
+        verticalMatch = verticalMatchMode === "all"
+          ? selectedVerticals.every(check)
+          : selectedVerticals.some(check);
+      }
+      return stageMatch && searchMatch && activityMatch && verticalMatch;
     });
-  }, [deals, filterStage, search, selectedActivityTypes, activityMatchMode]);
+  }, [deals, filterStage, search, selectedActivityTypes, activityMatchMode, selectedVerticals, verticalMatchMode]);
 
   return (
     <AppShell pageTitle="Deal Flow" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
@@ -480,60 +521,122 @@ function DealFlowContent() {
           </div>
         )}
 
-        {/* Activity Type Filter */}
+        {/* Activity Type + Sector Filters */}
         {deals.length > 0 && (
-          <div className="mb-4">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {ACTIVITY_TYPES.map((type) => {
-                const isActive = selectedActivityTypes.includes(type);
-                return (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() =>
-                      setSelectedActivityTypes((prev) =>
-                        prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
-                      )
-                    }
-                    className={cn(
-                      "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
-                      isActive
-                        ? "border-gold bg-gold-muted text-gold"
-                        : "border-border-base bg-white text-text-muted hover:text-text-primary",
-                    )}
-                  >
-                    {type}
-                  </button>
-                );
-              })}
-              {selectedActivityTypes.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => { setSelectedActivityTypes([]); setActivityMatchMode("any"); }}
-                  className="px-3 py-1 font-data text-[10px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
-                >
-                  Clear filters
-                </button>
+          <div className="mb-4 space-y-3">
+            {/* Row 1: Activity Type */}
+            <div>
+              <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1.5">Activity Type</p>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {ACTIVITY_TYPES.map((type) => {
+                  const isActive = selectedActivityTypes.includes(type);
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() =>
+                        setSelectedActivityTypes((prev) =>
+                          prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
+                        )
+                      }
+                      className={cn(
+                        "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                        isActive
+                          ? "border-gold bg-gold-muted text-gold"
+                          : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                      )}
+                    >
+                      {type}
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedActivityTypes.length >= 2 && (
+                <div className="flex items-center gap-1.5 mt-2">
+                  <span className="font-data text-[9px] uppercase tracking-widest text-text-faint">Match:</span>
+                  {(["any", "all"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setActivityMatchMode(mode)}
+                      className={cn(
+                        "px-2.5 py-0.5 rounded font-data text-[9px] font-bold uppercase cursor-pointer transition-colors border",
+                        activityMatchMode === mode
+                          ? "border-gold bg-gold-muted text-gold"
+                          : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                      )}
+                    >
+                      {mode === "any" ? "Match Any" : "Match All"}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
-            {selectedActivityTypes.length >= 2 && (
-              <div className="flex items-center gap-1.5 mt-2">
-                <span className="font-data text-[9px] uppercase tracking-widest text-text-faint">Match:</span>
-                {(["any", "all"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setActivityMatchMode(mode)}
-                    className={cn(
-                      "px-2.5 py-0.5 rounded font-data text-[9px] font-bold uppercase cursor-pointer transition-colors border",
-                      activityMatchMode === mode
-                        ? "border-gold bg-gold-muted text-gold"
-                        : "border-border-base bg-white text-text-muted hover:text-text-primary",
-                    )}
-                  >
-                    {mode === "any" ? "Match Any" : "Match All"}
-                  </button>
-                ))}
+
+            {/* Row 2: Sector (Industry Verticals) */}
+            <div>
+              <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1.5">Sector</p>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {INDUSTRY_VERTICALS.map((v) => {
+                  const isActive = selectedVerticals.includes(v);
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() =>
+                        setSelectedVerticals((prev) =>
+                          prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v],
+                        )
+                      }
+                      className={cn(
+                        "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                        isActive
+                          ? "border-gold bg-gold-muted text-gold"
+                          : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                      )}
+                    >
+                      {v}
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedVerticals.length >= 2 && (
+                <div className="flex items-center gap-1.5 mt-2">
+                  <span className="font-data text-[9px] uppercase tracking-widest text-text-faint">Match:</span>
+                  {(["any", "all"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setVerticalMatchMode(mode)}
+                      className={cn(
+                        "px-2.5 py-0.5 rounded font-data text-[9px] font-bold uppercase cursor-pointer transition-colors border",
+                        verticalMatchMode === mode
+                          ? "border-gold bg-gold-muted text-gold"
+                          : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                      )}
+                    >
+                      {mode === "any" ? "Match Any" : "Match All"}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Clear all */}
+            {(selectedActivityTypes.length > 0 || selectedVerticals.length > 0) && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedActivityTypes([]);
+                    setActivityMatchMode("any");
+                    setSelectedVerticals([]);
+                    setVerticalMatchMode("any");
+                  }}
+                  className="font-data text-[10px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
+                >
+                  Clear all filters
+                </button>
               </div>
             )}
           </div>
