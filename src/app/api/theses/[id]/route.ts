@@ -34,6 +34,7 @@ export async function PATCH(
 
   try {
     const body = await request.json();
+    console.log("PATCH thesis", id, body);
     const { status, conviction } = body as { status?: string; conviction?: string };
 
     const update: Record<string, string> = {};

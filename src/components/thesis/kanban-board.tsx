@@ -88,7 +88,7 @@ function DroppableColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex-shrink-0 w-[280px] flex flex-col rounded-xl border transition-colors",
+        "min-w-[280px] max-w-[280px] flex-shrink-0 flex flex-col rounded-xl border transition-colors",
         isOver
           ? "border-gold bg-gold-muted/20"
           : "border-border-base bg-parchment",
@@ -113,7 +113,7 @@ function DroppableColumn({
       </div>
 
       {/* Cards */}
-      <div className="flex-1 space-y-2 overflow-y-auto p-2 min-h-[120px]">
+      <div className="flex-1 space-y-2 overflow-y-auto max-h-[calc(100vh-320px)] p-2 min-h-[120px]">
         {items.length === 0 ? (
           <div className="border border-dashed border-border-base rounded-xl p-4 flex items-center justify-center">
             <p className="font-sans text-[11px] text-text-faint italic">
@@ -215,6 +215,7 @@ export function KanbanBoard({
           break;
       }
 
+      console.log("Dropping to", targetCol, "sending PATCH", String(active.id), patch);
       onDrop?.(String(active.id), patch);
     },
     [theses, onDrop],
@@ -233,7 +234,7 @@ export function KanbanBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="flex gap-3 overflow-x-auto pb-4 min-h-[calc(100vh-320px)]">
+      <div className="w-full flex gap-4 overflow-x-auto min-w-fit px-4 pb-4">
         {columns.map((col) => (
           <DroppableColumn
             key={col.id}
