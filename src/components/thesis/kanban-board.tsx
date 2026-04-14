@@ -1,26 +1,63 @@
 "use client";
 
+import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { ThesisCard } from "./thesis-card";
-import type { ThesisItem, ThesisStatus } from "./thesis-types";
-import { statusLabels, statusOrder } from "./thesis-types";
+import type { ThesisItem } from "./thesis-types";
+
+const KANBAN_COLUMNS: { status: string; label: string }[] = [
+  { status: "pending_review", label: "Pending Review" },
+  { status: "active", label: "Active" },
+  { status: "watch", label: "Watch" },
+  { status: "archived", label: "Archived" },
+];
+
+// Also map legacy statuses to kanban columns
+function mapToKanbanStatus(status: string): string {
+  switch (status) {
+    case "pending_review": return "pending_review";
+    case "active": return "active";
+    case "watch": return "watch";
+    case "archived": return "archived";
+    // Legacy mappings
+    case "new-signal": return "pending_review";
+    case "exploring": return "active";
+    case "draft-thesis": return "active";
+    case "needs-evidence": return "watch";
+    case "ready-for-memo": return "active";
+    default: return "pending_review";
+  }
+}
 
 interface KanbanBoardProps {
   theses: ThesisItem[];
+  onSelect?: (id: string) => void;
+  selectedId?: string | null;
   onUpdate?: (updated: ThesisItem) => void;
+  filter?: string;
+  onQuickAction?: (id: string, status: string) => void;
 }
 
-export function KanbanBoard({ theses, onUpdate }: KanbanBoardProps) {
-  const columns = statusOrder.map((status) => ({
-    status,
-    label: statusLabels[status],
-    items: theses.filter((t) => t.status === status),
-  }));
+export function KanbanBoard({ theses, onSelect, selectedId, filter, onQuickAction }: KanbanBoardProps) {
+  const columns = useMemo(() => {
+    return KANBAN_COLUMNS.map((col) => ({
+      ...col,
+      items: theses.filter((t) => mapToKanbanStatus(t.status as string) === col.status),
+    }));
+  }, [theses]);
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-4 px-6 min-h-[calc(100vh-180px)]">
+    <div className="flex gap-3 overflow-x-auto pb-4 min-h-[calc(100vh-320px)]">
       {columns.map((col) => (
-        <KanbanColumn key={col.status} status={col.status} label={col.label} items={col.items} onUpdate={onUpdate} />
+        <KanbanColumn
+          key={col.status}
+          status={col.status}
+          label={col.label}
+          items={col.items}
+          onSelect={onSelect}
+          selectedId={selectedId}
+          onQuickAction={onQuickAction}
+        />
       ))}
     </div>
   );
@@ -30,15 +67,19 @@ function KanbanColumn({
   status,
   label,
   items,
-  onUpdate,
+  onSelect,
+  selectedId,
+  onQuickAction,
 }: {
-  status: ThesisStatus;
+  status: string;
   label: string;
   items: ThesisItem[];
-  onUpdate?: (updated: ThesisItem) => void;
+  onSelect?: (id: string) => void;
+  selectedId?: string | null;
+  onQuickAction?: (id: string, status: string) => void;
 }) {
   return (
-    <div className="flex-shrink-0 w-[260px] flex flex-col">
+    <div className="flex-shrink-0 w-[280px] flex flex-col">
       {/* Column header */}
       <div className="flex items-center gap-2 mb-3 px-1">
         <h3 className="font-sans text-[10px] font-semibold uppercase tracking-widest text-text-muted">
@@ -65,7 +106,16 @@ function KanbanColumn({
           </div>
         ) : (
           items.map((thesis) => (
-            <ThesisCard key={thesis.id} thesis={thesis} onUpdate={onUpdate} />
+            <div
+              key={thesis.id}
+              onClick={() => onSelect?.(thesis.id)}
+              className="cursor-pointer"
+            >
+              <ThesisCard
+                thesis={thesis}
+                isSelected={thesis.id === selectedId}
+              />
+            </div>
           ))
         )}
       </div>

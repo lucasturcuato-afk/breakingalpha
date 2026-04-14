@@ -3,6 +3,123 @@ import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 
+export const dynamic = "force-dynamic";
+
+// ── Phase 0.1: thesis_notes DDL (printed on first GET) ──
+const THESIS_NOTES_DDL = `
+create table if not exists public.thesis_notes (
+  id uuid primary key default gen_random_uuid(),
+  thesis_id uuid not null references public.theses(id) on delete cascade,
+  content text not null default '',
+  updated_at timestamptz not null default now(),
+  unique (thesis_id)
+);
+create index if not exists thesis_notes_thesis_id_idx on public.thesis_notes(thesis_id);
+`;
+
+// ── GET /api/theses — fetch theses with dedupe + digest ──
+export async function GET() {
+  const { supabase, user } = await getSupabaseWithUser();
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  // Print DDL for thesis_notes (informational)
+  console.log("[theses GET] thesis_notes DDL (run in Supabase SQL editor if not already applied):");
+  console.log(THESIS_NOTES_DDL);
+
+  try {
+    // Fetch theses with optional thesis_notes join
+    let theses: Record<string, unknown>[] = [];
+    try {
+      const { data, error: thesesErr } = await supabase
+        .from("theses")
+        .select(
+          "id, title, rationale, sector, conviction, catalyst, catalyst_note, " +
+          "bear_case, adversarial_score, passed_adversarial, outcome, outcome_notes, " +
+          "signal_breakdown, evidence_chain, supporting_articles, ticker, horizon, " +
+          "check_after, status, generated_at, source, verifiable_signal, " +
+          "thesis_notes(content, updated_at)"
+        )
+        .order("generated_at", { ascending: false })
+        .limit(100);
+      if (thesesErr) {
+        console.warn("[theses GET] thesis join failed, retrying without notes:", thesesErr.message);
+        // Fallback: fetch without the thesis_notes join
+        const { data: fallback, error: fallbackErr } = await supabase
+          .from("theses")
+          .select("*")
+          .order("generated_at", { ascending: false })
+          .limit(100);
+        if (fallbackErr) throw fallbackErr;
+        theses = (fallback || []) as unknown as Record<string, unknown>[];
+      } else {
+        theses = (data || []) as unknown as Record<string, unknown>[];
+      }
+    } catch (e) {
+      console.error("[theses GET] theses fetch failed:", e);
+      return NextResponse.json({ theses: [], digest: null, error: "Failed to fetch theses" });
+    }
+
+    // Flatten thesis_notes into a top-level `notes` field
+    theses = theses.map((t) => {
+      const notesJoin = t.thesis_notes;
+      let notes: string | null = null;
+      if (Array.isArray(notesJoin) && notesJoin.length > 0) {
+        notes = (notesJoin[0] as Record<string, unknown>).content as string || null;
+      } else if (notesJoin && typeof notesJoin === "object" && !Array.isArray(notesJoin)) {
+        notes = (notesJoin as Record<string, unknown>).content as string || null;
+      }
+      const { thesis_notes: _, ...rest } = t;
+      return { ...rest, notes };
+    });
+
+    // Phase 0.2: In-memory deduplication by title
+    const titleMap = new Map<string, Record<string, unknown>>();
+    let dupeCount = 0;
+    for (const t of theses) {
+      const key = (String(t.title || "")).trim().toLowerCase();
+      const existing = titleMap.get(key);
+      if (existing) {
+        dupeCount++;
+        // Keep the one with more recent generated_at
+        const existDate = new Date(String(existing.generated_at || "")).getTime();
+        const newDate = new Date(String(t.generated_at || "")).getTime();
+        if (newDate > existDate) {
+          titleMap.set(key, t);
+        }
+      } else {
+        titleMap.set(key, t);
+      }
+    }
+    if (dupeCount > 0) {
+      console.log(`[theses GET] deduplicated ${dupeCount} theses by title`);
+    }
+    theses = Array.from(titleMap.values());
+
+    // Fetch latest weekly digest
+    let digest: Record<string, unknown> | null = null;
+    try {
+      const { data: digestRow, error: digestErr } = await supabase
+        .from("weekly_digests")
+        .select("id, generated_at, thesis_prompt_addendum")
+        .order("generated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (digestErr) {
+        console.warn("[theses GET] weekly_digests lookup failed:", digestErr.message);
+      } else {
+        digest = digestRow as Record<string, unknown> | null;
+      }
+    } catch (e) {
+      console.warn("[theses GET] weekly_digests threw:", e);
+    }
+
+    return NextResponse.json({ theses, digest });
+  } catch (err) {
+    console.error("[theses GET] unexpected error:", err);
+    return NextResponse.json({ theses: [], digest: null, error: "Internal server error" });
+  }
+}
+
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 interface RawThesis {

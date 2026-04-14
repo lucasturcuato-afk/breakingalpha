@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { getSectorStyle } from "@/lib/sector-colors";
+import { Check, X } from "lucide-react";
 import type { ThesisItem } from "./thesis-types";
 
 interface ThesisListProps {
@@ -12,6 +13,8 @@ interface ThesisListProps {
   filter: string;
   isArchiveView?: boolean;
   onRestore?: (id: string) => void;
+  isPendingReview?: boolean;
+  onQuickAction?: (id: string, status: string) => void;
 }
 
 function convictionToSentiment(conviction: string): string {
@@ -24,8 +27,11 @@ function convictionToSentiment(conviction: string): string {
 }
 
 function deriveScore(thesis: ThesisItem): number {
+  if (typeof thesis.adversarial_score === "number") {
+    return Math.round(thesis.adversarial_score * 100);
+  }
   const base = thesis.conviction === "BULLISH" ? 80 : thesis.conviction === "BEARISH" ? 30 : 55;
-  const evidenceBonus = Math.min((thesis.evidence_chain?.length ?? 0) * 5, 15);
+  const evidenceBonus = Math.min((Array.isArray(thesis.evidence_chain) ? thesis.evidence_chain.length : 0) * 5, 15);
   return base + evidenceBonus;
 }
 
@@ -33,9 +39,9 @@ function SignalStrength({ score }: { score: number | null | undefined }) {
   const s = score ?? 50;
   const bars = 4;
   const filled = s >= 80 ? 4 : s >= 65 ? 3 : s >= 45 ? 2 : 1;
-  const color = s >= 80 ? "#27ae60" : s >= 65 ? "#B8860B" : s >= 45 ? "#e67e22" : "#e74c3c";
+  const color = s >= 80 ? "var(--gold)" : s >= 65 ? "var(--gold-dark)" : s >= 45 ? "var(--signal-warn)" : "var(--signal-dn)";
   return (
-    <div className="flex items-end gap-[2px] flex-shrink-0" title={`Conviction: ${s}/100`}>
+    <div className="flex items-end gap-[2px] flex-shrink-0" title={`Score: ${s}`}>
       {Array.from({ length: bars }).map((_, i) => (
         <div
           key={i}
@@ -43,7 +49,7 @@ function SignalStrength({ score }: { score: number | null | undefined }) {
             width: 3,
             height: 5 + i * 3,
             borderRadius: 1,
-            background: i < filled ? color : "var(--color-border-base)",
+            background: i < filled ? color : "var(--border-base)",
           }}
         />
       ))}
@@ -51,14 +57,22 @@ function SignalStrength({ score }: { score: number | null | undefined }) {
   );
 }
 
-export function ThesisList({ theses, selectedId, onSelect, filter, isArchiveView, onRestore }: ThesisListProps) {
+export function ThesisList({
+  theses,
+  selectedId,
+  onSelect,
+  filter,
+  isArchiveView,
+  onRestore,
+  isPendingReview,
+  onQuickAction,
+}: ThesisListProps) {
   const filtered = useMemo(() => {
-    // Archive view: show all archived theses, skip conviction filter
     if (isArchiveView) {
       return [...theses].sort((a, b) => deriveScore(b) - deriveScore(a));
     }
     let list = theses;
-    if (filter !== "all") {
+    if (filter !== "all" && filter !== "pending_review") {
       list = list.filter((t) => convictionToSentiment(t.conviction) === filter);
     }
     return [...list].sort((a, b) => deriveScore(b) - deriveScore(a));
@@ -78,7 +92,7 @@ export function ThesisList({ theses, selectedId, onSelect, filter, isArchiveView
         const score = deriveScore(thesis);
         const sentiment = convictionToSentiment(thesis.conviction);
         const isSelected = thesis.id === selectedId;
-        const hasEvidence = (thesis.evidence_chain?.length ?? 0) > 0;
+        const hasEvidence = Array.isArray(thesis.evidence_chain) && thesis.evidence_chain.length > 0;
         const isBearishLow = sentiment === "bearish" && score < 50;
 
         return (
@@ -86,7 +100,7 @@ export function ThesisList({ theses, selectedId, onSelect, filter, isArchiveView
             key={thesis.id}
             onClick={() => onSelect(thesis.id)}
             className={cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all",
+              "flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all group",
               isSelected
                 ? "bg-parchment-mid border-l-2 border-gold"
                 : "hover:bg-parchment-mid/60 border-l-2 border-transparent",
@@ -117,15 +131,47 @@ export function ThesisList({ theses, selectedId, onSelect, filter, isArchiveView
                 >
                   {thesis.sector}
                 </span>
+                {thesis.ticker && (
+                  <span className="font-data text-[9px] text-gold-dark">
+                    {thesis.ticker}
+                  </span>
+                )}
                 {isArchiveView && (
                   <span className="font-sans text-[9px] text-text-muted italic">Archived</span>
                 )}
               </div>
             </div>
 
-            {/* Indicator dot / Restore */}
+            {/* Actions */}
             <div className="flex-shrink-0 flex items-center gap-1.5">
-              {onRestore ? (
+              {isPendingReview && onQuickAction ? (
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onQuickAction(thesis.id, "active");
+                    }}
+                    className="p-1 rounded-md bg-signal-up/10 hover:bg-signal-up/20 transition-colors cursor-pointer"
+                    aria-label="Approve"
+                    title="Approve"
+                  >
+                    <Check size={10} className="text-signal-up" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onQuickAction(thesis.id, "archived");
+                    }}
+                    className="p-1 rounded-md bg-signal-dn/10 hover:bg-signal-dn/20 transition-colors cursor-pointer"
+                    aria-label="Dismiss"
+                    title="Dismiss"
+                  >
+                    <X size={10} className="text-signal-dn" />
+                  </button>
+                </div>
+              ) : onRestore ? (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -139,9 +185,9 @@ export function ThesisList({ theses, selectedId, onSelect, filter, isArchiveView
               ) : (
                 <div className="w-2">
                   {hasEvidence ? (
-                    <div className="w-2 h-2 rounded-full bg-green-400" />
+                    <div className="w-2 h-2 rounded-full bg-signal-up" />
                   ) : isBearishLow ? (
-                    <div className="w-2 h-2 rounded-full bg-red-400" />
+                    <div className="w-2 h-2 rounded-full bg-signal-dn" />
                   ) : null}
                 </div>
               )}
