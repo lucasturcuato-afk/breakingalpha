@@ -178,7 +178,7 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
         </div>
 
         {/* Headline */}
-        <h3 className="font-display text-[15px] font-bold text-espresso leading-snug hover:text-gold-dark transition-colors">
+        <h3 className="font-[family-name:var(--font-playfair-display)] text-[15px] font-bold text-espresso leading-snug hover:text-gold-dark transition-colors">
           {story.title}
         </h3>
 
@@ -417,7 +417,7 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
               {story.timestamp}
             </span>
           </div>
-          <h4 className="font-display text-[13px] font-bold text-espresso leading-snug hover:text-gold-dark transition-colors">
+          <h4 className="font-[family-name:var(--font-playfair-display)] text-[13px] font-bold text-espresso leading-snug hover:text-gold-dark transition-colors">
             {story.title}
           </h4>
 

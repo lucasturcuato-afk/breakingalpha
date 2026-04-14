@@ -66,7 +66,7 @@ export function BriefHeader({
 
       {/* Date title */}
       <h1
-        className="font-display text-3xl md:text-[32px] font-semibold leading-tight"
+        className="font-display text-3xl md:text-[32px] font-bold leading-tight"
         style={{ color: 'var(--espresso)' }}
       >
         {formatFullDate()}
@@ -138,7 +138,7 @@ export function BriefHeader({
           )}
         </div>
         <h2
-          className="font-display text-xl md:text-2xl font-semibold leading-snug mb-3 mt-2"
+          className="font-[family-name:var(--font-playfair-display)] text-xl md:text-2xl font-bold leading-snug mb-3 mt-2"
           style={{ color: 'var(--espresso)' }}
         >
           {headline}
