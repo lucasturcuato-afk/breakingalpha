@@ -104,6 +104,34 @@ function getDealStage(deal: Deal): string {
 
 const DEAL_TYPES = ["M&A", "IPO", "Secondary", "Debt Raise", "Other"];
 const STATUSES = ["rumored", "announced", "under_loi", "closed"];
+
+const ACTIVITY_TYPES = [
+  "Mergers & Acquisitions",
+  "Private Equity",
+  "Venture Capital",
+  "IPO & Capital Markets",
+  "Earnings & Results",
+  "Macro & Policy",
+  "Geopolitics",
+  "Regulation & Legal",
+  "Fundraising",
+  "Crypto & Digital Assets",
+  "Leadership & Operations",
+] as const;
+
+const ACTIVITY_TYPE_KEYWORDS: Record<string, string[]> = {
+  "Mergers & Acquisitions": ["m&a", "merger", "acquisition"],
+  "Private Equity": ["private equity", "buyout"],
+  "Venture Capital": ["venture capital"],
+  "IPO & Capital Markets": ["ipo", "capital market"],
+  "Earnings & Results": ["earnings", "results", "quarterly"],
+  "Macro & Policy": ["macro", "policy"],
+  "Geopolitics": ["geopolit"],
+  "Regulation & Legal": ["regulat", "legal", "compliance"],
+  "Fundraising": ["fundrais", "funding", "debt raise"],
+  "Crypto & Digital Assets": ["crypto", "digital asset", "fintech & crypto", "blockchain"],
+  "Leadership & Operations": ["leadership", "operations", "management"],
+};
 const SECTORS = [
   "Technology M&A", "Fintech & Crypto", "Healthcare & Biotech",
   "Energy & Climate", "Private Equity", "Venture Capital",
@@ -132,6 +160,8 @@ function DealFlowContent() {
   // Memo generation
   const [memoDeal, setMemoDeal] = useState<Deal | null>(null);
   const [memoError, setMemoError] = useState("");
+  const [selectedActivityTypes, setSelectedActivityTypes] = useState<string[]>([]);
+  const [activityMatchMode, setActivityMatchMode] = useState<"any" | "all">("any");
 
   // Add deal form
   const [formData, setFormData] = useState({
@@ -250,9 +280,18 @@ function DealFlowContent() {
       const stageMatch = filterStage === "ALL" || stage === filterStage;
       const q = search.toLowerCase();
       const searchMatch = !q || d.company?.toLowerCase().includes(q) || d.acquirer?.toLowerCase().includes(q);
-      return stageMatch && searchMatch;
+      let activityMatch = true;
+      if (selectedActivityTypes.length > 0) {
+        const fields = [d.deal_type, d.sector].filter(Boolean).join(" ").toLowerCase();
+        const check = (type: string) =>
+          ACTIVITY_TYPE_KEYWORDS[type]?.some((kw) => fields.includes(kw)) ?? false;
+        activityMatch = activityMatchMode === "all"
+          ? selectedActivityTypes.every(check)
+          : selectedActivityTypes.some(check);
+      }
+      return stageMatch && searchMatch && activityMatch;
     });
-  }, [deals, filterStage, search]);
+  }, [deals, filterStage, search, selectedActivityTypes, activityMatchMode]);
 
   return (
     <AppShell pageTitle="Deal Flow" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
@@ -438,6 +477,65 @@ function DealFlowContent() {
                 </button>
               );
             })}
+          </div>
+        )}
+
+        {/* Activity Type Filter */}
+        {deals.length > 0 && (
+          <div className="mb-4">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {ACTIVITY_TYPES.map((type) => {
+                const isActive = selectedActivityTypes.includes(type);
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() =>
+                      setSelectedActivityTypes((prev) =>
+                        prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
+                      )
+                    }
+                    className={cn(
+                      "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                      isActive
+                        ? "border-gold bg-gold-muted text-gold"
+                        : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                    )}
+                  >
+                    {type}
+                  </button>
+                );
+              })}
+              {selectedActivityTypes.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setSelectedActivityTypes([]); setActivityMatchMode("any"); }}
+                  className="px-3 py-1 font-data text-[10px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+            {selectedActivityTypes.length >= 2 && (
+              <div className="flex items-center gap-1.5 mt-2">
+                <span className="font-data text-[9px] uppercase tracking-widest text-text-faint">Match:</span>
+                {(["any", "all"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setActivityMatchMode(mode)}
+                    className={cn(
+                      "px-2.5 py-0.5 rounded font-data text-[9px] font-bold uppercase cursor-pointer transition-colors border",
+                      activityMatchMode === mode
+                        ? "border-gold bg-gold-muted text-gold"
+                        : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                    )}
+                  >
+                    {mode === "any" ? "Match Any" : "Match All"}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

@@ -35,6 +35,34 @@ interface CompanyData {
   sectors: string[];
 }
 
+const ACTIVITY_TYPES = [
+  "Mergers & Acquisitions",
+  "Private Equity",
+  "Venture Capital",
+  "IPO & Capital Markets",
+  "Earnings & Results",
+  "Macro & Policy",
+  "Geopolitics",
+  "Regulation & Legal",
+  "Fundraising",
+  "Crypto & Digital Assets",
+  "Leadership & Operations",
+] as const;
+
+const ACTIVITY_TYPE_KEYWORDS: Record<string, string[]> = {
+  "Mergers & Acquisitions": ["m&a", "merger", "acquisition"],
+  "Private Equity": ["private equity", "buyout"],
+  "Venture Capital": ["venture capital"],
+  "IPO & Capital Markets": ["ipo", "capital market"],
+  "Earnings & Results": ["earnings", "results", "quarterly"],
+  "Macro & Policy": ["macro", "policy"],
+  "Geopolitics": ["geopolit"],
+  "Regulation & Legal": ["regulat", "legal", "compliance"],
+  "Fundraising": ["fundrais", "funding", "debt raise"],
+  "Crypto & Digital Assets": ["crypto", "digital asset", "fintech & crypto", "blockchain"],
+  "Leadership & Operations": ["leadership", "operations", "management"],
+};
+
 export default function CompanyIntelPage() {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -45,6 +73,8 @@ export default function CompanyIntelPage() {
   const [articlesLoading, setArticlesLoading] = useState(false);
   const [memoOpen, setMemoOpen] = useState(false);
   const [memoToast, setMemoToast] = useState("");
+  const [selectedActivityTypes, setSelectedActivityTypes] = useState<string[]>([]);
+  const [activityMatchMode, setActivityMatchMode] = useState<"any" | "all">("any");
 
   // Build company list from article mentions
   useEffect(() => {
@@ -109,12 +139,26 @@ export default function CompanyIntelPage() {
     load();
   }, []);
 
-  // Filter companies by search
+  // Filter companies by search and activity types
   const filtered = useMemo(() => {
-    if (!search.trim()) return companies;
-    const q = search.toLowerCase();
-    return companies.filter((c) => c.name.toLowerCase().includes(q));
-  }, [companies, search]);
+    let result = companies;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter((c) => c.name.toLowerCase().includes(q));
+    }
+    if (selectedActivityTypes.length > 0) {
+      result = result.filter((c) => {
+        const check = (type: string) =>
+          c.sectors.some((s) =>
+            ACTIVITY_TYPE_KEYWORDS[type]?.some((kw) => s.toLowerCase().includes(kw)),
+          );
+        return activityMatchMode === "all"
+          ? selectedActivityTypes.every(check)
+          : selectedActivityTypes.some(check);
+      });
+    }
+    return result;
+  }, [companies, search, selectedActivityTypes, activityMatchMode]);
 
   // Development articles: company-specific events (earnings, funding, M&A, IPO, named announcements).
   // Context articles: everything else — macro, geopolitical, sector analysis, competitive mentions.
@@ -185,8 +229,7 @@ export default function CompanyIntelPage() {
       <div className="flex h-[calc(100vh-var(--topbar-height)-var(--moodbar-height))]">
         {/* Main panel */}
         <div className={cn("flex-1 overflow-y-auto p-6", selectedCompany && "pr-0")}>
-          <div className="max-w-[720px]">
-            <h2 className="font-display text-[22px] font-extrabold text-espresso mb-1">
+          <h2 className="font-display text-[22px] font-extrabold text-espresso mb-1">
               Company Intel
             </h2>
             <p className="font-sans text-[13px] text-text-secondary mb-5">
@@ -204,9 +247,66 @@ export default function CompanyIntelPage() {
               />
             </div>
 
+            {/* Activity Type Filter */}
+            <div className="mb-4">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {ACTIVITY_TYPES.map((type) => {
+                  const isActive = selectedActivityTypes.includes(type);
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() =>
+                        setSelectedActivityTypes((prev) =>
+                          prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
+                        )
+                      }
+                      className={cn(
+                        "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                        isActive
+                          ? "border-gold bg-gold-muted text-gold"
+                          : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                      )}
+                    >
+                      {type}
+                    </button>
+                  );
+                })}
+                {selectedActivityTypes.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedActivityTypes([]); setActivityMatchMode("any"); }}
+                    className="px-3 py-1 font-data text-[10px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
+              {selectedActivityTypes.length >= 2 && (
+                <div className="flex items-center gap-1.5 mt-2">
+                  <span className="font-data text-[9px] uppercase tracking-widest text-text-faint">Match:</span>
+                  {(["any", "all"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setActivityMatchMode(mode)}
+                      className={cn(
+                        "px-2.5 py-0.5 rounded font-data text-[9px] font-bold uppercase cursor-pointer transition-colors border",
+                        activityMatchMode === mode
+                          ? "border-gold bg-gold-muted text-gold"
+                          : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                      )}
+                    >
+                      {mode === "any" ? "Match Any" : "Match All"}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Company grid */}
             {loading ? (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {[1, 2, 3, 4, 5, 6].map((i) => (
                   <Skeleton key={i} className="h-20 rounded-xl" />
                 ))}
@@ -218,7 +318,7 @@ export default function CompanyIntelPage() {
                 description={search ? "Try a different search term" : "Companies will appear once articles are ingested"}
               />
             ) : (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {filtered.map((company) => (
                   <button
                     key={company.name}
@@ -244,7 +344,6 @@ export default function CompanyIntelPage() {
                 ))}
               </div>
             )}
-          </div>
         </div>
 
         {/* Detail side panel */}
