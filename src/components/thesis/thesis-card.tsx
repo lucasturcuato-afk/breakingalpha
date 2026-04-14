@@ -13,81 +13,13 @@ import { MemoModal } from "@/components/memo/MemoModal";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { ThesisItem } from "./thesis-types";
 import type { BadgeVariant } from "@/components/ui/badge";
+import { ConvictionRing } from "./ConvictionRing";
 
 const convictionMap: Record<string, BadgeVariant> = {
   BULLISH: "bullish",
   BEARISH: "bearish",
   WATCH: "neutral",
 };
-
-// ── Conviction Ring SVG ──
-
-function ConvictionRing({
-  score,
-  size = 36,
-}: {
-  score: number | null | undefined;
-  size?: number;
-}) {
-  const s = score ?? null;
-  const r = (size - 6) / 2;
-  const c = size / 2;
-  const circumference = 2 * Math.PI * r;
-  const pct = s !== null ? Math.max(0, Math.min(100, s)) / 100 : 0;
-  const strokeDash = pct * circumference;
-
-  let strokeColor = "var(--text-faint)"; // null/undefined
-  if (s !== null) {
-    if (s >= 70) strokeColor = "var(--gold)";
-    else if (s >= 40) strokeColor = "var(--signal-warn)";
-    else strokeColor = "var(--signal-dn)";
-  }
-
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      className="flex-shrink-0"
-    >
-      {/* Background circle */}
-      <circle
-        cx={c}
-        cy={c}
-        r={r}
-        fill="none"
-        stroke="var(--border-base)"
-        strokeWidth={3}
-      />
-      {/* Progress arc */}
-      {s !== null && (
-        <circle
-          cx={c}
-          cy={c}
-          r={r}
-          fill="none"
-          stroke={strokeColor}
-          strokeWidth={3}
-          strokeDasharray={`${strokeDash} ${circumference - strokeDash}`}
-          strokeDashoffset={circumference * 0.25}
-          strokeLinecap="round"
-        />
-      )}
-      {/* Score text */}
-      <text
-        x={c}
-        y={c}
-        textAnchor="middle"
-        dominantBaseline="central"
-        className="font-data"
-        fontSize={10}
-        fill={strokeColor}
-      >
-        {s !== null ? s : "—"}
-      </text>
-    </svg>
-  );
-}
 
 // ── Adversarial Shield SVG ──
 
@@ -208,8 +140,9 @@ function StalenessIndicator({ generatedAt, outcome }: { generatedAt?: string | n
 // ── Derive confidence score ──
 
 function deriveConfidenceScore(thesis: ThesisItem): number | null {
-  // Use adversarial_score if available (0-1 → 0-100)
+  // Use adversarial_score if available (0-1 → 0-100); negative → null
   if (typeof thesis.adversarial_score === "number") {
+    if (thesis.adversarial_score < 0) return null;
     return Math.round(thesis.adversarial_score * 100);
   }
   // Fallback: derive from conviction + evidence
@@ -231,6 +164,13 @@ export function ThesisCard({ thesis, onUpdate, isSelected }: ThesisCardProps) {
   const [bearOpen, setBearOpen] = useState(false);
   const score = deriveConfidenceScore(thesis);
 
+  // FIX 6A: sentiment left border color
+  const sentimentBorder = thesis.conviction === "BULLISH"
+    ? "border-l-signal-up"
+    : thesis.conviction === "BEARISH"
+      ? "border-l-signal-dn"
+      : "border-l-signal-warn";
+
   return (
     <>
       <div
@@ -239,8 +179,8 @@ export function ThesisCard({ thesis, onUpdate, isSelected }: ThesisCardProps) {
           "bg-parchment border border-border-base rounded-xl p-3 cursor-pointer",
           "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",
           "hover:border-border-hover hover:shadow-[0_2px_8px_rgba(201,146,42,0.06)]",
-          "group",
-          isSelected && "border-l-4 border-l-gold bg-parchment-mid",
+          "group border-l-2",
+          isSelected ? "border-l-4 border-l-gold bg-parchment-mid" : sentimentBorder,
         )}
       >
         {/* Top row: ring + title + icons */}
@@ -255,10 +195,23 @@ export function ThesisCard({ thesis, onUpdate, isSelected }: ThesisCardProps) {
               <Badge variant="default">{thesis.sector}</Badge>
               <StalenessIndicator generatedAt={thesis.generated_at} outcome={thesis.outcome} />
             </div>
-            {/* Title */}
-            <h4 className="font-display text-[13px] font-bold text-espresso leading-snug line-clamp-2">
+            {/* Title — FIX 6C: font-display 13px semibold */}
+            <h4 className="font-display text-[13px] font-semibold text-espresso leading-snug line-clamp-2">
               {thesis.title}
             </h4>
+            {/* FIX 6B: Age indicator */}
+            {thesis.generated_at && (() => {
+              const ageDays = Math.floor((Date.now() - new Date(thesis.generated_at).getTime()) / 86400000);
+              const isStale = ageDays > 14;
+              return (
+                <span className={cn(
+                  "font-data text-[9px] mt-0.5 inline-block",
+                  isStale ? "text-signal-warn" : "text-text-faint",
+                )}>
+                  {isStale ? "⚠ " : ""}{ageDays}d old
+                </span>
+              );
+            })()}
           </div>
           {/* Right side icons */}
           <div className="flex flex-col items-center gap-1 flex-shrink-0 pt-0.5">

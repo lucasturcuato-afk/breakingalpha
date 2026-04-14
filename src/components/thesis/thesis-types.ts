@@ -82,7 +82,7 @@ export interface PatternRow {
 }
 
 export interface SourceCredibilityRow {
-  id: string;
+  id?: string;
   source?: string | null;
   win_rate?: number | null;
   sample_size?: number | null;

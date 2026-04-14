@@ -7,6 +7,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import type { ThesisItem } from "./thesis-types";
+import { ConvictionRing } from "./ConvictionRing";
 
 // ── Helpers ──
 
@@ -20,8 +21,9 @@ function relativeTime(dateStr: string | null | undefined): string {
   return `${d}d ago`;
 }
 
-function deriveScore(thesis: ThesisItem): number {
+function deriveScore(thesis: ThesisItem): number | null {
   if (typeof thesis.adversarial_score === "number") {
+    if (thesis.adversarial_score < 0) return null;
     return Math.round(thesis.adversarial_score * 100);
   }
   return thesis.conviction === "BULLISH" ? 82 : thesis.conviction === "BEARISH" ? 28 : 50;
@@ -237,7 +239,6 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
   // ── Derived ──
   const score = deriveScore(thesis);
   const sentiment = convictionToSentiment(thesis.conviction);
-  const scoreColor = score >= 70 ? "var(--gold)" : score < 40 ? "var(--signal-dn)" : "var(--signal-warn)";
 
   const signalBreakdown = thesis.signal_breakdown && typeof thesis.signal_breakdown === "object"
     ? Object.entries(thesis.signal_breakdown)
@@ -250,14 +251,9 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
       <div className="flex-shrink-0 px-4 py-3 border-b border-border-base bg-cream">
         <div className="flex items-start gap-3">
           {/* Score ring */}
-          <div
-            className="w-10 h-10 rounded-full border-2 flex items-center justify-center flex-shrink-0 font-data font-semibold text-sm"
-            style={{ borderColor: scoreColor, color: scoreColor }}
-          >
-            {score}
-          </div>
+          <ConvictionRing score={score} size={48} />
           <div className="flex-1 min-w-0">
-            <div className="font-display font-semibold text-[15px] text-espresso leading-snug mb-1">
+            <div className="font-display font-bold text-[18px] text-espresso leading-snug mb-1">
               {thesis.title}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -284,7 +280,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
               {thesis.passed_adversarial !== null && thesis.passed_adversarial !== undefined && (
                 <Tooltip content={`Adversarial: ${typeof thesis.adversarial_score === "number" ? thesis.adversarial_score.toFixed(2) : "—"}`}>
                   <span className={`font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded ${
-                    thesis.passed_adversarial ? "bg-gold-muted text-gold-dark" : "bg-signal-dn/10 text-signal-dn"
+                    thesis.passed_adversarial ? "bg-signal-warn/10 text-signal-warn" : "bg-red-950/40 text-red-400"
                   }`}>
                     {thesis.passed_adversarial ? "Bull wins" : "Bear wins"}
                   </span>
@@ -310,9 +306,11 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
 
         {/* Full Analysis */}
         <div>
-          <div className="font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2">Full Analysis</div>
-          <div className="font-sans text-[12px] text-text-primary leading-relaxed">
-            {thesis.rationale || thesis.summary}
+          <div className="font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2 border-l-2 border-gold pl-2">Full Analysis</div>
+          <div className="bg-parchment-mid border border-border-base rounded-lg px-4 py-3">
+            <div className="font-sans text-[12px] text-text-primary leading-relaxed">
+              {thesis.rationale || thesis.summary}
+            </div>
           </div>
         </div>
 
@@ -325,14 +323,14 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
               <button
                 type="button"
                 onClick={() => setBearOpen((v) => !v)}
-                className="flex items-center gap-1.5 font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider cursor-pointer hover:text-text-secondary transition-colors"
+                className="flex items-center gap-1.5 font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider cursor-pointer hover:text-text-secondary transition-colors border-l-2 border-gold pl-2"
               >
                 Bear Case
                 {bearOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
               </button>
               {bearOpen && (
-                <div className="mt-2 treatment-ai pl-2 rounded-md">
-                  <div className="font-sans text-[12px] text-text-primary leading-relaxed py-2 pr-2">
+                <div className="mt-2 bg-red-950/20 border border-red-900/30 rounded-lg px-4 py-3">
+                  <div className="font-sans text-[12px] text-text-primary leading-relaxed">
                     {thesis.bear_case}
                   </div>
                 </div>
@@ -349,7 +347,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
               <button
                 type="button"
                 onClick={() => setSignalOpen((v) => !v)}
-                className="flex items-center gap-1.5 font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider cursor-pointer hover:text-text-secondary transition-colors"
+                className="flex items-center gap-1.5 font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider cursor-pointer hover:text-text-secondary transition-colors border-l-2 border-gold pl-2"
               >
                 Signal Breakdown
                 {signalOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
@@ -373,7 +371,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
 
         {/* Live Evidence Feed */}
         <div>
-          <div className="font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2">
+          <div className="font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2 border-l-2 border-gold pl-2">
             <span className="text-signal-up">●</span> Live Evidence Feed
           </div>
           {articles.length === 0 ? (
@@ -419,7 +417,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
 
         {/* Catalyst */}
         <div>
-          <div className="font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2">Catalyst</div>
+          <div className="font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2 border-l-2 border-gold pl-2">Catalyst</div>
           <div className="font-sans text-[12px] text-text-primary">
             {thesis.catalyst_note || thesis.catalyst || (
               <span className="text-text-muted italic">No catalyst recorded for this thesis.</span>
@@ -431,7 +429,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
 
         {/* Your Notes */}
         <div>
-          <div className="font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2">Your Notes</div>
+          <div className="font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2 border-l-2 border-gold pl-2">Your Notes</div>
           {noteLoading ? (
             <SectionSkeleton />
           ) : (

@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { Check, X } from "lucide-react";
 import type { ThesisItem } from "./thesis-types";
+import { ConvictionRing } from "./ConvictionRing";
 
 interface ThesisListProps {
   theses: ThesisItem[];
@@ -26,35 +27,14 @@ function convictionToSentiment(conviction: string): string {
   }
 }
 
-function deriveScore(thesis: ThesisItem): number {
+function deriveScore(thesis: ThesisItem): number | null {
   if (typeof thesis.adversarial_score === "number") {
+    if (thesis.adversarial_score < 0) return null;
     return Math.round(thesis.adversarial_score * 100);
   }
   const base = thesis.conviction === "BULLISH" ? 80 : thesis.conviction === "BEARISH" ? 30 : 55;
   const evidenceBonus = Math.min((Array.isArray(thesis.evidence_chain) ? thesis.evidence_chain.length : 0) * 5, 15);
   return base + evidenceBonus;
-}
-
-function SignalStrength({ score }: { score: number | null | undefined }) {
-  const s = score ?? 50;
-  const bars = 4;
-  const filled = s >= 80 ? 4 : s >= 65 ? 3 : s >= 45 ? 2 : 1;
-  const color = s >= 80 ? "var(--gold)" : s >= 65 ? "var(--gold-dark)" : s >= 45 ? "var(--signal-warn)" : "var(--signal-dn)";
-  return (
-    <div className="flex items-end gap-[2px] flex-shrink-0" title={`Score: ${s}`}>
-      {Array.from({ length: bars }).map((_, i) => (
-        <div
-          key={i}
-          style={{
-            width: 3,
-            height: 5 + i * 3,
-            borderRadius: 1,
-            background: i < filled ? color : "var(--border-base)",
-          }}
-        />
-      ))}
-    </div>
-  );
 }
 
 export function ThesisList({
@@ -69,13 +49,13 @@ export function ThesisList({
 }: ThesisListProps) {
   const filtered = useMemo(() => {
     if (isArchiveView) {
-      return [...theses].sort((a, b) => deriveScore(b) - deriveScore(a));
+      return [...theses].sort((a, b) => (deriveScore(b) ?? -1) - (deriveScore(a) ?? -1));
     }
     let list = theses;
     if (filter !== "all" && filter !== "pending_review") {
       list = list.filter((t) => convictionToSentiment(t.conviction) === filter);
     }
-    return [...list].sort((a, b) => deriveScore(b) - deriveScore(a));
+    return [...list].sort((a, b) => (deriveScore(b) ?? -1) - (deriveScore(a) ?? -1));
   }, [theses, filter, isArchiveView]);
 
   if (filtered.length === 0) {
@@ -93,7 +73,7 @@ export function ThesisList({
         const sentiment = convictionToSentiment(thesis.conviction);
         const isSelected = thesis.id === selectedId;
         const hasEvidence = Array.isArray(thesis.evidence_chain) && thesis.evidence_chain.length > 0;
-        const isBearishLow = sentiment === "bearish" && score < 50;
+        const isBearishLow = sentiment === "bearish" && (score ?? 0) < 50;
 
         return (
           <div
@@ -106,8 +86,8 @@ export function ThesisList({
                 : "hover:bg-parchment-mid/60 border-l-2 border-transparent",
             )}
           >
-            {/* Signal strength */}
-            <SignalStrength score={score} />
+            {/* Conviction ring */}
+            <ConvictionRing score={score} />
 
             {/* Title + badges */}
             <div className="flex-1 min-w-0">

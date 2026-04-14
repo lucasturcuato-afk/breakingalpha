@@ -72,26 +72,34 @@ export async function GET() {
       return { ...rest, notes };
     });
 
-    // Phase 0.2: In-memory deduplication by title
+    // Phase 0.2: In-memory fuzzy deduplication by first-40-char prefix
     const titleMap = new Map<string, Record<string, unknown>>();
     let dupeCount = 0;
     for (const t of theses) {
-      const key = (String(t.title || "")).trim().toLowerCase();
+      const fullTitle = (String(t.title || "")).trim().toLowerCase();
+      const key = fullTitle.slice(0, 40);
       const existing = titleMap.get(key);
       if (existing) {
         dupeCount++;
-        // Keep the one with more recent generated_at
-        const existDate = new Date(String(existing.generated_at || "")).getTime();
-        const newDate = new Date(String(t.generated_at || "")).getTime();
-        if (newDate > existDate) {
+        const existTitle = String(existing.title || "");
+        const newTitle = String(t.title || "");
+        // Keep the one with the longer title (more descriptive)
+        if (newTitle.length > existTitle.length) {
           titleMap.set(key, t);
+        } else if (newTitle.length === existTitle.length) {
+          // Tie-break: keep more recent generated_at
+          const existDate = new Date(String(existing.generated_at || "")).getTime();
+          const newDate = new Date(String(t.generated_at || "")).getTime();
+          if (newDate > existDate) {
+            titleMap.set(key, t);
+          }
         }
       } else {
         titleMap.set(key, t);
       }
     }
     if (dupeCount > 0) {
-      console.log(`[theses GET] deduplicated ${dupeCount} theses by title`);
+      console.log(`[theses GET] deduplicated ${dupeCount} theses by 40-char prefix`);
     }
     theses = Array.from(titleMap.values());
 

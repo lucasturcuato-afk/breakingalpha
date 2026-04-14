@@ -60,7 +60,13 @@ function mapThesisRow(t: Record<string, unknown>): ThesisItem {
     updatedAt: t.generated_at ? timeAgo(String(t.generated_at)) : "recently",
     source: t.source as string | undefined,
     bear_case: (t.bear_case as string) ?? null,
-    adversarial_score: (t.adversarial_score as number) ?? null,
+    adversarial_score: (() => {
+      const raw = (t.adversarial_score as number) ?? null;
+      if (raw === null) return null;
+      if (raw < 0) return null;
+      // DB stores 0-1; display expects 0-100
+      return raw <= 1 ? raw * 100 : raw;
+    })(),
     passed_adversarial: (t.passed_adversarial as boolean) ?? null,
     outcome: (t.outcome as ThesisItem["outcome"]) ?? null,
     outcome_notes: (t.outcome_notes as string) ?? null,
@@ -102,7 +108,7 @@ function SystemIntelligencePanel({
         System Intelligence
       </button>
       {open && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 animate-in fade-in-0 slide-in-from-top-2">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 animate-in fade-in-0 slide-in-from-top-2 border-t-2 border-gold pt-3">
           {/* This Week's Learning */}
           <div className="bg-cream border border-gold-border rounded-xl p-3">
             <h4 className="font-sans text-[10px] font-semibold text-gold-dark uppercase tracking-wider mb-2">
@@ -159,8 +165,8 @@ function SystemIntelligencePanel({
               </div>
             ) : sources.length > 0 ? (
               <div className="space-y-1.5">
-                {sources.map((s) => (
-                  <div key={s.id} className="flex items-center justify-between">
+                {sources.map((s, i) => (
+                  <div key={s.id ?? `src-${i}`} className="flex items-center justify-between">
                     <span className="font-sans text-[10px] text-text-secondary truncate mr-2">
                       {s.source || "Unknown"}
                     </span>
