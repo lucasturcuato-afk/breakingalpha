@@ -35,32 +35,135 @@ interface CompanyData {
   sectors: string[];
 }
 
-const ACTIVITY_TYPES = [
-  "Mergers & Acquisitions",
-  "Private Equity",
-  "Venture Capital",
-  "IPO & Capital Markets",
-  "Earnings & Results",
-  "Macro & Policy",
-  "Geopolitics",
-  "Regulation & Legal",
-  "Fundraising",
-  "Crypto & Digital Assets",
-  "Leadership & Operations",
+const INDUSTRY_VERTICALS = [
+  "Technology",
+  "Healthcare & Biotech",
+  "Energy & Oil/Gas",
+  "Financial Services",
+  "Consumer & Retail",
+  "Industrials & Manufacturing",
+  "Aerospace & Defense",
+  "Real Estate",
+  "Media & Telecom",
+  "Materials & Mining",
+  "Agriculture",
 ] as const;
 
-const ACTIVITY_TYPE_KEYWORDS: Record<string, string[]> = {
-  "Mergers & Acquisitions": ["m&a", "merger", "acquisition"],
-  "Private Equity": ["private equity", "buyout"],
-  "Venture Capital": ["venture capital"],
-  "IPO & Capital Markets": ["ipo", "capital market"],
-  "Earnings & Results": ["earnings", "results", "quarterly"],
-  "Macro & Policy": ["macro", "policy"],
-  "Geopolitics": ["geopolit"],
-  "Regulation & Legal": ["regulat", "legal", "compliance"],
-  "Fundraising": ["fundrais", "funding", "debt raise"],
-  "Crypto & Digital Assets": ["crypto", "digital asset", "fintech & crypto", "blockchain"],
-  "Leadership & Operations": ["leadership", "operations", "management"],
+// Explicit mapping from article sector strings (old and new taxonomy) to INDUSTRY_VERTICALS.
+// Uses a deterministic lookup instead of fuzzy keyword matching to avoid false positives —
+// e.g. "Technology M&A & Investment Banking" would incorrectly fire for PE firms like Blackstone
+// under a keyword approach; here it maps to Technology (where the target companies live).
+// "Private Equity & Buyouts" maps to Financial Services, not Technology.
+const SECTOR_TO_VERTICAL: Record<string, string> = {
+  // New taxonomy direct matches
+  "Technology": "Technology",
+  "Healthcare & Biotech": "Healthcare & Biotech",
+  "Energy & Oil/Gas": "Energy & Oil/Gas",
+  "Financial Services": "Financial Services",
+  "Consumer & Retail": "Consumer & Retail",
+  "Aerospace & Defense": "Aerospace & Defense",
+  "Real Estate": "Real Estate",
+  // Old taxonomy mapped to canonical INDUSTRY_VERTICALS
+  "Technology M&A & Investment Banking": "Technology",
+  "Venture Capital & Startup Funding": "Financial Services",
+  "Private Equity & Buyouts": "Financial Services",
+  "Public Markets & Earnings": "Financial Services",
+  "Fintech & Crypto": "Financial Services",
+  "M&A & Investment Banking": "Financial Services",
+  "Energy & Climate": "Energy & Oil/Gas",
+  "Real Estate & Infrastructure": "Real Estate",
+  "Real Estate & REITs": "Real Estate",
+  // "Geopolitics & Macro" intentionally unmapped — cross-cutting, not an industry vertical
+};
+
+// Layer 1: ground-truth vertical for well-known companies. Keyed by lowercase display name.
+// Checked before sector-derived logic — overrides any article sector signal for these companies.
+// An AI company like Anthropic appearing in "Fintech & Crypto" articles should still map to
+// Technology; a PE firm like Blackstone should map to Financial Services regardless of which
+// industry its portfolio companies are in.
+const COMPANY_VERTICAL_OVERRIDES: Record<string, string> = {
+  // AI & cloud infrastructure
+  "anthropic": "Technology",
+  "anthropic pbc": "Technology",
+  "openai": "Technology",
+  "xai": "Technology",
+  "coreweave": "Technology",
+  // Big Tech
+  "alphabet": "Technology",
+  "google": "Technology",
+  "microsoft": "Technology",
+  "apple": "Technology",
+  "amazon": "Technology",
+  "meta": "Technology",
+  "nvidia": "Technology",
+  "intel": "Technology",
+  "samsung": "Technology",
+  "ibm": "Technology",
+  "broadcom": "Technology",
+  "arm": "Technology",
+  "arm holdings": "Technology",
+  "tesla": "Technology",
+  "uber": "Technology",
+  "palantir": "Technology",
+  "palantir technologies": "Technology",
+  "roblox": "Technology",
+  "sifive": "Technology",
+  "polymarket": "Technology",
+  // IT services / consulting
+  "tcs": "Technology",
+  "tata consultancy services": "Technology",
+  // Aerospace & Defense
+  "spacex": "Aerospace & Defense",
+  "lockheed martin": "Aerospace & Defense",
+  "boeing": "Aerospace & Defense",
+  "northrop grumman": "Aerospace & Defense",
+  "nasa": "Aerospace & Defense",
+  // Financial Services
+  "blackstone": "Financial Services",
+  "blackstone group": "Financial Services",
+  "goldman sachs": "Financial Services",
+  "tpg": "Financial Services",
+  "federal reserve": "Financial Services",
+  "federal reserve board": "Financial Services",
+  "jpmorgan": "Financial Services",
+  "jpmorgan chase": "Financial Services",
+  "morgan stanley": "Financial Services",
+  "bank of america": "Financial Services",
+  "citigroup": "Financial Services",
+  "nordea bank": "Financial Services",
+  "nordea bank abp": "Financial Services",
+  "cango": "Financial Services",
+  "cango inc": "Financial Services",
+  "kreditbee": "Financial Services",
+  // Media & Telecom
+  "bloomberg": "Media & Telecom",
+  "techcrunch": "Media & Telecom",
+  "paramount": "Media & Telecom",
+  "warner bros": "Media & Telecom",
+  "warner brothers": "Media & Telecom",
+  "comcast": "Media & Telecom",
+  "disney": "Media & Telecom",
+  // Industrials & Manufacturing
+  "delta": "Industrials & Manufacturing",
+  "volkswagen": "Industrials & Manufacturing",
+  "ford": "Industrials & Manufacturing",
+  "general motors": "Industrials & Manufacturing",
+  // Energy
+  "exxonmobil": "Energy & Oil/Gas",
+  "chevron": "Energy & Oil/Gas",
+  "bp": "Energy & Oil/Gas",
+  "shell": "Energy & Oil/Gas",
+  // Healthcare
+  "hologic": "Healthcare & Biotech",
+  "hologic inc": "Healthcare & Biotech",
+  "pfizer": "Healthcare & Biotech",
+  "johnson & johnson": "Healthcare & Biotech",
+  "unitedhealth": "Healthcare & Biotech",
+  // Consumer & Retail
+  "peloton": "Consumer & Retail",
+  "slice": "Consumer & Retail",
+  "nike": "Consumer & Retail",
+  "walmart": "Consumer & Retail",
 };
 
 export default function CompanyIntelPage() {
@@ -73,8 +176,8 @@ export default function CompanyIntelPage() {
   const [articlesLoading, setArticlesLoading] = useState(false);
   const [memoOpen, setMemoOpen] = useState(false);
   const [memoToast, setMemoToast] = useState("");
-  const [selectedActivityTypes, setSelectedActivityTypes] = useState<string[]>([]);
-  const [activityMatchMode, setActivityMatchMode] = useState<"any" | "all">("any");
+  const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
+  const [verticalMatchMode, setVerticalMatchMode] = useState<"any" | "all">("any");
 
   // Build company list from article mentions
   useEffect(() => {
@@ -82,7 +185,7 @@ export default function CompanyIntelPage() {
       try {
         const { data: articles, error: articlesErr } = await getSupabase()
           .from("articles")
-          .select("companies, sector")
+          .select("companies, sector, primary_company")
           .order("ingested_at", { ascending: false })
           .limit(1500);
 
@@ -117,7 +220,16 @@ export default function CompanyIntelPage() {
               compMap[key].display = display;
             }
             compMap[key].mentions++;
-            if (a.sector) compMap[key].sectors.add(a.sector);
+            // Only attribute a sector to a company when it is the primary subject of the article.
+            // Without this guard, PE firms like Blackstone accumulate "Healthcare & Biotech" from
+            // articles where Hologic (primary_company) is the subject and Blackstone is the acquirer.
+            // Fall back to adding the sector when primary_company is unset (older articles).
+            if (a.sector) {
+              const pc = typeof a.primary_company === "string" ? canonicalize(a.primary_company).toLowerCase() : "";
+              if (!pc || pc === key || pc.includes(key) || key.includes(pc)) {
+                compMap[key].sectors.add(a.sector);
+              }
+            }
           });
         });
 
@@ -139,26 +251,35 @@ export default function CompanyIntelPage() {
     load();
   }, []);
 
-  // Filter companies by search and activity types
+  // Filter companies by search and industry vertical.
+  // Two-layer approach:
+  //   Layer 1: COMPANY_VERTICAL_OVERRIDES — ground-truth for well-known companies. When a
+  //            company has an override, its article-derived sectors[] are ignored entirely.
+  //            This prevents Anthropic (primary in "Fintech & Crypto" articles) from appearing
+  //            under Financial Services, and Blackstone from appearing under Technology.
+  //   Layer 2: SECTOR_TO_VERTICAL — deterministic sector string → vertical mapping as fallback
+  //            for long-tail companies not in the override map.
   const filtered = useMemo(() => {
     let result = companies;
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter((c) => c.name.toLowerCase().includes(q));
     }
-    if (selectedActivityTypes.length > 0) {
+    if (selectedVerticals.length > 0) {
       result = result.filter((c) => {
-        const check = (type: string) =>
-          c.sectors.some((s) =>
-            ACTIVITY_TYPE_KEYWORDS[type]?.some((kw) => s.toLowerCase().includes(kw)),
-          );
-        return activityMatchMode === "all"
-          ? selectedActivityTypes.every(check)
-          : selectedActivityTypes.some(check);
+        const nameLower = c.name.toLowerCase();
+        const override = COMPANY_VERTICAL_OVERRIDES[nameLower];
+        // Layer 1: if we have ground-truth, use it exclusively
+        const effectiveVerticals: Set<string> = override
+          ? new Set([override])
+          : new Set(c.sectors.map((s) => SECTOR_TO_VERTICAL[s]).filter((v): v is string => Boolean(v)));
+        return verticalMatchMode === "all"
+          ? selectedVerticals.every((v) => effectiveVerticals.has(v))
+          : selectedVerticals.some((v) => effectiveVerticals.has(v));
       });
     }
     return result;
-  }, [companies, search, selectedActivityTypes, activityMatchMode]);
+  }, [companies, search, selectedVerticals, verticalMatchMode]);
 
   // Development articles: company-specific events (earnings, funding, M&A, IPO, named announcements).
   // Context articles: everything else — macro, geopolitical, sector analysis, competitive mentions.
@@ -230,120 +351,121 @@ export default function CompanyIntelPage() {
         {/* Main panel */}
         <div className={cn("flex-1 overflow-y-auto p-6", selectedCompany && "pr-0")}>
           <h2 className="font-display text-[22px] font-extrabold text-espresso mb-1">
-              Company Intel
-            </h2>
-            <p className="font-sans text-[13px] text-text-secondary mb-5">
-              Companies extracted from {companies.length > 0 ? `${companies.length} article mentions` : "your news feed"}. Click any company to see related coverage.
-            </p>
+            Company Intel
+          </h2>
+          <p className="font-sans text-[13px] text-text-secondary mb-5">
+            Companies extracted from {companies.length > 0 ? `${companies.length} article mentions` : "your news feed"}. Click any company to see related coverage.
+          </p>
 
-            {/* Search */}
-            <div className="relative mb-6">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search companies..."
-                className="pl-9 font-sans"
-              />
-            </div>
+          {/* Search */}
+          <div className="relative mb-4">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search companies..."
+              className="pl-9 font-sans"
+            />
+          </div>
 
-            {/* Activity Type Filter */}
-            <div className="mb-4">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {ACTIVITY_TYPES.map((type) => {
-                  const isActive = selectedActivityTypes.includes(type);
-                  return (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() =>
-                        setSelectedActivityTypes((prev) =>
-                          prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
-                        )
-                      }
-                      className={cn(
-                        "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
-                        isActive
-                          ? "border-gold bg-gold-muted text-gold"
-                          : "border-border-base bg-white text-text-muted hover:text-text-primary",
-                      )}
-                    >
-                      {type}
-                    </button>
-                  );
-                })}
-                {selectedActivityTypes.length > 0 && (
+          {/* Industry Vertical Filter */}
+          <div className="mb-5">
+            <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1.5">Sector</p>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {INDUSTRY_VERTICALS.map((v) => {
+                const isActive = selectedVerticals.includes(v);
+                return (
                   <button
+                    key={v}
                     type="button"
-                    onClick={() => { setSelectedActivityTypes([]); setActivityMatchMode("any"); }}
-                    className="px-3 py-1 font-data text-[10px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
-                  >
-                    Clear filters
-                  </button>
-                )}
-              </div>
-              {selectedActivityTypes.length >= 2 && (
-                <div className="flex items-center gap-1.5 mt-2">
-                  <span className="font-data text-[9px] uppercase tracking-widest text-text-faint">Match:</span>
-                  {(["any", "all"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setActivityMatchMode(mode)}
-                      className={cn(
-                        "px-2.5 py-0.5 rounded font-data text-[9px] font-bold uppercase cursor-pointer transition-colors border",
-                        activityMatchMode === mode
-                          ? "border-gold bg-gold-muted text-gold"
-                          : "border-border-base bg-white text-text-muted hover:text-text-primary",
-                      )}
-                    >
-                      {mode === "any" ? "Match Any" : "Match All"}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Company grid */}
-            {loading ? (
-              <div className="grid grid-cols-3 gap-2">
-                {[1, 2, 3, 4, 5, 6].map((i) => (
-                  <Skeleton key={i} className="h-20 rounded-xl" />
-                ))}
-              </div>
-            ) : filtered.length === 0 ? (
-              <EmptyState
-                icon={<Building2 size={32} />}
-                title={search ? "No companies match" : "No companies found"}
-                description={search ? "Try a different search term" : "Companies will appear once articles are ingested"}
-              />
-            ) : (
-              <div className="grid grid-cols-3 gap-2">
-                {filtered.map((company) => (
-                  <button
-                    key={company.name}
-                    type="button"
-                    onClick={() => setSelectedCompany(company)}
+                    onClick={() =>
+                      setSelectedVerticals((prev) =>
+                        prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v],
+                      )
+                    }
                     className={cn(
-                      "flex flex-col items-start p-3 rounded-xl border bg-white text-left",
-                      "transition-all duration-[var(--duration-base)] cursor-pointer",
-                      selectedCompany?.name === company.name
-                        ? "border-gold shadow-[0_2px_8px_rgba(201,146,42,0.12)]"
-                        : "border-border-base hover:border-border-hover",
+                      "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                      isActive
+                        ? "border-gold bg-gold-muted text-gold"
+                        : "border-border-base bg-white text-text-muted hover:text-text-primary",
                     )}
                   >
-                    <div className="flex items-center gap-2 mb-1 w-full">
-                      <span className="font-display text-[14px] font-bold text-espresso truncate flex-1">
-                        {company.name}
-                      </span>
-                      <span className="font-data text-[10px] text-gold bg-gold-muted border border-gold-border px-1.5 py-0.5 rounded-md flex-shrink-0">
-                        {company.mentions}x
-                      </span>
-                    </div>
+                    {v}
+                  </button>
+                );
+              })}
+              {selectedVerticals.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setSelectedVerticals([]); setVerticalMatchMode("any"); }}
+                  className="px-3 py-1 font-data text-[10px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+            {selectedVerticals.length >= 2 && (
+              <div className="flex items-center gap-1.5 mt-2">
+                <span className="font-data text-[9px] uppercase tracking-widest text-text-faint">Match:</span>
+                {(["any", "all"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setVerticalMatchMode(mode)}
+                    className={cn(
+                      "px-2.5 py-0.5 rounded font-data text-[9px] font-bold uppercase cursor-pointer transition-colors border",
+                      verticalMatchMode === mode
+                        ? "border-gold bg-gold-muted text-gold"
+                        : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                    )}
+                  >
+                    {mode === "any" ? "Match Any" : "Match All"}
                   </button>
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Company grid */}
+          {loading ? (
+            <div className="grid grid-cols-3 gap-2">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <Skeleton key={i} className="h-20 rounded-xl" />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={<Building2 size={32} />}
+              title={search ? "No companies match" : "No companies found"}
+              description={search ? "Try a different search term" : "Companies will appear once articles are ingested"}
+            />
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {filtered.map((company) => (
+                <button
+                  key={company.name}
+                  type="button"
+                  onClick={() => setSelectedCompany(company)}
+                  className={cn(
+                    "flex flex-col items-start p-3 rounded-xl border bg-white text-left",
+                    "transition-all duration-[var(--duration-base)] cursor-pointer",
+                    selectedCompany?.name === company.name
+                      ? "border-gold shadow-[0_2px_8px_rgba(201,146,42,0.12)]"
+                      : "border-border-base hover:border-border-hover",
+                  )}
+                >
+                  <div className="flex items-center gap-2 mb-1 w-full">
+                    <span className="font-display text-[14px] font-bold text-espresso truncate flex-1">
+                      {company.name}
+                    </span>
+                    <span className="font-data text-[10px] text-gold bg-gold-muted border border-gold-border px-1.5 py-0.5 rounded-md flex-shrink-0">
+                      {company.mentions}x
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Detail side panel */}
