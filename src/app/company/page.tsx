@@ -76,6 +76,96 @@ const SECTOR_TO_VERTICAL: Record<string, string> = {
   // "Geopolitics & Macro" intentionally unmapped — cross-cutting, not an industry vertical
 };
 
+// Layer 1: ground-truth vertical for well-known companies. Keyed by lowercase display name.
+// Checked before sector-derived logic — overrides any article sector signal for these companies.
+// An AI company like Anthropic appearing in "Fintech & Crypto" articles should still map to
+// Technology; a PE firm like Blackstone should map to Financial Services regardless of which
+// industry its portfolio companies are in.
+const COMPANY_VERTICAL_OVERRIDES: Record<string, string> = {
+  // AI & cloud infrastructure
+  "anthropic": "Technology",
+  "anthropic pbc": "Technology",
+  "openai": "Technology",
+  "xai": "Technology",
+  "coreweave": "Technology",
+  // Big Tech
+  "alphabet": "Technology",
+  "google": "Technology",
+  "microsoft": "Technology",
+  "apple": "Technology",
+  "amazon": "Technology",
+  "meta": "Technology",
+  "nvidia": "Technology",
+  "intel": "Technology",
+  "samsung": "Technology",
+  "ibm": "Technology",
+  "broadcom": "Technology",
+  "arm": "Technology",
+  "arm holdings": "Technology",
+  "tesla": "Technology",
+  "uber": "Technology",
+  "palantir": "Technology",
+  "palantir technologies": "Technology",
+  "roblox": "Technology",
+  "sifive": "Technology",
+  "polymarket": "Technology",
+  // IT services / consulting
+  "tcs": "Technology",
+  "tata consultancy services": "Technology",
+  // Aerospace & Defense
+  "spacex": "Aerospace & Defense",
+  "lockheed martin": "Aerospace & Defense",
+  "boeing": "Aerospace & Defense",
+  "northrop grumman": "Aerospace & Defense",
+  "nasa": "Aerospace & Defense",
+  // Financial Services
+  "blackstone": "Financial Services",
+  "blackstone group": "Financial Services",
+  "goldman sachs": "Financial Services",
+  "tpg": "Financial Services",
+  "federal reserve": "Financial Services",
+  "federal reserve board": "Financial Services",
+  "jpmorgan": "Financial Services",
+  "jpmorgan chase": "Financial Services",
+  "morgan stanley": "Financial Services",
+  "bank of america": "Financial Services",
+  "citigroup": "Financial Services",
+  "nordea bank": "Financial Services",
+  "nordea bank abp": "Financial Services",
+  "cango": "Financial Services",
+  "cango inc": "Financial Services",
+  "kreditbee": "Financial Services",
+  // Media & Telecom
+  "bloomberg": "Media & Telecom",
+  "techcrunch": "Media & Telecom",
+  "paramount": "Media & Telecom",
+  "warner bros": "Media & Telecom",
+  "warner brothers": "Media & Telecom",
+  "comcast": "Media & Telecom",
+  "disney": "Media & Telecom",
+  // Industrials & Manufacturing
+  "delta": "Industrials & Manufacturing",
+  "volkswagen": "Industrials & Manufacturing",
+  "ford": "Industrials & Manufacturing",
+  "general motors": "Industrials & Manufacturing",
+  // Energy
+  "exxonmobil": "Energy & Oil/Gas",
+  "chevron": "Energy & Oil/Gas",
+  "bp": "Energy & Oil/Gas",
+  "shell": "Energy & Oil/Gas",
+  // Healthcare
+  "hologic": "Healthcare & Biotech",
+  "hologic inc": "Healthcare & Biotech",
+  "pfizer": "Healthcare & Biotech",
+  "johnson & johnson": "Healthcare & Biotech",
+  "unitedhealth": "Healthcare & Biotech",
+  // Consumer & Retail
+  "peloton": "Consumer & Retail",
+  "slice": "Consumer & Retail",
+  "nike": "Consumer & Retail",
+  "walmart": "Consumer & Retail",
+};
+
 export default function CompanyIntelPage() {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -161,7 +251,14 @@ export default function CompanyIntelPage() {
     load();
   }, []);
 
-  // Filter companies by search and industry vertical
+  // Filter companies by search and industry vertical.
+  // Two-layer approach:
+  //   Layer 1: COMPANY_VERTICAL_OVERRIDES — ground-truth for well-known companies. When a
+  //            company has an override, its article-derived sectors[] are ignored entirely.
+  //            This prevents Anthropic (primary in "Fintech & Crypto" articles) from appearing
+  //            under Financial Services, and Blackstone from appearing under Technology.
+  //   Layer 2: SECTOR_TO_VERTICAL — deterministic sector string → vertical mapping as fallback
+  //            for long-tail companies not in the override map.
   const filtered = useMemo(() => {
     let result = companies;
     if (search.trim()) {
@@ -170,14 +267,15 @@ export default function CompanyIntelPage() {
     }
     if (selectedVerticals.length > 0) {
       result = result.filter((c) => {
-        // Use the explicit SECTOR_TO_VERTICAL lookup — not fuzzy keyword matching.
-        // This prevents "Technology M&A & Investment Banking" from pulling PE firms
-        // into the Technology bucket; they map deterministically to Financial Services.
-        const check = (v: string) =>
-          c.sectors.some((s) => SECTOR_TO_VERTICAL[s] === v);
+        const nameLower = c.name.toLowerCase();
+        const override = COMPANY_VERTICAL_OVERRIDES[nameLower];
+        // Layer 1: if we have ground-truth, use it exclusively
+        const effectiveVerticals: Set<string> = override
+          ? new Set([override])
+          : new Set(c.sectors.map((s) => SECTOR_TO_VERTICAL[s]).filter((v): v is string => Boolean(v)));
         return verticalMatchMode === "all"
-          ? selectedVerticals.every(check)
-          : selectedVerticals.some(check);
+          ? selectedVerticals.every((v) => effectiveVerticals.has(v))
+          : selectedVerticals.some((v) => effectiveVerticals.has(v));
       });
     }
     return result;
