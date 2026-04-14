@@ -7,10 +7,21 @@ export const dynamic = "force-dynamic";
 // Service-role client bypasses RLS — appropriate for authenticated user actions
 // routed through this server-only endpoint. Falls back to anon key if no
 // SUPABASE_SERVICE_ROLE_KEY is set (RLS must then allow UPDATE for the user).
-const adminSupabase = createClient(
+const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { auth: { persistSession: false } }
 );
+
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.warn(
+    "[theses PATCH] SUPABASE_SERVICE_ROLE_KEY not set — using anon key.\n" +
+    "If UPDATE fails due to RLS, run this in Supabase SQL editor:\n" +
+    "  CREATE POLICY \"allow_authenticated_update\" ON theses\n" +
+    "  FOR UPDATE TO authenticated\n" +
+    "  USING (true) WITH CHECK (true);"
+  );
+}
 
 export async function PATCH(
   request: Request,
@@ -38,7 +49,7 @@ export async function PATCH(
   }
 
   try {
-    const { data, error } = await adminSupabase
+    const { data, error } = await supabaseAdmin
       .from("theses")
       .update(updateData)
       .eq("id", id)

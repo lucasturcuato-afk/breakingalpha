@@ -51,7 +51,7 @@ export function ConvictionRing({
         borderRadius: '50%',
         background: `conic-gradient(
           ${color} 0deg ${degrees}deg,
-          #2D2D2D ${degrees}deg 360deg
+          #3a3530 ${degrees}deg 360deg
         )`,
         display: 'flex',
         alignItems: 'center',
@@ -64,7 +64,6 @@ export function ConvictionRing({
             width: innerSize,
             height: innerSize,
             borderRadius: '50%',
-            background: 'var(--parchment, #faf7f2)',
           }}
         />
       </div>
