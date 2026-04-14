@@ -58,7 +58,9 @@ Replaced GitHub Actions native cron on 2026-04-13 — GitHub's built-in schedule
 - `Accept: application/vnd.github+json`
 - `Content-Type: application/json`
 
-**Request body (both jobs):** `{"ref":"main"}`
+**Request body:**
+- Morning job: `{"ref":"main"}` (uses default mode)
+- Evening job: `{"ref":"main","inputs":{"mode":"evening"}}`
 
 **If runs stop:**
 1. Check cron-job.org execution log — look for non-204 response codes
@@ -138,6 +140,9 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 3. ~~What is Lucas's scope for the autonomous improvement loop?~~ — RESOLVED: 12-step pipeline with thesis grading, pattern memory, source credibility, adversarial review (phases 2–6 shipped)
 4. Are there active paying users? (determines urgency of fixes)
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
+
+## Recently Completed (2026-04-14)
+PR #88: company intel filter accuracy — explicit sector-to-vertical mapping (COMPANY_VERTICAL_OVERRIDES 74-entry ground-truth map + SECTOR_TO_VERTICAL fallback); primary_company attribution guard prevents PE firms accumulating wrong tags. PR #87: dual-row filter UI on /deal-flow (Activity Type + Sector rows, Match Any/All toggles, Clear All button); vertical filter consistency across /company and /deal-flow. Cron-job.org Evening job updated: request body now passes `{"ref":"main","inputs":{"mode":"evening"}}` (was missing mode input, defaulted to morning, causing stale Evening Wrap).
 
 ## Recently Completed (2026-04-13)
 ConvictionRing CSS refactor (conic-gradient donut) + drag-to-archive RLS fix: replaced SVG strokeDasharray (broken by Tailwind v4 preflight CSS overriding strokes) with CSS conic-gradient; inner circle now uses `.conviction-ring-bg` CSS class with context-aware color overrides (`.bg-parchment-mid .conviction-ring-bg`, `.bg-cream .conviction-ring-bg`); unfilled arc warm tone (#3a3530); PATCH `/api/theses/[id]` route fixed 500 error via `supabaseAdmin` client using `SUPABASE_SERVICE_ROLE_KEY`; removed conviction text badges from ThesisList.tsx; added detailed logging (`=== PATCH START/FAILED ===`). Service role key added to .env.local. Key files: ConvictionRing.tsx, ThesisList.tsx, route.ts, globals.css.
