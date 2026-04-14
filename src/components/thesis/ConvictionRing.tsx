@@ -42,7 +42,7 @@ const CONVICTION_MAP: Record<
 };
 
 const DEFAULT_CONVICTION = {
-  fillPct: 0.25,
+  fillPct: 0.2,
   color: "#4B5563",
   label: "—",
   tooltip: "Conviction not set",
@@ -79,10 +79,10 @@ export function ConvictionRing({ conviction, size = 36 }: ConvictionRingProps) {
           fill="none"
           stroke={cfg.color}
           strokeWidth={STROKE}
-          strokeDasharray={CIRCUMFERENCE}
-          strokeDashoffset={CIRCUMFERENCE * (1 - cfg.fillPct)}
+          strokeDasharray={`${CIRCUMFERENCE} ${CIRCUMFERENCE}`}
+          strokeDashoffset={CIRCUMFERENCE - (cfg.fillPct * CIRCUMFERENCE)}
           strokeLinecap="round"
-          transform={`rotate(-90 ${CENTER} ${CENTER})`}
+          style={{ transform: "rotate(-90deg)", transformOrigin: `${CENTER}px ${CENTER}px` }}
         />
         {/* Label below */}
         <text

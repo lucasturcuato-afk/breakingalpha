@@ -12,17 +12,8 @@ import {
 import { MemoModal } from "@/components/memo/MemoModal";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { ThesisItem } from "./thesis-types";
-import type { BadgeVariant } from "@/components/ui/badge";
 import { ConvictionRing } from "./ConvictionRing";
 import { SparklineChart } from "./SparklineChart";
-
-const convictionMap: Record<string, BadgeVariant> = {
-  HIGH: "gold",
-  BULLISH: "bullish",
-  MEDIUM: "neutral",
-  BEARISH: "bearish",
-  WATCH: "neutral",
-};
 
 // ── Adversarial Shield SVG ──
 
@@ -195,14 +186,11 @@ export function ThesisCard({ thesis, onUpdate, isSelected }: ThesisCardProps) {
           <div className="flex-1 min-w-0">
             {/* Badges row */}
             <div className="flex items-center gap-1.5 mb-1">
-              <Badge variant={convictionMap[thesis.conviction ?? ""] ?? "muted"}>
-                {thesis.conviction ?? "—"}
-              </Badge>
               <Badge variant="default">{thesis.sector}</Badge>
               <StalenessIndicator generatedAt={thesis.generated_at} outcome={thesis.outcome} />
             </div>
             {/* Title — FIX 6C: font-display 13px semibold */}
-            <h4 className="font-display text-[13px] font-semibold text-espresso leading-snug line-clamp-2">
+            <h4 className="font-display text-[13px] font-semibold text-espresso leading-snug line-clamp-2 break-words">
               {thesis.title}
             </h4>
             {/* Age indicator */}
