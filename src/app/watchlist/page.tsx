@@ -16,6 +16,7 @@ import {
   TrendingDown,
   Minus,
   ChevronRight,
+  Globe,
 } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 import { MemoModal } from "@/components/memo/MemoModal";
@@ -93,6 +94,7 @@ interface MatchedArticle {
   activity_types?: string[];
   published_at?: string;
   relevance_score?: number;
+  summary?: string;
 }
 
 function timeAgo(dateStr: string): string {
@@ -129,7 +131,7 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArti
       ) ?? entry.identifier;
     const { data } = await getSupabase()
       .from("articles")
-      .select("id, title, source, sector, industry_verticals, activity_types, published_at, ingested_at, relevance_score")
+      .select("id, title, source, sector, industry_verticals, activity_types, published_at, ingested_at, relevance_score, summary")
       .contains("industry_verticals", [canonicalVertical])
       .order("ingested_at", { ascending: false })
       .limit(20);
@@ -142,6 +144,7 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArti
       activity_types: (a.activity_types as string[] | null) ?? [],
       published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
       relevance_score: (a.relevance_score as number | null) ?? 0,
+      summary: a.summary as string | undefined,
     }));
   }
 
@@ -151,7 +154,8 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArti
 
   const baseSelect = "id, title, source, sector, industry_verticals, activity_types, published_at, ingested_at, relevance_score, summary";
 
-  const skipRawTickerSearch = entry.identifier.replace(/[^A-Z]/g, "").length <= 2;
+  const rawIdent = entry.identifier.replace(/[^A-Z0-9]/g, "");
+  const skipRawTickerSearch = rawIdent.length <= 2;
 
   const queries = [
     ...(skipRawTickerSearch
@@ -198,6 +202,7 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArti
         activity_types: (a.activity_types as string[] | null) ?? [],
         published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
         relevance_score: (a.relevance_score as number | null) ?? 0,
+        summary: a.summary as string | undefined,
       });
     });
   });
@@ -519,49 +524,54 @@ export default function WatchlistPage() {
               />
             ) : (
               <div className="space-y-1.5">
+                {showDivider && (
+                  <p className="font-data text-[8px] uppercase tracking-widest text-text-faint mb-1.5">Sectors</p>
+                )}
                 {[...sectorEntries, ...nonSectorEntries].map((entry, idx) => {
                   const price = prices[entry.identifier];
                   const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
+                  const isSector = entry.type === "sector";
                   return (
                     <Fragment key={entry.id}>
                       {showDivider && idx === sectorEntries.length && (
-                        <div className="border-t border-border-base my-0.5" />
+                        <div className="flex items-center gap-2 my-1">
+                          <div className="flex-1 h-px bg-border-base" />
+                          <span className="font-data text-[8px] uppercase tracking-widest text-text-faint">Tickers & Companies</span>
+                          <div className="flex-1 h-px bg-border-base" />
+                        </div>
                       )}
                       <div
                         onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
                         className={cn(
-                          "flex items-center justify-between px-4 py-2.5 bg-white border border-border-base rounded-xl group cursor-pointer transition-colors",
+                          "flex items-center justify-between gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
                           selectedIdentifier === entry.identifier
                             ? "border-l-2 border-l-gold bg-gold-muted/30"
-                            : "hover:border-border-hover",
+                            : isSector
+                              ? "bg-parchment-mid hover:border-border-hover"
+                              : "bg-white hover:border-border-hover",
                         )}
                       >
-                        {/* LEFT: identifier + type badge */}
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <span className="font-data text-[13px] font-bold text-text-primary truncate">
-                            {entry.identifier}
-                          </span>
-                          <span className="font-data text-[9px] text-gold bg-gold-muted border border-gold-border px-1.5 py-0.5 rounded-md flex-shrink-0 uppercase">
-                            {entry.type}
-                          </span>
-                        </div>
+                        {/* LEFT: name — wide, bold, truncates cleanly */}
+                        <span className="font-data text-[13px] font-bold text-text-primary truncate min-w-0 w-[80px] flex-shrink-0">
+                          {entry.identifier}
+                        </span>
 
-                        {/* RIGHT: article count, price, hover actions, chevron */}
-                        <div className="flex items-center gap-2 flex-shrink-0">
+                        {/* RIGHT: all metadata and actions */}
+                        <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
                           {articleCount > 0 && (
-                            <span className="font-data text-[9px] text-gold bg-gold-muted border border-gold-border px-1.5 py-0.5 rounded-md">
-                              {articleCount} art.
+                            <span className="font-data text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
+                              {articleCount}
                             </span>
                           )}
 
                           {entry.type === "ticker" && price && (
-                            <span className={cn("font-data text-[12px] tabular-nums", price.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
-                              ${price.price} {price.pct >= 0 ? "+" : ""}{price.pct}%
+                            <span className={cn("font-data text-[11px] tabular-nums", price.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
+                              ${price.price} <span className="text-[10px]">{price.pct >= 0 ? "+" : ""}{price.pct}%</span>
                             </span>
                           )}
 
                           <div
-                            className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <button type="button" onClick={() => setMemoEntry(entry)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Generate memo">
@@ -577,7 +587,10 @@ export default function WatchlistPage() {
                             </button>
                           </div>
 
-                          <ChevronRight size={10} className="text-text-faint" />
+                          {isSector
+                            ? <Globe size={10} className="text-text-faint" />
+                            : <ChevronRight size={10} className="text-text-faint" />
+                          }
                         </div>
                       </div>
                     </Fragment>
@@ -591,21 +604,18 @@ export default function WatchlistPage() {
         {/* RIGHT COL */}
         <div className="flex-1 min-w-0 overflow-y-auto">
           <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="font-data text-[9px] uppercase tracking-widest text-text-muted">
-                {selectedIdentifier
-                  ? `Showing: ${selectedIdentifier}`
-                  : "Watchlist Feed"}
-              </p>
-              <p className="font-data text-[10px] text-gold font-semibold">
-                {displayedArticles.length} {displayedArticles.length === 1 ? "article" : "articles"}
-                {selectedIdentifier && (
-                  <button onClick={() => setSelectedIdentifier(null)} className="ml-2 text-text-muted text-[9px] hover:text-text-primary cursor-pointer">
-                    ← Back
-                  </button>
-                )}
-              </p>
-            </div>
+            {selectedIdentifier ? (
+              <div className="flex items-center gap-2">
+                <span className="font-display text-[15px] font-bold text-espresso">{selectedIdentifier}</span>
+                <span className="font-data text-[9px] text-text-faint">{displayedArticles.length} articles</span>
+                <button onClick={() => setSelectedIdentifier(null)} className="font-data text-[9px] text-text-muted hover:text-text-primary cursor-pointer ml-1">← All</button>
+              </div>
+            ) : (
+              <div>
+                <p className="font-data text-[9px] uppercase tracking-widest text-text-muted">Watchlist Feed</p>
+                <p className="font-data text-[11px] text-gold font-semibold">{displayedArticles.length} articles</p>
+              </div>
+            )}
             <div className="flex gap-1">
               {(["newest", "relevant"] as const).map((mode) => (
                 <button
@@ -660,12 +670,6 @@ export default function WatchlistPage() {
                     {a.published_at && (
                       <span className="font-data text-[9px] text-text-faint ml-auto">{timeAgo(a.published_at)}</span>
                     )}
-                  </div>
-                  <h4 className="font-sans text-[13px] font-semibold text-espresso leading-snug">
-                    {a.title}
-                  </h4>
-                  <div className="flex items-center justify-between mt-2">
-                    <span />
                     <button
                       type="button"
                       onClick={() => setArticleMemoEntry(a)}
@@ -675,6 +679,14 @@ export default function WatchlistPage() {
                       Memo
                     </button>
                   </div>
+                  <h4 className="font-sans text-[13px] font-semibold text-espresso leading-snug">
+                    {a.title}
+                  </h4>
+                  {a.summary && (
+                    <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
+                      {a.summary}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

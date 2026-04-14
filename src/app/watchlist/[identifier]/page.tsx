@@ -354,7 +354,7 @@ Generate a professional company brief covering: current price action and what's 
         {/* Price section (non-sector) */}
         {!isSector && (
           <div className={cn(
-            "bg-white border border-border-base rounded-xl p-4 border-l-4 mt-4 mb-6",
+            "bg-white border border-border-base rounded-xl p-4 border-l-4 mt-4",
             quote ? (quote.pct >= 0 ? "border-l-signal-up" : "border-l-signal-dn") : "border-l-border-base"
           )}>
             <div className="flex items-center gap-3 mb-1">
@@ -378,14 +378,16 @@ Generate a professional company brief covering: current price action and what's 
           </div>
         )}
         {isSector && (
-          <div className="mt-4 mb-6 flex items-center gap-3">
+          <div className="mt-4 flex items-center gap-3">
             <h1 className="font-display text-[28px] font-extrabold text-espresso">{decoded}</h1>
             <span className="font-data text-[10px] text-gold bg-gold-muted border border-gold-border px-2 py-0.5 rounded-md uppercase">{typeLabel}</span>
           </div>
         )}
 
+        <hr className="border-border-base my-6" />
+
         {/* AI BRIEF SECTION */}
-        <div className="mb-8 pb-8 border-b border-border-base">
+        <div className="mb-6">
           <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">
             AI Brief
           </p>
@@ -402,11 +404,19 @@ Generate a professional company brief covering: current price action and what's 
             </div>
           ) : (
             <>
+              {briefGeneratedAt === null && !loading && articles.length > 0 && (
+                <div className="bg-parchment-mid border border-border-base rounded-xl p-4 mb-4">
+                  <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1">What you'll get</p>
+                  <p className="font-sans text-[12px] text-text-secondary leading-relaxed">
+                    An AI-generated research brief grounded in {articles.length} recent articles — covering price action, company positioning, recent developments, upcoming catalysts, and key risks.
+                  </p>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => { setBriefGeneratedAt(new Date()); setMemoOpen(true); }}
                 disabled={loading || articles.length === 0}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gold text-cream font-sans text-[12px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gold text-cream font-sans text-[13px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Sparkles size={13} />
                 {briefGeneratedAt !== null ? "Regenerate Brief" : "Generate Brief"}
@@ -414,19 +424,16 @@ Generate a professional company brief covering: current price action and what's 
               {loading && (
                 <p className="font-data text-[10px] text-text-faint mt-2">Loading articles...</p>
               )}
-              {!loading && articles.length > 0 && (
-                <p className="font-data text-[10px] text-text-faint mt-2">
-                  Brief will be grounded in {articles.length} recent article{articles.length !== 1 ? "s" : ""}
-                </p>
-              )}
               {briefGeneratedAt !== null && (
-                <p className="font-data text-[9px] text-text-faint mt-1">
+                <p className="font-data text-[9px] text-text-faint mt-2">
                   Last generated {timeAgo(briefGeneratedAt.toISOString())}
                 </p>
               )}
             </>
           )}
         </div>
+
+        <hr className="border-border-base my-6" />
 
         {/* RECENT COVERAGE */}
         <div>
@@ -510,6 +517,14 @@ Generate a professional company brief covering: current price action and what's 
                         {timeAgo(a.published_at)}
                       </span>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => setArticleMemoEntry(a)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded font-data text-[9px] text-gold bg-gold-muted border border-gold-border hover:bg-gold/10 cursor-pointer transition-colors"
+                    >
+                      <Sparkles size={9} />
+                      Memo
+                    </button>
                   </div>
                   <div className="flex items-start gap-2">
                     <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
@@ -531,16 +546,6 @@ Generate a professional company brief covering: current price action and what's 
                       {a.summary}
                     </p>
                   )}
-                  <div className="flex justify-end mt-2">
-                    <button
-                      type="button"
-                      onClick={() => setArticleMemoEntry(a)}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded font-data text-[9px] text-gold bg-gold-muted border border-gold-border hover:bg-gold/10 cursor-pointer transition-colors"
-                    >
-                      <Sparkles size={9} />
-                      Memo
-                    </button>
-                  </div>
                 </div>
               ))}
             </div>
