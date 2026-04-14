@@ -578,6 +578,7 @@ function ThesisBoardContent() {
                 filter={convictionFilter}
                 onQuickAction={handleQuickAction}
                 onDrop={async (id, patch) => {
+                  console.log("[onDrop] before PATCH", id, patch);
                   // Optimistic update
                   setTheses((prev) =>
                     prev.map((t) =>
@@ -596,9 +597,11 @@ function ThesisBoardContent() {
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify(patch),
                     });
-                    if (!res.ok) throw new Error("PATCH failed");
-                  } catch {
-                    // Revert on failure
+                    const data = await res.json();
+                    console.log("[onDrop] PATCH response", res.status, data);
+                    if (!res.ok) throw new Error(`PATCH failed: ${res.status}`);
+                  } catch (err) {
+                    console.error("[onDrop] PATCH error, reverting", err);
                     fetchTheses();
                   }
                 }}

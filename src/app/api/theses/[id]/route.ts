@@ -57,6 +57,7 @@ export async function PATCH(
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
     }
 
+    console.log("[theses/[id] PATCH] updating", id, "with", update);
     const { data, error } = await supabase
       .from("theses")
       .update(update)
@@ -64,8 +65,8 @@ export async function PATCH(
       .select("*")
       .single();
 
+    console.log("[theses/[id] PATCH] result", { data: !!data, error: error?.message ?? null });
     if (error) {
-      console.error("[theses/[id] PATCH] update failed:", error.message);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     return NextResponse.json({ thesis: data });

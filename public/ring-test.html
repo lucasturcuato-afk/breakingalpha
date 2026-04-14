@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<body style="background:#1a1a1a;padding:40px;display:flex;gap:24px">
+<script>
+function ring(size, fillPct, color, label) {
+  const stroke = 3
+  const r = (size/2) - stroke - 1
+  const circ = 2 * Math.PI * r
+  const filled = circ * fillPct
+  const gap = circ - filled
+  const cx = size/2, cy = size/2
+  return `
+    <div style="display:flex;flex-direction:column;
+                align-items:center;gap:3px">
+      <svg width="${size}" height="${size}"
+           viewBox="0 0 ${size} ${size}"
+           xmlns="http://www.w3.org/2000/svg">
+        <circle cx="${cx}" cy="${cy}" r="${r}"
+                fill="none" stroke="#2D2D2D"
+                stroke-width="${stroke}"/>
+        <circle cx="${cx}" cy="${cy}" r="${r}"
+                fill="none" stroke="${color}"
+                stroke-width="${stroke}"
+                stroke-linecap="round"
+                stroke-dasharray="${filled} ${gap}"
+                transform="rotate(-90 ${cx} ${cy})"/>
+      </svg>
+      <span style="color:${color};font-size:9px;
+                   font-family:sans-serif">${label}</span>
+    </div>`
+}
+document.body.innerHTML += ring(36, 1.0, '#C9A84C', 'HIGH')
+document.body.innerHTML += ring(36, 0.75, '#D97706', 'MED')
+document.body.innerHTML += ring(36, 0.5, '#6B7280', 'WATCH')
+document.body.innerHTML += ring(36, 0.2, '#4B5563', '—')
+document.body.innerHTML += ring(48, 1.0, '#C9A84C', 'HIGH')
+</script>
+</body>
+</html>
