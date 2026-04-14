@@ -42,55 +42,62 @@ export function ConvictionRing({
   const cy = size / 2
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: '3px',
-        width: size,
-      }}
-    >
-      <svg
-        width={size}
-        height={size}
-        viewBox={`0 0 ${size} ${size}`}
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        {/* background track */}
-        <circle
-          cx={cx}
-          cy={cy}
-          r={r}
-          fill="none"
-          stroke="#2D2D2D"
-          strokeWidth={stroke}
-        />
-        {/* filled arc — starts at 12 o'clock via rotate */}
-        <circle
-          cx={cx}
-          cy={cy}
-          r={r}
-          fill="none"
-          stroke={color}
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={`${filled} ${gap}`}
-          transform={`rotate(-90 ${cx} ${cy})`}
-        />
-      </svg>
-      <span
+    <div style={{ isolation: 'isolate' }}>
+      <div
         style={{
-          fontSize: '9px',
-          fontFamily: 'Inter, sans-serif',
-          color: color,
-          letterSpacing: '0.04em',
-          lineHeight: '1',
-          userSelect: 'none',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '3px',
+          width: size,
         }}
       >
-        {label}
-      </span>
+        <svg
+          className="conviction-ring"
+          width={size}
+          height={size}
+          viewBox={`0 0 ${size} ${size}`}
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          {/* background track */}
+          <circle
+            cx={cx}
+            cy={cy}
+            r={r}
+            fill="none"
+            stroke="#2D2D2D"
+            strokeWidth={stroke}
+          />
+          {/* filled arc — starts at 12 o'clock via rotate */}
+          <circle
+            cx={cx}
+            cy={cy}
+            r={r}
+            fill="none"
+            stroke={color}
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={`${filled} ${gap}`}
+            style={{
+              strokeDasharray: `${filled} ${gap}`,
+              strokeDashoffset: '0',
+            }}
+            transform={`rotate(-90 ${cx} ${cy})`}
+          />
+        </svg>
+        <span
+          style={{
+            fontSize: '9px',
+            fontFamily: 'Inter, sans-serif',
+            color: color,
+            letterSpacing: '0.04em',
+            lineHeight: '1',
+            userSelect: 'none',
+          }}
+        >
+          {label}
+        </span>
+      </div>
     </div>
   )
 }

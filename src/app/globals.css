@@ -177,3 +177,11 @@ html.dark .bg-white {
     transform: translateX(-33.333%);
   }
 }
+
+/* Conviction ring arc protection */
+.conviction-ring circle {
+  vector-effect: non-scaling-stroke;
+}
+.conviction-ring circle[stroke-dasharray] {
+  border: none;
+}
