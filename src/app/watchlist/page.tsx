@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import { Input } from "@/components/ui/input";
@@ -122,10 +122,15 @@ function sortArticles(articles: MatchedArticle[], mode: "newest" | "relevant"): 
 
 async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArticle[]> {
   if (entry.type === "sector") {
+    // Normalize to canonical casing — DB stores mixed case, entries may be stored uppercase
+    const canonicalVertical =
+      INDUSTRY_VERTICALS.find(
+        (v) => v.toUpperCase() === entry.identifier.toUpperCase(),
+      ) ?? entry.identifier;
     const { data } = await getSupabase()
       .from("articles")
       .select("id, title, source, sector, industry_verticals, activity_types, published_at, ingested_at, relevance_score")
-      .contains("industry_verticals", [entry.identifier])
+      .contains("industry_verticals", [canonicalVertical])
       .order("ingested_at", { ascending: false })
       .limit(20);
     return (data || []).map((a: Record<string, unknown>) => ({
@@ -146,16 +151,22 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArti
 
   const baseSelect = "id, title, source, sector, industry_verticals, activity_types, published_at, ingested_at, relevance_score, summary";
 
+  const skipRawTickerSearch = entry.identifier.replace(/[^A-Z]/g, "").length <= 2;
+
   const queries = [
-    getSupabase().from("articles").select(baseSelect)
-      .ilike("title", `%${entry.identifier}%`)
-      .order("ingested_at", { ascending: false }).limit(20),
-    getSupabase().from("articles").select(baseSelect)
-      .ilike("summary", `%${entry.identifier}%`)
-      .order("ingested_at", { ascending: false }).limit(15),
-    getSupabase().from("articles").select(baseSelect)
-      .ilike("companies", `%${entry.identifier}%`)
-      .order("ingested_at", { ascending: false }).limit(20),
+    ...(skipRawTickerSearch
+      ? []
+      : [
+          getSupabase().from("articles").select(baseSelect)
+            .ilike("title", `%${entry.identifier}%`)
+            .order("ingested_at", { ascending: false }).limit(20),
+          getSupabase().from("articles").select(baseSelect)
+            .ilike("summary", `%${entry.identifier}%`)
+            .order("ingested_at", { ascending: false }).limit(15),
+          getSupabase().from("articles").select(baseSelect)
+            .ilike("companies", `%${entry.identifier}%`)
+            .order("ingested_at", { ascending: false }).limit(20),
+        ]),
   ];
 
   if (hasAlias) {
@@ -377,6 +388,10 @@ export default function WatchlistPage() {
   const losers = tickers.filter((e) => prices[e.identifier]?.pct < 0).length;
   const flat = tickers.length - gainers - losers;
 
+  const sectorEntries = watchlist.filter((e) => e.type === "sector");
+  const nonSectorEntries = watchlist.filter((e) => e.type !== "sector");
+  const showDivider = sectorEntries.length > 0 && nonSectorEntries.length > 0;
+
   const displayedArticles = useMemo(() => {
     if (selectedIdentifier) {
       const arts = articlesByIdentifier[selectedIdentifier] ?? [];
@@ -504,59 +519,68 @@ export default function WatchlistPage() {
               />
             ) : (
               <div className="space-y-1.5">
-                {watchlist.map((entry) => {
+                {[...sectorEntries, ...nonSectorEntries].map((entry, idx) => {
                   const price = prices[entry.identifier];
                   const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
                   return (
-                    <div
-                      key={entry.id}
-                      onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
-                      className={cn(
-                        "flex items-center gap-3 px-4 py-2.5 bg-white border border-border-base rounded-xl group cursor-pointer transition-colors",
-                        selectedIdentifier === entry.identifier
-                          ? "border-l-2 border-l-gold bg-gold-muted/30"
-                          : "hover:border-border-hover",
+                    <Fragment key={entry.id}>
+                      {showDivider && idx === sectorEntries.length && (
+                        <div className="border-t border-border-base my-0.5" />
                       )}
-                    >
-                      <span className="font-data text-[13px] font-bold text-text-primary flex-1 truncate">
-                        {entry.identifier}
-                      </span>
-
-                      {articleCount > 0 && (
-                        <span className="font-data text-[9px] text-gold bg-gold-muted border border-gold-border px-1.5 py-0.5 rounded-md flex-shrink-0">
-                          {articleCount} art.
-                        </span>
-                      )}
-
-                      {entry.type === "ticker" && price && (
-                        <span className={cn("font-data text-[12px] tabular-nums flex-shrink-0", price.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
-                          ${price.price} {price.pct >= 0 ? "+" : ""}{price.pct}%
-                        </span>
-                      )}
-
-                      <span className="font-data text-[9px] text-gold bg-gold-muted border border-gold-border px-1.5 py-0.5 rounded-md flex-shrink-0 uppercase">
-                        {entry.type}
-                      </span>
-
                       <div
-                        className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <button type="button" onClick={() => setMemoEntry(entry)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Generate memo">
-                          <Sparkles size={11} className="text-gold" />
-                        </button>
-                        {entry.type !== "sector" && (
-                          <button type="button" onClick={() => router.push(`/watchlist/${encodeURIComponent(entry.identifier)}`)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Open brief">
-                            <ExternalLink size={11} className="text-text-muted" />
-                          </button>
+                        onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
+                        className={cn(
+                          "flex items-center justify-between px-4 py-2.5 bg-white border border-border-base rounded-xl group cursor-pointer transition-colors",
+                          selectedIdentifier === entry.identifier
+                            ? "border-l-2 border-l-gold bg-gold-muted/30"
+                            : "hover:border-border-hover",
                         )}
-                        <button type="button" onClick={() => handleRemove(entry.id)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Remove">
-                          <Trash2 size={11} className="text-text-faint hover:text-signal-dn" />
-                        </button>
-                      </div>
+                      >
+                        {/* LEFT: identifier + type badge */}
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span className="font-data text-[13px] font-bold text-text-primary truncate">
+                            {entry.identifier}
+                          </span>
+                          <span className="font-data text-[9px] text-gold bg-gold-muted border border-gold-border px-1.5 py-0.5 rounded-md flex-shrink-0 uppercase">
+                            {entry.type}
+                          </span>
+                        </div>
 
-                      <ChevronRight size={10} className="text-text-faint flex-shrink-0" />
-                    </div>
+                        {/* RIGHT: article count, price, hover actions, chevron */}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {articleCount > 0 && (
+                            <span className="font-data text-[9px] text-gold bg-gold-muted border border-gold-border px-1.5 py-0.5 rounded-md">
+                              {articleCount} art.
+                            </span>
+                          )}
+
+                          {entry.type === "ticker" && price && (
+                            <span className={cn("font-data text-[12px] tabular-nums", price.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
+                              ${price.price} {price.pct >= 0 ? "+" : ""}{price.pct}%
+                            </span>
+                          )}
+
+                          <div
+                            className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button type="button" onClick={() => setMemoEntry(entry)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Generate memo">
+                              <Sparkles size={11} className="text-gold" />
+                            </button>
+                            {entry.type !== "sector" && (
+                              <button type="button" onClick={() => router.push(`/watchlist/${encodeURIComponent(entry.identifier)}`)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Open brief">
+                                <ExternalLink size={11} className="text-text-muted" />
+                              </button>
+                            )}
+                            <button type="button" onClick={() => handleRemove(entry.id)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Remove">
+                              <Trash2 size={11} className="text-text-faint hover:text-signal-dn" />
+                            </button>
+                          </div>
+
+                          <ChevronRight size={10} className="text-text-faint" />
+                        </div>
+                      </div>
+                    </Fragment>
                   );
                 })}
               </div>
