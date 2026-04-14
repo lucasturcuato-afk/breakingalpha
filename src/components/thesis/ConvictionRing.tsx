@@ -1,72 +1,102 @@
 "use client";
 
-export function ConvictionRing({
-  score,
-  size = 36,
-}: {
-  score: number | null | undefined;
+interface ConvictionRingProps {
+  conviction: string | null;
   size?: number;
-}) {
-  // FIX 1: negative → null, treat as unknown
-  const raw = score ?? null;
-  const s = raw !== null && raw < 0 ? null : raw;
-  const r = (size - 6) / 2;
-  const c = size / 2;
-  const circumference = 2 * Math.PI * r;
-  const pct = s !== null ? Math.max(0, Math.min(100, s)) / 100 : 0;
-  const strokeDash = pct * circumference;
+}
 
-  let strokeColor = "var(--text-faint)"; // null/undefined → gray
-  if (s !== null) {
-    if (s >= 70) strokeColor = "var(--gold)";
-    else if (s >= 40) strokeColor = "var(--signal-warn)";
-    else strokeColor = "var(--signal-dn)";
-  }
+const CONVICTION_MAP: Record<
+  string,
+  { fillPct: number; color: string; label: string; tooltip: string }
+> = {
+  HIGH: {
+    fillPct: 1.0,
+    color: "#C9A84C",
+    label: "HIGH",
+    tooltip: "HIGH conviction — strong signal detected",
+  },
+  BULLISH: {
+    fillPct: 1.0,
+    color: "#C9A84C",
+    label: "HIGH",
+    tooltip: "HIGH conviction — strong signal detected",
+  },
+  MEDIUM: {
+    fillPct: 0.75,
+    color: "#D97706",
+    label: "MED",
+    tooltip: "MEDIUM conviction — moderate signal",
+  },
+  WATCH: {
+    fillPct: 0.5,
+    color: "#6B7280",
+    label: "WATCH",
+    tooltip: "WATCH — monitoring for confirmation",
+  },
+  BEARISH: {
+    fillPct: 0.25,
+    color: "#DC2626",
+    label: "BEAR",
+    tooltip: "BEARISH conviction — negative signal",
+  },
+};
 
-  const fontSize = size <= 36 ? 10 : 13;
+const DEFAULT_CONVICTION = {
+  fillPct: 0.25,
+  color: "#4B5563",
+  label: "—",
+  tooltip: "Conviction not set",
+};
+
+export function ConvictionRing({ conviction, size = 36 }: ConvictionRingProps) {
+  const cfg = conviction
+    ? CONVICTION_MAP[conviction] ?? DEFAULT_CONVICTION
+    : DEFAULT_CONVICTION;
+
+  const SIZE = size;
+  const STROKE = 3;
+  const R = SIZE / 2 - STROKE - 1;
+  const CIRCUMFERENCE = 2 * Math.PI * R;
+  const CENTER = SIZE / 2;
 
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      className="flex-shrink-0"
-    >
-      {/* Background circle */}
-      <circle
-        cx={c}
-        cy={c}
-        r={r}
-        fill="none"
-        stroke="var(--border-base)"
-        strokeWidth={3}
-      />
-      {/* Progress arc */}
-      {s !== null && (
+    <div title={cfg.tooltip} className="flex flex-col items-center flex-shrink-0">
+      <svg width={SIZE} height={SIZE + 14}>
+        {/* Background track */}
         <circle
-          cx={c}
-          cy={c}
-          r={r}
+          cx={CENTER}
+          cy={CENTER}
+          r={R}
           fill="none"
-          stroke={strokeColor}
-          strokeWidth={3}
-          strokeDasharray={`${strokeDash} ${circumference - strokeDash}`}
-          strokeDashoffset={circumference * 0.25}
-          strokeLinecap="round"
+          stroke="#2D2D2D"
+          strokeWidth={STROKE}
         />
-      )}
-      {/* Score text — "?" for null/negative */}
-      <text
-        x={c}
-        y={c}
-        textAnchor="middle"
-        dominantBaseline="central"
-        className="font-data"
-        fontSize={fontSize}
-        fill={strokeColor}
-      >
-        {s !== null ? Math.round(s) : "?"}
-      </text>
-    </svg>
+        {/* Conviction arc */}
+        <circle
+          cx={CENTER}
+          cy={CENTER}
+          r={R}
+          fill="none"
+          stroke={cfg.color}
+          strokeWidth={STROKE}
+          strokeDasharray={CIRCUMFERENCE}
+          strokeDashoffset={CIRCUMFERENCE * (1 - cfg.fillPct)}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${CENTER} ${CENTER})`}
+        />
+        {/* Label below */}
+        <text
+          x={CENTER}
+          y={SIZE + 10}
+          textAnchor="middle"
+          fontSize="9"
+          fill={cfg.color}
+          fontFamily="Inter, sans-serif"
+          letterSpacing="0.05em"
+        >
+          {cfg.label}
+        </text>
+      </svg>
+    </div>
   );
 }

@@ -14,9 +14,12 @@ import { Tooltip } from "@/components/ui/tooltip";
 import type { ThesisItem } from "./thesis-types";
 import type { BadgeVariant } from "@/components/ui/badge";
 import { ConvictionRing } from "./ConvictionRing";
+import { SparklineChart } from "./SparklineChart";
 
 const convictionMap: Record<string, BadgeVariant> = {
+  HIGH: "gold",
   BULLISH: "bullish",
+  MEDIUM: "neutral",
   BEARISH: "bearish",
   WATCH: "neutral",
 };
@@ -165,11 +168,14 @@ export function ThesisCard({ thesis, onUpdate, isSelected }: ThesisCardProps) {
   const score = deriveConfidenceScore(thesis);
 
   // FIX 6A: sentiment left border color
-  const sentimentBorder = thesis.conviction === "BULLISH"
-    ? "border-l-signal-up"
-    : thesis.conviction === "BEARISH"
-      ? "border-l-signal-dn"
-      : "border-l-signal-warn";
+  const sentimentBorder =
+    thesis.conviction === "HIGH" || thesis.conviction === "BULLISH"
+      ? "border-l-gold"
+      : thesis.conviction === "BEARISH"
+        ? "border-l-signal-dn"
+        : thesis.conviction === "MEDIUM"
+          ? "border-l-signal-warn"
+          : "border-l-border-base";
 
   return (
     <>
@@ -185,12 +191,12 @@ export function ThesisCard({ thesis, onUpdate, isSelected }: ThesisCardProps) {
       >
         {/* Top row: ring + title + icons */}
         <div className="flex items-start gap-2.5">
-          <ConvictionRing score={score} />
+          <ConvictionRing conviction={thesis.conviction} />
           <div className="flex-1 min-w-0">
             {/* Badges row */}
             <div className="flex items-center gap-1.5 mb-1">
-              <Badge variant={convictionMap[thesis.conviction]}>
-                {thesis.conviction}
+              <Badge variant={convictionMap[thesis.conviction ?? ""] ?? "muted"}>
+                {thesis.conviction ?? "—"}
               </Badge>
               <Badge variant="default">{thesis.sector}</Badge>
               <StalenessIndicator generatedAt={thesis.generated_at} outcome={thesis.outcome} />
@@ -199,19 +205,32 @@ export function ThesisCard({ thesis, onUpdate, isSelected }: ThesisCardProps) {
             <h4 className="font-display text-[13px] font-semibold text-espresso leading-snug line-clamp-2">
               {thesis.title}
             </h4>
-            {/* FIX 6B: Age indicator */}
-            {thesis.generated_at && (() => {
-              const ageDays = Math.floor((Date.now() - new Date(thesis.generated_at).getTime()) / 86400000);
-              const isStale = ageDays > 14;
+            {/* Age indicator */}
+            {(() => {
+              if (!thesis.generated_at) return null;
+              const diffMs = Date.now() - new Date(thesis.generated_at).getTime();
+              const ageDays = Math.floor(diffMs / 86400000);
+              const ageHours = Math.floor(diffMs / 3600000);
+              const isStale = ageDays >= 14 && !thesis.outcome;
+              let label: string;
+              if (ageHours < 24) label = "Today";
+              else if (ageDays < 7) label = `${ageDays}d ago`;
+              else label = `${Math.floor(ageDays / 7)}w ago`;
+              if (isStale) label += " \u26A0";
               return (
-                <span className={cn(
-                  "font-data text-[9px] mt-0.5 inline-block",
-                  isStale ? "text-signal-warn" : "text-text-faint",
-                )}>
-                  {isStale ? "⚠ " : ""}{ageDays}d old
+                <span className={`font-mono text-[10px] mt-0.5 inline-block ${
+                  isStale ? "text-amber-500" : "text-[var(--text-muted)]"
+                }`}>
+                  {label}
                 </span>
               );
             })()}
+            {/* Hover rationale preview */}
+            {thesis.rationale && (
+              <p className="font-sans text-[10px] italic text-text-muted mt-0.5 line-clamp-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                {thesis.rationale.length > 80 ? thesis.rationale.slice(0, 80) + "\u2026" : thesis.rationale}
+              </p>
+            )}
           </div>
           {/* Right side icons */}
           <div className="flex flex-col items-center gap-1 flex-shrink-0 pt-0.5">
@@ -262,6 +281,7 @@ export function ThesisCard({ thesis, onUpdate, isSelected }: ThesisCardProps) {
                 {thesis.ticker}
               </span>
             )}
+            {thesis.ticker && <SparklineChart ticker={thesis.ticker} size="sm" />}
           </div>
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button

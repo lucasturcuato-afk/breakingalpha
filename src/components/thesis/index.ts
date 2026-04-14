@@ -4,6 +4,7 @@ export { ThesisList } from "./ThesisList";
 export { KanbanBoard } from "./kanban-board";
 export { ThesisTable } from "./thesis-table";
 export { ConvictionRing } from "./ConvictionRing";
+export { SparklineChart } from "./SparklineChart";
 export { statusLabels, statusOrder } from "./thesis-types";
 export type {
   ThesisItem,

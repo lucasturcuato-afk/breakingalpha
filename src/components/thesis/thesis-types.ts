@@ -1,4 +1,4 @@
-export type ThesisConviction = "BULLISH" | "BEARISH" | "WATCH";
+export type ThesisConviction = "HIGH" | "MEDIUM" | "WATCH" | "BULLISH" | "BEARISH" | null;
 
 export type ThesisStatus =
   | "new-signal"
@@ -63,6 +63,8 @@ export interface ThesisItem {
   notes?: string | null;
   // Timestamp
   generated_at?: string | null;
+  // Sparkline cache
+  sparklineData?: { prices: number[]; direction: "up" | "down" } | null;
 }
 
 export interface WeeklyDigest {

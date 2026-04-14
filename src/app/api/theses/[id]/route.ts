@@ -15,6 +15,14 @@ const VALID_STATUSES = new Set([
   "archived",
 ]);
 
+const VALID_CONVICTIONS = new Set([
+  "HIGH",
+  "MEDIUM",
+  "WATCH",
+  "BULLISH",
+  "BEARISH",
+]);
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -26,18 +34,31 @@ export async function PATCH(
 
   try {
     const body = await request.json();
-    const { status } = body as { status?: string };
+    const { status, conviction } = body as { status?: string; conviction?: string };
 
-    if (!status || !VALID_STATUSES.has(status)) {
-      return NextResponse.json(
-        { error: `Invalid status: ${status}` },
-        { status: 400 }
-      );
+    const update: Record<string, string> = {};
+
+    if (status) {
+      if (!VALID_STATUSES.has(status)) {
+        return NextResponse.json({ error: `Invalid status: ${status}` }, { status: 400 });
+      }
+      update.status = status;
+    }
+
+    if (conviction) {
+      if (!VALID_CONVICTIONS.has(conviction)) {
+        return NextResponse.json({ error: `Invalid conviction: ${conviction}` }, { status: 400 });
+      }
+      update.conviction = conviction;
+    }
+
+    if (Object.keys(update).length === 0) {
+      return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
     }
 
     const { data, error } = await supabase
       .from("theses")
-      .update({ status })
+      .update(update)
       .eq("id", id)
       .select("*")
       .single();

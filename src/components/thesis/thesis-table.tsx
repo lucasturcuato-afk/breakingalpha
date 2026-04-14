@@ -18,7 +18,9 @@ import type { ThesisItem } from "./thesis-types";
 import type { BadgeVariant } from "@/components/ui/badge";
 
 const convictionMap: Record<string, BadgeVariant> = {
+  HIGH: "gold",
   BULLISH: "bullish",
+  MEDIUM: "neutral",
   BEARISH: "bearish",
   WATCH: "neutral",
 };
@@ -112,8 +114,8 @@ export function ThesisTable({ theses, onUpdate }: ThesisTableProps) {
                 </span>
               </TableCell>
               <TableCell>
-                <Badge variant={convictionMap[thesis.conviction]}>
-                  {thesis.conviction}
+                <Badge variant={convictionMap[thesis.conviction ?? ""] ?? "muted"}>
+                  {thesis.conviction ?? "—"}
                 </Badge>
               </TableCell>
               <TableCell>

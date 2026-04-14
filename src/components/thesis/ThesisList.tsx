@@ -18,10 +18,12 @@ interface ThesisListProps {
   onQuickAction?: (id: string, status: string) => void;
 }
 
-function convictionToSentiment(conviction: string): string {
+function convictionToSentiment(conviction: string | null): string {
   switch (conviction) {
+    case "HIGH":
     case "BULLISH": return "bullish";
     case "BEARISH": return "bearish";
+    case "MEDIUM":
     case "WATCH": return "watch";
     default: return "watch";
   }
@@ -32,7 +34,7 @@ function deriveScore(thesis: ThesisItem): number | null {
     if (thesis.adversarial_score < 0) return null;
     return Math.round(thesis.adversarial_score * 100);
   }
-  const base = thesis.conviction === "BULLISH" ? 80 : thesis.conviction === "BEARISH" ? 30 : 55;
+  const base = (thesis.conviction === "HIGH" || thesis.conviction === "BULLISH") ? 80 : thesis.conviction === "BEARISH" ? 30 : 55;
   const evidenceBonus = Math.min((Array.isArray(thesis.evidence_chain) ? thesis.evidence_chain.length : 0) * 5, 15);
   return base + evidenceBonus;
 }
@@ -87,7 +89,7 @@ export function ThesisList({
             )}
           >
             {/* Conviction ring */}
-            <ConvictionRing score={score} />
+            <ConvictionRing conviction={thesis.conviction} />
 
             {/* Title + badges */}
             <div className="flex-1 min-w-0">

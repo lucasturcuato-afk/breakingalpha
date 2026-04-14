@@ -33,16 +33,7 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
-type ConvictionFilter = "all" | "bullish" | "bearish" | "watch" | "pending_review";
-
-function convictionToSentiment(conviction: string): string {
-  switch (conviction) {
-    case "BULLISH": return "bullish";
-    case "BEARISH": return "bearish";
-    case "WATCH": return "watch";
-    default: return "watch";
-  }
-}
+type ConvictionFilter = "HIGH" | "MEDIUM" | "WATCH" | "all" | "archived" | "pending_review";
 
 // Map API row to ThesisItem
 function mapThesisRow(t: Record<string, unknown>): ThesisItem {
@@ -62,12 +53,14 @@ function mapThesisRow(t: Record<string, unknown>): ThesisItem {
     bear_case: (t.bear_case as string) ?? null,
     adversarial_score: (() => {
       const raw = (t.adversarial_score as number) ?? null;
-      if (raw === null) return null;
-      if (raw < 0) return null;
-      // DB stores 0-1; display expects 0-100
-      return raw <= 1 ? raw * 100 : raw;
+      if (raw === null || raw < 0) return null;
+      return raw;
     })(),
-    passed_adversarial: (t.passed_adversarial as boolean) ?? null,
+    passed_adversarial: (() => {
+      const raw = (t.adversarial_score as number) ?? null;
+      if (raw === null || raw < 0) return null;
+      return (t.passed_adversarial as boolean) ?? null;
+    })(),
     outcome: (t.outcome as ThesisItem["outcome"]) ?? null,
     outcome_notes: (t.outcome_notes as string) ?? null,
     signal_breakdown: (t.signal_breakdown as Record<string, unknown>) ?? null,
@@ -388,36 +381,46 @@ function ThesisBoardContent() {
     }
   };
 
-  const sentimentCounts = useMemo(() => {
-    const counts = { bullish: 0, bearish: 0, watch: 0, pending_review: 0 };
+  const convictionCounts = useMemo(() => {
+    const counts = { HIGH: 0, MEDIUM: 0, WATCH: 0, pending_review: 0, archived: 0 };
     theses.forEach((t) => {
       if (t.status === "pending_review") counts.pending_review++;
-      const s = convictionToSentiment(t.conviction) as keyof typeof counts;
-      if (s in counts) counts[s]++;
+      if (t.status === "archived") { counts.archived++; return; }
+      const conv = t.conviction;
+      if (conv === "HIGH" || conv === "BULLISH") counts.HIGH++;
+      else if (conv === "MEDIUM") counts.MEDIUM++;
+      else if (conv === "WATCH") counts.WATCH++;
     });
     return counts;
   }, [theses]);
 
-  const strongSignalCount = useMemo(() => {
-    return theses.filter((t) => {
-      const base = t.conviction === "BULLISH" ? 80 : t.conviction === "BEARISH" ? 30 : 55;
-      const evidenceBonus = Math.min((Array.isArray(t.evidence_chain) ? t.evidence_chain.length : 0) * 5, 15);
-      return (base + evidenceBonus) >= 65;
-    }).length;
-  }, [theses]);
 
   // Filter theses for display
   const displayTheses = useMemo(() => {
-    const source = showArchived ? archivedTheses : theses;
-    if (showArchived) return source;
+    if (convictionFilter === "archived") return archivedTheses;
     if (convictionFilter === "pending_review") {
-      return source.filter((t) => t.status === "pending_review");
+      return theses.filter((t) => t.status === "pending_review");
     }
-    if (convictionFilter !== "all") {
-      return source.filter((t) => convictionToSentiment(t.conviction) === convictionFilter);
+    if (convictionFilter === "HIGH") {
+      return theses.filter(
+        (t) =>
+          (t.conviction === "HIGH" || t.conviction === "BULLISH") &&
+          t.status !== "archived"
+      );
     }
-    return source;
-  }, [theses, archivedTheses, showArchived, convictionFilter]);
+    if (convictionFilter === "MEDIUM") {
+      return theses.filter(
+        (t) => t.conviction === "MEDIUM" && t.status !== "archived"
+      );
+    }
+    if (convictionFilter === "WATCH") {
+      return theses.filter(
+        (t) => t.conviction === "WATCH" && t.status !== "archived"
+      );
+    }
+    // "all" — everything except archived
+    return theses.filter((t) => t.status !== "archived");
+  }, [theses, archivedTheses, convictionFilter]);
 
   return (
     <AppShell pageTitle="Thesis Board" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
@@ -459,20 +462,12 @@ function ThesisBoardContent() {
           <>
             {/* Stats row */}
             <div className="grid grid-cols-4 gap-3 mb-4">
-              {(showArchived
-                ? [
-                    { label: "Archived", value: archivedTheses.length, color: "" },
-                    { label: "Bullish", value: archivedTheses.filter((t) => t.conviction === "BULLISH").length, color: "text-signal-up" },
-                    { label: "Bearish", value: archivedTheses.filter((t) => t.conviction === "BEARISH").length, color: "text-signal-dn" },
-                    { label: "Watch", value: archivedTheses.filter((t) => t.conviction === "WATCH").length, color: "text-signal-warn" },
-                  ]
-                : [
-                    { label: "Total signals", value: theses.length, color: "" },
-                    { label: "Strong signals", value: strongSignalCount, color: "text-gold" },
-                    { label: "Bullish", value: sentimentCounts.bullish, color: "text-signal-up" },
-                    { label: "Bearish", value: sentimentCounts.bearish, color: "text-signal-dn" },
-                  ]
-              ).map((stat) => (
+              {[
+                { label: "Total signals", value: theses.filter((t) => t.status !== "archived").length, color: "" },
+                { label: "HIGH", value: convictionCounts.HIGH, color: "text-gold" },
+                { label: "MEDIUM", value: convictionCounts.MEDIUM, color: "text-signal-warn" },
+                { label: "WATCH", value: convictionCounts.WATCH, color: "text-text-muted" },
+              ].map((stat) => (
                 <div key={stat.label} className="bg-cream rounded-xl p-3 border border-border-base">
                   <div className={`font-display text-2xl font-semibold ${stat.color || "text-text-primary"}`}>{stat.value}</div>
                   <div className="font-sans text-[11px] text-text-muted mt-0.5">{stat.label}</div>
@@ -492,38 +487,36 @@ function ThesisBoardContent() {
             {/* Filter tabs + View toggle + Refresh */}
             <div className="flex items-center justify-between mb-3">
               <div className="flex gap-2">
-                {(["all", "bullish", "bearish", "watch", "pending_review"] as const).map((f) => (
+                {(
+                  [
+                    { key: "HIGH" as const, label: "HIGH", count: convictionCounts.HIGH },
+                    { key: "MEDIUM" as const, label: "MEDIUM", count: convictionCounts.MEDIUM },
+                    { key: "WATCH" as const, label: "WATCH", count: convictionCounts.WATCH },
+                    { key: "all" as const, label: "All", count: theses.filter((t) => t.status !== "archived").length },
+                    { key: "archived" as const, label: "Archived", count: archivedTheses.length },
+                    { key: "pending_review" as const, label: "Pending Review", count: convictionCounts.pending_review },
+                  ]
+                ).map((tab) => (
                   <button
-                    key={f}
+                    key={tab.key}
                     type="button"
-                    onClick={() => setConvictionFilter(f)}
+                    onClick={() => {
+                      setConvictionFilter(tab.key);
+                      if (tab.key === "archived" && !showArchived) setShowArchived(true);
+                      if (tab.key !== "archived" && showArchived) setShowArchived(false);
+                    }}
                     className={cn(
-                      "font-sans text-[11px] px-3 py-1.5 rounded-full border transition-all cursor-pointer",
-                      convictionFilter === f
+                      "font-sans text-[11px] px-3 py-1.5 rounded-full border transition-all cursor-pointer inline-flex items-center gap-1.5",
+                      convictionFilter === tab.key
                         ? "bg-espresso text-cream border-espresso"
                         : "bg-transparent text-text-secondary border-border-base hover:border-border-hover",
                     )}
                   >
-                    {f === "all"
-                      ? `All ${theses.length}`
-                      : f === "pending_review"
-                        ? `Pending ${sentimentCounts.pending_review}`
-                        : `${f.charAt(0).toUpperCase() + f.slice(1)} ${sentimentCounts[f as keyof typeof sentimentCounts] ?? 0}`}
+                    {tab.key === "archived" && <Archive size={10} />}
+                    {tab.label}
+                    <span className="font-data text-[9px] opacity-70">{tab.count}</span>
                   </button>
                 ))}
-                <button
-                  type="button"
-                  onClick={() => { setShowArchived(!showArchived); setConvictionFilter("all"); }}
-                  className={cn(
-                    "font-sans text-[11px] px-3 py-1.5 rounded-full border transition-all cursor-pointer inline-flex items-center gap-1.5",
-                    showArchived
-                      ? "bg-espresso/40 text-text-primary border-espresso/40"
-                      : "bg-transparent text-text-secondary border-border-base hover:border-border-hover",
-                  )}
-                >
-                  <Archive size={10} />
-                  {showArchived ? "Archived \u00d7" : `Archived${archivedTheses.length > 0 ? ` ${archivedTheses.length}` : ""}`}
-                </button>
               </div>
               <div className="flex items-center gap-2">
                 {/* List/Board toggle */}
@@ -584,6 +577,31 @@ function ThesisBoardContent() {
                 selectedId={selectedId}
                 filter={convictionFilter}
                 onQuickAction={handleQuickAction}
+                onDrop={async (id, patch) => {
+                  // Optimistic update
+                  setTheses((prev) =>
+                    prev.map((t) =>
+                      t.id === id
+                        ? {
+                            ...t,
+                            ...(patch.status ? { status: patch.status as ThesisStatus } : {}),
+                            ...(patch.conviction ? { conviction: patch.conviction as ThesisItem["conviction"] } : {}),
+                          }
+                        : t
+                    )
+                  );
+                  try {
+                    const res = await fetch(`/api/theses/${id}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(patch),
+                    });
+                    if (!res.ok) throw new Error("PATCH failed");
+                  } catch {
+                    // Revert on failure
+                    fetchTheses();
+                  }
+                }}
               />
             ) : (
               <div className="grid grid-cols-[1fr_1.6fr] gap-3" style={{ height: "calc(100vh - 320px)" }}>
@@ -592,25 +610,26 @@ function ThesisBoardContent() {
                     theses={displayTheses}
                     selectedId={selectedId}
                     onSelect={handleSelect}
-                    filter={showArchived ? "all" : convictionFilter}
-                    isArchiveView={showArchived}
-                    onRestore={showArchived ? handleRestore : undefined}
+                    filter="all"
+                    isArchiveView={convictionFilter === "archived"}
+                    onRestore={convictionFilter === "archived" ? handleRestore : undefined}
                     isPendingReview={convictionFilter === "pending_review"}
                     onQuickAction={handleQuickAction}
                   />
                 </div>
                 <ThesisDetailPanel
                   thesis={
-                    showArchived
+                    convictionFilter === "archived"
                       ? archivedTheses.find((t) => t.id === selectedId) ?? null
                       : theses.find((t) => t.id === selectedId) ?? null
                   }
                   articles={relatedArticles[selectedId ?? ""] ?? []}
+                  activeSignalCount={theses.filter((t) => t.status !== "archived").length}
                   onArchive={(id) => {
                     setTheses((prev) => prev.filter((t) => t.id !== id));
                     const remaining = theses.filter((t) => t.id !== id);
                     setSelectedId(remaining[0]?.id ?? null);
-                    if (showArchived) setArchivedRefreshKey((k) => k + 1);
+                    if (convictionFilter === "archived") setArchivedRefreshKey((k) => k + 1);
                   }}
                   onRegenerate={() => fetchTheses()}
                 />

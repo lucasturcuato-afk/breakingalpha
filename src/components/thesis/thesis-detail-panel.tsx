@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import type { ThesisItem } from "./thesis-types";
 import { ConvictionRing } from "./ConvictionRing";
+import { SparklineChart } from "./SparklineChart";
 
 // ── Helpers ──
 
@@ -29,10 +30,13 @@ function deriveScore(thesis: ThesisItem): number | null {
   return thesis.conviction === "BULLISH" ? 82 : thesis.conviction === "BEARISH" ? 28 : 50;
 }
 
-function convictionToSentiment(conviction: string): string {
+function convictionToSentiment(conviction: string | null): string {
   switch (conviction) {
+    case "HIGH":
     case "BULLISH": return "bullish";
     case "BEARISH": return "bearish";
+    case "MEDIUM":
+    case "WATCH": return "watch";
     default: return "watch";
   }
 }
@@ -92,6 +96,7 @@ interface ThesisDetailPanelProps {
   articles: RelatedArticle[];
   onArchive: (id: string) => void;
   onRegenerate?: () => void;
+  activeSignalCount?: number;
 }
 
 function SectionSkeleton() {
@@ -104,9 +109,10 @@ function SectionSkeleton() {
   );
 }
 
-export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }: ThesisDetailPanelProps) {
+export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, activeSignalCount = 0 }: ThesisDetailPanelProps) {
   const [noteText, setNoteText] = useState("");
   const [noteSaved, setNoteSaved] = useState(false);
+  const [noteFailed, setNoteFailed] = useState(false);
   const [noteLoading, setNoteLoading] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -161,15 +167,17 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
         body: JSON.stringify({ thesis_id: thesis.id, content: noteText }),
       });
       setNoteSaved(true);
-      setTimeout(() => setNoteSaved(false), 1500);
+      setNoteFailed(false);
+      setTimeout(() => setNoteSaved(false), 2000);
     } catch (e) {
       console.error("Failed to save note:", e);
+      setNoteFailed(true);
     }
   }, [thesis?.id, noteText]);
 
   const handleNoteChange = (val: string) => {
     setNoteText(val);
-    // Clear any pending save
+    setNoteFailed(false);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
   };
 
@@ -230,8 +238,20 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
   // ── Empty state ──
   if (!thesis) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-text-muted font-sans text-sm gap-2 bg-parchment rounded-2xl border border-border-base">
-        <span>Select a thesis to view details</span>
+      <div className="flex flex-col items-center justify-center h-full bg-parchment rounded-2xl gap-3">
+        {/* Compass/signal icon in gold */}
+        <svg width={40} height={40} viewBox="0 0 40 40" fill="none">
+          <circle cx={20} cy={20} r={18} stroke="var(--gold)" strokeWidth={2} opacity={0.5} />
+          <circle cx={20} cy={20} r={4} fill="var(--gold)" />
+          <line x1={20} y1={6} x2={20} y2={14} stroke="var(--gold)" strokeWidth={2} strokeLinecap="round" />
+          <line x1={20} y1={26} x2={20} y2={34} stroke="var(--gold)" strokeWidth={2} strokeLinecap="round" />
+          <line x1={6} y1={20} x2={14} y2={20} stroke="var(--gold)" strokeWidth={2} strokeLinecap="round" />
+          <line x1={26} y1={20} x2={34} y2={20} stroke="var(--gold)" strokeWidth={2} strokeLinecap="round" />
+        </svg>
+        <h3 className="font-display text-[16px] text-espresso">Select a thesis to begin research</h3>
+        <p className="font-sans text-[12px] text-text-muted">
+          Your thesis board has {activeSignalCount} active signals
+        </p>
       </div>
     );
   }
@@ -251,21 +271,12 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
       <div className="flex-shrink-0 px-4 py-3 border-b border-border-base bg-cream">
         <div className="flex items-start gap-3">
           {/* Score ring */}
-          <ConvictionRing score={score} size={48} />
+          <ConvictionRing conviction={thesis.conviction} size={48} />
           <div className="flex-1 min-w-0">
             <div className="font-display font-bold text-[18px] text-espresso leading-snug mb-1">
               {thesis.title}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span
-                className={`font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded ${
-                  sentiment === "bullish" ? "bg-signal-up/10 text-signal-up" :
-                  sentiment === "bearish" ? "bg-signal-dn/10 text-signal-dn" :
-                  "bg-signal-warn/10 text-signal-warn"
-                }`}
-              >
-                {sentiment}
-              </span>
               <span
                 style={getSectorStyle(thesis.sector)}
                 className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
@@ -277,15 +288,26 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
                   {thesis.ticker}
                 </span>
               )}
-              {thesis.passed_adversarial !== null && thesis.passed_adversarial !== undefined && (
-                <Tooltip content={`Adversarial: ${typeof thesis.adversarial_score === "number" ? thesis.adversarial_score.toFixed(2) : "—"}`}>
-                  <span className={`font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded ${
-                    thesis.passed_adversarial ? "bg-signal-warn/10 text-signal-warn" : "bg-red-950/40 text-red-400"
-                  }`}>
-                    {thesis.passed_adversarial ? "Bull wins" : "Bear wins"}
+              {thesis.ticker && <SparklineChart ticker={thesis.ticker} size="md" />}
+              {(() => {
+                const hasValidScore = typeof thesis.adversarial_score === "number" && thesis.adversarial_score > 0 && thesis.passed_adversarial !== null;
+                if (hasValidScore) {
+                  return (
+                    <Tooltip content={`Score: ${thesis.adversarial_score!.toFixed(2)}`}>
+                      <span className={`font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded ${
+                        thesis.passed_adversarial ? "bg-gold-muted text-gold-dark" : "bg-red-950/40 text-red-400"
+                      }`}>
+                        {thesis.passed_adversarial ? "Passed stress test" : "Failed stress test"} · {thesis.adversarial_score!.toFixed(2)}
+                      </span>
+                    </Tooltip>
+                  );
+                }
+                return (
+                  <span className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded bg-parchment-mid text-text-muted">
+                    Stress test pending
                   </span>
-                </Tooltip>
-              )}
+                );
+              })()}
               {thesis.outcome && (
                 <span className={`font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded ${
                   thesis.outcome === "confirmed" ? "bg-signal-up/10 text-signal-up" :
@@ -439,13 +461,17 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate }:
                 value={noteText}
                 onChange={(e) => handleNoteChange(e.target.value)}
                 onBlur={handleNoteBlur}
-                placeholder="Add your notes on this thesis..."
+                placeholder="Add your research notes here..."
                 className="w-full min-h-[80px] font-sans text-[12px] text-text-primary bg-cream border border-border-base rounded-lg px-3 py-2 resize-none focus:outline-none focus:border-gold placeholder:text-text-muted transition-colors"
               />
               <div className="flex items-center mt-1.5">
-                <span className={`font-sans text-[10px] transition-opacity duration-300 ${noteSaved ? "text-signal-up opacity-100" : "opacity-0"}`}>
-                  &#10003; Saved
-                </span>
+                {noteFailed ? (
+                  <span className="font-sans text-[10px] text-signal-dn">Failed to save</span>
+                ) : (
+                  <span className={`font-sans text-[10px] transition-opacity duration-300 ${noteSaved ? "text-signal-up opacity-100" : "opacity-0"}`}>
+                    &#10003; Saved
+                  </span>
+                )}
               </div>
             </>
           )}
