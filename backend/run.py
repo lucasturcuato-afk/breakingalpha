@@ -50,7 +50,7 @@ if __name__ == "__main__":
     ingest_count = run_ingest()
 
     print("\n[2/12] SYNTHESIZE")
-    run_synthesize(brief_type)
+    synth_result = run_synthesize(brief_type) or {}
 
     print("\n[3/12] DEAL EXTRACTION")
     run_deal_extractor()
@@ -121,6 +121,49 @@ if __name__ == "__main__":
             logger.warning("adversarial step failed: %s", e)
     else:
         logger.info("adversarial: skipped (Sunday morning only)")
+
+    # --- Brief feedback loop: score the just-generated brief (soft-fail) ---
+    print("\n[POST] BRIEF SCORING")
+    try:
+        from brief_feedback_loop import score_brief
+        brief_text = synth_result.get("brief_text", "")
+        if brief_text:
+            score_brief(brief_text, brief_type, run_id)
+        else:
+            logger.info("brief scoring: skipped (no brief text available)")
+    except Exception as e:
+        logger.warning("brief scoring skipped: %s", e)
+
+    # --- Build improvement addenda once daily (morning run only, soft-fail) ---
+    if brief_type == "morning":
+        print("\n[POST] BRIEF IMPROVEMENT ADDENDUM")
+        try:
+            from brief_feedback_loop import build_brief_improvement_addendum
+            for bt in ("morning", "evening"):
+                addendum = build_brief_improvement_addendum(bt)
+                if addendum:
+                    # Cache into the most recent weekly_digests row
+                    col = f"{bt}_brief_addendum"
+                    try:
+                        from supabase import create_client as _sc
+                        import os as _os
+                        _sb = _sc(_os.environ["SUPABASE_URL"], _os.environ["SUPABASE_ANON_KEY"])
+                        latest = (
+                            _sb.table("weekly_digests")
+                            .select("id")
+                            .order("generated_at", desc=True)
+                            .limit(1)
+                            .execute()
+                        )
+                        if latest.data:
+                            _sb.table("weekly_digests").update(
+                                {col: addendum}
+                            ).eq("id", latest.data[0]["id"]).execute()
+                            logger.info("brief addendum cached: %s (%d chars)", bt, len(addendum))
+                    except Exception as e2:
+                        logger.warning("brief addendum cache write failed for %s: %s", bt, e2)
+        except Exception as e:
+            logger.warning("brief addendum build skipped: %s", e)
 
     print("\n" + "=" * 50)
     print("✅ Pipeline complete")
