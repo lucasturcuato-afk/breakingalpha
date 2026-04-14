@@ -1,6 +1,6 @@
 # Signalera Handoff
 
-## Current Status (2026-04-12)
+## Current Status (2026-04-13)
 - Live at https://breakingalpha.vercel.app (deploying as Signalera)
 - Full rebrand from BreakingAlpha to Signalera shipped — logo, fonts, theme, auth page
 - Auth middleware protecting all routes — unauthenticated users redirect to /auth
@@ -10,6 +10,7 @@
 - **AI provider:** Gemini 2.5 Flash (migrated from Groq 2026-04-10) — ingest, thesis, memo all use genai SDK
 - **Backend SDK:** google.genai (newer SDK, matches frontend pattern)
 - **Entity quality:** Full pipeline wired end-to-end (Gemini typed extraction → blocklist → Wikidata validation → clean_companies), stub briefing issue (PR #82) resolved
+- **Thesis drag-to-archive fix:** RLS blocking PATCH via anon key — added `supabaseAdmin` client using `SUPABASE_SERVICE_ROLE_KEY` with detailed logging
 
 ## Architecture
 - **Frontend:** Next.js 16 (Turbopack), hosted on Vercel (repo root)
@@ -139,6 +140,9 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
 
 ## Recently Completed (2026-04-13)
+ConvictionRing CSS refactor (conic-gradient donut) + drag-to-archive RLS fix: replaced SVG strokeDasharray (broken by Tailwind v4 preflight CSS overriding strokes) with CSS conic-gradient; inner circle now uses `.conviction-ring-bg` CSS class with context-aware color overrides (`.bg-parchment-mid .conviction-ring-bg`, `.bg-cream .conviction-ring-bg`); unfilled arc warm tone (#3a3530); PATCH `/api/theses/[id]` route fixed 500 error via `supabaseAdmin` client using `SUPABASE_SERVICE_ROLE_KEY`; removed conviction text badges from ThesisList.tsx; added detailed logging (`=== PATCH START/FAILED ===`). Service role key added to .env.local. Key files: ConvictionRing.tsx, ThesisList.tsx, route.ts, globals.css.
+
+## Recently Completed (2026-04-13)
 AUTONOMOUS_IMPROVEMENT_PLAN.md brought up to date (commit 240c713): now reflects the actual 12-step pipeline (steps 9–12 thesis_grader, pattern_memory, source_credibility, adversarial added); three previously undocumented Supabase tables documented (pattern_library, weekly_digests, source_credibility_scores); all sector/SECTORS language updated to dual-dimension taxonomy (industry_verticals + activity_types); Phase Status section (§5) added with live/complete table and explicit deferred items list; section numbering corrected (now 1–15).
 
 Sector taxonomy migration complete: observe.py, trend_mapper.py, and feed-row.tsx migrated from single `sector` field to dual-dimension taxonomy. observe.py pool query now fetches `industry_verticals` and `_reconstruct_selected()` uses `(industry_verticals or [sector])[0]` to exactly mirror synthesize.py selection logic. trend_mapper.py `fetch_run_context()` fetches `industry_verticals` and `_normalize_article()` resolves sector as `industry_verticals[0]` with fallback — cascades to all 7+ downstream cluster functions (make_cluster_key, make_cluster_label, compute_pairwise_similarity, detect_cluster_surfacing, pattern boost, etc.) without further changes. feed-row.tsx thesis button now uses `industry_verticals[0]` before falling back to `sector`. No Supabase schema changes needed (sector backward-compat column still populated by ingest.py). tsc clean. commit: 1ddb0e0.
@@ -187,6 +191,8 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 10. **Phase 1 hardening — observe.py reconstruction fix (PR #56)** — `_reconstruct_selected()` rewritten to mirror current `synthesize._select_articles_for_synthesis()` (spine=12, floor=6, sector_cap=3, floor_min=7). `audit.py` `_TARGET_COUNT` corrected 20→18. Stale `_diversify_articles` reconstruction logic replaced. No schema changes.
 
 ## Pending / Known Issues
+- **ConvictionRing partial arc fill deferred** — Currently shows full colored circle with color-coding (gold=HIGH, amber=MEDIUM, gray=WATCH, red=BEARISH); arc visualization deferred due to Tailwind v4 preflight SVG interference. Can be revisited once CSS preflight handling is resolved.
+- **PATCH /api/theses/[id] logging verification** — Confirm `=== PATCH START/FAILED ===` logs appear in terminal when dragging card to Archive after dev server restart (service role key now in .env.local)
 - **Wikidata validation at scale** — wikidata_entity_cache now populated on cache misses; needs full ingest run with fresh articles to validate entity quality in production
 - **E2E tests need Supabase credentials** — Playwright suite configured (10 specs, 48 tests) but pending valid E2E_USER_EMAIL, E2E_USER_PASSWORD in .env.local to run against real Supabase test user
 - **middleware.ts → proxy.ts** — Next.js 16 deprecation warning; rename `src/middleware.ts` to `src/proxy.ts` (breaking change in v16+)
