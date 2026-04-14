@@ -33,7 +33,25 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
-type ConvictionFilter = "HIGH" | "MEDIUM" | "WATCH" | "all" | "archived" | "pending_review";
+type ConvictionFilter = "HIGH" | "MEDIUM" | "WATCH" | "all" | "archived" | "pending_review" | "recommended";
+
+interface UserProfile {
+  full_name?: string | null;
+  role?: string | null;
+  firm?: string | null;
+  sectors?: string[] | null;
+  risk_appetite?: string | null;
+  watchlist_tickers?: string[] | null;
+  onboarding_completed?: boolean;
+}
+
+function sectorMatchesProfile(thesisSector: string, profileSectors: string[]): boolean {
+  const lower = thesisSector.toLowerCase();
+  return profileSectors.some((ps) => {
+    const pl = ps.toLowerCase();
+    return lower.includes(pl) || pl.includes(lower);
+  });
+}
 
 // Map API row to ThesisItem
 function mapThesisRow(t: Record<string, unknown>): ThesisItem {
@@ -200,6 +218,25 @@ function ThesisBoardContent() {
   const [archivedTheses, setArchivedTheses] = useState<ThesisItem[]>([]);
   const [archivedRefreshKey, setArchivedRefreshKey] = useState(0);
   const [viewMode, setViewMode] = useState<"list" | "board">("list");
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+
+  // Fetch user profile
+  useEffect(() => {
+    async function loadProfile() {
+      try {
+        const res = await fetch("/api/user-profile");
+        if (!res.ok) return;
+        const data = await res.json();
+        setProfile(data as UserProfile);
+        if (data.onboarding_completed) {
+          setConvictionFilter("recommended");
+        }
+      } catch {
+        // No profile — keep defaults
+      }
+    }
+    loadProfile();
+  }, []);
 
   // Auto-select thesis from query param
   useEffect(() => {
@@ -397,6 +434,16 @@ function ThesisBoardContent() {
 
   // Filter theses for display
   const displayTheses = useMemo(() => {
+    if (convictionFilter === "recommended") {
+      const sectors = profile?.sectors ?? [];
+      if (sectors.length === 0) {
+        // No sectors — show all non-archived
+        return theses.filter((t) => t.status !== "archived");
+      }
+      return theses
+        .filter((t) => t.status !== "archived" && sectorMatchesProfile(t.sector, sectors))
+        .sort((a, b) => ((b.adversarial_score ?? -1) - (a.adversarial_score ?? -1)));
+    }
     if (convictionFilter === "archived") return archivedTheses;
     if (convictionFilter === "pending_review") {
       return theses.filter((t) => t.status === "pending_review");
@@ -420,7 +467,7 @@ function ThesisBoardContent() {
     }
     // "all" — everything except archived
     return theses.filter((t) => t.status !== "archived");
-  }, [theses, archivedTheses, convictionFilter]);
+  }, [theses, archivedTheses, convictionFilter, profile]);
 
   return (
     <AppShell pageTitle="Thesis Board" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
@@ -489,10 +536,15 @@ function ThesisBoardContent() {
               <div className="flex gap-2">
                 {(
                   [
+                    { key: "recommended" as const, label: "Recommended", count: (() => {
+                      const sectors = profile?.sectors ?? [];
+                      if (sectors.length === 0) return theses.filter((t) => t.status !== "archived").length;
+                      return theses.filter((t) => t.status !== "archived" && sectorMatchesProfile(t.sector, sectors)).length;
+                    })() },
                     { key: "HIGH" as const, label: "HIGH", count: convictionCounts.HIGH },
                     { key: "MEDIUM" as const, label: "MEDIUM", count: convictionCounts.MEDIUM },
                     { key: "WATCH" as const, label: "WATCH", count: convictionCounts.WATCH },
-                    { key: "all" as const, label: "All", count: theses.filter((t) => t.status !== "archived").length },
+                    { key: "all" as const, label: "All Theses", count: theses.filter((t) => t.status !== "archived").length },
                     { key: "archived" as const, label: "Archived", count: archivedTheses.length },
                     { key: "pending_review" as const, label: "Pending Review", count: convictionCounts.pending_review },
                   ]
@@ -618,6 +670,7 @@ function ThesisBoardContent() {
                     onRestore={convictionFilter === "archived" ? handleRestore : undefined}
                     isPendingReview={convictionFilter === "pending_review"}
                     onQuickAction={handleQuickAction}
+                    matchedSectors={convictionFilter === "recommended" ? (profile?.sectors ?? undefined) : undefined}
                   />
                 </div>
                 <ThesisDetailPanel
