@@ -5,6 +5,68 @@ import { createClient } from "@supabase/supabase-js";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+/* ── User profile helpers for personalization ── */
+interface UserProfile {
+  full_name?: string | null;
+  role?: string | null;
+  firm?: string | null;
+  sectors?: string[] | null;
+  risk_appetite?: string | null;
+  watchlist_tickers?: string[] | null;
+  onboarding_completed?: boolean | null;
+}
+
+const roleLabels: Record<string, string> = {
+  student_analyst: "a student analyst building investment knowledge",
+  buy_side: "a buy-side analyst at an investment fund",
+  sell_side: "a sell-side analyst covering equities",
+  private_equity: "a private equity professional evaluating deals",
+  ria: "a registered investment advisor managing client portfolios",
+  family_office: "a family office investment professional",
+  other: "a finance professional",
+};
+
+async function fetchUserProfile(userId: string): Promise<UserProfile | null> {
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .select("full_name, role, firm, sectors, risk_appetite, watchlist_tickers, onboarding_completed")
+      .eq("id", userId)
+      .single();
+    if (error || !data) return null;
+    return data as UserProfile;
+  } catch (err) {
+    console.warn("Failed to fetch user profile for memo personalization:", err);
+    return null;
+  }
+}
+
+function buildMemoUserContext(profile: UserProfile): string {
+  const role = profile.role ?? "";
+  const roleLabel = roleLabels[role] ?? "a finance professional";
+
+  let ctx = `\nUSER CONTEXT FOR MEMO:\nThis memo is for ${roleLabel}.\n`;
+
+  if (role === "private_equity" || role === "buy_side") {
+    ctx += "Include deal structure analysis, entry multiple context, and return profile framing.\n";
+  }
+  if (role === "student_analyst") {
+    ctx += 'Include a "Why this matters" section explaining the signal in educational context.\n';
+  }
+  if (profile.risk_appetite === "aggressive") {
+    ctx += "Emphasize upside scenarios and catalysts.\n";
+  }
+  if (profile.risk_appetite === "defensive") {
+    ctx += "Emphasize downside risks and mitigation factors prominently.\n";
+  }
+
+  return ctx;
+}
+
 async function buildMemoContext(sector: string | undefined): Promise<string> {
   try {
     const supabase = createClient(
@@ -97,6 +159,10 @@ export async function POST(request: NextRequest) {
   const { user } = await getSupabaseWithUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
+  // Fetch user profile for personalization (soft-fail)
+  const profile = await fetchUserProfile(user.id);
+  const memoUserContext = profile ? buildMemoUserContext(profile) : "";
+
   let body: {
     company?: string;
     acquirer?: string;
@@ -132,7 +198,9 @@ export async function POST(request: NextRequest) {
     const truncated = String(content || "").slice(0, 4000);
 
     const memoCtx = await buildMemoContext(sector || undefined);
-    const augmentedSystem = memoCtx ? memoCtx + "\n\n" + system : system;
+    const augmentedSystem = (memoUserContext ? memoUserContext + "\n\n" : "")
+      + (memoCtx ? memoCtx + "\n\n" : "")
+      + system;
 
     try {
       const completion = await ai.models.generateContent({
@@ -167,7 +235,7 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
 
-  const prompt = `You are a senior IB analyst. Write a concise deal memo for this transaction. Be specific, use bullet points.
+  const prompt = `${memoUserContext ? memoUserContext + "\n" : ""}You are a senior IB analyst. Write a concise deal memo for this transaction. Be specific, use bullet points.
 
 TARGET: ${company}
 ACQUIRER: ${acquirer || "Undisclosed"}
