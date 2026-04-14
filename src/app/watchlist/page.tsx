@@ -54,6 +54,24 @@ const STALE_TO_CANONICAL: Record<string, string> = {
   "VENTURE CAPITAL": "Financial Services",
 };
 
+const TICKER_TO_NAME: Record<string, string> = {
+  NVDA: "Nvidia",
+  NVDL: "Nvidia",
+  AMZN: "Amazon",
+  TSLA: "Tesla",
+  AAPL: "Apple",
+  MSFT: "Microsoft",
+  GOOGL: "Alphabet",
+  GOOG: "Alphabet",
+  META: "Meta",
+  IONQ: "IonQ",
+  FCX: "Freeport",
+  SPMO: "Invesco",
+  "BRK.B": "Berkshire",
+  BRK: "Berkshire",
+  V: "Visa",
+};
+
 interface WatchlistEntry {
   id: string;
   identifier: string;
@@ -103,34 +121,80 @@ function sortArticles(articles: MatchedArticle[], mode: "newest" | "relevant"): 
 }
 
 async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArticle[]> {
-  const ident = entry.identifier.toLowerCase();
-  let query;
   if (entry.type === "sector") {
-    query = getSupabase()
+    const { data } = await getSupabase()
       .from("articles")
-      .select("id, title, source, sector, industry_verticals, activity_types, published_at, ingested_at, summary, companies")
+      .select("id, title, source, sector, industry_verticals, activity_types, published_at, ingested_at, relevance_score")
       .contains("industry_verticals", [entry.identifier])
       .order("ingested_at", { ascending: false })
       .limit(20);
-  } else {
-    query = getSupabase()
-      .from("articles")
-      .select("id, title, source, sector, industry_verticals, activity_types, published_at, ingested_at, summary, companies, relevance_score")
-      .or(`title.ilike.%${ident}%,companies.cs.["${entry.identifier}"]`)
-      .order("ingested_at", { ascending: false })
-      .limit(20);
+    return (data || []).map((a: Record<string, unknown>) => ({
+      id: a.id as string,
+      title: a.title as string,
+      source: a.source as string | undefined,
+      sector: a.sector as string | undefined,
+      industry_verticals: (a.industry_verticals as string[] | null) ?? [],
+      activity_types: (a.activity_types as string[] | null) ?? [],
+      published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
+      relevance_score: (a.relevance_score as number | null) ?? 0,
+    }));
   }
-  const { data } = await query;
-  return (data || []).map((a: Record<string, unknown>) => ({
-    id: a.id as string,
-    title: a.title as string,
-    source: a.source as string | undefined,
-    sector: a.sector as string | undefined,
-    industry_verticals: (a.industry_verticals as string[] | null) ?? [],
-    activity_types: (a.activity_types as string[] | null) ?? [],
-    published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
-    relevance_score: (a.relevance_score as number | null) ?? 0,
-  }));
+
+  // ticker or company — multi-query strategy
+  const companyName = TICKER_TO_NAME[entry.identifier.toUpperCase()] ?? entry.identifier;
+  const hasAlias = companyName !== entry.identifier;
+
+  const baseSelect = "id, title, source, sector, industry_verticals, activity_types, published_at, ingested_at, relevance_score, summary";
+
+  const queries = [
+    getSupabase().from("articles").select(baseSelect)
+      .ilike("title", `%${entry.identifier}%`)
+      .order("ingested_at", { ascending: false }).limit(20),
+    getSupabase().from("articles").select(baseSelect)
+      .ilike("summary", `%${entry.identifier}%`)
+      .order("ingested_at", { ascending: false }).limit(15),
+    getSupabase().from("articles").select(baseSelect)
+      .ilike("companies", `%${entry.identifier}%`)
+      .order("ingested_at", { ascending: false }).limit(20),
+  ];
+
+  if (hasAlias) {
+    queries.push(
+      getSupabase().from("articles").select(baseSelect)
+        .ilike("companies", `%${companyName}%`)
+        .order("ingested_at", { ascending: false }).limit(20),
+      getSupabase().from("articles").select(baseSelect)
+        .ilike("title", `%${companyName}%`)
+        .order("ingested_at", { ascending: false }).limit(20),
+    );
+  }
+
+  const results = await Promise.allSettled(queries);
+  const seen = new Set<string>();
+  const merged: MatchedArticle[] = [];
+
+  results.forEach((r) => {
+    if (r.status !== "fulfilled" || !r.value.data) return;
+    r.value.data.forEach((a: Record<string, unknown>) => {
+      if (seen.has(a.id as string)) return;
+      seen.add(a.id as string);
+      merged.push({
+        id: a.id as string,
+        title: a.title as string,
+        source: a.source as string | undefined,
+        sector: a.sector as string | undefined,
+        industry_verticals: (a.industry_verticals as string[] | null) ?? [],
+        activity_types: (a.activity_types as string[] | null) ?? [],
+        published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
+        relevance_score: (a.relevance_score as number | null) ?? 0,
+      });
+    });
+  });
+
+  merged.sort((a, b) =>
+    new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime()
+  );
+  return merged.slice(0, 20);
 }
 
 function buildWatchlistMemoContent(entry: WatchlistEntry, articles: MatchedArticle[]): string {
@@ -538,12 +602,21 @@ export default function WatchlistPage() {
           </div>
 
           {displayedArticles.length === 0 ? (
-            <EmptyState
-              icon={<ExternalLink size={24} />}
-              title="No matching articles yet"
-              description="Recent articles matching your watchlist will appear here"
-              className="py-8"
-            />
+            watchlist.length === 0 ? (
+              <div className="bg-parchment-mid border border-border-base rounded-xl p-5 text-center">
+                <p className="font-sans text-[13px] font-semibold text-text-primary mb-1">Your feed is empty</p>
+                <p className="font-sans text-[12px] text-text-secondary">
+                  Add tickers, companies, or sectors in the left panel to start tracking articles.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-parchment-mid border border-border-base rounded-xl p-5">
+                <p className="font-sans text-[13px] font-semibold text-text-primary mb-1">No matching articles found</p>
+                <p className="font-sans text-[12px] text-text-secondary">
+                  Articles are ingested every morning and evening. Your watchlist feed will populate as matching coverage arrives.
+                </p>
+              </div>
+            )
           ) : (
             <div className="space-y-2">
               {displayedArticles.map((a) => (

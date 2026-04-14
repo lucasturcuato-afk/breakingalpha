@@ -6,7 +6,7 @@ import { AppShell } from "@/components/shell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Sparkles, ExternalLink } from "lucide-react";
+import { ArrowLeft, Sparkles, ExternalLink, RefreshCw } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 import { MemoModal } from "@/components/memo/MemoModal";
 
@@ -31,6 +31,24 @@ const INDUSTRY_VERTICAL_NAMES = [
   "Agriculture",
 ];
 
+const TICKER_TO_NAME: Record<string, string> = {
+  NVDA: "Nvidia",
+  NVDL: "Nvidia",
+  AMZN: "Amazon",
+  TSLA: "Tesla",
+  AAPL: "Apple",
+  MSFT: "Microsoft",
+  GOOGL: "Alphabet",
+  GOOG: "Alphabet",
+  META: "Meta",
+  IONQ: "IonQ",
+  FCX: "Freeport",
+  SPMO: "Invesco",
+  "BRK.B": "Berkshire",
+  BRK: "Berkshire",
+  V: "Visa",
+};
+
 interface WatchlistArticle {
   id: string;
   title: string;
@@ -50,6 +68,22 @@ function timeAgo(dateStr: string): string {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function sortArticles(articles: WatchlistArticle[], mode: "newest" | "relevant"): WatchlistArticle[] {
+  if (mode === "newest") {
+    return [...articles].sort((a, b) =>
+      new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime()
+    );
+  }
+  const now = Date.now();
+  const sevenDays = 7 * 24 * 60 * 60 * 1000;
+  return [...articles].sort((a, b) => {
+    const aRecent = now - new Date(a.published_at || 0).getTime() < sevenDays ? 1 : 0;
+    const bRecent = now - new Date(b.published_at || 0).getTime() < sevenDays ? 1 : 0;
+    if (aRecent !== bRecent) return bRecent - aRecent;
+    return (b.relevance_score ?? 0) - (a.relevance_score ?? 0);
+  });
 }
 
 export default function WatchlistIdentifierPage({
@@ -73,7 +107,21 @@ export default function WatchlistIdentifierPage({
   const [memoOpen, setMemoOpen] = useState(false);
   const [articleMemoEntry, setArticleMemoEntry] =
     useState<WatchlistArticle | null>(null);
-  const [briefGenerated, setBriefGenerated] = useState(false);
+  const [sortMode, setSortMode] = useState<"newest" | "relevant">("newest");
+  const [briefGeneratedAt, setBriefGeneratedAt] = useState<Date | null>(null);
+  const [quoteRefreshing, setQuoteRefreshing] = useState(false);
+
+  const refreshQuote = async () => {
+    if (isSector) return;
+    setQuoteRefreshing(true);
+    try {
+      const r = await fetch(`/api/watchlist-quotes?symbols=${decoded}`);
+      const d = await r.json();
+      setQuote(d.quotes?.[decoded] ?? null);
+    } catch { /* ignore */ } finally {
+      setQuoteRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -86,62 +134,176 @@ export default function WatchlistIdentifierPage({
             .catch(() => null)
         : Promise.resolve(null);
 
-      let query;
       if (isSector) {
-        query = getSupabase()
-          .from("articles")
-          .select(
-            "id, title, source, url, sector, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score",
-          )
-          .contains("industry_verticals", [decoded])
-          .order("ingested_at", { ascending: false })
-          .limit(20);
+        const [quoteResult, articlesResult] = await Promise.all([
+          quotePromise,
+          getSupabase()
+            .from("articles")
+            .select(
+              "id, title, source, url, sector, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score",
+            )
+            .contains("industry_verticals", [decoded])
+            .order("ingested_at", { ascending: false })
+            .limit(20),
+        ]);
+
+        if (cancelled) return;
+
+        setQuote(quoteResult);
+        setArticles(
+          (articlesResult.data || []).map(
+            (a: Record<string, unknown>) => ({
+              id: a.id as string,
+              title: a.title as string,
+              source: a.source as string | undefined,
+              url: a.url as string | undefined,
+              industry_verticals:
+                (a.industry_verticals as string[] | null) ?? [],
+              activity_types: (a.activity_types as string[] | null) ?? [],
+              published_at:
+                (a.published_at as string | null) ||
+                (a.ingested_at as string | null) ||
+                undefined,
+              summary: a.summary as string | undefined,
+              relevance_score: (a.relevance_score as number | null) ?? 0,
+            }),
+          ),
+        );
+        setLoading(false);
       } else {
-        query = getSupabase()
-          .from("articles")
-          .select(
-            "id, title, source, url, sector, industry_verticals, activity_types, published_at, ingested_at, summary, companies, relevance_score",
-          )
-          .or(`title.ilike.%${ident}%,companies.cs.["${decoded}"]`)
-          .order("ingested_at", { ascending: false })
-          .limit(20);
+        // Non-sector: multi-query strategy
+        const companyName = TICKER_TO_NAME[decoded.toUpperCase()] ?? decoded;
+        const hasAlias = companyName !== decoded;
+
+        const queries = [
+          // Q1: title contains ticker/identifier (case-insensitive)
+          getSupabase().from("articles")
+            .select("id, title, source, url, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score")
+            .ilike("title", `%${decoded}%`)
+            .order("ingested_at", { ascending: false })
+            .limit(20),
+
+          // Q2: summary contains ticker/identifier
+          getSupabase().from("articles")
+            .select("id, title, source, url, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score")
+            .ilike("summary", `%${decoded}%`)
+            .order("ingested_at", { ascending: false })
+            .limit(15),
+
+          // Q3: companies column (text) contains ticker identifier
+          getSupabase().from("articles")
+            .select("id, title, source, url, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score")
+            .ilike("companies", `%${decoded}%`)
+            .order("ingested_at", { ascending: false })
+            .limit(20),
+        ];
+
+        if (hasAlias) {
+          queries.push(
+            // Q4: companies column contains company name (e.g. "Nvidia" for "NVDA")
+            getSupabase().from("articles")
+              .select("id, title, source, url, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score")
+              .ilike("companies", `%${companyName}%`)
+              .order("ingested_at", { ascending: false })
+              .limit(20),
+
+            // Q5: title contains company name
+            getSupabase().from("articles")
+              .select("id, title, source, url, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score")
+              .ilike("title", `%${companyName}%`)
+              .order("ingested_at", { ascending: false })
+              .limit(20),
+          );
+        }
+
+        const [quoteResult, ...articleResults] = await Promise.all([
+          quotePromise,
+          ...queries.map((q) => Promise.allSettled([q]).then((r) => r[0])),
+        ]);
+
+        if (cancelled) return;
+
+        setQuote(quoteResult);
+
+        const seen = new Set<string>();
+        const merged: WatchlistArticle[] = [];
+        articleResults.forEach((r) => {
+          if (!r || (r as PromiseSettledResult<{ data: Record<string, unknown>[] | null }>).status !== "fulfilled") return;
+          const fulfilled = r as PromiseFulfilledResult<{ data: Record<string, unknown>[] | null }>;
+          if (!fulfilled.value.data) return;
+          fulfilled.value.data.forEach((a: Record<string, unknown>) => {
+            if (seen.has(a.id as string)) return;
+            seen.add(a.id as string);
+            merged.push({
+              id: a.id as string,
+              title: a.title as string,
+              source: a.source as string | undefined,
+              url: a.url as string | undefined,
+              industry_verticals: (a.industry_verticals as string[] | null) ?? [],
+              activity_types: (a.activity_types as string[] | null) ?? [],
+              published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
+              summary: a.summary as string | undefined,
+              relevance_score: (a.relevance_score as number | null) ?? 0,
+            });
+          });
+        });
+
+        // Sort by published_at desc, cap at 20
+        merged.sort((a, b) =>
+          new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime()
+        );
+        const finalArticles = merged.slice(0, 20);
+
+        // Fallback: if still empty, fetch recent 50 globally and filter client-side
+        if (finalArticles.length === 0) {
+          const { data: fallback } = await getSupabase().from("articles")
+            .select("id, title, source, url, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score, companies")
+            .order("ingested_at", { ascending: false })
+            .limit(50);
+
+          if (cancelled) return;
+
+          const nameLC = companyName.toLowerCase();
+          const decodedLC = decoded.toLowerCase();
+          const fallbackFiltered = (fallback || [])
+            .filter((a: Record<string, unknown>) => {
+              const t = ((a.title as string) || "").toLowerCase();
+              const s = ((a.summary as string) || "").toLowerCase();
+              const c = ((a.companies as string) || "").toLowerCase();
+              return t.includes(nameLC) || t.includes(decodedLC) ||
+                     s.includes(nameLC) || s.includes(decodedLC) ||
+                     c.includes(nameLC) || c.includes(decodedLC);
+            })
+            .map((a: Record<string, unknown>) => ({
+              id: a.id as string,
+              title: a.title as string,
+              source: a.source as string | undefined,
+              url: a.url as string | undefined,
+              industry_verticals: (a.industry_verticals as string[] | null) ?? [],
+              activity_types: (a.activity_types as string[] | null) ?? [],
+              published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
+              summary: a.summary as string | undefined,
+              relevance_score: (a.relevance_score as number | null) ?? 0,
+            }))
+            .slice(0, 20);
+
+          setArticles(fallbackFiltered);
+          setLoading(false);
+          return;
+        }
+
+        setArticles(finalArticles);
+        setLoading(false);
       }
-
-      const [quoteResult, articlesResult] = await Promise.all([
-        quotePromise,
-        query,
-      ]);
-
-      if (cancelled) return;
-
-      setQuote(quoteResult);
-      setArticles(
-        (articlesResult.data || []).map(
-          (a: Record<string, unknown>) => ({
-            id: a.id as string,
-            title: a.title as string,
-            source: a.source as string | undefined,
-            url: a.url as string | undefined,
-            industry_verticals:
-              (a.industry_verticals as string[] | null) ?? [],
-            activity_types: (a.activity_types as string[] | null) ?? [],
-            published_at:
-              (a.published_at as string | null) ||
-              (a.ingested_at as string | null) ||
-              undefined,
-            summary: a.summary as string | undefined,
-            relevance_score: (a.relevance_score as number | null) ?? 0,
-          }),
-        ),
-      );
-      setLoading(false);
     }
 
     load();
     return () => {
       cancelled = true;
     };
-  }, [decoded]);
+  }, [decoded, isSector]);
+
+  const companyName = TICKER_TO_NAME[decoded.toUpperCase()] ?? decoded;
 
   const systemPrompt = useMemo(
     () =>
@@ -156,7 +318,7 @@ export default function WatchlistIdentifierPage({
       : "company";
 
   const briefContent = useMemo(() => {
-    return `Ticker/Company: ${decoded}
+    return `Ticker/Company: ${decoded}${companyName !== decoded ? ` (${companyName})` : ""}
 Type: ${typeLabel}
 ${quote ? `Current Price: $${quote.price} (${quote.pct >= 0 ? "+" : ""}${quote.pct}%)` : "Price: N/A"}
 
@@ -170,7 +332,7 @@ ${articles
   .join("\n")}
 
 Generate a professional company brief covering: current price action and what's driving it, company overview and positioning, recent developments from the articles above, upcoming catalysts to watch, and key risks. Format with clear sections.`;
-  }, [decoded, typeLabel, quote, articles]);
+  }, [decoded, companyName, typeLabel, quote, articles]);
 
   return (
     <AppShell
@@ -179,7 +341,7 @@ Generate a professional company brief covering: current price action and what's 
       moodHeadline="Markets steady"
       moodDetails={["VIX 14.2", "S&P +0.38%"]}
     >
-      <div className="p-6 max-w-[900px]">
+      <div className="p-6 max-w-[1100px]">
         {/* Back button */}
         <button
           type="button"
@@ -189,82 +351,118 @@ Generate a professional company brief covering: current price action and what's 
           <ArrowLeft size={14} /> Watchlist
         </button>
 
-        {/* Header */}
-        <div className="mt-4 mb-6">
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="font-display text-[28px] font-extrabold text-espresso">
-              {decoded}
-            </h1>
-            <span className="font-data text-[10px] text-gold bg-gold-muted border border-gold-border px-2 py-0.5 rounded-md uppercase">
-              {typeLabel}
-            </span>
-          </div>
-          {/* Price (non-sector only) */}
-          {!isSector && (
-            <div className="flex items-center gap-3">
-              {quote ? (
-                <>
-                  <span className="font-data text-[24px] font-bold text-espresso">
-                    ${quote.price}
-                  </span>
-                  <span
-                    className={cn(
-                      "font-data text-[16px] font-semibold",
-                      quote.pct >= 0 ? "text-signal-up" : "text-signal-dn",
-                    )}
-                  >
-                    {quote.pct >= 0 ? "+" : ""}
-                    {quote.pct}%
-                  </span>
-                  <span className="font-data text-[10px] text-text-faint">
-                    as of market close
-                  </span>
-                </>
-              ) : (
-                !loading && (
-                  <span className="font-data text-[13px] text-text-faint">
-                    Price unavailable
-                  </span>
-                )
-              )}
+        {/* Price section (non-sector) */}
+        {!isSector && (
+          <div className={cn(
+            "bg-white border border-border-base rounded-xl p-4 border-l-4 mt-4 mb-6",
+            quote ? (quote.pct >= 0 ? "border-l-signal-up" : "border-l-signal-dn") : "border-l-border-base"
+          )}>
+            <div className="flex items-center gap-3 mb-1">
+              <h1 className="font-display text-[28px] font-extrabold text-espresso">{decoded}</h1>
+              <span className="font-data text-[10px] text-gold bg-gold-muted border border-gold-border px-2 py-0.5 rounded-md uppercase">{typeLabel}</span>
             </div>
-          )}
-        </div>
+            {quote ? (
+              <div className="flex items-center gap-3">
+                <span className="font-data text-[24px] font-bold text-espresso">${quote.price}</span>
+                <span className={cn("font-data text-[16px] font-semibold", quote.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
+                  {quote.pct >= 0 ? "+" : ""}{quote.pct}%
+                </span>
+                <span className="font-data text-[10px] text-text-faint">as of market close</span>
+                <button type="button" onClick={refreshQuote} disabled={quoteRefreshing} className="ml-auto p-1 rounded hover:bg-parchment-mid cursor-pointer disabled:opacity-50">
+                  <RefreshCw size={11} className={cn("text-text-muted", quoteRefreshing && "animate-spin")} />
+                </button>
+              </div>
+            ) : (
+              !loading && <span className="font-data text-[13px] text-text-faint">Price unavailable</span>
+            )}
+          </div>
+        )}
+        {isSector && (
+          <div className="mt-4 mb-6 flex items-center gap-3">
+            <h1 className="font-display text-[28px] font-extrabold text-espresso">{decoded}</h1>
+            <span className="font-data text-[10px] text-gold bg-gold-muted border border-gold-border px-2 py-0.5 rounded-md uppercase">{typeLabel}</span>
+          </div>
+        )}
 
         {/* AI BRIEF SECTION */}
-        <div className="mb-8">
+        <div className="mb-8 pb-8 border-b border-border-base">
           <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">
             AI Brief
           </p>
-          <button
-            type="button"
-            onClick={() => {
-              setBriefGenerated(true);
-              setMemoOpen(true);
-            }}
-            disabled={loading || articles.length === 0}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gold text-cream font-sans text-[12px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Sparkles size={13} />
-            {briefGenerated ? "Regenerate Brief" : "Generate Brief"}
-          </button>
-          {loading && (
-            <p className="font-data text-[10px] text-text-faint mt-2">
-              Loading articles...
-            </p>
-          )}
-          {!loading && articles.length === 0 && (
-            <p className="font-data text-[10px] text-text-faint mt-2">
-              No articles found — brief generation unavailable
-            </p>
+          {!loading && articles.length === 0 ? (
+            <div className="bg-parchment-mid border border-border-base rounded-xl p-4">
+              <p className="font-sans text-[13px] font-semibold text-text-primary mb-1">
+                No recent coverage found for {decoded}.
+              </p>
+              <p className="font-sans text-[12px] text-text-secondary">
+                Brief generation requires at least 1 article. Try searching{" "}
+                <button onClick={() => router.push(`/live-feed`)} className="text-gold hover:underline cursor-pointer">Live Feed</button>
+                {" "}for this company.
+              </p>
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => { setBriefGeneratedAt(new Date()); setMemoOpen(true); }}
+                disabled={loading || articles.length === 0}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gold text-cream font-sans text-[12px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Sparkles size={13} />
+                {briefGeneratedAt !== null ? "Regenerate Brief" : "Generate Brief"}
+              </button>
+              {loading && (
+                <p className="font-data text-[10px] text-text-faint mt-2">Loading articles...</p>
+              )}
+              {!loading && articles.length > 0 && (
+                <p className="font-data text-[10px] text-text-faint mt-2">
+                  Brief will be grounded in {articles.length} recent article{articles.length !== 1 ? "s" : ""}
+                </p>
+              )}
+              {briefGeneratedAt !== null && (
+                <p className="font-data text-[9px] text-text-faint mt-1">
+                  Last generated {timeAgo(briefGeneratedAt.toISOString())}
+                </p>
+              )}
+            </>
           )}
         </div>
 
         {/* RECENT COVERAGE */}
         <div>
-          <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">
-            Recent Coverage ({articles.length})
-          </p>
+          {/* Section header with sort controls */}
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold">
+                Recent Coverage ({articles.length})
+              </p>
+              {articles.length > 0 && (
+                <p className="font-data text-[9px] text-text-faint mt-0.5">
+                  Updated {timeAgo(articles[0].published_at || new Date().toISOString())}
+                </p>
+              )}
+            </div>
+            {articles.length > 0 && (
+              <div className="flex gap-1">
+                {(["newest", "relevant"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setSortMode(mode)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-md font-data text-[9px] cursor-pointer transition-colors border",
+                      sortMode === mode
+                        ? "border-gold bg-gold-muted text-gold font-semibold"
+                        : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                    )}
+                  >
+                    {mode === "newest" ? "Newest" : "Relevant"}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* Article list */}
           {loading ? (
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
@@ -280,7 +478,7 @@ Generate a professional company brief covering: current price action and what's 
             />
           ) : (
             <div className="space-y-2">
-              {articles.map((a) => (
+              {sortArticles(articles, sortMode).map((a) => (
                 <div
                   key={a.id}
                   className="bg-white border border-border-base rounded-xl p-3"
