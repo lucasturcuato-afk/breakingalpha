@@ -31,22 +31,19 @@ const INDUSTRY_VERTICAL_NAMES = [
   "Agriculture",
 ];
 
-const TICKER_TO_NAME: Record<string, string> = {
-  NVDA: "Nvidia",
-  NVDL: "Nvidia",
-  AMZN: "Amazon",
-  TSLA: "Tesla",
-  AAPL: "Apple",
-  MSFT: "Microsoft",
-  GOOGL: "Alphabet",
-  GOOG: "Alphabet",
-  META: "Meta",
-  IONQ: "IonQ",
-  FCX: "Freeport",
-  SPMO: "Invesco",
-  "BRK.B": "Berkshire",
-  BRK: "Berkshire",
-  V: "Visa",
+// LEGACY BRIDGE — used only for existing watchlist entries added before the
+// display_name column existed. New entries get display_name from Finnhub on add.
+// Safe to remove once all existing entries have been re-added.
+const LEGACY_TICKER_NAMES: Record<string, string> = {
+  NVDA: "Nvidia", NVDL: "Nvidia", AMZN: "Amazon", TSLA: "Tesla",
+  AAPL: "Apple", MSFT: "Microsoft", GOOGL: "Alphabet", GOOG: "Alphabet",
+  META: "Meta", IONQ: "IonQ", FCX: "Freeport-McMoRan", SPMO: "Invesco",
+  "BRK.B": "Berkshire Hathaway", BRK: "Berkshire Hathaway", V: "Visa",
+  BX: "Blackstone", APO: "Apollo Global", KKR: "KKR", GS: "Goldman Sachs",
+  MS: "Morgan Stanley", JPM: "JPMorgan", BAC: "Bank of America",
+  CG: "Carlyle", BAM: "Brookfield", AMD: "AMD", INTC: "Intel",
+  TSM: "TSMC", BABA: "Alibaba", NFLX: "Netflix", DIS: "Disney",
+  PYPL: "PayPal", COIN: "Coinbase", PLTR: "Palantir", UBER: "Uber",
 };
 
 interface WatchlistArticle {
@@ -110,6 +107,7 @@ export default function WatchlistIdentifierPage({
   const [sortMode, setSortMode] = useState<"newest" | "relevant">("newest");
   const [briefGeneratedAt, setBriefGeneratedAt] = useState<Date | null>(null);
   const [quoteRefreshing, setQuoteRefreshing] = useState(false);
+  const [storedDisplayName, setStoredDisplayName] = useState<string | null>(null);
 
   const refreshQuote = async () => {
     if (isSector) return;
@@ -127,6 +125,29 @@ export default function WatchlistIdentifierPage({
     let cancelled = false;
 
     async function load() {
+      // Fetch display_name from watchlist table (used for article search resolution)
+      const { data: watchlistRow } = await getSupabase()
+        .from("watchlist")
+        .select("display_name, type")
+        .ilike("identifier", decoded)
+        .maybeSingle();
+
+      const storedDN = watchlistRow?.display_name ?? null;
+      if (!cancelled) setStoredDisplayName(storedDN);
+
+      // Canonical sector name (normalizes URL-decoded value to proper casing)
+      const canonicalVertical = INDUSTRY_VERTICAL_NAMES.find(
+        v => v.toLowerCase() === ident,
+      ) ?? decoded;
+
+      // Resolve human-readable name for article queries
+      // Priority: 1) stored display_name  2) legacy bridge  3) raw identifier
+      const resolvedName = isSector
+        ? canonicalVertical
+        : (storedDN ?? LEGACY_TICKER_NAMES[decoded.toUpperCase()] ?? decoded);
+
+      const hasAlias = resolvedName.toLowerCase() !== decoded.toLowerCase();
+
       const quotePromise = !isSector
         ? fetch(`/api/watchlist-quotes?symbols=${decoded}`)
             .then((r) => r.json())
@@ -134,91 +155,84 @@ export default function WatchlistIdentifierPage({
             .catch(() => null)
         : Promise.resolve(null);
 
+      const articleSelect = "id, title, source, url, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score";
+
       if (isSector) {
-        const [quoteResult, articlesResult] = await Promise.all([
+        const [quoteResult, containsResult, ilikeResult] = await Promise.all([
           quotePromise,
-          getSupabase()
-            .from("articles")
-            .select(
-              "id, title, source, url, sector, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score",
-            )
-            .contains("industry_verticals", [decoded])
-            .order("ingested_at", { ascending: false })
-            .limit(20),
+          getSupabase().from("articles").select(articleSelect)
+            .contains("industry_verticals", [canonicalVertical])
+            .order("ingested_at", { ascending: false }).limit(20),
+          getSupabase().from("articles").select(articleSelect)
+            .ilike("industry_verticals", `%${canonicalVertical}%`)
+            .order("ingested_at", { ascending: false }).limit(20),
         ]);
 
         if (cancelled) return;
 
         setQuote(quoteResult);
-        setArticles(
-          (articlesResult.data || []).map(
-            (a: Record<string, unknown>) => ({
-              id: a.id as string,
-              title: a.title as string,
-              source: a.source as string | undefined,
-              url: a.url as string | undefined,
-              industry_verticals:
-                (a.industry_verticals as string[] | null) ?? [],
-              activity_types: (a.activity_types as string[] | null) ?? [],
-              published_at:
-                (a.published_at as string | null) ||
-                (a.ingested_at as string | null) ||
-                undefined,
-              summary: a.summary as string | undefined,
-              relevance_score: (a.relevance_score as number | null) ?? 0,
-            }),
-          ),
+
+        const mapRow = (a: Record<string, unknown>): WatchlistArticle => ({
+          id: a.id as string,
+          title: a.title as string,
+          source: a.source as string | undefined,
+          url: a.url as string | undefined,
+          industry_verticals: (a.industry_verticals as string[] | null) ?? [],
+          activity_types: (a.activity_types as string[] | null) ?? [],
+          published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
+          summary: a.summary as string | undefined,
+          relevance_score: (a.relevance_score as number | null) ?? 0,
+        });
+
+        const seen = new Set<string>();
+        const merged: WatchlistArticle[] = [];
+        for (const result of [containsResult, ilikeResult]) {
+          (result.data || []).forEach((a: Record<string, unknown>) => {
+            if (!seen.has(a.id as string)) {
+              seen.add(a.id as string);
+              merged.push(mapRow(a));
+            }
+          });
+        }
+        merged.sort((a, b) =>
+          new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime(),
         );
+        setArticles(merged.slice(0, 20));
         setLoading(false);
       } else {
-        // Non-sector: multi-query strategy
-        const companyName = TICKER_TO_NAME[decoded.toUpperCase()] ?? decoded;
-        const hasAlias = companyName !== decoded;
+        // Skip single-char raw searches (e.g. "V")
+        const rawIdent = decoded.replace(/[^A-Z0-9]/gi, "");
+        const skipRaw = rawIdent.length <= 1;
 
-        const queries = [
-          // Q1: title contains ticker/identifier (case-insensitive)
-          getSupabase().from("articles")
-            .select("id, title, source, url, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score")
+        const rawQueries = skipRaw ? [] : [
+          getSupabase().from("articles").select(articleSelect)
             .ilike("title", `%${decoded}%`)
-            .order("ingested_at", { ascending: false })
-            .limit(20),
-
-          // Q2: summary contains ticker/identifier
-          getSupabase().from("articles")
-            .select("id, title, source, url, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score")
+            .order("ingested_at", { ascending: false }).limit(20),
+          getSupabase().from("articles").select(articleSelect)
             .ilike("summary", `%${decoded}%`)
-            .order("ingested_at", { ascending: false })
-            .limit(15),
-
-          // Q3: companies column (text) contains ticker identifier
-          getSupabase().from("articles")
-            .select("id, title, source, url, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score")
+            .order("ingested_at", { ascending: false }).limit(15),
+          getSupabase().from("articles").select(articleSelect)
             .ilike("companies", `%${decoded}%`)
-            .order("ingested_at", { ascending: false })
-            .limit(20),
+            .order("ingested_at", { ascending: false }).limit(20),
         ];
 
-        if (hasAlias) {
-          queries.push(
-            // Q4: companies column contains company name (e.g. "Nvidia" for "NVDA")
-            getSupabase().from("articles")
-              .select("id, title, source, url, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score")
-              .ilike("companies", `%${companyName}%`)
-              .order("ingested_at", { ascending: false })
-              .limit(20),
-
-            // Q5: title contains company name
-            getSupabase().from("articles")
-              .select("id, title, source, url, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score")
-              .ilike("title", `%${companyName}%`)
-              .order("ingested_at", { ascending: false })
-              .limit(20),
-          );
-        }
+        const aliasQueries = hasAlias ? [
+          getSupabase().from("articles").select(articleSelect)
+            .ilike("companies", `%${resolvedName}%`)
+            .order("ingested_at", { ascending: false }).limit(20),
+          getSupabase().from("articles").select(articleSelect)
+            .ilike("title", `%${resolvedName}%`)
+            .order("ingested_at", { ascending: false }).limit(20),
+          getSupabase().from("articles").select(articleSelect)
+            .ilike("summary", `%${resolvedName}%`)
+            .order("ingested_at", { ascending: false }).limit(15),
+        ] : [];
 
         const [quoteResult, ...articleResults] = await Promise.all([
           quotePromise,
-          ...queries.map((q) => Promise.allSettled([q]).then((r) => r[0])),
+          ...[...rawQueries, ...aliasQueries].map((q) =>
+            Promise.allSettled([q]).then((r) => r[0]),
+          ),
         ]);
 
         if (cancelled) return;
@@ -248,9 +262,8 @@ export default function WatchlistIdentifierPage({
           });
         });
 
-        // Sort by published_at desc, cap at 20
         merged.sort((a, b) =>
-          new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime()
+          new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime(),
         );
         const finalArticles = merged.slice(0, 20);
 
@@ -263,16 +276,16 @@ export default function WatchlistIdentifierPage({
 
           if (cancelled) return;
 
-          const nameLC = companyName.toLowerCase();
+          const resolvedLC = resolvedName.toLowerCase();
           const decodedLC = decoded.toLowerCase();
           const fallbackFiltered = (fallback || [])
             .filter((a: Record<string, unknown>) => {
               const t = ((a.title as string) || "").toLowerCase();
               const s = ((a.summary as string) || "").toLowerCase();
               const c = ((a.companies as string) || "").toLowerCase();
-              return t.includes(nameLC) || t.includes(decodedLC) ||
-                     s.includes(nameLC) || s.includes(decodedLC) ||
-                     c.includes(nameLC) || c.includes(decodedLC);
+              return t.includes(resolvedLC) || t.includes(decodedLC) ||
+                     s.includes(resolvedLC) || s.includes(decodedLC) ||
+                     c.includes(resolvedLC) || c.includes(decodedLC);
             })
             .map((a: Record<string, unknown>) => ({
               id: a.id as string,
@@ -303,7 +316,7 @@ export default function WatchlistIdentifierPage({
     };
   }, [decoded, isSector]);
 
-  const companyName = TICKER_TO_NAME[decoded.toUpperCase()] ?? decoded;
+  const companyName = storedDisplayName ?? LEGACY_TICKER_NAMES[decoded.toUpperCase()] ?? decoded;
 
   const systemPrompt = useMemo(
     () =>
@@ -361,6 +374,11 @@ Generate a professional company brief covering: current price action and what's 
               <h1 className="font-display text-[28px] font-extrabold text-espresso">{decoded}</h1>
               <span className="font-data text-[10px] text-gold bg-gold-muted border border-gold-border px-2 py-0.5 rounded-md uppercase">{typeLabel}</span>
             </div>
+            {(storedDisplayName ?? LEGACY_TICKER_NAMES[decoded.toUpperCase()]) && (
+              <p className="font-data text-[12px] text-text-muted mt-0.5">
+                {storedDisplayName ?? LEGACY_TICKER_NAMES[decoded.toUpperCase()]}
+              </p>
+            )}
             {quote ? (
               <div className="flex items-center gap-3">
                 <span className="font-data text-[24px] font-bold text-espresso">${quote.price}</span>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback, Fragment } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import { Input } from "@/components/ui/input";
@@ -55,28 +55,34 @@ const STALE_TO_CANONICAL: Record<string, string> = {
   "VENTURE CAPITAL": "Financial Services",
 };
 
-const TICKER_TO_NAME: Record<string, string> = {
-  NVDA: "Nvidia",
-  NVDL: "Nvidia",
-  AMZN: "Amazon",
-  TSLA: "Tesla",
-  AAPL: "Apple",
-  MSFT: "Microsoft",
-  GOOGL: "Alphabet",
-  GOOG: "Alphabet",
-  META: "Meta",
-  IONQ: "IonQ",
-  FCX: "Freeport",
-  SPMO: "Invesco",
-  "BRK.B": "Berkshire",
-  BRK: "Berkshire",
-  V: "Visa",
+// LEGACY BRIDGE — used only for existing watchlist entries added before the
+// display_name column existed. New entries get display_name from Finnhub on add.
+// Safe to remove once all existing entries have been re-added.
+const LEGACY_TICKER_NAMES: Record<string, string> = {
+  NVDA: "Nvidia", NVDL: "Nvidia", AMZN: "Amazon", TSLA: "Tesla",
+  AAPL: "Apple", MSFT: "Microsoft", GOOGL: "Alphabet", GOOG: "Alphabet",
+  META: "Meta", IONQ: "IonQ", FCX: "Freeport-McMoRan", SPMO: "Invesco",
+  "BRK.B": "Berkshire Hathaway", BRK: "Berkshire Hathaway", V: "Visa",
+  BX: "Blackstone", APO: "Apollo Global", KKR: "KKR", GS: "Goldman Sachs",
+  MS: "Morgan Stanley", JPM: "JPMorgan", BAC: "Bank of America",
+  CG: "Carlyle", BAM: "Brookfield", AMD: "AMD", INTC: "Intel",
+  TSM: "TSMC", BABA: "Alibaba", NFLX: "Netflix", DIS: "Disney",
+  PYPL: "PayPal", COIN: "Coinbase", PLTR: "Palantir", UBER: "Uber",
 };
+
+// Converts stored uppercase sector identifiers (e.g. "FINANCIAL SERVICES")
+// to canonical display casing (e.g. "Financial Services")
+function toDisplayName(identifier: string): string {
+  return INDUSTRY_VERTICALS.find(
+    v => v.toUpperCase() === identifier.toUpperCase(),
+  ) ?? identifier;
+}
 
 interface WatchlistEntry {
   id: string;
   identifier: string;
   type: string;
+  display_name?: string;
   created_at?: string;
 }
 
@@ -122,95 +128,103 @@ function sortArticles(articles: MatchedArticle[], mode: "newest" | "relevant"): 
   });
 }
 
-async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArticle[]> {
-  if (entry.type === "sector") {
-    // Normalize to canonical casing — DB stores mixed case, entries may be stored uppercase
-    const canonicalVertical =
-      INDUSTRY_VERTICALS.find(
-        (v) => v.toUpperCase() === entry.identifier.toUpperCase(),
-      ) ?? entry.identifier;
-    const { data } = await getSupabase()
-      .from("articles")
-      .select("id, title, source, sector, industry_verticals, activity_types, published_at, ingested_at, relevance_score, summary")
-      .contains("industry_verticals", [canonicalVertical])
-      .order("ingested_at", { ascending: false })
-      .limit(20);
-    return (data || []).map((a: Record<string, unknown>) => ({
-      id: a.id as string,
-      title: a.title as string,
-      source: a.source as string | undefined,
-      sector: a.sector as string | undefined,
-      industry_verticals: (a.industry_verticals as string[] | null) ?? [],
-      activity_types: (a.activity_types as string[] | null) ?? [],
-      published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
-      relevance_score: (a.relevance_score as number | null) ?? 0,
-      summary: a.summary as string | undefined,
-    }));
+function mapArticle(a: Record<string, unknown>): MatchedArticle {
+  return {
+    id: a.id as string,
+    title: a.title as string,
+    source: a.source as string | undefined,
+    sector: a.sector as string | undefined,
+    industry_verticals: (a.industry_verticals as string[] | null) ?? [],
+    activity_types: (a.activity_types as string[] | null) ?? [],
+    published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
+    relevance_score: (a.relevance_score as number | null) ?? 0,
+    summary: a.summary as string | undefined,
+  };
+}
+
+function dedupeAndSort(rows: MatchedArticle[]): MatchedArticle[] {
+  const seen = new Set<string>();
+  const out: MatchedArticle[] = [];
+  for (const a of rows) {
+    if (!seen.has(a.id)) { seen.add(a.id); out.push(a); }
   }
+  out.sort((a, b) =>
+    new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime(),
+  );
+  return out.slice(0, 20);
+}
 
-  // ticker or company — multi-query strategy
-  const companyName = TICKER_TO_NAME[entry.identifier.toUpperCase()] ?? entry.identifier;
-  const hasAlias = companyName !== entry.identifier;
-
+async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArticle[]> {
   const baseSelect = "id, title, source, sector, industry_verticals, activity_types, published_at, ingested_at, relevance_score, summary";
 
-  const rawIdent = entry.identifier.replace(/[^A-Z0-9]/g, "");
-  const skipRawTickerSearch = rawIdent.length <= 2;
-
-  const queries = [
-    ...(skipRawTickerSearch
-      ? []
-      : [
-          getSupabase().from("articles").select(baseSelect)
-            .ilike("title", `%${entry.identifier}%`)
-            .order("ingested_at", { ascending: false }).limit(20),
-          getSupabase().from("articles").select(baseSelect)
-            .ilike("summary", `%${entry.identifier}%`)
-            .order("ingested_at", { ascending: false }).limit(15),
-          getSupabase().from("articles").select(baseSelect)
-            .ilike("companies", `%${entry.identifier}%`)
-            .order("ingested_at", { ascending: false }).limit(20),
-        ]),
-  ];
-
-  if (hasAlias) {
-    queries.push(
+  if (entry.type === "sector") {
+    // Normalize to canonical casing — run both .contains and .ilike to catch
+    // both properly-stored arrays and text representations
+    const canonicalVertical = toDisplayName(entry.identifier);
+    const [containsResult, ilikeResult] = await Promise.allSettled([
       getSupabase().from("articles").select(baseSelect)
-        .ilike("companies", `%${companyName}%`)
+        .contains("industry_verticals", [canonicalVertical])
         .order("ingested_at", { ascending: false }).limit(20),
       getSupabase().from("articles").select(baseSelect)
-        .ilike("title", `%${companyName}%`)
+        .ilike("industry_verticals", `%${canonicalVertical}%`)
         .order("ingested_at", { ascending: false }).limit(20),
-    );
+    ]);
+    const rows: MatchedArticle[] = [];
+    for (const r of [containsResult, ilikeResult]) {
+      if (r.status === "fulfilled" && r.value.data) {
+        rows.push(...r.value.data.map(mapArticle));
+      }
+    }
+    return dedupeAndSort(rows);
   }
 
-  const results = await Promise.allSettled(queries);
-  const seen = new Set<string>();
-  const merged: MatchedArticle[] = [];
+  // ticker or company — resolve human-readable name for alias queries
+  // Priority: 1) stored display_name  2) legacy bridge  3) raw identifier
+  const resolvedName: string =
+    entry.type === "company"
+      ? entry.identifier
+      : (entry.display_name
+          ?? LEGACY_TICKER_NAMES[entry.identifier.toUpperCase()]
+          ?? entry.identifier);
 
+  const hasAlias = resolvedName.toLowerCase() !== entry.identifier.toLowerCase();
+
+  // Skip single-char ticker raw searches (e.g. "V") — 2+ char tickers are safe
+  const rawIdent = entry.identifier.replace(/[^A-Z0-9]/g, "");
+  const skipRawTickerSearch = rawIdent.length <= 1;
+
+  const rawQueries = skipRawTickerSearch ? [] : [
+    getSupabase().from("articles").select(baseSelect)
+      .ilike("title", `%${entry.identifier}%`)
+      .order("ingested_at", { ascending: false }).limit(20),
+    getSupabase().from("articles").select(baseSelect)
+      .ilike("summary", `%${entry.identifier}%`)
+      .order("ingested_at", { ascending: false }).limit(15),
+    getSupabase().from("articles").select(baseSelect)
+      .ilike("companies", `%${entry.identifier}%`)
+      .order("ingested_at", { ascending: false }).limit(20),
+  ];
+
+  const aliasQueries = hasAlias ? [
+    getSupabase().from("articles").select(baseSelect)
+      .ilike("companies", `%${resolvedName}%`)
+      .order("ingested_at", { ascending: false }).limit(20),
+    getSupabase().from("articles").select(baseSelect)
+      .ilike("title", `%${resolvedName}%`)
+      .order("ingested_at", { ascending: false }).limit(20),
+    getSupabase().from("articles").select(baseSelect)
+      .ilike("summary", `%${resolvedName}%`)
+      .order("ingested_at", { ascending: false }).limit(15),
+  ] : [];
+
+  const results = await Promise.allSettled([...rawQueries, ...aliasQueries]);
+  const rows: MatchedArticle[] = [];
   results.forEach((r) => {
-    if (r.status !== "fulfilled" || !r.value.data) return;
-    r.value.data.forEach((a: Record<string, unknown>) => {
-      if (seen.has(a.id as string)) return;
-      seen.add(a.id as string);
-      merged.push({
-        id: a.id as string,
-        title: a.title as string,
-        source: a.source as string | undefined,
-        sector: a.sector as string | undefined,
-        industry_verticals: (a.industry_verticals as string[] | null) ?? [],
-        activity_types: (a.activity_types as string[] | null) ?? [],
-        published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
-        relevance_score: (a.relevance_score as number | null) ?? 0,
-        summary: a.summary as string | undefined,
-      });
-    });
+    if (r.status === "fulfilled" && r.value.data) {
+      rows.push(...r.value.data.map(mapArticle));
+    }
   });
-
-  merged.sort((a, b) =>
-    new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime()
-  );
-  return merged.slice(0, 20);
+  return dedupeAndSort(rows);
 }
 
 function buildWatchlistMemoContent(entry: WatchlistEntry, articles: MatchedArticle[]): string {
@@ -397,6 +411,13 @@ export default function WatchlistPage() {
   const nonSectorEntries = watchlist.filter((e) => e.type !== "sector");
   const showDivider = sectorEntries.length > 0 && nonSectorEntries.length > 0;
 
+  const selectedEntry = watchlist.find(e => e.identifier === selectedIdentifier);
+  const selectedDisplayLabel = selectedIdentifier
+    ? (selectedEntry?.type === "sector"
+        ? toDisplayName(selectedIdentifier)
+        : (selectedEntry?.display_name ?? LEGACY_TICKER_NAMES[selectedIdentifier.toUpperCase()] ?? selectedIdentifier))
+    : null;
+
   const displayedArticles = useMemo(() => {
     if (selectedIdentifier) {
       const arts = articlesByIdentifier[selectedIdentifier] ?? [];
@@ -524,76 +545,121 @@ export default function WatchlistPage() {
               />
             ) : (
               <div className="space-y-1.5">
-                {showDivider && (
-                  <p className="font-data text-[8px] uppercase tracking-widest text-text-faint mb-1.5">Sectors</p>
+                {/* SECTOR GROUP */}
+                {sectorEntries.length > 0 && (
+                  <>
+                    {showDivider && (
+                      <p className="font-data text-[8px] uppercase tracking-widest text-text-faint mb-1.5">Sectors</p>
+                    )}
+                    {sectorEntries.map((entry) => {
+                      const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
+                      return (
+                        <div
+                          key={entry.id}
+                          onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
+                          className={cn(
+                            "flex items-center justify-between gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
+                            selectedIdentifier === entry.identifier
+                              ? "border-l-2 border-l-gold bg-gold-muted/30"
+                              : "bg-parchment-mid hover:border-border-hover",
+                          )}
+                        >
+                          {/* Sector name — full width, no fixed constraint */}
+                          <span className="font-data text-[12px] font-bold text-text-primary truncate min-w-0 flex-1">
+                            {toDisplayName(entry.identifier)}
+                          </span>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            {articleCount > 0 && (
+                              <span className="font-data text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
+                                {articleCount}
+                              </span>
+                            )}
+                            <div
+                              className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button type="button" onClick={() => setMemoEntry(entry)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Generate memo">
+                                <Sparkles size={11} className="text-gold" />
+                              </button>
+                              <button type="button" onClick={() => handleRemove(entry.id)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Remove">
+                                <Trash2 size={11} className="text-text-faint hover:text-signal-dn" />
+                              </button>
+                            </div>
+                            <Globe size={10} className="text-text-faint" />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
                 )}
-                {[...sectorEntries, ...nonSectorEntries].map((entry, idx) => {
+
+                {/* DIVIDER */}
+                {showDivider && (
+                  <div className="flex items-center gap-2 my-2">
+                    <div className="flex-1 h-px bg-border-base" />
+                    <span className="font-data text-[8px] uppercase tracking-widest text-text-faint">Tickers & Companies</span>
+                    <div className="flex-1 h-px bg-border-base" />
+                  </div>
+                )}
+
+                {/* TICKER/COMPANY GROUP */}
+                {nonSectorEntries.map((entry) => {
                   const price = prices[entry.identifier];
                   const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
-                  const isSector = entry.type === "sector";
+                  const subtitle = entry.display_name ?? LEGACY_TICKER_NAMES[entry.identifier.toUpperCase()];
                   return (
-                    <Fragment key={entry.id}>
-                      {showDivider && idx === sectorEntries.length && (
-                        <div className="flex items-center gap-2 my-1">
-                          <div className="flex-1 h-px bg-border-base" />
-                          <span className="font-data text-[8px] uppercase tracking-widest text-text-faint">Tickers & Companies</span>
-                          <div className="flex-1 h-px bg-border-base" />
-                        </div>
+                    <div
+                      key={entry.id}
+                      onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
+                      className={cn(
+                        "flex gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
+                        subtitle ? "items-start" : "items-center",
+                        selectedIdentifier === entry.identifier
+                          ? "border-l-2 border-l-gold bg-gold-muted/30"
+                          : "bg-white hover:border-border-hover",
                       )}
-                      <div
-                        onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
-                        className={cn(
-                          "flex items-center justify-between gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
-                          selectedIdentifier === entry.identifier
-                            ? "border-l-2 border-l-gold bg-gold-muted/30"
-                            : isSector
-                              ? "bg-parchment-mid hover:border-border-hover"
-                              : "bg-white hover:border-border-hover",
-                        )}
-                      >
-                        {/* LEFT: name — wide, bold, truncates cleanly */}
-                        <span className="font-data text-[13px] font-bold text-text-primary truncate min-w-0 w-[80px] flex-shrink-0">
+                    >
+                      {/* LEFT: identifier + optional display_name subtitle */}
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <span className="font-data text-[13px] font-bold text-text-primary truncate">
                           {entry.identifier}
                         </span>
-
-                        {/* RIGHT: all metadata and actions */}
-                        <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
-                          {articleCount > 0 && (
-                            <span className="font-data text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
-                              {articleCount}
-                            </span>
-                          )}
-
-                          {entry.type === "ticker" && price && (
-                            <span className={cn("font-data text-[11px] tabular-nums", price.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
-                              ${price.price} <span className="text-[10px]">{price.pct >= 0 ? "+" : ""}{price.pct}%</span>
-                            </span>
-                          )}
-
-                          <div
-                            className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <button type="button" onClick={() => setMemoEntry(entry)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Generate memo">
-                              <Sparkles size={11} className="text-gold" />
-                            </button>
-                            {entry.type !== "sector" && (
-                              <button type="button" onClick={() => router.push(`/watchlist/${encodeURIComponent(entry.identifier)}`)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Open brief">
-                                <ExternalLink size={11} className="text-text-muted" />
-                              </button>
-                            )}
-                            <button type="button" onClick={() => handleRemove(entry.id)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Remove">
-                              <Trash2 size={11} className="text-text-faint hover:text-signal-dn" />
-                            </button>
-                          </div>
-
-                          {isSector
-                            ? <Globe size={10} className="text-text-faint" />
-                            : <ChevronRight size={10} className="text-text-faint" />
-                          }
-                        </div>
+                        {subtitle && (
+                          <span className="font-data text-[9px] text-text-faint truncate">
+                            {subtitle}
+                          </span>
+                        )}
                       </div>
-                    </Fragment>
+
+                      {/* RIGHT: article count, price, hover actions, chevron */}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {articleCount > 0 && (
+                          <span className="font-data text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
+                            {articleCount}
+                          </span>
+                        )}
+                        {entry.type === "ticker" && price && (
+                          <span className={cn("font-data text-[11px] tabular-nums", price.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
+                            ${price.price} <span className="text-[10px]">{price.pct >= 0 ? "+" : ""}{price.pct}%</span>
+                          </span>
+                        )}
+                        <div
+                          className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button type="button" onClick={() => setMemoEntry(entry)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Generate memo">
+                            <Sparkles size={11} className="text-gold" />
+                          </button>
+                          <button type="button" onClick={() => router.push(`/watchlist/${encodeURIComponent(entry.identifier)}`)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Open brief">
+                            <ExternalLink size={11} className="text-text-muted" />
+                          </button>
+                          <button type="button" onClick={() => handleRemove(entry.id)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Remove">
+                            <Trash2 size={11} className="text-text-faint hover:text-signal-dn" />
+                          </button>
+                        </div>
+                        <ChevronRight size={10} className="text-text-faint" />
+                      </div>
+                    </div>
                   );
                 })}
               </div>
@@ -606,7 +672,7 @@ export default function WatchlistPage() {
           <div className="flex items-center justify-between mb-3">
             {selectedIdentifier ? (
               <div className="flex items-center gap-2">
-                <span className="font-display text-[15px] font-bold text-espresso">{selectedIdentifier}</span>
+                <span className="font-display text-[15px] font-bold text-espresso">{selectedDisplayLabel}</span>
                 <span className="font-data text-[9px] text-text-faint">{displayedArticles.length} articles</span>
                 <button onClick={() => setSelectedIdentifier(null)} className="font-data text-[9px] text-text-muted hover:text-text-primary cursor-pointer ml-1">← All</button>
               </div>
