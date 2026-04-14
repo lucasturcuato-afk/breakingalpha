@@ -1,9 +1,104 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import type { JSX } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { X, Copy, Check, Download, Loader2 } from "lucide-react";
+
+function inlineBold(text: string, keyBase: string): (string | JSX.Element)[] {
+  const parts = text.split(/(\*\*[^*]+\*\*)/);
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <strong key={`${keyBase}-b-${i}`} className="font-bold text-espresso">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    return part;
+  });
+}
+
+function renderMarkdown(text: string, isStreaming: boolean): JSX.Element[] {
+  const allLines = text.split("\n");
+  const lines = isStreaming ? allLines.slice(0, -1) : allLines;
+
+  const elements: JSX.Element[] = [];
+  let paragraphLines: string[] = [];
+  let bulletLines: string[] = [];
+  let bulletStartIdx = 0;
+
+  function flushParagraph(idx: number) {
+    if (paragraphLines.length === 0) return;
+    const combined = paragraphLines.join(" ").trim();
+    if (combined) {
+      elements.push(
+        <p key={`p-${idx}`} className="font-sans text-[13px] text-text-secondary leading-[1.85] mb-2">
+          {inlineBold(combined, `p-${idx}`)}
+        </p>,
+      );
+    }
+    paragraphLines = [];
+  }
+
+  function flushBullets(idx: number) {
+    if (bulletLines.length === 0) return;
+    elements.push(
+      <ul key={`ul-${bulletStartIdx}`} className="list-disc ml-4 space-y-1 mb-2">
+        {bulletLines.map((b, j) => (
+          <li key={`li-${bulletStartIdx}-${j}`} className="font-sans text-[13px] text-text-secondary leading-[1.85]">
+            {inlineBold(b, `li-${bulletStartIdx}-${j}`)}
+          </li>
+        ))}
+      </ul>,
+    );
+    bulletLines = [];
+    bulletStartIdx = idx;
+  }
+
+  lines.forEach((line, i) => {
+    if (line.startsWith("## ")) {
+      flushParagraph(i);
+      flushBullets(i);
+      elements.push(
+        <h2 key={`h2-${i}`} className="font-display text-[15px] font-bold text-espresso mt-5 mb-2">
+          {inlineBold(line.slice(3).trim(), `h2-${i}`)}
+        </h2>,
+      );
+      return;
+    }
+    if (line.startsWith("# ")) {
+      flushParagraph(i);
+      flushBullets(i);
+      elements.push(
+        <h1 key={`h1-${i}`} className="font-display text-[17px] font-bold text-espresso mt-5 mb-2">
+          {inlineBold(line.slice(2).trim(), `h1-${i}`)}
+        </h1>,
+      );
+      return;
+    }
+    if (/^[*-] /.test(line)) {
+      flushParagraph(i);
+      if (bulletLines.length === 0) bulletStartIdx = i;
+      bulletLines.push(line.slice(2));
+      return;
+    }
+    if (line.trim() === "") {
+      flushParagraph(i);
+      flushBullets(i);
+      return;
+    }
+    // Plain text — flush bullets first, accumulate paragraph
+    flushBullets(i);
+    paragraphLines.push(line);
+  });
+
+  flushParagraph(lines.length);
+  flushBullets(lines.length);
+
+  return elements;
+}
 
 export type MemoType = "deal" | "thesis" | "brief" | "article" | "company";
 
@@ -162,17 +257,8 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt 
               </button>
             </div>
           ) : (
-            <div className="font-sans text-[13px] text-text-secondary leading-[1.85] whitespace-pre-wrap">
-              {displayed.split(/(\*\*.*?\*\*)/).map((part, i) => {
-                if (part.startsWith("**") && part.endsWith("**")) {
-                  return (
-                    <strong key={i} className="font-bold text-espresso">
-                      {part.slice(2, -2)}
-                    </strong>
-                  );
-                }
-                return part;
-              })}
+            <div className="font-sans text-[13px] text-text-secondary leading-[1.85]">
+              {renderMarkdown(displayed, memo.length > 0 && displayed.length < memo.length)}
               {memo && displayed.length < memo.length && (
                 <span className="inline-block w-0.5 h-3.5 bg-gold ml-0.5 animate-pulse align-text-bottom" />
               )}
