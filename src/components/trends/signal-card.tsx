@@ -1,16 +1,15 @@
 import { cn } from "@/lib/utils";
 import { AnomalyBadge, type AnomalyLevel } from "./anomaly-badge";
-import { Badge } from "@/components/ui/badge";
 
 export interface SignalData {
   id: string;
   title: string;
-  sector: string;
   anomaly: AnomalyLevel;
   description: string;
   sparkData?: number[];
   timestamp: string;
-  type?: string;
+  industry_verticals: string[];
+  activity_types: string[];
 }
 
 interface SignalCardProps {
@@ -63,9 +62,24 @@ export function SignalCard({ signal }: SignalCardProps) {
     >
       {/* Top row */}
       <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <AnomalyBadge level={signal.anomaly} />
-          {signal.type && <Badge variant="default">{signal.type}</Badge>}
+          {signal.industry_verticals.map((v) => (
+            <span
+              key={v}
+              className="inline-flex items-center px-2 py-0.5 rounded-md border font-sans text-[9px] font-semibold text-teal-700 bg-teal-50 border-teal-200"
+            >
+              {v}
+            </span>
+          ))}
+          {signal.activity_types.map((a) => (
+            <span
+              key={a}
+              className="inline-flex items-center px-2 py-0.5 rounded-md border font-sans text-[9px] font-semibold text-amber-700 bg-amber-50 border-amber-200"
+            >
+              {a}
+            </span>
+          ))}
         </div>
         <span className="font-data text-[9px] text-text-faint">{signal.timestamp}</span>
       </div>
