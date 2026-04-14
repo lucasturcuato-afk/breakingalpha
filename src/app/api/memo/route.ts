@@ -1,8 +1,75 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { createClient } from "@supabase/supabase-js";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+async function buildMemoContext(sector: string | undefined): Promise<string> {
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+
+    // 1. Recent resolved theses
+    let thesesQuery = supabase
+      .from("theses")
+      .select("sector, outcome, horizon, generated_at")
+      .in("outcome", ["confirmed", "invalidated"])
+      .order("generated_at", { ascending: false })
+      .limit(5);
+    if (sector) thesesQuery = thesesQuery.eq("sector", sector);
+    const { data: theses } = await thesesQuery;
+
+    // 2. Top 3 sources by win_rate
+    const { data: sources } = await supabase
+      .from("source_credibility")
+      .select("source, win_rate")
+      .order("win_rate", { ascending: false })
+      .limit(3);
+
+    // 3. Top patterns for sector
+    let patternQuery = supabase
+      .from("pattern_library")
+      .select("sector, horizon, win_rate")
+      .order("win_rate", { ascending: false })
+      .limit(3);
+    if (sector) patternQuery = patternQuery.eq("sector", sector);
+    const { data: patterns } = await patternQuery;
+
+    const lines: string[] = [];
+
+    if (theses && theses.length > 0) {
+      const confirmed = theses.filter((t) => t.outcome === "confirmed").length;
+      const total = theses.length;
+      const pct = Math.round((confirmed / total) * 100);
+      const horizon = theses[0].horizon || "medium-term";
+      lines.push(
+        `- In ${sector || "this sector"}, recent theses have confirmed at ${pct}% over ${horizon} horizons (n=${total}).`,
+      );
+    }
+
+    if (sources && sources.length > 0) {
+      for (const s of sources) {
+        lines.push(`- Source "${s.source}" has ${Math.round(s.win_rate * 100)}% win rate.`);
+      }
+    }
+
+    if (patterns && patterns.length > 0) {
+      for (const p of patterns) {
+        lines.push(
+          `- Pattern in ${p.sector} (${p.horizon}): ${Math.round(p.win_rate * 100)}% confirmation rate.`,
+        );
+      }
+    }
+
+    if (lines.length === 0) return "";
+    return "HISTORICAL CONTEXT:\n" + lines.join("\n");
+  } catch {
+    return "";
+  }
+}
 
 const TYPE_PROMPTS: Record<string, string> = {
   deal: `You are a senior M&A analyst. Write a sharp deal memo with exactly these 4 sections in this order:
@@ -64,12 +131,15 @@ export async function POST(request: NextRequest) {
     const system = systemPrompt || (type ? TYPE_PROMPTS[type] : undefined) || TYPE_PROMPTS.article;
     const truncated = String(content || "").slice(0, 4000);
 
+    const memoCtx = await buildMemoContext(sector || undefined);
+    const augmentedSystem = memoCtx ? memoCtx + "\n\n" + system : system;
+
     try {
       const completion = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: [{ role: "user", parts: [{ text: truncated }] }],
         config: {
-          systemInstruction: system,
+          systemInstruction: augmentedSystem,
           temperature: 0.35,
           maxOutputTokens: 750,
           thinkingConfig: { thinkingBudget: 0 },

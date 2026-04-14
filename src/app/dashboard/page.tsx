@@ -15,6 +15,7 @@ import {
   ActiveThesesWidget,
   WatchlistWidget,
   OnboardingBanner,
+  SystemIntelligenceWidget,
 } from "@/components/dashboard";
 import type { StoryData } from "@/components/dashboard";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -201,6 +202,9 @@ export default function DashboardPage() {
             ]}
           />
         </div>
+
+        {/* System Intelligence */}
+        <SystemIntelligenceWidget />
 
         {/* AI signal bar */}
         <AISignalBar
