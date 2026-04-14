@@ -33,71 +33,50 @@ export function ConvictionRing({
     label = 'BEAR'
   }
 
-  const stroke = 3
-  const r = (size / 2) - stroke - 1
-  const circ = +(2 * Math.PI * r).toFixed(4)
-  const filled = +(circ * fillPct).toFixed(4)
-  const gap = +(circ - filled).toFixed(4)
-  const cx = size / 2
-  const cy = size / 2
+  const degrees = Math.round(fillPct * 360)
+  const thickness = Math.round(size * 0.12)
+  const innerSize = size - thickness * 2
 
   return (
-    <div style={{ isolation: 'isolate' }}>
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '3px',
-          width: size,
-        }}
-      >
-        <svg
-          className="conviction-ring"
-          width={size}
-          height={size}
-          viewBox={`0 0 ${size} ${size}`}
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          {/* background track */}
-          <circle
-            cx={cx}
-            cy={cy}
-            r={r}
-            fill="none"
-            stroke="#2D2D2D"
-            strokeWidth={stroke}
-          />
-          {/* filled arc — starts at 12 o'clock via rotate */}
-          <circle
-            cx={cx}
-            cy={cy}
-            r={r}
-            fill="none"
-            stroke={color}
-            strokeWidth={stroke}
-            strokeLinecap="round"
-            strokeDasharray={`${filled} ${gap}`}
-            style={{
-              strokeDasharray: `${filled} ${gap}`,
-              strokeDashoffset: '0',
-            }}
-            transform={`rotate(-90 ${cx} ${cy})`}
-          />
-        </svg>
-        <span
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: '3px',
+      width: size,
+    }}>
+      <div style={{
+        width: size,
+        height: size,
+        borderRadius: '50%',
+        background: `conic-gradient(
+          ${color} 0deg ${degrees}deg,
+          #2D2D2D ${degrees}deg 360deg
+        )`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      }}>
+        <div
+          className="conviction-ring-inner"
           style={{
-            fontSize: '9px',
-            fontFamily: 'Inter, sans-serif',
-            color: color,
-            letterSpacing: '0.04em',
-            lineHeight: '1',
-            userSelect: 'none',
+            width: innerSize,
+            height: innerSize,
+            borderRadius: '50%',
           }}
-        >
-          {label}
-        </span>
+        />
       </div>
+      <span style={{
+        fontSize: '9px',
+        fontFamily: 'Inter, sans-serif',
+        color: color,
+        letterSpacing: '0.04em',
+        lineHeight: '1',
+        userSelect: 'none',
+      }}>
+        {label}
+      </span>
     </div>
   )
 }
