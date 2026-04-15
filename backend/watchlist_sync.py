@@ -72,6 +72,9 @@ def fetch_finnhub_articles(identifier: str, company_name: str) -> list[dict]:
         items = resp.json()[:20]
         articles = []
         for item in items:
+            item_id = item.get("id")
+            if not item_id or not item.get("headline"):
+                continue
             url = item.get("url", "")
             published_at = None
             ts = item.get("datetime")
@@ -81,7 +84,7 @@ def fetch_finnhub_articles(identifier: str, company_name: str) -> list[dict]:
                 except Exception:
                     published_at = None
             articles.append({
-                "article_id": f"finnhub-{item['id']}",
+                "article_id": f"finnhub-{item_id}",
                 "title": item.get("headline", ""),
                 "url": url,
                 "source": item.get("source", ""),
@@ -94,7 +97,7 @@ def fetch_finnhub_articles(identifier: str, company_name: str) -> list[dict]:
         print(f"⚠ Finnhub fetch failed for {identifier}: {ex}")
         return []
     finally:
-        time.sleep(0.5)
+        time.sleep(1.0)
 
 
 def fetch_exa_articles(identifier: str, company_name: str) -> list[dict]:
@@ -218,8 +221,14 @@ def upsert_articles_batch(identifier: str, articles: list[dict]) -> int:
             }
             for a in batch
         ]
-        supabase.table("watchlist_articles").upsert(rows, on_conflict="identifier,article_id").execute()
-        total += len(rows)
+        try:
+            supabase.table("watchlist_articles").upsert(
+                rows,
+                on_conflict="identifier,article_id",
+            ).execute()
+            total += len(rows)
+        except Exception as ex:
+            print(f"  ⚠ Upsert batch error for {identifier} (batch {i//batch_size + 1}): {ex}")
     return total
 
 
