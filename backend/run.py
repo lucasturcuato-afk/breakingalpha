@@ -185,3 +185,23 @@ if __name__ == "__main__":
     print("\n" + "=" * 50)
     print("✅ Pipeline complete")
     print("=" * 50)
+
+# ---------------------------------------------------------------------------
+# STEP MANIFEST — canonical pipeline order (update when adding steps)
+# ---------------------------------------------------------------------------
+# 1:    ingest
+# 2:    synthesize
+# 3:    deal_extractor
+# 4:    observe
+# 5:    critique
+# 6:    audit
+# 7:    trend_mapper
+# 8:    summarize
+# 9:    thesis_grader        (morning only)
+# 10:   pattern_memory       (morning only)
+# 11:   source_credibility   (morning only)
+# 12:   adversarial          (Sunday morning only)
+# 13:   watchlist_sync       (V3A — Noah)
+# 14:   [RESERVED]           (Lucas personalization sprint)
+# [POST] brief scoring, brief improvement addendum
+# ---------------------------------------------------------------------------
