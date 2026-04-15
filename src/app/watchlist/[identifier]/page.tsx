@@ -257,7 +257,7 @@ export default function WatchlistIdentifierPage({
         // Fallback: if still empty, fetch recent 50 globally and filter client-side
         if (finalArticles.length === 0) {
           const { data: fallback } = await getSupabase().from("articles")
-            .select("id, title, source, url, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score, companies")
+            .select("id, title, source, url, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score")
             .order("ingested_at", { ascending: false })
             .limit(50);
 
@@ -271,10 +271,8 @@ export default function WatchlistIdentifierPage({
               if (!isEnglishTitle(title)) return false;
               const t = title.toLowerCase();
               const s = ((a.summary as string) || "").toLowerCase();
-              const c = ((a.companies as string) || "").toLowerCase();
               return t.includes(resolvedLC) || t.includes(decodedLC) ||
-                     s.includes(resolvedLC) || s.includes(decodedLC) ||
-                     c.includes(resolvedLC) || c.includes(decodedLC);
+                     s.includes(resolvedLC) || s.includes(decodedLC);
             })
             .map((a: Record<string, unknown>) => ({
               id: a.id as string,

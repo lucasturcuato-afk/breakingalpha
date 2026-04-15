@@ -191,7 +191,7 @@ export function WatchlistAddInput({
     const value = query.trim();
     if (!value) return;
     if (value.length < 2) {
-      // Parent error state won't help here; just don't submit
+      await onAdd("", undefined);
       return;
     }
     // Check if it's a known ticker; if so, use the display name
@@ -302,6 +302,7 @@ export function WatchlistAddInput({
             disabled={
               submitting ||
               query.trim().length < 1 ||
+              (addType === "company" && query.trim().length < 2) ||
               (addType === "ticker" &&
                 query.trim().length > 0 &&
                 !selectedTicker &&

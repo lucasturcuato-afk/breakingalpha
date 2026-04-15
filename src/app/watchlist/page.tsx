@@ -565,7 +565,7 @@ export default function WatchlistPage() {
                       onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
                       className={cn(
                         "flex gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
-                        subtitle ? "items-start" : "items-center",
+                        "items-center",
                         selectedIdentifier === entry.identifier
                           ? "border-l-2 border-l-gold bg-gold-muted/30"
                           : "bg-white hover:border-border-hover",
@@ -577,7 +577,7 @@ export default function WatchlistPage() {
                           {entry.identifier}
                         </span>
                         {subtitle && (
-                          <span className="font-data text-[9px] text-text-faint truncate">
+                          <span className="font-data text-[9px] text-text-faint">
                             {subtitle}
                           </span>
                         )}
