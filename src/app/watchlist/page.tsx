@@ -20,6 +20,7 @@ import {
 import { createBrowserClient } from "@supabase/ssr";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { WatchlistAddInput, type AddType } from "@/components/watchlist/WatchlistAddInput";
+import { buildArticleOrFilter } from "@/lib/watchlist-utils";
 
 function getSupabase() {
   return createBrowserClient(
@@ -204,56 +205,24 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArti
     return dedupeAndSort((data || []).map(mapArticle));
   }
 
-  // ticker or company — resolve human-readable name for article queries
-  // Priority: 1) stored display_name  2) legacy bridge  3) raw identifier
-  const resolvedName: string =
+  // ticker or company — use fuzzy suffix-stripping to build a multi-term OR query.
+  // Priority for display name: 1) stored display_name  2) legacy bridge  3) raw identifier
+  const displayNameForSearch: string | null =
     entry.type === "company"
-      ? entry.identifier
-      : (entry.display_name
-          ?? LEGACY_TICKER_NAMES[entry.identifier.toUpperCase()]
-          ?? entry.identifier);
+      ? null // company identifiers are already the human-readable name
+      : (entry.display_name ?? LEGACY_TICKER_NAMES[entry.identifier.toUpperCase()] ?? null);
 
-  const hasAlias = resolvedName.toLowerCase() !== entry.identifier.toLowerCase();
+  const orFilter = buildArticleOrFilter(entry.identifier, displayNameForSearch, entry.type);
+  if (!orFilter) return [];
 
-  // Skip single-char raw ticker searches (e.g. "V" = Visa) to avoid false positives.
-  // Only do title match for tickers with 3+ alphanumeric chars.
-  const rawIdent = entry.identifier.replace(/[^A-Z0-9]/gi, "");
-  const skipRawTickerSearch = rawIdent.length <= 1;
-  const doTitleTickerMatch = rawIdent.length >= 3;
+  const { data } = await getSupabase()
+    .from("articles")
+    .select(baseSelect)
+    .or(orFilter)
+    .order("ingested_at", { ascending: false })
+    .limit(30);
 
-  // Primary queries — by company name (most precise)
-  const nameQueries = [
-    // primary_company exact (highest precision)
-    getSupabase().from("articles").select(baseSelect)
-      .ilike("primary_company", `%${resolvedName}%`)
-      .order("ingested_at", { ascending: false }).limit(20),
-    // companies array ILIKE (Supabase ILIKE on JSONB/array casts to text)
-    getSupabase().from("articles").select(baseSelect)
-      .ilike("companies", `%${resolvedName}%`)
-      .order("ingested_at", { ascending: false }).limit(20),
-    // title match on display name
-    getSupabase().from("articles").select(baseSelect)
-      .ilike("title", `%${resolvedName}%`)
-      .order("ingested_at", { ascending: false }).limit(20),
-  ];
-
-  // Raw ticker queries (only when ticker has 3+ chars to avoid false positives)
-  const rawQueries = (skipRawTickerSearch || !hasAlias) ? [] : (
-    doTitleTickerMatch ? [
-      getSupabase().from("articles").select(baseSelect)
-        .ilike("title", `%${entry.identifier}%`)
-        .order("ingested_at", { ascending: false }).limit(15),
-    ] : []
-  );
-
-  const results = await Promise.allSettled([...nameQueries, ...rawQueries]);
-  const rows: MatchedArticle[] = [];
-  results.forEach((r) => {
-    if (r.status === "fulfilled" && r.value.data) {
-      rows.push(...r.value.data.map(mapArticle));
-    }
-  });
-  return dedupeAndSort(rows);
+  return dedupeAndSort((data || []).map(mapArticle));
 }
 
 function buildWatchlistMemoContent(entry: WatchlistEntry, articles: MatchedArticle[]): string {

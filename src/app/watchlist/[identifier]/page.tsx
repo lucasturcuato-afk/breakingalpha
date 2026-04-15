@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { ArrowLeft, Sparkles, ExternalLink, RefreshCw } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 import { MemoModal } from "@/components/memo/MemoModal";
+import { buildArticleOrFilter } from "@/lib/watchlist-utils";
 
 function getSupabase() {
   return createBrowserClient(
@@ -170,8 +171,6 @@ export default function WatchlistIdentifierPage({
         ? canonicalVertical
         : (storedDN ?? LEGACY_TICKER_NAMES[decoded.toUpperCase()] ?? decoded);
 
-      const hasAlias = resolvedName.toLowerCase() !== decoded.toLowerCase();
-
       const quotePromise = !isSector
         ? fetch(`/api/watchlist-quotes?symbols=${decoded}`)
             .then((r) => r.json())
@@ -219,68 +218,41 @@ export default function WatchlistIdentifierPage({
         setArticles(merged.slice(0, 20));
         setLoading(false);
       } else {
-        const rawIdent = decoded.replace(/[^A-Z0-9]/gi, "");
-        const skipRaw = rawIdent.length <= 1;
-        const doTitleTickerMatch = rawIdent.length >= 3;
+        // Fuzzy multi-term OR query — strips corporate suffixes from display_name
+        // so "Goldman Sachs Group Inc" also finds articles about "Goldman Sachs".
+        const displayNameForSearch: string | null =
+          watchlistRow?.type === "company"
+            ? null
+            : (storedDN ?? LEGACY_TICKER_NAMES[decoded.toUpperCase()] ?? null);
 
-        // Primary queries — search by resolved company name (most precise)
-        const nameQueries = [
-          getSupabase().from("articles").select(articleSelect)
-            .ilike("primary_company", `%${resolvedName}%`)
-            .order("ingested_at", { ascending: false }).limit(20),
-          getSupabase().from("articles").select(articleSelect)
-            .ilike("companies", `%${resolvedName}%`)
-            .order("ingested_at", { ascending: false }).limit(20),
-          getSupabase().from("articles").select(articleSelect)
-            .ilike("title", `%${resolvedName}%`)
-            .order("ingested_at", { ascending: false }).limit(20),
-        ];
+        const orFilter = buildArticleOrFilter(decoded, displayNameForSearch, watchlistRow?.type ?? "ticker");
 
-        // Raw ticker title match (only for 3+ char tickers when there's an alias)
-        const rawQueries = (!skipRaw && hasAlias && doTitleTickerMatch) ? [
-          getSupabase().from("articles").select(articleSelect)
-            .ilike("title", `%${decoded}%`)
-            .order("ingested_at", { ascending: false }).limit(15),
-        ] : [];
-
-        const [quoteResult, ...articleResults] = await Promise.all([
+        const [quoteResult, articleResult] = await Promise.all([
           quotePromise,
-          ...[...nameQueries, ...rawQueries].map((q) =>
-            Promise.allSettled([q]).then((r) => r[0]),
-          ),
+          (async (): Promise<{ data: Record<string, unknown>[] | null }> => {
+            if (!orFilter) return { data: [] };
+            const result = await getSupabase()
+              .from("articles")
+              .select(articleSelect)
+              .or(orFilter)
+              .order("ingested_at", { ascending: false })
+              .limit(30);
+            return { data: (result.data ?? null) as Record<string, unknown>[] | null };
+          })(),
         ]);
 
         if (cancelled) return;
 
         setQuote(quoteResult);
 
-        const seen = new Set<string>();
-        const merged: WatchlistArticle[] = [];
-        articleResults.forEach((r) => {
-          if (!r || (r as PromiseSettledResult<{ data: Record<string, unknown>[] | null }>).status !== "fulfilled") return;
-          const fulfilled = r as PromiseFulfilledResult<{ data: Record<string, unknown>[] | null }>;
-          if (!fulfilled.value.data) return;
-          fulfilled.value.data.forEach((a: Record<string, unknown>) => {
-            if (seen.has(a.id as string)) return;
-            seen.add(a.id as string);
-            merged.push({
-              id: a.id as string,
-              title: a.title as string,
-              source: a.source as string | undefined,
-              url: a.url as string | undefined,
-              industry_verticals: (a.industry_verticals as string[] | null) ?? [],
-              activity_types: (a.activity_types as string[] | null) ?? [],
-              published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
-              summary: a.summary as string | undefined,
-              relevance_score: (a.relevance_score as number | null) ?? 0,
-            });
-          });
-        });
+        const merged = (articleResult.data || [])
+          .map(mapRow)
+          .filter((a) => isEnglishTitle(a.title));
 
         merged.sort((a, b) =>
           new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime(),
         );
-        const finalArticles = merged.filter((a) => isEnglishTitle(a.title)).slice(0, 20);
+        const finalArticles = merged.slice(0, 20);
 
         // Fallback: if still empty, fetch recent 50 globally and filter client-side
         if (finalArticles.length === 0) {

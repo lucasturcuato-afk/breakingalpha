@@ -187,9 +187,13 @@ export function WatchlistAddInput({
       return;
     }
 
-    // company — free text allowed
+    // company — free text allowed, but require 2+ chars
     const value = query.trim();
     if (!value) return;
+    if (value.length < 2) {
+      // Parent error state won't help here; just don't submit
+      return;
+    }
     // Check if it's a known ticker; if so, use the display name
     const known = TICKERS_DEDUPED.find(
       (t) => t.name.toLowerCase() === value.toLowerCase(),
@@ -209,6 +213,22 @@ export function WatchlistAddInput({
 
   // Validation hint for ticker mode
   const needsSelection = addType === "ticker" && query.length > 0 && !selectedTicker;
+
+  // Company mode: detect known public companies and unknown/private names
+  const trimmedQuery = query.trim();
+  const companyMatchInList =
+    addType === "company" && trimmedQuery.length >= 2
+      ? TICKERS_DEDUPED.find(
+          (t) =>
+            t.name.toLowerCase().includes(trimmedQuery.toLowerCase()) ||
+            t.ticker.toLowerCase() === trimmedQuery.toLowerCase(),
+        ) ?? null
+      : null;
+  const companyIsUnknown =
+    addType === "company" &&
+    trimmedQuery.length >= 2 &&
+    !companyMatchInList &&
+    !selectedTicker;
 
   return (
     <div className="bg-white border border-border-base rounded-xl p-4">
@@ -335,10 +355,42 @@ export function WatchlistAddInput({
           Select a ticker from the dropdown
         </p>
       )}
-      {addType === "company" && (
-        <p className="font-sans text-[10px] text-text-faint mt-1.5">
-          For private companies (e.g. Anthropic), type the name and press ADD.
-        </p>
+
+      {/* Company mode hints */}
+      {addType === "company" && !addError && (
+        <>
+          {/* Known public company — suggest switching to Ticker mode */}
+          {companyMatchInList && trimmedQuery.length >= 2 && (
+            <div className="mt-1.5 flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gold-muted border border-gold/30">
+              <span className="font-sans text-[11px] text-gold">
+                Found: <strong>{companyMatchInList.ticker}</strong> ({companyMatchInList.name}) — switch to{" "}
+                <button
+                  type="button"
+                  className="underline cursor-pointer font-semibold"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    onAddTypeChange("ticker");
+                  }}
+                >
+                  Ticker mode
+                </button>{" "}
+                for price tracking.
+              </span>
+            </div>
+          )}
+          {/* Unknown/private company — reassure user */}
+          {companyIsUnknown && (
+            <p className="font-sans text-[11px] text-amber-600 mt-1.5">
+              Not found in our database. Articles will be matched by company name.
+            </p>
+          )}
+          {/* Default hint when no query */}
+          {trimmedQuery.length === 0 && (
+            <p className="font-sans text-[10px] text-text-faint mt-1.5">
+              For private companies (e.g. Anthropic, SpaceX), type the name and press ADD.
+            </p>
+          )}
+        </>
       )}
     </div>
   );
