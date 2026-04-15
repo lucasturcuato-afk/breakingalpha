@@ -9,7 +9,10 @@ import { MemoModal } from "@/components/memo/MemoModal";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { cn } from "@/lib/utils";
 import { timeAgo } from "@/lib/company-intel";
+import { CompletenessBadge, SignalScore, SourceCredibilityBadge, getCompleteness, getAdjustedScore } from "@/lib/article-signal";
 import type { CompanyArticle } from "@/lib/company-intel";
+
+export type CredibilityMap = Record<string, number>;
 
 interface CompanyDetailClientProps {
   companyName: string;
@@ -19,6 +22,7 @@ interface CompanyDetailClientProps {
   memoContent: string;
   systemPrompt: string;
   totalArticles: number;
+  credibilityMap?: CredibilityMap;
 }
 
 export function CompanyDetailClient({
@@ -29,6 +33,7 @@ export function CompanyDetailClient({
   memoContent,
   systemPrompt,
   totalArticles,
+  credibilityMap = {},
 }: CompanyDetailClientProps) {
   const [memoOpen, setMemoOpen] = useState(false);
   const [memoToast, setMemoToast] = useState("");
@@ -139,7 +144,9 @@ export function CompanyDetailClient({
                   <p className="font-data text-[8px] uppercase tracking-widest text-gold font-bold px-0.5 pb-0.5">
                     Company Events
                   </p>
-                  {developmentArticles.map((a) => (
+                  {developmentArticles.map((a) => {
+                    const cmplt = getCompleteness(a.summary);
+                    return (
                     <div key={a.id} className="bg-white border border-gold/30 rounded-xl p-3">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-data text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide bg-gold-muted text-gold border border-gold-border flex-shrink-0">
@@ -153,6 +160,9 @@ export function CompanyDetailClient({
                             {timeAgo(a.published_at)}
                           </span>
                         )}
+                        <CompletenessBadge completeness={cmplt} />
+                        <SignalScore score={getAdjustedScore(a.relevance_score ?? null, cmplt)} />
+                        <SourceCredibilityBadge winRate={a.source ? credibilityMap[a.source] ?? null : null} />
                       </div>
                       <div className="flex items-start gap-2">
                         <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
@@ -170,7 +180,8 @@ export function CompanyDetailClient({
                         </p>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </>
               )}
 
@@ -183,7 +194,9 @@ export function CompanyDetailClient({
                   )}>
                     Sector Context
                   </p>
-                  {contextArticles.map((a) => (
+                  {contextArticles.map((a) => {
+                    const cmplt = getCompleteness(a.summary);
+                    return (
                     <div key={a.id} className="bg-white border border-border-base rounded-xl p-3">
                       <div className="flex items-center gap-2 mb-1">
                         {a.sector && (
@@ -202,6 +215,9 @@ export function CompanyDetailClient({
                             {timeAgo(a.published_at)}
                           </span>
                         )}
+                        <CompletenessBadge completeness={cmplt} />
+                        <SignalScore score={getAdjustedScore(a.relevance_score ?? null, cmplt)} />
+                        <SourceCredibilityBadge winRate={a.source ? credibilityMap[a.source] ?? null : null} />
                       </div>
                       <div className="flex items-start gap-2">
                         <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
@@ -219,7 +235,8 @@ export function CompanyDetailClient({
                         </p>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </>
               )}
             </div>

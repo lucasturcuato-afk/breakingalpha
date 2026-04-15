@@ -9,6 +9,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles, Plus, MessageSquare, ExternalLink, Bookmark, BookmarkCheck, Loader2 } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
+import { CompletenessBadge, SignalScore, SourceCredibilityBadge } from "@/lib/article-signal";
 import type { StoryData } from "@/components/dashboard";
 import type { BadgeVariant } from "@/components/ui/badge";
 
@@ -144,6 +145,9 @@ export function FeedRow({ story, onBookmark }: FeedRowProps) {
             <span className="font-data text-[10px] text-text-faint ml-auto flex-shrink-0">
               {story.timestamp}
             </span>
+            <CompletenessBadge completeness={story.completeness} />
+            <SignalScore score={story.adjustedScore} />
+            <SourceCredibilityBadge winRate={story.sourceWinRate} />
           </div>
 
           {/* Headline */}

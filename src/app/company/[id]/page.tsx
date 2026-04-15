@@ -9,6 +9,7 @@ import {
   buildMemoContent,
   buildMemoSystemPrompt,
 } from "@/lib/company-intel";
+import type { CredibilityMap } from "@/components/company/company-detail-client";
 
 // Convert a URL slug to a canonical company name.
 // e.g. "nvidia-corporation" → "NVIDIA", "goldman-sachs" → "Goldman Sachs",
@@ -61,6 +62,23 @@ export default async function CompanyDetailPage({
   const developmentArticles = classified.filter((a) => a._isDevelopment);
   const contextArticles = classified.filter((a) => !a._isDevelopment);
 
+  // Batch fetch source credibility
+  const uniqueSources = [...new Set(classified.map(a => a.source).filter(Boolean) as string[])];
+  let credibilityMap: CredibilityMap = {};
+  if (uniqueSources.length > 0) {
+    try {
+      const { data: credData } = await supabase
+        .from("source_credibility")
+        .select("source, win_rate")
+        .in("source", uniqueSources);
+      if (credData) {
+        for (const r of credData) {
+          credibilityMap[r.source] = r.win_rate;
+        }
+      }
+    } catch { /* soft-fail */ }
+  }
+
   const memoContent = buildMemoContent(companyName, developmentArticles, contextArticles);
   const systemPrompt = buildMemoSystemPrompt(companyName);
 
@@ -79,6 +97,7 @@ export default async function CompanyDetailPage({
         memoContent={memoContent}
         systemPrompt={systemPrompt}
         totalArticles={classified.length}
+        credibilityMap={credibilityMap}
       />
     </AppShell>
   );

@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 import { MemoModal } from "@/components/memo/MemoModal";
+import { CompletenessBadge, SignalScore, SourceCredibilityBadge, getCompleteness, getAdjustedScore } from "@/lib/article-signal";
+import type { Completeness } from "@/lib/article-signal";
 
 function getSupabase() {
   return createBrowserClient(
@@ -48,6 +50,9 @@ interface MatchedArticle {
   industry_verticals?: string[];
   activity_types?: string[];
   published_at?: string;
+  completeness?: Completeness;
+  adjustedScore?: number | null;
+  sourceWinRate?: number | null;
 }
 
 function timeAgo(dateStr: string): string {
@@ -108,7 +113,7 @@ export default function WatchlistPage() {
         const identifiers = newEntries.map((e: WatchlistEntry) => e.identifier.toLowerCase());
         const { data: articles } = await getSupabase()
           .from("articles")
-          .select("id, title, source, sector, industry_verticals, activity_types, published_at, ingested_at, summary, companies")
+          .select("id, title, source, sector, industry_verticals, activity_types, published_at, ingested_at, summary, companies, relevance_score")
           .order("relevance_score", { ascending: false })
           .limit(50);
 
@@ -121,15 +126,37 @@ export default function WatchlistPage() {
             const compStr = Array.isArray(cos) ? cos.map((c: string) => c.toLowerCase()).join(" ") : "";
             return identifiers.some((ident: string) => title.includes(ident) || summary.includes(ident) || compStr.includes(ident));
           });
-          setMatches(matched.slice(0, 20).map((a) => ({
-            id: a.id,
-            title: a.title,
-            source: a.source,
-            sector: a.sector,
-            industry_verticals: a.industry_verticals ?? [],
-            activity_types: a.activity_types ?? [],
-            published_at: a.published_at || a.ingested_at,
-          })));
+
+          const matchedSlice = matched.slice(0, 20);
+
+          // Batch fetch source credibility
+          const uniqueSources = [...new Set(matchedSlice.map(a => a.source).filter(Boolean) as string[])];
+          let credMap = new Map<string, number>();
+          if (uniqueSources.length > 0) {
+            try {
+              const { data: credData } = await getSupabase()
+                .from("source_credibility")
+                .select("source, win_rate")
+                .in("source", uniqueSources);
+              credMap = new Map(credData?.map(r => [r.source, r.win_rate]) ?? []);
+            } catch { /* soft-fail */ }
+          }
+
+          setMatches(matchedSlice.map((a) => {
+            const completeness = getCompleteness(a.summary);
+            return {
+              id: a.id,
+              title: a.title,
+              source: a.source,
+              sector: a.sector,
+              industry_verticals: a.industry_verticals ?? [],
+              activity_types: a.activity_types ?? [],
+              published_at: a.published_at || a.ingested_at,
+              completeness,
+              adjustedScore: getAdjustedScore(a.relevance_score ?? null, completeness),
+              sourceWinRate: credMap.get(a.source) ?? null,
+            };
+          }));
         }
       } else {
         setMatches([]);
@@ -386,6 +413,9 @@ export default function WatchlistPage() {
                           {timeAgo(a.published_at)}
                         </span>
                       )}
+                      <CompletenessBadge completeness={a.completeness} />
+                      <SignalScore score={a.adjustedScore} />
+                      <SourceCredibilityBadge winRate={a.sourceWinRate} />
                     </div>
                     <h4 className="font-sans text-[13px] font-semibold text-espresso leading-snug">
                       {a.title}
