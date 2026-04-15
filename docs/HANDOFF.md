@@ -87,6 +87,14 @@ Replaced GitHub Actions native cron on 2026-04-13 — GitHub's built-in schedule
 
 **watchlist:** id (uuid), user_id, identifier (text), type (enum: ticker/company/sector), created_at, updated_at. User-scoped RLS (read/insert/delete own rows).
 
+**user_profiles:** id (uuid, FK auth.users), role (text), sectors (text[]), created_at, updated_at. RLS: user can read/write own row (single FOR ALL policy).
+
+**user_thesis_states:** id (uuid), user_id (uuid, FK auth.users), thesis_id (uuid, FK theses), state (text: 'active'|'archived'), created_at. User-scoped RLS.
+
+**source_credibility:** id, source (text), win_rate (float), updated_at. Credibility scores for article sources; read by signal badge system.
+
+**pipeline_runs:** Extended with `brief_addendum` (text, nullable) and `brief_addendum_used` (boolean) columns for feedback loop integration (migrations: 20260414_add_brief_addendum_columns.sql, 20260414_add_brief_addendum_used_pipeline_runs.sql).
+
 **pipeline_runs, run_articles, brief_quality_scores, selection_audit, trend_clusters:** Phase 1 observation layer tables — see git history for schemas.
 
 ## Full Diagnostic Audit (2026-04-10)
@@ -143,7 +151,7 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
 
 ## Recently Completed (2026-04-15)
-Personalization system consolidation: merged dual conflicting preference systems into single source of truth (`user_profiles` table + `/api/user-profile` route + `useUserProfile()` React Context hook). Deleted stale `/api/preferences`, `/settings`, `/onboarding` pages + duplicate onboarding modals. Fixed profile settings 401 errors via cookie-based auth + RLS migration (single FOR ALL policy). Created `user_thesis_states` junction table for per-user thesis archive state. All consumers (dashboard, thesis-board, deal-flow) now use shared `useUserProfile()` hook. RLS migration requires manual run; `user_preferences` table can be dropped once validated.
+**Watchlist Overhaul (noah/watchlist-overhaul merged):** Two-column layout with per-identifier drill-down, unified WatchlistAddInput (ticker/company/sector with Finnhub/Clearbit autocomplete), stale sector auto-migration, per-entry article fetching (`fetchArticlesForEntry` + multi-strategy `.in()/.ilike()` filters, fuzzy match with suffix-stripping), Finnhub news fallback for zero-article tickers, Finnhub ticker search route, Clearbit company autocomplete, brief-on-entry modal at `/watchlist/brief?identifier=&type=` (Gemini memo from recent articles), HTML-stripping utility, short ticker guard (<4 chars), extended Finnhub window to 30 days, fixed GS subtitle alignment, PostgREST 400 fix. **Signal Strength & Credibility Badges:** article-signal.tsx exports `getCompleteness()` (FULL/PARTIAL/SNIPPET), `getAdjustedScore()`, `CompletenessBadge`, `SignalScore`, `SourceCredibilityBadge` (reads `source_credibility` table); used in feed-row, company intel. **Brief Feedback Loop:** `brief_feedback_loop.py` computes rolling quality signal from `brief_quality_scores` + `selection_audit`, injects self-improvement addendum into next synthesis via `pipeline_runs.brief_addendum` (new columns + migrations). **Track Record Page:** live at `/track-record`, shows thesis outcomes over time from `user_thesis_states`. **UI Explainability:** WhyThisThesis component explains thesis reasoning; TickerContext shows 1d change + 52w range on thesis cards via Finnhub. **Full-Text Scraping:** `fulltext.py` scrapes open-access sources, `backfill_content.py` backfills existing articles; ingest.py calls fulltext scraper. **AI-Personalized Briefs/Memos:** `/api/briefing` and `/api/memo` inject user profile (sectors, role) into generation prompt. **MemoModal Markdown:** proper heading/bullet/bold rendering. **Trends Live:** `/trends` page dual-dimension taxonomy (industry_verticals + activity_types) with live filter pills. **System Intelligence Widget:** dashboard widget shows pipeline health, article count, brief quality. **UI Polish:** morning brief, evening wrap, fonts, conviction ring, onboarding consolidated to single `OnboardingModal.tsx`. **Personalization system consolidation:** Merged dual conflicting preference systems into single source of truth (`user_profiles` table + `/api/user-profile` route + `useUserProfile()` React Context hook). Deleted stale `/api/preferences`, `/settings`, `/onboarding` pages + duplicate onboarding modals. Fixed profile settings 401 errors via cookie-based auth + RLS migration (single FOR ALL policy). Created `user_thesis_states` junction table for per-user thesis archive state. All consumers now use shared `useUserProfile()` hook. `user_preferences` table can be dropped.
 
 ## Recently Completed (2026-04-14)
 PR #88: company intel filter accuracy — explicit sector-to-vertical mapping (COMPANY_VERTICAL_OVERRIDES 74-entry ground-truth map + SECTOR_TO_VERTICAL fallback); primary_company attribution guard prevents PE firms accumulating wrong tags. PR #87: dual-row filter UI on /deal-flow (Activity Type + Sector rows, Match Any/All toggles, Clear All button); vertical filter consistency across /company and /deal-flow. Cron-job.org Evening job updated: request body now passes `{"ref":"main","inputs":{"mode":"evening"}}` (was missing mode input, defaulted to morning, causing stale Evening Wrap).
@@ -200,32 +208,31 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 10. **Phase 1 hardening — observe.py reconstruction fix (PR #56)** — `_reconstruct_selected()` rewritten to mirror current `synthesize._select_articles_for_synthesis()` (spine=12, floor=6, sector_cap=3, floor_min=7). `audit.py` `_TARGET_COUNT` corrected 20→18. Stale `_diversify_articles` reconstruction logic replaced. No schema changes.
 
 ## Pending / Known Issues
-- **RLS migration must be run manually** — `user_profiles` policies need consolidation to single FOR ALL policy. SQL provided in 2026-04-15 session summary. After migration, `user_preferences` table can be dropped once confirmed no references remain.
+- **Track Record outcome data sparse** — Page is live but sparse outcome data until more theses cycle through archive state over time; breadth will improve as user base grows.
 - **ConvictionRing partial arc fill deferred** — Currently shows full colored circle with color-coding (gold=HIGH, amber=MEDIUM, gray=WATCH, red=BEARISH); arc visualization deferred due to Tailwind v4 preflight SVG interference. Can be revisited once CSS preflight handling is resolved.
-- **PATCH /api/theses/[id] logging verification** — Confirm `=== PATCH START/FAILED ===` logs appear in terminal when dragging card to Archive after dev server restart (service role key now in .env.local)
 - **Wikidata validation at scale** — wikidata_entity_cache now populated on cache misses; needs full ingest run with fresh articles to validate entity quality in production
 - **E2E tests need Supabase credentials** — Playwright suite configured (10 specs, 48 tests) but pending valid E2E_USER_EMAIL, E2E_USER_PASSWORD in .env.local to run against real Supabase test user
 - **middleware.ts → proxy.ts** — Next.js 16 deprecation warning; rename `src/middleware.ts` to `src/proxy.ts` (breaking change in v16+)
 - **Google OAuth consent screen** shows Supabase project name instead of "Signalera" — update in Google Cloud Console > OAuth consent screen
 - **StoryCard Thesis button** (dashboard story cards) still inserts a new thesis directly instead of matching existing ones — only FeedRow button was updated
 - **COMPANY_IDENTITY map** (35 entries, hardcoded) should eventually migrate to `company_profiles` Supabase table (ticker, industry, brief, source fields) for broader coverage
-- **Trends page still hardcoded with static signals** — no live data integration
-- **Dashboard mood block and AI Signal Bar hardcoded static strings** — needs live data source
-- **Article inputs constrained to 500-char RSS summaries** — memo depth limited; full content archival deferred
+- **user_preferences table can be dropped** — Confirmed no references remain after personalization consolidation; safe to drop from Supabase
+- **Article full-content archival sparse** — `content` column populated only for open-access sources; paywall-gated articles remain at summary-only; acceptable limitation for now
 - **Earnings calendar integration** — requires ticker field + FMP/Polygon API; deferred
 - **Legacy data inconsistency (low priority)** — a few old DB rows have stale `deal_type`/`primary_company`; won't block progress; will correct via re-ingest over time
 
 ## Nav Tabs
-1. Dashboard — greeting, stat cards, top stories
+1. Dashboard — greeting, stat cards, top stories, system intelligence widget
 2. Morning Brief — daily AI brief, top deals, analyst sections
 3. Evening Wrap — end-of-day brief
-4. Live Feed — 150+ articles, real-time, sector filters, auto-refreshes 60s
-5. Thesis Board — AI-generated theses, conviction scores, detail panel with catalyst + evidence chain
+4. Live Feed — 150+ articles, real-time, sector filters, auto-refreshes 60s, signal strength badges
+5. Thesis Board — AI-generated theses, conviction scores, detail panel with catalyst + evidence chain + explainability
 6. Deal Flow — tracked deals, manual entry
 7. Company Intel — auto-extracted companies, sorted by mention frequency
-8. Trends — signal momentum, sector velocity, top movers
-9. Watchlist — personalized ticker/company/sector tracking, matched articles feed, live prices
-10. Settings — profile (from auth), sectors, modules, notifications, appearance, team
+8. Trends — dual-dimension taxonomy (industry_verticals + activity_types), live filter pills, signal momentum
+9. Watchlist — personalized ticker/company/sector tracking, two-column layout, matched articles feed, brief-on-entry
+10. Track Record — thesis outcome history, conviction vs outcome scorecard
+11. Settings — profile (from auth), sectors, modules, notifications, appearance, team
 
 ## Branch Strategy
 - main — production, auto-deploys to Vercel on push
