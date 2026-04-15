@@ -222,7 +222,23 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArti
     .order("ingested_at", { ascending: false })
     .limit(30);
 
-  return dedupeAndSort((data || []).map(mapArticle));
+  const result = dedupeAndSort((data || []).map(mapArticle));
+
+  if (result.length === 0 && entry.type === "ticker") {
+    try {
+      const res = await fetch(`/api/finnhub-news?symbol=${encodeURIComponent(entry.identifier)}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json.articles) && json.articles.length > 0) {
+          return dedupeAndSort(json.articles.map(mapArticle));
+        }
+      }
+    } catch {
+      // silent fallback failure — return empty
+    }
+  }
+
+  return result;
 }
 
 function buildWatchlistMemoContent(entry: WatchlistEntry, articles: MatchedArticle[]): string {
