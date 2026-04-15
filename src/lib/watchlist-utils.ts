@@ -116,7 +116,9 @@ export function buildArticleOrFilter(
     if (!safe) continue;
 
     conditions.push(`primary_company.ilike.%${safe}%`);
-    conditions.push(`title.ilike.%${safe}%`);
+    if (safe.length >= 6) {
+      conditions.push(`title.ilike.%${safe}%`);
+    }
   }
 
 
