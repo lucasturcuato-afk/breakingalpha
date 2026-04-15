@@ -63,7 +63,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { identifier, type } = body as { identifier?: string; type?: string };
+  const { identifier, type, display_name: clientDisplayName } = body as {
+    identifier?: string;
+    type?: string;
+    display_name?: string;
+  };
   if (!identifier || !type)
     return NextResponse.json(
       { error: "identifier and type required" },
@@ -98,11 +102,12 @@ export async function POST(request: NextRequest) {
     { status: 400 },
   );
 
-  // Ticker validation via Finnhub — extract display_name (human-readable company name)
-  // Company validation removed: private companies are not in Finnhub
-  let displayName: string | null = null;
+  // Resolve display_name:
+  // 1. If client already provided display_name (from autocomplete), use it directly.
+  // 2. Otherwise, fall back to Finnhub lookup for tickers.
+  let displayName: string | null = clientDisplayName?.trim() || null;
 
-  if (type === "ticker" && process.env.FINNHUB_API_KEY) {
+  if (!displayName && type === "ticker" && process.env.FINNHUB_API_KEY) {
     const r = await fetch(
       `https://finnhub.io/api/v1/search?q=${encodeURIComponent(normalizedIdentifier)}&token=${process.env.FINNHUB_API_KEY}`,
     );

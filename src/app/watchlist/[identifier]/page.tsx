@@ -31,6 +31,23 @@ const INDUSTRY_VERTICAL_NAMES = [
   "Agriculture",
 ];
 
+// Maps UI sector labels → actual DB sector column values
+const SECTOR_DB_MAPPING: Record<string, string[]> = {
+  "Technology": ["Technology M&A & Investment Banking", "Technology"],
+  "Healthcare & Biotech": ["Healthcare & Biotech"],
+  "Energy & Oil/Gas": ["Energy & Oil/Gas"],
+  "Financial Services": [
+    "Financial Services",
+    "Public Markets & Earnings",
+    "Private Equity & Buyouts",
+    "Venture Capital & Startup Funding",
+  ],
+  "Consumer & Retail": ["Consumer & Retail"],
+  "Aerospace & Defense": ["Aerospace & Defense"],
+  "Real Estate": ["Real Estate & Infrastructure", "Real Estate"],
+  "Materials & Mining": ["Materials & Mining"],
+};
+
 // LEGACY BRIDGE — used only for existing watchlist entries added before the
 // display_name column existed. New entries get display_name from Finnhub on add.
 // Safe to remove once all existing entries have been re-added.
@@ -56,6 +73,13 @@ interface WatchlistArticle {
   published_at?: string;
   summary?: string;
   relevance_score?: number;
+}
+
+/** Returns true if the title is primarily ASCII/English (>80% basic Latin chars). */
+function isEnglishTitle(title: string): boolean {
+  if (!title) return true;
+  const asciiCount = [...title].filter((c) => c.charCodeAt(0) < 256).length;
+  return asciiCount / title.length > 0.8;
 }
 
 function timeAgo(dateStr: string): string {
@@ -155,82 +179,73 @@ export default function WatchlistIdentifierPage({
             .catch(() => null)
         : Promise.resolve(null);
 
-      const articleSelect = "id, title, source, url, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score";
+      const articleSelect = "id, title, source, url, primary_company, industry_verticals, activity_types, published_at, ingested_at, summary, relevance_score";
+
+      const mapRow = (a: Record<string, unknown>): WatchlistArticle => ({
+        id: a.id as string,
+        title: a.title as string,
+        source: a.source as string | undefined,
+        url: a.url as string | undefined,
+        industry_verticals: (a.industry_verticals as string[] | null) ?? [],
+        activity_types: (a.activity_types as string[] | null) ?? [],
+        published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
+        summary: a.summary as string | undefined,
+        relevance_score: (a.relevance_score as number | null) ?? 0,
+      });
 
       if (isSector) {
-        const [quoteResult, containsResult, ilikeResult] = await Promise.all([
+        const dbSectors = SECTOR_DB_MAPPING[canonicalVertical];
+        const sectorQueryPromise = dbSectors && dbSectors.length > 0
+          ? getSupabase().from("articles").select(articleSelect)
+              .in("sector", dbSectors)
+              .order("ingested_at", { ascending: false }).limit(30)
+          : getSupabase().from("articles").select(articleSelect)
+              .ilike("sector", `%${canonicalVertical}%`)
+              .order("ingested_at", { ascending: false }).limit(30);
+
+        const [quoteResult, sectorResult] = await Promise.all([
           quotePromise,
-          getSupabase().from("articles").select(articleSelect)
-            .contains("industry_verticals", [canonicalVertical])
-            .order("ingested_at", { ascending: false }).limit(20),
-          getSupabase().from("articles").select(articleSelect)
-            .ilike("industry_verticals", `%${canonicalVertical}%`)
-            .order("ingested_at", { ascending: false }).limit(20),
+          sectorQueryPromise,
         ]);
 
         if (cancelled) return;
 
         setQuote(quoteResult);
 
-        const mapRow = (a: Record<string, unknown>): WatchlistArticle => ({
-          id: a.id as string,
-          title: a.title as string,
-          source: a.source as string | undefined,
-          url: a.url as string | undefined,
-          industry_verticals: (a.industry_verticals as string[] | null) ?? [],
-          activity_types: (a.activity_types as string[] | null) ?? [],
-          published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
-          summary: a.summary as string | undefined,
-          relevance_score: (a.relevance_score as number | null) ?? 0,
-        });
-
-        const seen = new Set<string>();
-        const merged: WatchlistArticle[] = [];
-        for (const result of [containsResult, ilikeResult]) {
-          (result.data || []).forEach((a: Record<string, unknown>) => {
-            if (!seen.has(a.id as string)) {
-              seen.add(a.id as string);
-              merged.push(mapRow(a));
-            }
-          });
-        }
+        const merged = (sectorResult.data || []).map(mapRow).filter((a) => isEnglishTitle(a.title));
         merged.sort((a, b) =>
           new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime(),
         );
         setArticles(merged.slice(0, 20));
         setLoading(false);
       } else {
-        // Skip single-char raw searches (e.g. "V")
         const rawIdent = decoded.replace(/[^A-Z0-9]/gi, "");
         const skipRaw = rawIdent.length <= 1;
+        const doTitleTickerMatch = rawIdent.length >= 3;
 
-        const rawQueries = skipRaw ? [] : [
+        // Primary queries — search by resolved company name (most precise)
+        const nameQueries = [
           getSupabase().from("articles").select(articleSelect)
-            .ilike("title", `%${decoded}%`)
+            .ilike("primary_company", `%${resolvedName}%`)
             .order("ingested_at", { ascending: false }).limit(20),
-          getSupabase().from("articles").select(articleSelect)
-            .ilike("summary", `%${decoded}%`)
-            .order("ingested_at", { ascending: false }).limit(15),
-          getSupabase().from("articles").select(articleSelect)
-            .ilike("companies", `%${decoded}%`)
-            .order("ingested_at", { ascending: false }).limit(20),
-        ];
-
-        const aliasQueries = hasAlias ? [
           getSupabase().from("articles").select(articleSelect)
             .ilike("companies", `%${resolvedName}%`)
             .order("ingested_at", { ascending: false }).limit(20),
           getSupabase().from("articles").select(articleSelect)
             .ilike("title", `%${resolvedName}%`)
             .order("ingested_at", { ascending: false }).limit(20),
+        ];
+
+        // Raw ticker title match (only for 3+ char tickers when there's an alias)
+        const rawQueries = (!skipRaw && hasAlias && doTitleTickerMatch) ? [
           getSupabase().from("articles").select(articleSelect)
-            .ilike("summary", `%${resolvedName}%`)
+            .ilike("title", `%${decoded}%`)
             .order("ingested_at", { ascending: false }).limit(15),
         ] : [];
 
         const [quoteResult, ...articleResults] = await Promise.all([
           quotePromise,
-          ...[...rawQueries, ...aliasQueries].map((q) =>
+          ...[...nameQueries, ...rawQueries].map((q) =>
             Promise.allSettled([q]).then((r) => r[0]),
           ),
         ]);
@@ -265,7 +280,7 @@ export default function WatchlistIdentifierPage({
         merged.sort((a, b) =>
           new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime(),
         );
-        const finalArticles = merged.slice(0, 20);
+        const finalArticles = merged.filter((a) => isEnglishTitle(a.title)).slice(0, 20);
 
         // Fallback: if still empty, fetch recent 50 globally and filter client-side
         if (finalArticles.length === 0) {
@@ -280,7 +295,9 @@ export default function WatchlistIdentifierPage({
           const decodedLC = decoded.toLowerCase();
           const fallbackFiltered = (fallback || [])
             .filter((a: Record<string, unknown>) => {
-              const t = ((a.title as string) || "").toLowerCase();
+              const title = (a.title as string) || "";
+              if (!isEnglishTitle(title)) return false;
+              const t = title.toLowerCase();
               const s = ((a.summary as string) || "").toLowerCase();
               const c = ((a.companies as string) || "").toLowerCase();
               return t.includes(resolvedLC) || t.includes(decodedLC) ||

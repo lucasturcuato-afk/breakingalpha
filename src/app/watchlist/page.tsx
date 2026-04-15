@@ -3,7 +3,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/shell";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
@@ -20,6 +19,7 @@ import {
 } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 import { MemoModal } from "@/components/memo/MemoModal";
+import { WatchlistAddInput, type AddType } from "@/components/watchlist/WatchlistAddInput";
 
 function getSupabase() {
   return createBrowserClient(
@@ -41,6 +41,25 @@ const INDUSTRY_VERTICALS = [
   "Materials & Mining",
   "Agriculture",
 ] as const;
+
+// Maps UI sector labels → actual DB sector column values
+// Use .in('sector', mappedValues) when present; fall back to .ilike for unmapped sectors.
+const SECTOR_DB_MAPPING: Record<string, string[]> = {
+  "Technology": ["Technology M&A & Investment Banking", "Technology"],
+  "Healthcare & Biotech": ["Healthcare & Biotech"],
+  "Energy & Oil/Gas": ["Energy & Oil/Gas"],
+  "Financial Services": [
+    "Financial Services",
+    "Public Markets & Earnings",
+    "Private Equity & Buyouts",
+    "Venture Capital & Startup Funding",
+  ],
+  "Consumer & Retail": ["Consumer & Retail"],
+  "Aerospace & Defense": ["Aerospace & Defense"],
+  "Real Estate": ["Real Estate & Infrastructure", "Real Estate"],
+  "Materials & Mining": ["Materials & Mining"],
+  // Industrials & Manufacturing, Media & Telecom, Agriculture → ilike fallback
+};
 
 const STALE_TO_CANONICAL: Record<string, string> = {
   "FINANCE": "Financial Services",
@@ -96,11 +115,19 @@ interface MatchedArticle {
   title: string;
   source?: string;
   sector?: string;
+  primary_company?: string;
   industry_verticals?: string[];
   activity_types?: string[];
   published_at?: string;
   relevance_score?: number;
   summary?: string;
+}
+
+/** Returns true if the title is primarily ASCII/English (>80% basic Latin chars). */
+function isEnglishTitle(title: string): boolean {
+  if (!title) return true;
+  const asciiCount = [...title].filter((c) => c.charCodeAt(0) < 256).length;
+  return asciiCount / title.length > 0.8;
 }
 
 function timeAgo(dateStr: string): string {
@@ -134,6 +161,7 @@ function mapArticle(a: Record<string, unknown>): MatchedArticle {
     title: a.title as string,
     source: a.source as string | undefined,
     sector: a.sector as string | undefined,
+    primary_company: a.primary_company as string | undefined,
     industry_verticals: (a.industry_verticals as string[] | null) ?? [],
     activity_types: (a.activity_types as string[] | null) ?? [],
     published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
@@ -155,30 +183,28 @@ function dedupeAndSort(rows: MatchedArticle[]): MatchedArticle[] {
 }
 
 async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArticle[]> {
-  const baseSelect = "id, title, source, sector, industry_verticals, activity_types, published_at, ingested_at, relevance_score, summary";
+  const baseSelect = "id, title, source, sector, primary_company, industry_verticals, activity_types, published_at, ingested_at, relevance_score, summary";
 
   if (entry.type === "sector") {
-    // Normalize to canonical casing — run both .contains and .ilike to catch
-    // both properly-stored arrays and text representations
     const canonicalVertical = toDisplayName(entry.identifier);
-    const [containsResult, ilikeResult] = await Promise.allSettled([
-      getSupabase().from("articles").select(baseSelect)
-        .contains("industry_verticals", [canonicalVertical])
-        .order("ingested_at", { ascending: false }).limit(20),
-      getSupabase().from("articles").select(baseSelect)
-        .ilike("industry_verticals", `%${canonicalVertical}%`)
-        .order("ingested_at", { ascending: false }).limit(20),
-    ]);
-    const rows: MatchedArticle[] = [];
-    for (const r of [containsResult, ilikeResult]) {
-      if (r.status === "fulfilled" && r.value.data) {
-        rows.push(...r.value.data.map(mapArticle));
-      }
+    const dbSectors = SECTOR_DB_MAPPING[canonicalVertical];
+
+    let sectorQuery;
+    if (dbSectors && dbSectors.length > 0) {
+      sectorQuery = getSupabase().from("articles").select(baseSelect)
+        .in("sector", dbSectors)
+        .order("ingested_at", { ascending: false }).limit(30);
+    } else {
+      sectorQuery = getSupabase().from("articles").select(baseSelect)
+        .ilike("sector", `%${canonicalVertical}%`)
+        .order("ingested_at", { ascending: false }).limit(30);
     }
-    return dedupeAndSort(rows);
+
+    const { data } = await sectorQuery;
+    return dedupeAndSort((data || []).map(mapArticle));
   }
 
-  // ticker or company — resolve human-readable name for alias queries
+  // ticker or company — resolve human-readable name for article queries
   // Priority: 1) stored display_name  2) legacy bridge  3) raw identifier
   const resolvedName: string =
     entry.type === "company"
@@ -189,35 +215,38 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArti
 
   const hasAlias = resolvedName.toLowerCase() !== entry.identifier.toLowerCase();
 
-  // Skip single-char ticker raw searches (e.g. "V") — 2+ char tickers are safe
-  const rawIdent = entry.identifier.replace(/[^A-Z0-9]/g, "");
+  // Skip single-char raw ticker searches (e.g. "V" = Visa) to avoid false positives.
+  // Only do title match for tickers with 3+ alphanumeric chars.
+  const rawIdent = entry.identifier.replace(/[^A-Z0-9]/gi, "");
   const skipRawTickerSearch = rawIdent.length <= 1;
+  const doTitleTickerMatch = rawIdent.length >= 3;
 
-  const rawQueries = skipRawTickerSearch ? [] : [
+  // Primary queries — by company name (most precise)
+  const nameQueries = [
+    // primary_company exact (highest precision)
     getSupabase().from("articles").select(baseSelect)
-      .ilike("title", `%${entry.identifier}%`)
+      .ilike("primary_company", `%${resolvedName}%`)
       .order("ingested_at", { ascending: false }).limit(20),
-    getSupabase().from("articles").select(baseSelect)
-      .ilike("summary", `%${entry.identifier}%`)
-      .order("ingested_at", { ascending: false }).limit(15),
-    getSupabase().from("articles").select(baseSelect)
-      .ilike("companies", `%${entry.identifier}%`)
-      .order("ingested_at", { ascending: false }).limit(20),
-  ];
-
-  const aliasQueries = hasAlias ? [
+    // companies array ILIKE (Supabase ILIKE on JSONB/array casts to text)
     getSupabase().from("articles").select(baseSelect)
       .ilike("companies", `%${resolvedName}%`)
       .order("ingested_at", { ascending: false }).limit(20),
+    // title match on display name
     getSupabase().from("articles").select(baseSelect)
       .ilike("title", `%${resolvedName}%`)
       .order("ingested_at", { ascending: false }).limit(20),
-    getSupabase().from("articles").select(baseSelect)
-      .ilike("summary", `%${resolvedName}%`)
-      .order("ingested_at", { ascending: false }).limit(15),
-  ] : [];
+  ];
 
-  const results = await Promise.allSettled([...rawQueries, ...aliasQueries]);
+  // Raw ticker queries (only when ticker has 3+ chars to avoid false positives)
+  const rawQueries = (skipRawTickerSearch || !hasAlias) ? [] : (
+    doTitleTickerMatch ? [
+      getSupabase().from("articles").select(baseSelect)
+        .ilike("title", `%${entry.identifier}%`)
+        .order("ingested_at", { ascending: false }).limit(15),
+    ] : []
+  );
+
+  const results = await Promise.allSettled([...nameQueries, ...rawQueries]);
   const rows: MatchedArticle[] = [];
   results.forEach((r) => {
     if (r.status === "fulfilled" && r.value.data) {
@@ -249,8 +278,7 @@ export default function WatchlistPage() {
   const [prices, setPrices] = useState<Record<string, WatchlistPrice>>({});
   const [articlesByIdentifier, setArticlesByIdentifier] = useState<Record<string, MatchedArticle[]>>({});
   const [loading, setLoading] = useState(true);
-  const [input, setInput] = useState("");
-  const [addType, setAddType] = useState<"ticker" | "company" | "sector">("ticker");
+  const [addType, setAddType] = useState<AddType>("ticker");
   const [addError, setAddError] = useState("");
   const [selectedIdentifier, setSelectedIdentifier] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<"newest" | "relevant">("newest");
@@ -352,22 +380,27 @@ export default function WatchlistPage() {
     refreshWatchlist();
   }, [refreshWatchlist]);
 
-  const handleAdd = async () => {
-    const identifier = input.trim();
-    if (!identifier) return;
+  const handleAdd = async (identifier: string, displayName?: string) => {
+    if (!identifier.trim()) {
+      setAddError("Please select a ticker from the dropdown");
+      return;
+    }
     setAddError("");
     try {
       const res = await fetch("/api/watchlist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier, type: addType }),
+        body: JSON.stringify({
+          identifier: identifier.trim(),
+          type: addType,
+          ...(displayName ? { display_name: displayName } : {}),
+        }),
       });
       if (!res.ok) {
         const body = await res.json();
         setAddError(body.error || "Failed to add");
         return;
       }
-      setInput("");
       await refreshWatchlist();
     } catch {
       setAddError("Network error");
@@ -390,16 +423,7 @@ export default function WatchlistPage() {
   const handleAddSector = async (sectorName: string) => {
     const isTracked = watchlist.some((e) => e.identifier.toLowerCase() === sectorName.toLowerCase());
     if (isTracked) return;
-    try {
-      await fetch("/api/watchlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier: sectorName, type: "sector" }),
-      });
-      await refreshWatchlist();
-    } catch (e) {
-      console.error("Failed to add sector:", e);
-    }
+    await handleAdd(sectorName);
   };
 
   const tickers = watchlist.filter((e) => e.type === "ticker");
@@ -420,7 +444,9 @@ export default function WatchlistPage() {
 
   const displayedArticles = useMemo(() => {
     if (selectedIdentifier) {
-      const arts = articlesByIdentifier[selectedIdentifier] ?? [];
+      const arts = (articlesByIdentifier[selectedIdentifier] ?? []).filter(
+        (a) => isEnglishTitle(a.title),
+      );
       return sortArticles(arts, sortMode).slice(0, 20);
     }
     const allArts = Object.values(articlesByIdentifier).flat();
@@ -430,7 +456,10 @@ export default function WatchlistPage() {
       seen.add(a.id);
       return true;
     });
-    return sortArticles(deduped, sortMode).slice(0, 60);
+    return sortArticles(
+      deduped.filter((a) => isEnglishTitle(a.title)),
+      sortMode,
+    ).slice(0, 60);
   }, [selectedIdentifier, articlesByIdentifier, sortMode]);
 
   return (
@@ -442,69 +471,15 @@ export default function WatchlistPage() {
             Track companies, tickers, and sectors. Articles matching your watchlist are boosted in relevance.
           </p>
 
-          {/* Add form */}
-          <div className="bg-white border border-border-base rounded-xl p-4">
-            <div className="flex gap-2 mb-2.5">
-              <Input
-                value={input}
-                onChange={(e) => { setInput(e.target.value); setAddError(""); }}
-                onKeyDown={(e) => { if (e.key === "Enter" && input.trim()) handleAdd(); }}
-                placeholder="e.g. NVDA, Anthropic, Technology"
-                className="flex-1 font-data"
-              />
-              <button
-                type="button"
-                onClick={handleAdd}
-                className="px-4 py-2 rounded-lg bg-gold text-cream font-sans text-[11px] font-bold hover:bg-gold-dark transition-colors cursor-pointer flex-shrink-0"
-              >
-                ADD
-              </button>
-            </div>
-            {addError && <p className="font-sans text-[11px] text-signal-dn mb-2">{addError}</p>}
-            <div className="flex gap-1.5">
-              {(["ticker", "company", "sector"] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setAddType(t)}
-                  className={cn(
-                    "px-3 py-1 rounded-md font-data text-[10px] cursor-pointer transition-colors",
-                    addType === t
-                      ? "bg-gold-muted border border-gold-border text-gold font-semibold"
-                      : "bg-parchment-mid border border-border-base text-text-muted hover:text-text-primary",
-                  )}
-                >
-                  {t.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Quick add sectors */}
-          <div>
-            <p className="font-data text-[9px] uppercase tracking-widest text-text-muted mb-2">Quick Add Sector</p>
-            <div className="flex flex-wrap gap-1.5">
-              {INDUSTRY_VERTICALS.map((s) => {
-                const isTracked = watchlist.some((e) => e.identifier.toLowerCase() === s.toLowerCase());
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => handleAddSector(s)}
-                    disabled={isTracked}
-                    className={cn(
-                      "px-2.5 py-1 rounded-md font-data text-[10px] cursor-pointer transition-colors",
-                      isTracked
-                        ? "bg-parchment-mid text-text-faint border border-border-base opacity-50 cursor-default"
-                        : "bg-gold-muted border border-gold-border text-gold hover:bg-gold/10",
-                    )}
-                  >
-                    {s}{isTracked ? " \u2713" : ""}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {/* Add form with autocomplete */}
+          <WatchlistAddInput
+            addType={addType}
+            onAddTypeChange={setAddType}
+            onAdd={handleAdd}
+            addError={addError}
+            onClearError={() => setAddError("")}
+            trackedIdentifiers={watchlist.map((e) => e.identifier)}
+          />
 
           {/* Stats */}
           {tickers.length > 0 && (
