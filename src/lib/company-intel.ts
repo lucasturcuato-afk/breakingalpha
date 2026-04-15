@@ -20,6 +20,7 @@ export interface CompanyArticle {
   sector?: string;
   sentiment?: string;
   summary?: string;
+  content?: string | null;
   published_at?: string;
   url?: string;
   primary_company?: string | null;

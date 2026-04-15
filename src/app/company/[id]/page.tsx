@@ -49,7 +49,7 @@ export default async function CompanyDetailPage({
   const { data: articles, error } = await supabase
     .from("articles")
     .select(
-      "id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies, primary_company, relevance_score, deal_type",
+      "id, title, source, sector, sentiment, summary, content, published_at, ingested_at, url, companies, primary_company, relevance_score, deal_type",
     )
     .order("ingested_at", { ascending: false })
     .limit(1500);

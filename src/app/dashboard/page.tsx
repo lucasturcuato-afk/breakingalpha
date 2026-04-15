@@ -117,7 +117,7 @@ export default function DashboardPage() {
         // Get top 4 stories
         const { data, error } = await supabase
           .from("articles")
-          .select("id, title, source, summary, sector, industry_verticals, activity_types, sentiment, published_at, ingested_at, url, companies, relevance_score")
+          .select("id, title, source, summary, content, sector, industry_verticals, activity_types, sentiment, published_at, ingested_at, url, companies, relevance_score")
           .order("relevance_score", { ascending: false })
           .order("ingested_at", { ascending: false })
           .limit(4);
@@ -145,7 +145,7 @@ export default function DashboardPage() {
 
           setStories(
             data.map((a) => {
-              const completeness = getCompleteness(a.summary);
+              const completeness = getCompleteness(a.content, a.summary);
               const adjustedScore = getAdjustedScore(a.relevance_score, completeness);
               return {
                 id: a.id,

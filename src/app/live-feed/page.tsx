@@ -96,7 +96,7 @@ export default function LiveFeedPage() {
     try {
       const { data, error } = await getSupabase()
         .from("articles")
-        .select("id, title, source, sector, industry_verticals, activity_types, sentiment, summary, published_at, ingested_at, url, companies, relevance_score")
+        .select("id, title, source, sector, industry_verticals, activity_types, sentiment, summary, content, published_at, ingested_at, url, companies, relevance_score")
         .order("ingested_at", { ascending: false })
         .limit(100);
 
@@ -117,7 +117,7 @@ export default function LiveFeedPage() {
       }
 
       const stories: LiveStory[] = data.map((a) => {
-        const completeness = getCompleteness(a.summary);
+        const completeness = getCompleteness(a.content, a.summary);
         return {
           id: a.id,
           title: a.title || "Untitled",

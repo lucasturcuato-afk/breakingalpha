@@ -106,7 +106,7 @@ export default function EveningWrapPage() {
 
         let { data: articles, error: articlesError } = await getSupabase()
           .from("articles")
-          .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies, relevance_score")
+          .select("id, title, source, sector, sentiment, summary, content, published_at, ingested_at, url, companies, relevance_score")
           .gte("ingested_at", cutoff24h)
           .order("relevance_score", { ascending: false })
           .limit(8);
@@ -116,7 +116,7 @@ export default function EveningWrapPage() {
         if ((articles?.length ?? 0) < 3) {
           const { data: fallback } = await getSupabase()
             .from("articles")
-            .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies, relevance_score")
+            .select("id, title, source, sector, sentiment, summary, content, published_at, ingested_at, url, companies, relevance_score")
             .gte("ingested_at", cutoff48h)
             .order("relevance_score", { ascending: false })
             .limit(8);
@@ -140,7 +140,7 @@ export default function EveningWrapPage() {
           }
 
           setStories(articles.map((a) => {
-            const completeness = getCompleteness(a.summary);
+            const completeness = getCompleteness(a.content, a.summary);
             return {
               id: a.id,
               title: a.title || "Untitled",

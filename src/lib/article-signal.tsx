@@ -4,11 +4,13 @@ import { cn } from "@/lib/utils";
 
 export type Completeness = "full" | "summary" | "headline";
 
-export function getCompleteness(content: string | null | undefined): Completeness {
-  if (!content) return "headline";
-  const len = content.length;
-  if (len > 500) return "full";
-  if (len >= 100) return "summary";
+export function getCompleteness(
+  content: string | null | undefined,
+  summary?: string | null | undefined
+): Completeness {
+  if (content && content.length > 500) return "full";
+  if (content && content.length >= 100) return "summary";
+  if (summary && summary.length > 200) return "summary";
   return "headline";
 }
 

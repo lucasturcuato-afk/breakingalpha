@@ -145,7 +145,7 @@ export function CompanyDetailClient({
                     Company Events
                   </p>
                   {developmentArticles.map((a) => {
-                    const cmplt = getCompleteness(a.summary);
+                    const cmplt = getCompleteness(a.content, a.summary);
                     return (
                     <div key={a.id} className="bg-white border border-gold/30 rounded-xl p-3">
                       <div className="flex items-center gap-2 mb-1">
@@ -195,7 +195,7 @@ export function CompanyDetailClient({
                     Sector Context
                   </p>
                   {contextArticles.map((a) => {
-                    const cmplt = getCompleteness(a.summary);
+                    const cmplt = getCompleteness(a.content, a.summary);
                     return (
                     <div key={a.id} className="bg-white border border-border-base rounded-xl p-3">
                       <div className="flex items-center gap-2 mb-1">

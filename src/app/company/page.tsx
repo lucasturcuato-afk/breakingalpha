@@ -316,7 +316,7 @@ export default function CompanyIntelPage() {
         // Correctness > performance here — filter client-side instead.
         const { data: articles, error: detailErr } = await getSupabase()
           .from("articles")
-          .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies, primary_company, relevance_score, deal_type")
+          .select("id, title, source, sector, sentiment, summary, content, published_at, ingested_at, url, companies, primary_company, relevance_score, deal_type")
           .order("ingested_at", { ascending: false })
           .limit(1500);
 
@@ -586,7 +586,7 @@ export default function CompanyIntelPage() {
                         Company Events
                       </p>
                       {developmentArticles.map((a) => {
-                        const cmplt = getCompleteness(a.summary);
+                        const cmplt = getCompleteness(a.content, a.summary);
                         return (
                         <div key={a.id} className="bg-white border border-gold/30 rounded-xl p-3">
                           <div className="flex items-center gap-2 mb-1">
@@ -635,7 +635,7 @@ export default function CompanyIntelPage() {
                         Sector Context
                       </p>
                       {contextArticles.map((a) => {
-                        const cmplt = getCompleteness(a.summary);
+                        const cmplt = getCompleteness(a.content, a.summary);
                         return (
                         <div key={a.id} className="bg-white border border-border-base rounded-xl p-3">
                           <div className="flex items-center gap-2 mb-1">

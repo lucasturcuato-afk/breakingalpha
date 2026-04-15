@@ -113,7 +113,7 @@ export default function WatchlistPage() {
         const identifiers = newEntries.map((e: WatchlistEntry) => e.identifier.toLowerCase());
         const { data: articles } = await getSupabase()
           .from("articles")
-          .select("id, title, source, sector, industry_verticals, activity_types, published_at, ingested_at, summary, companies, relevance_score")
+          .select("id, title, source, sector, industry_verticals, activity_types, published_at, ingested_at, summary, content, companies, relevance_score")
           .order("relevance_score", { ascending: false })
           .limit(50);
 
@@ -143,7 +143,7 @@ export default function WatchlistPage() {
           }
 
           setMatches(matchedSlice.map((a) => {
-            const completeness = getCompleteness(a.summary);
+            const completeness = getCompleteness(a.content, a.summary);
             return {
               id: a.id,
               title: a.title,
