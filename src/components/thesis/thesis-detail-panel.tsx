@@ -10,6 +10,7 @@ import type { ThesisItem } from "./thesis-types";
 import { ConvictionRing } from "./ConvictionRing";
 import { SparklineChart } from "./SparklineChart";
 import { TickerContext } from "./TickerContext";
+import { WhyThisThesis } from "./WhyThisThesis";
 
 // ── Helpers ──
 
@@ -347,6 +348,8 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
             </div>
           </div>
         </div>
+
+        <WhyThisThesis thesisId={thesis.id} />
 
         <div className="h-px bg-border-base" />
 
