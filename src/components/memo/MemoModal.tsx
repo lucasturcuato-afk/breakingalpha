@@ -109,6 +109,10 @@ interface MemoModalProps {
   content: string;
   type: MemoType;
   systemPrompt?: string;
+  /** If provided, skip the API call and display this text directly. */
+  preloadedMemo?: string;
+  /** Called with the full memo text after a successful API generation. */
+  onGenerated?: (text: string) => void;
 }
 
 const TYPE_LABELS: Record<MemoType, string> = {
@@ -119,7 +123,7 @@ const TYPE_LABELS: Record<MemoType, string> = {
   company: "Company Brief",
 };
 
-export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt }: MemoModalProps) {
+export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt, preloadedMemo, onGenerated }: MemoModalProps) {
   const [mounted, setMounted] = useState(false);
   const [memo, setMemo] = useState("");
   const [displayed, setDisplayed] = useState("");
@@ -129,15 +133,22 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt 
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Fetch memo on open
+  // Fetch memo on open (or use preloadedMemo if provided)
   useEffect(() => {
     if (!isOpen || !content) return;
     setMemo("");
     setDisplayed("");
     setError("");
-    setLoading(true);
     setCopied(false);
 
+    // If a preloaded memo was provided, skip the API call entirely.
+    if (preloadedMemo) {
+      setMemo(preloadedMemo);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
     let cancelled = false;
 
     (async () => {
@@ -154,6 +165,7 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt 
         const data = await res.json();
         if (!cancelled && data.memo) {
           setMemo(data.memo);
+          onGenerated?.(data.memo);
         } else if (!cancelled) {
           setError("No memo content returned");
         }
@@ -165,7 +177,7 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt 
     })();
 
     return () => { cancelled = true; };
-  }, [isOpen, content, type]);
+  }, [isOpen, content, type, preloadedMemo]);
 
   // Typewriter effect at 12ms/char
   useEffect(() => {
