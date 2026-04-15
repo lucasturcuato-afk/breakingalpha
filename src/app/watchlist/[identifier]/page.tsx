@@ -131,8 +131,32 @@ export default function WatchlistIdentifierPage({
     useState<WatchlistArticle | null>(null);
   const [sortMode, setSortMode] = useState<"newest" | "relevant">("newest");
   const [briefGeneratedAt, setBriefGeneratedAt] = useState<Date | null>(null);
+  const [cachedBriefText, setCachedBriefText] = useState<string | null>(null);
+  const [cachedBriefGeneratedAt, setCachedBriefGeneratedAt] = useState<Date | null>(null);
   const [quoteRefreshing, setQuoteRefreshing] = useState(false);
   const [storedDisplayName, setStoredDisplayName] = useState<string | null>(null);
+
+  const handleBriefGenerated = async (text: string) => {
+    setBriefGeneratedAt(new Date());
+    setCachedBriefText(text);
+    setCachedBriefGeneratedAt(new Date());
+    try {
+      await getSupabase()
+        .from("watchlist_briefs")
+        .upsert(
+          {
+            identifier: decoded,
+            brief_text: text,
+            article_count: articles.length,
+            generated_at: new Date().toISOString(),
+            model: "gemini-2.5-flash",
+          },
+          { onConflict: "identifier" },
+        );
+    } catch (err) {
+      console.warn("Brief cache write failed (non-critical):", err);
+    }
+  };
 
   const refreshQuote = async () => {
     if (isSector) return;
@@ -150,6 +174,27 @@ export default function WatchlistIdentifierPage({
     let cancelled = false;
 
     async function load() {
+      // Load cached brief (if within 12-hour TTL)
+      const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+      try {
+        const { data: briefRow } = await getSupabase()
+          .from("watchlist_briefs")
+          .select("brief_text, generated_at")
+          .eq("identifier", decoded)
+          .maybeSingle();
+        if (
+          briefRow &&
+          Date.now() - new Date(briefRow.generated_at).getTime() < TWELVE_HOURS_MS
+        ) {
+          if (!cancelled) {
+            setCachedBriefText(briefRow.brief_text);
+            setCachedBriefGeneratedAt(new Date(briefRow.generated_at));
+          }
+        }
+      } catch {
+        // Soft-fail — no cached brief available
+      }
+
       // Fetch display_name from watchlist table (used for article search resolution)
       const { data: watchlistRow } = await getSupabase()
         .from("watchlist")
@@ -436,33 +481,71 @@ Constraints:
             </div>
           ) : (
             <>
-              {briefGeneratedAt === null && !loading && articles.length > 0 && (
-                <div className="bg-parchment-mid border border-border-base rounded-xl p-4 mb-4">
-                  <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1">What you'll get</p>
-                  <p className="font-sans text-[12px] text-text-secondary leading-relaxed">
-                    An AI-generated research brief grounded in {articles.length} recent {articles.length === 1 ? "article" : "articles"} — structured like a bulge bracket equity research note with company snapshot, key developments, investment considerations, and a signal.
-                  </p>
-                  <p className="font-data text-[10px] text-text-faint italic mt-1.5">
-                    AI-generated · Based on recent coverage · Not financial advice
-                  </p>
+              {/* Cached brief available */}
+              {cachedBriefText && !memoOpen && (
+                <div className="mb-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="font-data text-[9px] text-text-faint">
+                      Generated {timeAgo(cachedBriefGeneratedAt!.toISOString())}
+                    </span>
+                    <span className="font-data text-[8px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded">
+                      Cached
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setMemoOpen(true)}
+                      disabled={loading}
+                      className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gold text-cream font-sans text-[13px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <Sparkles size={13} />
+                      View Brief
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setCachedBriefText(null); setCachedBriefGeneratedAt(null); setMemoOpen(true); }}
+                      disabled={loading || articles.length === 0}
+                      className="px-4 py-3 rounded-xl border border-border-base bg-white text-text-muted font-sans text-[13px] hover:text-text-primary transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      Regenerate
+                    </button>
+                  </div>
                 </div>
               )}
-              <button
-                type="button"
-                onClick={() => { setBriefGeneratedAt(new Date()); setMemoOpen(true); }}
-                disabled={loading || articles.length === 0}
-                className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gold text-cream font-sans text-[13px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Sparkles size={13} />
-                {briefGeneratedAt !== null ? "Regenerate Brief" : "Generate Brief"}
-              </button>
-              {loading && (
-                <p className="font-data text-[10px] text-text-faint mt-2">Loading articles...</p>
-              )}
-              {briefGeneratedAt !== null && (
-                <p className="font-data text-[9px] text-text-faint mt-2">
-                  Last generated {timeAgo(briefGeneratedAt.toISOString())}
-                </p>
+
+              {/* No cached brief */}
+              {!cachedBriefText && (
+                <>
+                  {briefGeneratedAt === null && !loading && articles.length > 0 && (
+                    <div className="bg-parchment-mid border border-border-base rounded-xl p-4 mb-4">
+                      <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1">What you'll get</p>
+                      <p className="font-sans text-[12px] text-text-secondary leading-relaxed">
+                        An AI-generated research brief grounded in {articles.length} recent {articles.length === 1 ? "article" : "articles"} — structured like a bulge bracket equity research note with company snapshot, key developments, investment considerations, and a signal.
+                      </p>
+                      <p className="font-data text-[10px] text-text-faint italic mt-1.5">
+                        AI-generated · Based on recent coverage · Not financial advice
+                      </p>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setBriefGeneratedAt(new Date()); setMemoOpen(true); }}
+                    disabled={loading || articles.length === 0}
+                    className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gold text-cream font-sans text-[13px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Sparkles size={13} />
+                    {briefGeneratedAt !== null ? "Regenerate Brief" : "Generate Brief"}
+                  </button>
+                  {loading && (
+                    <p className="font-data text-[10px] text-text-faint mt-2">Loading articles...</p>
+                  )}
+                  {briefGeneratedAt !== null && (
+                    <p className="font-data text-[9px] text-text-faint mt-2">
+                      Last generated {timeAgo(briefGeneratedAt.toISOString())}
+                    </p>
+                  )}
+                </>
               )}
             </>
           )}
@@ -597,6 +680,8 @@ Constraints:
           content={briefContent}
           type="company"
           systemPrompt={systemPrompt}
+          preloadedMemo={cachedBriefText ?? undefined}
+          onGenerated={handleBriefGenerated}
         />
       )}
 
