@@ -486,7 +486,7 @@ Constraints:
                 <div className="mb-3">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="font-data text-[9px] text-text-faint">
-                      Generated {timeAgo(cachedBriefGeneratedAt!.toISOString())}
+                      Generated {cachedBriefGeneratedAt ? timeAgo(cachedBriefGeneratedAt.toISOString()) : "recently"}
                     </span>
                     <span className="font-data text-[8px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded">
                       Cached
