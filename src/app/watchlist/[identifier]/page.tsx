@@ -307,7 +307,7 @@ export default function WatchlistIdentifierPage({
 
   const systemPrompt = useMemo(
     () =>
-      `You are a senior equity research analyst. Generate a concise, high-signal company brief in professional markdown. Use ## for section headers. Be specific — cite actual numbers, names, and dates from the provided articles. Do not use filler language.`,
+      `You are a senior equity research analyst and investment professional with 15+ years of experience at a top-tier investment bank. You write concise, high-signal company intelligence briefs for institutional investors, portfolio managers, and finance professionals. Your writing is precise, jargon-fluent, and data-driven. You never pad with filler. You lead with the most investment-relevant insight. You write in the style of a Goldman Sachs or Morgan Stanley equity research note — factual, direct, structured.`,
     [],
   );
 
@@ -318,20 +318,47 @@ export default function WatchlistIdentifierPage({
       : "company";
 
   const briefContent = useMemo(() => {
-    return `Ticker/Company: ${decoded}${companyName !== decoded ? ` (${companyName})` : ""}
-Type: ${typeLabel}
-${quote ? `Current Price: $${quote.price} (${quote.pct >= 0 ? "+" : ""}${quote.pct}%)` : "Price: N/A"}
+    const articleContext = sortArticles(articles, "newest")
+      .slice(0, 8)
+      .map((a) => {
+        const date = a.published_at ? timeAgo(a.published_at) : "unknown date";
+        const summaryLine = a.summary && a.summary.trim().length > 20
+          ? ` ${a.summary.trim().slice(0, 300)}`
+          : "";
+        return `[${a.source ?? "Unknown"}] ${date}: ${a.title}.${summaryLine}`;
+      })
+      .join("\n");
 
-Recent articles (${articles.length} total):
-${articles
-  .slice(0, 10)
-  .map(
-    (a) =>
-      `- ${a.title} (${a.source ?? "unknown"}, ${a.published_at ? timeAgo(a.published_at) : "unknown date"})${a.summary ? "\n  Summary: " + a.summary.slice(0, 150) : ""}`,
-  )
-  .join("\n")}
+    const contextBlock = articleContext.trim()
+      ? articleContext
+      : "No recent coverage available — use background knowledge and flag all claims with [Background knowledge].";
 
-Generate a professional company brief covering: current price action and what's driving it, company overview and positioning, recent developments from the articles above, upcoming catalysts to watch, and key risks. Format with clear sections.`;
+    return `Write a company intelligence brief for ${companyName}${companyName !== decoded ? ` (${decoded})` : ""} based on the following recent news and context.
+${quote ? `\nCurrent market data: ${decoded} trading at $${quote.price} (${quote.pct >= 0 ? "+" : ""}${quote.pct}% today).` : ""}
+
+Recent coverage:
+${contextBlock}
+
+Your brief must follow this exact structure:
+
+**COMPANY SNAPSHOT**
+One sentence: what this company does, its market position, and why it matters to investors right now.
+
+**KEY DEVELOPMENTS**
+2-3 bullet points covering the most investment-relevant recent events. Each bullet must be specific — name deals, amounts, counterparties, dates where available. No vague statements.
+
+**INVESTMENT CONSIDERATIONS**
+2-3 bullet points on what a sophisticated investor should be watching: catalysts, risks, competitive dynamics, valuation considerations, or macro tailwinds/headwinds relevant to this company.
+
+**SIGNAL**
+One sentence: the single most important thing to know about this company right now from an investment perspective.
+
+Constraints:
+- Total length: 150-250 words
+- No preamble, no "Here is your brief", start directly with COMPANY SNAPSHOT
+- If recent coverage is sparse, draw on your knowledge of the company but flag it: prefix any non-news-sourced claim with [Background knowledge]
+- Never fabricate specific numbers, deals, or dates not present in the provided articles
+- Write for a reader who already knows what a P/E ratio is`;
   }, [decoded, companyName, typeLabel, quote, articles]);
 
   return (
@@ -399,12 +426,12 @@ Generate a professional company brief covering: current price action and what's 
           {!loading && articles.length === 0 ? (
             <div className="bg-parchment-mid border border-border-base rounded-xl p-4">
               <p className="font-sans text-[13px] font-semibold text-text-primary mb-1">
-                No recent coverage found for {decoded}.
+                No recent Supabase coverage for {decoded}.
               </p>
               <p className="font-sans text-[12px] text-text-secondary">
-                Brief generation requires at least 1 article. Try searching{" "}
+                The brief generator needs at least 1 article from our pipeline. Try the{" "}
                 <button onClick={() => router.push(`/live-feed`)} className="text-gold hover:underline cursor-pointer">Live Feed</button>
-                {" "}for this company.
+                {" "}or check back after the next pipeline run (6am / 8pm ET weekdays).
               </p>
             </div>
           ) : (
@@ -413,7 +440,10 @@ Generate a professional company brief covering: current price action and what's 
                 <div className="bg-parchment-mid border border-border-base rounded-xl p-4 mb-4">
                   <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1">What you'll get</p>
                   <p className="font-sans text-[12px] text-text-secondary leading-relaxed">
-                    An AI-generated research brief grounded in {articles.length} recent articles — covering price action, company positioning, recent developments, upcoming catalysts, and key risks.
+                    An AI-generated research brief grounded in {articles.length} recent {articles.length === 1 ? "article" : "articles"} — structured like a bulge bracket equity research note with company snapshot, key developments, investment considerations, and a signal.
+                  </p>
+                  <p className="font-data text-[10px] text-text-faint italic mt-1.5">
+                    AI-generated · Based on recent coverage · Not financial advice
                   </p>
                 </div>
               )}

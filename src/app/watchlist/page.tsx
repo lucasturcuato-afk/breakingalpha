@@ -122,6 +122,7 @@ interface MatchedArticle {
   published_at?: string;
   relevance_score?: number;
   summary?: string;
+  url?: string;
 }
 
 function stripHtml(raw: string | null | undefined): string {
@@ -181,6 +182,7 @@ function mapArticle(a: Record<string, unknown>): MatchedArticle {
     published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
     relevance_score: (a.relevance_score as number | null) ?? 0,
     summary: stripHtml(a.summary as string | null | undefined) || undefined,
+    url: a.url as string | undefined,
   };
 }
 
@@ -197,7 +199,7 @@ function dedupeAndSort(rows: MatchedArticle[]): MatchedArticle[] {
 }
 
 async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArticle[]> {
-  const baseSelect = "id, title, source, sector, primary_company, industry_verticals, activity_types, published_at, ingested_at, relevance_score, summary";
+  const baseSelect = "id, title, source, sector, primary_company, industry_verticals, activity_types, published_at, ingested_at, relevance_score, summary, url";
 
   if (entry.type === "sector") {
     const canonicalVertical = toDisplayName(entry.identifier);
@@ -257,6 +259,23 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArti
     }
   }
 
+  // GDELT fallback for company entries with sparse coverage
+  if (entry.type === "company" && result.length < 3) {
+    try {
+      const searchName = entry.display_name || entry.identifier;
+      const gdeltRes = await fetch(`/api/news-search?q=${encodeURIComponent(searchName)}`, { signal: AbortSignal.timeout(6000) });
+      if (gdeltRes.ok) {
+        const gdeltJson = await gdeltRes.json();
+        if (Array.isArray(gdeltJson.articles) && gdeltJson.articles.length > 0) {
+          const gdeltArticles = gdeltJson.articles.map(mapArticle);
+          return dedupeAndSort([...result, ...gdeltArticles]);
+        }
+      }
+    } catch {
+      // silent fallback failure
+    }
+  }
+
   return result;
 }
 
@@ -272,6 +291,16 @@ function buildWatchlistMemoContent(entry: WatchlistEntry, articles: MatchedArtic
     lines.push(`- ${a.title} (${a.source ?? "unknown"}, ${date})`);
   });
   return lines.join("\n");
+}
+
+function cleanDisplayName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  return name
+    .replace(/\s*-\s*CL\s+[A-Z]\s*$/i, "")
+    .replace(/\s+INC-CL\s+[A-Z]\s*$/i, "")
+    .replace(/\s+-\s*Class\s+[A-Z]\s*$/i, "")
+    .replace(/\s+Class\s+[A-Z]\s+Shares?\s*$/i, "")
+    .trim() || null;
 }
 
 export default function WatchlistPage() {
@@ -447,6 +476,9 @@ export default function WatchlistPage() {
   const nonSectorEntries = watchlist.filter((e) => e.type !== "sector");
   const showDivider = sectorEntries.length > 0 && nonSectorEntries.length > 0;
 
+  const publicEntries = nonSectorEntries.filter((e) => e.type === "ticker");
+  const privateEntries = nonSectorEntries.filter((e) => e.type === "company");
+
   const selectedEntry = watchlist.find(e => e.identifier === selectedIdentifier);
   const selectedDisplayLabel = selectedIdentifier
     ? (selectedEntry?.type === "sector"
@@ -497,7 +529,7 @@ export default function WatchlistPage() {
           {tickers.length > 0 && (
             <div className="grid grid-cols-4 gap-2">
               {[
-                { label: "Watching", sub: `${watchlist.length} total`, value: watchlist.length, icon: <Star size={12} />, color: "text-gold" },
+                { label: "TRACKING", sub: `${watchlist.length} items`, value: watchlist.length, icon: <Star size={12} />, color: "text-gold" },
                 { label: "Gainers", sub: `of ${tickers.length} tickers`, value: gainers, icon: <TrendingUp size={12} />, color: "text-signal-up" },
                 { label: "Losers", sub: `of ${tickers.length} tickers`, value: losers, icon: <TrendingDown size={12} />, color: "text-signal-dn" },
                 { label: "Flat", sub: `of ${tickers.length} tickers`, value: flat, icon: <Minus size={12} />, color: "text-text-muted" },
@@ -558,7 +590,7 @@ export default function WatchlistPage() {
                           <div className="flex items-center gap-2 flex-shrink-0">
                             {articleCount > 0 && (
                               <span className="font-data text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
-                                {articleCount}
+                                {articleCount >= 20 ? "20+" : articleCount}
                               </span>
                             )}
                             <div
@@ -584,71 +616,143 @@ export default function WatchlistPage() {
                 {showDivider && (
                   <div className="flex items-center gap-2 my-2">
                     <div className="flex-1 h-px bg-border-base" />
-                    <span className="font-data text-[8px] uppercase tracking-widest text-text-faint">Tickers & Companies</span>
                     <div className="flex-1 h-px bg-border-base" />
                   </div>
                 )}
 
-                {/* TICKER/COMPANY GROUP */}
-                {nonSectorEntries.map((entry) => {
-                  const price = prices[entry.identifier];
-                  const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
-                  const subtitle = entry.display_name ?? LEGACY_TICKER_NAMES[entry.identifier.toUpperCase()];
-                  return (
-                    <div
-                      key={entry.id}
-                      onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
-                      className={cn(
-                        "flex gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
-                        "items-start",
-                        selectedIdentifier === entry.identifier
-                          ? "border-l-2 border-l-gold bg-gold-muted/30"
-                          : "bg-white hover:border-border-hover",
-                      )}
-                    >
-                      {/* LEFT: identifier + optional display_name subtitle */}
-                      <div className="flex flex-col min-w-0 flex-1">
-                        <span className="font-data text-[13px] font-bold text-text-primary truncate">
-                          {entry.identifier}
-                        </span>
-                        {subtitle && (
-                          <span className="font-data text-[9px] text-text-faint">
-                            {subtitle}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* RIGHT: article count, price, hover actions, chevron */}
-                      <div className="flex items-center gap-2 flex-shrink-0 self-center">
-                        {articleCount > 0 && (
-                          <span className="font-data text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
-                            {articleCount}
-                          </span>
-                        )}
-                        {entry.type === "ticker" && price && (
-                          <span className={cn("font-data text-[11px] tabular-nums", price.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
-                            ${price.price} <span className="text-[10px]">{price.pct >= 0 ? "+" : ""}{price.pct}%</span>
-                          </span>
-                        )}
+                {/* PUBLIC COMPANIES GROUP */}
+                {publicEntries.length > 0 && (
+                  <>
+                    <p className="font-data text-[8px] uppercase tracking-widest text-text-faint mb-1.5 mt-1">Public Companies</p>
+                    {publicEntries.map((entry) => {
+                      const price = prices[entry.identifier];
+                      const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
+                      const subtitle = cleanDisplayName(entry.display_name ?? LEGACY_TICKER_NAMES[entry.identifier.toUpperCase()]);
+                      return (
                         <div
-                          className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={(e) => e.stopPropagation()}
+                          key={entry.id}
+                          onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
+                          className={cn(
+                            "flex gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
+                            "items-start",
+                            "min-h-[56px]",
+                            selectedIdentifier === entry.identifier
+                              ? "border-l-2 border-l-gold bg-gold-muted/30"
+                              : "bg-white hover:border-border-hover",
+                          )}
                         >
-                          <button type="button" onClick={() => setMemoEntry(entry)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Generate memo">
-                            <Sparkles size={11} className="text-gold" />
-                          </button>
-                          <button type="button" onClick={() => router.push(`/watchlist/${encodeURIComponent(entry.identifier)}`)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Open brief">
-                            <ExternalLink size={11} className="text-text-muted" />
-                          </button>
-                          <button type="button" onClick={() => handleRemove(entry.id)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Remove">
-                            <Trash2 size={11} className="text-text-faint hover:text-signal-dn" />
-                          </button>
+                          {/* LEFT: identifier + optional display_name subtitle */}
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="font-data text-[13px] font-bold text-text-primary truncate">
+                              {entry.identifier}
+                            </span>
+                            {subtitle && (
+                              <span className="font-data text-[9px] text-text-faint">
+                                {subtitle}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* RIGHT: article count, price, hover actions, chevron */}
+                          <div className="flex items-center gap-2 flex-shrink-0 self-center">
+                            {articleCount > 0 && (
+                              <span className="font-data text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
+                                {articleCount >= 20 ? "20+" : articleCount}
+                              </span>
+                            )}
+                            {entry.type === "ticker" && price && (
+                              <span className={cn("font-data text-[11px] tabular-nums", price.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
+                                ${price.price} <span className="text-[10px]">{price.pct >= 0 ? "+" : ""}{price.pct}%</span>
+                              </span>
+                            )}
+                            <div
+                              className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button type="button" onClick={() => setMemoEntry(entry)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Generate memo">
+                                <Sparkles size={11} className="text-gold" />
+                              </button>
+                              <button type="button" onClick={() => router.push(`/watchlist/${encodeURIComponent(entry.identifier)}`)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Open brief">
+                                <ExternalLink size={11} className="text-text-muted" />
+                              </button>
+                              <button type="button" onClick={() => handleRemove(entry.id)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Remove">
+                                <Trash2 size={11} className="text-text-faint hover:text-signal-dn" />
+                              </button>
+                            </div>
+                            <ChevronRight size={10} className="text-text-faint" />
+                          </div>
                         </div>
-                        <ChevronRight size={10} className="text-text-faint" />
-                      </div>
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </>
+                )}
+
+                {/* PRIVATE COMPANIES GROUP */}
+                {privateEntries.length > 0 && (
+                  <>
+                    <p className="font-data text-[8px] uppercase tracking-widest text-text-faint mb-1.5 mt-1">Private Companies</p>
+                    {privateEntries.map((entry) => {
+                      const price = prices[entry.identifier];
+                      const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
+                      const subtitle = cleanDisplayName(entry.display_name ?? LEGACY_TICKER_NAMES[entry.identifier.toUpperCase()]);
+                      return (
+                        <div
+                          key={entry.id}
+                          onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
+                          className={cn(
+                            "flex gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
+                            "items-start",
+                            "min-h-[56px]",
+                            selectedIdentifier === entry.identifier
+                              ? "border-l-2 border-l-gold bg-gold-muted/30"
+                              : "bg-white hover:border-border-hover",
+                          )}
+                        >
+                          {/* LEFT: identifier + optional display_name subtitle */}
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="font-data text-[13px] font-bold text-text-primary truncate">
+                              {entry.identifier}
+                            </span>
+                            {subtitle && (
+                              <span className="font-data text-[9px] text-text-faint">
+                                {subtitle}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* RIGHT: article count, price, hover actions, chevron */}
+                          <div className="flex items-center gap-2 flex-shrink-0 self-center">
+                            {articleCount > 0 && (
+                              <span className="font-data text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
+                                {articleCount >= 20 ? "20+" : articleCount}
+                              </span>
+                            )}
+                            {entry.type === "ticker" && price && (
+                              <span className={cn("font-data text-[11px] tabular-nums", price.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
+                                ${price.price} <span className="text-[10px]">{price.pct >= 0 ? "+" : ""}{price.pct}%</span>
+                              </span>
+                            )}
+                            <div
+                              className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button type="button" onClick={() => setMemoEntry(entry)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Generate memo">
+                                <Sparkles size={11} className="text-gold" />
+                              </button>
+                              <button type="button" onClick={() => router.push(`/watchlist/${encodeURIComponent(entry.identifier)}`)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Open brief">
+                                <ExternalLink size={11} className="text-text-muted" />
+                              </button>
+                              <button type="button" onClick={() => handleRemove(entry.id)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Remove">
+                                <Trash2 size={11} className="text-text-faint hover:text-signal-dn" />
+                              </button>
+                            </div>
+                            <ChevronRight size={10} className="text-text-faint" />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -720,6 +824,9 @@ export default function WatchlistPage() {
                       </span>
                     ))}
                     {a.source && <span className="font-data text-[9px] text-text-muted">{a.source}</span>}
+                    {a.id.startsWith("finnhub-") && (
+                      <span className="font-data text-[9px] text-text-faint">via Finnhub</span>
+                    )}
                     {a.published_at && (
                       <span className="font-data text-[9px] text-text-faint ml-auto">{timeAgo(a.published_at)}</span>
                     )}
@@ -732,13 +839,41 @@ export default function WatchlistPage() {
                       Memo
                     </button>
                   </div>
-                  <h4 className="font-sans text-[13px] font-semibold text-espresso leading-snug">
-                    {a.title}
-                  </h4>
-                  {a.summary && (
-                    <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
-                      {a.summary}
-                    </p>
+                  {a.url ? (
+                    <a
+                      href={a.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block hover:opacity-80 transition-opacity"
+                    >
+                      <h4 className="font-sans text-[13px] font-semibold text-espresso leading-snug">
+                        {a.title}
+                      </h4>
+                      {(!a.summary || a.summary.trim().length < 20) ? (
+                        <span className="font-data text-[9px] text-text-faint italic mt-0.5 block">
+                          Headline only
+                        </span>
+                      ) : (
+                        <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
+                          {a.summary}
+                        </p>
+                      )}
+                    </a>
+                  ) : (
+                    <div>
+                      <h4 className="font-sans text-[13px] font-semibold text-espresso leading-snug">
+                        {a.title}
+                      </h4>
+                      {(!a.summary || a.summary.trim().length < 20) ? (
+                        <span className="font-data text-[9px] text-text-faint italic mt-0.5 block">
+                          Headline only
+                        </span>
+                      ) : (
+                        <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
+                          {a.summary}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}
