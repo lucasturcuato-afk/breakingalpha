@@ -2,7 +2,7 @@
 run.py  —  BreakingAlpha pipeline orchestrator
 Order: ingest → synthesize → extract deals → observe → critique → audit →
        trend_map → summarize → thesis_grader → pattern_memory →
-       source_credibility → adversarial
+       source_credibility → adversarial → watchlist_sync
 
 Gating:
   - thesis_grader / pattern_memory / source_credibility → morning runs only
@@ -26,6 +26,7 @@ import thesis_grader
 import pattern_memory
 import source_credibility
 import adversarial
+import watchlist_sync
 
 logger = logging.getLogger("run")
 if not logger.handlers:
@@ -123,7 +124,7 @@ if __name__ == "__main__":
     else:
         logger.info("source_credibility: skipped (morning only)")
 
-    print("\n[12/12] ADVERSARIAL REVIEW")
+    print("\n[12/13] ADVERSARIAL REVIEW")
     if _is_sunday_morning(brief_type):
         try:
             adversarial.main()
@@ -131,6 +132,12 @@ if __name__ == "__main__":
             logger.warning("adversarial step failed: %s", e)
     else:
         logger.info("adversarial: skipped (Sunday morning only)")
+
+    print("\n[13/13] WATCHLIST ARTICLE SYNC")
+    try:
+        watchlist_sync.run_sync()
+    except Exception as e:
+        logger.warning("watchlist sync failed (pipeline unaffected): %s", e)
 
     # --- Brief feedback loop: score the just-generated brief (soft-fail) ---
     print("\n[POST] BRIEF SCORING")
