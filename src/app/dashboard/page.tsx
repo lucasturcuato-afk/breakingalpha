@@ -24,6 +24,7 @@ import { FileText } from "lucide-react";
 import { OnboardingGate } from "@/components/onboarding/onboarding-gate";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
 
 interface UserProfile {
   full_name?: string | null;
@@ -116,7 +117,7 @@ export default function DashboardPage() {
         // Get top 4 stories
         const { data, error } = await supabase
           .from("articles")
-          .select("id, title, source, summary, sector, industry_verticals, activity_types, sentiment, published_at, ingested_at, url, companies")
+          .select("id, title, source, summary, sector, industry_verticals, activity_types, sentiment, published_at, ingested_at, url, companies, relevance_score")
           .order("relevance_score", { ascending: false })
           .order("ingested_at", { ascending: false })
           .limit(4);
@@ -127,28 +128,50 @@ export default function DashboardPage() {
         }
 
         if (data) {
+          // Fetch source credibility in one batched query
+          let credMap = new Map<string, number>();
+          try {
+            const sources = [...new Set(data.map((a) => a.source).filter(Boolean))] as string[];
+            if (sources.length > 0) {
+              const { data: credData } = await supabase
+                .from("source_credibility")
+                .select("source, win_rate")
+                .in("source", sources);
+              credMap = new Map(credData?.map((r: { source: string; win_rate: number }) => [r.source, r.win_rate]) ?? []);
+            }
+          } catch {
+            // credibility data is optional
+          }
+
           setStories(
-            data.map((a) => ({
-              id: a.id,
-              title: a.title || "Untitled",
-              source: a.source || "Unknown",
-              timestamp: timeAgo(a.published_at || a.ingested_at),
-              sentiment: (a.sentiment || "neutral").toLowerCase(),
-              sector: a.sector || undefined,
-              industry_verticals: a.industry_verticals ?? [],
-              activity_types: a.activity_types ?? [],
-              summary: a.summary || undefined,
-              tags: (() => {
-                if (!a.companies) return undefined;
-                try {
-                  const parsed = typeof a.companies === "string" ? JSON.parse(a.companies) : a.companies;
-                  return Array.isArray(parsed) ? parsed.slice(0, 3) : undefined;
-                } catch { return undefined; }
-              })(),
-              url: a.url || undefined,
-              read: false,
-              saved: false,
-            })),
+            data.map((a) => {
+              const completeness = getCompleteness(a.summary);
+              const adjustedScore = getAdjustedScore(a.relevance_score, completeness);
+              return {
+                id: a.id,
+                title: a.title || "Untitled",
+                source: a.source || "Unknown",
+                timestamp: timeAgo(a.published_at || a.ingested_at),
+                sentiment: (a.sentiment || "neutral").toLowerCase(),
+                sector: a.sector || undefined,
+                industry_verticals: a.industry_verticals ?? [],
+                activity_types: a.activity_types ?? [],
+                summary: a.summary || undefined,
+                tags: (() => {
+                  if (!a.companies) return undefined;
+                  try {
+                    const parsed = typeof a.companies === "string" ? JSON.parse(a.companies) : a.companies;
+                    return Array.isArray(parsed) ? parsed.slice(0, 3) : undefined;
+                  } catch { return undefined; }
+                })(),
+                url: a.url || undefined,
+                read: false,
+                saved: false,
+                completeness,
+                adjustedScore,
+                sourceWinRate: credMap.get(a.source) ?? null,
+              };
+            }),
           );
         }
       } catch (e) {

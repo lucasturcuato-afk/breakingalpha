@@ -11,6 +11,8 @@ import { BookmarkButton } from "@/components/ui/bookmark";
 import { Sparkles, Plus, MessageSquare, Loader2 } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
 import type { BadgeVariant } from "@/components/ui/badge";
+import type { Completeness } from "@/lib/article-signal";
+import { CompletenessBadge, SignalScore, SourceCredibilityBadge } from "@/lib/article-signal";
 
 // ---------------------------------------------------------------------------
 // Thesis match helpers — used by both card variants
@@ -57,6 +59,9 @@ export interface StoryData {
   url?: string;
   read?: boolean;
   saved?: boolean;
+  completeness?: Completeness;
+  adjustedScore?: number | null;
+  sourceWinRate?: number | null;
 }
 
 function sentimentToVariant(sentiment: string): BadgeVariant {
@@ -175,6 +180,9 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
           <span className="font-data text-[10px] text-text-faint ml-auto">
             {story.timestamp}
           </span>
+          <CompletenessBadge completeness={story.completeness} />
+          <SignalScore score={story.adjustedScore} />
+          <SourceCredibilityBadge winRate={story.sourceWinRate} />
         </div>
 
         {/* Headline */}
@@ -416,6 +424,9 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
             <span className="font-data text-[9px] text-text-faint ml-auto">
               {story.timestamp}
             </span>
+            <CompletenessBadge completeness={story.completeness} />
+            <SignalScore score={story.adjustedScore} />
+            <SourceCredibilityBadge winRate={story.sourceWinRate} />
           </div>
           <h4 className="font-[family-name:var(--font-playfair-display)] text-[13px] font-bold text-espresso leading-snug hover:text-gold-dark transition-colors">
             {story.title}

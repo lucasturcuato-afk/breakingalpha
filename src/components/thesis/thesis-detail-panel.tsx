@@ -9,6 +9,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import type { ThesisItem } from "./thesis-types";
 import { ConvictionRing } from "./ConvictionRing";
 import { SparklineChart } from "./SparklineChart";
+import { TickerContext } from "./TickerContext";
 
 // ── Helpers ──
 
@@ -289,6 +290,9 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
                 </span>
               )}
               {thesis.ticker && <SparklineChart ticker={thesis.ticker} size="md" />}
+              {thesis.ticker && (
+                <TickerContext ticker={thesis.ticker} thesisCreatedAt={thesis.generated_at} variant="expanded" />
+              )}
               {(() => {
                 if (thesis.passed_adversarial === true && typeof thesis.adversarial_score === "number" && thesis.adversarial_score > 0) {
                   return (

@@ -14,6 +14,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import type { ThesisItem } from "./thesis-types";
 import { ConvictionRing } from "./ConvictionRing";
 import { SparklineChart } from "./SparklineChart";
+import { TickerContext } from "./TickerContext";
 
 // ── Adversarial Shield SVG ──
 
@@ -213,6 +214,10 @@ export function ThesisCard({ thesis, onUpdate, isSelected }: ThesisCardProps) {
                 </span>
               );
             })()}
+            {/* Ticker context */}
+            {thesis.ticker && (
+              <TickerContext ticker={thesis.ticker} thesisCreatedAt={thesis.generated_at} variant="compact" />
+            )}
             {/* Hover rationale preview */}
             {thesis.rationale && (
               <p className="font-sans text-[10px] italic text-text-muted mt-0.5 line-clamp-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
