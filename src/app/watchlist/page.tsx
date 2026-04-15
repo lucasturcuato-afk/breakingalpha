@@ -85,7 +85,7 @@ const LEGACY_TICKER_NAMES: Record<string, string> = {
   "BRK.B": "Berkshire Hathaway", BRK: "Berkshire Hathaway", V: "Visa",
   BX: "Blackstone", APO: "Apollo Global", KKR: "KKR", GS: "Goldman Sachs",
   MS: "Morgan Stanley", JPM: "JPMorgan", BAC: "Bank of America",
-  CG: "Carlyle", BAM: "Brookfield", AMD: "AMD", INTC: "Intel",
+  CG: "Carlyle", BAM: "Brookfield", CLS: "Celestica", AMD: "AMD", INTC: "Intel",
   TSM: "TSMC", BABA: "Alibaba", NFLX: "Netflix", DIS: "Disney",
   PYPL: "PayPal", COIN: "Coinbase", PLTR: "Palantir", UBER: "Uber",
 };

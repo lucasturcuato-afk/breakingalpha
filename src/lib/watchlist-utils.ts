@@ -62,6 +62,11 @@ export function getCompanySearchTerms(
       .replace(/\s+Technologies\s*$/i, "")
       .replace(/\s+Technology\s*$/i, "")
       .replace(/\s+Group\s*$/i, "")
+      // Finnhub-style suffixes not covered above
+      .replace(/\.com\b/gi, "")
+      .replace(/\s+Inc-[A-Z]\s*$/i, "")
+      .replace(/\s+-\s*Class\s+[A-Z]\s*$/i, "")
+      .replace(/\s+ETF\s*$/i, "")
       .trim();
 
     if (stripped && stripped.toLowerCase() !== full.toLowerCase()) {
