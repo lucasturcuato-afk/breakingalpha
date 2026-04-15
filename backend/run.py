@@ -10,6 +10,7 @@ Gating:
 """
 
 import logging
+import os
 import sys
 from datetime import datetime, timezone
 
@@ -48,6 +49,15 @@ if __name__ == "__main__":
 
     print("\n[1/12] INGEST")
     ingest_count = run_ingest()
+
+    # Optional backfill: RUN_BACKFILL=true python backend/run.py
+    if os.getenv("RUN_BACKFILL", "false").lower() == "true":
+        print("\n[1b/12] CONTENT BACKFILL")
+        try:
+            import backfill_content
+            backfill_content.main()
+        except Exception as e:
+            print(f"  ⚠ Backfill failed (pipeline unaffected): {e}")
 
     print("\n[2/12] SYNTHESIZE")
     synth_result = run_synthesize(brief_type) or {}

@@ -3,4 +3,5 @@ google-genai
 newsapi-python
 feedparser
 requests
+beautifulsoup4
 python-dotenv
