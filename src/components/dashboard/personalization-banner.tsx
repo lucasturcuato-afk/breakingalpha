@@ -37,7 +37,7 @@ export function PersonalizationBanner() {
         Select sectors and topics you care about to get better signals.
       </p>
       <a
-        href="/settings"
+        href="/settings/profile"
         className="flex-shrink-0 font-sans text-[11px] font-bold text-gold hover:text-gold-dark transition-colors"
       >
         Set interests →

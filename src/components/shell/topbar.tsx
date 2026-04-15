@@ -182,7 +182,7 @@ function UserMenu({ userInitials }: { userInitials: string }) {
             Profile settings
           </Link>
           <Link
-            href="/settings"
+            href="/settings/profile"
             onClick={() => setOpen(false)}
             className={cn(
               "flex items-center gap-2.5 px-4 py-2.5",

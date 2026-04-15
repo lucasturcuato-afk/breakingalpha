@@ -170,6 +170,7 @@ export function OnboardingModal({ userId, onComplete }: OnboardingModalProps) {
     try {
       await fetch("/api/user-profile", {
         method: "PATCH",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ onboarding_completed: true }),
       });
@@ -187,6 +188,7 @@ export function OnboardingModal({ userId, onComplete }: OnboardingModalProps) {
     try {
       const res = await fetch("/api/user-profile", {
         method: "PATCH",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           role,

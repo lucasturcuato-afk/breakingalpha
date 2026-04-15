@@ -114,38 +114,26 @@ export async function GET(request: NextRequest) {
         data: { user },
       } = await authedClient.auth.getUser();
       if (user) {
-        const [prefsResult, profileResult] = await Promise.all([
-          authedClient
-            .from("user_preferences")
-            .select("sectors, modules")
-            .eq("user_id", user.id)
-            .single(),
-          authedClient
-            .from("user_profiles")
-            .select("full_name, role, firm, sectors, risk_appetite, watchlist_tickers, onboarding_completed")
-            .eq("id", user.id)
-            .single(),
-        ]);
+        const { data: profileData, error: profileError } = await authedClient
+          .from("user_profiles")
+          .select("full_name, role, firm, sectors, risk_appetite, watchlist_tickers, onboarding_completed")
+          .eq("id", user.id)
+          .single();
 
-        if (prefsResult.error) console.error("Preferences query error:", prefsResult.error.message);
-        if (prefsResult.data) userPreferences = prefsResult.data;
-
-        if (profileResult.error && profileResult.error.code !== "PGRST116") {
-          console.warn("Profile query error:", profileResult.error.message);
+        if (profileError && profileError.code !== "PGRST116") {
+          console.warn("Profile query error:", profileError.message);
         }
-        if (profileResult.data) userProfile = profileResult.data as UserProfile;
-
-        // If user has profile sectors but no preference sectors, use profile sectors
-        // to shape briefing section ordering
-        if (!userPreferences?.sectors?.length && userProfile?.sectors?.length) {
+        if (profileData) {
+          userProfile = profileData as UserProfile;
+          // Derive preferences from user_profiles (single source of truth)
           userPreferences = {
-            ...(userPreferences || {}),
-            sectors: userProfile.sectors,
+            sectors: userProfile.sectors ?? [],
+            modules: userProfile.role ? [userProfile.role] : [],
           };
         }
       }
     } catch {
-      // Preference/profile load failed — fall through to unmodified briefing
+      // Profile load failed — fall through to unmodified briefing
     }
   }
 

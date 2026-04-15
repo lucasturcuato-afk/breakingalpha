@@ -22,7 +22,7 @@ export function OnboardingBanner() {
         Welcome to Signalera. Complete your profile to get personalized signals.
       </span>
       <a
-        href="/settings"
+        href="/settings/profile"
         className="font-sans text-[11px] font-semibold text-gold hover:underline ml-auto flex-shrink-0"
       >
         Set up profile &rarr;

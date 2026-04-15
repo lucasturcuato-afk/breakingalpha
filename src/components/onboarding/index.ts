@@ -1,4 +1,2 @@
-export { StepIndicator } from "./step-indicator";
-export { RoleStep } from "./role-step";
-export { SectorsStep } from "./sectors-step";
-export { WatchlistStep } from "./watchlist-step";
+export { OnboardingModal } from "./OnboardingModal";
+export { OnboardingGate } from "./onboarding-gate";

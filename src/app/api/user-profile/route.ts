@@ -32,7 +32,14 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(data ?? { id: user.id, ...DEFAULT_PROFILE });
+    const profile = data ?? { id: user.id, ...DEFAULT_PROFILE };
+
+    // Fallback: if full_name is null, try auth user metadata
+    if (!profile.full_name) {
+      profile.full_name = user.user_metadata?.full_name ?? user.email ?? null;
+    }
+
+    return NextResponse.json(profile);
   } catch (err) {
     console.error("user-profile GET unexpected error:", err);
     return NextResponse.json(

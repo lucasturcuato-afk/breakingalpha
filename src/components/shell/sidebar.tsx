@@ -125,7 +125,7 @@ export function Sidebar({
             </p>
             <p className="font-sans text-[10px] text-text-muted">{userRole}</p>
           </div>
-          <Link href="/settings" aria-label="Settings">
+          <Link href="/settings/profile" aria-label="Settings">
             <Settings size={14} className="text-text-faint hover:text-text-muted transition-colors" />
           </Link>
           <button

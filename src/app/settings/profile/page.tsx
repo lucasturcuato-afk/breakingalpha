@@ -162,10 +162,10 @@ export default function ProfileSettingsPage() {
       <div className="p-6 max-w-[640px]">
         {/* Header */}
         <h1 className="font-display text-[24px] font-extrabold text-espresso mb-1">
-          Your Profile
+          Your Preferences
         </h1>
         <p className="font-sans text-[13px] text-text-secondary mb-8">
-          Signalera uses this to personalize your experience.
+          Changes save instantly and personalize your entire Signalera experience.
         </p>
 
         {loading ? (
