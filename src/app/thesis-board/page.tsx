@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/shell";
+import { useUserProfile } from "@/hooks/useUserProfile";
 import { ThesisList } from "@/components/thesis/ThesisList";
 import { ThesisDetailPanel } from "@/components/thesis/thesis-detail-panel";
 import { KanbanBoard } from "@/components/thesis/kanban-board";
@@ -33,7 +34,24 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
-type ConvictionFilter = "HIGH" | "MEDIUM" | "WATCH" | "all" | "archived" | "pending_review";
+type ConvictionFilter = "HIGH" | "MEDIUM" | "WATCH" | "all" | "archived" | "pending_review" | "recommended";
+
+interface UserThesisState {
+  id: string;
+  thesis_id: string;
+  status: "active" | "archived" | "watching";
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+function sectorMatchesProfile(thesisSector: string, profileSectors: string[]): boolean {
+  const lower = thesisSector.toLowerCase();
+  return profileSectors.some((ps) => {
+    const pl = ps.toLowerCase();
+    return lower.includes(pl) || pl.includes(lower);
+  });
+}
 
 // Map API row to ThesisItem
 function mapThesisRow(t: Record<string, unknown>): ThesisItem {
@@ -199,7 +217,16 @@ function ThesisBoardContent() {
   const [showArchived, setShowArchived] = useState(false);
   const [archivedTheses, setArchivedTheses] = useState<ThesisItem[]>([]);
   const [archivedRefreshKey, setArchivedRefreshKey] = useState(0);
+  const [userThesisStates, setUserThesisStates] = useState<UserThesisState[]>([]);
   const [viewMode, setViewMode] = useState<"list" | "board">("list");
+  const { profile } = useUserProfile();
+
+  // Switch to recommended filter when profile is loaded and onboarded
+  useEffect(() => {
+    if (profile?.onboarding_completed) {
+      setConvictionFilter("recommended");
+    }
+  }, [profile]);
 
   // Auto-select thesis from query param
   useEffect(() => {
@@ -207,15 +234,27 @@ function ThesisBoardContent() {
     if (thesisId) setSelectedId(thesisId);
   }, [searchParams]);
 
+  // Fetch per-user thesis states
+  const fetchUserThesisStates = useCallback(async () => {
+    try {
+      const res = await fetch("/api/user-thesis-states");
+      const data = await res.json();
+      if (data.states && Array.isArray(data.states)) {
+        setUserThesisStates(data.states as UserThesisState[]);
+      }
+    } catch {
+      // Soft-fail: no user states means nothing is archived for this user
+      setUserThesisStates([]);
+    }
+  }, []);
+
   // Fetch theses from new GET endpoint
   const fetchTheses = useCallback(async () => {
     try {
       const res = await fetch("/api/theses");
       const data = await res.json();
       if (data.theses && Array.isArray(data.theses)) {
-        const mapped: ThesisItem[] = data.theses
-          .filter((t: Record<string, unknown>) => t.status !== "archived")
-          .map(mapThesisRow);
+        const mapped: ThesisItem[] = data.theses.map(mapThesisRow);
         setTheses(mapped);
       }
       if (data.digest) {
@@ -255,8 +294,9 @@ function ThesisBoardContent() {
 
   useEffect(() => {
     fetchTheses();
+    fetchUserThesisStates();
     fetchIntelligence();
-  }, [fetchTheses, fetchIntelligence]);
+  }, [fetchTheses, fetchUserThesisStates, fetchIntelligence]);
 
   const fetchArticlesForThesis = useCallback(async (thesis: ThesisItem) => {
     if (relatedArticles[thesis.id]) return;
@@ -315,6 +355,7 @@ function ThesisBoardContent() {
   const handleRefresh = () => {
     setLoading(true);
     fetchTheses();
+    fetchUserThesisStates();
     fetchIntelligence();
   };
 
@@ -337,45 +378,34 @@ function ThesisBoardContent() {
     }
   };
 
-  // Fetch archived theses
+  // Derive user-archived thesis IDs from per-user states
+  const userArchivedIds = useMemo(() => {
+    const ids = new Set<string>();
+    userThesisStates.forEach((s) => {
+      if (s.status === "archived") ids.add(s.thesis_id);
+    });
+    return ids;
+  }, [userThesisStates]);
+
+  // Derive archived theses from the full theses list + user states
   useEffect(() => {
     if (!showArchived) return;
-    const fetchArchived = async () => {
-      try {
-        const { createBrowserClient } = await import("@supabase/ssr");
-        const supabase = createBrowserClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        );
-        const { data, error: archiveErr } = await supabase
-          .from("theses")
-          .select("*")
-          .eq("status", "archived")
-          .order("generated_at", { ascending: false })
-          .limit(50);
-        if (archiveErr) console.error("fetchArchived error:", archiveErr);
-        if (data) {
-          setArchivedTheses(data.map((t) => mapThesisRow(t as unknown as Record<string, unknown>)));
-        }
-      } catch (e) {
-        console.error("Failed to fetch archived theses:", e);
-      }
-    };
-    fetchArchived();
-  }, [showArchived, archivedRefreshKey]);
+    setArchivedTheses(theses.filter((t) => userArchivedIds.has(t.id)));
+  }, [showArchived, archivedRefreshKey, theses, userArchivedIds]);
 
   const handleRestore = async (id: string) => {
     try {
-      await fetch(`/api/theses/${id}`, {
-        method: "PATCH",
+      const res = await fetch("/api/user-thesis-states", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "new-signal" }),
+        body: JSON.stringify({ thesis_id: id, status: "active" }),
       });
-      const restored = archivedTheses.find((t) => t.id === id);
+      if (!res.ok) throw new Error("Failed to restore");
+      // Optimistic: remove from user states
+      setUserThesisStates((prev) =>
+        prev.map((s) => (s.thesis_id === id ? { ...s, status: "active" as const } : s))
+      );
       setArchivedTheses((prev) => prev.filter((t) => t.id !== id));
-      if (restored) {
-        setTheses((prev) => [{ ...restored, status: "new-signal" as ThesisStatus }, ...prev]);
-      }
     } catch (e) {
       console.error("Failed to restore thesis:", e);
     }
@@ -383,44 +413,57 @@ function ThesisBoardContent() {
 
   const convictionCounts = useMemo(() => {
     const counts = { HIGH: 0, MEDIUM: 0, WATCH: 0, pending_review: 0, archived: 0 };
+    counts.archived = userArchivedIds.size;
     theses.forEach((t) => {
+      // Skip theses the user has archived
+      if (userArchivedIds.has(t.id)) return;
       if (t.status === "pending_review") counts.pending_review++;
-      if (t.status === "archived") { counts.archived++; return; }
       const conv = t.conviction;
       if (conv === "HIGH" || conv === "BULLISH") counts.HIGH++;
       else if (conv === "MEDIUM") counts.MEDIUM++;
       else if (conv === "WATCH") counts.WATCH++;
     });
     return counts;
-  }, [theses]);
+  }, [theses, userArchivedIds]);
 
 
-  // Filter theses for display
+  // Filter theses for display — uses per-user archived state
   const displayTheses = useMemo(() => {
+    const isNotUserArchived = (t: ThesisItem) => !userArchivedIds.has(t.id);
+
+    if (convictionFilter === "recommended") {
+      const sectors = profile?.sectors ?? [];
+      if (sectors.length === 0) {
+        return theses.filter(isNotUserArchived);
+      }
+      return theses
+        .filter((t) => isNotUserArchived(t) && sectorMatchesProfile(t.sector, sectors))
+        .sort((a, b) => ((b.adversarial_score ?? -1) - (a.adversarial_score ?? -1)));
+    }
     if (convictionFilter === "archived") return archivedTheses;
     if (convictionFilter === "pending_review") {
-      return theses.filter((t) => t.status === "pending_review");
+      return theses.filter((t) => isNotUserArchived(t) && t.status === "pending_review");
     }
     if (convictionFilter === "HIGH") {
       return theses.filter(
         (t) =>
           (t.conviction === "HIGH" || t.conviction === "BULLISH") &&
-          t.status !== "archived"
+          isNotUserArchived(t)
       );
     }
     if (convictionFilter === "MEDIUM") {
       return theses.filter(
-        (t) => t.conviction === "MEDIUM" && t.status !== "archived"
+        (t) => t.conviction === "MEDIUM" && isNotUserArchived(t)
       );
     }
     if (convictionFilter === "WATCH") {
       return theses.filter(
-        (t) => t.conviction === "WATCH" && t.status !== "archived"
+        (t) => t.conviction === "WATCH" && isNotUserArchived(t)
       );
     }
-    // "all" — everything except archived
-    return theses.filter((t) => t.status !== "archived");
-  }, [theses, archivedTheses, convictionFilter]);
+    // "all" — everything except user-archived
+    return theses.filter(isNotUserArchived);
+  }, [theses, archivedTheses, convictionFilter, profile, userArchivedIds]);
 
   return (
     <AppShell pageTitle="Thesis Board" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
@@ -463,7 +506,7 @@ function ThesisBoardContent() {
             {/* Stats row */}
             <div className="grid grid-cols-4 gap-3 mb-4">
               {[
-                { label: "Total signals", value: theses.filter((t) => t.status !== "archived").length, color: "" },
+                { label: "Total signals", value: theses.filter((t) => !userArchivedIds.has(t.id)).length, color: "" },
                 { label: "HIGH", value: convictionCounts.HIGH, color: "text-gold" },
                 { label: "MEDIUM", value: convictionCounts.MEDIUM, color: "text-signal-warn" },
                 { label: "WATCH", value: convictionCounts.WATCH, color: "text-text-muted" },
@@ -489,11 +532,16 @@ function ThesisBoardContent() {
               <div className="flex gap-2">
                 {(
                   [
+                    { key: "recommended" as const, label: "Recommended", count: (() => {
+                      const sectors = profile?.sectors ?? [];
+                      if (sectors.length === 0) return theses.filter((t) => !userArchivedIds.has(t.id)).length;
+                      return theses.filter((t) => !userArchivedIds.has(t.id) && sectorMatchesProfile(t.sector, sectors)).length;
+                    })() },
                     { key: "HIGH" as const, label: "HIGH", count: convictionCounts.HIGH },
                     { key: "MEDIUM" as const, label: "MEDIUM", count: convictionCounts.MEDIUM },
                     { key: "WATCH" as const, label: "WATCH", count: convictionCounts.WATCH },
-                    { key: "all" as const, label: "All", count: theses.filter((t) => t.status !== "archived").length },
-                    { key: "archived" as const, label: "Archived", count: archivedTheses.length },
+                    { key: "all" as const, label: "All Theses", count: theses.filter((t) => !userArchivedIds.has(t.id)).length },
+                    { key: "archived" as const, label: "Archived", count: userArchivedIds.size },
                     { key: "pending_review" as const, label: "Pending Review", count: convictionCounts.pending_review },
                   ]
                 ).map((tab) => (
@@ -618,6 +666,7 @@ function ThesisBoardContent() {
                     onRestore={convictionFilter === "archived" ? handleRestore : undefined}
                     isPendingReview={convictionFilter === "pending_review"}
                     onQuickAction={handleQuickAction}
+                    matchedSectors={convictionFilter === "recommended" ? (profile?.sectors ?? undefined) : undefined}
                   />
                 </div>
                 <ThesisDetailPanel
@@ -627,9 +676,16 @@ function ThesisBoardContent() {
                       : theses.find((t) => t.id === selectedId) ?? null
                   }
                   articles={relatedArticles[selectedId ?? ""] ?? []}
-                  activeSignalCount={theses.filter((t) => t.status !== "archived").length}
+                  activeSignalCount={theses.filter((t) => !userArchivedIds.has(t.id)).length}
                   onArchive={(id) => {
-                    setTheses((prev) => prev.filter((t) => t.id !== id));
+                    // Optimistically add to user thesis states
+                    setUserThesisStates((prev) => {
+                      const exists = prev.find((s) => s.thesis_id === id);
+                      if (exists) {
+                        return prev.map((s) => (s.thesis_id === id ? { ...s, status: "archived" as const } : s));
+                      }
+                      return [...prev, { id: crypto.randomUUID(), thesis_id: id, status: "archived" as const }];
+                    });
                     const remaining = theses.filter((t) => t.id !== id);
                     setSelectedId(remaining[0]?.id ?? null);
                     if (convictionFilter === "archived") setArchivedRefreshKey((k) => k + 1);

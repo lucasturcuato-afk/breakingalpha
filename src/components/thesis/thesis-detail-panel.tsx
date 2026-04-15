@@ -9,6 +9,8 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import type { ThesisItem } from "./thesis-types";
 import { ConvictionRing } from "./ConvictionRing";
 import { SparklineChart } from "./SparklineChart";
+import { TickerContext } from "./TickerContext";
+import { WhyThisThesis } from "./WhyThisThesis";
 
 // ── Helpers ──
 
@@ -188,10 +190,10 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
   const handleArchive = async () => {
     if (!thesis?.id) return;
     try {
-      const res = await fetch(`/api/theses/${thesis.id}`, {
-        method: "PATCH",
+      const res = await fetch("/api/user-thesis-states", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "archived" }),
+        body: JSON.stringify({ thesis_id: thesis.id, status: "archived" }),
       });
       if (!res.ok) throw new Error("Failed");
       showToast("Archived");
@@ -271,7 +273,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
       <div className="flex-shrink-0 px-4 py-3 border-b border-border-base bg-cream">
         <div className="flex items-start gap-3">
           {/* Score ring */}
-          <ConvictionRing conviction={thesis.conviction} size={48} />
+          <ConvictionRing conviction={thesis.conviction} size={48} score={score} />
           <div className="flex-1 min-w-0">
             <div className="font-display font-bold text-[18px] text-espresso leading-snug mb-1">
               {thesis.title}
@@ -289,22 +291,31 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
                 </span>
               )}
               {thesis.ticker && <SparklineChart ticker={thesis.ticker} size="md" />}
+              {thesis.ticker && (
+                <TickerContext ticker={thesis.ticker} thesisCreatedAt={thesis.generated_at} variant="expanded" />
+              )}
               {(() => {
-                const hasValidScore = typeof thesis.adversarial_score === "number" && thesis.adversarial_score > 0 && thesis.passed_adversarial !== null;
-                if (hasValidScore) {
+                if (thesis.passed_adversarial === true && typeof thesis.adversarial_score === "number" && thesis.adversarial_score > 0) {
                   return (
-                    <Tooltip content={`Score: ${thesis.adversarial_score!.toFixed(2)}`}>
-                      <span className={`font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded ${
-                        thesis.passed_adversarial ? "bg-gold-muted text-gold-dark" : "bg-red-950/40 text-red-400"
-                      }`}>
-                        {thesis.passed_adversarial ? "Passed stress test" : "Failed stress test"} · {thesis.adversarial_score!.toFixed(2)}
+                    <Tooltip content={`Score: ${thesis.adversarial_score.toFixed(2)}`}>
+                      <span className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded bg-signal-up/10 text-signal-up">
+                        ✓ Bear case: Bull wins
+                      </span>
+                    </Tooltip>
+                  );
+                }
+                if (thesis.passed_adversarial === false && typeof thesis.adversarial_score === "number" && thesis.adversarial_score > 0) {
+                  return (
+                    <Tooltip content={`Score: ${thesis.adversarial_score.toFixed(2)}`}>
+                      <span className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded bg-signal-dn/10 text-signal-dn">
+                        ✗ Bear case: Flagged
                       </span>
                     </Tooltip>
                   );
                 }
                 return (
                   <span className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded bg-parchment-mid text-text-muted">
-                    Stress test pending
+                    ⏳ Bear case pending
                   </span>
                 );
               })()}
@@ -314,7 +325,9 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
                   thesis.outcome === "invalidated" ? "bg-signal-dn/10 text-signal-dn" :
                   "bg-signal-warn/10 text-signal-warn"
                 }`}>
-                  {thesis.outcome}
+                  {thesis.outcome === "confirmed" ? "✓ Confirmed" :
+                   thesis.outcome === "invalidated" ? "✗ Invalidated" :
+                   "~ Inconclusive"}
                 </span>
               )}
               <span className="font-sans text-[10px] text-text-muted">{thesis.updatedAt}</span>
@@ -335,6 +348,8 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
             </div>
           </div>
         </div>
+
+        <WhyThisThesis thesisId={thesis.id} />
 
         <div className="h-px bg-border-base" />
 

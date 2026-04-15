@@ -16,6 +16,7 @@ import {
   Search,
   TrendingUp,
   Star,
+  Trophy,
   Settings,
   LogOut,
 } from "lucide-react";
@@ -41,6 +42,7 @@ const researchNav: NavItem[] = [
   { label: "Deal Flow", href: "/deal-flow", icon: <Briefcase size={16} /> },
   { label: "Company Intel", href: "/company", icon: <Search size={16} /> },
   { label: "Trends", href: "/trends", icon: <TrendingUp size={16} /> },
+  { label: "Track Record", href: "/track-record", icon: <Trophy size={16} /> },
   { label: "Watchlist", href: "/watchlist", icon: <Star size={16} /> },
 ];
 
@@ -123,7 +125,7 @@ export function Sidebar({
             </p>
             <p className="font-sans text-[10px] text-text-muted">{userRole}</p>
           </div>
-          <Link href="/settings" aria-label="Settings">
+          <Link href="/settings/profile" aria-label="Settings">
             <Settings size={14} className="text-text-faint hover:text-text-muted transition-colors" />
           </Link>
           <button

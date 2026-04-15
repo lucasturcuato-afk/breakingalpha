@@ -12,6 +12,7 @@ from google.genai import types
 from dotenv import load_dotenv
 from watchlist import boost_watchlist_relevance
 from wikidata import is_valid_company
+from fulltext import fetch_full_text, SCRAPEABLE_SOURCES
 
 load_dotenv()
 
@@ -569,9 +570,31 @@ def run_ingestion():
             print(f"  ✓ [{result['relevance_score']}/10] [{result.get('sector','?')[:20]}] {a['title'][:60]}...")
 
     print(f"\n[4/4] Storing {len(relevant)} articles...")
-    article_ids = [aid for a, r in relevant if (aid := store_article(a, r))]
+    stored_pairs = []  # (article_id, article_dict) for enrichment
+    for a, r in relevant:
+        aid = store_article(a, r)
+        if aid:
+            stored_pairs.append((aid, a))
+    article_ids = [aid for aid, _ in stored_pairs]
     stored = len(article_ids)
     print(f"\n✅ Done — {stored} new articles stored")
+
+    # [4b] Full-text enrichment for scrapeable sources
+    enriched = 0
+    for aid, a in stored_pairs:
+        if a["source"] not in SCRAPEABLE_SOURCES:
+            continue
+        try:
+            full_text = fetch_full_text(a["url"], a["source"])
+            if full_text:
+                supabase.table("articles").update({"content": full_text}).eq("id", aid).execute()
+                print(f"  Full text fetched: {a['source']} {a['title'][:50]} ({len(full_text)} chars)")
+                enriched += 1
+            time.sleep(0.5)
+        except Exception as ex:
+            print(f"  ⚠ Enrichment failed for {a['title'][:50]}: {ex}")
+    if enriched:
+        print(f"  📝 {enriched} articles enriched with full text")
 
     boosted = boost_watchlist_relevance(article_ids)
     print(f"  ★ {boosted} articles boosted by watchlist relevance")

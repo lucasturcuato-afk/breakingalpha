@@ -28,7 +28,7 @@ const commands: CommandItem[] = [
   { id: "watchlist", label: "Watchlist", section: "Research", href: "/watchlist", icon: <Star size={14} /> },
   { id: "trends", label: "Trends", section: "Research", href: "/trends", icon: <TrendingUp size={14} /> },
   { id: "company", label: "Company Intel", section: "Research", href: "/company", icon: <Search size={14} /> },
-  { id: "settings", label: "Settings", section: "Pages", href: "/settings", icon: <Settings size={14} /> },
+  { id: "settings", label: "Settings", section: "Pages", href: "/settings/profile", icon: <Settings size={14} /> },
 ];
 
 export function CommandPalette({ open, onClose }: CommandPaletteProps) {

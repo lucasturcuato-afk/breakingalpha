@@ -1,11 +1,12 @@
 # Signalera Handoff
 
-## Current Status (2026-04-13)
+## Current Status (2026-04-15)
 - Live at https://breakingalpha.vercel.app (deploying as Signalera)
 - Full rebrand from BreakingAlpha to Signalera shipped — logo, fonts, theme, auth page
 - Auth middleware protecting all routes — unauthenticated users redirect to /auth
 - Google OAuth (PKCE flow) working — callback at /auth/callback
 - Per-session user isolation fixed — greeting, sidebar, settings all read from live auth
+- **Personalization system consolidated** — single `user_profiles` table + `/api/user-profile` API route + `useUserProfile()` React Context; deleted duplicate systems; 401 profile settings errors fixed via cookie-based auth + RLS migration
 - Pipeline auto-runs 10:00 UTC / 6am ET (morning) and 04:00 UTC / 8pm PT (evening), weekdays — triggered by **cron-job.org** (not GitHub Actions native cron)
 - **AI provider:** Gemini 2.5 Flash (migrated from Groq 2026-04-10) — ingest, thesis, memo all use genai SDK
 - **Backend SDK:** google.genai (newer SDK, matches frontend pattern)
@@ -141,6 +142,9 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 4. Are there active paying users? (determines urgency of fixes)
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
 
+## Recently Completed (2026-04-15)
+Personalization system consolidation: merged dual conflicting preference systems into single source of truth (`user_profiles` table + `/api/user-profile` route + `useUserProfile()` React Context hook). Deleted stale `/api/preferences`, `/settings`, `/onboarding` pages + duplicate onboarding modals. Fixed profile settings 401 errors via cookie-based auth + RLS migration (single FOR ALL policy). Created `user_thesis_states` junction table for per-user thesis archive state. All consumers (dashboard, thesis-board, deal-flow) now use shared `useUserProfile()` hook. RLS migration requires manual run; `user_preferences` table can be dropped once validated.
+
 ## Recently Completed (2026-04-14)
 PR #88: company intel filter accuracy — explicit sector-to-vertical mapping (COMPANY_VERTICAL_OVERRIDES 74-entry ground-truth map + SECTOR_TO_VERTICAL fallback); primary_company attribution guard prevents PE firms accumulating wrong tags. PR #87: dual-row filter UI on /deal-flow (Activity Type + Sector rows, Match Any/All toggles, Clear All button); vertical filter consistency across /company and /deal-flow. Cron-job.org Evening job updated: request body now passes `{"ref":"main","inputs":{"mode":"evening"}}` (was missing mode input, defaulted to morning, causing stale Evening Wrap).
 
@@ -196,6 +200,7 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 10. **Phase 1 hardening — observe.py reconstruction fix (PR #56)** — `_reconstruct_selected()` rewritten to mirror current `synthesize._select_articles_for_synthesis()` (spine=12, floor=6, sector_cap=3, floor_min=7). `audit.py` `_TARGET_COUNT` corrected 20→18. Stale `_diversify_articles` reconstruction logic replaced. No schema changes.
 
 ## Pending / Known Issues
+- **RLS migration must be run manually** — `user_profiles` policies need consolidation to single FOR ALL policy. SQL provided in 2026-04-15 session summary. After migration, `user_preferences` table can be dropped once confirmed no references remain.
 - **ConvictionRing partial arc fill deferred** — Currently shows full colored circle with color-coding (gold=HIGH, amber=MEDIUM, gray=WATCH, red=BEARISH); arc visualization deferred due to Tailwind v4 preflight SVG interference. Can be revisited once CSS preflight handling is resolved.
 - **PATCH /api/theses/[id] logging verification** — Confirm `=== PATCH START/FAILED ===` logs appear in terminal when dragging card to Archive after dev server restart (service role key now in .env.local)
 - **Wikidata validation at scale** — wikidata_entity_cache now populated on cache misses; needs full ingest run with fresh articles to validate entity quality in production

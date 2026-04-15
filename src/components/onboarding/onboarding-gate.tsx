@@ -2,29 +2,35 @@
 
 import { useState, useEffect } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { OnboardingModal } from "./onboarding-modal";
+import { OnboardingModal } from "./OnboardingModal";
+import { useUserProfile } from "@/hooks/useUserProfile";
 
 export function OnboardingGate() {
+  const { profile, loading } = useUserProfile();
   const [userId, setUserId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
-    async function check() {
-      const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      );
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return; // middleware guards /dashboard — this is a safety net
+    if (loading) return;
+    if (profile?.onboarding_completed) return;
 
-      const key = `signalera_onboarded_${user.id}`;
-      if (!localStorage.getItem(key)) {
+    async function checkAuth() {
+      try {
+        const supabase = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        );
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
         setUserId(user.id);
         setShowModal(true);
+      } catch {
+        // Non-fatal — don't block the dashboard
       }
     }
-    check();
-  }, []);
+    checkAuth();
+  }, [loading, profile]);
 
   if (!showModal || !userId) return null;
 

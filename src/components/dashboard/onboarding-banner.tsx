@@ -7,8 +7,9 @@ export function OnboardingBanner() {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    const onboarded = localStorage.getItem("signalera_onboarded");
-    setShow(!onboarded);
+    if (typeof window === "undefined") return;
+    const dismissed = localStorage.getItem("signalera_onboarding_dismissed");
+    setShow(!dismissed);
     setMounted(true);
   }, []);
 
@@ -21,7 +22,7 @@ export function OnboardingBanner() {
         Welcome to Signalera. Complete your profile to get personalized signals.
       </span>
       <a
-        href="/settings"
+        href="/settings/profile"
         className="font-sans text-[11px] font-semibold text-gold hover:underline ml-auto flex-shrink-0"
       >
         Set up profile &rarr;
@@ -29,7 +30,7 @@ export function OnboardingBanner() {
       <button
         type="button"
         onClick={() => {
-          localStorage.setItem("signalera_onboarded", "true");
+          if (typeof window !== "undefined") localStorage.setItem("signalera_onboarding_dismissed", "true");
           setShow(false);
         }}
         className="text-text-muted hover:text-text-primary text-sm ml-1 cursor-pointer"

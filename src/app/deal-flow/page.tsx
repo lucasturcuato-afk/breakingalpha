@@ -2,6 +2,7 @@
 
 import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { AppShell } from "@/components/shell";
+import { useUserProfile } from "@/hooks/useUserProfile";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -195,6 +196,11 @@ function DealFlowContent() {
   const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
   const [verticalMatchMode, setVerticalMatchMode] = useState<"any" | "all">("any");
 
+  // Profile-based sector pre-filter
+  const { profile } = useUserProfile();
+  const [profileBannerDismissed, setProfileBannerDismissed] = useState(false);
+  const [profileApplied, setProfileApplied] = useState(false);
+
   // Add deal form
   const [formData, setFormData] = useState({
     company: "",
@@ -230,6 +236,47 @@ function DealFlowContent() {
   useEffect(() => {
     fetchDeals();
   }, [fetchDeals]);
+
+  // Profile fetch + sector pre-filter
+  useEffect(() => {
+    // Check localStorage for dismissed state
+    try {
+      if (localStorage.getItem("signalera_deal_filter_dismissed") === "true") {
+        setProfileBannerDismissed(true);
+      }
+    } catch { /* no-op */ }
+
+  }, []);
+
+  // Pre-select sectors once profile loads (only once)
+  useEffect(() => {
+    if (profileApplied || !profile?.onboarding_completed || profileBannerDismissed) return;
+    const sectors = profile.sectors ?? [];
+    if (sectors.length === 0) return;
+
+    // Map profile sectors to INDUSTRY_VERTICALS using keyword matching
+    const matchedVerticals = INDUSTRY_VERTICALS.filter((v) => {
+      const keywords = INDUSTRY_VERTICAL_KEYWORDS[v] ?? [];
+      return sectors.some((ps) => {
+        const pl = ps.toLowerCase();
+        return keywords.some((kw) => pl.includes(kw) || kw.includes(pl));
+      });
+    });
+
+    if (matchedVerticals.length > 0) {
+      setSelectedVerticals(matchedVerticals as string[]);
+    }
+    setProfileApplied(true);
+  }, [profile, profileApplied, profileBannerDismissed]);
+
+  const handleDismissProfileFilter = () => {
+    setProfileBannerDismissed(true);
+    setSelectedVerticals([]);
+    setVerticalMatchMode("any");
+    try {
+      localStorage.setItem("signalera_deal_filter_dismissed", "true");
+    } catch { /* no-op */ }
+  };
 
 
   /* ── Add to watchlist ── */
@@ -468,6 +515,29 @@ function DealFlowContent() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Profile sector pre-filter banner */}
+        {profileApplied && !profileBannerDismissed && selectedVerticals.length > 0 && (
+          <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-4">
+            <span className="font-sans text-[12px] text-amber-800">
+              Showing deals in your tracked sectors.{" "}
+              <button
+                type="button"
+                onClick={handleDismissProfileFilter}
+                className="font-semibold text-gold hover:text-gold-dark cursor-pointer transition-colors"
+              >
+                View all →
+              </button>
+            </span>
+            <button
+              type="button"
+              onClick={handleDismissProfileFilter}
+              className="text-amber-600 hover:text-amber-800 cursor-pointer p-0.5"
+            >
+              <X size={14} />
+            </button>
           </div>
         )}
 

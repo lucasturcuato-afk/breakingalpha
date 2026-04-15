@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+/* ── User profile types for personalization ── */
+interface UserProfile {
+  full_name?: string | null;
+  role?: string | null;
+  firm?: string | null;
+  sectors?: string[] | null;
+  risk_appetite?: string | null;
+  watchlist_tickers?: string[] | null;
+  onboarding_completed?: boolean | null;
+}
+
 // Maps preference panel module names → briefing section keys.
 const MODULE_TO_SECTION: Record<string, string> = {
   "Macro & Rates": "macro_and_rates",
@@ -87,6 +98,7 @@ export async function GET(request: NextRequest) {
   }
 
   let userPreferences: { sectors?: string[]; modules?: string[] } | null = null;
+  let userProfile: UserProfile | null = null;
   const token = request.headers
     .get("authorization")
     ?.replace("Bearer ", "");
@@ -102,16 +114,26 @@ export async function GET(request: NextRequest) {
         data: { user },
       } = await authedClient.auth.getUser();
       if (user) {
-        const { data: prefs, error: prefsError } = await authedClient
-          .from("user_preferences")
-          .select("sectors, modules")
-          .eq("user_id", user.id)
+        const { data: profileData, error: profileError } = await authedClient
+          .from("user_profiles")
+          .select("full_name, role, firm, sectors, risk_appetite, watchlist_tickers, onboarding_completed")
+          .eq("id", user.id)
           .single();
-        if (prefsError) console.error("Preferences query error:", prefsError.message);
-        if (prefs) userPreferences = prefs;
+
+        if (profileError && profileError.code !== "PGRST116") {
+          console.warn("Profile query error:", profileError.message);
+        }
+        if (profileData) {
+          userProfile = profileData as UserProfile;
+          // Derive preferences from user_profiles (single source of truth)
+          userPreferences = {
+            sectors: userProfile.sectors ?? [],
+            modules: userProfile.role ? [userProfile.role] : [],
+          };
+        }
       }
     } catch {
-      // Preference load failed — fall through to unmodified briefing
+      // Profile load failed — fall through to unmodified briefing
     }
   }
 
@@ -220,6 +242,8 @@ export async function GET(request: NextRequest) {
   const resp = NextResponse.json({
     briefing,
     pref_applied: true,
+    profile_role: userProfile?.role ?? null,
+    profile_risk_appetite: userProfile?.risk_appetite ?? null,
     briefing_age_hours: briefingAgeHours,
     is_stale: isStale,
     last_attempt_status: lastRun?.status ?? null,

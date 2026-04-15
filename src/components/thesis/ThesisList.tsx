@@ -16,6 +16,7 @@ interface ThesisListProps {
   onRestore?: (id: string) => void;
   isPendingReview?: boolean;
   onQuickAction?: (id: string, status: string) => void;
+  matchedSectors?: string[];
 }
 
 function convictionToSentiment(conviction: string | null): string {
@@ -39,6 +40,14 @@ function deriveScore(thesis: ThesisItem): number | null {
   return base + evidenceBonus;
 }
 
+function isSectorMatched(thesisSector: string, sectors: string[]): boolean {
+  const lower = thesisSector.toLowerCase();
+  return sectors.some((s) => {
+    const sl = s.toLowerCase();
+    return lower.includes(sl) || sl.includes(lower);
+  });
+}
+
 export function ThesisList({
   theses,
   selectedId,
@@ -48,6 +57,7 @@ export function ThesisList({
   onRestore,
   isPendingReview,
   onQuickAction,
+  matchedSectors,
 }: ThesisListProps) {
   const filtered = useMemo(() => {
     if (isArchiveView) {
@@ -89,7 +99,7 @@ export function ThesisList({
             )}
           >
             {/* Conviction ring */}
-            <ConvictionRing conviction={thesis.conviction} />
+            <ConvictionRing conviction={thesis.conviction} score={score} />
 
             {/* Title + badges */}
             <div className="flex-1 min-w-0">
@@ -112,6 +122,9 @@ export function ThesisList({
                   <span className="font-sans text-[9px] text-text-muted italic">Archived</span>
                 )}
               </div>
+              {matchedSectors && matchedSectors.length > 0 && isSectorMatched(thesis.sector, matchedSectors) && (
+                <p className="font-sans text-[9px] text-amber-600 mt-0.5">Matched to your sectors</p>
+              )}
             </div>
 
             {/* Actions */}

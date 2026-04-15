@@ -330,6 +330,31 @@ def run(brief_type="morning"):
 
     system = MORNING_SYSTEM if brief_type == "morning" else EVENING_SYSTEM
 
+    # --- Feedback loop: prepend cached brief improvement addendum ----------
+    brief_addendum_used = None
+    try:
+        resp = (
+            supabase.table("weekly_digests")
+            .select("morning_brief_addendum, evening_brief_addendum")
+            .order("generated_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if resp.data:
+            col = f"{brief_type}_brief_addendum"
+            addendum_text = resp.data[0].get(col)
+            if addendum_text:
+                system = (
+                    "[BRIEF IMPROVEMENT DIRECTIVE — incorporate into your analysis]\n"
+                    + addendum_text
+                    + "\n\n"
+                    + system
+                )
+                brief_addendum_used = {"source": "weekly_digests", "chars": len(addendum_text)}
+                print(f"  📎 Injected {len(addendum_text)}-char brief improvement addendum")
+    except Exception as e:
+        print(f"  ⚠ Brief addendum injection skipped: {e}")
+
     data = None
     raw = ""
     try:
@@ -383,6 +408,11 @@ def run(brief_type="morning"):
     supabase.table("briefings").insert(row).execute()
     print(f"  ✅ {brief_type.capitalize()} briefing stored")
     print(f"  Headline: {row['headline'][:80]}")
+
+    # Return brief text and addendum metadata for downstream consumers
+    # (e.g. brief_feedback_loop.score_brief in run.py)
+    brief_text = json.dumps(data, indent=2)
+    return {"brief_text": brief_text, "brief_addendum_used": brief_addendum_used}
 
 if __name__ == "__main__":
     import sys

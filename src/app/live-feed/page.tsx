@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlignLeft, Bookmark, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserClient } from "@supabase/ssr";
+import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
 import type { StoryData } from "@/components/dashboard";
 
 interface LiveStory extends StoryData {
@@ -95,41 +96,60 @@ export default function LiveFeedPage() {
     try {
       const { data, error } = await getSupabase()
         .from("articles")
-        .select("id, title, source, sector, industry_verticals, activity_types, sentiment, summary, published_at, ingested_at, url, companies, relevance_score")
+        .select("id, title, source, sector, industry_verticals, activity_types, sentiment, summary, content, published_at, ingested_at, url, companies, relevance_score")
         .order("ingested_at", { ascending: false })
         .limit(100);
 
       if (error) throw error;
       if (!data) return;
 
-      const stories: LiveStory[] = data.map((a) => ({
-        id: a.id,
-        title: a.title || "Untitled",
-        source: a.source || "Unknown",
-        timestamp: timeAgo(a.published_at || a.ingested_at),
-        sentiment: sentimentFromDb(a.sentiment),
-        sector: a.sector || undefined,
-        industry_verticals: a.industry_verticals ?? [],
-        activity_types: a.activity_types ?? [],
-        summary: a.summary || undefined,
-        tags: (() => {
-          let cos = a.companies;
-          if (typeof cos === "string") {
-            try { cos = JSON.parse(cos); } catch { cos = []; }
-          }
-          return Array.isArray(cos) ? cos.slice(0, 3) : [];
-        })(),
-        url: a.url || undefined,
-        read: false,
-        saved: false,
-        _publishedAt: a.published_at || a.ingested_at,
-        _relevanceScore: a.relevance_score || 0,
-        _sentimentRaw: a.sentiment,
-        isAlert: (
-          (a.sentiment?.toLowerCase() === "bearish" || a.sentiment?.toLowerCase() === "negative") &&
-          Date.now() - new Date(a.published_at || a.ingested_at).getTime() < 48 * 3600 * 1000
-        ),
-      }));
+      // Batch fetch source credibility
+      const uniqueSources = [...new Set(data.map(a => a.source).filter(Boolean) as string[])];
+      let credMap = new Map<string, number>();
+      if (uniqueSources.length > 0) {
+        try {
+          const { data: credData } = await getSupabase()
+            .from("source_credibility")
+            .select("source, win_rate")
+            .in("source", uniqueSources);
+          credMap = new Map(credData?.map(r => [r.source, r.win_rate]) ?? []);
+        } catch { /* soft-fail */ }
+      }
+
+      const stories: LiveStory[] = data.map((a) => {
+        const completeness = getCompleteness(a.content, a.summary);
+        return {
+          id: a.id,
+          title: a.title || "Untitled",
+          source: a.source || "Unknown",
+          timestamp: timeAgo(a.published_at || a.ingested_at),
+          sentiment: sentimentFromDb(a.sentiment),
+          sector: a.sector || undefined,
+          industry_verticals: a.industry_verticals ?? [],
+          activity_types: a.activity_types ?? [],
+          summary: a.summary || undefined,
+          tags: (() => {
+            let cos = a.companies;
+            if (typeof cos === "string") {
+              try { cos = JSON.parse(cos); } catch { cos = []; }
+            }
+            return Array.isArray(cos) ? cos.slice(0, 3) : [];
+          })(),
+          url: a.url || undefined,
+          read: false,
+          saved: false,
+          _publishedAt: a.published_at || a.ingested_at,
+          _relevanceScore: a.relevance_score || 0,
+          _sentimentRaw: a.sentiment,
+          isAlert: (
+            (a.sentiment?.toLowerCase() === "bearish" || a.sentiment?.toLowerCase() === "negative") &&
+            Date.now() - new Date(a.published_at || a.ingested_at).getTime() < 48 * 3600 * 1000
+          ),
+          completeness,
+          adjustedScore: getAdjustedScore(a.relevance_score ?? null, completeness),
+          sourceWinRate: credMap.get(a.source) ?? null,
+        };
+      });
 
       // Detect new articles since last refresh
       const currentIds = new Set(stories.map((s) => s.id));

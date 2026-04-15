@@ -2,9 +2,10 @@
 
 import { cn } from "@/lib/utils";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bell, Search, Sun, Moon } from "lucide-react";
+import { Bell, Search, Sun, Moon, User } from "lucide-react";
 import { NotificationDropdown, type NotificationItem } from "./notification-dropdown";
 import { useTheme } from "@/components/providers/theme-provider";
+import Link from "next/link";
 
 interface TopbarProps {
   pageTitle: string;
@@ -129,13 +130,71 @@ export function Topbar({
           )}
         </div>
 
-        {/* User avatar */}
-        <div className="w-8 h-8 rounded-lg bg-espresso flex items-center justify-center">
-          <span className="font-display text-[11px] font-bold text-gold">
-            {userInitials}
-          </span>
-        </div>
+        {/* User avatar with dropdown */}
+        <UserMenu userInitials={userInitials} />
       </div>
+    </div>
+  );
+}
+
+/* ── User menu dropdown ── */
+
+function UserMenu({ userInitials }: { userInitials: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-8 h-8 rounded-lg bg-espresso flex items-center justify-center cursor-pointer"
+        aria-label="User menu"
+      >
+        <span className="font-display text-[11px] font-bold text-gold">
+          {userInitials}
+        </span>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-10 w-48 bg-cream border border-border-base rounded-xl shadow-lg z-50 py-1.5 overflow-hidden">
+          <Link
+            href="/settings/profile"
+            onClick={() => setOpen(false)}
+            className={cn(
+              "flex items-center gap-2.5 px-4 py-2.5",
+              "font-sans text-[12px] font-medium text-text-secondary",
+              "hover:bg-parchment-mid hover:text-espresso transition-colors",
+            )}
+          >
+            <User size={14} className="text-text-faint" />
+            Profile settings
+          </Link>
+          <Link
+            href="/settings/profile"
+            onClick={() => setOpen(false)}
+            className={cn(
+              "flex items-center gap-2.5 px-4 py-2.5",
+              "font-sans text-[12px] font-medium text-text-secondary",
+              "hover:bg-parchment-mid hover:text-espresso transition-colors",
+            )}
+          >
+            <Search size={14} className="text-text-faint" />
+            All settings
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

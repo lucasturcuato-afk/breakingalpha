@@ -21,6 +21,8 @@ import {
   parseCompanies,
   timeAgo,
 } from "@/lib/company-intel";
+import { CompletenessBadge, SignalScore, SourceCredibilityBadge, getCompleteness, getAdjustedScore } from "@/lib/article-signal";
+import type { Completeness } from "@/lib/article-signal";
 
 function getSupabase() {
   return createBrowserClient(
@@ -178,6 +180,7 @@ export default function CompanyIntelPage() {
   const [memoToast, setMemoToast] = useState("");
   const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
   const [verticalMatchMode, setVerticalMatchMode] = useState<"any" | "all">("any");
+  const [credMap, setCredMap] = useState<Map<string, number>>(new Map());
 
   // Build company list from article mentions
   useEffect(() => {
@@ -313,7 +316,7 @@ export default function CompanyIntelPage() {
         // Correctness > performance here — filter client-side instead.
         const { data: articles, error: detailErr } = await getSupabase()
           .from("articles")
-          .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies, primary_company, relevance_score, deal_type")
+          .select("id, title, source, sector, sentiment, summary, content, published_at, ingested_at, url, companies, primary_company, relevance_score, deal_type")
           .order("ingested_at", { ascending: false })
           .limit(1500);
 
@@ -323,6 +326,18 @@ export default function CompanyIntelPage() {
         }
         if (articles) {
           setCompanyArticles(filterAndClassifyArticles(articles, name));
+
+          // Batch fetch source credibility
+          const uniqueSources = [...new Set(articles.map(a => a.source).filter(Boolean) as string[])];
+          if (uniqueSources.length > 0) {
+            try {
+              const { data: credData } = await getSupabase()
+                .from("source_credibility")
+                .select("source, win_rate")
+                .in("source", uniqueSources);
+              setCredMap(new Map(credData?.map(r => [r.source, r.win_rate]) ?? []));
+            } catch { /* soft-fail */ }
+          }
         }
       } catch (e) {
         console.error("Failed to load company articles:", e);
@@ -570,7 +585,9 @@ export default function CompanyIntelPage() {
                       <p className="font-data text-[8px] uppercase tracking-widest text-gold font-bold px-0.5 pb-0.5">
                         Company Events
                       </p>
-                      {developmentArticles.map((a) => (
+                      {developmentArticles.map((a) => {
+                        const cmplt = getCompleteness(a.content, a.summary);
+                        return (
                         <div key={a.id} className="bg-white border border-gold/30 rounded-xl p-3">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-data text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide bg-gold-muted text-gold border border-gold-border flex-shrink-0">
@@ -584,6 +601,9 @@ export default function CompanyIntelPage() {
                                 {timeAgo(a.published_at)}
                               </span>
                             )}
+                            <CompletenessBadge completeness={cmplt} />
+                            <SignalScore score={getAdjustedScore(a.relevance_score ?? null, cmplt)} />
+                            <SourceCredibilityBadge winRate={a.source ? credMap.get(a.source) ?? null : null} />
                           </div>
                           <div className="flex items-start gap-2">
                             <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
@@ -601,7 +621,8 @@ export default function CompanyIntelPage() {
                             </p>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </>
                   )}
                   {/* Sector Context group — macro, geopolitical, sector analysis */}
@@ -613,7 +634,9 @@ export default function CompanyIntelPage() {
                       )}>
                         Sector Context
                       </p>
-                      {contextArticles.map((a) => (
+                      {contextArticles.map((a) => {
+                        const cmplt = getCompleteness(a.content, a.summary);
+                        return (
                         <div key={a.id} className="bg-white border border-border-base rounded-xl p-3">
                           <div className="flex items-center gap-2 mb-1">
                             {a.sector && (
@@ -632,6 +655,9 @@ export default function CompanyIntelPage() {
                                 {timeAgo(a.published_at)}
                               </span>
                             )}
+                            <CompletenessBadge completeness={cmplt} />
+                            <SignalScore score={getAdjustedScore(a.relevance_score ?? null, cmplt)} />
+                            <SourceCredibilityBadge winRate={a.source ? credMap.get(a.source) ?? null : null} />
                           </div>
                           <div className="flex items-start gap-2">
                             <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
@@ -649,7 +675,8 @@ export default function CompanyIntelPage() {
                             </p>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </>
                   )}
                 </div>

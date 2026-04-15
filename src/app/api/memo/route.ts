@@ -1,8 +1,137 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { createClient } from "@supabase/supabase-js";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+/* ── User profile helpers for personalization ── */
+interface UserProfile {
+  full_name?: string | null;
+  role?: string | null;
+  firm?: string | null;
+  sectors?: string[] | null;
+  risk_appetite?: string | null;
+  watchlist_tickers?: string[] | null;
+  onboarding_completed?: boolean | null;
+}
+
+const roleLabels: Record<string, string> = {
+  student_analyst: "a student analyst building investment knowledge",
+  buy_side: "a buy-side analyst at an investment fund",
+  sell_side: "a sell-side analyst covering equities",
+  private_equity: "a private equity professional evaluating deals",
+  ria: "a registered investment advisor managing client portfolios",
+  family_office: "a family office investment professional",
+  other: "a finance professional",
+};
+
+async function fetchUserProfile(userId: string): Promise<UserProfile | null> {
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .select("full_name, role, firm, sectors, risk_appetite, watchlist_tickers, onboarding_completed")
+      .eq("id", userId)
+      .single();
+    if (error || !data) return null;
+    return data as UserProfile;
+  } catch (err) {
+    console.warn("Failed to fetch user profile for memo personalization:", err);
+    return null;
+  }
+}
+
+function buildMemoUserContext(profile: UserProfile): string {
+  const role = profile.role ?? "";
+  const roleLabel = roleLabels[role] ?? "a finance professional";
+
+  let ctx = `\nUSER CONTEXT FOR MEMO:\nThis memo is for ${roleLabel}.\n`;
+
+  if (role === "private_equity" || role === "buy_side") {
+    ctx += "Include deal structure analysis, entry multiple context, and return profile framing.\n";
+  }
+  if (role === "student_analyst") {
+    ctx += 'Include a "Why this matters" section explaining the signal in educational context.\n';
+  }
+  if (profile.risk_appetite === "aggressive") {
+    ctx += "Emphasize upside scenarios and catalysts.\n";
+  }
+  if (profile.risk_appetite === "defensive") {
+    ctx += "Emphasize downside risks and mitigation factors prominently.\n";
+  }
+
+  return ctx;
+}
+
+async function buildMemoContext(sector: string | undefined): Promise<string> {
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+
+    // 1. Recent resolved theses
+    let thesesQuery = supabase
+      .from("theses")
+      .select("sector, outcome, horizon, generated_at")
+      .in("outcome", ["confirmed", "invalidated"])
+      .order("generated_at", { ascending: false })
+      .limit(5);
+    if (sector) thesesQuery = thesesQuery.eq("sector", sector);
+    const { data: theses } = await thesesQuery;
+
+    // 2. Top 3 sources by win_rate
+    const { data: sources } = await supabase
+      .from("source_credibility")
+      .select("source, win_rate")
+      .order("win_rate", { ascending: false })
+      .limit(3);
+
+    // 3. Top patterns for sector
+    let patternQuery = supabase
+      .from("pattern_library")
+      .select("sector, horizon, win_rate")
+      .order("win_rate", { ascending: false })
+      .limit(3);
+    if (sector) patternQuery = patternQuery.eq("sector", sector);
+    const { data: patterns } = await patternQuery;
+
+    const lines: string[] = [];
+
+    if (theses && theses.length > 0) {
+      const confirmed = theses.filter((t) => t.outcome === "confirmed").length;
+      const total = theses.length;
+      const pct = Math.round((confirmed / total) * 100);
+      const horizon = theses[0].horizon || "medium-term";
+      lines.push(
+        `- In ${sector || "this sector"}, recent theses have confirmed at ${pct}% over ${horizon} horizons (n=${total}).`,
+      );
+    }
+
+    if (sources && sources.length > 0) {
+      for (const s of sources) {
+        lines.push(`- Source "${s.source}" has ${Math.round(s.win_rate * 100)}% win rate.`);
+      }
+    }
+
+    if (patterns && patterns.length > 0) {
+      for (const p of patterns) {
+        lines.push(
+          `- Pattern in ${p.sector} (${p.horizon}): ${Math.round(p.win_rate * 100)}% confirmation rate.`,
+        );
+      }
+    }
+
+    if (lines.length === 0) return "";
+    return "HISTORICAL CONTEXT:\n" + lines.join("\n");
+  } catch {
+    return "";
+  }
+}
 
 const TYPE_PROMPTS: Record<string, string> = {
   deal: `You are a senior M&A analyst. Write a sharp deal memo with exactly these 4 sections in this order:
@@ -29,6 +158,10 @@ Hard rules: no invented counterparties, dollar figures, or valuation assumptions
 export async function POST(request: NextRequest) {
   const { user } = await getSupabaseWithUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  // Fetch user profile for personalization (soft-fail)
+  const profile = await fetchUserProfile(user.id);
+  const memoUserContext = profile ? buildMemoUserContext(profile) : "";
 
   let body: {
     company?: string;
@@ -64,12 +197,17 @@ export async function POST(request: NextRequest) {
     const system = systemPrompt || (type ? TYPE_PROMPTS[type] : undefined) || TYPE_PROMPTS.article;
     const truncated = String(content || "").slice(0, 4000);
 
+    const memoCtx = await buildMemoContext(sector || undefined);
+    const augmentedSystem = (memoUserContext ? memoUserContext + "\n\n" : "")
+      + (memoCtx ? memoCtx + "\n\n" : "")
+      + system;
+
     try {
       const completion = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: [{ role: "user", parts: [{ text: truncated }] }],
         config: {
-          systemInstruction: system,
+          systemInstruction: augmentedSystem,
           temperature: 0.35,
           maxOutputTokens: 750,
           thinkingConfig: { thinkingBudget: 0 },
@@ -97,7 +235,7 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
 
-  const prompt = `You are a senior IB analyst. Write a concise deal memo for this transaction. Be specific, use bullet points.
+  const prompt = `${memoUserContext ? memoUserContext + "\n" : ""}You are a senior IB analyst. Write a concise deal memo for this transaction. Be specific, use bullet points.
 
 TARGET: ${company}
 ACQUIRER: ${acquirer || "Undisclosed"}

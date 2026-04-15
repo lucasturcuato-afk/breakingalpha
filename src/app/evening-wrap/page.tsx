@@ -17,6 +17,7 @@ import { stripHtml } from "@/lib/strip-html";
 import { Moon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { MemoModal } from "@/components/memo/MemoModal";
+import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
 import type { StoryData } from "@/components/dashboard";
 import { createBrowserClient } from "@supabase/ssr";
 
@@ -105,7 +106,7 @@ export default function EveningWrapPage() {
 
         let { data: articles, error: articlesError } = await getSupabase()
           .from("articles")
-          .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies")
+          .select("id, title, source, sector, sentiment, summary, content, published_at, ingested_at, url, companies, relevance_score")
           .gte("ingested_at", cutoff24h)
           .order("relevance_score", { ascending: false })
           .limit(8);
@@ -115,7 +116,7 @@ export default function EveningWrapPage() {
         if ((articles?.length ?? 0) < 3) {
           const { data: fallback } = await getSupabase()
             .from("articles")
-            .select("id, title, source, sector, sentiment, summary, published_at, ingested_at, url, companies")
+            .select("id, title, source, sector, sentiment, summary, content, published_at, ingested_at, url, companies, relevance_score")
             .gte("ingested_at", cutoff48h)
             .order("relevance_score", { ascending: false })
             .limit(8);
@@ -125,19 +126,38 @@ export default function EveningWrapPage() {
         setStoriesLabel(label);
 
         if (articles) {
-          setStories(articles.map((a) => ({
-            id: a.id,
-            title: a.title || "Untitled",
-            source: a.source || "Unknown",
-            timestamp: timeAgo(a.published_at || a.ingested_at),
-            sentiment: sentimentFromDb(a.sentiment),
-            sector: a.sector || undefined,
-            summary: a.summary || undefined,
-            tags: parseCompanies(a.companies).slice(0, 3),
-            url: a.url || undefined,
-            read: false,
-            saved: false,
-          })));
+          // Batch fetch source credibility
+          const uniqueSources = [...new Set(articles.map(a => a.source).filter(Boolean) as string[])];
+          let credMap = new Map<string, number>();
+          if (uniqueSources.length > 0) {
+            try {
+              const { data: credData } = await getSupabase()
+                .from("source_credibility")
+                .select("source, win_rate")
+                .in("source", uniqueSources);
+              credMap = new Map(credData?.map(r => [r.source, r.win_rate]) ?? []);
+            } catch { /* soft-fail */ }
+          }
+
+          setStories(articles.map((a) => {
+            const completeness = getCompleteness(a.content, a.summary);
+            return {
+              id: a.id,
+              title: a.title || "Untitled",
+              source: a.source || "Unknown",
+              timestamp: timeAgo(a.published_at || a.ingested_at),
+              sentiment: sentimentFromDb(a.sentiment),
+              sector: a.sector || undefined,
+              summary: a.summary || undefined,
+              tags: parseCompanies(a.companies).slice(0, 3),
+              url: a.url || undefined,
+              read: false,
+              saved: false,
+              completeness,
+              adjustedScore: getAdjustedScore(a.relevance_score ?? null, completeness),
+              sourceWinRate: credMap.get(a.source) ?? null,
+            };
+          }));
         }
       } catch (e) {
         console.error("Failed to load briefing:", e);
