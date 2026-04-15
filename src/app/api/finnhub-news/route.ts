@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 
+function stripHtml(raw: string | null | undefined): string {
+  if (!raw) return "";
+  return raw
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#038;/g, "&")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 interface FinnhubNewsItem {
   id: number;
   headline: string;
@@ -20,10 +33,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const today = new Date();
-    const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
     const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
-    const url = `https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(symbol)}&from=${fmt(sevenDaysAgo)}&to=${fmt(today)}&token=${FINNHUB_KEY}`;
+    const url = `https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(symbol)}&from=${fmt(thirtyDaysAgo)}&to=${fmt(today)}&token=${FINNHUB_KEY}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
 
     if (!res.ok) return NextResponse.json({ articles: [] });
@@ -37,7 +50,7 @@ export async function GET(request: NextRequest) {
       title: item.headline,
       source: item.source,
       url: item.url,
-      summary: item.summary,
+      summary: stripHtml(item.summary),
       published_at: new Date(item.datetime * 1000).toISOString(),
       ingested_at: now,
       sector: null,

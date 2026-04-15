@@ -124,6 +124,19 @@ interface MatchedArticle {
   summary?: string;
 }
 
+function stripHtml(raw: string | null | undefined): string {
+  if (!raw) return "";
+  return raw
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#038;/g, "&")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 /** Returns true if the title is primarily ASCII/English (>80% basic Latin chars). */
 function isEnglishTitle(title: string): boolean {
   if (!title) return true;
@@ -167,7 +180,7 @@ function mapArticle(a: Record<string, unknown>): MatchedArticle {
     activity_types: (a.activity_types as string[] | null) ?? [],
     published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
     relevance_score: (a.relevance_score as number | null) ?? 0,
-    summary: a.summary as string | undefined,
+    summary: stripHtml(a.summary as string | null | undefined) || undefined,
   };
 }
 
@@ -223,6 +236,12 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArti
     .limit(30);
 
   const result = dedupeAndSort((data || []).map(mapArticle));
+
+  if (entry.type === "company" && entry.identifier.length < 6) {
+    return result.filter(a =>
+      a.primary_company?.toLowerCase().includes(entry.identifier.toLowerCase())
+    );
+  }
 
   if (result.length === 0 && entry.type === "ticker") {
     try {
@@ -581,7 +600,7 @@ export default function WatchlistPage() {
                       onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
                       className={cn(
                         "flex gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
-                        "items-center",
+                        "items-start",
                         selectedIdentifier === entry.identifier
                           ? "border-l-2 border-l-gold bg-gold-muted/30"
                           : "bg-white hover:border-border-hover",
@@ -600,7 +619,7 @@ export default function WatchlistPage() {
                       </div>
 
                       {/* RIGHT: article count, price, hover actions, chevron */}
-                      <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex items-center gap-2 flex-shrink-0 self-center">
                         {articleCount > 0 && (
                           <span className="font-data text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
                             {articleCount}
