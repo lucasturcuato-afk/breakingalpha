@@ -119,21 +119,6 @@ export function buildArticleOrFilter(
     conditions.push(`title.ilike.%${safe}%`);
   }
 
-  // For tickers with 3+ alphanumeric chars, also match the raw ticker symbol
-  // in the title (e.g. "$NVDA" or "NVDA " at a word boundary).
-  const rawIdent = identifier.replace(/[^A-Z0-9]/gi, "");
-  if (type === "ticker" && rawIdent.length >= 3) {
-    // The identifier itself is already included in `terms` above, but the
-    // title-only match ensures short names like "AMD" are caught even when
-    // not in primary_company.
-    const safeIdent = rawIdent.replace(/,/g, "");
-    // Word-boundary-ish match: preceded by space or start, followed by space/punct
-    // PostgREST doesn't support regex in .or(), so use simple space-bounded patterns.
-    conditions.push(`title.ilike. ${safeIdent} %`);
-    conditions.push(`title.ilike.${safeIdent} %`);
-    conditions.push(`title.ilike.% ${safeIdent}:%`);
-    conditions.push(`title.ilike.% ${safeIdent},%`);
-  }
 
   if (conditions.length === 0) return null;
   return conditions.join(",");
