@@ -7,6 +7,8 @@ Exports:
   fetch_full_text(url, source) -> str | None
 """
 
+from __future__ import annotations
+
 import time
 import requests
 from bs4 import BeautifulSoup
