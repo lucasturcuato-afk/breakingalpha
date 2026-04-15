@@ -37,7 +37,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
 
   const refetch = useCallback(async () => {
     try {
-      const res = await fetch("/api/user-profile");
+      const res = await fetch("/api/user-profile", { credentials: "include" });
       if (!res.ok) {
         setLoading(false);
         return;
@@ -66,6 +66,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
       try {
         const res = await fetch("/api/user-profile", {
           method: "PATCH",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(patch),
         });

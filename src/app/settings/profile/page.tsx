@@ -70,27 +70,29 @@ export default function ProfileSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch current profile on mount
+  // Fetch current profile on mount — query Supabase directly (bypasses API route)
   useEffect(() => {
     async function loadProfile() {
       try {
         const supabase = getSupabase();
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.access_token) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
           setLoading(false);
           return;
         }
 
-        const res = await fetch("/api/user-profile", {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        if (!res.ok) {
+        const { data: profile, error: dbError } = await supabase
+          .from("user_profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single();
+
+        if (dbError && dbError.code !== "PGRST116") {
+          console.error("Profile load error:", dbError.message);
           setLoading(false);
           return;
         }
-        const data = await res.json();
-        // API returns profile directly (GET) or { profile } (after PATCH)
-        const profile = data?.profile ?? data;
+
         if (profile) {
           setFullName(profile.full_name ?? "");
           setFirm(profile.firm ?? "");
@@ -119,14 +121,6 @@ export default function ProfileSettingsPage() {
     setSaved(false);
 
     try {
-      const supabase = getSupabase();
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        setError("Session expired. Please sign in again.");
-        setSaving(false);
-        return;
-      }
-
       // Parse comma-separated tickers
       const tickers = watchlistInput
         .split(",")
@@ -135,10 +129,8 @@ export default function ProfileSettingsPage() {
 
       const res = await fetch("/api/user-profile", {
         method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          "Content-Type": "application/json",
-        },
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           full_name: fullName || null,
           firm: firm || null,
