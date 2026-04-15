@@ -87,7 +87,10 @@ export function getCompanySearchTerms(
 
 /**
  * Builds a Supabase PostgREST `.or()` filter string that matches articles
- * for the given watchlist entry across primary_company, companies, and title.
+ * for the given watchlist entry across primary_company and title.
+ *
+ * Note: the `companies` column is a PostgreSQL text[] array; PostgREST does
+ * not support .ilike on array columns, so it is intentionally excluded.
  *
  * Returns null if no valid conditions could be produced.
  */
@@ -108,7 +111,6 @@ export function buildArticleOrFilter(
     if (!safe) continue;
 
     conditions.push(`primary_company.ilike.%${safe}%`);
-    conditions.push(`companies.ilike.%${safe}%`);
     conditions.push(`title.ilike.%${safe}%`);
   }
 

@@ -5,6 +5,7 @@
 DELETE FROM watchlist
 WHERE identifier IN (
   'asdfasdf',
+  'asdfasdfsa',
   'asdfsaff',
   'xyzgarbage123',
   'test',
