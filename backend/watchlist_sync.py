@@ -274,6 +274,7 @@ def sync_identifier(identifier: str, entry_type: str, display_name: str | None) 
 
         try:
             gdelt_articles = fetch_gdelt_articles(identifier, company_name)
+            time.sleep(1.5)
         except Exception as ex:
             print(f"⚠ GDELT error for {identifier}: {ex}")
 
