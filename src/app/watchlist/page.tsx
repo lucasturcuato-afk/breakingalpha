@@ -170,6 +170,22 @@ function sortArticles(articles: MatchedArticle[], mode: "newest" | "relevant"): 
   });
 }
 
+function mapCachedArticle(a: Record<string, unknown>): MatchedArticle {
+  return {
+    id: a.article_id as string,
+    title: a.title as string,
+    source: a.source as string | undefined,
+    sector: undefined,
+    primary_company: undefined,
+    industry_verticals: [],
+    activity_types: [],
+    published_at: a.published_at as string | undefined,
+    relevance_score: (a.relevance_score as number | null) ?? 5,
+    summary: a.summary as string | undefined,
+    url: a.url as string | undefined,
+  };
+}
+
 function mapArticle(a: Record<string, unknown>): MatchedArticle {
   return {
     id: a.id as string,
@@ -198,6 +214,21 @@ function dedupeAndSort(rows: MatchedArticle[]): MatchedArticle[] {
   return out.slice(0, 20);
 }
 
+async function fetchCachedArticles(identifier: string): Promise<MatchedArticle[]> {
+  try {
+    const res = await fetch(
+      `/api/watchlist-articles?identifier=${encodeURIComponent(identifier)}`,
+      { signal: AbortSignal.timeout(4000) },
+    );
+    if (!res.ok) return [];
+    const json = await res.json();
+    if (!Array.isArray(json.articles)) return [];
+    return json.articles.map(mapCachedArticle);
+  } catch {
+    return [];
+  }
+}
+
 async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArticle[]> {
   const baseSelect = "id, title, source, sector, primary_company, industry_verticals, activity_types, published_at, ingested_at, relevance_score, summary, url";
 
@@ -218,6 +249,19 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArti
 
     const { data } = await sectorQuery;
     return dedupeAndSort((data || []).map(mapArticle));
+  }
+
+  // Cache-first: use pre-fetched watchlist_articles if entry is older than 60 minutes.
+  // Skip cache for sector entries (handled above) and entries added < 60 min ago (no sync yet).
+  const entryAgeMs = Date.now() - new Date(entry.created_at ?? 0).getTime();
+  const SIXTY_MIN_MS = 60 * 60 * 1000;
+
+  if (entryAgeMs >= SIXTY_MIN_MS) {
+    const cached = await fetchCachedArticles(entry.identifier);
+    if (cached.length > 0) {
+      return dedupeAndSort(cached);
+    }
+    // Cache miss — fall through to live fetches below
   }
 
   // ticker or company — use fuzzy suffix-stripping to build a multi-term OR query.
