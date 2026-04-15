@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { JSX } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
@@ -131,6 +131,10 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
 
+  // Keep onGenerated ref in sync to avoid stale closure bugs
+  const onGeneratedRef = useRef(onGenerated);
+  useEffect(() => { onGeneratedRef.current = onGenerated; });
+
   useEffect(() => { setMounted(true); }, []);
 
   // Fetch memo on open (or use preloadedMemo if provided)
@@ -143,8 +147,8 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
 
     // If a preloaded memo was provided, skip the API call entirely.
     if (preloadedMemo) {
+      // loading stays false — we never called setLoading(true) above
       setMemo(preloadedMemo);
-      setLoading(false);
       return;
     }
 
@@ -165,7 +169,7 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
         const data = await res.json();
         if (!cancelled && data.memo) {
           setMemo(data.memo);
-          onGenerated?.(data.memo);
+          onGeneratedRef.current?.(data.memo);
         } else if (!cancelled) {
           setError("No memo content returned");
         }
