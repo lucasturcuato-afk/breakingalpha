@@ -102,11 +102,13 @@ def fetch_finnhub_articles(identifier: str, company_name: str) -> list[dict]:
 
 def fetch_exa_articles(identifier: str, company_name: str) -> list[dict]:
     try:
+        thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
         payload = {
             "query": company_name,
             "category": "news",
             "numResults": 10,
             "highlights": {"maxCharacters": 300, "numSentences": 2},
+            "startPublishedDate": thirty_days_ago,
         }
         resp = requests.post(
             "https://api.exa.ai/search",
@@ -279,6 +281,12 @@ def sync_identifier(identifier: str, entry_type: str, display_name: str | None) 
             print(f"⚠ GDELT error for {identifier}: {ex}")
 
         all_articles = finnhub_articles + exa_articles + gdelt_articles
+        cutoff = datetime.now(timezone.utc) - timedelta(days=35)
+        all_articles = [
+            a for a in all_articles
+            if a.get("published_at") is None or
+            datetime.fromisoformat(a["published_at"].replace("Z", "+00:00")) >= cutoff
+        ]
         for article in all_articles:
             article["relevance_score"] = score_relevance(article, company_name)
 
