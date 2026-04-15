@@ -181,7 +181,7 @@ function mapCachedArticle(a: Record<string, unknown>): MatchedArticle {
     activity_types: [],
     published_at: a.published_at as string | undefined,
     relevance_score: (a.relevance_score as number | null) ?? 5,
-    summary: a.summary as string | undefined,
+    summary: stripHtml(a.summary as string | null | undefined) || undefined,
     url: a.url as string | undefined,
   };
 }
@@ -253,7 +253,8 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArti
 
   // Cache-first: use pre-fetched watchlist_articles if entry is older than 60 minutes.
   // Skip cache for sector entries (handled above) and entries added < 60 min ago (no sync yet).
-  const entryAgeMs = Date.now() - new Date(entry.created_at ?? 0).getTime();
+  const createdAt = entry.created_at ? new Date(entry.created_at).getTime() : null;
+  const entryAgeMs = createdAt !== null ? Date.now() - createdAt : 0;
   const SIXTY_MIN_MS = 60 * 60 * 1000;
 
   if (entryAgeMs >= SIXTY_MIN_MS) {
