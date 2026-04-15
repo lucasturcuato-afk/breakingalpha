@@ -2,6 +2,7 @@
 
 import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { AppShell } from "@/components/shell";
+import { useUserProfile } from "@/hooks/useUserProfile";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -166,16 +167,6 @@ const INDUSTRY_VERTICAL_KEYWORDS: Record<string, string[]> = {
   "Agriculture": ["agricultur", "agri", "farm"],
 };
 
-interface UserProfile {
-  full_name?: string | null;
-  role?: string | null;
-  firm?: string | null;
-  sectors?: string[] | null;
-  risk_appetite?: string | null;
-  watchlist_tickers?: string[] | null;
-  onboarding_completed?: boolean;
-}
-
 /* ── Page ── */
 
 export default function DealFlowPage() {
@@ -206,7 +197,7 @@ function DealFlowContent() {
   const [verticalMatchMode, setVerticalMatchMode] = useState<"any" | "all">("any");
 
   // Profile-based sector pre-filter
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const { profile } = useUserProfile();
   const [profileBannerDismissed, setProfileBannerDismissed] = useState(false);
   const [profileApplied, setProfileApplied] = useState(false);
 
@@ -255,17 +246,6 @@ function DealFlowContent() {
       }
     } catch { /* no-op */ }
 
-    async function loadProfile() {
-      try {
-        const res = await fetch("/api/user-profile");
-        if (!res.ok) return;
-        const data = await res.json();
-        setProfile(data as UserProfile);
-      } catch {
-        // No profile — keep defaults
-      }
-    }
-    loadProfile();
   }, []);
 
   // Pre-select sectors once profile loads (only once)

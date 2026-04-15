@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useUserProfile } from "@/hooks/useUserProfile";
 
 /* ─── Types ─── */
 
@@ -123,6 +124,7 @@ function Toast({ message, visible }: { message: string; visible: boolean }) {
 /* ─── Main Component ─── */
 
 export function OnboardingModal({ userId, onComplete }: OnboardingModalProps) {
+  const { refetch: refetchGlobalProfile } = useUserProfile();
   const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState(1);
   const [role, setRole] = useState<string | null>(null);
@@ -171,6 +173,7 @@ export function OnboardingModal({ userId, onComplete }: OnboardingModalProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ onboarding_completed: true }),
       });
+      refetchGlobalProfile();
     } catch {
       // Non-fatal — just close the modal
     }
@@ -199,6 +202,7 @@ export function OnboardingModal({ userId, onComplete }: OnboardingModalProps) {
         throw new Error(data.error || `Failed to save profile (${res.status})`);
       }
 
+      refetchGlobalProfile();
       setShowToast(true);
       setTimeout(() => {
         setShowToast(false);

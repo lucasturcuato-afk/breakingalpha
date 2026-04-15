@@ -80,10 +80,10 @@ export async function PATCH(request: Request) {
 
     if (error) {
       console.error("user-profile PATCH error:", error.message);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json({ success: true, profile: data });
   } catch (err) {
     console.error("user-profile PATCH unexpected error:", err);
     return NextResponse.json(

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
+import { useUserProfile } from "@/hooks/useUserProfile";
 import { PanelWidget } from "@/components/shell/right-panel";
 import {
   PersonalizationBanner,
@@ -25,16 +26,6 @@ import { OnboardingGate } from "@/components/onboarding/onboarding-gate";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
-
-interface UserProfile {
-  full_name?: string | null;
-  role?: string | null;
-  firm?: string | null;
-  sectors?: string[] | null;
-  risk_appetite?: string | null;
-  watchlist_tickers?: string[] | null;
-  onboarding_completed?: boolean;
-}
 
 function getSupabase() {
   return createBrowserClient(
@@ -93,11 +84,11 @@ function sentimentScore(sentiment: string, riskAppetite: string): number {
 }
 
 export default function DashboardPage() {
+  const { profile } = useUserProfile();
   const [stories, setStories] = useState<StoryData[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
   const [storyCount, setStoryCount] = useState(0);
   const [indices, setIndices] = useState<MarketIndices>({ spx: null, vix: null, tnx: null });
-  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [storyTab, setStoryTab] = useState<"for-you" | "all">("all");
 
   useEffect(() => {
@@ -201,23 +192,12 @@ export default function DashboardPage() {
     loadIndices();
   }, []);
 
-  // Fetch user profile for personalization
+  // Switch to "For You" tab when profile is loaded and onboarded
   useEffect(() => {
-    async function loadProfile() {
-      try {
-        const res = await fetch("/api/user-profile");
-        if (!res.ok) return;
-        const data = await res.json();
-        setProfile(data as UserProfile);
-        if (data.onboarding_completed) {
-          setStoryTab("for-you");
-        }
-      } catch {
-        // No profile — keep defaults
-      }
+    if (profile?.onboarding_completed) {
+      setStoryTab("for-you");
     }
-    loadProfile();
-  }, []);
+  }, [profile]);
 
   // "For You" filtered stories
   const forYouStories = useMemo(() => {
@@ -321,6 +301,24 @@ export default function DashboardPage() {
           storyCount={storyCount}
           context={greetingSubtitle ?? "markets are adjusting to new export policy data."}
         />
+
+        {/* Personalization indicator */}
+        {profile?.onboarding_completed && (
+          <p className="font-sans text-[11px] text-text-muted -mt-3">
+            Personalized for:{" "}
+            {[
+              ...(profile.sectors ?? []),
+              ...(profile.risk_appetite ? [profile.risk_appetite.charAt(0).toUpperCase() + profile.risk_appetite.slice(1)] : []),
+            ].join(" · ")}
+            {" · "}
+            <Link
+              href="/settings/profile"
+              className="text-gold hover:text-gold-dark transition-colors font-semibold"
+            >
+              Edit preferences →
+            </Link>
+          </p>
+        )}
 
         {/* Stat cards */}
         <div className="grid grid-cols-4 gap-2.5">

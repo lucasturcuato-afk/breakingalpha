@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/shell";
+import { useUserProfile } from "@/hooks/useUserProfile";
 import { ThesisList } from "@/components/thesis/ThesisList";
 import { ThesisDetailPanel } from "@/components/thesis/thesis-detail-panel";
 import { KanbanBoard } from "@/components/thesis/kanban-board";
@@ -42,16 +43,6 @@ interface UserThesisState {
   notes?: string | null;
   created_at?: string;
   updated_at?: string;
-}
-
-interface UserProfile {
-  full_name?: string | null;
-  role?: string | null;
-  firm?: string | null;
-  sectors?: string[] | null;
-  risk_appetite?: string | null;
-  watchlist_tickers?: string[] | null;
-  onboarding_completed?: boolean;
 }
 
 function sectorMatchesProfile(thesisSector: string, profileSectors: string[]): boolean {
@@ -228,25 +219,14 @@ function ThesisBoardContent() {
   const [archivedRefreshKey, setArchivedRefreshKey] = useState(0);
   const [userThesisStates, setUserThesisStates] = useState<UserThesisState[]>([]);
   const [viewMode, setViewMode] = useState<"list" | "board">("list");
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const { profile } = useUserProfile();
 
-  // Fetch user profile
+  // Switch to recommended filter when profile is loaded and onboarded
   useEffect(() => {
-    async function loadProfile() {
-      try {
-        const res = await fetch("/api/user-profile");
-        if (!res.ok) return;
-        const data = await res.json();
-        setProfile(data as UserProfile);
-        if (data.onboarding_completed) {
-          setConvictionFilter("recommended");
-        }
-      } catch {
-        // No profile — keep defaults
-      }
+    if (profile?.onboarding_completed) {
+      setConvictionFilter("recommended");
     }
-    loadProfile();
-  }, []);
+  }, [profile]);
 
   // Auto-select thesis from query param
   useEffect(() => {

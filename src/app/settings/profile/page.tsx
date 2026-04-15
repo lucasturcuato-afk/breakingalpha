@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Save, Check, Briefcase, TrendingUp, GraduationCap, Building2, Shield, Zap, Scale, BarChart3 } from "lucide-react";
+import { useUserProfile } from "@/hooks/useUserProfile";
 import type { ReactNode } from "react";
 
 /* ── Role options (matching user_profiles.role enum) ── */
@@ -57,6 +58,7 @@ function getSupabase() {
 }
 
 export default function ProfileSettingsPage() {
+  const { refetch: refetchGlobalProfile } = useUserProfile();
   const [fullName, setFullName] = useState("");
   const [firm, setFirm] = useState("");
   const [role, setRole] = useState<string | null>(null);
@@ -86,7 +88,9 @@ export default function ProfileSettingsPage() {
           setLoading(false);
           return;
         }
-        const { profile } = await res.json();
+        const data = await res.json();
+        // API returns profile directly (GET) or { profile } (after PATCH)
+        const profile = data?.profile ?? data;
         if (profile) {
           setFullName(profile.full_name ?? "");
           setFirm(profile.firm ?? "");
@@ -152,6 +156,7 @@ export default function ProfileSettingsPage() {
       }
 
       setSaved(true);
+      refetchGlobalProfile(); // propagate to all consumers instantly
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -329,6 +334,22 @@ export default function ProfileSettingsPage() {
           </div>
         )}
       </div>
+
+      {/* Toast notifications */}
+      {saved && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in fade-in-0 slide-in-from-bottom-4 duration-300">
+          <div className="bg-gold text-cream px-4 py-2.5 rounded-xl shadow-lg font-sans text-[13px] font-semibold">
+            Profile updated. ✦
+          </div>
+        </div>
+      )}
+      {error && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in fade-in-0 slide-in-from-bottom-4 duration-300">
+          <div className="bg-signal-dn text-cream px-4 py-2.5 rounded-xl shadow-lg font-sans text-[13px] font-semibold">
+            {error}
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }

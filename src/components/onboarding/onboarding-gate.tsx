@@ -3,13 +3,18 @@
 import { useState, useEffect } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { OnboardingModal } from "./OnboardingModal";
+import { useUserProfile } from "@/hooks/useUserProfile";
 
 export function OnboardingGate() {
+  const { profile, loading } = useUserProfile();
   const [userId, setUserId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
-    async function check() {
+    if (loading) return;
+    if (profile?.onboarding_completed) return;
+
+    async function checkAuth() {
       try {
         const supabase = createBrowserClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,24 +23,14 @@ export function OnboardingGate() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        // Check profile in DB
-        const res = await fetch("/api/user-profile");
-        if (!res.ok) {
-          // If API fails, don't block the user
-          return;
-        }
-        const profile = await res.json();
-
-        if (!profile.onboarding_completed) {
-          setUserId(user.id);
-          setShowModal(true);
-        }
+        setUserId(user.id);
+        setShowModal(true);
       } catch {
         // Non-fatal — don't block the dashboard
       }
     }
-    check();
-  }, []);
+    checkAuth();
+  }, [loading, profile]);
 
   if (!showModal || !userId) return null;
 

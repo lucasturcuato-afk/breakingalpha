@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Playfair_Display, Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { UserProfileProvider } from "@/hooks/useUserProfile";
 import "./globals.css";
 
 const playfairDisplay = Playfair_Display({
@@ -41,7 +42,9 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <UserProfileProvider>{children}</UserProfileProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
