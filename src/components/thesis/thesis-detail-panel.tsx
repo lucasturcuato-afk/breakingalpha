@@ -190,10 +190,10 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
   const handleArchive = async () => {
     if (!thesis?.id) return;
     try {
-      const res = await fetch(`/api/theses/${thesis.id}`, {
-        method: "PATCH",
+      const res = await fetch("/api/user-thesis-states", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "archived" }),
+        body: JSON.stringify({ thesis_id: thesis.id, status: "archived" }),
       });
       if (!res.ok) throw new Error("Failed");
       showToast("Archived");
