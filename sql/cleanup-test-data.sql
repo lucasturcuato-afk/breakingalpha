@@ -6,6 +6,8 @@ DELETE FROM watchlist
 WHERE identifier IN (
   'asdfasdf',
   'asdfasdfsa',
+  'anasdfasdfsa',
+  'anasdfasdfsadf',
   'asdfsaff',
   'xyzgarbage123',
   'test',
@@ -15,7 +17,8 @@ WHERE identifier IN (
   'qwerty',
   'foo',
   'bar'
-);
+)
+AND type IN ('company', 'ticker');
 
 -- Remove entries where identifier is a single character and type is ticker or company
 -- (single-char entries are almost always test data or mistakes)

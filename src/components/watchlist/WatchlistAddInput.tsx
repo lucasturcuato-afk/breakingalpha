@@ -231,8 +231,8 @@ export function WatchlistAddInput({
     !selectedTicker;
 
   return (
-    <div className="bg-white border border-border-base rounded-xl p-4">
-      {/* Type selector */}
+    <div>
+      {/* Type selector — outside the card so it reads as a tab row above the input */}
       <div className="flex gap-1.5 mb-2.5">
         {(["ticker", "company", "sector"] as const).map((t) => (
           <button
@@ -251,6 +251,7 @@ export function WatchlistAddInput({
         ))}
       </div>
 
+      <div className="bg-white border border-border-base rounded-xl p-4">
       {/* Sector quick-select buttons (when in sector mode and no query) */}
       {addType === "sector" && query.length === 0 && (
         <div className="flex flex-wrap gap-1 mb-2.5">
@@ -298,7 +299,16 @@ export function WatchlistAddInput({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={submitting}
+            disabled={
+              submitting ||
+              query.trim().length < 1 ||
+              (addType === "ticker" &&
+                query.trim().length > 0 &&
+                !selectedTicker &&
+                !TICKERS_DEDUPED.find(
+                  (t) => t.ticker.toUpperCase() === query.trim().toUpperCase(),
+                ))
+            }
             className="px-4 py-2 rounded-lg bg-gold text-cream font-sans text-[11px] font-bold hover:bg-gold-dark transition-colors cursor-pointer flex-shrink-0 disabled:opacity-50"
           >
             ADD
@@ -392,6 +402,7 @@ export function WatchlistAddInput({
           )}
         </>
       )}
+      </div>
     </div>
   );
 }

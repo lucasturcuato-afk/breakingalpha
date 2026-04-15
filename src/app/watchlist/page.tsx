@@ -351,7 +351,15 @@ export default function WatchlistPage() {
 
   const handleAdd = async (identifier: string, displayName?: string) => {
     if (!identifier.trim()) {
-      setAddError("Please select a ticker from the dropdown");
+      if (addType === "company") {
+        setAddError("Please enter a company name (at least 2 characters)");
+      } else {
+        setAddError("Please select a ticker from the dropdown");
+      }
+      return;
+    }
+    if (addType === "company" && identifier.trim().length < 2) {
+      setAddError("Company name must be at least 2 characters");
       return;
     }
     setAddError("");
