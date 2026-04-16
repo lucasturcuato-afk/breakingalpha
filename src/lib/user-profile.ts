@@ -30,6 +30,12 @@ export type UserRole =
 
 export type RiskAppetite = "aggressive" | "balanced" | "defensive";
 
+export type StrategyType = "pe" | "equity" | "vc" | "macro" | "credit";
+
+export type InvestmentHorizon = "short" | "medium" | "long";
+
+export type WorkflowStyle = "deep_dive" | "screening" | "monitoring";
+
 export interface UserProfile {
   id: string;
   full_name: string | null;
@@ -37,6 +43,9 @@ export interface UserProfile {
   firm_or_school: string | null;
   sectors: string[];
   risk_appetite: RiskAppetite;
+  strategy_type: StrategyType | null;
+  investment_horizon: InvestmentHorizon | null;
+  workflow_style: WorkflowStyle | null;
   watchlist_tickers: string[];
   onboarding_completed: boolean;
   inferred_sector_weights: Record<string, number>;
@@ -89,6 +98,9 @@ const DEFAULT_PROFILE = (id: string): UserProfile => ({
   firm_or_school: null,
   sectors: [],
   risk_appetite: "balanced",
+  strategy_type: null,
+  investment_horizon: null,
+  workflow_style: null,
   watchlist_tickers: [],
   onboarding_completed: false,
   inferred_sector_weights: {},
@@ -141,11 +153,36 @@ const UPSERT_WHITELIST = [
   "firm_or_school",
   "sectors",
   "risk_appetite",
+  "strategy_type",
+  "investment_horizon",
+  "workflow_style",
   "watchlist_tickers",
   "onboarding_completed",
   "inferred_sector_weights",
   "inferred_weights_updated_at",
 ] as const;
+
+// DDL to run against Supabase if any of the newer profile columns are missing.
+// Printed to the server log on the first upsert that hits a missing column so
+// the operator notices and can apply the migration.
+const MISSING_COLUMN_DDL = `-- Add missing profile columns:
+ALTER TABLE user_profiles
+  ADD COLUMN IF NOT EXISTS strategy_type TEXT
+    CHECK (strategy_type IN ('pe', 'equity', 'vc', 'macro', 'credit'));
+ALTER TABLE user_profiles
+  ADD COLUMN IF NOT EXISTS investment_horizon TEXT
+    CHECK (investment_horizon IN ('short', 'medium', 'long'));
+ALTER TABLE user_profiles
+  ADD COLUMN IF NOT EXISTS workflow_style TEXT
+    CHECK (workflow_style IN ('deep_dive', 'screening', 'monitoring'));`;
+
+const OPTIONAL_COLUMNS = [
+  "strategy_type",
+  "investment_horizon",
+  "workflow_style",
+  "inferred_sector_weights",
+  "inferred_weights_updated_at",
+];
 
 export async function upsertUserProfile(
   supabase: SupabaseClient,
@@ -167,12 +204,16 @@ export async function upsertUserProfile(
 
   if (error) {
     // Retry without the columns that might not exist yet (pre-migration env).
-    if (
-      /inferred_sector_weights|inferred_weights_updated_at/.test(error.message)
-    ) {
+    const mentionsOptional = OPTIONAL_COLUMNS.some((c) =>
+      error.message.includes(c),
+    );
+    if (mentionsOptional) {
+      console.warn(
+        `[user-profile] upsert hit missing column(s): ${error.message}\n` +
+          `[user-profile] Apply the migration to unlock full personalization:\n${MISSING_COLUMN_DDL}`,
+      );
       const retry = { ...filtered };
-      delete retry.inferred_sector_weights;
-      delete retry.inferred_weights_updated_at;
+      for (const col of OPTIONAL_COLUMNS) delete retry[col];
       const { error: retryErr } = await supabase
         .from("user_profiles")
         .upsert({ id: userId, ...retry }, { onConflict: "id" });
@@ -333,6 +374,26 @@ const RISK_LABEL: Record<RiskAppetite, string> = {
     "prefers lower-volatility compounders and downside-protected setups",
 };
 
+const STRATEGY_LABEL: Record<StrategyType, string> = {
+  pe: "private-equity mandate — durable cash flows, long duration",
+  equity: "public-equity mandate — catalyst-driven and valuation-aware",
+  vc: "venture mandate — asymmetric upside and runway sensitivity",
+  macro: "macro mandate — regime- and policy-aware positioning",
+  credit: "credit mandate — coupon safety, spread and downgrade risk",
+};
+
+const HORIZON_LABEL: Record<InvestmentHorizon, string> = {
+  short: "short horizon (weeks to a few months)",
+  medium: "medium horizon (6–18 months)",
+  long: "long horizon (multi-year)",
+};
+
+const WORKFLOW_LABEL: Record<WorkflowStyle, string> = {
+  deep_dive: "works via deep-dive single-name research",
+  screening: "works via systematic screening and shortlists",
+  monitoring: "works via ongoing monitoring of existing positions",
+};
+
 /**
  * Render the profile as a short paragraph suitable for injecting into a
  * Gemini system/user prompt. Returns an empty string when the profile is
@@ -364,6 +425,16 @@ export function buildPersonalizationContext(
     );
   }
   parts.push(`Risk posture: ${RISK_LABEL[profile.risk_appetite]}.`);
+
+  if (profile.strategy_type) {
+    parts.push(`Strategy: ${STRATEGY_LABEL[profile.strategy_type]}.`);
+  }
+  if (profile.investment_horizon) {
+    parts.push(`Horizon: ${HORIZON_LABEL[profile.investment_horizon]}.`);
+  }
+  if (profile.workflow_style) {
+    parts.push(`Workflow: ${WORKFLOW_LABEL[profile.workflow_style]}.`);
+  }
 
   const weights = profile.inferred_sector_weights ?? {};
   const boosted = Object.entries(weights)

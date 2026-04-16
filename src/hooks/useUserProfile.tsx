@@ -10,6 +10,9 @@ export interface UserProfile {
   firm_or_school?: string | null;
   sectors?: string[] | null;
   risk_appetite?: string | null;
+  strategy_type?: string | null;
+  investment_horizon?: string | null;
+  workflow_style?: string | null;
   watchlist_tickers?: string[] | null;
   onboarding_completed?: boolean;
 }

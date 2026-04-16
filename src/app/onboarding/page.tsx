@@ -6,10 +6,11 @@ import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 export const dynamic = "force-dynamic";
 
 /**
- * /onboarding — full-page 6-step setup flow.
+ * /onboarding — full-page 7-step setup flow on a dark split layout.
  *
  * Driven by proxy.ts: new users (onboarding_completed = false) are redirected
- * here from any gated route. Completed users are bounced to /dashboard.
+ * here from any gated route. Completed users are bounced to /dashboard. The
+ * wizard component owns its own full-viewport chrome — no outer wrapper.
  */
 export default async function OnboardingPage() {
   const { supabase, user } = await getSupabaseWithUser();
@@ -19,17 +20,18 @@ export default async function OnboardingPage() {
   if (profile.onboarding_completed) redirect("/dashboard");
 
   return (
-    <main className="min-h-screen bg-cream flex items-center justify-center px-4 py-12">
-      <OnboardingWizard
-        initialProfile={{
-          full_name: profile.full_name ?? "",
-          role: profile.role,
-          sectors: profile.sectors,
-          risk_appetite: profile.risk_appetite,
-          firm_or_school: profile.firm_or_school ?? "",
-          watchlist_tickers: profile.watchlist_tickers,
-        }}
-      />
-    </main>
+    <OnboardingWizard
+      initialProfile={{
+        full_name: profile.full_name ?? "",
+        role: profile.role,
+        sectors: profile.sectors,
+        risk_appetite: profile.risk_appetite,
+        strategy_type: profile.strategy_type,
+        investment_horizon: profile.investment_horizon,
+        workflow_style: profile.workflow_style,
+        firm_or_school: profile.firm_or_school ?? "",
+        watchlist_tickers: profile.watchlist_tickers,
+      }}
+    />
   );
 }
