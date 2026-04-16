@@ -23,6 +23,7 @@ const OPTIONAL_COLUMNS = [
   "investment_horizon",
   "workflow_style",
   "inferred_sector_weights",
+  "risk_appetite",
 ];
 
 const MISSING_COLUMN_DDL = `-- Add missing profile columns:
@@ -34,7 +35,11 @@ ALTER TABLE user_profiles
     CHECK (investment_horizon IN ('short', 'medium', 'long'));
 ALTER TABLE user_profiles
   ADD COLUMN IF NOT EXISTS workflow_style TEXT
-    CHECK (workflow_style IN ('deep_dive', 'screening', 'monitoring'));`;
+    CHECK (workflow_style IN ('deep_dive', 'screening', 'monitoring'));
+ALTER TABLE user_profiles
+  ADD COLUMN IF NOT EXISTS risk_appetite TEXT
+    CHECK (risk_appetite IN ('aggressive', 'balanced', 'defensive'))
+    DEFAULT 'balanced';`;
 
 export async function GET() {
   try {
