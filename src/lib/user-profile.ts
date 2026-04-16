@@ -34,7 +34,7 @@ export interface UserProfile {
   id: string;
   full_name: string | null;
   role: UserRole | null;
-  firm: string | null;
+  firm_or_school: string | null;
   sectors: string[];
   risk_appetite: RiskAppetite;
   watchlist_tickers: string[];
@@ -86,7 +86,7 @@ const DEFAULT_PROFILE = (id: string): UserProfile => ({
   id,
   full_name: null,
   role: null,
-  firm: null,
+  firm_or_school: null,
   sectors: [],
   risk_appetite: "balanced",
   watchlist_tickers: [],
@@ -138,7 +138,7 @@ export async function getUserProfile(
 const UPSERT_WHITELIST = [
   "full_name",
   "role",
-  "firm",
+  "firm_or_school",
   "sectors",
   "risk_appetite",
   "watchlist_tickers",
@@ -346,10 +346,10 @@ export function buildPersonalizationContext(
 
   const name = profile.full_name?.trim();
   const role = profile.role ? ROLE_LABEL[profile.role] : null;
-  const firm = profile.firm?.trim();
+  const firmOrSchool = profile.firm_or_school?.trim();
 
   if (role) {
-    const whoBits = [name, role, firm ? `at ${firm}` : null].filter(Boolean);
+    const whoBits = [name, role, firmOrSchool ? `at ${firmOrSchool}` : null].filter(Boolean);
     parts.push(`Reader: ${whoBits.join(", ")}.`);
   } else if (name) {
     parts.push(`Reader: ${name}.`);

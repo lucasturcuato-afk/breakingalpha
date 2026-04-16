@@ -75,10 +75,10 @@ export default async function PreferencesPage() {
             </div>
             <div>
               <dt className="text-text-faint uppercase text-[10px] tracking-wide mb-0.5">
-                Firm
+                Firm or school
               </dt>
               <dd className="text-text-primary">
-                {profile.firm ?? <span className="text-text-muted italic">unset</span>}
+                {profile.firm_or_school ?? <span className="text-text-muted italic">unset</span>}
               </dd>
             </div>
             <div>

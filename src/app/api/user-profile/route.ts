@@ -7,7 +7,7 @@ const DEFAULT_PROFILE = {
   onboarding_completed: false,
   full_name: null,
   role: null,
-  firm: null,
+  firm_or_school: null,
   sectors: [],
   risk_appetite: "balanced",
   watchlist_tickers: [],
@@ -62,7 +62,7 @@ export async function PATCH(request: Request) {
     const allowedFields = [
       "full_name",
       "role",
-      "firm",
+      "firm_or_school",
       "sectors",
       "risk_appetite",
       "watchlist_tickers",

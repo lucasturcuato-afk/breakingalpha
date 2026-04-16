@@ -66,7 +66,7 @@ interface InitialProfile {
   role: UserRole | null;
   sectors: string[];
   risk_appetite: RiskAppetite;
-  firm: string;
+  firm_or_school: string;
   watchlist_tickers: string[];
 }
 
@@ -111,7 +111,7 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
   const [riskAppetite, setRiskAppetite] = useState<RiskAppetite>(
     initialProfile.risk_appetite ?? "balanced",
   );
-  const [firm, setFirm] = useState(initialProfile.firm);
+  const [firmOrSchool, setFirmOrSchool] = useState(initialProfile.firm_or_school);
   const [tickerInput, setTickerInput] = useState("");
   const [watchlist, setWatchlist] = useState<string[]>(initialProfile.watchlist_tickers);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
@@ -189,7 +189,7 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
           role,
           sectors,
           risk_appetite: riskAppetite,
-          firm: firm.trim() || null,
+          firm_or_school: firmOrSchool.trim() || null,
           watchlist_tickers: watchlist,
           onboarding_completed: true,
         }),
@@ -254,7 +254,12 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
             <StepWelcome fullName={fullName} onChange={setFullName} />
           )}
           {step === 2 && (
-            <StepRole selected={role} onSelect={setRole} firm={firm} onFirmChange={setFirm} />
+            <StepRole
+              selected={role}
+              onSelect={setRole}
+              firmOrSchool={firmOrSchool}
+              onFirmOrSchoolChange={setFirmOrSchool}
+            />
           )}
           {step === 3 && (
             <StepSectors
@@ -351,13 +356,13 @@ function StepWelcome({
 function StepRole({
   selected,
   onSelect,
-  firm,
-  onFirmChange,
+  firmOrSchool,
+  onFirmOrSchoolChange,
 }: {
   selected: UserRole | null;
   onSelect: (r: UserRole) => void;
-  firm: string;
-  onFirmChange: (v: string) => void;
+  firmOrSchool: string;
+  onFirmOrSchoolChange: (v: string) => void;
 }) {
   return (
     <div>
@@ -390,12 +395,12 @@ function StepRole({
         ))}
       </div>
       <label className="font-sans text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-1.5 block">
-        Firm (optional)
+        Firm or school (optional)
       </label>
       <Input
-        value={firm}
-        onChange={(e) => onFirmChange(e.target.value)}
-        placeholder="e.g. Point72, Bridgewater"
+        value={firmOrSchool}
+        onChange={(e) => onFirmOrSchoolChange(e.target.value)}
+        placeholder="e.g. Point72, Bridgewater, MIT"
       />
     </div>
   );

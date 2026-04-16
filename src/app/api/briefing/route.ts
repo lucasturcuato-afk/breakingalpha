@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 interface UserProfile {
   full_name?: string | null;
   role?: string | null;
-  firm?: string | null;
+  firm_or_school?: string | null;
   sectors?: string[] | null;
   risk_appetite?: string | null;
   watchlist_tickers?: string[] | null;
@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
       if (user) {
         const { data: profileData, error: profileError } = await authedClient
           .from("user_profiles")
-          .select("full_name, role, firm, sectors, risk_appetite, watchlist_tickers, onboarding_completed")
+          .select("full_name, role, firm_or_school, sectors, risk_appetite, watchlist_tickers, onboarding_completed")
           .eq("id", user.id)
           .single();
 

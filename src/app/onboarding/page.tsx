@@ -26,7 +26,7 @@ export default async function OnboardingPage() {
           role: profile.role,
           sectors: profile.sectors,
           risk_appetite: profile.risk_appetite,
-          firm: profile.firm ?? "",
+          firm_or_school: profile.firm_or_school ?? "",
           watchlist_tickers: profile.watchlist_tickers,
         }}
       />

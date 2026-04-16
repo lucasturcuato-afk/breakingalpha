@@ -7,7 +7,7 @@ export interface UserProfile {
   id?: string;
   full_name?: string | null;
   role?: string | null;
-  firm?: string | null;
+  firm_or_school?: string | null;
   sectors?: string[] | null;
   risk_appetite?: string | null;
   watchlist_tickers?: string[] | null;

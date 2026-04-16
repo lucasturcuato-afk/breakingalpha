@@ -130,7 +130,7 @@ export function OnboardingModal({ userId, onComplete }: OnboardingModalProps) {
   const [role, setRole] = useState<string | null>(null);
   const [sectors, setSectors] = useState<string[]>([]);
   const [riskAppetite, setRiskAppetite] = useState<string | null>(null);
-  const [firm, setFirm] = useState("");
+  const [firmOrSchool, setFirmOrSchool] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showToast, setShowToast] = useState(false);
@@ -194,7 +194,7 @@ export function OnboardingModal({ userId, onComplete }: OnboardingModalProps) {
           role,
           sectors,
           risk_appetite: riskAppetite,
-          firm: firm.trim() || null,
+          firm_or_school: firmOrSchool.trim() || null,
           onboarding_completed: true,
         }),
       });
@@ -265,8 +265,8 @@ export function OnboardingModal({ userId, onComplete }: OnboardingModalProps) {
                 <RiskStepContent
                   selected={riskAppetite}
                   onSelect={setRiskAppetite}
-                  firm={firm}
-                  onFirmChange={setFirm}
+                  firmOrSchool={firmOrSchool}
+                  onFirmOrSchoolChange={setFirmOrSchool}
                 />
               )}
 
@@ -429,13 +429,13 @@ function SectorsStepContent({
 function RiskStepContent({
   selected,
   onSelect,
-  firm,
-  onFirmChange,
+  firmOrSchool,
+  onFirmOrSchoolChange,
 }: {
   selected: string | null;
   onSelect: (risk: string) => void;
-  firm: string;
-  onFirmChange: (value: string) => void;
+  firmOrSchool: string;
+  onFirmOrSchoolChange: (value: string) => void;
 }) {
   return (
     <div>
@@ -476,12 +476,12 @@ function RiskStepContent({
 
       <div>
         <label className="font-sans text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-1.5 block">
-          Firm (optional)
+          Firm or school (optional)
         </label>
         <Input
-          value={firm}
-          onChange={(e) => onFirmChange(e.target.value)}
-          placeholder="e.g. Goldman Sachs, Bridgewater"
+          value={firmOrSchool}
+          onChange={(e) => onFirmOrSchoolChange(e.target.value)}
+          placeholder="e.g. Goldman Sachs, Bridgewater, MIT"
         />
       </div>
     </div>

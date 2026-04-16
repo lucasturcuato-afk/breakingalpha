@@ -60,7 +60,7 @@ function getSupabase() {
 export default function ProfileSettingsPage() {
   const { refetch: refetchGlobalProfile } = useUserProfile();
   const [fullName, setFullName] = useState("");
-  const [firm, setFirm] = useState("");
+  const [firmOrSchool, setFirmOrSchool] = useState("");
   const [role, setRole] = useState<string | null>(null);
   const [sectors, setSectors] = useState<string[]>([]);
   const [riskAppetite, setRiskAppetite] = useState<string | null>(null);
@@ -95,7 +95,7 @@ export default function ProfileSettingsPage() {
 
         if (profile) {
           setFullName(profile.full_name ?? "");
-          setFirm(profile.firm ?? "");
+          setFirmOrSchool(profile.firm_or_school ?? "");
           setRole(profile.role ?? null);
           setSectors(profile.sectors ?? []);
           setRiskAppetite(profile.risk_appetite ?? null);
@@ -133,7 +133,7 @@ export default function ProfileSettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           full_name: fullName || null,
-          firm: firm || null,
+          firm_or_school: firmOrSchool || null,
           role: role,
           sectors: sectors,
           risk_appetite: riskAppetite,
@@ -185,11 +185,11 @@ export default function ProfileSettingsPage() {
                   placeholder="Your full name"
                 />
               </FormField>
-              <FormField label="Firm">
+              <FormField label="Firm or school">
                 <Input
-                  value={firm}
-                  onChange={(e) => { setFirm(e.target.value); setSaved(false); }}
-                  placeholder="Company or institution"
+                  value={firmOrSchool}
+                  onChange={(e) => { setFirmOrSchool(e.target.value); setSaved(false); }}
+                  placeholder="Company, institution, or school"
                 />
               </FormField>
             </div>

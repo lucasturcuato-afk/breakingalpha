@@ -9,7 +9,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 interface UserProfile {
   full_name?: string | null;
   role?: string | null;
-  firm?: string | null;
+  firm_or_school?: string | null;
   sectors?: string[] | null;
   risk_appetite?: string | null;
   watchlist_tickers?: string[] | null;
@@ -34,7 +34,7 @@ async function fetchUserProfile(userId: string): Promise<UserProfile | null> {
     );
     const { data, error } = await supabase
       .from("user_profiles")
-      .select("full_name, role, firm, sectors, risk_appetite, watchlist_tickers, onboarding_completed")
+      .select("full_name, role, firm_or_school, sectors, risk_appetite, watchlist_tickers, onboarding_completed")
       .eq("id", userId)
       .single();
     if (error || !data) return null;
