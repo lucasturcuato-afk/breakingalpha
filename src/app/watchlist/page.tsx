@@ -145,13 +145,17 @@ function isEnglishTitle(title: string): boolean {
   return asciiCount / title.length > 0.8;
 }
 
-function timeAgo(dateStr: string): string {
+function timeAgo(dateStr: string | null | undefined): string {
+  if (!dateStr) return "";
   const diff = Date.now() - new Date(dateStr).getTime();
+  if (diff < 0) return "";
   const mins = Math.floor(diff / 60000);
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
+  const days = Math.floor(hrs / 24);
+  if (days >= 30) return "30d+ ago";
+  return `${days}d ago`;
 }
 
 function sortArticles(articles: MatchedArticle[], mode: "newest" | "relevant"): MatchedArticle[] {
@@ -360,6 +364,7 @@ export default function WatchlistPage() {
   const [addError, setAddError] = useState("");
   const [selectedIdentifier, setSelectedIdentifier] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<"newest" | "relevant">("newest");
+  const [ageFilter, setAgeFilter] = useState<"all" | "today" | "week" | "month">("all");
 
   const fetchPrices = useCallback((entries: WatchlistEntry[]) => {
     const tickers = entries.filter((e) => e.type === "ticker").map((e) => e.identifier);
@@ -532,24 +537,52 @@ export default function WatchlistPage() {
     : null;
 
   const displayedArticles = useMemo(() => {
+    const now = Date.now();
+    const AGE_WINDOWS: Record<string, number> = {
+      today: 24 * 60 * 60 * 1000,
+      week: 7 * 24 * 60 * 60 * 1000,
+      month: 30 * 24 * 60 * 60 * 1000,
+    };
+
+    function applyAgeFilter(articles: MatchedArticle[]): MatchedArticle[] {
+      if (ageFilter === "all") return articles;
+      const window = AGE_WINDOWS[ageFilter];
+      return articles.filter((a) => {
+        if (!a.published_at) return false;
+        return now - new Date(a.published_at).getTime() <= window;
+      });
+    }
+
+    function normalizeKey(a: MatchedArticle): string {
+      const t = (a.title ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const u = a.url ?? "";
+      return `${t}||${u}`;
+    }
+
     if (selectedIdentifier) {
-      const arts = (articlesByIdentifier[selectedIdentifier] ?? []).filter(
-        (a) => isEnglishTitle(a.title),
+      const arts = applyAgeFilter(
+        (articlesByIdentifier[selectedIdentifier] ?? []).filter((a) => isEnglishTitle(a.title)),
       );
       return sortArticles(arts, sortMode).slice(0, 20);
     }
+
     const allArts = Object.values(articlesByIdentifier).flat();
-    const seen = new Set<string>();
+    const seenId = new Set<string>();
+    const seenKey = new Set<string>();
     const deduped = allArts.filter((a) => {
-      if (seen.has(a.id)) return false;
-      seen.add(a.id);
+      if (seenId.has(a.id)) return false;
+      seenId.add(a.id);
+      const key = normalizeKey(a);
+      if (seenKey.has(key)) return false;
+      seenKey.add(key);
       return true;
     });
+
     return sortArticles(
-      deduped.filter((a) => isEnglishTitle(a.title)),
+      applyAgeFilter(deduped.filter((a) => isEnglishTitle(a.title))),
       sortMode,
     ).slice(0, 60);
-  }, [selectedIdentifier, articlesByIdentifier, sortMode]);
+  }, [selectedIdentifier, articlesByIdentifier, sortMode, ageFilter]);
 
   return (
     <AppShell pageTitle="Watchlist" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
@@ -818,7 +851,23 @@ export default function WatchlistPage() {
                 <p className="font-data text-[11px] text-gold font-semibold">{displayedArticles.length} articles</p>
               </div>
             )}
-            <div className="flex gap-1">
+            <div className="flex items-center gap-1.5">
+              {(["all", "today", "week", "month"] as const).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setAgeFilter(f)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md font-data text-[9px] cursor-pointer transition-colors border",
+                    ageFilter === f
+                      ? "border-gold bg-gold-muted text-gold font-semibold"
+                      : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                  )}
+                >
+                  {f === "all" ? "All" : f === "today" ? "Today" : f === "week" ? "This Week" : "This Month"}
+                </button>
+              ))}
+              <div className="w-px h-4 bg-border-base mx-0.5" />
               {(["newest", "relevant"] as const).map((mode) => (
                 <button
                   key={mode}
@@ -838,21 +887,62 @@ export default function WatchlistPage() {
           </div>
 
           {displayedArticles.length === 0 ? (
-            watchlist.length === 0 ? (
-              <div className="bg-parchment-mid border border-border-base rounded-xl p-5 text-center">
-                <p className="font-sans text-[13px] font-semibold text-text-primary mb-1">Your feed is empty</p>
-                <p className="font-sans text-[12px] text-text-secondary">
-                  Add tickers, companies, or sectors in the left panel to start tracking articles.
-                </p>
-              </div>
-            ) : (
-              <div className="bg-parchment-mid border border-border-base rounded-xl p-5">
-                <p className="font-sans text-[13px] font-semibold text-text-primary mb-1">No matching articles found</p>
-                <p className="font-sans text-[12px] text-text-secondary">
-                  Articles are ingested every morning and evening. Your watchlist feed will populate as matching coverage arrives.
-                </p>
-              </div>
-            )
+            (() => {
+              if (watchlist.length === 0) {
+                return (
+                  <div className="bg-parchment-mid border border-border-base rounded-xl p-5 text-center">
+                    <p className="font-sans text-[13px] font-semibold text-text-primary mb-1">Your feed is empty</p>
+                    <p className="font-sans text-[12px] text-text-secondary">
+                      Add tickers, companies, or sectors in the left panel to start tracking articles.
+                    </p>
+                  </div>
+                );
+              }
+              if (selectedIdentifier) {
+                const entry = watchlist.find(e => e.identifier === selectedIdentifier);
+                const entryAgeMs = entry?.created_at ? Date.now() - new Date(entry.created_at).getTime() : Infinity;
+                const ONE_HOUR_MS = 60 * 60 * 1000;
+                if (entryAgeMs < ONE_HOUR_MS) {
+                  return (
+                    <div className="bg-parchment-mid border border-border-base rounded-xl p-5">
+                      <p className="font-sans text-[13px] font-semibold text-text-primary mb-1">Syncing…</p>
+                      <p className="font-sans text-[12px] text-text-secondary">
+                        Articles will appear after the next pipeline run (6am / 8pm PST).
+                      </p>
+                    </div>
+                  );
+                }
+                if (entry?.type === "company") {
+                  const name = entry.display_name || entry.identifier;
+                  return (
+                    <div className="bg-parchment-mid border border-border-base rounded-xl p-5">
+                      <p className="font-sans text-[13px] font-semibold text-text-primary mb-1">No recent coverage found for {name}</p>
+                      <p className="font-sans text-[12px] text-text-secondary">
+                        We search Exa, Finnhub, and GDELT twice daily.
+                      </p>
+                    </div>
+                  );
+                }
+                if (entry?.type === "ticker") {
+                  return (
+                    <div className="bg-parchment-mid border border-border-base rounded-xl p-5">
+                      <p className="font-sans text-[13px] font-semibold text-text-primary mb-1">No recent coverage found for {selectedIdentifier}</p>
+                      <p className="font-sans text-[12px] text-text-secondary">
+                        Try checking back after the next sync.
+                      </p>
+                    </div>
+                  );
+                }
+              }
+              return (
+                <div className="bg-parchment-mid border border-border-base rounded-xl p-5">
+                  <p className="font-sans text-[13px] font-semibold text-text-primary mb-1">No matching articles found</p>
+                  <p className="font-sans text-[12px] text-text-secondary">
+                    Articles are ingested every morning and evening. Your watchlist feed will populate as matching coverage arrives.
+                  </p>
+                </div>
+              );
+            })()
           ) : (
             <div className="space-y-2">
               {displayedArticles.map((a) => (
@@ -872,7 +962,7 @@ export default function WatchlistPage() {
                     {a.id.startsWith("finnhub-") && (
                       <span className="font-data text-[9px] text-text-faint">via Finnhub</span>
                     )}
-                    {a.published_at && (
+                    {a.published_at && timeAgo(a.published_at) && (
                       <span className="font-data text-[9px] text-text-faint ml-auto">{timeAgo(a.published_at)}</span>
                     )}
                     <button
@@ -894,7 +984,7 @@ export default function WatchlistPage() {
                       <h4 className="font-sans text-[13px] font-semibold text-espresso leading-snug">
                         {a.title}
                       </h4>
-                      {(!a.summary || a.summary.trim().length < 20) ? (
+                      {(!a.summary || a.summary.trim().length < 15) ? (
                         <span className="font-data text-[9px] text-text-faint italic mt-0.5 block">
                           Headline only
                         </span>
@@ -909,7 +999,7 @@ export default function WatchlistPage() {
                       <h4 className="font-sans text-[13px] font-semibold text-espresso leading-snug">
                         {a.title}
                       </h4>
-                      {(!a.summary || a.summary.trim().length < 20) ? (
+                      {(!a.summary || a.summary.trim().length < 15) ? (
                         <span className="font-data text-[9px] text-text-faint italic mt-0.5 block">
                           Headline only
                         </span>

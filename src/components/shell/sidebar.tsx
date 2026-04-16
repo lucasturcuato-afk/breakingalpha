@@ -55,6 +55,7 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const [user, setUser] = useState<{ name: string; email: string; role: string } | null>(null);
+  const [watchlistCount, setWatchlistCount] = useState(0);
 
   useEffect(() => {
     const supabase = createBrowserClient(
@@ -68,6 +69,13 @@ export function Sidebar({
           email: user.email || "",
           role: user.user_metadata?.role || "Analyst",
         });
+        supabase
+          .from("watchlist")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .then(({ count }) => {
+            if (count !== null) setWatchlistCount(count);
+          });
       }
     });
   }, []);
@@ -108,7 +116,7 @@ export function Sidebar({
       {/* Nav body */}
       <nav className="flex-1 overflow-y-auto px-3 py-3.5 space-y-5">
         <NavGroup label="Main" items={mainNav} pathname={pathname} unreadCount={unreadCount} />
-        <NavGroup label="Research" items={researchNav} pathname={pathname} />
+        <NavGroup label="Research" items={researchNav} pathname={pathname} watchlistCount={watchlistCount} />
       </nav>
 
       {/* User footer */}
@@ -155,11 +163,13 @@ function NavGroup({
   items,
   pathname,
   unreadCount,
+  watchlistCount,
 }: {
   label: string;
   items: NavItem[];
   pathname: string;
   unreadCount?: number;
+  watchlistCount?: number;
 }) {
   return (
     <div>
@@ -200,6 +210,11 @@ function NavGroup({
                 {isLiveFeed && (unreadCount ?? 0) > 0 && (
                   <span className="min-w-[18px] h-[18px] flex items-center justify-center rounded-md bg-gold text-cream text-[9px] font-bold px-1">
                     {(unreadCount ?? 0) > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+                {item.href === "/watchlist" && (watchlistCount ?? 0) > 0 && (
+                  <span className="min-w-[18px] h-[18px] flex items-center justify-center rounded-md bg-gold text-cream text-[9px] font-bold px-1">
+                    {(watchlistCount ?? 0) > 99 ? "99+" : watchlistCount}
                   </span>
                 )}
               </Link>

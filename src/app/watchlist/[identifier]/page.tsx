@@ -6,7 +6,7 @@ import { AppShell } from "@/components/shell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Sparkles, ExternalLink, RefreshCw } from "lucide-react";
+import { ArrowLeft, Sparkles, ExternalLink, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { buildArticleOrFilter } from "@/lib/watchlist-utils";
@@ -83,13 +83,17 @@ function isEnglishTitle(title: string): boolean {
   return asciiCount / title.length > 0.8;
 }
 
-function timeAgo(dateStr: string): string {
+function timeAgo(dateStr: string | null | undefined): string {
+  if (!dateStr) return "";
   const diff = Date.now() - new Date(dateStr).getTime();
+  if (diff < 0) return "";
   const mins = Math.floor(diff / 60000);
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
+  const days = Math.floor(hrs / 24);
+  if (days >= 30) return "30d+ ago";
+  return `${days}d ago`;
 }
 
 function sortArticles(articles: WatchlistArticle[], mode: "newest" | "relevant"): WatchlistArticle[] {
@@ -135,6 +139,11 @@ export default function WatchlistIdentifierPage({
   const [cachedBriefGeneratedAt, setCachedBriefGeneratedAt] = useState<Date | null>(null);
   const [quoteRefreshing, setQuoteRefreshing] = useState(false);
   const [storedDisplayName, setStoredDisplayName] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState("");
+  const [noteSaved, setNoteSaved] = useState(false);
+  const [noteLoading, setNoteLoading] = useState(true);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [noteUnauthenticated, setNoteUnauthenticated] = useState(false);
 
   const handleBriefGenerated = async (text: string) => {
     setBriefGeneratedAt(new Date());
@@ -263,6 +272,40 @@ export default function WatchlistIdentifierPage({
         setArticles(merged.slice(0, 20));
         setLoading(false);
       } else {
+        // Cache-first: use pre-fetched watchlist_articles if available
+        const [cacheRes, quoteResult] = await Promise.all([
+          fetch(`/api/watchlist-articles?identifier=${encodeURIComponent(decoded)}`)
+            .then((r) => (r.ok ? r.json() : { articles: [] }))
+            .catch(() => ({ articles: [] })),
+          quotePromise,
+        ]);
+
+        if (cancelled) return;
+        setQuote(quoteResult);
+
+        if (Array.isArray(cacheRes.articles) && cacheRes.articles.length > 0) {
+          const cached = (cacheRes.articles as Record<string, unknown>[])
+            .map((a) => ({
+              id: a.article_id as string,
+              title: a.title as string,
+              source: a.source as string | undefined,
+              url: a.url as string | undefined,
+              industry_verticals: [] as string[],
+              activity_types: [] as string[],
+              published_at: a.published_at as string | undefined,
+              summary: a.summary as string | undefined,
+              relevance_score: (a.relevance_score as number | null) ?? 0,
+            }))
+            .filter((a) => isEnglishTitle(a.title));
+          cached.sort((a, b) =>
+            new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime(),
+          );
+          setArticles(cached.slice(0, 30));
+          setLoading(false);
+          return;
+        }
+
+        // Fallback: pipeline articles table
         // Fuzzy multi-term OR query — strips corporate suffixes from display_name
         // so "Goldman Sachs Group Inc" also finds articles about "Goldman Sachs".
         const displayNameForSearch: string | null =
@@ -272,23 +315,18 @@ export default function WatchlistIdentifierPage({
 
         const orFilter = buildArticleOrFilter(decoded, displayNameForSearch, watchlistRow?.type ?? "ticker");
 
-        const [quoteResult, articleResult] = await Promise.all([
-          quotePromise,
-          (async (): Promise<{ data: Record<string, unknown>[] | null }> => {
-            if (!orFilter) return { data: [] };
-            const result = await getSupabase()
-              .from("articles")
-              .select(articleSelect)
-              .or(orFilter)
-              .order("ingested_at", { ascending: false })
-              .limit(30);
-            return { data: (result.data ?? null) as Record<string, unknown>[] | null };
-          })(),
-        ]);
+        const articleResult = await (async (): Promise<{ data: Record<string, unknown>[] | null }> => {
+          if (!orFilter) return { data: [] };
+          const result = await getSupabase()
+            .from("articles")
+            .select(articleSelect)
+            .or(orFilter)
+            .order("ingested_at", { ascending: false })
+            .limit(30);
+          return { data: (result.data ?? null) as Record<string, unknown>[] | null };
+        })();
 
         if (cancelled) return;
-
-        setQuote(quoteResult);
 
         const merged = (articleResult.data || [])
           .map(mapRow)
@@ -348,6 +386,43 @@ export default function WatchlistIdentifierPage({
     };
   }, [decoded, isSector]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadNote() {
+      setNoteLoading(true);
+      try {
+        const res = await fetch(`/api/watchlist-notes?identifier=${encodeURIComponent(decoded)}`);
+        if (res.status === 401) {
+          if (!cancelled) setNoteUnauthenticated(true);
+          return;
+        }
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled) setNoteText(json.note?.note_text ?? "");
+      } catch {
+        // soft-fail: notes unavailable
+      } finally {
+        if (!cancelled) setNoteLoading(false);
+      }
+    }
+    loadNote();
+    return () => { cancelled = true; };
+  }, [decoded]);
+
+  const handleNoteSave = async (text: string) => {
+    try {
+      await fetch("/api/watchlist-notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: decoded, note_text: text }),
+      });
+      setNoteSaved(true);
+      setTimeout(() => setNoteSaved(false), 2000);
+    } catch {
+      // silent fail
+    }
+  };
+
   const companyName = storedDisplayName ?? LEGACY_TICKER_NAMES[decoded.toUpperCase()] ?? decoded;
 
   const systemPrompt = useMemo(
@@ -378,6 +453,34 @@ export default function WatchlistIdentifierPage({
       ? articleContext
       : "No recent coverage available — use background knowledge and flag all claims with [Background knowledge].";
 
+    if (isSector) {
+      return `Write a sector intelligence brief for the ${companyName} sector based on the following recent news and coverage.
+
+Recent coverage:
+${contextBlock}
+
+Your brief must follow this exact structure:
+
+**SECTOR PULSE**
+One sentence: the defining theme or dynamic in this sector right now and why it matters to investors.
+
+**KEY MOVES**
+2-3 bullet points covering the most significant recent deals, fundraises, earnings surprises, leadership changes, or competitive shifts. Each bullet must be specific — name companies, amounts, and dates where available.
+
+**MACRO CONTEXT**
+2-3 bullet points on macro tailwinds or headwinds affecting this sector: interest rate sensitivity, regulatory pressures, commodity exposure, geopolitical factors, or structural trends.
+
+**SIGNAL**
+One sentence: the single most important thing to watch in this sector right now from an investment perspective.
+
+Constraints:
+- Total length: 150-250 words
+- No preamble, no "Here is your brief", start directly with SECTOR PULSE
+- If recent coverage is sparse, draw on your knowledge but flag it: prefix any non-news-sourced claim with [Background knowledge]
+- Never fabricate specific numbers, deals, or dates not present in the provided articles
+- Write for a reader who already knows what a P/E ratio is`;
+    }
+
     return `Write a company intelligence brief for ${companyName}${companyName !== decoded ? ` (${decoded})` : ""} based on the following recent news and context.
 ${quote ? `\nCurrent market data: ${decoded} trading at $${quote.price} (${quote.pct >= 0 ? "+" : ""}${quote.pct}% today).` : ""}
 
@@ -404,7 +507,7 @@ Constraints:
 - If recent coverage is sparse, draw on your knowledge of the company but flag it: prefix any non-news-sourced claim with [Background knowledge]
 - Never fabricate specific numbers, deals, or dates not present in the provided articles
 - Write for a reader who already knows what a P/E ratio is`;
-  }, [decoded, companyName, typeLabel, quote, articles]);
+  }, [decoded, companyName, isSector, quote, articles]);
 
   return (
     <AppShell
@@ -561,9 +664,9 @@ Constraints:
               <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold">
                 Recent Coverage ({articles.length})
               </p>
-              {articles.length > 0 && (
+              {articles.length > 0 && timeAgo(articles[0].published_at) && (
                 <p className="font-data text-[9px] text-text-faint mt-0.5">
-                  Updated {timeAgo(articles[0].published_at || new Date().toISOString())}
+                  Updated {timeAgo(articles[0].published_at)}
                 </p>
               )}
             </div>
@@ -630,7 +733,7 @@ Constraints:
                         {a.source}
                       </span>
                     )}
-                    {a.published_at && (
+                    {a.published_at && timeAgo(a.published_at) && (
                       <span className="font-data text-[9px] text-text-faint ml-auto">
                         {timeAgo(a.published_at)}
                       </span>
@@ -666,6 +769,58 @@ Constraints:
                   )}
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        <hr className="border-border-base my-6" />
+
+        {/* NOTES SECTION */}
+        <div className="mb-6">
+          <button
+            type="button"
+            onClick={() => setNotesOpen(o => !o)}
+            className="flex items-center gap-2 group w-full text-left"
+          >
+            <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold">
+              Notes
+            </p>
+            {notesOpen ? (
+              <ChevronUp size={11} className="text-text-faint group-hover:text-gold transition-colors" />
+            ) : (
+              <ChevronDown size={11} className="text-text-faint group-hover:text-gold transition-colors" />
+            )}
+          </button>
+
+          {notesOpen && (
+            <div className="mt-3">
+              {noteUnauthenticated ? (
+                <p className="font-sans text-[12px] text-text-muted">Sign in to save notes.</p>
+              ) : noteLoading ? (
+                <div className="h-[80px] bg-parchment-mid border border-border-base rounded-xl animate-pulse" />
+              ) : (
+                <div>
+                  <textarea
+                    className="w-full min-h-[80px] bg-parchment-mid border border-border-base rounded-xl px-4 py-3 font-sans text-[12px] text-text-primary placeholder:text-text-faint resize-y focus:outline-none focus:border-gold transition-colors"
+                    placeholder="Add a note..."
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                    onBlur={(e) => handleNoteSave(e.target.value)}
+                  />
+                  <div className="flex justify-end items-center gap-2 mt-1.5">
+                    {noteSaved && (
+                      <span className="font-data text-[9px] text-signal-up">Saved ✓</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleNoteSave(noteText)}
+                      className="px-3 py-1 rounded-md bg-gold text-cream font-data text-[10px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
+                    >
+                      Save note
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
