@@ -229,12 +229,20 @@ def fetch_gdelt_articles(identifier: str, company_name: str) -> list[dict]:
             "format": "json",
             "sort": "DateDesc",
         }
-        resp = requests.get(
-            "https://api.gdeltproject.org/api/v2/doc/doc",
-            params=params,
-            headers={"User-Agent": "Signalera/1.0"},
-            timeout=8,
-        )
+        backoff_delays = [2, 4, 8]
+        resp = None
+        for attempt, delay in enumerate(backoff_delays + [None], start=1):
+            resp = requests.get(
+                "https://api.gdeltproject.org/api/v2/doc/doc",
+                params=params,
+                headers={"User-Agent": "Signalera/1.0"},
+                timeout=8,
+            )
+            if resp.status_code == 429 and delay is not None:
+                print(f"⚠ GDELT 429 for {identifier}, retry {attempt}/3 in {delay}s")
+                time.sleep(delay)
+                continue
+            break
         resp.raise_for_status()
         data = resp.json()
         articles_raw = data.get("articles", [])
