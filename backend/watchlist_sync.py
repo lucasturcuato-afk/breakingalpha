@@ -6,6 +6,7 @@ then upserts them into the watchlist_articles Supabase table.
 
 import os, hashlib, time
 from datetime import datetime, timezone, timedelta
+from urllib.parse import urlparse
 import requests
 from dotenv import load_dotenv
 from supabase import create_client
@@ -42,6 +43,46 @@ FINANCIAL_BOOST_PATTERNS = [
     "valuation", "series a", "series b", "series c", "billion",
     "million", "deal", "partnership", "ceo", "launches", "expands",
 ]
+
+BLOCKED_DOMAINS = [
+    "linkedin.com", "twitter.com", "facebook.com", "instagram.com",
+    "crunchbase.com", "pitchbook.com", "bloomberg.com/profile",
+    "glassdoor.com", "indeed.com", "wellfound.com", "ycombinator.com",
+    "angel.co", "wikipedia.org", "wikidata.org",
+]
+
+BLOCKED_URL_PATTERNS = [
+    "/jobs", "/careers", "/about", "/team", "/contact",
+    "/company/", "/profile/", "/people/", "/person/",
+    "/experts", "/directory", "/listing",
+]
+
+
+def is_article_url(url: str) -> bool:
+    if not url:
+        return False
+    parsed = urlparse(url)
+    domain = parsed.netloc.lower()
+    path = parsed.path.lower()
+
+    # Block known non-news domains
+    if any(blocked in domain for blocked in BLOCKED_DOMAINS):
+        return False
+
+    # Block non-article URL patterns
+    if any(pattern in path for pattern in BLOCKED_URL_PATTERNS):
+        return False
+
+    # Block root domain pages (path is just "/" or empty)
+    if path in ("", "/", "/#"):
+        return False
+
+    # Block URLs that are just the company name (e.g. afterquery.com or afterquery.com/home)
+    path_parts = [p for p in path.split("/") if p]
+    if len(path_parts) == 0:
+        return False
+
+    return True
 
 
 def resolve_company_name(identifier: str, entry_type: str, display_name: str | None) -> str:
@@ -169,6 +210,8 @@ def fetch_exa_articles(identifier: str, company_name: str) -> list[dict]:
                 "summary": summary,
                 "published_at": published_at,
             })
+        articles = [a for a in articles if is_article_url(a.get("url", ""))]
+        articles = [a for a in articles if len(a.get("title", "").strip()) > 15]
         return articles
     except Exception as ex:
         print(f"⚠ Exa fetch failed for {identifier}: {ex}")
