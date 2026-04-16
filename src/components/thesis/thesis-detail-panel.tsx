@@ -24,14 +24,6 @@ function relativeTime(dateStr: string | null | undefined): string {
   return `${d}d ago`;
 }
 
-function deriveScore(thesis: ThesisItem): number | null {
-  if (typeof thesis.adversarial_score === "number") {
-    if (thesis.adversarial_score < 0) return null;
-    return Math.round(thesis.adversarial_score * 100);
-  }
-  return thesis.conviction === "BULLISH" ? 82 : thesis.conviction === "BEARISH" ? 28 : 50;
-}
-
 function convictionToSentiment(conviction: string | null): string {
   switch (conviction) {
     case "HIGH":
@@ -210,7 +202,10 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
     setGeneratingMemo(true);
     try {
       const sentiment = convictionToSentiment(thesis.conviction);
-      const score = deriveScore(thesis);
+      const adversarialScoreStr =
+        typeof thesis.adversarial_score === "number" && thesis.adversarial_score >= 0
+          ? `${Math.round(thesis.adversarial_score * 100)}/100`
+          : "not graded";
       const evidenceText = articles.length > 0
         ? articles.map((a, i) =>
             `${i + 1}. ${a.title} (${a.source ?? ""}, ${a.sentiment ?? "neutral"}) — ${(a.summary ?? "").slice(0, 120)}`
@@ -222,7 +217,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
         body: JSON.stringify({
           type: "thesis",
           systemPrompt: `You are a senior buy-side equity research analyst writing a formal investment thesis memo. Use professional language. Structure with these exact sections:\n\n**INVESTMENT THESIS**\nState the core thesis in 2-3 sentences.\n\n**MARKET CONTEXT & RATIONALE**\nExplain the macro and sector backdrop.\n\n**EVIDENCE BASE**\nList supporting evidence from recent market developments.\n\n**RISK FACTORS**\nWhat could invalidate this thesis? List 2-3 key risks.\n\n**CATALYST TIMELINE**\nWhat events will confirm or deny this thesis?\n\n**RECOMMENDATION**\nBull/Bear/Watch with conviction level and suggested position sizing guidance.`,
-          content: `THESIS: ${thesis.title}\n\nANALYSIS: ${thesis.summary}\n\nSECTOR: ${thesis.sector}\nSENTIMENT: ${sentiment}\nCONVICTION SCORE: ${score}/100\nCATALYST: ${thesis.catalyst || thesis.catalyst_note || "Not specified"}\n\nEVIDENCE FROM LIVE FEED:\n${evidenceText}`,
+          content: `THESIS: ${thesis.title}\n\nANALYSIS: ${thesis.summary}\n\nSECTOR: ${thesis.sector}\nSENTIMENT: ${sentiment}\nCONVICTION: ${thesis.conviction ?? "UNKNOWN"}\nADVERSARIAL SCORE: ${adversarialScoreStr}\nCATALYST: ${thesis.catalyst || thesis.catalyst_note || "Not specified"}\n\nEVIDENCE FROM LIVE FEED:\n${evidenceText}`,
         }),
       });
       const data = await res.json();
@@ -259,7 +254,6 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
   }
 
   // ── Derived ──
-  const score = deriveScore(thesis);
   const sentiment = convictionToSentiment(thesis.conviction);
 
   const signalBreakdown = thesis.signal_breakdown && typeof thesis.signal_breakdown === "object"
@@ -273,7 +267,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
       <div className="flex-shrink-0 px-4 py-3 border-b border-border-base bg-cream">
         <div className="flex items-start gap-3">
           {/* Score ring */}
-          <ConvictionRing conviction={thesis.conviction} size={48} score={score} />
+          <ConvictionRing conviction={thesis.conviction} size={48} />
           <div className="flex-1 min-w-0">
             <div className="font-display font-bold text-[18px] text-espresso leading-snug mb-1">
               {thesis.title}
