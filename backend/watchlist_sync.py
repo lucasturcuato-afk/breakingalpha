@@ -4,7 +4,7 @@ Pre-fetches articles for all watchlist identifiers from Finnhub, Exa, and GDELT,
 then upserts them into the watchlist_articles Supabase table.
 """
 
-import os, hashlib, time
+import os, hashlib, re, time
 from datetime import datetime, timezone, timedelta
 from urllib.parse import urlparse
 import requests
@@ -13,6 +13,15 @@ from supabase import create_client
 
 load_dotenv()
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
+
+
+def strip_html(text: str) -> str:
+    if not text:
+        return text
+    text = re.sub(r'<[^>]+>', '', text)
+    text = (text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+                .replace('&quot;', '"').replace('&#39;', "'").replace('&nbsp;', ' '))
+    return re.sub(r'\s+', ' ', text).strip()
 FINNHUB_KEY = os.environ.get("FINNHUB_API_KEY", "")
 EXA_KEY = os.environ.get("EXA_API_KEY", "")
 
@@ -276,14 +285,29 @@ def fetch_gdelt_articles(identifier: str, company_name: str) -> list[dict]:
         return []
 
 
+def _normalize_title(title: str) -> str:
+    t = title.lower()
+    t = re.sub(r'[^a-z0-9\s]', '', t)
+    return re.sub(r'\s+', ' ', t).strip()
+
+
 def dedup_articles(articles: list[dict]) -> list[dict]:
-    seen: set[str] = set()
+    # Sort best version first so highest-scored duplicate is kept
+    articles = sorted(articles, key=lambda a: a.get("relevance_score", 5), reverse=True)
+    seen_ids: set[str] = set()
+    seen_titles: set[str] = set()
     result = []
     for article in articles:
         aid = article["article_id"]
-        if aid not in seen:
-            seen.add(aid)
-            result.append(article)
+        if aid in seen_ids:
+            continue
+        seen_ids.add(aid)
+        nt = _normalize_title(article.get("title", ""))
+        if nt and nt in seen_titles:
+            continue
+        if nt:
+            seen_titles.add(nt)
+        result.append(article)
     return result
 
 
@@ -376,6 +400,8 @@ def sync_identifier(identifier: str, entry_type: str, display_name: str | None) 
             )
         ]
         for article in all_articles:
+            article["title"] = strip_html(article.get("title") or "")
+            article["summary"] = strip_html(article.get("summary") or "")
             article["relevance_score"] = score_relevance(article, company_name)
 
         # Drop articles with very low relevance scores

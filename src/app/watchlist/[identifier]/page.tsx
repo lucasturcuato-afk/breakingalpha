@@ -272,6 +272,40 @@ export default function WatchlistIdentifierPage({
         setArticles(merged.slice(0, 20));
         setLoading(false);
       } else {
+        // Cache-first: use pre-fetched watchlist_articles if available
+        const [cacheRes, quoteResult] = await Promise.all([
+          fetch(`/api/watchlist-articles?identifier=${encodeURIComponent(decoded)}`)
+            .then((r) => (r.ok ? r.json() : { articles: [] }))
+            .catch(() => ({ articles: [] })),
+          quotePromise,
+        ]);
+
+        if (cancelled) return;
+        setQuote(quoteResult);
+
+        if (Array.isArray(cacheRes.articles) && cacheRes.articles.length > 0) {
+          const cached = (cacheRes.articles as Record<string, unknown>[])
+            .map((a) => ({
+              id: a.article_id as string,
+              title: a.title as string,
+              source: a.source as string | undefined,
+              url: a.url as string | undefined,
+              industry_verticals: [] as string[],
+              activity_types: [] as string[],
+              published_at: a.published_at as string | undefined,
+              summary: a.summary as string | undefined,
+              relevance_score: (a.relevance_score as number | null) ?? 0,
+            }))
+            .filter((a) => isEnglishTitle(a.title));
+          cached.sort((a, b) =>
+            new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime(),
+          );
+          setArticles(cached.slice(0, 30));
+          setLoading(false);
+          return;
+        }
+
+        // Fallback: pipeline articles table
         // Fuzzy multi-term OR query — strips corporate suffixes from display_name
         // so "Goldman Sachs Group Inc" also finds articles about "Goldman Sachs".
         const displayNameForSearch: string | null =
@@ -281,23 +315,18 @@ export default function WatchlistIdentifierPage({
 
         const orFilter = buildArticleOrFilter(decoded, displayNameForSearch, watchlistRow?.type ?? "ticker");
 
-        const [quoteResult, articleResult] = await Promise.all([
-          quotePromise,
-          (async (): Promise<{ data: Record<string, unknown>[] | null }> => {
-            if (!orFilter) return { data: [] };
-            const result = await getSupabase()
-              .from("articles")
-              .select(articleSelect)
-              .or(orFilter)
-              .order("ingested_at", { ascending: false })
-              .limit(30);
-            return { data: (result.data ?? null) as Record<string, unknown>[] | null };
-          })(),
-        ]);
+        const articleResult = await (async (): Promise<{ data: Record<string, unknown>[] | null }> => {
+          if (!orFilter) return { data: [] };
+          const result = await getSupabase()
+            .from("articles")
+            .select(articleSelect)
+            .or(orFilter)
+            .order("ingested_at", { ascending: false })
+            .limit(30);
+          return { data: (result.data ?? null) as Record<string, unknown>[] | null };
+        })();
 
         if (cancelled) return;
-
-        setQuote(quoteResult);
 
         const merged = (articleResult.data || [])
           .map(mapRow)
@@ -770,7 +799,7 @@ Constraints:
               ) : noteLoading ? (
                 <div className="h-[80px] bg-parchment-mid border border-border-base rounded-xl animate-pulse" />
               ) : (
-                <div className="relative">
+                <div>
                   <textarea
                     className="w-full min-h-[80px] bg-parchment-mid border border-border-base rounded-xl px-4 py-3 font-sans text-[12px] text-text-primary placeholder:text-text-faint resize-y focus:outline-none focus:border-gold transition-colors"
                     placeholder="Add a note..."
@@ -778,11 +807,18 @@ Constraints:
                     onChange={(e) => setNoteText(e.target.value)}
                     onBlur={(e) => handleNoteSave(e.target.value)}
                   />
-                  {noteSaved && (
-                    <span className="absolute bottom-2 right-3 font-data text-[9px] text-signal-up">
-                      Saved ✓
-                    </span>
-                  )}
+                  <div className="flex justify-end items-center gap-2 mt-1.5">
+                    {noteSaved && (
+                      <span className="font-data text-[9px] text-signal-up">Saved ✓</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleNoteSave(noteText)}
+                      className="px-3 py-1 rounded-md bg-gold text-cream font-data text-[10px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
+                    >
+                      Save note
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
