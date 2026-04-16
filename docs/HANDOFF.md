@@ -150,7 +150,10 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 4. Are there active paying users? (determines urgency of fixes)
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
 
-## Recently Completed (2026-04-15, latest)
+## Recently Completed (2026-04-15)
+**watchlist_sync.py overhaul (PR #95 open):** GDELT rate limiting (1.5s sleep after each fetch), Exa recency filter (startPublishedDate 30 days ago), post-fetch age filter (articles >35 days or future-dated dropped before scoring), Exa payload restructure (highlights moved into contents.highlights, added type/news to query, bumped to 400 chars/3 sentences), fixed Exa response parsing, URL quality filter (is_article_url() + BLOCKED_DOMAINS/BLOCKED_URL_PATTERNS; LinkedIn/Twitter/Crunchbase/jobs/profiles/homepages filtered), title length floor (≤15 chars dropped), relevance scoring overhaul (NOISE_TITLE_PATTERNS + FINANCIAL_BOOST_PATTERNS, +2 title match/+1 summary/+1 financial/-3 noise/-1 short, floor <3 rejected).
+
+## Recently Completed (2026-04-15, prior)
 **Watchlist v2 interactive enhancements (PR #94 merged):** Clickable article headlines linking to news sources; public/private split (private markers); GDELT fallback route for zero-article entries; display name cleanup (ticker prefix removal, proper company names); stat counters (articles fetched vs total displayed); expert brief quality upgrade (analyst positioning, conviction rules). New `/api/news-search` route for GDELT-powered article discovery. Multi-identifier strategy: Finnhub ticker search, Clearbit company search, GDELT fallback. Enhanced watchlist modals with clickthrough interactions.
 
 ## Recently Completed (2026-04-15)
