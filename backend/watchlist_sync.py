@@ -28,7 +28,20 @@ LEGACY_TICKER_NAMES: dict[str, str] = {
     "PLTR": "Palantir", "UBER": "Uber", "CLS": "Celestica", "RR": "Richtech Robotics",
 }
 
-NOISE_PHRASES = ["stocks", "market wrap", "session:", "whale activity", "intraday", "gap up", "gap down"]
+NOISE_TITLE_PATTERNS = [
+    "stocks", "market wrap", "session:", "whale activity", "intraday",
+    "gap up", "gap down", "best pheromone", "celebrity", "gossip",
+    "entertainment", "movies", "fashion", "beauty", "perfume",
+    "prostate", "supplement", "diet", "weight loss", "horoscope",
+    "recipe", "travel", "real estate listing", "obituary",
+]
+
+FINANCIAL_BOOST_PATTERNS = [
+    "raises", "funding", "acquisition", "merger", "ipo", "earnings",
+    "revenue", "profit", "quarterly", "analyst", "investor",
+    "valuation", "series a", "series b", "series c", "billion",
+    "million", "deal", "partnership", "ceo", "launches", "expands",
+]
 
 
 def resolve_company_name(identifier: str, entry_type: str, display_name: str | None) -> str:
@@ -38,17 +51,30 @@ def resolve_company_name(identifier: str, entry_type: str, display_name: str | N
 
 
 def score_relevance(article: dict, company_name: str) -> int:
-    score = 5
     title = (article.get("title") or "").lower()
     summary = (article.get("summary") or "").lower()
-    name_lower = company_name.lower()
+    name = company_name.lower()
 
-    if name_lower in title:
+    score = 5
+
+    # Company name match
+    if name in title:
         score += 2
-    if name_lower in summary:
+    elif name in summary:
         score += 1
-    if any(phrase in title for phrase in NOISE_PHRASES):
-        score -= 2
+
+    # Financial signal boost
+    combined = title + " " + summary
+    if any(pattern in combined for pattern in FINANCIAL_BOOST_PATTERNS):
+        score += 1
+
+    # Noise penalty — non-financial content
+    if any(pattern in title for pattern in NOISE_TITLE_PATTERNS):
+        score -= 3
+
+    # Very short or empty title penalty
+    if len(title.strip()) < 20:
+        score -= 1
 
     return max(1, min(10, score))
 
@@ -104,11 +130,17 @@ def fetch_exa_articles(identifier: str, company_name: str) -> list[dict]:
     try:
         thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
         payload = {
-            "query": company_name,
+            "query": f"{company_name} news",
+            "type": "auto",
             "category": "news",
             "numResults": 10,
-            "highlights": {"maxCharacters": 300, "numSentences": 2},
             "startPublishedDate": thirty_days_ago,
+            "contents": {
+                "highlights": {
+                    "maxCharacters": 400,
+                    "numSentences": 3,
+                }
+            },
         }
         resp = requests.post(
             "https://api.exa.ai/search",
@@ -125,8 +157,8 @@ def fetch_exa_articles(identifier: str, company_name: str) -> list[dict]:
         for item in results:
             url = item.get("url", "")
             article_id = "exa-" + hashlib.md5(url.encode()).hexdigest()[:12]
-            highlights = item.get("highlights", [])
-            summary = " ".join(highlights) if highlights else item.get("text", "")[:300]
+            highlights = item.get("highlights") or []
+            summary = " ".join(highlights) if highlights else ""
             published_at = item.get("publishedDate")
             articles.append({
                 "article_id": article_id,
@@ -289,6 +321,9 @@ def sync_identifier(identifier: str, entry_type: str, display_name: str | None) 
         ]
         for article in all_articles:
             article["relevance_score"] = score_relevance(article, company_name)
+
+        # Drop articles with very low relevance scores
+        all_articles = [a for a in all_articles if a.get("relevance_score", 5) >= 3]
 
         deduped = dedup_articles(all_articles)
         count = upsert_articles_batch(identifier, deduped)
