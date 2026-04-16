@@ -35,6 +35,8 @@ NOISE_TITLE_PATTERNS = [
     "entertainment", "movies", "fashion", "beauty", "perfume",
     "prostate", "supplement", "diet", "weight loss", "horoscope",
     "recipe", "travel", "real estate listing", "obituary",
+    "commissioned", "tv series", "television", "box office", "film review",
+    "album", "music video", "tour dates", "concert", "nominated", "award show",
 ]
 
 FINANCIAL_BOOST_PATTERNS = [
@@ -356,11 +358,14 @@ def sync_identifier(identifier: str, entry_type: str, display_name: str | None) 
             print(f"⚠ GDELT error for {identifier}: {ex}")
 
         all_articles = finnhub_articles + exa_articles + gdelt_articles
-        cutoff = datetime.now(timezone.utc) - timedelta(days=35)
+        now = datetime.now(timezone.utc)
+        cutoff_past = now - timedelta(days=35)
         all_articles = [
             a for a in all_articles
-            if a.get("published_at") is None or
-            datetime.fromisoformat(a["published_at"].replace("Z", "+00:00")) >= cutoff
+            if a.get("published_at") is None or (
+                datetime.fromisoformat(a["published_at"].replace("Z", "+00:00")) >= cutoff_past
+                and datetime.fromisoformat(a["published_at"].replace("Z", "+00:00")) <= now
+            )
         ]
         for article in all_articles:
             article["relevance_score"] = score_relevance(article, company_name)
