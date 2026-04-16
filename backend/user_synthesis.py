@@ -56,7 +56,7 @@ def get_user_profiles():
         resp = (
             supabase.table("user_profiles")
             .select(
-                "id, full_name, role, firm_or_school, sectors, risk_appetite, "
+                "id, first_name, role, firm_or_school, sectors, risk_appetite, "
                 "watchlist_tickers, inferred_sector_weights, onboarding_completed"
             )
             .eq("onboarding_completed", True)
@@ -71,7 +71,7 @@ def get_user_profiles():
 def build_user_context_paragraph(profile: dict) -> str:
     """Render a profile as a short prompt-ready paragraph."""
     parts = []
-    name = (profile.get("full_name") or "").strip() or None
+    name = (profile.get("first_name") or "").strip() or None
     role_id = profile.get("role")
     role = ROLE_LABEL.get(role_id) if role_id else None
     firm_or_school = (profile.get("firm_or_school") or "").strip() or None

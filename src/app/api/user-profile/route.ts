@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 const DEFAULT_PROFILE = {
   onboarding_completed: false,
-  full_name: null,
+  first_name: null,
   role: null,
   firm_or_school: null,
   sectors: [],
@@ -57,9 +57,9 @@ export async function GET() {
 
     const profile = data ?? { id: user.id, ...DEFAULT_PROFILE };
 
-    // Fallback: if full_name is null, try auth user metadata
-    if (!profile.full_name) {
-      profile.full_name = user.user_metadata?.full_name ?? user.email ?? null;
+    // Fallback: if first_name is null, try auth user metadata
+    if (!profile.first_name) {
+      profile.first_name = user.user_metadata?.full_name ?? user.email ?? null;
     }
 
     return NextResponse.json(profile);
@@ -83,7 +83,7 @@ export async function PATCH(request: Request) {
 
     // Whitelist allowed fields
     const allowedFields = [
-      "full_name",
+      "first_name",
       "role",
       "firm_or_school",
       "sectors",

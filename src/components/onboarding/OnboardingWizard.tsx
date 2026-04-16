@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -71,7 +71,7 @@ const CTA_BG = "#C9A84C";
 const CTA_FG = "#1A1208";
 
 interface InitialProfile {
-  full_name: string;
+  first_name: string;
   role: UserRole | null;
   sectors: string[];
   risk_appetite: RiskAppetite;
@@ -182,6 +182,75 @@ function impactRowsFor(
   ];
 }
 
+/* ─── Preview thesis card content (client-side illustrative, not API) ─── */
+
+const TITLE_BY_STRATEGY: Record<StrategyType, (sector: string) => string> = {
+  pe: (s) => `Platform rollup forming in ${s}`,
+  equity: (s) => `Pricing power emerging in ${s}`,
+  vc: (s) => `Category leader shaping up in ${s}`,
+  macro: (s) => `Regime rotation into ${s}`,
+  credit: (s) => `Spread opportunity opening in ${s}`,
+};
+
+const RATIONALE_BY_STRATEGY: Record<StrategyType, string> = {
+  pe: "Framed as a durability thesis — cash flow quality, integration risk, exit multiples.",
+  equity: "Framed for catalyst + consensus — what's priced in and what isn't.",
+  vc: "Framed as an asymmetric call — runway, burn, and path to escape velocity.",
+  macro: "Framed as a regime read — rates, liquidity, and policy inflection points.",
+  credit: "Framed as a spread read — coupon safety, downgrade risk, and recovery.",
+};
+
+const RATIONALE_BY_BUCKET: Record<RoleBucket, string> = {
+  student: "Written to teach the logic — every claim tied to evidence.",
+  junior: "Analyst-depth with a full evidence chain.",
+  senior: "Tight — what changed, what to do about it.",
+  other: "Neutral investor tone, catalyst-first.",
+};
+
+const CONVICTION_BY_RISK: Record<RiskAppetite, string> = {
+  aggressive: "HIGH CONVICTION",
+  balanced: "WATCHING",
+  defensive: "CAUTION",
+};
+
+function illustrativePreview(
+  role: UserRole | null,
+  strategy: StrategyType | null,
+  sectors: string[],
+  risk: RiskAppetite,
+): PreviewResult {
+  const primarySector = sectors[0] || "Technology";
+  return {
+    title: strategy
+      ? TITLE_BY_STRATEGY[strategy](primarySector)
+      : `A thesis shaping up in ${primarySector}`,
+    sector: primarySector,
+    conviction: CONVICTION_BY_RISK[risk],
+    rationale: strategy
+      ? RATIONALE_BY_STRATEGY[strategy]
+      : RATIONALE_BY_BUCKET[bucketForRole(role)],
+  };
+}
+
+function contextualCopyFor(
+  role: UserRole | null,
+  strategy: StrategyType | null,
+): string {
+  const bucket = bucketForRole(role);
+  if (bucket === "student") return "Signalera explains the why, not just the what.";
+  if (bucket === "junior") {
+    if (strategy === "pe") return "Deal flow intelligence, built around your strategy.";
+    if (strategy === "equity") return "Public-market edge, earned through research.";
+    if (strategy === "vc") return "Early-stage conviction, filtered for signal.";
+    if (strategy === "macro") return "Regime reads that frame every position.";
+    if (strategy === "credit") return "Spread discipline, priced for patience.";
+    return "Analyst-grade signals, tuned to your desk.";
+  }
+  if (bucket === "senior") return "Edge-focused signals. No noise.";
+  if (bucket === "other") return "Your portfolio lens, applied to every signal.";
+  return "Every signal, shaped by your lens.";
+}
+
 /* ─── Progress dots ─── */
 
 function StepDots({ current, total }: { current: number; total: number }) {
@@ -214,7 +283,7 @@ function StepDots({ current, total }: { current: number; total: number }) {
 export function OnboardingWizard({ initialProfile }: { initialProfile: InitialProfile }) {
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [fullName, setFullName] = useState(initialProfile.full_name);
+  const [firstName, setFirstName] = useState(initialProfile.first_name);
   const [firmOrSchool, setFirmOrSchool] = useState(initialProfile.firm_or_school);
   const [role, setRole] = useState<UserRole | null>(initialProfile.role);
   const [strategy, setStrategy] = useState<StrategyType | null>(initialProfile.strategy_type);
@@ -254,7 +323,7 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
   }, []);
 
   function canProceed(): boolean {
-    if (step === 1) return fullName.trim().length > 0;
+    if (step === 1) return firstName.trim().length > 0;
     if (step === 2) return role !== null;
     if (step === 3) return strategy !== null;
     if (step === 4) return sectors.length >= 1;
@@ -298,7 +367,7 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          full_name: fullName.trim() || null,
+          first_name: firstName.trim() || null,
           firm_or_school: firmOrSchool.trim() || null,
           role,
           strategy_type: strategy,
@@ -384,8 +453,8 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
         <div className="flex-1 flex flex-col justify-center max-w-[520px]">
           {step === 1 && (
             <StepName
-              fullName={fullName}
-              onFullNameChange={setFullName}
+              firstName={firstName}
+              onFirstNameChange={setFirstName}
               firmOrSchool={firmOrSchool}
               onFirmOrSchoolChange={setFirmOrSchool}
             />
@@ -469,13 +538,20 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
       {/* ── RIGHT PANEL ── */}
       <aside
         className="relative min-h-screen hidden md:flex flex-col"
-        style={{ backgroundColor: "var(--espresso-light)", padding: "48px" }}
+        style={{
+          backgroundColor: "var(--espresso-light)",
+          backgroundImage:
+            "radial-gradient(ellipse 55% 40% at 50% 38%, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0.015) 45%, transparent 75%)",
+          padding: "48px",
+        }}
       >
         {step === 1 && <BrandPanel />}
         {step >= 2 && step <= 6 && (
-          <ImpactStripPanel
-            rows={impactRowsFor(role, strategy, sectors)}
-            activeSurface={surfaceForStep(step)}
+          <SignalPreviewPanel
+            role={role}
+            strategy={strategy}
+            sectors={sectors}
+            risk={riskAppetite}
           />
         )}
         {step === 7 && (
@@ -537,45 +613,133 @@ function BrandPanel() {
   );
 }
 
-function surfaceForStep(step: number): string[] {
-  // Highlight the row(s) that the current step influences.
-  if (step === 2) return ["Thesis depth", "Morning Brief"];
-  if (step === 3) return ["Thesis framing", "Bear case"];
-  if (step === 4) return ["Morning Brief", "Evening Wrap"];
-  return [];
-}
+/* ─── SignalPreviewPanel — premium thesis card + contextual copy + impact strip ─── */
 
-function ImpactStripPanel({
-  rows,
-  activeSurface,
+const FADE_MS = 400;
+
+function SignalPreviewPanel({
+  role,
+  strategy,
+  sectors,
+  risk,
 }: {
-  rows: ImpactRow[];
-  activeSurface: string[];
+  role: UserRole | null;
+  strategy: StrategyType | null;
+  sectors: string[];
+  risk: RiskAppetite;
 }) {
+  const preview = illustrativePreview(role, strategy, sectors, risk);
+  const copy = contextualCopyFor(role, strategy);
+  const rows = impactRowsFor(role, strategy, sectors);
+
+  // Key that represents card+copy identity — when it changes, fade.
+  const contentKey = `${preview.title}|${preview.sector}|${preview.conviction}|${preview.rationale}|${copy}`;
+
+  const [isUpdating, setIsUpdating] = useState(false);
+  const firstRenderRef = useRef(true);
+  const prevContentKeyRef = useRef(contentKey);
+
+  useEffect(() => {
+    if (firstRenderRef.current) {
+      firstRenderRef.current = false;
+      prevContentKeyRef.current = contentKey;
+      return;
+    }
+    if (contentKey === prevContentKeyRef.current) return;
+    prevContentKeyRef.current = contentKey;
+    setIsUpdating(true);
+    const t = setTimeout(() => setIsUpdating(false), FADE_MS);
+    return () => clearTimeout(t);
+  }, [contentKey]);
+
+  // Per-row pulse when a specific row's value changes.
+  const prevRowsRef = useRef<ImpactRow[]>(rows);
+  const [pulsingRows, setPulsingRows] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const changed = new Set<string>();
+    rows.forEach((row) => {
+      const prev = prevRowsRef.current.find((r) => r.surface === row.surface);
+      if (prev && prev.value !== row.value) changed.add(row.surface);
+    });
+    prevRowsRef.current = rows;
+    if (changed.size === 0) return;
+    setPulsingRows(changed);
+    const t = setTimeout(() => setPulsingRows(new Set()), FADE_MS);
+    return () => clearTimeout(t);
+  }, [rows]);
+
   return (
     <div className="flex flex-col h-full max-w-[460px]">
+      {/* Label above card */}
       <p
-        className="font-sans text-[11px] font-semibold uppercase tracking-[0.2em] mb-3"
-        style={{ color: CTA_BG }}
+        className="font-sans text-[10px] font-semibold uppercase tracking-[0.22em] mb-3 transition-colors"
+        style={{ color: isUpdating ? "#8a7a60" : CTA_BG }}
       >
-        How this shapes Signalera
+        {isUpdating ? "Updating your signal" : "Your first signal"}
       </p>
-      <h2
-        className="font-display text-[24px] font-extrabold leading-tight mb-8"
-        style={{ color: "#f5f0e8" }}
-      >
-        Live preview of your surfaces
-      </h2>
 
-      <ul className="space-y-4">
+      {/* Premium thesis card — fades on content change */}
+      <div
+        className="rounded-xl transition-opacity ease-out"
+        style={{
+          padding: "24px",
+          borderLeft: `3px solid ${CTA_BG}`,
+          backgroundColor: "rgba(255,255,255,0.04)",
+          boxShadow:
+            "0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px rgba(0,0,0,0.18)",
+          opacity: isUpdating ? 0 : 1,
+          transitionDuration: `${FADE_MS / 2}ms`,
+        }}
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <span
+            className="font-sans text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wide"
+            style={{ backgroundColor: CTA_BG, color: CTA_FG }}
+          >
+            {preview.conviction}
+          </span>
+          <span
+            className="font-sans text-[9px] uppercase tracking-wide"
+            style={{ color: "#c0a870" }}
+          >
+            {preview.sector}
+          </span>
+        </div>
+        <h3
+          className="font-display text-[17px] font-bold leading-snug mb-2"
+          style={{ color: "#f5f0e8" }}
+        >
+          {preview.title}
+        </h3>
+        <p className="font-sans text-[13px] leading-relaxed" style={{ color: "#c0a870" }}>
+          {preview.rationale}
+        </p>
+      </div>
+
+      {/* Contextual copy line — fades with card */}
+      <p
+        className="text-center italic font-sans mt-5 transition-opacity ease-out"
+        style={{
+          fontSize: "13px",
+          color: "#b8965a",
+          opacity: isUpdating ? 0 : 0.9,
+          transitionDuration: `${FADE_MS / 2}ms`,
+        }}
+      >
+        {copy}
+      </p>
+
+      {/* Impact strip — per-row pulse on value change */}
+      <ul className="space-y-4 mt-auto pt-8">
         {rows.map((row) => {
-          const highlighted = activeSurface.includes(row.surface);
+          const pulsing = pulsingRows.has(row.surface);
           return (
             <li
               key={row.surface}
               className={cn(
-                "grid grid-cols-[140px_20px_1fr] items-start gap-3 transition-opacity duration-[var(--duration-base)]",
-                highlighted ? "opacity-100" : "opacity-70",
+                "grid grid-cols-[140px_20px_1fr] items-start gap-3",
+                pulsing ? "onboarding-row-pulse" : "",
               )}
             >
               <span
@@ -593,7 +757,7 @@ function ImpactStripPanel({
               </span>
               <span
                 className="font-sans text-[13px] leading-snug font-semibold"
-                style={{ color: highlighted ? CTA_BG : "#e8b84b" }}
+                style={{ color: "#e8b84b" }}
               >
                 {row.value}
               </span>
@@ -602,13 +766,6 @@ function ImpactStripPanel({
         })}
       </ul>
 
-      <p
-        className="mt-auto pt-8 font-sans text-[11px] leading-relaxed"
-        style={{ color: "#8a7a60" }}
-      >
-        Each choice re-tunes these surfaces instantly. You can change any of
-        them later from Settings &rarr; Preferences.
-      </p>
     </div>
   );
 }
@@ -751,13 +908,13 @@ function DarkLabel({ children }: { children: React.ReactNode }) {
 }
 
 function StepName({
-  fullName,
-  onFullNameChange,
+  firstName,
+  onFirstNameChange,
   firmOrSchool,
   onFirmOrSchoolChange,
 }: {
-  fullName: string;
-  onFullNameChange: (v: string) => void;
+  firstName: string;
+  onFirstNameChange: (v: string) => void;
   firmOrSchool: string;
   onFirmOrSchoolChange: (v: string) => void;
 }) {
@@ -772,8 +929,8 @@ function StepName({
         <div>
           <DarkLabel>First name</DarkLabel>
           <Input
-            value={fullName}
-            onChange={(e) => onFullNameChange(e.target.value)}
+            value={firstName}
+            onChange={(e) => onFirstNameChange(e.target.value)}
             placeholder="Jane"
             autoFocus
             className="bg-transparent border-white/15 text-white placeholder:text-white/30 focus-visible:border-gold"

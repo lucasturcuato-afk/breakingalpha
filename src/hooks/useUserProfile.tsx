@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 
 export interface UserProfile {
   id?: string;
-  full_name?: string | null;
+  first_name?: string | null;
   role?: string | null;
   firm_or_school?: string | null;
   sectors?: string[] | null;

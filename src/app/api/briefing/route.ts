@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 /* ── User profile types for personalization ── */
 interface UserProfile {
-  full_name?: string | null;
+  first_name?: string | null;
   role?: string | null;
   firm_or_school?: string | null;
   sectors?: string[] | null;
@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
       if (user) {
         const { data: profileData, error: profileError } = await authedClient
           .from("user_profiles")
-          .select("full_name, role, firm_or_school, sectors, risk_appetite, watchlist_tickers, onboarding_completed")
+          .select("first_name, role, firm_or_school, sectors, risk_appetite, watchlist_tickers, onboarding_completed")
           .eq("id", user.id)
           .single();
 

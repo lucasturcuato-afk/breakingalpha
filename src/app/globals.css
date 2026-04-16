@@ -178,6 +178,21 @@ html.dark .bg-white {
   }
 }
 
+@keyframes onboarding-row-pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.onboarding-row-pulse {
+  animation: onboarding-row-pulse 400ms ease-in-out;
+}
+
 /* Conviction ring inner cutout — matches parent surface */
 .conviction-ring-bg {
   background-color: var(--parchment, #faf7f2);

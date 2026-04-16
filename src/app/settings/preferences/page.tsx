@@ -60,7 +60,7 @@ export default async function PreferencesPage() {
                 Name
               </dt>
               <dd className="text-text-primary">
-                {profile.full_name ?? <span className="text-text-muted italic">unset</span>}
+                {profile.first_name ?? <span className="text-text-muted italic">unset</span>}
               </dd>
             </div>
             <div>

@@ -12,7 +12,7 @@ interface SectorActivity {
 
 interface InsightsResponse {
   profile: {
-    full_name: string | null;
+    first_name: string | null;
     role: string | null;
     sectors: string[];
     risk_appetite: string;

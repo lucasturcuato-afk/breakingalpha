@@ -22,7 +22,7 @@ export default async function OnboardingPage() {
   return (
     <OnboardingWizard
       initialProfile={{
-        full_name: profile.full_name ?? "",
+        first_name: profile.first_name ?? "",
         role: profile.role,
         sectors: profile.sectors,
         risk_appetite: profile.risk_appetite,

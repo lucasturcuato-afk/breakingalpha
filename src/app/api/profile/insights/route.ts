@@ -19,7 +19,7 @@ interface SectorActivity {
 
 interface InsightsResponse {
   profile: {
-    full_name: string | null;
+    first_name: string | null;
     role: string | null;
     sectors: string[];
     risk_appetite: string;
@@ -136,7 +136,7 @@ export async function GET() {
 
     const body: InsightsResponse = {
       profile: {
-        full_name: profile.full_name,
+        first_name: profile.first_name,
         role: profile.role,
         sectors: profile.sectors,
         risk_appetite: profile.risk_appetite,

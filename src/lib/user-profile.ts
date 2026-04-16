@@ -38,7 +38,7 @@ export type WorkflowStyle = "deep_dive" | "screening" | "monitoring";
 
 export interface UserProfile {
   id: string;
-  full_name: string | null;
+  first_name: string | null;
   role: UserRole | null;
   firm_or_school: string | null;
   sectors: string[];
@@ -93,7 +93,7 @@ const NEGATIVE_EVENTS: UserEventType[] = [
 
 const DEFAULT_PROFILE = (id: string): UserProfile => ({
   id,
-  full_name: null,
+  first_name: null,
   role: null,
   firm_or_school: null,
   sectors: [],
@@ -148,7 +148,7 @@ export async function getUserProfile(
 }
 
 const UPSERT_WHITELIST = [
-  "full_name",
+  "first_name",
   "role",
   "firm_or_school",
   "sectors",
@@ -405,7 +405,7 @@ export function buildPersonalizationContext(
   if (!profile) return "";
   const parts: string[] = [];
 
-  const name = profile.full_name?.trim();
+  const name = profile.first_name?.trim();
   const role = profile.role ? ROLE_LABEL[profile.role] : null;
   const firmOrSchool = profile.firm_or_school?.trim();
 
