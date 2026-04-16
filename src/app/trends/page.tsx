@@ -9,6 +9,8 @@ import { TrendingUp, Sparkles, Plus, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { createBrowserClient } from "@supabase/ssr";
+import { useUserProfile } from "@/hooks/useUserProfile";
+import { trackClientEvent } from "@/lib/track-event";
 import type { SignalData } from "@/components/trends";
 
 const INDUSTRY_VERTICALS = [
@@ -119,6 +121,7 @@ function getSupabase() {
 
 export default function TrendsPage() {
   const router = useRouter();
+  const { profile } = useUserProfile();
   const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
   const [verticalMatchMode, setVerticalMatchMode] = useState<"any" | "all">("any");
   const [selectedActivities, setSelectedActivities] = useState<string[]>([]);
@@ -128,8 +131,38 @@ export default function TrendsPage() {
   const [memoSignal, setMemoSignal] = useState<SignalData | null>(null);
   const [addingThesis, setAddingThesis] = useState(false);
 
+  // Personalization helpers — soft-fail when profile is null.
+  const profileSectors = useMemo(
+    () => (profile?.sectors ?? []).map((s) => s.toLowerCase()),
+    [profile?.sectors],
+  );
+  const watchlistUpper = useMemo(
+    () => (profile?.watchlist_tickers ?? []).map((t) => t.toUpperCase()),
+    [profile?.watchlist_tickers],
+  );
+
+  function personalBoost(s: SignalData): number {
+    let score = 0;
+    // Sector alignment — direct profile picks
+    if (profileSectors.length) {
+      if (
+        s.industry_verticals.some((v) =>
+          profileSectors.some((ps) => v.toLowerCase().includes(ps) || ps.includes(v.toLowerCase())),
+        )
+      ) {
+        score += 2;
+      }
+    }
+    // Watchlist ticker mention in description/title
+    if (watchlistUpper.length) {
+      const text = `${s.title} ${s.description}`.toUpperCase();
+      if (watchlistUpper.some((t) => text.includes(t))) score += 3;
+    }
+    return score;
+  }
+
   const filtered = useMemo(() => {
-    return allSignals.filter((s) => {
+    const filtered = allSignals.filter((s) => {
       if (anomalyFilter !== "all" && s.anomaly !== anomalyFilter) return false;
       if (selectedVerticals.length > 0) {
         const match = verticalMatchMode === "all"
@@ -145,7 +178,12 @@ export default function TrendsPage() {
       }
       return true;
     });
-  }, [anomalyFilter, selectedVerticals, verticalMatchMode, selectedActivities, activityMatchMode]);
+    // Stable boost sort — profile-relevant signals rise to the top when the
+    // user has set sectors/watchlist. When the profile is empty this is a
+    // no-op (all signals get boost=0, original order preserved).
+    if (!profileSectors.length && !watchlistUpper.length) return filtered;
+    return [...filtered].sort((a, b) => personalBoost(b) - personalBoost(a));
+  }, [anomalyFilter, selectedVerticals, verticalMatchMode, selectedActivities, activityMatchMode, profileSectors, watchlistUpper]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const grouped = useMemo(() => {
     const verticals = new Map<string, SignalData[]>();
@@ -317,7 +355,16 @@ export default function TrendsPage() {
                       {signals.map((signal) => (
                         <div
                           key={signal.id}
-                          onClick={() => setExpandedId(expandedId === signal.id ? null : signal.id)}
+                          onClick={() => {
+                            const nextId = expandedId === signal.id ? null : signal.id;
+                            setExpandedId(nextId);
+                            if (nextId !== null) {
+                              trackClientEvent("pattern_clicked", {
+                                signal_id: signal.id,
+                                sector: signal.industry_verticals?.[0] ?? null,
+                              });
+                            }
+                          }}
                           className="cursor-pointer"
                         >
                           <SignalCard signal={signal} />
@@ -403,7 +450,16 @@ export default function TrendsPage() {
                       {signals.map((signal) => (
                         <div
                           key={signal.id}
-                          onClick={() => setExpandedId(expandedId === signal.id ? null : signal.id)}
+                          onClick={() => {
+                            const nextId = expandedId === signal.id ? null : signal.id;
+                            setExpandedId(nextId);
+                            if (nextId !== null) {
+                              trackClientEvent("pattern_clicked", {
+                                signal_id: signal.id,
+                                sector: signal.industry_verticals?.[0] ?? null,
+                              });
+                            }
+                          }}
                           className="cursor-pointer"
                         >
                           <SignalCard signal={signal} />

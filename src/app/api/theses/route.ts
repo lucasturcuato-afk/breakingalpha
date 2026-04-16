@@ -3,6 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { mapThesisRow, dedupByTitleSector, thesisDedupKey } from "@/lib/thesis-mapper";
+import { getUserProfile, sectorWeight } from "@/lib/user-profile";
 
 export const dynamic = "force-dynamic";
 
@@ -83,6 +84,30 @@ export async function GET() {
       console.log(`[theses GET] deduplicated ${dupeCount} theses by title|sector (kept most recent)`);
     }
     theses = deduped as Record<string, unknown>[];
+
+    // Personalization: if the user has profile sectors or learned weights,
+    // stable-sort theses by sector weight (desc). No-op for empty profiles.
+    try {
+      const profile = await getUserProfile(supabase, user.id);
+      const hasSignal =
+        (profile.sectors?.length ?? 0) > 0 ||
+        Object.keys(profile.inferred_sector_weights || {}).length > 0;
+      if (hasSignal) {
+        const withIdx = theses.map((t, i) => ({ t, i }));
+        withIdx.sort((a, b) => {
+          const wa = sectorWeight(profile, (a.t.sector as string) || "");
+          const wb = sectorWeight(profile, (b.t.sector as string) || "");
+          if (wb !== wa) return wb - wa;
+          return a.i - b.i;
+        });
+        theses = withIdx.map((x) => x.t);
+      }
+    } catch (e) {
+      console.log(
+        "[theses GET] personalization sort skipped:",
+        e instanceof Error ? e.message : String(e),
+      );
+    }
 
     // Fetch latest weekly digest
     let digest: Record<string, unknown> | null = null;

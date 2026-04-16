@@ -21,6 +21,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { WatchlistAddInput, type AddType } from "@/components/watchlist/WatchlistAddInput";
 import { buildArticleOrFilter } from "@/lib/watchlist-utils";
+import { trackClientEvent } from "@/lib/track-event";
 
 function getSupabase() {
   return createBrowserClient(
@@ -493,12 +494,17 @@ export default function WatchlistPage() {
         return;
       }
       await refreshWatchlist();
+      trackClientEvent("watchlist_added", {
+        identifier: identifier.trim(),
+        type: addType,
+      });
     } catch {
       setAddError("Network error");
     }
   };
 
   const handleRemove = async (id: string) => {
+    const removed = watchlist.find((e) => e.id === id);
     try {
       await fetch("/api/watchlist", {
         method: "DELETE",
@@ -506,6 +512,12 @@ export default function WatchlistPage() {
         body: JSON.stringify({ id }),
       });
       await refreshWatchlist();
+      if (removed) {
+        trackClientEvent("watchlist_removed", {
+          identifier: removed.identifier,
+          type: removed.type,
+        });
+      }
     } catch (e) {
       console.error("Failed to remove:", e);
     }

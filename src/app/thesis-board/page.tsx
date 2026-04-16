@@ -13,6 +13,7 @@ import { FileText, Archive, RefreshCw, ChevronDown, ChevronUp, LayoutList, Layou
 import { cn } from "@/lib/utils";
 import type { ThesisItem, ThesisStatus, WeeklyDigest, PatternRow, SourceCredibilityRow } from "@/components/thesis";
 import { mapThesisRow } from "@/lib/thesis-mapper";
+import { trackClientEvent } from "@/lib/track-event";
 
 interface RelatedArticle {
   id: string;
@@ -309,7 +310,14 @@ function ThesisBoardContent() {
   const handleSelect = (id: string) => {
     setSelectedId(id);
     const thesis = theses.find((t) => t.id === id) || archivedTheses.find((t) => t.id === id);
-    if (thesis) fetchArticlesForThesis(thesis);
+    if (thesis) {
+      fetchArticlesForThesis(thesis);
+      trackClientEvent("thesis_viewed", {
+        thesis_id: thesis.id,
+        sector: thesis.sector,
+        conviction: thesis.conviction,
+      });
+    }
   };
 
   const handleRefresh = () => {
@@ -321,6 +329,7 @@ function ThesisBoardContent() {
 
   // Quick actions for pending review
   const handleQuickAction = async (id: string, newStatus: string) => {
+    const thesis = theses.find((t) => t.id === id);
     // Optimistic update
     setTheses((prev) =>
       prev.map((t) => (t.id === id ? { ...t, status: newStatus as ThesisStatus } : t))
@@ -332,6 +341,23 @@ function ThesisBoardContent() {
         body: JSON.stringify({ status: newStatus }),
       });
       if (!res.ok) throw new Error("Failed");
+      if (thesis) {
+        // Map status transitions → behavioral events so inferred-weights
+        // knows which sectors the user actually acts on.
+        if (newStatus === "active" || newStatus === "watching") {
+          trackClientEvent("thesis_approved", {
+            thesis_id: id,
+            sector: thesis.sector,
+            new_status: newStatus,
+          });
+        } else if (newStatus === "archived" || newStatus === "rejected") {
+          trackClientEvent("thesis_dismissed", {
+            thesis_id: id,
+            sector: thesis.sector,
+            new_status: newStatus,
+          });
+        }
+      }
     } catch {
       // Rollback
       fetchTheses();
@@ -638,6 +664,7 @@ function ThesisBoardContent() {
                   articles={relatedArticles[selectedId ?? ""] ?? []}
                   activeSignalCount={theses.filter((t) => !userArchivedIds.has(t.id)).length}
                   onArchive={(id) => {
+                    const thesis = theses.find((t) => t.id === id);
                     // Optimistically add to user thesis states
                     setUserThesisStates((prev) => {
                       const exists = prev.find((s) => s.thesis_id === id);
@@ -649,6 +676,12 @@ function ThesisBoardContent() {
                     const remaining = theses.filter((t) => t.id !== id);
                     setSelectedId(remaining[0]?.id ?? null);
                     if (convictionFilter === "archived") setArchivedRefreshKey((k) => k + 1);
+                    if (thesis) {
+                      trackClientEvent("thesis_dismissed", {
+                        thesis_id: id,
+                        sector: thesis.sector,
+                      });
+                    }
                   }}
                   onRegenerate={() => fetchTheses()}
                 />

@@ -67,6 +67,7 @@ export async function PATCH(request: Request) {
       "risk_appetite",
       "watchlist_tickers",
       "onboarding_completed",
+      "inferred_sector_weights",
     ] as const;
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };

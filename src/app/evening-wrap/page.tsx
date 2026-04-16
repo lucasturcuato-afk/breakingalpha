@@ -78,7 +78,24 @@ export default function EveningWrapPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch("/api/briefing?type=evening");
+        // Fetch briefing with Bearer token so /api/briefing can personalize
+        // sections + sector_breakdown against user_profiles.
+        const supabase = getSupabase();
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers: HeadersInit = {};
+        if (session?.access_token) {
+          headers.Authorization = `Bearer ${session.access_token}`;
+        }
+        const res = await fetch("/api/briefing?type=evening", { headers });
+
+        if (session?.user) {
+          void fetch("/api/user-events", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ event_type: "evening_wrap_opened" }),
+          }).catch(() => {});
+        }
         const data = await res.json();
         if (data.briefing) {
           const b = data.briefing;

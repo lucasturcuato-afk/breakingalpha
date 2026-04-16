@@ -170,6 +170,22 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
         if (!cancelled && data.memo) {
           setMemo(data.memo);
           onGeneratedRef.current?.(data.memo);
+          // Fire-and-forget behavioral event — informs inferred weights.
+          // We don't have a sector here; caller uses `systemPrompt` to pass
+          // context, so we just log the memo_type + title as an identifier.
+          try {
+            void fetch("/api/user-events", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                event_type: "memo_generated",
+                payload: { memo_type: type, title },
+              }),
+              keepalive: true,
+            }).catch(() => {});
+          } catch {
+            // ignore
+          }
         } else if (!cancelled) {
           setError("No memo content returned");
         }
