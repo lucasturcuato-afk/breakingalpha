@@ -22,7 +22,6 @@ import type { StoryData } from "@/components/dashboard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FileText } from "lucide-react";
-import { OnboardingGate } from "@/components/onboarding/onboarding-gate";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
@@ -287,9 +286,6 @@ export default function DashboardPage() {
       }
     >
       <div className="p-6 space-y-5 max-w-[960px]">
-        {/* Onboarding modal — shown on first session, persists data to DB */}
-        <OnboardingGate />
-
         {/* Onboarding banner */}
         <OnboardingBanner />
 
