@@ -17,8 +17,16 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "updates array required" }, { status: 400 });
     }
 
+    if (updates.some((u) => typeof u.sort_order !== "number" || !isFinite(u.sort_order))) {
+      return NextResponse.json({ error: "invalid sort_order value" }, { status: 400 });
+    }
+
     // Validate all IDs belong to this user
-    const ids = updates.map((u) => u.id);
+    const rawIds = updates.map((u) => u.id);
+    const ids = [...new Set(rawIds)];
+    if (ids.length !== rawIds.length) {
+      return NextResponse.json({ error: "Duplicate IDs in updates" }, { status: 400 });
+    }
     const { data: owned, error: validateError } = await supabase
       .from("watchlist")
       .select("id")

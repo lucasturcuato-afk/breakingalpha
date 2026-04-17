@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -373,6 +373,7 @@ export default function WatchlistPage() {
     dragGroup: string | null;
   }>({ draggingId: null, dragOverId: null, dragGroup: null });
   const [dragError, setDragError] = useState<string | null>(null);
+  const dragErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchPrices = useCallback((entries: WatchlistEntry[]) => {
     const tickers = entries.filter((e) => e.type === "ticker").map((e) => e.identifier);
@@ -560,12 +561,11 @@ export default function WatchlistPage() {
   const losers = tickers.filter((e) => prices[e.identifier]?.pct < 0).length;
   const flat = tickers.length - gainers - losers;
 
-  const sectorEntries = watchlist.filter((e) => e.type === "sector");
-  const nonSectorEntries = watchlist.filter((e) => e.type !== "sector");
+  const sectorEntries = useMemo(() => watchlist.filter((e) => e.type === "sector"), [watchlist]);
+  const nonSectorEntries = useMemo(() => watchlist.filter((e) => e.type !== "sector"), [watchlist]);
   const showDivider = sectorEntries.length > 0 && nonSectorEntries.length > 0;
-
-  const publicEntries = nonSectorEntries.filter((e) => e.type === "ticker");
-  const privateEntries = nonSectorEntries.filter((e) => e.type === "company");
+  const publicEntries = useMemo(() => nonSectorEntries.filter((e) => e.type === "ticker"), [nonSectorEntries]);
+  const privateEntries = useMemo(() => nonSectorEntries.filter((e) => e.type === "company"), [nonSectorEntries]);
 
   const selectedEntry = watchlist.find(e => e.identifier === selectedIdentifier);
   const selectedDisplayLabel = selectedIdentifier
@@ -632,7 +632,7 @@ export default function WatchlistPage() {
     ghost.style.top = "-1000px";
     document.body.appendChild(ghost);
     e.dataTransfer.setDragImage(ghost, 0, 0);
-    setTimeout(() => document.body.removeChild(ghost), 0);
+    setTimeout(() => { try { document.body.removeChild(ghost); } catch { /* already removed */ } }, 0);
   }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent, entry: WatchlistEntry, group: string) => {
@@ -696,11 +696,9 @@ export default function WatchlistPage() {
     }));
 
     // Optimistic update: rebuild watchlist with new order
-    const newWatchlist = group === "sector"
-      ? [...reordered, ...watchlist.filter(e => e.type !== "sector")]
-      : group === "ticker"
-        ? [...watchlist.filter(e => e.type === "sector"), ...reordered, ...watchlist.filter(e => e.type === "company")]
-        : [...watchlist.filter(e => e.type !== "company"), ...reordered];
+    const newWatchlist = group === "ticker"
+      ? [...watchlist.filter(e => e.type === "sector"), ...reordered, ...watchlist.filter(e => e.type === "company")]
+      : [...watchlist.filter(e => e.type !== "company"), ...reordered];
 
     const prevWatchlist = [...watchlist];
     setWatchlist(newWatchlist);
@@ -711,7 +709,8 @@ export default function WatchlistPage() {
       // Revert on error
       setWatchlist(prevWatchlist);
       setDragError("Reorder failed — changes reverted");
-      setTimeout(() => setDragError(null), 3000);
+      if (dragErrorTimeoutRef.current) clearTimeout(dragErrorTimeoutRef.current);
+      dragErrorTimeoutRef.current = setTimeout(() => setDragError(null), 3000);
     });
   }, [dragState, sectorEntries, publicEntries, privateEntries, watchlist, persistReorder]);
 
