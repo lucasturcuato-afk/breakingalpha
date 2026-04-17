@@ -65,6 +65,17 @@ const LEGACY_TICKER_NAMES: Record<string, string> = {
   PYPL: "PayPal", COIN: "Coinbase", PLTR: "Palantir", UBER: "Uber",
 };
 
+interface PriceAlert {
+  id: string;
+  identifier: string;
+  alert_type: "percent_change" | "price_above" | "price_below";
+  threshold: number;
+  direction?: string | null;
+  enabled: boolean;
+  last_triggered?: string | null;
+  created_at: string;
+}
+
 interface WatchlistArticle {
   id: string;
   title: string;
@@ -148,6 +159,10 @@ export default function WatchlistIdentifierPage({
   const [selectedArticleIndex, setSelectedArticleIndex] = useState<number | null>(null);
   const notesFocusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [expandedClusters, setExpandedClusters] = useState<Map<string, boolean>>(new Map());
+  const [alerts, setAlerts] = useState<PriceAlert[]>([]);
+  const [alertsLoading, setAlertsLoading] = useState(true);
+  const [alertType, setAlertType] = useState<"percent_change" | "price_above" | "price_below">("percent_change");
+  const [alertThreshold, setAlertThreshold] = useState("");
 
   const handleBriefGenerated = async (text: string) => {
     setBriefGeneratedAt(new Date());
@@ -428,6 +443,60 @@ export default function WatchlistIdentifierPage({
   };
 
   const companyName = storedDisplayName ?? LEGACY_TICKER_NAMES[decoded.toUpperCase()] ?? decoded;
+
+  // Price alerts — load on mount, ticker-only
+  useEffect(() => {
+    if (isSector) { setAlertsLoading(false); return; }
+    fetch(`/api/watchlist-alerts?identifier=${encodeURIComponent(decoded)}`)
+      .then((r) => r.ok ? r.json() : { alerts: [] })
+      .then((d) => setAlerts(d.alerts ?? []))
+      .catch(() => {})
+      .finally(() => setAlertsLoading(false));
+  }, [decoded, isSector]);
+
+  const handleAddAlert = useCallback(async () => {
+    const t = parseFloat(alertThreshold);
+    if (isNaN(t) || t <= 0) return;
+    const optimisticAlert: PriceAlert = {
+      id: `tmp-${Date.now()}`,
+      identifier: decoded,
+      alert_type: alertType,
+      threshold: t,
+      enabled: true,
+      created_at: new Date().toISOString(),
+    };
+    setAlerts((prev) => [...prev, optimisticAlert]);
+    setAlertThreshold("");
+    try {
+      const res = await fetch("/api/watchlist-alerts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: decoded, alert_type: alertType, threshold: t }),
+      });
+      const json = await res.json();
+      if (res.ok && json.alert) {
+        setAlerts((prev) => prev.map((a) => a.id === optimisticAlert.id ? json.alert : a));
+      } else {
+        setAlerts((prev) => prev.filter((a) => a.id !== optimisticAlert.id));
+      }
+    } catch {
+      setAlerts((prev) => prev.filter((a) => a.id !== optimisticAlert.id));
+    }
+  }, [decoded, alertType, alertThreshold]);
+
+  const handleToggleAlert = useCallback(async (id: string, enabled: boolean) => {
+    setAlerts((prev) => prev.map((a) => a.id === id ? { ...a, enabled } : a));
+    fetch("/api/watchlist-alerts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, enabled }),
+    }).catch(() => {});
+  }, []);
+
+  const handleDeleteAlert = useCallback(async (id: string) => {
+    setAlerts((prev) => prev.filter((a) => a.id !== id));
+    fetch(`/api/watchlist-alerts?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
+  }, []);
 
   const systemPrompt = useMemo(
     () =>
@@ -783,6 +852,110 @@ Constraints:
         </div>
 
         <hr className="border-border-base my-6" />
+
+        {/* PRICE ALERTS SECTION — ticker only */}
+        {typeLabel === "ticker" && (
+          <div className="mb-6">
+            <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">
+              Price Alerts
+            </p>
+            {alertsLoading ? (
+              <div className="h-10 bg-parchment-mid border border-border-base rounded-xl animate-pulse" />
+            ) : (
+              <>
+                {alerts.length === 0 ? (
+                  <p className="font-sans text-[12px] text-text-muted mb-3">
+                    No alerts set. Add a price alert to get notified when this ticker moves.
+                  </p>
+                ) : (
+                  <div className="space-y-2 mb-3">
+                    {alerts.map((alert) => {
+                      const typeLabel_ =
+                        alert.alert_type === "percent_change" ? "% move" :
+                        alert.alert_type === "price_above" ? "Above $" : "Below $";
+                      const thresholdDisplay =
+                        alert.alert_type === "percent_change"
+                          ? `${alert.threshold}%`
+                          : `$${alert.threshold}`;
+                      return (
+                        <div
+                          key={alert.id}
+                          className="flex items-center gap-3 px-3 py-2 bg-white border border-border-base rounded-xl"
+                        >
+                          <span className="font-data text-[11px] text-text-muted flex-1">
+                            {typeLabel_} {thresholdDisplay}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleAlert(alert.id, !alert.enabled)}
+                            style={{
+                              width: '32px', height: '18px', borderRadius: '9px',
+                              border: 'none', cursor: 'pointer',
+                              background: alert.enabled ? '#d97706' : '#d1cbbf',
+                              position: 'relative', flexShrink: 0,
+                              transition: 'background 0.15s',
+                            }}
+                            aria-label={alert.enabled ? "Disable alert" : "Enable alert"}
+                          >
+                            <span style={{
+                              position: 'absolute', top: '2px',
+                              left: alert.enabled ? '16px' : '2px',
+                              width: '14px', height: '14px',
+                              borderRadius: '50%', background: '#fff',
+                              transition: 'left 0.15s',
+                            }} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAlert(alert.id)}
+                            className="text-text-faint hover:text-signal-dn transition-colors cursor-pointer"
+                            style={{ background: 'none', border: 'none', padding: '2px', fontSize: '12px', lineHeight: 1 }}
+                            aria-label="Delete alert"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {alerts.length >= 5 ? (
+                  <p className="font-data text-[10px] text-text-faint italic">Maximum 5 alerts per ticker</p>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={alertType}
+                      onChange={(e) => setAlertType(e.target.value as typeof alertType)}
+                      className="font-data text-[11px] border border-border-base rounded-lg px-2 py-1.5 bg-white text-text-primary focus:outline-none focus:border-gold cursor-pointer"
+                    >
+                      <option value="percent_change">% move</option>
+                      <option value="price_above">Above $</option>
+                      <option value="price_below">Below $</option>
+                    </select>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={alertThreshold}
+                      onChange={(e) => setAlertThreshold(e.target.value)}
+                      placeholder={alertType === "percent_change" ? "e.g. 5" : "e.g. 150.00"}
+                      className="font-data text-[11px] border border-border-base rounded-lg px-2 py-1.5 bg-white text-text-primary w-24 focus:outline-none focus:border-gold"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddAlert}
+                      disabled={!alertThreshold || parseFloat(alertThreshold) <= 0}
+                      className="px-3 py-1.5 rounded-lg bg-gold text-cream font-data text-[11px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Add alert
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+        {typeLabel === "ticker" && <hr className="border-border-base my-6" />}
 
         {/* RECENT COVERAGE */}
         <div>

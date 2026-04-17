@@ -455,6 +455,126 @@ def upsert_articles_batch(identifier: str, articles: list[dict]) -> int:
     return total
 
 
+def fetch_ticker_price(ticker: str) -> tuple[float | None, float | None]:
+    """Fetch current price and previous close from Finnhub quote endpoint.
+    Returns (current_price, prev_close) or (None, None) on failure.
+    """
+    try:
+        if not FINNHUB_KEY:
+            return None, None
+        resp = requests.get(
+            "https://finnhub.io/api/v1/quote",
+            params={"symbol": ticker, "token": FINNHUB_KEY},
+            timeout=6,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        current_price = data.get("c")
+        prev_close = data.get("pc")
+        if not current_price or not prev_close:
+            return None, None
+        return float(current_price), float(prev_close)
+    except Exception as ex:
+        logger.debug("Price fetch failed for %s: %s", ticker, ex)
+        return None, None
+
+
+def check_price_alerts(supabase_client, ticker: str, current_price: float, prev_close: float) -> None:
+    """Check enabled price alerts for a ticker and insert notifications if threshold crossed.
+    Fully wrapped in try/except — never crashes the sync.
+    """
+    try:
+        if not current_price or not prev_close:
+            return
+
+        resp = supabase_client.table("watchlist_price_alerts") \
+            .select("id, alert_type, threshold, last_triggered") \
+            .eq("identifier", ticker) \
+            .eq("enabled", True) \
+            .execute()
+        alert_rows = resp.data or []
+        if not alert_rows:
+            return
+
+        now = datetime.now(timezone.utc)
+        cooldown_cutoff = now - timedelta(hours=4)
+
+        # Fetch all user_ids who have this ticker in their watchlist (once per ticker)
+        wl_resp = supabase_client.table("watchlist") \
+            .select("user_id") \
+            .eq("identifier", ticker) \
+            .execute()
+        user_ids = list({row["user_id"] for row in (wl_resp.data or [])})
+        if not user_ids:
+            return
+
+        pct_change = abs((current_price - prev_close) / prev_close) * 100
+
+        for alert in alert_rows:
+            alert_id = alert["id"]
+            alert_type = alert["alert_type"]
+            threshold = float(alert["threshold"])
+            last_triggered = alert.get("last_triggered")
+
+            # Cooldown check
+            if last_triggered:
+                try:
+                    lt = datetime.fromisoformat(last_triggered.replace("Z", "+00:00"))
+                    if lt > cooldown_cutoff:
+                        continue
+                except Exception:
+                    pass
+
+            triggered = False
+            if alert_type == "percent_change":
+                triggered = pct_change >= threshold
+                title = f"{ticker} moved {pct_change:.1f}%"
+                body = f"Current price: ${current_price:.2f} (prev close: ${prev_close:.2f})"
+            elif alert_type == "price_above":
+                triggered = current_price > threshold
+                title = f"{ticker} above ${threshold}"
+                body = f"Current price: ${current_price:.2f}"
+            elif alert_type == "price_below":
+                triggered = current_price < threshold
+                title = f"{ticker} below ${threshold}"
+                body = f"Current price: ${current_price:.2f}"
+            else:
+                continue
+
+            if not triggered:
+                continue
+
+            # Insert notifications for all watching users
+            notifications = [
+                {
+                    "user_id": uid,
+                    "identifier": ticker,
+                    "type": "price_alert",
+                    "title": title,
+                    "body": body,
+                }
+                for uid in user_ids
+            ]
+            try:
+                supabase_client.table("watchlist_notifications").insert(notifications).execute()
+            except Exception as ex:
+                logger.warning("Notification insert failed for %s alert %s: %s", ticker, alert_id, ex)
+
+            # Update last_triggered
+            try:
+                supabase_client.table("watchlist_price_alerts") \
+                    .update({"last_triggered": now.isoformat()}) \
+                    .eq("id", alert_id) \
+                    .execute()
+            except Exception as ex:
+                logger.warning("last_triggered update failed for alert %s: %s", alert_id, ex)
+
+            logger.info("Price alert triggered: %s %s %s for %d users", ticker, alert_type, threshold, len(user_ids))
+
+    except Exception as ex:
+        logger.warning("check_price_alerts failed for %s (pipeline unaffected): %s", ticker, ex)
+
+
 def cleanup_stale_articles(identifier: str) -> None:
     try:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=35)).isoformat()
@@ -526,6 +646,11 @@ def sync_identifier(identifier: str, entry_type: str, display_name: str | None) 
         deduped = dedup_articles(all_articles)
         count = upsert_articles_batch(identifier, deduped)
         print(f"✓ {identifier} ({company_name}): {count} articles upserted ({len(finnhub_articles)} FH / {len(exa_articles)} Exa / {len(gdelt_articles)} GDELT)")
+
+        if entry_type == "ticker":
+            current_price, prev_close = fetch_ticker_price(identifier)
+            check_price_alerts(supabase, identifier, current_price, prev_close)
+
         return {"identifier": identifier, "count": count, "error": None}
     except Exception as ex:
         print(f"✗ sync_identifier failed for {identifier}: {ex}")
