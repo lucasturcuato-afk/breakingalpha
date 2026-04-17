@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 function escapeCsv(val: string | null | undefined): string {
   if (val == null) return "";
   const str = String(val);
-  if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+  if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;
@@ -69,7 +69,7 @@ export async function GET() {
       ]);
     }
 
-    const csv = rows.map((r) => r.join(",")).join("\n");
+    const csv = rows.map((r) => r.join(",")).join("\r\n");
     const date = new Date().toISOString().split("T")[0];
 
     return new NextResponse(csv, {

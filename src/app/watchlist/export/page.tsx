@@ -95,69 +95,79 @@ export default function WatchlistExportPage() {
           </div>
         ) : !data ? null : (
           <>
-            {/* Cover */}
-            <div className="mb-12 border-b-2 border-gray-900 pb-8">
-              <p className="font-serif text-[11px] uppercase tracking-[3px] text-gray-500 mb-2">Signalera</p>
-              <h1 className="font-serif text-[36px] font-bold text-gray-900 leading-tight mb-2">
-                Watchlist Intelligence Report
-              </h1>
-              <p className="font-sans text-[14px] text-gray-500">{today}</p>
-              <p className="font-sans text-[13px] text-gray-700 mt-3 font-semibold">
-                TRACKING {data.entries.length} {data.entries.length === 1 ? "ITEM" : "ITEMS"}
-              </p>
-            </div>
-
-            {/* Entries */}
-            {data.entries.map((entry, i) => (
-              <div key={entry.id} className={cn("entry-section mb-10 pb-8", i < data.entries.length - 1 && "border-b border-gray-200")}>
-                <div className="flex items-center gap-3 mb-3">
-                  <h2 className="font-serif text-[22px] font-bold text-gray-900">
-                    {entry.display_name || entry.identifier}
-                  </h2>
-                  <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded border border-amber-400 text-amber-700 bg-amber-50">
-                    {entry.type === "ticker" ? entry.identifier : entry.type.toUpperCase()}
-                  </span>
+            {data.entries.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-24 text-center">
+                <p className="font-serif text-[18px] text-gray-700 mb-2">Your watchlist is empty</p>
+                <p className="font-sans text-[13px] text-gray-500 mb-4">Add tickers, companies, or sectors to your watchlist to generate an export.</p>
+                <Link href="/watchlist" className="font-sans text-[13px] text-amber-600 hover:text-amber-700 underline">← Back to Watchlist</Link>
+              </div>
+            ) : (
+              <>
+                {/* Cover */}
+                <div className="mb-12 border-b-2 border-gray-900 pb-8">
+                  <p className="font-serif text-[11px] uppercase tracking-[3px] text-gray-500 mb-2">Signalera</p>
+                  <h1 className="font-serif text-[36px] font-bold text-gray-900 leading-tight mb-2">
+                    Watchlist Intelligence Report
+                  </h1>
+                  <p className="font-sans text-[14px] text-gray-500">{today}</p>
+                  <p className="font-sans text-[13px] text-gray-700 mt-3 font-semibold">
+                    TRACKING {data.entries.length} {data.entries.length === 1 ? "ITEM" : "ITEMS"}
+                  </p>
                 </div>
 
-                {entry.signal && (
-                  <p className="font-serif text-[14px] italic text-amber-700 mb-3 leading-relaxed">
-                    &ldquo;{entry.signal}&rdquo;
-                  </p>
-                )}
+                {/* Entries */}
+                {data.entries.map((entry, i) => (
+                  <div key={entry.id} className={cn("entry-section mb-10 pb-8", i < data.entries.length - 1 && "border-b border-gray-200")}>
+                    <div className="flex items-center gap-3 mb-3">
+                      <h2 className="font-serif text-[22px] font-bold text-gray-900">
+                        {entry.display_name || entry.identifier}
+                      </h2>
+                      <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded border border-amber-400 text-amber-700 bg-amber-50">
+                        {entry.type === "ticker" ? entry.identifier : entry.type.toUpperCase()}
+                      </span>
+                    </div>
 
-                {entry.topArticles.length > 0 && (
-                  <div className="mb-3">
-                    <p className="font-sans text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Recent Coverage</p>
-                    <ul className="space-y-1">
-                      {entry.topArticles.map((a, j) => (
-                        <li key={j} className="font-sans text-[12px] text-gray-700">
-                          <span className="font-semibold">{a.title}</span>
-                          {(a.source || a.published_at) && (
-                            <span className="text-gray-400 ml-1.5 text-[11px]">
-                              {[a.source, a.published_at ? formatDate(a.published_at) : null].filter(Boolean).join(" · ")}
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
+                    {entry.signal && (
+                      <p className="font-serif text-[14px] italic text-amber-700 mb-3 leading-relaxed">
+                        &ldquo;{entry.signal}&rdquo;
+                      </p>
+                    )}
+
+                    {entry.topArticles.length > 0 && (
+                      <div className="mb-3">
+                        <p className="font-sans text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Recent Coverage</p>
+                        <ul className="space-y-1">
+                          {entry.topArticles.map((a, j) => (
+                            <li key={j} className="font-sans text-[12px] text-gray-700">
+                              <span className="font-semibold">{a.title}</span>
+                              {(a.source || a.published_at) && (
+                                <span className="text-gray-400 ml-1.5 text-[11px]">
+                                  {[a.source, a.published_at ? formatDate(a.published_at) : null].filter(Boolean).join(" · ")}
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {entry.note && (
+                      <p className="font-serif text-[12px] italic text-gray-500 mt-2">
+                        <span className="font-sans font-semibold not-italic text-gray-600">Analyst Note: </span>
+                        {entry.note}
+                      </p>
+                    )}
                   </div>
-                )}
+                ))}
 
-                {entry.note && (
-                  <p className="font-serif text-[12px] italic text-gray-500 mt-2">
-                    <span className="font-sans font-semibold not-italic text-gray-600">Analyst Note: </span>
-                    {entry.note}
+                {/* Footer */}
+                <div className="mt-12 pt-6 border-t border-gray-300">
+                  <p className="font-sans text-[10px] text-gray-400 text-center">
+                    Generated by Signalera · {today} · AI-generated content · Not financial advice
                   </p>
-                )}
-              </div>
-            ))}
-
-            {/* Footer */}
-            <div className="mt-12 pt-6 border-t border-gray-300">
-              <p className="font-sans text-[10px] text-gray-400 text-center">
-                Generated by Signalera · {today} · AI-generated content · Not financial advice
-              </p>
-            </div>
+                </div>
+              </>
+            )}
           </>
         )}
       </div>

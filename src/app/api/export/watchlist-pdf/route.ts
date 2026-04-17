@@ -36,7 +36,7 @@ export async function GET() {
       supabase.from("watchlist_briefs").select("identifier, brief_text, generated_at").in("identifier", identifiers),
       supabase.from("watchlist_notes").select("identifier, note_text").eq("user_id", user.id).in("identifier", identifiers),
       // For top-3 articles per entry we need a cross-entry query
-      supabase.from("watchlist_articles").select("identifier, title, source, published_at, relevance_score").in("identifier", identifiers).order("relevance_score", { ascending: false }),
+      supabase.from("watchlist_articles").select("identifier, title, source, published_at, relevance_score").in("identifier", identifiers).order("identifier", { ascending: true }).order("relevance_score", { ascending: false }).limit(Math.min(identifiers.length * 5, 300)),
     ]);
 
     const briefsByIdent: Record<string, { brief_text: string; generated_at: string }> = {};
