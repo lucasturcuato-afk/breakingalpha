@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 function parseSignal(briefText: string | null): string | null {
   if (!briefText) return null;
-  const signalMatch = briefText.match(/\*\*SIGNAL\*\*\s*\n+([\s\S]+?)(?:\n\n|\n\*\*|$)/i);
+  const signalMatch = briefText.match(/\*\*SIGNAL\*\*\s*([\s\S]+?)(?:\n\n|\n\*\*|$)/i);
   return signalMatch ? signalMatch[1].trim() : null;
 }
 
