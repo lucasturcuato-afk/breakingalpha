@@ -835,10 +835,8 @@ Constraints:
                 <div
                   key={a.id}
                   data-article-idx={idx}
-                  className={cn(
-                    "bg-white border border-border-base rounded-xl p-3",
-                    selectedArticleIndex === idx ? "border-l-2 border-l-amber-500" : "",
-                  )}
+                  className="bg-white border border-border-base rounded-xl p-3"
+                  style={{ borderLeft: selectedArticleIndex === idx ? '2px solid #d97706' : undefined }}
                 >
                   <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                     {(a.industry_verticals ?? []).map((v) => (
