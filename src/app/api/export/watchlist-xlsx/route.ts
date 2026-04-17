@@ -93,14 +93,27 @@ export async function GET() {
     const summaryRows: (string | number | null)[][] = [
       ["Identifier", "Type", "Display Name", "Article Count", "Last Fetched"],
     ];
+    // Deduplicate by identifier using a Map keyed on identifier, then sort by count desc
+    const summaryMap = new Map<string, { type: string; display_name: string | null; count: number; lastFetched: string | null }>();
     for (const e of entries) {
-      const stats = articleCountByIdentifier[e.identifier];
+      if (!summaryMap.has(e.identifier)) {
+        const stats = articleCountByIdentifier[e.identifier];
+        summaryMap.set(e.identifier, {
+          type: e.type,
+          display_name: e.display_name ?? null,
+          count: stats?.count ?? 0,
+          lastFetched: stats?.lastFetched ?? null,
+        });
+      }
+    }
+    const summaryEntries = Array.from(summaryMap.entries()).sort(([, a], [, b]) => b.count - a.count);
+    for (const [identifier, stats] of summaryEntries) {
       summaryRows.push([
-        e.identifier,
-        e.type,
-        e.display_name ?? "",
-        stats?.count ?? 0,
-        stats?.lastFetched ?? "",
+        identifier,
+        stats.type,
+        stats.display_name ?? "",
+        stats.count,
+        stats.lastFetched ?? "",
       ]);
     }
     const summaryWs = XLSX.utils.aoa_to_sheet(summaryRows);
