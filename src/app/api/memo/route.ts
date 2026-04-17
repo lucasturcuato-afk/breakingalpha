@@ -12,6 +12,7 @@ interface UserProfile {
   firm_or_school?: string | null;
   sectors?: string[] | null;
   risk_appetite?: string | null;
+  strategy_type?: string | null;
   watchlist_tickers?: string[] | null;
   onboarding_completed?: boolean | null;
 }
@@ -34,7 +35,7 @@ async function fetchUserProfile(userId: string): Promise<UserProfile | null> {
     );
     const { data, error } = await supabase
       .from("user_profiles")
-      .select("first_name, role, firm_or_school, sectors, risk_appetite, watchlist_tickers, onboarding_completed")
+      .select("first_name, role, firm_or_school, sectors, risk_appetite, strategy_type, watchlist_tickers, onboarding_completed")
       .eq("id", userId)
       .single();
     if (error || !data) return null;
@@ -45,26 +46,80 @@ async function fetchUserProfile(userId: string): Promise<UserProfile | null> {
   }
 }
 
-function buildMemoUserContext(profile: UserProfile): string {
+function buildMemoPrompt(profile: UserProfile | null, basePrompt: string): string {
+  if (!profile) return basePrompt;
+
   const role = profile.role ?? "";
-  const roleLabel = roleLabels[role] ?? "a finance professional";
 
-  let ctx = `\nUSER CONTEXT FOR MEMO:\nThis memo is for ${roleLabel}.\n`;
+  const roleBlocks: Record<string, string> = {
+    student_analyst: `MEMO FORMAT FOR THIS READER (student analyst — educational tone):
+Structure the memo with these exact sections:
+1. **What's Happening** — Plain English, no jargon. Explain the situation as if the reader is smart but unfamiliar with this specific event.
+2. **Why It Matters** — Explain the mechanism: how does this event create or destroy value? Connect cause to effect.
+3. **The Thesis** — State what to believe and why. Be specific about direction and timeframe.
+4. **Bear Case** — What would make this thesis wrong? Name specific risks.
+5. **What to Watch** — 3 specific upcoming catalysts with dates if known.
+Define any technical terms inline when first used.
+Tone: educational, assumes no prior knowledge of this specific situation. Never say "as you know."`,
 
-  if (role === "private_equity" || role === "buy_side") {
-    ctx += "Include deal structure analysis, entry multiple context, and return profile framing.\n";
-  }
-  if (role === "student_analyst") {
-    ctx += 'Include a "Why this matters" section explaining the signal in educational context.\n';
-  }
-  if (profile.risk_appetite === "aggressive") {
-    ctx += "Emphasize upside scenarios and catalysts.\n";
-  }
-  if (profile.risk_appetite === "defensive") {
-    ctx += "Emphasize downside risks and mitigation factors prominently.\n";
+    buy_side: `MEMO FORMAT FOR THIS READER (buy-side analyst — direct, no hand-holding):
+Structure the memo with these exact sections:
+1. **The Trade** — Long/short, catalyst, time horizon. One paragraph max.
+2. **Thesis in 3 Bullets** — Why now, why this, why us. Each bullet is one sentence.
+3. **Bear Case + What Kills It** — Name the specific risk that invalidates the thesis.
+4. **Comparable Situations** — 1-2 recent analogues from the same sector or setup type.
+5. **Position Sizing Context** — High/medium/low conviction framing.
+6. **Key Dates** — Numbered list of upcoming catalysts with dates.
+Tone: direct, assumes fluency. No explaining basics.`,
+
+    sell_side: `MEMO FORMAT FOR THIS READER (sell-side analyst — client-facing, distributable):
+Structure the memo with these exact sections:
+1. **Executive Summary** — 2 sentences, client-ready. Lead with the conclusion.
+2. **Rating + Thesis** — Frame as Outperform/Neutral/Underperform with supporting thesis.
+3. **Key Catalysts** — Numbered, dated where possible.
+4. **Risks** — Bull case / base case / bear case with scenario probabilities if appropriate.
+5. **Valuation Context** — Relative and/or absolute valuation framing.
+6. **Recommendation** — Use "We recommend..." language. Be explicit about action.
+Tone: formal, client-facing, distribution-ready.`,
+
+    private_equity: `MEMO FORMAT FOR THIS READER (private equity — IC memo style):
+Structure the memo with these exact sections:
+1. **Deal Merit Summary** — Why this asset is interesting. 2-3 sentences max.
+2. **Entry Multiple Context** — How the implied valuation compares to comparable transactions.
+3. **Value Creation Levers** — Operational, financial, and strategic levers. Be specific.
+4. **Exit Scenarios** — 3-5 year horizon with multiple range for each scenario.
+5. **Key Risks** — Leverage, sponsor competition, macro exposure. Name specific risks.
+6. **IC Recommendation** — Clear go/no-go framing with conditions.
+Tone: IC memo style. Dense. No fluff. Every sentence must carry information.`,
+  };
+
+  const defaultRoleBlock = `MEMO FORMAT FOR THIS READER (investment advisor — balanced, client-aware):
+Structure the memo with these exact sections:
+1. **Opportunity Summary** — What is this and why look at it now.
+2. **Risk/Return Framing** — Upside vs downside in concrete terms.
+3. **Portfolio Fit** — How this relates to the reader's focus sectors and risk posture.
+4. **Bear Case** — What goes wrong and how bad.
+5. **Action Items** — Specific next steps: monitor, research further, or act.
+Tone: balanced, client-aware.`;
+
+  const strategyOverlays: Record<string, string> = {
+    pe: "STRATEGY LENS: Apply private equity framing — reference entry multiples, deal structure, and return profiles in every valuation discussion.",
+    macro: "STRATEGY LENS: Apply macro regime context — connect every risk and catalyst to the current macro environment (rates, FX, policy).",
+    credit: "STRATEGY LENS: Apply credit lens — reference spreads, covenant quality, and default risk in the risk section.",
+    vc: "STRATEGY LENS: Apply venture lens — reference TAM sizing, round dynamics, and runway implications in the thesis section.",
+    equity: "STRATEGY LENS: Apply public equity lens — reference earnings estimates, consensus expectations, and relative valuation throughout.",
+  };
+
+  const roleBlock = roleBlocks[role] ?? defaultRoleBlock;
+
+  let augmented = roleBlock + "\n\n" + basePrompt;
+
+  const strategyType = profile.strategy_type ?? undefined;
+  if (strategyType && strategyOverlays[strategyType]) {
+    augmented += "\n\n" + strategyOverlays[strategyType];
   }
 
-  return ctx;
+  return augmented;
 }
 
 async function buildMemoContext(sector: string | undefined): Promise<string> {
@@ -161,7 +216,6 @@ export async function POST(request: NextRequest) {
 
   // Fetch user profile for personalization (soft-fail)
   const profile = await fetchUserProfile(user.id);
-  const memoUserContext = profile ? buildMemoUserContext(profile) : "";
 
   let body: {
     company?: string;
@@ -198,9 +252,8 @@ export async function POST(request: NextRequest) {
     const truncated = String(content || "").slice(0, 4000);
 
     const memoCtx = await buildMemoContext(sector || undefined);
-    const augmentedSystem = (memoUserContext ? memoUserContext + "\n\n" : "")
-      + (memoCtx ? memoCtx + "\n\n" : "")
-      + system;
+    const baseSystem = (memoCtx ? memoCtx + "\n\n" : "") + system;
+    const augmentedSystem = buildMemoPrompt(profile, baseSystem);
 
     try {
       const completion = await ai.models.generateContent({
@@ -235,7 +288,7 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
 
-  const prompt = `${memoUserContext ? memoUserContext + "\n" : ""}You are a senior IB analyst. Write a concise deal memo for this transaction. Be specific, use bullet points.
+  const legacyBase = `You are a senior IB analyst. Write a concise deal memo for this transaction. Be specific, use bullet points.
 
 TARGET: ${company}
 ACQUIRER: ${acquirer || "Undisclosed"}
@@ -245,6 +298,7 @@ SECTOR: ${sector || "Technology"}
 CONTEXT: ${(description || "").slice(0, 400)}
 
 Sections: TRANSACTION OVERVIEW, STRATEGIC RATIONALE, KEY RISKS, ANALYST TAKE. Under 300 words.`;
+  const prompt = buildMemoPrompt(profile, legacyBase);
 
   try {
     const completion = await ai.models.generateContent({

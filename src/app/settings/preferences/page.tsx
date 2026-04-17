@@ -1,10 +1,10 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { getUserProfile, updateInferredWeights } from "@/lib/user-profile";
 import { AppShell } from "@/components/shell";
 import { ResetLearnedPrefsButton } from "@/components/settings/ResetLearnedPrefsButton";
 import { BehavioralInsights } from "@/components/profile/BehavioralInsights";
+import { PreferencesForm } from "@/components/settings/PreferencesForm";
 
 export const dynamic = "force-dynamic";
 
@@ -36,109 +36,39 @@ export default async function PreferencesPage() {
             Your preferences
           </h1>
           <p className="font-sans text-[13px] text-text-secondary mt-2">
-            Signalera learns from how you read and react to signals. Here&apos;s what it
-            thinks about you right now.
+            Manage every dimension of how Signalera personalizes your
+            intelligence feed. Changes take effect immediately.
           </p>
         </header>
 
-        {/* Profile snapshot */}
-        <section className="bg-parchment border border-border-base rounded-2xl p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display text-[16px] font-bold text-espresso">
-              Profile snapshot
-            </h2>
-            <Link
-              href="/settings/profile"
-              className="font-sans text-[11px] font-semibold text-gold hover:text-gold-dark"
-            >
-              Edit &rarr;
-            </Link>
-          </div>
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 font-sans text-[12px]">
-            <div>
-              <dt className="text-text-faint uppercase text-[10px] tracking-wide mb-0.5">
-                Name
-              </dt>
-              <dd className="text-text-primary">
-                {profile.first_name ?? <span className="text-text-muted italic">unset</span>}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-text-faint uppercase text-[10px] tracking-wide mb-0.5">
-                Role
-              </dt>
-              <dd className="text-text-primary">
-                {profile.role ?? (
-                  <span className="text-text-muted italic">unset</span>
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-text-faint uppercase text-[10px] tracking-wide mb-0.5">
-                Firm or school
-              </dt>
-              <dd className="text-text-primary">
-                {profile.firm_or_school ?? <span className="text-text-muted italic">unset</span>}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-text-faint uppercase text-[10px] tracking-wide mb-0.5">
-                Risk appetite
-              </dt>
-              <dd className="text-text-primary capitalize">{profile.risk_appetite}</dd>
-            </div>
-            <div className="col-span-2">
-              <dt className="text-text-faint uppercase text-[10px] tracking-wide mb-0.5">
-                Focus sectors ({profile.sectors.length})
-              </dt>
-              <dd className="flex flex-wrap gap-1.5 mt-1">
-                {profile.sectors.length === 0 ? (
-                  <span className="text-text-muted italic">None selected</span>
-                ) : (
-                  profile.sectors.map((s) => (
-                    <span
-                      key={s}
-                      className="px-2 py-0.5 rounded bg-gold-muted text-gold-dark font-sans text-[10px] font-semibold"
-                    >
-                      {s}
-                    </span>
-                  ))
-                )}
-              </dd>
-            </div>
-            <div className="col-span-2">
-              <dt className="text-text-faint uppercase text-[10px] tracking-wide mb-0.5">
-                Watchlist ({profile.watchlist_tickers.length})
-              </dt>
-              <dd className="flex flex-wrap gap-1.5 mt-1">
-                {profile.watchlist_tickers.length === 0 ? (
-                  <span className="text-text-muted italic">No tickers</span>
-                ) : (
-                  profile.watchlist_tickers.map((t) => (
-                    <span
-                      key={t}
-                      className="px-2 py-0.5 rounded bg-parchment-mid border border-border-base font-data text-[10px] font-semibold text-text-primary"
-                    >
-                      {t}
-                    </span>
-                  ))
-                )}
-              </dd>
-            </div>
-          </dl>
-        </section>
+        {/* Editable sections 1–5 */}
+        <PreferencesForm
+          initialFirstName={profile.first_name ?? ""}
+          initialFirmOrSchool={profile.firm_or_school ?? ""}
+          initialRole={profile.role}
+          initialStrategy={profile.strategy_type}
+          initialSectors={profile.sectors}
+          initialHorizon={profile.investment_horizon}
+          initialWorkflow={profile.workflow_style}
+          initialRisk={profile.risk_appetite}
+          initialWatchlist={profile.watchlist_tickers}
+        />
 
-        {/* Inferred weights */}
+        {/* Divider */}
+        <div className="border-t border-border-base my-8" />
+
+        {/* SECTION 6 — What Signalera has learned (read-only) */}
         <section className="bg-parchment border border-border-base rounded-2xl p-6 mb-6">
           <div className="flex items-center justify-between mb-1">
             <h2 className="font-display text-[16px] font-bold text-espresso">
-              Learned sector interests
+              What Signalera has learned
             </h2>
             <ResetLearnedPrefsButton />
           </div>
           <p className="font-sans text-[12px] text-text-secondary mb-4">
-            Derived from the last 30 days of activity. 1.0 = neutral. Higher = boosted in
-            ranking. {eventCount} events considered · last updated {updatedAt}.
+            These are inferred from your activity and blend with your declared
+            preferences above. 1.0 = neutral. Higher = boosted in ranking.{" "}
+            {eventCount} events considered &middot; last updated {updatedAt}.
           </p>
 
           {sortedWeights.length === 0 ? (
@@ -178,7 +108,7 @@ export default async function PreferencesPage() {
           )}
         </section>
 
-        {/* Behavioral insights — how Signalera is learning from activity */}
+        {/* Behavioral insights */}
         <div className="mb-6">
           <BehavioralInsights />
         </div>

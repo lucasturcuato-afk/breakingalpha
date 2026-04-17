@@ -6,7 +6,6 @@ import { AppShell } from "@/components/shell";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { PanelWidget } from "@/components/shell/right-panel";
 import {
-  PersonalizationBanner,
   Greeting,
   StatCard,
   AISignalBar,
@@ -289,32 +288,11 @@ export default function DashboardPage() {
         {/* Onboarding banner */}
         <OnboardingBanner />
 
-        {/* Personalization banner */}
-        <PersonalizationBanner />
-
         {/* Greeting */}
         <Greeting
           storyCount={storyCount}
           context={greetingSubtitle ?? "markets are adjusting to new export policy data."}
         />
-
-        {/* Personalization indicator */}
-        {profile?.onboarding_completed && (
-          <p className="font-sans text-[11px] text-text-muted -mt-3">
-            Personalized for:{" "}
-            {[
-              ...(profile.sectors ?? []),
-              ...(profile.risk_appetite ? [profile.risk_appetite.charAt(0).toUpperCase() + profile.risk_appetite.slice(1)] : []),
-            ].join(" · ")}
-            {" · "}
-            <Link
-              href="/settings/profile"
-              className="text-gold hover:text-gold-dark transition-colors font-semibold"
-            >
-              Edit preferences →
-            </Link>
-          </p>
-        )}
 
         {/* Stat cards */}
         <div className="grid grid-cols-4 gap-2.5">

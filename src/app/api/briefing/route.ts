@@ -10,6 +10,9 @@ interface UserProfile {
   risk_appetite?: string | null;
   watchlist_tickers?: string[] | null;
   onboarding_completed?: boolean | null;
+  strategy_type?: string | null;
+  investment_horizon?: string | null;
+  workflow_style?: string | null;
 }
 
 // Maps preference panel module names → briefing section keys.
@@ -78,6 +81,122 @@ function shapeSectorBreakdown(
   return result;
 }
 
+/* ── Role-differentiated brief/wrap formatting hints ── */
+interface BriefPersonalization {
+  format_label: string;
+  section_order: string[];
+  tone: string;
+  length_modifier: number; // 1.0 = normal, 0.5 = half, 1.5 = expanded
+  lead_with: string;
+  end_with: string;
+  role_context: string;
+}
+
+function buildBriefPersonalization(
+  profile: UserProfile | null,
+  type: string,
+): BriefPersonalization | null {
+  if (!profile?.role) return null;
+
+  const role = profile.role;
+  const workflow = (profile as Record<string, unknown>).workflow_style as string | null;
+  const horizon = (profile as Record<string, unknown>).investment_horizon as string | null;
+
+  // Base personalization by role + type
+  const isMorning = type === "morning";
+
+  let format_label = "Market Brief";
+  let section_order: string[] = [];
+  let tone = "professional";
+  let length_modifier = 1.0;
+  let lead_with = "";
+  let end_with = "";
+  let role_context = "";
+
+  switch (role) {
+    case "student_analyst":
+      format_label = isMorning ? "3 Things That Moved Markets" : "What Happened Today";
+      tone = "explanatory, curious, never condescending";
+      role_context = "Educational format — explain mechanisms, not just events";
+      lead_with = isMorning ? "what_happened" : "day_recap";
+      end_with = isMorning ? "what_to_watch" : "tomorrow_watch";
+      section_order = isMorning
+        ? ["what_happened", "why_it_matters", "what_to_watch"]
+        : ["day_recap", "mechanism", "tomorrow_watch"];
+      break;
+
+    case "buy_side":
+      if (workflow === "screening") {
+        format_label = isMorning ? "5 Bullets" : "Day's Scorecard";
+        tone = "maximum signal density, no explanation";
+        length_modifier = 0.5;
+        lead_with = isMorning ? "sector_signals" : "winners_losers";
+        end_with = isMorning ? "key_events" : "positioning";
+        section_order = isMorning
+          ? ["sector_signals", "key_events"]
+          : ["winners_losers", "positioning"];
+      } else {
+        format_label = isMorning ? "3 Actionable Signals" : "Thesis Updates";
+        tone = "direct, assumes fluency";
+        lead_with = isMorning ? "actionable_signals" : "thesis_updates";
+        end_with = isMorning ? "entry_triggers" : "tomorrow_events";
+        section_order = isMorning
+          ? ["actionable_signals", "catalysts", "entry_triggers"]
+          : ["thesis_updates", "new_signals", "tomorrow_events"];
+      }
+      break;
+
+    case "sell_side":
+      format_label = isMorning ? "Client Morning Note" : "After-Hours Note";
+      tone = "professional, distributable";
+      lead_with = isMorning ? "market_summary" : "ratings_changes";
+      end_with = isMorning ? "key_events_today" : "catalyst_calendar";
+      section_order = isMorning
+        ? ["market_summary", "top_stories", "key_events_today"]
+        : ["ratings_changes", "day_recap", "catalyst_calendar"];
+      break;
+
+    case "private_equity":
+      format_label = isMorning ? "Deal Flow Morning Brief" : "Transaction Activity";
+      tone = "IC memo style, deal-focused";
+      lead_with = isMorning ? "overnight_ma" : "deals_announced";
+      end_with = isMorning ? "regulatory_news" : "sector_valuations";
+      section_order = isMorning
+        ? ["overnight_ma", "macro_deal_pricing", "regulatory_news"]
+        : ["deals_announced", "credit_markets", "sector_valuations"];
+      break;
+
+    default: // ria, family_office, other
+      format_label = isMorning ? "Portfolio Morning Brief" : "End of Day Summary";
+      tone = "balanced, client-aware";
+      lead_with = isMorning ? "market_moves" : "portfolio_moves";
+      end_with = isMorning ? "client_talking_points" : "overnight_risks";
+      section_order = isMorning
+        ? ["market_moves", "risk_framing", "client_talking_points"]
+        : ["portfolio_moves", "client_questions", "overnight_risks"];
+      break;
+  }
+
+  // Workflow modifier
+  if (workflow === "screening") length_modifier = Math.min(length_modifier, 0.5);
+  if (workflow === "deep_dive") length_modifier = Math.max(length_modifier, 1.5);
+
+  // Horizon modifier
+  if (horizon === "short") role_context += " Prioritize events in the next 7 days.";
+  if (horizon === "medium") role_context += " Prioritize events in the next 30 days.";
+  if (horizon === "long") role_context += " Include structural/thematic context, de-emphasize daily noise.";
+
+  return {
+    format_label,
+    section_order,
+    tone,
+    length_modifier,
+    lead_with,
+    end_with,
+    role_context: role_context.trim(),
+  };
+}
+
 function safeParseJSON(val: unknown) {
   if (!val) return null;
   if (typeof val === "object") return val;
@@ -116,7 +235,7 @@ export async function GET(request: NextRequest) {
       if (user) {
         const { data: profileData, error: profileError } = await authedClient
           .from("user_profiles")
-          .select("first_name, role, firm_or_school, sectors, risk_appetite, watchlist_tickers, onboarding_completed")
+          .select("first_name, role, firm_or_school, sectors, risk_appetite, watchlist_tickers, onboarding_completed, strategy_type, investment_horizon, workflow_style")
           .eq("id", user.id)
           .single();
 
@@ -203,6 +322,7 @@ export async function GET(request: NextRequest) {
     const resp = NextResponse.json({
       briefing: raw,
       pref_applied: false,
+      personalization: buildBriefPersonalization(userProfile, type),
       briefing_age_hours: briefingAgeHours,
       is_stale: isStale,
       last_attempt_status: lastRun?.status ?? null,
@@ -242,6 +362,7 @@ export async function GET(request: NextRequest) {
   const resp = NextResponse.json({
     briefing,
     pref_applied: true,
+    personalization: buildBriefPersonalization(userProfile, type),
     profile_role: userProfile?.role ?? null,
     profile_risk_appetite: userProfile?.risk_appetite ?? null,
     briefing_age_hours: briefingAgeHours,

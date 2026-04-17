@@ -1,4 +1,3 @@
-export { PersonalizationBanner } from "./personalization-banner";
 export { Greeting } from "./greeting";
 export { StatCard } from "./stat-card";
 export { AISignalBar } from "./ai-signal-bar";
