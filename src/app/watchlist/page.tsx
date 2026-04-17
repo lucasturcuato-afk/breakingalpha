@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { AppShell } from "@/components/shell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -835,6 +836,24 @@ export default function WatchlistPage() {
                   <p className="font-data text-[8px] text-text-faint">{s.sub}</p>
                 </div>
               ))}
+            </div>
+          )}
+
+          {tickers.length > 0 && (
+            <div className="flex items-center gap-2 mt-1">
+              <Link
+                href="/watchlist/export"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-base bg-white text-text-muted font-data text-[10px] hover:text-text-primary transition-colors cursor-pointer"
+              >
+                Export Report
+              </Link>
+              <a
+                href="/api/export/watchlist-xlsx"
+                download
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-base bg-white text-text-muted font-data text-[10px] hover:text-text-primary transition-colors cursor-pointer"
+              >
+                Export CSV
+              </a>
             </div>
           )}
 
