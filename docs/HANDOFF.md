@@ -85,7 +85,7 @@ Replaced GitHub Actions native cron on 2026-04-13 — GitHub's built-in schedule
 
 **theses:** id (uuid), title, conviction, rationale, sector, catalyst, catalyst_note (text), evidence_chain (jsonb), generated_at, source. Public read/write/update RLS.
 
-**watchlist:** id (uuid), user_id, identifier (text), type (enum: ticker/company/sector), created_at, updated_at. User-scoped RLS (read/insert/delete own rows).
+**watchlist:** id (uuid), user_id, identifier (text), type (enum: ticker/company/sector), created_at, updated_at, sort_order (integer, nullable, for drag-to-reorder). User-scoped RLS (read/insert/delete own rows).
 
 **user_profiles:** id (uuid, FK auth.users), role (text), sectors (text[]), created_at, updated_at. RLS: user can read/write own row (single FOR ALL policy).
 
@@ -149,6 +149,9 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 3. ~~What is Lucas's scope for the autonomous improvement loop?~~ — RESOLVED: 12-step pipeline with thesis grading, pattern memory, source credibility, adversarial review (phases 2–6 shipped)
 4. Are there active paying users? (determines urgency of fixes)
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
+
+## Recently Completed (2026-04-17)
+**Watchlist V4A sprint (PR #97 merged to main):** Drag-to-reorder via HTML5 DnD with optimistic UI + `PATCH /api/watchlist-reorder`; `sort_order` column added (migration: `backend/watchlist_sort_order_migration.sql` — **must run manually in Supabase**). Keyboard navigation: J/K/Enter/A/Esc/? on `/watchlist`, J/K/O/B/N/Esc on identifier detail page, with `isTyping`/modal guards. Export: company PDF via `window.print()` + `#company-print-content`, full watchlist print at `/watchlist/export`, CSV at `/api/export/watchlist-xlsx`. Story clustering in `watchlist_sync.py` using Jaccard token similarity + financial entity overlap (48h window); three helpers: `_title_tokens`, `extract_key_entities`, `is_same_story`. Tailwind v4 safelist: `@source inline(...)` in globals.css forces class generation; identifier page borders switched to inline styles.
 
 ## Recently Completed (2026-04-15)
 **watchlist_sync.py overhaul (PR #95 open):** GDELT rate limiting (1.5s sleep after each fetch), Exa recency filter (startPublishedDate 30 days ago), post-fetch age filter (articles >35 days or future-dated dropped before scoring), Exa payload restructure (highlights moved into contents.highlights, added type/news to query, bumped to 400 chars/3 sentences), fixed Exa response parsing, URL quality filter (is_article_url() + BLOCKED_DOMAINS/BLOCKED_URL_PATTERNS; LinkedIn/Twitter/Crunchbase/jobs/profiles/homepages filtered), title length floor (≤15 chars dropped), relevance scoring overhaul (NOISE_TITLE_PATTERNS + FINANCIAL_BOOST_PATTERNS, +2 title match/+1 summary/+1 financial/-3 noise/-1 short, floor <3 rejected).
@@ -214,7 +217,7 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 10. **Phase 1 hardening — observe.py reconstruction fix (PR #56)** — `_reconstruct_selected()` rewritten to mirror current `synthesize._select_articles_for_synthesis()` (spine=12, floor=6, sector_cap=3, floor_min=7). `audit.py` `_TARGET_COUNT` corrected 20→18. Stale `_diversify_articles` reconstruction logic replaced. No schema changes.
 
 ## Pending / Known Issues
-- **Diagnostic scripts pending review** — backend/diagnose_*.py, diagnose_null_companies.py, diagnose_sector_breakdown.py, validate_memo_grounding.py, ingest_output.txt (untracked); intent unclear; flag for Lucas review before committing.
+- **Watchlist sort_order migration pending** — V4A drag-to-reorder requires manual execution of `backend/watchlist_sort_order_migration.sql` in Supabase SQL editor to add `sort_order` column. Frontend gracefully handles missing column (null defaults to created_at order) until migration runs.
 - **Track Record outcome data sparse** — Page is live but sparse outcome data until more theses cycle through archive state over time; breadth will improve as user base grows.
 - **ConvictionRing partial arc fill deferred** — Currently shows full colored circle with color-coding (gold=HIGH, amber=MEDIUM, gray=WATCH, red=BEARISH); arc visualization deferred due to Tailwind v4 preflight SVG interference. Can be revisited once CSS preflight handling is resolved.
 - **Wikidata validation at scale** — wikidata_entity_cache now populated on cache misses; needs full ingest run with fresh articles to validate entity quality in production
