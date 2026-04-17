@@ -105,6 +105,7 @@ interface WatchlistEntry {
   type: string;
   display_name?: string;
   created_at?: string;
+  sort_order?: number | null;
 }
 
 interface WatchlistPrice {
@@ -366,6 +367,12 @@ export default function WatchlistPage() {
   const [selectedIdentifier, setSelectedIdentifier] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<"newest" | "relevant">("newest");
   const [ageFilter, setAgeFilter] = useState<"all" | "today" | "week" | "month">("all");
+  const [dragState, setDragState] = useState<{
+    draggingId: string | null;
+    dragOverId: string | null;
+    dragGroup: string | null;
+  }>({ draggingId: null, dragOverId: null, dragGroup: null });
+  const [dragError, setDragError] = useState<string | null>(null);
 
   const fetchPrices = useCallback((entries: WatchlistEntry[]) => {
     const tickers = entries.filter((e) => e.type === "ticker").map((e) => e.identifier);
@@ -444,15 +451,34 @@ export default function WatchlistPage() {
           seen2.add(key);
           return true;
         });
-        setWatchlist(migratedEntries);
-        await fetchAllArticles(migratedEntries);
-        fetchPrices(migratedEntries);
+        const sortedMigrated = [...migratedEntries].sort((a, b) => {
+          const aOrder = (a as WatchlistEntry & { sort_order?: number | null }).sort_order;
+          const bOrder = (b as WatchlistEntry & { sort_order?: number | null }).sort_order;
+          if (aOrder == null && bOrder == null) return 0;
+          if (aOrder == null) return 1;
+          if (bOrder == null) return -1;
+          if (aOrder !== bOrder) return aOrder - bOrder;
+          return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+        });
+        setWatchlist(sortedMigrated);
+        await fetchAllArticles(sortedMigrated);
+        fetchPrices(sortedMigrated);
         return;
       }
 
-      setWatchlist(newEntries);
-      await fetchAllArticles(newEntries);
-      fetchPrices(newEntries);
+      // Sort by sort_order ASC (NULLS LAST), then created_at ASC
+      const sortedEntries = [...newEntries].sort((a, b) => {
+        const aOrder = (a as WatchlistEntry & { sort_order?: number | null }).sort_order;
+        const bOrder = (b as WatchlistEntry & { sort_order?: number | null }).sort_order;
+        if (aOrder == null && bOrder == null) return 0;
+        if (aOrder == null) return 1;
+        if (bOrder == null) return -1;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+      });
+      setWatchlist(sortedEntries);
+      await fetchAllArticles(sortedEntries);
+      fetchPrices(sortedEntries);
     } catch (e) {
       console.error("Failed to refresh watchlist:", e);
     } finally {
@@ -596,6 +622,99 @@ export default function WatchlistPage() {
     ).slice(0, 60);
   }, [selectedIdentifier, articlesByIdentifier, sortMode, ageFilter]);
 
+  const handleDragStart = useCallback((e: React.DragEvent, entry: WatchlistEntry, group: string) => {
+    setDragState({ draggingId: entry.id, dragOverId: null, dragGroup: group });
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", entry.id);
+    // Set transparent drag image for cleaner UX
+    const ghost = document.createElement("div");
+    ghost.style.position = "absolute";
+    ghost.style.top = "-1000px";
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, 0, 0);
+    setTimeout(() => document.body.removeChild(ghost), 0);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, entry: WatchlistEntry, group: string) => {
+    e.preventDefault();
+    if (dragState.dragGroup !== group) return; // block cross-group
+    if (dragState.dragOverId !== entry.id) {
+      setDragState(prev => ({ ...prev, dragOverId: entry.id }));
+    }
+  }, [dragState.dragGroup, dragState.dragOverId]);
+
+  const handleDragEnd = useCallback(() => {
+    setDragState({ draggingId: null, dragOverId: null, dragGroup: null });
+  }, []);
+
+  const persistReorder = useCallback(async (updates: { id: string; sort_order: number }[]) => {
+    try {
+      const res = await fetch("/api/watchlist-reorder", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Reorder failed: ${res.status}`);
+      }
+    } catch (e) {
+      console.error("Reorder persist failed:", e);
+      throw e;
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetEntry: WatchlistEntry, group: string) => {
+    e.preventDefault();
+    if (dragState.dragGroup !== group || !dragState.draggingId) return;
+    if (dragState.draggingId === targetEntry.id) {
+      setDragState({ draggingId: null, dragOverId: null, dragGroup: null });
+      return;
+    }
+
+    // Get the entries for this group
+    const groupEntries = group === "sector" ? sectorEntries
+      : group === "ticker" ? publicEntries
+      : privateEntries;
+
+    const fromIdx = groupEntries.findIndex(e => e.id === dragState.draggingId);
+    const toIdx = groupEntries.findIndex(e => e.id === targetEntry.id);
+    if (fromIdx === -1 || toIdx === -1) {
+      setDragState({ draggingId: null, dragOverId: null, dragGroup: null });
+      return;
+    }
+
+    // Reorder within the group
+    const reordered = [...groupEntries];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+
+    // Assign sort_order with 1000-spacing
+    const updates = reordered.map((entry, idx) => ({
+      id: entry.id,
+      sort_order: (idx + 1) * 1000,
+    }));
+
+    // Optimistic update: rebuild watchlist with new order
+    const newWatchlist = group === "sector"
+      ? [...reordered, ...watchlist.filter(e => e.type !== "sector")]
+      : group === "ticker"
+        ? [...watchlist.filter(e => e.type === "sector"), ...reordered, ...watchlist.filter(e => e.type === "company")]
+        : [...watchlist.filter(e => e.type !== "company"), ...reordered];
+
+    const prevWatchlist = [...watchlist];
+    setWatchlist(newWatchlist);
+    setDragState({ draggingId: null, dragOverId: null, dragGroup: null });
+
+    // Persist to backend
+    persistReorder(updates).catch(() => {
+      // Revert on error
+      setWatchlist(prevWatchlist);
+      setDragError("Reorder failed — changes reverted");
+      setTimeout(() => setDragError(null), 3000);
+    });
+  }, [dragState, sectorEntries, publicEntries, privateEntries, watchlist, persistReorder]);
+
   return (
     <AppShell pageTitle="Watchlist" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
       <div className="flex gap-6 p-6 h-[calc(100vh-var(--topbar-height)-var(--moodbar-height))]">
@@ -721,6 +840,11 @@ export default function WatchlistPage() {
                       return (
                         <div
                           key={entry.id}
+                          draggable={true}
+                          onDragStart={(e) => handleDragStart(e, entry, "ticker")}
+                          onDragOver={(e) => handleDragOver(e, entry, "ticker")}
+                          onDragEnd={handleDragEnd}
+                          onDrop={(e) => handleDrop(e, entry, "ticker")}
                           onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
                           className={cn(
                             "flex gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
@@ -729,8 +853,18 @@ export default function WatchlistPage() {
                             selectedIdentifier === entry.identifier
                               ? "border-l-2 border-l-gold bg-gold-muted/30"
                               : "bg-white hover:border-border-hover",
+                            dragState.draggingId === entry.id ? "opacity-50" : "",
+                            dragState.dragOverId === entry.id && dragState.draggingId !== entry.id ? "border-t-2 border-t-amber-500" : "",
                           )}
                         >
+                          {/* Drag handle */}
+                          <div
+                            className="flex-shrink-0 self-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing px-1 text-text-faint"
+                            draggable={false}
+                          >
+                            ⠿
+                          </div>
+
                           {/* LEFT: identifier + optional display_name subtitle */}
                           <div className="flex flex-col min-w-0 flex-1">
                             <span className="font-data text-[13px] font-bold text-text-primary truncate">
@@ -788,6 +922,11 @@ export default function WatchlistPage() {
                       return (
                         <div
                           key={entry.id}
+                          draggable={true}
+                          onDragStart={(e) => handleDragStart(e, entry, "company")}
+                          onDragOver={(e) => handleDragOver(e, entry, "company")}
+                          onDragEnd={handleDragEnd}
+                          onDrop={(e) => handleDrop(e, entry, "company")}
                           onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
                           className={cn(
                             "flex gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
@@ -796,8 +935,18 @@ export default function WatchlistPage() {
                             selectedIdentifier === entry.identifier
                               ? "border-l-2 border-l-gold bg-gold-muted/30"
                               : "bg-white hover:border-border-hover",
+                            dragState.draggingId === entry.id ? "opacity-50" : "",
+                            dragState.dragOverId === entry.id && dragState.draggingId !== entry.id ? "border-t-2 border-t-amber-500" : "",
                           )}
                         >
+                          {/* Drag handle */}
+                          <div
+                            className="flex-shrink-0 self-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing px-1 text-text-faint"
+                            draggable={false}
+                          >
+                            ⠿
+                          </div>
+
                           {/* LEFT: identifier + optional display_name subtitle */}
                           <div className="flex flex-col min-w-0 flex-1">
                             <span className="font-data text-[13px] font-bold text-text-primary truncate">
@@ -1028,6 +1177,12 @@ export default function WatchlistPage() {
           )}
         </div>
       </div>
+
+      {dragError && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-signal-dn text-white font-data text-[11px] px-4 py-2 rounded-lg shadow-lg z-50">
+          {dragError}
+        </div>
+      )}
 
       {memoEntry && (
         <MemoModal
