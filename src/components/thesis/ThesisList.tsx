@@ -30,14 +30,16 @@ function convictionToSentiment(conviction: string | null): string {
   }
 }
 
-function deriveScore(thesis: ThesisItem): number | null {
-  if (typeof thesis.adversarial_score === "number") {
-    if (thesis.adversarial_score < 0) return null;
-    return Math.round(thesis.adversarial_score * 100);
-  }
-  const base = (thesis.conviction === "HIGH" || thesis.conviction === "BULLISH") ? 80 : thesis.conviction === "BEARISH" ? 30 : 55;
-  const evidenceBonus = Math.min((Array.isArray(thesis.evidence_chain) ? thesis.evidence_chain.length : 0) * 5, 15);
-  return base + evidenceBonus;
+// Conviction-ordering weight — used ONLY for sort stability. Hard Constraint
+// #11 forbids surfacing any numeric score in the UI; this never leaves this
+// module.
+function convictionRank(thesis: ThesisItem): number {
+  const c = thesis.conviction;
+  if (c === "HIGH" || c === "BULLISH") return 3;
+  if (c === "MEDIUM") return 2;
+  if (c === "WATCH") return 1;
+  if (c === "BEARISH") return 0;
+  return -1;
 }
 
 function isSectorMatched(thesisSector: string, sectors: string[]): boolean {
@@ -61,13 +63,13 @@ export function ThesisList({
 }: ThesisListProps) {
   const filtered = useMemo(() => {
     if (isArchiveView) {
-      return [...theses].sort((a, b) => (deriveScore(b) ?? -1) - (deriveScore(a) ?? -1));
+      return [...theses].sort((a, b) => convictionRank(b) - convictionRank(a));
     }
     let list = theses;
     if (filter !== "all" && filter !== "pending_review") {
       list = list.filter((t) => convictionToSentiment(t.conviction) === filter);
     }
-    return [...list].sort((a, b) => (deriveScore(b) ?? -1) - (deriveScore(a) ?? -1));
+    return [...list].sort((a, b) => convictionRank(b) - convictionRank(a));
   }, [theses, filter, isArchiveView]);
 
   if (filtered.length === 0) {
@@ -81,11 +83,10 @@ export function ThesisList({
   return (
     <div className="space-y-1">
       {filtered.map((thesis) => {
-        const score = deriveScore(thesis);
         const sentiment = convictionToSentiment(thesis.conviction);
         const isSelected = thesis.id === selectedId;
         const hasEvidence = Array.isArray(thesis.evidence_chain) && thesis.evidence_chain.length > 0;
-        const isBearishLow = sentiment === "bearish" && (score ?? 0) < 50;
+        const isBearish = sentiment === "bearish";
 
         return (
           <div
@@ -99,7 +100,7 @@ export function ThesisList({
             )}
           >
             {/* Conviction ring */}
-            <ConvictionRing conviction={thesis.conviction} score={score} />
+            <ConvictionRing conviction={thesis.conviction} />
 
             {/* Title + badges */}
             <div className="flex-1 min-w-0">
@@ -171,7 +172,7 @@ export function ThesisList({
                 <div className="w-2">
                   {hasEvidence ? (
                     <div className="w-2 h-2 rounded-full bg-signal-up" />
-                  ) : isBearishLow ? (
+                  ) : isBearish ? (
                     <div className="w-2 h-2 rounded-full bg-signal-dn" />
                   ) : null}
                 </div>

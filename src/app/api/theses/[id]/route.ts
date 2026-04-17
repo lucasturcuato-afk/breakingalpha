@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { mapThesisRow } from "@/lib/thesis-mapper";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +60,10 @@ export async function PATCH(
     console.log("Supabase result:", JSON.stringify({ data, error }));
 
     if (error) throw error;
-    return Response.json({ thesis: data });
+    // Use single-source-of-truth mapper so the single route returns the
+    // same shape the bulk route returns.
+    const mapped = data ? mapThesisRow(data as Parameters<typeof mapThesisRow>[0]) : null;
+    return Response.json({ thesis: mapped });
   } catch (e) {
     console.error("=== PATCH FAILED ===", JSON.stringify(e));
     return Response.json(

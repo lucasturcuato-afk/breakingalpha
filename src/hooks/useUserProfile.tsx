@@ -5,11 +5,14 @@ import type { ReactNode } from "react";
 
 export interface UserProfile {
   id?: string;
-  full_name?: string | null;
+  first_name?: string | null;
   role?: string | null;
-  firm?: string | null;
+  firm_or_school?: string | null;
   sectors?: string[] | null;
   risk_appetite?: string | null;
+  strategy_type?: string | null;
+  investment_horizon?: string | null;
+  workflow_style?: string | null;
   watchlist_tickers?: string[] | null;
   onboarding_completed?: boolean;
 }

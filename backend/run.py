@@ -27,6 +27,7 @@ import pattern_memory
 import source_credibility
 import adversarial
 import watchlist_sync
+import user_synthesis
 
 logger = logging.getLogger("run")
 if not logger.handlers:
@@ -124,7 +125,7 @@ if __name__ == "__main__":
     else:
         logger.info("source_credibility: skipped (morning only)")
 
-    print("\n[12/13] ADVERSARIAL REVIEW")
+    print("\n[12/14] ADVERSARIAL REVIEW")
     if _is_sunday_morning(brief_type):
         try:
             adversarial.main()
@@ -133,11 +134,17 @@ if __name__ == "__main__":
     else:
         logger.info("adversarial: skipped (Sunday morning only)")
 
-    print("\n[13/13] WATCHLIST ARTICLE SYNC")
+    print("\n[13/14] WATCHLIST ARTICLE SYNC")
     try:
         watchlist_sync.run_sync()
     except Exception as e:
         logger.warning("watchlist sync failed (pipeline unaffected): %s", e)
+
+    print("\n[14/14] USER-AWARE BRIEF PERSONALIZATION")
+    try:
+        user_synthesis.run(brief_type)
+    except Exception as e:
+        logger.warning("user_synthesis step failed (pipeline unaffected): %s", e)
 
     # --- Brief feedback loop: score the just-generated brief (soft-fail) ---
     print("\n[POST] BRIEF SCORING")
@@ -202,6 +209,6 @@ if __name__ == "__main__":
 # 11:   source_credibility   (morning only)
 # 12:   adversarial          (Sunday morning only)
 # 13:   watchlist_sync       (V3A — Noah)
-# 14:   [RESERVED]           (Lucas personalization sprint)
+# 14:   user_synthesis       (Lucas personalization sprint — per-user addendum)
 # [POST] brief scoring, brief improvement addendum
 # ---------------------------------------------------------------------------

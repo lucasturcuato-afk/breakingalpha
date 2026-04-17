@@ -1,66 +1,64 @@
 'use client'
 
+// ConvictionRing — label-only conviction indicator.
+// Hard Constraint #11: no numeric score inside the ring. The conviction TEXT
+// enum (HIGH / MEDIUM / WATCH / BEARISH / BULLISH) is the only source of
+// truth surfaced in this component.
+
 interface ConvictionRingProps {
   conviction: string | null
   size?: number
-  score?: number | null
 }
 
 export function ConvictionRing({
   conviction,
   size = 36,
-  score,
 }: ConvictionRingProps) {
   const normalized = (conviction ?? '').toUpperCase()
 
-  let color = '#9CA3AF'
+  let color = 'var(--text-faint)'
   let label = '—'
 
   if (normalized === 'HIGH' || normalized === 'BULLISH') {
-    color = '#D4A843'
+    color = 'var(--gold)'
     label = 'HIGH'
   } else if (normalized === 'MEDIUM') {
-    color = '#A89060'
+    color = 'var(--gold-dark)'
     label = 'MED'
   } else if (normalized === 'WATCH') {
-    color = '#9CA3AF'
+    color = 'var(--text-muted)'
     label = 'WATCH'
   } else if (normalized === 'BEARISH') {
-    color = '#DC2626'
+    color = 'var(--signal-dn)'
     label = 'BEAR'
   }
 
-  const thickness = Math.max(4, Math.round(size * 0.14))
-  const innerSize = size - (thickness * 2)
-  const isNull = score === null || score === undefined
-  const fillDegrees = isNull ? 0 : Math.round((score / 100) * 360)
-  const fontSize = Math.max(9, Math.round(size * 0.3))
+  const thickness = Math.max(2, Math.round(size * 0.1))
+  const innerSize = size - thickness * 2
+  const fontSize = Math.max(8, Math.round(size * 0.26))
 
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      gap: '3px',
-      width: size,
-    }}>
-      <div style={{
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        background: isNull
-          ? 'transparent'
-          : `conic-gradient(
-              ${color} 0deg ${fillDegrees}deg,
-              #3a3530 ${fillDegrees}deg 360deg
-            )`,
-        border: isNull ? `2px dashed ${color}` : 'none',
+    <div
+      style={{
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-        position: 'relative',
-      }}>
+        gap: '3px',
+        width: size,
+      }}
+    >
+      <div
+        style={{
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          border: `${thickness}px solid ${color}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
         <div
           className="conviction-ring-bg"
           style={{
@@ -72,28 +70,21 @@ export function ConvictionRing({
             justifyContent: 'center',
           }}
         >
-          <span style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            fontVariantNumeric: 'tabular-nums',
-            fontSize: `${fontSize}px`,
-            lineHeight: '1',
-            color: color,
-            userSelect: 'none',
-          }}>
-            {isNull ? '?' : score}
+          <span
+            style={{
+              fontFamily: 'Inter, sans-serif',
+              fontSize: `${fontSize}px`,
+              fontWeight: 700,
+              letterSpacing: '0.04em',
+              lineHeight: '1',
+              color,
+              userSelect: 'none',
+            }}
+          >
+            {label}
           </span>
         </div>
       </div>
-      <span style={{
-        fontSize: '9px',
-        fontFamily: 'Inter, sans-serif',
-        color: color,
-        letterSpacing: '0.04em',
-        lineHeight: '1',
-        userSelect: 'none',
-      }}>
-        {label}
-      </span>
     </div>
   )
 }

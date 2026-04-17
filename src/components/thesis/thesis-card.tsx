@@ -132,20 +132,6 @@ function StalenessIndicator({ generatedAt, outcome }: { generatedAt?: string | n
   );
 }
 
-// ── Derive confidence score ──
-
-function deriveConfidenceScore(thesis: ThesisItem): number | null {
-  // Use adversarial_score if available (0-1 → 0-100); negative → null
-  if (typeof thesis.adversarial_score === "number") {
-    if (thesis.adversarial_score < 0) return null;
-    return Math.round(thesis.adversarial_score * 100);
-  }
-  // Fallback: derive from conviction + evidence
-  const base = thesis.conviction === "BULLISH" ? 80 : thesis.conviction === "BEARISH" ? 30 : 55;
-  const evidenceBonus = Math.min((Array.isArray(thesis.evidence_chain) ? thesis.evidence_chain.length : 0) * 5, 15);
-  return base + evidenceBonus;
-}
-
 // ── Main Component ──
 
 interface ThesisCardProps {
@@ -154,10 +140,9 @@ interface ThesisCardProps {
   isSelected?: boolean;
 }
 
-export function ThesisCard({ thesis, onUpdate, isSelected }: ThesisCardProps) {
+export function ThesisCard({ thesis, isSelected }: ThesisCardProps) {
   const [memoOpen, setMemoOpen] = useState(false);
   const [bearOpen, setBearOpen] = useState(false);
-  const score = deriveConfidenceScore(thesis);
 
   // FIX 6A: sentiment left border color
   const sentimentBorder =
@@ -183,7 +168,7 @@ export function ThesisCard({ thesis, onUpdate, isSelected }: ThesisCardProps) {
       >
         {/* Top row: ring + title + icons */}
         <div className="flex items-start gap-2.5">
-          <ConvictionRing conviction={thesis.conviction} score={score} />
+          <ConvictionRing conviction={thesis.conviction} />
           <div className="flex-1 min-w-0">
             {/* Badges row */}
             <div className="flex items-center gap-1.5 mb-1">

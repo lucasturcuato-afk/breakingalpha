@@ -12,6 +12,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { FileText, Archive, RefreshCw, ChevronDown, ChevronUp, LayoutList, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ThesisItem, ThesisStatus, WeeklyDigest, PatternRow, SourceCredibilityRow } from "@/components/thesis";
+import { mapThesisRow } from "@/lib/thesis-mapper";
+import { trackClientEvent } from "@/lib/track-event";
 
 interface RelatedArticle {
   id: string;
@@ -22,16 +24,6 @@ interface RelatedArticle {
   summary?: string;
   sentiment?: string;
   sector?: string;
-}
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
 }
 
 type ConvictionFilter = "HIGH" | "MEDIUM" | "WATCH" | "all" | "archived" | "pending_review" | "recommended";
@@ -53,43 +45,12 @@ function sectorMatchesProfile(thesisSector: string, profileSectors: string[]): b
   });
 }
 
-// Map API row to ThesisItem
-function mapThesisRow(t: Record<string, unknown>): ThesisItem {
-  return {
-    id: String(t.id || ""),
-    title: String(t.title || ""),
-    conviction: (t.conviction as ThesisItem["conviction"]) || "WATCH",
-    sector: String(t.sector || "General"),
-    summary: String(t.rationale || "").slice(0, 200) || "",
-    rationale: t.rationale as string | undefined,
-    catalyst: t.catalyst as string | undefined,
-    catalyst_note: t.catalyst_note as string | undefined,
-    evidence_chain: t.evidence_chain as ThesisItem["evidence_chain"],
-    status: (t.status as ThesisStatus) || "new-signal",
-    updatedAt: t.generated_at ? timeAgo(String(t.generated_at)) : "recently",
-    source: t.source as string | undefined,
-    bear_case: (t.bear_case as string) ?? null,
-    adversarial_score: (() => {
-      const raw = (t.adversarial_score as number) ?? null;
-      if (raw === null || raw < 0) return null;
-      return raw;
-    })(),
-    passed_adversarial: (() => {
-      const raw = (t.adversarial_score as number) ?? null;
-      if (raw === null || raw < 0) return null;
-      return (t.passed_adversarial as boolean) ?? null;
-    })(),
-    outcome: (t.outcome as ThesisItem["outcome"]) ?? null,
-    outcome_notes: (t.outcome_notes as string) ?? null,
-    signal_breakdown: (t.signal_breakdown as Record<string, unknown>) ?? null,
-    supporting_article_ids: (t.supporting_articles as string[]) ?? null,
-    ticker: (t.ticker as string) ?? null,
-    horizon: (t.horizon as string) ?? null,
-    check_after: (t.check_after as string) ?? null,
-    notes: (t.notes as string) ?? null,
-    generated_at: (t.generated_at as string) ?? null,
-  };
-}
+// Note: the single source of truth `mapThesisRow` lives in `@/lib/thesis-mapper`.
+// The API already returns canonical shape, but re-mapping here keeps the
+// component resilient if the API ever returns a raw row (e.g. older build).
+//
+// The thesis-mapper also exposes `thesisDedupKey` and `dedupByTitleSector` for
+// any consumer that needs them.
 
 // ── System Intelligence Panel ──
 
@@ -349,7 +310,14 @@ function ThesisBoardContent() {
   const handleSelect = (id: string) => {
     setSelectedId(id);
     const thesis = theses.find((t) => t.id === id) || archivedTheses.find((t) => t.id === id);
-    if (thesis) fetchArticlesForThesis(thesis);
+    if (thesis) {
+      fetchArticlesForThesis(thesis);
+      trackClientEvent("thesis_viewed", {
+        thesis_id: thesis.id,
+        sector: thesis.sector,
+        conviction: thesis.conviction,
+      });
+    }
   };
 
   const handleRefresh = () => {
@@ -361,6 +329,7 @@ function ThesisBoardContent() {
 
   // Quick actions for pending review
   const handleQuickAction = async (id: string, newStatus: string) => {
+    const thesis = theses.find((t) => t.id === id);
     // Optimistic update
     setTheses((prev) =>
       prev.map((t) => (t.id === id ? { ...t, status: newStatus as ThesisStatus } : t))
@@ -372,6 +341,23 @@ function ThesisBoardContent() {
         body: JSON.stringify({ status: newStatus }),
       });
       if (!res.ok) throw new Error("Failed");
+      if (thesis) {
+        // Map status transitions → behavioral events so inferred-weights
+        // knows which sectors the user actually acts on.
+        if (newStatus === "active" || newStatus === "watching") {
+          trackClientEvent("thesis_approved", {
+            thesis_id: id,
+            sector: thesis.sector,
+            new_status: newStatus,
+          });
+        } else if (newStatus === "archived" || newStatus === "rejected") {
+          trackClientEvent("thesis_dismissed", {
+            thesis_id: id,
+            sector: thesis.sector,
+            new_status: newStatus,
+          });
+        }
+      }
     } catch {
       // Rollback
       fetchTheses();
@@ -678,6 +664,7 @@ function ThesisBoardContent() {
                   articles={relatedArticles[selectedId ?? ""] ?? []}
                   activeSignalCount={theses.filter((t) => !userArchivedIds.has(t.id)).length}
                   onArchive={(id) => {
+                    const thesis = theses.find((t) => t.id === id);
                     // Optimistically add to user thesis states
                     setUserThesisStates((prev) => {
                       const exists = prev.find((s) => s.thesis_id === id);
@@ -689,6 +676,12 @@ function ThesisBoardContent() {
                     const remaining = theses.filter((t) => t.id !== id);
                     setSelectedId(remaining[0]?.id ?? null);
                     if (convictionFilter === "archived") setArchivedRefreshKey((k) => k + 1);
+                    if (thesis) {
+                      trackClientEvent("thesis_dismissed", {
+                        thesis_id: id,
+                        sector: thesis.sector,
+                      });
+                    }
                   }}
                   onRegenerate={() => fetchTheses()}
                 />

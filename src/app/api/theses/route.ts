@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { mapThesisRow, dedupByTitleSector, thesisDedupKey } from "@/lib/thesis-mapper";
+import { getUserProfile, sectorWeight } from "@/lib/user-profile";
 
 export const dynamic = "force-dynamic";
 
@@ -72,36 +74,40 @@ export async function GET() {
       return { ...rest, notes };
     });
 
-    // Phase 0.2: In-memory fuzzy deduplication by first-40-char prefix
-    const titleMap = new Map<string, Record<string, unknown>>();
-    let dupeCount = 0;
-    for (const t of theses) {
-      const fullTitle = (String(t.title || "")).trim().toLowerCase();
-      const key = fullTitle.slice(0, 40);
-      const existing = titleMap.get(key);
-      if (existing) {
-        dupeCount++;
-        const existTitle = String(existing.title || "");
-        const newTitle = String(t.title || "");
-        // Keep the one with the longer title (more descriptive)
-        if (newTitle.length > existTitle.length) {
-          titleMap.set(key, t);
-        } else if (newTitle.length === existTitle.length) {
-          // Tie-break: keep more recent generated_at
-          const existDate = new Date(String(existing.generated_at || "")).getTime();
-          const newDate = new Date(String(t.generated_at || "")).getTime();
-          if (newDate > existDate) {
-            titleMap.set(key, t);
-          }
-        }
-      } else {
-        titleMap.set(key, t);
-      }
-    }
+    // Dedup by `${title.trim().toLowerCase()}|${sector}`, keeping the most
+    // recent by generated_at. Single source of truth in thesis-mapper.ts so
+    // the same rule applies to frontend and backend pre-insert checks.
+    const { deduped, dupeCount } = dedupByTitleSector(
+      theses as Array<{ title?: string | null; sector?: string | null; generated_at?: string | null }>,
+    );
     if (dupeCount > 0) {
-      console.log(`[theses GET] deduplicated ${dupeCount} theses by 40-char prefix`);
+      console.log(`[theses GET] deduplicated ${dupeCount} theses by title|sector (kept most recent)`);
     }
-    theses = Array.from(titleMap.values());
+    theses = deduped as Record<string, unknown>[];
+
+    // Personalization: if the user has profile sectors or learned weights,
+    // stable-sort theses by sector weight (desc). No-op for empty profiles.
+    try {
+      const profile = await getUserProfile(supabase, user.id);
+      const hasSignal =
+        (profile.sectors?.length ?? 0) > 0 ||
+        Object.keys(profile.inferred_sector_weights || {}).length > 0;
+      if (hasSignal) {
+        const withIdx = theses.map((t, i) => ({ t, i }));
+        withIdx.sort((a, b) => {
+          const wa = sectorWeight(profile, (a.t.sector as string) || "");
+          const wb = sectorWeight(profile, (b.t.sector as string) || "");
+          if (wb !== wa) return wb - wa;
+          return a.i - b.i;
+        });
+        theses = withIdx.map((x) => x.t);
+      }
+    } catch (e) {
+      console.log(
+        "[theses GET] personalization sort skipped:",
+        e instanceof Error ? e.message : String(e),
+      );
+    }
 
     // Fetch latest weekly digest
     let digest: Record<string, unknown> | null = null;
@@ -121,7 +127,10 @@ export async function GET() {
       console.warn("[theses GET] weekly_digests threw:", e);
     }
 
-    return NextResponse.json({ theses, digest });
+    // Map to canonical UI shape via single source of truth
+    const mapped = theses.map((t) => mapThesisRow(t as Parameters<typeof mapThesisRow>[0]));
+
+    return NextResponse.json({ theses: mapped, digest });
   } catch (err) {
     console.error("[theses GET] unexpected error:", err);
     return NextResponse.json({ theses: [], digest: null, error: "Internal server error" });
@@ -483,14 +492,29 @@ ${clusterBlocks}`;
       );
     }
 
-    // Dedup: delete any AI-generated theses from today before inserting
+    // Dedup: delete today's AI-generated theses for this user before inserting.
+    // When user_id column exists we scope per-user; otherwise we fall back to
+    // the legacy global delete to preserve existing behavior.
     const dedupCutoff = new Date();
     dedupCutoff.setHours(0, 0, 0, 0);
-    await supabase
-      .from("theses")
-      .delete()
-      .eq("source", "ai-generated")
-      .gte("generated_at", dedupCutoff.toISOString());
+    {
+      const scoped = await supabase
+        .from("theses")
+        .delete()
+        .eq("source", "ai-generated")
+        .eq("user_id", user.id)
+        .gte("generated_at", dedupCutoff.toISOString());
+      if (scoped.error && /user_id/.test(scoped.error.message)) {
+        console.log(
+          "[theses POST] user_id column missing on delete — retrying without scope",
+        );
+        await supabase
+          .from("theses")
+          .delete()
+          .eq("source", "ai-generated")
+          .gte("generated_at", dedupCutoff.toISOString());
+      }
+    }
 
     const generatedAtIso = new Date().toISOString();
     const rows = theses.map(
@@ -518,11 +542,74 @@ ${clusterBlocks}`;
           horizon,
           verifiable_signal: typeof t.verifiable_signal === "string" ? t.verifiable_signal : null,
           check_after: computeCheckAfter(generatedAtIso, horizon),
+          // Phase 1 (pre-flight DDL): user_id scopes duplicate detection per-user
+          // when present. Never fails if the column does not yet exist —
+          // falls back to existing schema via graceful insert retry below.
+          user_id: user.id,
         };
       }
     );
 
-    const { error: insertError } = await supabase.from("theses").insert(rows);
+    // Bug Fix 2: 7-day pre-insert duplicate check scoped by `(title|sector)`
+    // and, when user_id is present, scoped to this user. If a match exists in
+    // the last 7 days, drop it from the insert batch. Best-effort — if the
+    // lookup fails we fall through and insert normally (insert-side unique
+    // index on (user_id, lower(title), sector) in pre-flight DDL is the final
+    // safety net).
+    let filteredRows = rows;
+    try {
+      const sevenDaysAgoIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: recent, error: recentErr } = await supabase
+        .from("theses")
+        .select("title, sector, generated_at, user_id")
+        .gte("generated_at", sevenDaysAgoIso)
+        .eq("user_id", user.id);
+      if (recentErr) {
+        console.log(
+          "[theses POST] 7d duplicate lookup failed (continuing):",
+          recentErr.message,
+        );
+      } else if (Array.isArray(recent) && recent.length > 0) {
+        const recentKeys = new Set(
+          recent.map((r) => thesisDedupKey({ title: r.title, sector: r.sector })),
+        );
+        const beforeCount = filteredRows.length;
+        filteredRows = filteredRows.filter(
+          (r) => !recentKeys.has(thesisDedupKey({ title: r.title, sector: r.sector })),
+        );
+        const skipped = beforeCount - filteredRows.length;
+        if (skipped > 0) {
+          console.log(
+            `[theses POST] skipped ${skipped} theses already generated for this user in last 7 days`,
+          );
+        }
+      }
+    } catch (dupErr) {
+      console.log(
+        "[theses POST] 7d duplicate lookup threw (continuing):",
+        dupErr instanceof Error ? dupErr.message : String(dupErr),
+      );
+    }
+
+    if (filteredRows.length === 0) {
+      return NextResponse.json({
+        theses: [],
+        count: 0,
+        note: "All generated theses already exist for this user within the last 7 days.",
+      });
+    }
+
+    // Insert — if user_id column doesn't exist, strip and retry so this works
+    // whether or not the pre-flight DDL has landed.
+    let { error: insertError } = await supabase.from("theses").insert(filteredRows);
+    if (insertError && /user_id/.test(insertError.message)) {
+      console.log(
+        "[theses POST] user_id column missing — retrying insert without it",
+      );
+      const stripped = filteredRows.map(({ user_id: _u, ...rest }) => rest);
+      const retry = await supabase.from("theses").insert(stripped);
+      insertError = retry.error;
+    }
     if (insertError) {
       console.error("Supabase insert error:", insertError);
       return NextResponse.json(
@@ -531,7 +618,7 @@ ${clusterBlocks}`;
       );
     }
 
-    return NextResponse.json({ theses, count: theses.length });
+    return NextResponse.json({ theses: filteredRows, count: filteredRows.length });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("Theses API error:", message);
