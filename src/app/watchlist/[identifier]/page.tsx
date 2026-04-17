@@ -550,7 +550,7 @@ Constraints:
           break;
         case "o":
         case "O":
-          if (selectedArticleIndex !== null && sortedArticles[selectedArticleIndex]?.url) {
+          if (!isAnyModalOpen && selectedArticleIndex !== null && sortedArticles[selectedArticleIndex]?.url) {
             e.preventDefault();
             window.open(sortedArticles[selectedArticleIndex].url, "_blank", "noopener,noreferrer");
           }

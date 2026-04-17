@@ -868,10 +868,11 @@ export default function WatchlistPage() {
                           onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
                           className={cn(
                             "flex items-center justify-between gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
-                            selectedIdentifier === entry.identifier
-                              ? "border-l-2 border-l-gold bg-gold-muted/30"
-                              : "bg-parchment-mid hover:border-border-hover",
-                            selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id ? "border-l-2 border-l-amber-500" : "",
+                            selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id
+                              ? "border-l-2 border-l-amber-500 bg-amber-50/20"
+                              : selectedIdentifier === entry.identifier
+                                ? "border-l-2 border-l-gold bg-gold-muted/30"
+                                : "bg-parchment-mid hover:border-border-hover",
                           )}
                         >
                           {/* Sector name — full width, no fixed constraint */}
@@ -933,12 +934,13 @@ export default function WatchlistPage() {
                             "flex gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
                             "items-start",
                             "min-h-[56px]",
-                            selectedIdentifier === entry.identifier
-                              ? "border-l-2 border-l-gold bg-gold-muted/30"
-                              : "bg-white hover:border-border-hover",
+                            selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id
+                              ? "border-l-2 border-l-amber-500 bg-amber-50/30"
+                              : selectedIdentifier === entry.identifier
+                                ? "border-l-2 border-l-gold bg-gold-muted/30"
+                                : "bg-white hover:border-border-hover",
                             dragState.draggingId === entry.id ? "opacity-50" : "",
                             dragState.dragOverId === entry.id && dragState.draggingId !== entry.id ? "border-t-2 border-t-amber-500" : "",
-                            selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id ? "border-l-2 border-l-amber-500" : "",
                           )}
                         >
                           {/* Drag handle */}
@@ -1017,12 +1019,13 @@ export default function WatchlistPage() {
                             "flex gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
                             "items-start",
                             "min-h-[56px]",
-                            selectedIdentifier === entry.identifier
-                              ? "border-l-2 border-l-gold bg-gold-muted/30"
-                              : "bg-white hover:border-border-hover",
+                            selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id
+                              ? "border-l-2 border-l-amber-500 bg-amber-50/30"
+                              : selectedIdentifier === entry.identifier
+                                ? "border-l-2 border-l-gold bg-gold-muted/30"
+                                : "bg-white hover:border-border-hover",
                             dragState.draggingId === entry.id ? "opacity-50" : "",
                             dragState.dragOverId === entry.id && dragState.draggingId !== entry.id ? "border-t-2 border-t-amber-500" : "",
-                            selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id ? "border-l-2 border-l-amber-500" : "",
                           )}
                         >
                           {/* Drag handle */}
