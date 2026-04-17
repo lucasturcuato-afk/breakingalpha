@@ -10,6 +10,7 @@ import { ArrowLeft, Sparkles, ExternalLink, RefreshCw, ChevronDown, ChevronUp } 
 import { createBrowserClient } from "@supabase/ssr";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { buildArticleOrFilter } from "@/lib/watchlist-utils";
+import { clusterArticles, type ArticleCluster } from "@/lib/clustering-utils";
 
 function getSupabase() {
   return createBrowserClient(
@@ -146,6 +147,7 @@ export default function WatchlistIdentifierPage({
   const [noteUnauthenticated, setNoteUnauthenticated] = useState(false);
   const [selectedArticleIndex, setSelectedArticleIndex] = useState<number | null>(null);
   const notesFocusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [expandedClusters, setExpandedClusters] = useState<Map<string, boolean>>(new Map());
 
   const handleBriefGenerated = async (text: string) => {
     setBriefGeneratedAt(new Date());
@@ -520,6 +522,7 @@ Constraints:
   }
 
   const sortedArticles = useMemo(() => sortArticles(articles, sortMode), [articles, sortMode]);
+  const clusters = useMemo(() => clusterArticles(sortedArticles), [sortedArticles]);
 
   useEffect(() => {
     const isAnyModalOpen = memoOpen || articleMemoEntry !== null;
@@ -534,26 +537,26 @@ Constraints:
         case "j":
         case "J":
           e.preventDefault();
-          if (!isAnyModalOpen && sortedArticles.length > 0) {
+          if (!isAnyModalOpen && clusters.length > 0) {
             setSelectedArticleIndex(prev =>
-              Math.max(0, Math.min(sortedArticles.length - 1, prev === null ? 0 : prev + 1))
+              Math.max(0, Math.min(clusters.length - 1, prev === null ? 0 : prev + 1))
             );
           }
           break;
         case "k":
         case "K":
           e.preventDefault();
-          if (!isAnyModalOpen && sortedArticles.length > 0) {
+          if (!isAnyModalOpen && clusters.length > 0) {
             setSelectedArticleIndex(prev =>
-              Math.max(0, Math.min(sortedArticles.length - 1, prev === null ? 0 : prev - 1))
+              Math.max(0, Math.min(clusters.length - 1, prev === null ? 0 : prev - 1))
             );
           }
           break;
         case "o":
         case "O":
-          if (!isAnyModalOpen && selectedArticleIndex !== null && sortedArticles[selectedArticleIndex]?.url) {
+          if (!isAnyModalOpen && selectedArticleIndex !== null && clusters[selectedArticleIndex]?.leadArticle?.url) {
             e.preventDefault();
-            window.open(sortedArticles[selectedArticleIndex].url, "_blank", "noopener,noreferrer");
+            window.open(clusters[selectedArticleIndex].leadArticle.url, "_blank", "noopener,noreferrer");
           }
           break;
         case "b":
@@ -594,11 +597,11 @@ Constraints:
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [memoOpen, articleMemoEntry, selectedArticleIndex, sortedArticles, loading, router]);
+  }, [memoOpen, articleMemoEntry, selectedArticleIndex, clusters, sortedArticles, loading, router]);
 
   useEffect(() => {
     if (selectedArticleIndex === null) return;
-    const el = document.querySelector(`[data-article-idx="${selectedArticleIndex}"]`);
+    const el = document.querySelector(`[data-cluster-idx="${selectedArticleIndex}"]`);
     el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [selectedArticleIndex]);
 
@@ -815,7 +818,7 @@ Constraints:
               </div>
             )}
           </div>
-          {/* Article list */}
+          {/* Article list with clustering */}
           {loading ? (
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
@@ -831,71 +834,139 @@ Constraints:
             />
           ) : (
             <div className="space-y-2">
-              {sortedArticles.map((a, idx) => (
-                <div
-                  key={a.id}
-                  data-article-idx={idx}
-                  className="bg-white border border-border-base rounded-xl p-3"
-                  style={{ borderLeft: selectedArticleIndex === idx ? '2px solid #d97706' : undefined }}
-                >
-                  <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-                    {(a.industry_verticals ?? []).map((v) => (
-                      <span
-                        key={v}
-                        className="font-data text-[9px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200"
-                      >
-                        {v}
-                      </span>
-                    ))}
-                    {(a.activity_types ?? []).map((t) => (
-                      <span
-                        key={t}
-                        className="font-data text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200"
-                      >
-                        {t}
-                      </span>
-                    ))}
-                    {a.source && (
-                      <span className="font-data text-[9px] text-text-muted">
-                        {a.source}
-                      </span>
-                    )}
-                    {a.published_at && timeAgo(a.published_at) && (
-                      <span className="font-data text-[9px] text-text-faint ml-auto">
-                        {timeAgo(a.published_at)}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setArticleMemoEntry(a)}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded font-data text-[9px] text-gold bg-gold-muted border border-gold-border hover:bg-gold/10 cursor-pointer transition-colors"
+              {clusters.map((cluster, idx) => {
+                const a = cluster.leadArticle;
+                const isSelected = selectedArticleIndex === idx;
+                const isExpanded = expandedClusters.get(cluster.id) ?? false;
+                return (
+                  <div key={cluster.id} data-cluster-idx={idx}>
+                    {/* Lead article card */}
+                    <div
+                      className="bg-white border border-border-base rounded-xl p-3"
+                      style={{ borderLeft: isSelected ? '2px solid #d97706' : undefined }}
                     >
-                      <Sparkles size={9} />
-                      Memo
-                    </button>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
-                      {a.title}
-                    </h4>
-                    {a.url && (
-                      <a
-                        href={a.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5"
-                      >
-                        <ExternalLink size={11} />
-                      </a>
+                      <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                        {(a.industry_verticals ?? []).map((v) => (
+                          <span
+                            key={v}
+                            className="font-data text-[9px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200"
+                          >
+                            {v}
+                          </span>
+                        ))}
+                        {(a.activity_types ?? []).map((t) => (
+                          <span
+                            key={t}
+                            className="font-data text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200"
+                          >
+                            {t}
+                          </span>
+                        ))}
+                        {a.source && (
+                          <span className="font-data text-[9px] text-text-muted">
+                            {a.source}
+                          </span>
+                        )}
+                        {a.published_at && timeAgo(a.published_at) && (
+                          <span className="font-data text-[9px] text-text-faint ml-auto">
+                            {timeAgo(a.published_at)}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setArticleMemoEntry(a)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded font-data text-[9px] text-gold bg-gold-muted border border-gold-border hover:bg-gold/10 cursor-pointer transition-colors"
+                        >
+                          <Sparkles size={9} />
+                          Memo
+                        </button>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
+                          {a.title}
+                        </h4>
+                        {a.url && (
+                          <a
+                            href={a.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5"
+                          >
+                            <ExternalLink size={11} />
+                          </a>
+                        )}
+                      </div>
+                      {a.summary && (
+                        <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
+                          {a.summary}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Cluster expand row */}
+                    {cluster.isCluster && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedClusters((prev) => {
+                              const next = new Map(prev);
+                              next.set(cluster.id, !isExpanded);
+                              return next;
+                            })
+                          }
+                          className="flex items-center gap-1.5 mt-1 ml-2 font-data text-[10px] cursor-pointer transition-colors"
+                          style={{ color: '#d97706', background: 'none', border: 'none', padding: '2px 4px' }}
+                        >
+                          <ChevronDown
+                            size={12}
+                            style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.18s ease' }}
+                          />
+                          {isExpanded ? 'Collapse' : `${cluster.relatedArticles.length} more source${cluster.relatedArticles.length === 1 ? '' : 's'}`}
+                        </button>
+
+                        {isExpanded && (
+                          <div className="space-y-1 mt-1 ml-3">
+                            {cluster.relatedArticles.map((ra) => (
+                              <div
+                                key={ra.id}
+                                className="bg-white border border-border-base rounded-xl p-2.5"
+                                style={{ borderLeft: '2px solid #d97706' }}
+                              >
+                                <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                                  {ra.source && (
+                                    <span className="font-data text-[9px] text-text-muted">{ra.source}</span>
+                                  )}
+                                  {ra.published_at && timeAgo(ra.published_at) && (
+                                    <span className="font-data text-[9px] text-text-faint ml-auto">
+                                      {timeAgo(ra.published_at)}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-start gap-2">
+                                  <h4 className="font-display text-[12px] font-bold text-espresso leading-snug flex-1">
+                                    {ra.title}
+                                  </h4>
+                                  {ra.url && (
+                                    <a
+                                      href={ra.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5"
+                                    >
+                                      <ExternalLink size={10} />
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
-                  {a.summary && (
-                    <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
-                      {a.summary}
-                    </p>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
