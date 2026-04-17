@@ -534,18 +534,18 @@ Constraints:
         case "j":
         case "J":
           e.preventDefault();
-          if (!isAnyModalOpen) {
+          if (!isAnyModalOpen && sortedArticles.length > 0) {
             setSelectedArticleIndex(prev =>
-              prev === null ? 0 : Math.min(prev + 1, sortedArticles.length - 1)
+              Math.max(0, Math.min(sortedArticles.length - 1, prev === null ? 0 : prev + 1))
             );
           }
           break;
         case "k":
         case "K":
           e.preventDefault();
-          if (!isAnyModalOpen) {
+          if (!isAnyModalOpen && sortedArticles.length > 0) {
             setSelectedArticleIndex(prev =>
-              prev === null ? 0 : Math.max(prev - 1, 0)
+              Math.max(0, Math.min(sortedArticles.length - 1, prev === null ? 0 : prev - 1))
             );
           }
           break;

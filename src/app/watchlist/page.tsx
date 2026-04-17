@@ -377,6 +377,8 @@ export default function WatchlistPage() {
   const dragErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedEntryIndex, setSelectedEntryIndex] = useState<number | null>(null);
   const [showShortcutLegend, setShowShortcutLegend] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
 
   const fetchPrices = useCallback((entries: WatchlistEntry[]) => {
     const tickers = entries.filter((e) => e.type === "ticker").map((e) => e.identifier);
@@ -493,6 +495,13 @@ export default function WatchlistPage() {
   useEffect(() => {
     refreshWatchlist();
   }, [refreshWatchlist]);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const handleAdd = async (identifier: string, displayName?: string) => {
     if (!identifier.trim()) {
@@ -770,7 +779,11 @@ export default function WatchlistPage() {
           break;
         case "Escape":
           e.preventDefault();
-          setSelectedEntryIndex(null);
+          if (mobileSheetOpen) {
+            setMobileSheetOpen(false);
+          } else {
+            setSelectedEntryIndex(null);
+          }
           break;
         case "?":
           e.preventDefault();
@@ -781,7 +794,7 @@ export default function WatchlistPage() {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [memoEntry, articleMemoEntry, selectedEntryIndex, allEntries, router, focusAddInput]);
+  }, [memoEntry, articleMemoEntry, selectedEntryIndex, allEntries, router, focusAddInput, mobileSheetOpen]);
 
   useEffect(() => {
     function handleMouseDown() {
@@ -801,9 +814,26 @@ export default function WatchlistPage() {
 
   return (
     <AppShell pageTitle="Watchlist" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
-      <div className="flex gap-6 p-6 h-[calc(100vh-var(--topbar-height)-var(--moodbar-height))]">
-        {/* LEFT COL */}
-        <div className="w-[360px] flex-shrink-0 overflow-y-auto flex flex-col gap-5">
+      <div
+        style={{
+          display: 'flex',
+          gap: '24px',
+          padding: isMobile ? '12px' : '24px',
+          height: 'calc(100vh - var(--topbar-height) - var(--moodbar-height))',
+          flexDirection: isMobile ? 'column' : 'row',
+        }}
+      >
+        {/* LEFT COL — hidden on mobile (shown as bottom sheet instead) */}
+        <div
+          style={{
+            width: isMobile ? '100%' : '360px',
+            flexShrink: 0,
+            overflowY: 'auto',
+            display: isMobile ? 'none' : 'flex',
+            flexDirection: 'column',
+            gap: '20px',
+          }}
+        >
           <p className="font-sans text-[12px] text-text-muted">
             Track companies, tickers, and sectors. Articles matching your watchlist are boosted in relevance.
           </p>
@@ -840,7 +870,7 @@ export default function WatchlistPage() {
           )}
 
           {tickers.length > 0 && (
-            <div className="flex items-center gap-2 mt-1">
+            <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: '8px', marginTop: '4px' }}>
               <Link
                 href="/watchlist/export"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-base bg-white text-text-muted font-data text-[10px] hover:text-text-primary transition-colors cursor-pointer"
@@ -852,7 +882,7 @@ export default function WatchlistPage() {
                 download
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-base bg-white text-text-muted font-data text-[10px] hover:text-text-primary transition-colors cursor-pointer"
               >
-                Export CSV
+                Export Excel (.xlsx)
               </a>
             </div>
           )}
@@ -965,13 +995,15 @@ export default function WatchlistPage() {
                             dragState.dragOverId === entry.id && dragState.draggingId !== entry.id ? "border-t-2 border-t-amber-500" : "",
                           )}
                         >
-                          {/* Drag handle */}
-                          <div
-                            className="flex-shrink-0 self-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing px-1 text-text-faint"
-                            draggable={false}
-                          >
-                            ⠿
-                          </div>
+                          {/* Drag handle — hidden on mobile (touch drag not supported in V4B) */}
+                          {!isMobile && (
+                            <div
+                              className="flex-shrink-0 self-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing px-1 text-text-faint"
+                              draggable={false}
+                            >
+                              ⠿
+                            </div>
+                          )}
 
                           {/* LEFT: identifier + optional display_name subtitle */}
                           <div className="flex flex-col min-w-0 flex-1">
@@ -1050,13 +1082,15 @@ export default function WatchlistPage() {
                             dragState.dragOverId === entry.id && dragState.draggingId !== entry.id ? "border-t-2 border-t-amber-500" : "",
                           )}
                         >
-                          {/* Drag handle */}
-                          <div
-                            className="flex-shrink-0 self-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing px-1 text-text-faint"
-                            draggable={false}
-                          >
-                            ⠿
-                          </div>
+                          {/* Drag handle — hidden on mobile (touch drag not supported in V4B) */}
+                          {!isMobile && (
+                            <div
+                              className="flex-shrink-0 self-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing px-1 text-text-faint"
+                              draggable={false}
+                            >
+                              ⠿
+                            </div>
+                          )}
 
                           {/* LEFT: identifier + optional display_name subtitle */}
                           <div className="flex flex-col min-w-0 flex-1">
@@ -1108,8 +1142,8 @@ export default function WatchlistPage() {
           </div>
         </div>
 
-        {/* RIGHT COL */}
-        <div className="flex-1 min-w-0 overflow-y-auto">
+        {/* RIGHT COL — full width on mobile */}
+        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', paddingBottom: isMobile ? '64px' : '0' }}>
           <div className="flex items-center justify-between mb-3">
             {selectedIdentifier ? (
               <div className="flex items-center gap-2">
@@ -1288,6 +1322,120 @@ export default function WatchlistPage() {
           )}
         </div>
       </div>
+
+      {/* Mobile bottom bar */}
+      {isMobile && (
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0,
+          background: '#fff', borderTop: '1px solid var(--border-base)',
+          padding: '12px 16px', zIndex: 200,
+          display: 'flex', gap: '8px',
+        }}>
+          <button
+            type="button"
+            onClick={() => setMobileSheetOpen(true)}
+            style={{
+              flex: 1, padding: '10px', borderRadius: '10px',
+              background: '#1c160f', color: '#fff',
+              fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600,
+              border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+            }}
+          >
+            <Star size={14} />
+            Watchlist ({watchlist.length})
+          </button>
+        </div>
+      )}
+
+      {/* Mobile bottom sheet backdrop */}
+      {isMobile && mobileSheetOpen && (
+        <div
+          onClick={() => setMobileSheetOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(30,20,10,0.4)' }}
+        />
+      )}
+
+      {/* Mobile bottom sheet */}
+      {isMobile && (
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0,
+          height: '60vh', zIndex: 301,
+          background: '#fff', borderRadius: '16px 16px 0 0',
+          borderTop: '1px solid var(--border-base)',
+          transform: mobileSheetOpen ? 'translateY(0)' : 'translateY(100%)',
+          transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1)',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        }}>
+          <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid var(--border-base)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+              Watchlist ({watchlist.length})
+            </span>
+            <button
+              type="button"
+              onClick={() => setMobileSheetOpen(false)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', padding: '4px' }}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px 16px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <WatchlistAddInput
+              addType={addType}
+              onAddTypeChange={setAddType}
+              onAdd={async (id, dn) => { await handleAdd(id, dn); setMobileSheetOpen(false); }}
+              addError={addError}
+              onClearError={() => setAddError("")}
+              trackedIdentifiers={watchlist.map((e) => e.identifier)}
+            />
+            <div className="space-y-1.5">
+              {loading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-xl" />)}
+                </div>
+              ) : watchlist.length === 0 ? (
+                <EmptyState
+                  icon={<Star size={32} />}
+                  title="Nothing tracked yet"
+                  description="Add a ticker, company, or sector above"
+                />
+              ) : (
+                <>
+                  {watchlist.map((entry) => {
+                    const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
+                    return (
+                      <div
+                        key={entry.id}
+                        onClick={() => {
+                          setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier);
+                          setMobileSheetOpen(false);
+                        }}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '12px 14px', borderRadius: '12px',
+                          border: selectedIdentifier === entry.identifier ? '1px solid #d97706' : '1px solid var(--border-base)',
+                          background: selectedIdentifier === entry.identifier ? 'rgba(251,191,36,0.06)' : '#fff',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {entry.type === 'sector' ? entry.identifier : (entry.display_name ?? entry.identifier)}
+                        </span>
+                        {articleCount > 0 && (
+                          <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '9px', color: 'var(--text-faint)', background: 'var(--parchment-mid)', border: '1px solid var(--border-base)', borderRadius: '4px', padding: '2px 6px' }}>
+                            {articleCount >= 20 ? '20+' : articleCount}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {dragError && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-signal-dn text-white font-data text-[11px] px-4 py-2 rounded-lg shadow-lg z-50">
