@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useMemo, useEffect, useCallback } from "react";
+import { use, useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -145,6 +145,7 @@ export default function WatchlistIdentifierPage({
   const [notesOpen, setNotesOpen] = useState(false);
   const [noteUnauthenticated, setNoteUnauthenticated] = useState(false);
   const [selectedArticleIndex, setSelectedArticleIndex] = useState<number | null>(null);
+  const notesFocusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleBriefGenerated = async (text: string) => {
     setBriefGeneratedAt(new Date());
@@ -570,7 +571,8 @@ Constraints:
             const textarea = document.getElementById("notes-textarea") as HTMLTextAreaElement | null;
             if (textarea) {
               setNotesOpen(true);
-              setTimeout(() => {
+              if (notesFocusTimeoutRef.current) clearTimeout(notesFocusTimeoutRef.current);
+              notesFocusTimeoutRef.current = setTimeout(() => {
                 textarea.scrollIntoView({ behavior: "smooth", block: "nearest" });
                 textarea.focus();
               }, 50);
@@ -599,6 +601,16 @@ Constraints:
     const el = document.querySelector(`[data-article-idx="${selectedArticleIndex}"]`);
     el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [selectedArticleIndex]);
+
+  useEffect(() => {
+    return () => {
+      if (notesFocusTimeoutRef.current) clearTimeout(notesFocusTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    setSelectedArticleIndex(null);
+  }, [sortMode]);
 
   return (
     <AppShell

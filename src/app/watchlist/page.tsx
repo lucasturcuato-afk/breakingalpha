@@ -724,7 +724,10 @@ export default function WatchlistPage() {
       (el as HTMLElement).contentEditable === "true";
   }
 
-  const allEntries = [...sectorEntries, ...publicEntries, ...privateEntries];
+  const allEntries = useMemo(
+    () => [...sectorEntries, ...publicEntries, ...privateEntries],
+    [sectorEntries, publicEntries, privateEntries]
+  );
 
   const focusAddInput = useCallback(() => {
     const input = document.querySelector('input[placeholder*="ticker"], input[type="text"]') as HTMLInputElement | null;
@@ -1325,7 +1328,7 @@ export default function WatchlistPage() {
       <button
         type="button"
         onClick={() => setShowShortcutLegend(prev => !prev)}
-        className="fixed bottom-6 right-6 z-40 w-8 h-8 rounded-full bg-white border border-border-base shadow-md flex items-center justify-center font-data text-[12px] text-text-muted hover:text-espresso hover:border-gold transition-colors cursor-pointer"
+        className="fixed bottom-6 right-6 z-50 w-8 h-8 rounded-full bg-white border border-border-base shadow-md flex items-center justify-center font-data text-[12px] text-text-muted hover:text-espresso hover:border-gold transition-colors cursor-pointer"
         aria-label="Keyboard shortcuts"
       >
         ?
