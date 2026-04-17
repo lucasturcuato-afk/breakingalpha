@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useMemo, useEffect } from "react";
+import { use, useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -144,6 +144,7 @@ export default function WatchlistIdentifierPage({
   const [noteLoading, setNoteLoading] = useState(true);
   const [notesOpen, setNotesOpen] = useState(false);
   const [noteUnauthenticated, setNoteUnauthenticated] = useState(false);
+  const [selectedArticleIndex, setSelectedArticleIndex] = useState<number | null>(null);
 
   const handleBriefGenerated = async (text: string) => {
     setBriefGeneratedAt(new Date());
@@ -509,6 +510,96 @@ Constraints:
 - Write for a reader who already knows what a P/E ratio is`;
   }, [decoded, companyName, isSector, quote, articles]);
 
+  function isTyping(): boolean {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName.toUpperCase();
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" ||
+      (el as HTMLElement).contentEditable === "true";
+  }
+
+  const sortedArticles = useMemo(() => sortArticles(articles, sortMode), [articles, sortMode]);
+
+  useEffect(() => {
+    const isAnyModalOpen = memoOpen || articleMemoEntry !== null;
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (isTyping()) return;
+      // Also skip if notes textarea is focused
+      const notesEl = document.getElementById("notes-textarea");
+      if (notesEl && document.activeElement === notesEl) return;
+
+      switch (e.key) {
+        case "j":
+        case "J":
+          e.preventDefault();
+          if (!isAnyModalOpen) {
+            setSelectedArticleIndex(prev =>
+              prev === null ? 0 : Math.min(prev + 1, sortedArticles.length - 1)
+            );
+          }
+          break;
+        case "k":
+        case "K":
+          e.preventDefault();
+          if (!isAnyModalOpen) {
+            setSelectedArticleIndex(prev =>
+              prev === null ? 0 : Math.max(prev - 1, 0)
+            );
+          }
+          break;
+        case "o":
+        case "O":
+          if (selectedArticleIndex !== null && sortedArticles[selectedArticleIndex]?.url) {
+            e.preventDefault();
+            window.open(sortedArticles[selectedArticleIndex].url, "_blank", "noopener,noreferrer");
+          }
+          break;
+        case "b":
+        case "B":
+          if (!isAnyModalOpen && !loading) {
+            e.preventDefault();
+            setBriefGeneratedAt(new Date());
+            setMemoOpen(true);
+          }
+          break;
+        case "n":
+        case "N":
+          if (!isAnyModalOpen) {
+            e.preventDefault();
+            const textarea = document.getElementById("notes-textarea") as HTMLTextAreaElement | null;
+            if (textarea) {
+              setNotesOpen(true);
+              setTimeout(() => {
+                textarea.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                textarea.focus();
+              }, 50);
+            }
+          }
+          break;
+        case "Escape":
+          e.preventDefault();
+          if (memoOpen) {
+            setMemoOpen(false);
+          } else if (articleMemoEntry !== null) {
+            setArticleMemoEntry(null);
+          } else {
+            router.back();
+          }
+          break;
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [memoOpen, articleMemoEntry, selectedArticleIndex, sortedArticles, loading, router]);
+
+  useEffect(() => {
+    if (selectedArticleIndex === null) return;
+    const el = document.querySelector(`[data-article-idx="${selectedArticleIndex}"]`);
+    el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [selectedArticleIndex]);
+
   return (
     <AppShell
       pageTitle={decoded}
@@ -706,10 +797,14 @@ Constraints:
             />
           ) : (
             <div className="space-y-2">
-              {sortArticles(articles, sortMode).map((a) => (
+              {sortedArticles.map((a, idx) => (
                 <div
                   key={a.id}
-                  className="bg-white border border-border-base rounded-xl p-3"
+                  data-article-idx={idx}
+                  className={cn(
+                    "bg-white border border-border-base rounded-xl p-3",
+                    selectedArticleIndex === idx ? "border-l-2 border-l-amber-500" : "",
+                  )}
                 >
                   <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                     {(a.industry_verticals ?? []).map((v) => (
@@ -801,6 +896,7 @@ Constraints:
               ) : (
                 <div>
                   <textarea
+                    id="notes-textarea"
                     className="w-full min-h-[80px] bg-parchment-mid border border-border-base rounded-xl px-4 py-3 font-sans text-[12px] text-text-primary placeholder:text-text-faint resize-y focus:outline-none focus:border-gold transition-colors"
                     placeholder="Add a note..."
                     value={noteText}

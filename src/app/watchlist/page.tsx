@@ -374,6 +374,8 @@ export default function WatchlistPage() {
   }>({ draggingId: null, dragOverId: null, dragGroup: null });
   const [dragError, setDragError] = useState<string | null>(null);
   const dragErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [selectedEntryIndex, setSelectedEntryIndex] = useState<number | null>(null);
+  const [showShortcutLegend, setShowShortcutLegend] = useState(false);
 
   const fetchPrices = useCallback((entries: WatchlistEntry[]) => {
     const tickers = entries.filter((e) => e.type === "ticker").map((e) => e.identifier);
@@ -714,6 +716,85 @@ export default function WatchlistPage() {
     });
   }, [dragState, sectorEntries, publicEntries, privateEntries, watchlist, persistReorder]);
 
+  function isTyping(): boolean {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName.toUpperCase();
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" ||
+      (el as HTMLElement).contentEditable === "true";
+  }
+
+  const allEntries = [...sectorEntries, ...publicEntries, ...privateEntries];
+
+  const focusAddInput = useCallback(() => {
+    const input = document.querySelector('input[placeholder*="ticker"], input[type="text"]') as HTMLInputElement | null;
+    input?.focus();
+  }, []);
+
+  useEffect(() => {
+    const isMemoOpen = memoEntry !== null || articleMemoEntry !== null;
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (isTyping()) return;
+      if (isMemoOpen) return;
+
+      switch (e.key) {
+        case "j":
+        case "J":
+          e.preventDefault();
+          setSelectedEntryIndex(prev =>
+            prev === null ? 0 : Math.min(prev + 1, allEntries.length - 1)
+          );
+          break;
+        case "k":
+        case "K":
+          e.preventDefault();
+          setSelectedEntryIndex(prev =>
+            prev === null ? 0 : Math.max(prev - 1, 0)
+          );
+          break;
+        case "Enter":
+          if (selectedEntryIndex !== null && allEntries[selectedEntryIndex]) {
+            e.preventDefault();
+            router.push(`/watchlist/${encodeURIComponent(allEntries[selectedEntryIndex].identifier)}`);
+          }
+          break;
+        case "a":
+        case "A":
+          e.preventDefault();
+          focusAddInput();
+          break;
+        case "Escape":
+          e.preventDefault();
+          setSelectedEntryIndex(null);
+          break;
+        case "?":
+          e.preventDefault();
+          setShowShortcutLegend(prev => !prev);
+          break;
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [memoEntry, articleMemoEntry, selectedEntryIndex, allEntries, router, focusAddInput]);
+
+  useEffect(() => {
+    function handleMouseDown() {
+      setSelectedEntryIndex(null);
+    }
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, []);
+
+  useEffect(() => {
+    if (selectedEntryIndex === null) return;
+    const entry = allEntries[selectedEntryIndex];
+    if (!entry) return;
+    const el = document.querySelector(`[data-entry-id="${entry.id}"]`);
+    el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [selectedEntryIndex, allEntries]);
+
   return (
     <AppShell pageTitle="Watchlist" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
       <div className="flex gap-6 p-6 h-[calc(100vh-var(--topbar-height)-var(--moodbar-height))]">
@@ -783,12 +864,14 @@ export default function WatchlistPage() {
                       return (
                         <div
                           key={entry.id}
+                          data-entry-id={entry.id}
                           onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
                           className={cn(
                             "flex items-center justify-between gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
                             selectedIdentifier === entry.identifier
                               ? "border-l-2 border-l-gold bg-gold-muted/30"
                               : "bg-parchment-mid hover:border-border-hover",
+                            selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id ? "border-l-2 border-l-amber-500" : "",
                           )}
                         >
                           {/* Sector name — full width, no fixed constraint */}
@@ -839,6 +922,7 @@ export default function WatchlistPage() {
                       return (
                         <div
                           key={entry.id}
+                          data-entry-id={entry.id}
                           draggable={true}
                           onDragStart={(e) => handleDragStart(e, entry, "ticker")}
                           onDragOver={(e) => handleDragOver(e, entry, "ticker")}
@@ -854,6 +938,7 @@ export default function WatchlistPage() {
                               : "bg-white hover:border-border-hover",
                             dragState.draggingId === entry.id ? "opacity-50" : "",
                             dragState.dragOverId === entry.id && dragState.draggingId !== entry.id ? "border-t-2 border-t-amber-500" : "",
+                            selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id ? "border-l-2 border-l-amber-500" : "",
                           )}
                         >
                           {/* Drag handle */}
@@ -921,6 +1006,7 @@ export default function WatchlistPage() {
                       return (
                         <div
                           key={entry.id}
+                          data-entry-id={entry.id}
                           draggable={true}
                           onDragStart={(e) => handleDragStart(e, entry, "company")}
                           onDragOver={(e) => handleDragOver(e, entry, "company")}
@@ -936,6 +1022,7 @@ export default function WatchlistPage() {
                               : "bg-white hover:border-border-hover",
                             dragState.draggingId === entry.id ? "opacity-50" : "",
                             dragState.dragOverId === entry.id && dragState.draggingId !== entry.id ? "border-t-2 border-t-amber-500" : "",
+                            selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id ? "border-l-2 border-l-amber-500" : "",
                           )}
                         >
                           {/* Drag handle */}
@@ -1202,6 +1289,44 @@ export default function WatchlistPage() {
           type="article"
         />
       )}
+
+      {showShortcutLegend && (
+        <div
+          className="fixed inset-0 z-[9998] bg-espresso/30 flex items-end justify-end p-6"
+          onClick={() => setShowShortcutLegend(false)}
+        >
+          <div
+            className="bg-white border border-border-base rounded-xl p-5 shadow-2xl min-w-[220px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">Keyboard Shortcuts</p>
+            <div className="space-y-1.5">
+              {[
+                { key: "J / K", desc: "Navigate" },
+                { key: "Enter", desc: "Open" },
+                { key: "A", desc: "Add ticker" },
+                { key: "Esc", desc: "Clear selection" },
+                { key: "?", desc: "This menu" },
+              ].map(({ key, desc }) => (
+                <div key={key} className="flex items-center justify-between gap-4">
+                  <kbd className="font-mono text-[10px] bg-parchment-mid border border-border-base rounded px-1.5 py-0.5 text-text-primary">{key}</kbd>
+                  <span className="font-data text-[11px] text-text-muted">{desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Shortcut hint button */}
+      <button
+        type="button"
+        onClick={() => setShowShortcutLegend(prev => !prev)}
+        className="fixed bottom-6 right-6 z-40 w-8 h-8 rounded-full bg-white border border-border-base shadow-md flex items-center justify-center font-data text-[12px] text-text-muted hover:text-espresso hover:border-gold transition-colors cursor-pointer"
+        aria-label="Keyboard shortcuts"
+      >
+        ?
+      </button>
     </AppShell>
   );
 }
