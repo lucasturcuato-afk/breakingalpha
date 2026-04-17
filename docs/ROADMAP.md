@@ -51,9 +51,11 @@
 - Company Intel entity quality — `is_blocked_entity()` blocklist (currencies, countries, gov bodies, law firms) + `matches_ingest_blocklist()` keyword pre-filter (class action / law firm PRs) in `ingest.py`; `isJunkEntityName()` extended with CURRENCY_BLOCKLIST, COUNTRY_BLOCKLIST, GOV_SUBSTRINGS, LAW_SUBSTRINGS, INDEX_BLOCKLIST, PEOPLE_BLOCKLIST, ABSTRACT_SUBSTRINGS, KNOWN_JUNK_ENTITIES in `company-intel.ts`; `.slice(0, 40)` cap removed from Company Intel page (PR #79)
 - Company Intel entity extraction — Gemini companies prompt rewritten to return typed `{"name", "entity_type"}` objects with strict company definition and 9 exclusion categories; `backend/wikidata.py` added — Wikidata search API validation with Supabase caching via `wikidata_entity_cache` table; `extract_company_names()` helper + Wikidata gate wired into `store_article()`; `nasa` and `faa` added to `_GOV_ACRONYM_RE` (PR #80)
 - Company Intel entity consistency — `articles.companies` column now written with fully filtered `clean_companies` list (blocklist + Wikidata) before insert, matching `company_mentions`; fixes autonomous loop's `trend_mapper.py` Jaccard clustering and `observe.py` deduplication operating on clean data; brace-escaping bug in Gemini prompt fixed (PR #81)
+- Watchlist V4A — drag-to-reorder (HTML5 DnD + `sort_order` column + `PATCH /api/watchlist-reorder`), keyboard nav (J/K/Enter/A/Esc/? on watchlist, J/K/O/B/N/Esc on detail), XLSX export (SheetJS, Articles + Summary sheets), Tailwind v4 JIT safelist via `@source inline()` (PR #97)
+- Watchlist V4B — real SheetJS XLSX export, in-app notifications (bell + drawer + Realtime badge), mobile bottom sheet, relevance scoring improvements (boilerplate penalty, prominence boost, score_breakdown), GDELT conditional, article clustering UI with expandable rows (PR #98)
 
 ## In Progress
-- None currently tracked
+- **Watchlist V4C** (branch noah/watchlist-v4c, PR pending) — XLSX Summary dedup fix, price alert UI + API + schema, price alert trigger in watchlist_sync.py (writes to watchlist_notifications on threshold cross). Requires two manual Supabase migrations: `backend/watchlist_alerts_schema.sql` + `backend/watchlist_notifications_schema.sql`.
 
 ## Next — Noah
 ### Autonomous Improvement Phase 1 (complete ✓)

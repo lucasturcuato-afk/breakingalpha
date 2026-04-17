@@ -93,6 +93,12 @@ Replaced GitHub Actions native cron on 2026-04-13 — GitHub's built-in schedule
 
 **source_credibility:** id, source (text), win_rate (float), updated_at. Credibility scores for article sources; read by signal badge system.
 
+**watchlist_articles:** identifier, title, source, published_at, relevance_score, score_breakdown (jsonb), url, fetched_at. User-agnostic (shared per identifier). V4B added `score_breakdown` column — run `ALTER TABLE watchlist_articles ADD COLUMN IF NOT EXISTS score_breakdown jsonb` if missing.
+
+**watchlist_notifications:** id (uuid), user_id (uuid FK), title (text), body (text), type (text), identifier (text, nullable), read (boolean, default false), created_at. User-scoped RLS. Schema in `backend/watchlist_notifications_schema.sql` — **must run manually in Supabase**.
+
+**watchlist_price_alerts:** id (uuid), user_id (uuid FK), identifier (text), alert_type (text: percent_change/price_above/price_below), threshold (numeric), direction (text: up/down/either, nullable), enabled (boolean), last_triggered (timestamptz, nullable), created_at. UNIQUE (user_id, identifier, alert_type, threshold). Schema in `backend/watchlist_alerts_schema.sql` — **must run manually in Supabase**.
+
 **pipeline_runs:** Extended with `brief_addendum` (text, nullable) and `brief_addendum_used` (boolean) columns for feedback loop integration (migrations: 20260414_add_brief_addendum_columns.sql, 20260414_add_brief_addendum_used_pipeline_runs.sql).
 
 **pipeline_runs, run_articles, brief_quality_scores, selection_audit, trend_clusters:** Phase 1 observation layer tables — see git history for schemas.
@@ -151,6 +157,10 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
 
 ## Recently Completed (2026-04-17)
+**Watchlist V4C sprint (PR pending, branch noah/watchlist-v4c):** Fix XLSX Summary sheet duplicate rows (Map dedup keyed on identifier, sorted by count desc). Price alert config UI on `/watchlist/[identifier]` — ticker-gated section, list with toggle/delete, add form (type + threshold + button), max 5 per ticker, immediate optimistic fetch. `/api/watchlist-alerts` route (GET/POST/PATCH/DELETE) with `getSupabaseWithUser()` auth. `backend/watchlist_alerts_schema.sql` — run manually in Supabase (`watchlist_price_alerts` table + 4 RLS policies). Price alert trigger in `watchlist_sync.py` — `fetch_ticker_price(ticker)` calls Finnhub `/api/v1/quote`, `check_price_alerts(supabase, ticker, current_price, prev_close)` runs after each ticker sync (4h cooldown, percent_change/price_above/price_below logic, inserts into `watchlist_notifications`, updates `last_triggered`).
+
+**Watchlist V4B sprint (PR #98 merged to main):** Real SheetJS XLSX export replacing fake CSV — Articles + Summary worksheets, 30-day window, 2000-row cap. In-app notification infrastructure — `watchlist_notifications` table + `/api/watchlist-notifications` (GET/PATCH/DELETE); bell icon in sidebar with amber badge, slide-in drawer (inline style transition), mark-read/mark-all-read. Supabase Realtime watchlist count badge in sidebar. Mobile watchlist layout — `isMobile` state + resize listener, sticky bottom bar, full bottom sheet. Keyboard nav audit/fixes on watchlist pages. Relevance scoring improvements in `watchlist_sync.py` — boilerplate penalty (`BOILERPLATE_PATTERNS`), prominence boost, `score_breakdown` JSON column in `watchlist_articles`. GDELT conditional on `exa_count < 5`. Article clustering UI in `[identifier]/page.tsx` — Jaccard similarity + capitalized entity overlap via `src/lib/clustering-utils.ts`, expandable "N more sources" rows.
+
 **Watchlist V4A sprint (PR #97 merged to main):** Drag-to-reorder via HTML5 DnD with optimistic UI + `PATCH /api/watchlist-reorder`; `sort_order` column added (migration: `backend/watchlist_sort_order_migration.sql` — **must run manually in Supabase**). Keyboard navigation: J/K/Enter/A/Esc/? on `/watchlist`, J/K/O/B/N/Esc on identifier detail page, with `isTyping`/modal guards. Export: company PDF via `window.print()` + `#company-print-content`, full watchlist print at `/watchlist/export`, CSV at `/api/export/watchlist-xlsx`. Story clustering in `watchlist_sync.py` using Jaccard token similarity + financial entity overlap (48h window); three helpers: `_title_tokens`, `extract_key_entities`, `is_same_story`. Tailwind v4 safelist: `@source inline(...)` in globals.css forces class generation; identifier page borders switched to inline styles.
 
 ## Recently Completed (2026-04-15)
@@ -217,6 +227,9 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 10. **Phase 1 hardening — observe.py reconstruction fix (PR #56)** — `_reconstruct_selected()` rewritten to mirror current `synthesize._select_articles_for_synthesis()` (spine=12, floor=6, sector_cap=3, floor_min=7). `audit.py` `_TARGET_COUNT` corrected 20→18. Stale `_diversify_articles` reconstruction logic replaced. No schema changes.
 
 ## Pending / Known Issues
+- **V4C watchlist_price_alerts table** — must run `backend/watchlist_alerts_schema.sql` manually in Supabase SQL editor before price alert UI/trigger is functional.
+- **V4B watchlist_notifications table** — must run `backend/watchlist_notifications_schema.sql` manually in Supabase SQL editor before bell drawer shows real data.
+- **V4B score_breakdown column** — run `ALTER TABLE watchlist_articles ADD COLUMN IF NOT EXISTS score_breakdown jsonb` if column was not added via V4B migration.
 - **Watchlist sort_order migration pending** — V4A drag-to-reorder requires manual execution of `backend/watchlist_sort_order_migration.sql` in Supabase SQL editor to add `sort_order` column. Frontend gracefully handles missing column (null defaults to created_at order) until migration runs.
 - **Track Record outcome data sparse** — Page is live but sparse outcome data until more theses cycle through archive state over time; breadth will improve as user base grows.
 - **ConvictionRing partial arc fill deferred** — Currently shows full colored circle with color-coding (gold=HIGH, amber=MEDIUM, gray=WATCH, red=BEARISH); arc visualization deferred due to Tailwind v4 preflight SVG interference. Can be revisited once CSS preflight handling is resolved.
