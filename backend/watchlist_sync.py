@@ -4,12 +4,15 @@ Pre-fetches articles for all watchlist identifiers from Finnhub, Exa, and GDELT,
 then upserts them into the watchlist_articles Supabase table.
 """
 
+import logging
 import os, hashlib, re, time
 from datetime import datetime, timezone, timedelta
 from urllib.parse import urlparse
 import requests
 from dotenv import load_dotenv
 from supabase import create_client
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
@@ -53,6 +56,14 @@ FINANCIAL_BOOST_PATTERNS = [
     "revenue", "profit", "quarterly", "analyst", "investor",
     "valuation", "series a", "series b", "series c", "billion",
     "million", "deal", "partnership", "ceo", "launches", "expands",
+]
+
+BOILERPLATE_PATTERNS = [
+    r'\b(increased|decreased|reduced|raised|added|trimmed|bought|sold)\s+(its\s+)?(position|stake|holding)',
+    r'\b(13[fg]|13-[fg])\b',
+    r'\bETF\s+(added|removed|increased|holds)\b',
+    r'\bfund\s+(bought|sold|holds|increased|reduced)\b',
+    r'\bindex\s+(addition|removal|rebalance)\b',
 ]
 
 BLOCKED_DOMAINS = [
@@ -166,29 +177,58 @@ def score_relevance(article: dict, company_name: str) -> int:
     title = (article.get("title") or "").lower()
     summary = (article.get("summary") or "").lower()
     name = company_name.lower()
+    identifier = (article.get("article_id") or "").split("-")[0]
 
-    score = 5
+    base = 5
+    title_bonus = 0
+    boilerplate_penalty = 0
+    prominence_bonus = 0
+    noise_penalty = 0
 
     # Company name match
     if name in title:
-        score += 2
+        title_bonus += 2
     elif name in summary:
-        score += 1
+        title_bonus += 1
 
     # Financial signal boost
     combined = title + " " + summary
     if any(pattern in combined for pattern in FINANCIAL_BOOST_PATTERNS):
-        score += 1
+        title_bonus += 1
 
     # Noise penalty — non-financial content
     if any(pattern in title for pattern in NOISE_TITLE_PATTERNS):
-        score -= 3
+        noise_penalty -= 3
 
     # Very short or empty title penalty
     if len(title.strip()) < 20:
-        score -= 1
+        noise_penalty -= 1
 
-    return max(1, min(10, score))
+    # Boilerplate penalty: institutional ownership churn and index mechanics
+    raw_title = (article.get("title") or "")
+    raw_summary = (article.get("summary") or "")
+    title_is_boilerplate = any(re.search(p, raw_title, re.IGNORECASE) for p in BOILERPLATE_PATTERNS)
+    summary_is_boilerplate = any(re.search(p, raw_summary, re.IGNORECASE) for p in BOILERPLATE_PATTERNS)
+    if title_is_boilerplate:
+        boilerplate_penalty -= 2
+        logger.debug("Boilerplate penalty applied to: %s", raw_title[:60])
+    if summary_is_boilerplate:
+        boilerplate_penalty -= 1
+
+    # Title prominence boost: company name or ticker in first 40 chars
+    title_prefix = (article.get("title") or "")[:40].lower()
+    if name in title_prefix or identifier.lower() in title_prefix:
+        prominence_bonus += 1
+
+    score = base + title_bonus + noise_penalty + boilerplate_penalty + prominence_bonus
+    score = max(1, min(10, score))
+
+    article["score_breakdown"] = (
+        f"base:{base} title:{title_bonus:+d} noise:{noise_penalty:+d} "
+        f"boilerplate:{boilerplate_penalty:+d} prominence:{prominence_bonus:+d} = {score}"
+    )
+
+    return score
 
 
 def fetch_finnhub_articles(identifier: str, company_name: str) -> list[dict]:
@@ -298,7 +338,7 @@ def fetch_gdelt_articles(identifier: str, company_name: str) -> list[dict]:
             "format": "json",
             "sort": "DateDesc",
         }
-        backoff_delays = [2, 4, 8]
+        backoff_delays = [3, 6, 12]
         resp = None
         for attempt, delay in enumerate(backoff_delays + [None], start=1):
             resp = requests.get(
@@ -399,6 +439,7 @@ def upsert_articles_batch(identifier: str, articles: list[dict]) -> int:
                 "summary": a.get("summary"),
                 "published_at": a.get("published_at"),
                 "relevance_score": a.get("relevance_score", 5),
+                "score_breakdown": a.get("score_breakdown"),
                 "fetched_at": now_iso,
             }
             for a in batch
@@ -454,11 +495,15 @@ def sync_identifier(identifier: str, entry_type: str, display_name: str | None) 
         except Exception as ex:
             print(f"⚠ Exa error for {identifier}: {ex}")
 
-        try:
-            gdelt_articles = fetch_gdelt_articles(identifier, company_name)
-            time.sleep(1.5)
-        except Exception as ex:
-            print(f"⚠ GDELT error for {identifier}: {ex}")
+        exa_count = len(exa_articles)
+        if entry_type == "company" and exa_count < 5:
+            try:
+                gdelt_articles = fetch_gdelt_articles(identifier, company_name)
+                time.sleep(1.5)
+            except Exception as ex:
+                print(f"⚠ GDELT error for {identifier}: {ex}")
+        else:
+            logger.info("GDELT skipped for %s: Exa returned %d results", identifier, exa_count)
 
         all_articles = finnhub_articles + exa_articles + gdelt_articles
         now = datetime.now(timezone.utc)
