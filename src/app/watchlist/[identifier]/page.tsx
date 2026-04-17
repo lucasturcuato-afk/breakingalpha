@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useMemo, useEffect } from "react";
+import { use, useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -144,6 +144,8 @@ export default function WatchlistIdentifierPage({
   const [noteLoading, setNoteLoading] = useState(true);
   const [notesOpen, setNotesOpen] = useState(false);
   const [noteUnauthenticated, setNoteUnauthenticated] = useState(false);
+  const [selectedArticleIndex, setSelectedArticleIndex] = useState<number | null>(null);
+  const notesFocusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleBriefGenerated = async (text: string) => {
     setBriefGeneratedAt(new Date());
@@ -509,6 +511,107 @@ Constraints:
 - Write for a reader who already knows what a P/E ratio is`;
   }, [decoded, companyName, isSector, quote, articles]);
 
+  function isTyping(): boolean {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName.toUpperCase();
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" ||
+      (el as HTMLElement).contentEditable === "true";
+  }
+
+  const sortedArticles = useMemo(() => sortArticles(articles, sortMode), [articles, sortMode]);
+
+  useEffect(() => {
+    const isAnyModalOpen = memoOpen || articleMemoEntry !== null;
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (isTyping()) return;
+      // Also skip if notes textarea is focused
+      const notesEl = document.getElementById("notes-textarea");
+      if (notesEl && document.activeElement === notesEl) return;
+
+      switch (e.key) {
+        case "j":
+        case "J":
+          e.preventDefault();
+          if (!isAnyModalOpen) {
+            setSelectedArticleIndex(prev =>
+              prev === null ? 0 : Math.min(prev + 1, sortedArticles.length - 1)
+            );
+          }
+          break;
+        case "k":
+        case "K":
+          e.preventDefault();
+          if (!isAnyModalOpen) {
+            setSelectedArticleIndex(prev =>
+              prev === null ? 0 : Math.max(prev - 1, 0)
+            );
+          }
+          break;
+        case "o":
+        case "O":
+          if (!isAnyModalOpen && selectedArticleIndex !== null && sortedArticles[selectedArticleIndex]?.url) {
+            e.preventDefault();
+            window.open(sortedArticles[selectedArticleIndex].url, "_blank", "noopener,noreferrer");
+          }
+          break;
+        case "b":
+        case "B":
+          if (!isAnyModalOpen && !loading) {
+            e.preventDefault();
+            setBriefGeneratedAt(new Date());
+            setMemoOpen(true);
+          }
+          break;
+        case "n":
+        case "N":
+          if (!isAnyModalOpen) {
+            e.preventDefault();
+            const textarea = document.getElementById("notes-textarea") as HTMLTextAreaElement | null;
+            if (textarea) {
+              setNotesOpen(true);
+              if (notesFocusTimeoutRef.current) clearTimeout(notesFocusTimeoutRef.current);
+              notesFocusTimeoutRef.current = setTimeout(() => {
+                textarea.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                textarea.focus();
+              }, 50);
+            }
+          }
+          break;
+        case "Escape":
+          e.preventDefault();
+          if (memoOpen) {
+            setMemoOpen(false);
+          } else if (articleMemoEntry !== null) {
+            setArticleMemoEntry(null);
+          } else {
+            router.back();
+          }
+          break;
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [memoOpen, articleMemoEntry, selectedArticleIndex, sortedArticles, loading, router]);
+
+  useEffect(() => {
+    if (selectedArticleIndex === null) return;
+    const el = document.querySelector(`[data-article-idx="${selectedArticleIndex}"]`);
+    el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [selectedArticleIndex]);
+
+  useEffect(() => {
+    return () => {
+      if (notesFocusTimeoutRef.current) clearTimeout(notesFocusTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    setSelectedArticleIndex(null);
+  }, [sortMode]);
+
   return (
     <AppShell
       pageTitle={decoded}
@@ -516,6 +619,14 @@ Constraints:
       moodHeadline="Markets steady"
       moodDetails={["VIX 14.2", "S&P +0.38%"]}
     >
+      <style>{`
+  @media print {
+    [data-sidebar], nav, .topbar, header { display: none !important; }
+    body { background: white !important; }
+    #company-print-content { display: block !important; }
+    .p-6.max-w-\\[1100px\\] { display: none !important; }
+  }
+`}</style>
       <div className="p-6 max-w-[1100px]">
         {/* Back button */}
         <button
@@ -650,6 +761,20 @@ Constraints:
                   )}
                 </>
               )}
+
+              {/* Export PDF button */}
+              {!isSector && (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-border-base bg-white text-text-muted font-sans text-[12px] hover:text-text-primary transition-colors cursor-pointer w-full"
+                  >
+                    Export PDF
+                  </button>
+                  <p className="font-data text-[9px] text-text-faint mt-1 text-center">Opens print dialog — select &ldquo;Save as PDF&rdquo;</p>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -706,10 +831,12 @@ Constraints:
             />
           ) : (
             <div className="space-y-2">
-              {sortArticles(articles, sortMode).map((a) => (
+              {sortedArticles.map((a, idx) => (
                 <div
                   key={a.id}
+                  data-article-idx={idx}
                   className="bg-white border border-border-base rounded-xl p-3"
+                  style={{ borderLeft: selectedArticleIndex === idx ? '2px solid #d97706' : undefined }}
                 >
                   <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                     {(a.industry_verticals ?? []).map((v) => (
@@ -801,6 +928,7 @@ Constraints:
               ) : (
                 <div>
                   <textarea
+                    id="notes-textarea"
                     className="w-full min-h-[80px] bg-parchment-mid border border-border-base rounded-xl px-4 py-3 font-sans text-[12px] text-text-primary placeholder:text-text-faint resize-y focus:outline-none focus:border-gold transition-colors"
                     placeholder="Add a note..."
                     value={noteText}
@@ -850,6 +978,59 @@ Constraints:
           type="article"
         />
       )}
+
+      {/* Print-only layout — hidden on screen, visible when printing */}
+      <div id="company-print-content" className="hidden print:block p-8 font-sans">
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <p className="text-[10px] uppercase tracking-[3px] text-gray-500 mb-1">Signalera Research Note</p>
+            <h1 className="text-[28px] font-bold text-gray-900">{decoded}</h1>
+            {(storedDisplayName ?? LEGACY_TICKER_NAMES[decoded.toUpperCase()]) && (
+              <p className="text-[14px] text-gray-500 mt-0.5">{storedDisplayName ?? LEGACY_TICKER_NAMES[decoded.toUpperCase()]}</p>
+            )}
+          </div>
+          <p className="text-[11px] text-gray-400">{new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
+        </div>
+        <hr className="border-gray-300 mb-6" />
+
+        {cachedBriefText && (
+          <div className="mb-6">
+            <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">AI Brief</p>
+            <div className="text-[12px] text-gray-700 leading-relaxed whitespace-pre-wrap">{cachedBriefText}</div>
+          </div>
+        )}
+
+        {noteText && (
+          <div className="mb-6">
+            <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Analyst Note</p>
+            <p className="text-[12px] italic text-gray-600">{noteText}</p>
+          </div>
+        )}
+
+        {articles.length > 0 && (
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-3">Recent Coverage</p>
+            <div className="space-y-3">
+              {articles.slice(0, 15).map((a, i) => (
+                <div key={a.id ?? i} className="border-b border-gray-100 pb-3">
+                  <p className="text-[12px] font-bold text-gray-900">{a.title}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    {[a.source, a.published_at ? new Date(a.published_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : null].filter(Boolean).join(" · ")}
+                  </p>
+                  {a.summary && <p className="text-[11px] text-gray-600 mt-0.5">{a.summary}</p>}
+                  {a.url && <p className="text-[9px] text-gray-400 mt-0.5">{a.url}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-12 pt-4 border-t border-gray-200">
+          <p className="text-[9px] text-gray-400 text-center">
+            Generated by Signalera · {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} · AI-generated content · Not financial advice
+          </p>
+        </div>
+      </div>
     </AppShell>
   );
 }

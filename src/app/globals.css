@@ -204,3 +204,11 @@ html.dark .bg-white {
   background-color: var(--parchment-mid, #faf5ed);
 }
 
+/*
+  Force-generate dynamic utility classes that are conditionally applied
+  in JSX and may not be picked up by Tailwind v4's static content scan.
+  These cover: watchlist drag handle visibility, drag-over indicators,
+  keyboard-selection highlights, and entry selection borders.
+*/
+@source inline("{opacity-0,opacity-50,opacity-100,group-hover:opacity-100,border-l-2,border-t-2,border-l-amber-500,border-t-amber-500,bg-amber-50/20,bg-amber-50/30}");
+

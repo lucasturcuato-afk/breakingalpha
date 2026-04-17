@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { AppShell } from "@/components/shell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -105,6 +106,7 @@ interface WatchlistEntry {
   type: string;
   display_name?: string;
   created_at?: string;
+  sort_order?: number | null;
 }
 
 interface WatchlistPrice {
@@ -366,6 +368,15 @@ export default function WatchlistPage() {
   const [selectedIdentifier, setSelectedIdentifier] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<"newest" | "relevant">("newest");
   const [ageFilter, setAgeFilter] = useState<"all" | "today" | "week" | "month">("all");
+  const [dragState, setDragState] = useState<{
+    draggingId: string | null;
+    dragOverId: string | null;
+    dragGroup: string | null;
+  }>({ draggingId: null, dragOverId: null, dragGroup: null });
+  const [dragError, setDragError] = useState<string | null>(null);
+  const dragErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [selectedEntryIndex, setSelectedEntryIndex] = useState<number | null>(null);
+  const [showShortcutLegend, setShowShortcutLegend] = useState(false);
 
   const fetchPrices = useCallback((entries: WatchlistEntry[]) => {
     const tickers = entries.filter((e) => e.type === "ticker").map((e) => e.identifier);
@@ -444,15 +455,34 @@ export default function WatchlistPage() {
           seen2.add(key);
           return true;
         });
-        setWatchlist(migratedEntries);
-        await fetchAllArticles(migratedEntries);
-        fetchPrices(migratedEntries);
+        const sortedMigrated = [...migratedEntries].sort((a, b) => {
+          const aOrder = (a as WatchlistEntry & { sort_order?: number | null }).sort_order;
+          const bOrder = (b as WatchlistEntry & { sort_order?: number | null }).sort_order;
+          if (aOrder == null && bOrder == null) return 0;
+          if (aOrder == null) return 1;
+          if (bOrder == null) return -1;
+          if (aOrder !== bOrder) return aOrder - bOrder;
+          return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+        });
+        setWatchlist(sortedMigrated);
+        await fetchAllArticles(sortedMigrated);
+        fetchPrices(sortedMigrated);
         return;
       }
 
-      setWatchlist(newEntries);
-      await fetchAllArticles(newEntries);
-      fetchPrices(newEntries);
+      // Sort by sort_order ASC (NULLS LAST), then created_at ASC
+      const sortedEntries = [...newEntries].sort((a, b) => {
+        const aOrder = (a as WatchlistEntry & { sort_order?: number | null }).sort_order;
+        const bOrder = (b as WatchlistEntry & { sort_order?: number | null }).sort_order;
+        if (aOrder == null && bOrder == null) return 0;
+        if (aOrder == null) return 1;
+        if (bOrder == null) return -1;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+      });
+      setWatchlist(sortedEntries);
+      await fetchAllArticles(sortedEntries);
+      fetchPrices(sortedEntries);
     } catch (e) {
       console.error("Failed to refresh watchlist:", e);
     } finally {
@@ -534,12 +564,11 @@ export default function WatchlistPage() {
   const losers = tickers.filter((e) => prices[e.identifier]?.pct < 0).length;
   const flat = tickers.length - gainers - losers;
 
-  const sectorEntries = watchlist.filter((e) => e.type === "sector");
-  const nonSectorEntries = watchlist.filter((e) => e.type !== "sector");
+  const sectorEntries = useMemo(() => watchlist.filter((e) => e.type === "sector"), [watchlist]);
+  const nonSectorEntries = useMemo(() => watchlist.filter((e) => e.type !== "sector"), [watchlist]);
   const showDivider = sectorEntries.length > 0 && nonSectorEntries.length > 0;
-
-  const publicEntries = nonSectorEntries.filter((e) => e.type === "ticker");
-  const privateEntries = nonSectorEntries.filter((e) => e.type === "company");
+  const publicEntries = useMemo(() => nonSectorEntries.filter((e) => e.type === "ticker"), [nonSectorEntries]);
+  const privateEntries = useMemo(() => nonSectorEntries.filter((e) => e.type === "company"), [nonSectorEntries]);
 
   const selectedEntry = watchlist.find(e => e.identifier === selectedIdentifier);
   const selectedDisplayLabel = selectedIdentifier
@@ -596,6 +625,180 @@ export default function WatchlistPage() {
     ).slice(0, 60);
   }, [selectedIdentifier, articlesByIdentifier, sortMode, ageFilter]);
 
+  const handleDragStart = useCallback((e: React.DragEvent, entry: WatchlistEntry, group: string) => {
+    setDragState({ draggingId: entry.id, dragOverId: null, dragGroup: group });
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", entry.id);
+    // Set transparent drag image for cleaner UX
+    const ghost = document.createElement("div");
+    ghost.style.position = "absolute";
+    ghost.style.top = "-1000px";
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, 0, 0);
+    setTimeout(() => { try { document.body.removeChild(ghost); } catch { /* already removed */ } }, 0);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, entry: WatchlistEntry, group: string) => {
+    e.preventDefault();
+    if (dragState.dragGroup !== group) return; // block cross-group
+    if (dragState.dragOverId !== entry.id) {
+      setDragState(prev => ({ ...prev, dragOverId: entry.id }));
+    }
+  }, [dragState.dragGroup, dragState.dragOverId]);
+
+  const handleDragEnd = useCallback(() => {
+    setDragState({ draggingId: null, dragOverId: null, dragGroup: null });
+  }, []);
+
+  const persistReorder = useCallback(async (updates: { id: string; sort_order: number }[]) => {
+    try {
+      const res = await fetch("/api/watchlist-reorder", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Reorder failed: ${res.status}`);
+      }
+    } catch (e) {
+      console.error("Reorder persist failed:", e);
+      throw e;
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetEntry: WatchlistEntry, group: string) => {
+    e.preventDefault();
+    if (dragState.dragGroup !== group || !dragState.draggingId) return;
+    if (dragState.draggingId === targetEntry.id) {
+      setDragState({ draggingId: null, dragOverId: null, dragGroup: null });
+      return;
+    }
+
+    // Get the entries for this group
+    const groupEntries = group === "sector" ? sectorEntries
+      : group === "ticker" ? publicEntries
+      : privateEntries;
+
+    const fromIdx = groupEntries.findIndex(e => e.id === dragState.draggingId);
+    const toIdx = groupEntries.findIndex(e => e.id === targetEntry.id);
+    if (fromIdx === -1 || toIdx === -1) {
+      setDragState({ draggingId: null, dragOverId: null, dragGroup: null });
+      return;
+    }
+
+    // Reorder within the group
+    const reordered = [...groupEntries];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+
+    // Assign sort_order with 1000-spacing
+    const updates = reordered.map((entry, idx) => ({
+      id: entry.id,
+      sort_order: (idx + 1) * 1000,
+    }));
+
+    // Optimistic update: rebuild watchlist with new order
+    const newWatchlist = group === "ticker"
+      ? [...watchlist.filter(e => e.type === "sector"), ...reordered, ...watchlist.filter(e => e.type === "company")]
+      : [...watchlist.filter(e => e.type !== "company"), ...reordered];
+
+    const prevWatchlist = [...watchlist];
+    setWatchlist(newWatchlist);
+    setDragState({ draggingId: null, dragOverId: null, dragGroup: null });
+
+    // Persist to backend
+    persistReorder(updates).catch(() => {
+      // Revert on error
+      setWatchlist(prevWatchlist);
+      setDragError("Reorder failed — changes reverted");
+      if (dragErrorTimeoutRef.current) clearTimeout(dragErrorTimeoutRef.current);
+      dragErrorTimeoutRef.current = setTimeout(() => setDragError(null), 3000);
+    });
+  }, [dragState, sectorEntries, publicEntries, privateEntries, watchlist, persistReorder]);
+
+  function isTyping(): boolean {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName.toUpperCase();
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" ||
+      (el as HTMLElement).contentEditable === "true";
+  }
+
+  const allEntries = useMemo(
+    () => [...sectorEntries, ...publicEntries, ...privateEntries],
+    [sectorEntries, publicEntries, privateEntries]
+  );
+
+  const focusAddInput = useCallback(() => {
+    const input = document.querySelector('input[placeholder*="ticker"], input[type="text"]') as HTMLInputElement | null;
+    input?.focus();
+  }, []);
+
+  useEffect(() => {
+    const isMemoOpen = memoEntry !== null || articleMemoEntry !== null;
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (isTyping()) return;
+      if (isMemoOpen) return;
+
+      switch (e.key) {
+        case "j":
+        case "J":
+          e.preventDefault();
+          setSelectedEntryIndex(prev =>
+            prev === null ? 0 : Math.min(prev + 1, allEntries.length - 1)
+          );
+          break;
+        case "k":
+        case "K":
+          e.preventDefault();
+          setSelectedEntryIndex(prev =>
+            prev === null ? 0 : Math.max(prev - 1, 0)
+          );
+          break;
+        case "Enter":
+          if (selectedEntryIndex !== null && allEntries[selectedEntryIndex]) {
+            e.preventDefault();
+            router.push(`/watchlist/${encodeURIComponent(allEntries[selectedEntryIndex].identifier)}`);
+          }
+          break;
+        case "a":
+        case "A":
+          e.preventDefault();
+          focusAddInput();
+          break;
+        case "Escape":
+          e.preventDefault();
+          setSelectedEntryIndex(null);
+          break;
+        case "?":
+          e.preventDefault();
+          setShowShortcutLegend(prev => !prev);
+          break;
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [memoEntry, articleMemoEntry, selectedEntryIndex, allEntries, router, focusAddInput]);
+
+  useEffect(() => {
+    function handleMouseDown() {
+      setSelectedEntryIndex(null);
+    }
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, []);
+
+  useEffect(() => {
+    if (selectedEntryIndex === null) return;
+    const entry = allEntries[selectedEntryIndex];
+    if (!entry) return;
+    const el = document.querySelector(`[data-entry-id="${entry.id}"]`);
+    el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [selectedEntryIndex, allEntries]);
+
   return (
     <AppShell pageTitle="Watchlist" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
       <div className="flex gap-6 p-6 h-[calc(100vh-var(--topbar-height)-var(--moodbar-height))]">
@@ -636,6 +839,24 @@ export default function WatchlistPage() {
             </div>
           )}
 
+          {tickers.length > 0 && (
+            <div className="flex items-center gap-2 mt-1">
+              <Link
+                href="/watchlist/export"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-base bg-white text-text-muted font-data text-[10px] hover:text-text-primary transition-colors cursor-pointer"
+              >
+                Export Report
+              </Link>
+              <a
+                href="/api/export/watchlist-xlsx"
+                download
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-base bg-white text-text-muted font-data text-[10px] hover:text-text-primary transition-colors cursor-pointer"
+              >
+                Export CSV
+              </a>
+            </div>
+          )}
+
           {/* Tracking list */}
           <div>
             <p className="font-data text-[9px] uppercase tracking-widest text-text-muted mb-2.5">
@@ -665,12 +886,15 @@ export default function WatchlistPage() {
                       return (
                         <div
                           key={entry.id}
+                          data-entry-id={entry.id}
                           onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
                           className={cn(
                             "flex items-center justify-between gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
-                            selectedIdentifier === entry.identifier
-                              ? "border-l-2 border-l-gold bg-gold-muted/30"
-                              : "bg-parchment-mid hover:border-border-hover",
+                            selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id
+                              ? "border-l-2 border-l-amber-500 bg-amber-50/20"
+                              : selectedIdentifier === entry.identifier
+                                ? "border-l-2 border-l-gold bg-gold-muted/30"
+                                : "bg-parchment-mid hover:border-border-hover",
                           )}
                         >
                           {/* Sector name — full width, no fixed constraint */}
@@ -721,16 +945,34 @@ export default function WatchlistPage() {
                       return (
                         <div
                           key={entry.id}
+                          data-entry-id={entry.id}
+                          draggable={true}
+                          onDragStart={(e) => handleDragStart(e, entry, "ticker")}
+                          onDragOver={(e) => handleDragOver(e, entry, "ticker")}
+                          onDragEnd={handleDragEnd}
+                          onDrop={(e) => handleDrop(e, entry, "ticker")}
                           onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
                           className={cn(
                             "flex gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
                             "items-start",
                             "min-h-[56px]",
-                            selectedIdentifier === entry.identifier
-                              ? "border-l-2 border-l-gold bg-gold-muted/30"
-                              : "bg-white hover:border-border-hover",
+                            selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id
+                              ? "border-l-2 border-l-amber-500 bg-amber-50/30"
+                              : selectedIdentifier === entry.identifier
+                                ? "border-l-2 border-l-gold bg-gold-muted/30"
+                                : "bg-white hover:border-border-hover",
+                            dragState.draggingId === entry.id ? "opacity-50" : "",
+                            dragState.dragOverId === entry.id && dragState.draggingId !== entry.id ? "border-t-2 border-t-amber-500" : "",
                           )}
                         >
+                          {/* Drag handle */}
+                          <div
+                            className="flex-shrink-0 self-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing px-1 text-text-faint"
+                            draggable={false}
+                          >
+                            ⠿
+                          </div>
+
                           {/* LEFT: identifier + optional display_name subtitle */}
                           <div className="flex flex-col min-w-0 flex-1">
                             <span className="font-data text-[13px] font-bold text-text-primary truncate">
@@ -788,16 +1030,34 @@ export default function WatchlistPage() {
                       return (
                         <div
                           key={entry.id}
+                          data-entry-id={entry.id}
+                          draggable={true}
+                          onDragStart={(e) => handleDragStart(e, entry, "company")}
+                          onDragOver={(e) => handleDragOver(e, entry, "company")}
+                          onDragEnd={handleDragEnd}
+                          onDrop={(e) => handleDrop(e, entry, "company")}
                           onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
                           className={cn(
                             "flex gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
                             "items-start",
                             "min-h-[56px]",
-                            selectedIdentifier === entry.identifier
-                              ? "border-l-2 border-l-gold bg-gold-muted/30"
-                              : "bg-white hover:border-border-hover",
+                            selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id
+                              ? "border-l-2 border-l-amber-500 bg-amber-50/30"
+                              : selectedIdentifier === entry.identifier
+                                ? "border-l-2 border-l-gold bg-gold-muted/30"
+                                : "bg-white hover:border-border-hover",
+                            dragState.draggingId === entry.id ? "opacity-50" : "",
+                            dragState.dragOverId === entry.id && dragState.draggingId !== entry.id ? "border-t-2 border-t-amber-500" : "",
                           )}
                         >
+                          {/* Drag handle */}
+                          <div
+                            className="flex-shrink-0 self-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing px-1 text-text-faint"
+                            draggable={false}
+                          >
+                            ⠿
+                          </div>
+
                           {/* LEFT: identifier + optional display_name subtitle */}
                           <div className="flex flex-col min-w-0 flex-1">
                             <span className="font-data text-[13px] font-bold text-text-primary truncate">
@@ -1029,6 +1289,12 @@ export default function WatchlistPage() {
         </div>
       </div>
 
+      {dragError && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-signal-dn text-white font-data text-[11px] px-4 py-2 rounded-lg shadow-lg z-50">
+          {dragError}
+        </div>
+      )}
+
       {memoEntry && (
         <MemoModal
           isOpen={true}
@@ -1048,6 +1314,44 @@ export default function WatchlistPage() {
           type="article"
         />
       )}
+
+      {showShortcutLegend && (
+        <div
+          className="fixed inset-0 z-[9998] bg-espresso/30 flex items-end justify-end p-6"
+          onClick={() => setShowShortcutLegend(false)}
+        >
+          <div
+            className="bg-white border border-border-base rounded-xl p-5 shadow-2xl min-w-[220px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">Keyboard Shortcuts</p>
+            <div className="space-y-1.5">
+              {[
+                { key: "J / K", desc: "Navigate" },
+                { key: "Enter", desc: "Open" },
+                { key: "A", desc: "Add ticker" },
+                { key: "Esc", desc: "Clear selection" },
+                { key: "?", desc: "This menu" },
+              ].map(({ key, desc }) => (
+                <div key={key} className="flex items-center justify-between gap-4">
+                  <kbd className="font-mono text-[10px] bg-parchment-mid border border-border-base rounded px-1.5 py-0.5 text-text-primary">{key}</kbd>
+                  <span className="font-data text-[11px] text-text-muted">{desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Shortcut hint button */}
+      <button
+        type="button"
+        onClick={() => setShowShortcutLegend(prev => !prev)}
+        className="fixed bottom-6 right-6 z-50 w-8 h-8 rounded-full bg-white border border-border-base shadow-md flex items-center justify-center font-data text-[12px] text-text-muted hover:text-espresso hover:border-gold transition-colors cursor-pointer"
+        aria-label="Keyboard shortcuts"
+      >
+        ?
+      </button>
     </AppShell>
   );
 }

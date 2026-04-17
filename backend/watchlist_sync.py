@@ -68,6 +68,66 @@ BLOCKED_URL_PATTERNS = [
     "/experts", "/directory", "/listing",
 ]
 
+STOP_WORDS = {
+    "the","a","an","of","in","at","to","for","and","or","is","are","was","were",
+    "it","its","with","on","by","as","from","that","this","be","been","has","have",
+    "had","will","would","could","should","may","might","news","says","said","new",
+    "how","what","why","when","who","after","before","over","up","down","about",
+}
+
+
+def _title_tokens(title: str) -> set[str]:
+    words = re.sub(r'[^\w\s]', '', title.lower()).split()
+    return {w for w in words if w not in STOP_WORDS and len(w) > 2}
+
+
+def extract_key_entities(title: str) -> set[str]:
+    """Extract financial entities only — dollar amounts and percentages.
+    Company names are intentionally excluded to prevent over-clustering
+    stories that share only a company name but cover different events.
+    """
+    entities: set[str] = set()
+    entities.update(re.findall(r'\$[\d,.]+[MBKTmbt]?', title, re.IGNORECASE))
+    entities.update(re.findall(r'\b[\d,.]+%', title))
+    return entities
+
+
+def token_similarity(title_a: str, title_b: str) -> float:
+    words_a = _title_tokens(title_a)
+    words_b = _title_tokens(title_b)
+    if len(words_a) < 3 or len(words_b) < 3:
+        return 0.0
+    intersection = words_a & words_b
+    union = words_a | words_b
+    return len(intersection) / len(union) if union else 0.0
+
+
+def is_same_story(a: dict, b: dict) -> bool:
+    """Returns True if two articles are likely covering the same news story.
+
+    ALL THREE conditions must be true:
+    1. They share at least one financial entity (dollar amount or percentage)
+       — company name alone does NOT trigger clustering.
+    2. Token similarity > 0.35.
+    3. Published within 48 hours of each other.
+    """
+    entities_a = extract_key_entities(a.get('title', ''))
+    entities_b = extract_key_entities(b.get('title', ''))
+    if not (entities_a & entities_b):
+        return False
+    if token_similarity(a.get('title', ''), b.get('title', '')) < 0.35:
+        return False
+    try:
+        pub_a = datetime.fromisoformat((a.get('published_at') or '').replace('Z', '+00:00'))
+        pub_b = datetime.fromisoformat((b.get('published_at') or '').replace('Z', '+00:00'))
+        if abs((pub_a - pub_b).total_seconds()) > 172800:
+            return False
+    except Exception:
+        # If either article lacks a parseable published_at, skip clustering
+        # to avoid false positives from timestamp-free sources (e.g. GDELT).
+        return False
+    return True
+
 
 def is_article_url(url: str) -> bool:
     if not url:
@@ -308,7 +368,18 @@ def dedup_articles(articles: list[dict]) -> list[dict]:
         if nt:
             seen_titles.add(nt)
         result.append(article)
-    return result
+
+    # Story clustering: remove articles that cover the same story as a representative
+    before_clustering = len(result)
+    # O(n²) — acceptable for typical post-dedup sizes (≤ ~50 articles per identifier).
+    representatives: list[dict] = []
+    for article in result:
+        if not any(is_same_story(article, r) for r in representatives):
+            representatives.append(article)
+    after_clustering = len(representatives)
+    removed = before_clustering - after_clustering
+    print(f"  Story clustering: {before_clustering} → {after_clustering} articles ({removed} removed)")
+    return representatives
 
 
 def upsert_articles_batch(identifier: str, articles: list[dict]) -> int:
