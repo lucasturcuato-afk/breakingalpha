@@ -4,5 +4,6 @@
 -- DO NOT run this from application code — execute manually in Supabase dashboard.
 
 ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS sort_order integer;
-UPDATE watchlist SET sort_order = (ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at))::integer;
+UPDATE watchlist SET sort_order = (ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at))::integer
+WHERE sort_order IS NULL;
 CREATE INDEX IF NOT EXISTS watchlist_sort_order ON watchlist(user_id, sort_order);

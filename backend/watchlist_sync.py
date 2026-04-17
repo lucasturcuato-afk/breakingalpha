@@ -76,25 +76,25 @@ STOP_WORDS = {
 }
 
 
-def normalize_title(title: str) -> set:
+def _title_tokens(title: str) -> set[str]:
     words = re.sub(r'[^\w\s]', '', title.lower()).split()
     return {w for w in words if w not in STOP_WORDS and len(w) > 2}
 
 
-def extract_key_entities(title: str) -> set:
+def extract_key_entities(title: str) -> set[str]:
     """Extract financial entities only — dollar amounts and percentages.
     Company names are intentionally excluded to prevent over-clustering
     stories that share only a company name but cover different events.
     """
-    entities: set = set()
-    entities.update(re.findall(r'\$[\d,.]+[MBKTmbt]?', title))
+    entities: set[str] = set()
+    entities.update(re.findall(r'\$[\d,.]+[MBKTmbt]?', title, re.IGNORECASE))
     entities.update(re.findall(r'\b[\d,.]+%', title))
     return entities
 
 
 def token_similarity(title_a: str, title_b: str) -> float:
-    words_a = normalize_title(title_a)
-    words_b = normalize_title(title_b)
+    words_a = _title_tokens(title_a)
+    words_b = _title_tokens(title_b)
     if len(words_a) < 3 or len(words_b) < 3:
         return 0.0
     intersection = words_a & words_b
@@ -105,7 +105,7 @@ def token_similarity(title_a: str, title_b: str) -> float:
 def is_same_story(a: dict, b: dict) -> bool:
     """Returns True if two articles are likely covering the same news story.
 
-    BOTH conditions must be true:
+    ALL THREE conditions must be true:
     1. They share at least one financial entity (dollar amount or percentage)
        — company name alone does NOT trigger clustering.
     2. Token similarity > 0.35.
@@ -123,6 +123,8 @@ def is_same_story(a: dict, b: dict) -> bool:
         if abs((pub_a - pub_b).total_seconds()) > 172800:
             return False
     except Exception:
+        # If either article lacks a parseable published_at, skip clustering
+        # to avoid false positives from timestamp-free sources (e.g. GDELT).
         return False
     return True
 
@@ -369,6 +371,7 @@ def dedup_articles(articles: list[dict]) -> list[dict]:
 
     # Story clustering: remove articles that cover the same story as a representative
     before_clustering = len(result)
+    # O(n²) — acceptable for typical post-dedup sizes (≤ ~50 articles per identifier).
     representatives: list[dict] = []
     for article in result:
         if not any(is_same_story(article, r) for r in representatives):
