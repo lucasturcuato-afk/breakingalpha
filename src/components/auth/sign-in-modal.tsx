@@ -29,7 +29,7 @@ export function SignInModal({
       <div
         className="absolute inset-0 bg-espresso/40 backdrop-blur-sm"
         onClick={onClose}
-        aria-hidden
+        aria-hidden={true}
       />
       {/* Card */}
       <div className="relative z-10 w-full max-w-[440px] bg-cream border border-border-base rounded-2xl shadow-[0_24px_48px_rgba(26,18,8,0.16)] overflow-hidden">

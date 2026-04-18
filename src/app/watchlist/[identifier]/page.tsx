@@ -916,7 +916,7 @@ Constraints:
         <hr className="border-border-base my-6" />
 
         {/* PRICE ALERTS SECTION — ticker only */}
-        {typeLabel === "ticker" && user !== null && (
+        {typeLabel === "ticker" && !!user && (
           <div className="mb-6">
             <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">
               Price Alerts
@@ -1017,7 +1017,7 @@ Constraints:
             )}
           </div>
         )}
-        {typeLabel === "ticker" && user !== null && <hr className="border-border-base my-6" />}
+        {typeLabel === "ticker" && !!user && <hr className="border-border-base my-6" />}
 
         {/* RECENT COVERAGE */}
         <div>
@@ -1243,7 +1243,7 @@ Constraints:
           )}
         </div>
 
-        {user !== null && (
+        {!!user && (
           <>
             <hr className="border-border-base my-6" />
 
