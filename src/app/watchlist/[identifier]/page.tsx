@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { ArrowLeft, Sparkles, ExternalLink, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 import { MemoModal } from "@/components/memo/MemoModal";
+import { SignInModal } from "@/components/auth/sign-in-modal";
 import { buildArticleOrFilter } from "@/lib/watchlist-utils";
 import { clusterArticles, type ArticleCluster } from "@/lib/clustering-utils";
 
@@ -159,6 +160,10 @@ export default function WatchlistIdentifierPage({
   const [selectedArticleIndex, setSelectedArticleIndex] = useState<number | null>(null);
   const notesFocusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [expandedClusters, setExpandedClusters] = useState<Map<string, boolean>>(new Map());
+  const [user, setUser] = useState<{ id: string } | null | undefined>(undefined); // undefined = loading
+  const [showSignIn, setShowSignIn] = useState(false);
+  const [signInHeadline, setSignInHeadline] = useState("Sign in to continue");
+  const [signInMessage, setSignInMessage] = useState("Create a free account to unlock full access.");
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
   const [alertsLoading, setAlertsLoading] = useState(true);
   const [alertType, setAlertType] = useState<"percent_change" | "price_above" | "price_below">("percent_change");
@@ -427,6 +432,12 @@ export default function WatchlistIdentifierPage({
     loadNote();
     return () => { cancelled = true; };
   }, [decoded]);
+
+  useEffect(() => {
+    getSupabase().auth.getUser().then(({ data }) => {
+      setUser(data.user ? { id: data.user.id } : null);
+    }).catch(() => setUser(null));
+  }, []);
 
   const handleNoteSave = async (text: string) => {
     try {
@@ -747,6 +758,22 @@ Constraints:
           </div>
         )}
 
+        {user === null && (
+          <div className="flex items-center justify-between mt-4 px-4 py-2.5 rounded-xl border" style={{ background: 'rgba(245, 166, 35, 0.08)', borderColor: 'var(--gold-border)' }}>
+            <span className="font-sans text-[12px]" style={{ color: 'var(--gold)' }}>
+              You&apos;re viewing a preview. Sign in to track {decoded} and personalize your feed.
+            </span>
+            <button
+              type="button"
+              onClick={() => { setSignInHeadline("Track " + decoded); setSignInMessage("Add " + decoded + " to your watchlist and get personalized coverage and alerts."); setShowSignIn(true); }}
+              className="font-sans text-[11px] font-semibold cursor-pointer ml-3 flex-shrink-0"
+              style={{ color: 'var(--gold)', background: 'none', border: 'none', padding: 0 }}
+            >
+              Sign in →
+            </button>
+          </div>
+        )}
+
         <hr className="border-border-base my-6" />
 
         {/* AI BRIEF SECTION */}
@@ -781,7 +808,15 @@ Constraints:
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => setMemoOpen(true)}
+                      onClick={() => {
+                        if (user === null) {
+                          setSignInHeadline(`Sign in to generate your brief`);
+                          setSignInMessage(`Track ${decoded} and get AI-generated research grounded in recent articles.`);
+                          setShowSignIn(true);
+                          return;
+                        }
+                        setMemoOpen(true);
+                      }}
                       disabled={loading}
                       className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gold text-cream font-sans text-[13px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer disabled:opacity-50"
                     >
@@ -790,7 +825,17 @@ Constraints:
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setCachedBriefText(null); setCachedBriefGeneratedAt(null); setMemoOpen(true); }}
+                      onClick={() => {
+                        if (user === null) {
+                          setSignInHeadline(`Sign in to generate your brief`);
+                          setSignInMessage(`Track ${decoded} and get AI-generated research grounded in recent articles.`);
+                          setShowSignIn(true);
+                          return;
+                        }
+                        setCachedBriefText(null);
+                        setCachedBriefGeneratedAt(null);
+                        setMemoOpen(true);
+                      }}
                       disabled={loading || articles.length === 0}
                       className="px-4 py-3 rounded-xl border border-border-base bg-white text-text-muted font-sans text-[13px] hover:text-text-primary transition-colors cursor-pointer disabled:opacity-50"
                     >
@@ -816,7 +861,16 @@ Constraints:
                   )}
                   <button
                     type="button"
-                    onClick={() => { setBriefGeneratedAt(new Date()); setMemoOpen(true); }}
+                    onClick={() => {
+                      if (user === null) {
+                        setSignInHeadline(`Sign in to generate your brief`);
+                        setSignInMessage(`Track ${decoded} and get AI-generated research grounded in recent articles.`);
+                        setShowSignIn(true);
+                        return;
+                      }
+                      setBriefGeneratedAt(new Date());
+                      setMemoOpen(true);
+                    }}
                     disabled={loading || articles.length === 0}
                     className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gold text-cream font-sans text-[13px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -839,7 +893,15 @@ Constraints:
                 <div className="mt-3">
                   <button
                     type="button"
-                    onClick={() => window.print()}
+                    onClick={() => {
+                      if (user === null) {
+                        setSignInHeadline("Sign in to export");
+                        setSignInMessage("Export research notes as PDF with a free Signalera account.");
+                        setShowSignIn(true);
+                        return;
+                      }
+                      window.print();
+                    }}
                     className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-border-base bg-white text-text-muted font-sans text-[12px] hover:text-text-primary transition-colors cursor-pointer w-full"
                   >
                     Export PDF
@@ -854,7 +916,7 @@ Constraints:
         <hr className="border-border-base my-6" />
 
         {/* PRICE ALERTS SECTION — ticker only */}
-        {typeLabel === "ticker" && (
+        {typeLabel === "ticker" && user !== null && (
           <div className="mb-6">
             <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">
               Price Alerts
@@ -955,7 +1017,7 @@ Constraints:
             )}
           </div>
         )}
-        {typeLabel === "ticker" && <hr className="border-border-base my-6" />}
+        {typeLabel === "ticker" && user !== null && <hr className="border-border-base my-6" />}
 
         {/* RECENT COVERAGE */}
         <div>
@@ -1007,195 +1069,236 @@ Constraints:
             />
           ) : (
             <div className="space-y-2">
-              {clusters.map((cluster, idx) => {
-                const a = cluster.leadArticle;
-                const isSelected = selectedArticleIndex === idx;
-                const isExpanded = expandedClusters.get(cluster.id) ?? false;
+              {(() => {
+                const GATE_LIMIT = user === null ? 5 : clusters.length;
+                const visible = clusters.slice(0, GATE_LIMIT);
+                const hasMore = user === null && clusters.length > GATE_LIMIT;
                 return (
-                  <div key={cluster.id} data-cluster-idx={idx}>
-                    {/* Lead article card */}
-                    <div
-                      className="bg-white border border-border-base rounded-xl p-3"
-                      style={{ borderLeft: isSelected ? '2px solid #d97706' : undefined }}
-                    >
-                      <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-                        {(a.industry_verticals ?? []).map((v) => (
-                          <span
-                            key={v}
-                            className="font-data text-[9px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200"
+                  <>
+                    {visible.map((cluster, idx) => {
+                      const a = cluster.leadArticle;
+                      const isSelected = selectedArticleIndex === idx;
+                      const isExpanded = expandedClusters.get(cluster.id) ?? false;
+                      return (
+                        <div key={cluster.id} data-cluster-idx={idx}>
+                          {/* Lead article card */}
+                          <div
+                            className="bg-white border border-border-base rounded-xl p-3"
+                            style={{ borderLeft: isSelected ? '2px solid #d97706' : undefined }}
                           >
-                            {v}
-                          </span>
-                        ))}
-                        {(a.activity_types ?? []).map((t) => (
-                          <span
-                            key={t}
-                            className="font-data text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200"
-                          >
-                            {t}
-                          </span>
-                        ))}
-                        {a.source && (
-                          <span className="font-data text-[9px] text-text-muted">
-                            {a.source}
-                          </span>
-                        )}
-                        {a.published_at && timeAgo(a.published_at) && (
-                          <span className="font-data text-[9px] text-text-faint ml-auto">
-                            {timeAgo(a.published_at)}
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setArticleMemoEntry(a)}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded font-data text-[9px] text-gold bg-gold-muted border border-gold-border hover:bg-gold/10 cursor-pointer transition-colors"
-                        >
-                          <Sparkles size={9} />
-                          Memo
-                        </button>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
-                          {a.title}
-                        </h4>
-                        {a.url && (
-                          <a
-                            href={a.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5"
-                          >
-                            <ExternalLink size={11} />
-                          </a>
-                        )}
-                      </div>
-                      {a.summary && (
-                        <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
-                          {a.summary}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Cluster expand row */}
-                    {cluster.isCluster && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedClusters((prev) => {
-                              const next = new Map(prev);
-                              next.set(cluster.id, !isExpanded);
-                              return next;
-                            })
-                          }
-                          className="flex items-center gap-1.5 mt-1 ml-2 font-data text-[10px] cursor-pointer transition-colors"
-                          style={{ color: '#d97706', background: 'none', border: 'none', padding: '2px 4px' }}
-                        >
-                          <ChevronDown
-                            size={12}
-                            style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.18s ease' }}
-                          />
-                          {isExpanded ? 'Collapse' : `${cluster.relatedArticles.length} more source${cluster.relatedArticles.length === 1 ? '' : 's'}`}
-                        </button>
-
-                        {isExpanded && (
-                          <div className="space-y-1 mt-1 ml-3">
-                            {cluster.relatedArticles.map((ra) => (
-                              <div
-                                key={ra.id}
-                                className="bg-white border border-border-base rounded-xl p-2.5"
-                                style={{ borderLeft: '2px solid #d97706' }}
+                            <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                              {(a.industry_verticals ?? []).map((v) => (
+                                <span
+                                  key={v}
+                                  className="font-data text-[9px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200"
+                                >
+                                  {v}
+                                </span>
+                              ))}
+                              {(a.activity_types ?? []).map((t) => (
+                                <span
+                                  key={t}
+                                  className="font-data text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200"
+                                >
+                                  {t}
+                                </span>
+                              ))}
+                              {a.source && (
+                                <span className="font-data text-[9px] text-text-muted">
+                                  {a.source}
+                                </span>
+                              )}
+                              {a.published_at && timeAgo(a.published_at) && (
+                                <span className="font-data text-[9px] text-text-faint ml-auto">
+                                  {timeAgo(a.published_at)}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setArticleMemoEntry(a)}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded font-data text-[9px] text-gold bg-gold-muted border border-gold-border hover:bg-gold/10 cursor-pointer transition-colors"
                               >
-                                <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                                  {ra.source && (
-                                    <span className="font-data text-[9px] text-text-muted">{ra.source}</span>
-                                  )}
-                                  {ra.published_at && timeAgo(ra.published_at) && (
-                                    <span className="font-data text-[9px] text-text-faint ml-auto">
-                                      {timeAgo(ra.published_at)}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-start gap-2">
-                                  <h4 className="font-display text-[12px] font-bold text-espresso leading-snug flex-1">
-                                    {ra.title}
-                                  </h4>
-                                  {ra.url && (
-                                    <a
-                                      href={ra.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5"
-                                    >
-                                      <ExternalLink size={10} />
-                                    </a>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
+                                <Sparkles size={9} />
+                                Memo
+                              </button>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
+                                {a.title}
+                              </h4>
+                              {a.url && (
+                                <a
+                                  href={a.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5"
+                                >
+                                  <ExternalLink size={11} />
+                                </a>
+                              )}
+                            </div>
+                            {a.summary && (
+                              <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
+                                {a.summary}
+                              </p>
+                            )}
                           </div>
-                        )}
-                      </>
+
+                          {/* Cluster expand row */}
+                          {cluster.isCluster && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedClusters((prev) => {
+                                    const next = new Map(prev);
+                                    next.set(cluster.id, !isExpanded);
+                                    return next;
+                                  })
+                                }
+                                className="flex items-center gap-1.5 mt-1 ml-2 font-data text-[10px] cursor-pointer transition-colors"
+                                style={{ color: '#d97706', background: 'none', border: 'none', padding: '2px 4px' }}
+                              >
+                                <ChevronDown
+                                  size={12}
+                                  style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.18s ease' }}
+                                />
+                                {isExpanded ? 'Collapse' : `${cluster.relatedArticles.length} more source${cluster.relatedArticles.length === 1 ? '' : 's'}`}
+                              </button>
+
+                              {isExpanded && (
+                                <div className="space-y-1 mt-1 ml-3">
+                                  {cluster.relatedArticles.map((ra) => (
+                                    <div
+                                      key={ra.id}
+                                      className="bg-white border border-border-base rounded-xl p-2.5"
+                                      style={{ borderLeft: '2px solid #d97706' }}
+                                    >
+                                      <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                                        {ra.source && (
+                                          <span className="font-data text-[9px] text-text-muted">{ra.source}</span>
+                                        )}
+                                        {ra.published_at && timeAgo(ra.published_at) && (
+                                          <span className="font-data text-[9px] text-text-faint ml-auto">
+                                            {timeAgo(ra.published_at)}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="flex items-start gap-2">
+                                        <h4 className="font-display text-[12px] font-bold text-espresso leading-snug flex-1">
+                                          {ra.title}
+                                        </h4>
+                                        {ra.url && (
+                                          <a
+                                            href={ra.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5"
+                                          >
+                                            <ExternalLink size={10} />
+                                          </a>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {hasMore && (
+                      <div className="relative mt-2">
+                        <div style={{ maxHeight: '48px', overflow: 'hidden', pointerEvents: 'none', userSelect: 'none', opacity: 0.7 }}>
+                          {clusters[GATE_LIMIT] && (
+                            <div className="bg-white border border-border-base rounded-xl p-3">
+                              <p className="font-data text-[9px] text-text-muted">{clusters[GATE_LIMIT].leadArticle.source}</p>
+                              <p className="font-display text-[13px] font-bold text-espresso leading-snug mt-1 line-clamp-1">{clusters[GATE_LIMIT].leadArticle.title}</p>
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '40px', background: 'linear-gradient(to bottom, transparent, var(--cream))' }} />
+                      </div>
                     )}
-                  </div>
+                    {hasMore && (
+                      <div className="flex items-center justify-between px-3 py-2.5 mt-1 rounded-xl border" style={{ background: 'rgba(245, 166, 35, 0.08)', borderColor: 'var(--gold-border)' }}>
+                        <span className="font-sans text-[12px]" style={{ color: 'var(--gold)' }}>
+                          Sign in to see full coverage for {decoded}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => { setSignInHeadline("Sign in for full coverage"); setSignInMessage("Get complete article coverage for " + decoded + " with a free account."); setShowSignIn(true); }}
+                          className="font-sans text-[11px] font-semibold cursor-pointer ml-3 flex-shrink-0"
+                          style={{ color: 'var(--gold)', background: 'none', border: 'none', padding: 0 }}
+                        >
+                          Sign in →
+                        </button>
+                      </div>
+                    )}
+                  </>
                 );
-              })}
+              })()}
             </div>
           )}
         </div>
 
-        <hr className="border-border-base my-6" />
+        {user !== null && (
+          <>
+            <hr className="border-border-base my-6" />
 
-        {/* NOTES SECTION */}
-        <div className="mb-6">
-          <button
-            type="button"
-            onClick={() => setNotesOpen(o => !o)}
-            className="flex items-center gap-2 group w-full text-left"
-          >
-            <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold">
-              Notes
-            </p>
-            {notesOpen ? (
-              <ChevronUp size={11} className="text-text-faint group-hover:text-gold transition-colors" />
-            ) : (
-              <ChevronDown size={11} className="text-text-faint group-hover:text-gold transition-colors" />
-            )}
-          </button>
+            {/* NOTES SECTION */}
+            <div className="mb-6">
+              <button
+                type="button"
+                onClick={() => setNotesOpen(o => !o)}
+                className="flex items-center gap-2 group w-full text-left"
+              >
+                <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold">
+                  Notes
+                </p>
+                {notesOpen ? (
+                  <ChevronUp size={11} className="text-text-faint group-hover:text-gold transition-colors" />
+                ) : (
+                  <ChevronDown size={11} className="text-text-faint group-hover:text-gold transition-colors" />
+                )}
+              </button>
 
-          {notesOpen && (
-            <div className="mt-3">
-              {noteUnauthenticated ? (
-                <p className="font-sans text-[12px] text-text-muted">Sign in to save notes.</p>
-              ) : noteLoading ? (
-                <div className="h-[80px] bg-parchment-mid border border-border-base rounded-xl animate-pulse" />
-              ) : (
-                <div>
-                  <textarea
-                    id="notes-textarea"
-                    className="w-full min-h-[80px] bg-parchment-mid border border-border-base rounded-xl px-4 py-3 font-sans text-[12px] text-text-primary placeholder:text-text-faint resize-y focus:outline-none focus:border-gold transition-colors"
-                    placeholder="Add a note..."
-                    value={noteText}
-                    onChange={(e) => setNoteText(e.target.value)}
-                    onBlur={(e) => handleNoteSave(e.target.value)}
-                  />
-                  <div className="flex justify-end items-center gap-2 mt-1.5">
-                    {noteSaved && (
-                      <span className="font-data text-[9px] text-signal-up">Saved ✓</span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleNoteSave(noteText)}
-                      className="px-3 py-1 rounded-md bg-gold text-cream font-data text-[10px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
-                    >
-                      Save note
-                    </button>
-                  </div>
+              {notesOpen && (
+                <div className="mt-3">
+                  {noteUnauthenticated ? (
+                    <p className="font-sans text-[12px] text-text-muted">Sign in to save notes.</p>
+                  ) : noteLoading ? (
+                    <div className="h-[80px] bg-parchment-mid border border-border-base rounded-xl animate-pulse" />
+                  ) : (
+                    <div>
+                      <textarea
+                        id="notes-textarea"
+                        className="w-full min-h-[80px] bg-parchment-mid border border-border-base rounded-xl px-4 py-3 font-sans text-[12px] text-text-primary placeholder:text-text-faint resize-y focus:outline-none focus:border-gold transition-colors"
+                        placeholder="Add a note..."
+                        value={noteText}
+                        onChange={(e) => setNoteText(e.target.value)}
+                        onBlur={(e) => handleNoteSave(e.target.value)}
+                      />
+                      <div className="flex justify-end items-center gap-2 mt-1.5">
+                        {noteSaved && (
+                          <span className="font-data text-[9px] text-signal-up">Saved ✓</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleNoteSave(noteText)}
+                          className="px-3 py-1 rounded-md bg-gold text-cream font-data text-[10px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
+                        >
+                          Save note
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
 
       {/* Brief MemoModal */}
@@ -1275,6 +1378,13 @@ Constraints:
           </p>
         </div>
       </div>
+
+      <SignInModal
+        isOpen={showSignIn}
+        onClose={() => setShowSignIn(false)}
+        headline={signInHeadline}
+        message={signInMessage}
+      />
     </AppShell>
   );
 }
