@@ -20,6 +20,7 @@ interface AppShellProps {
   moodHeadline?: string;
   moodDetails?: string[];
   rightPanel?: ReactNode;
+  isPreview?: boolean;
   children: ReactNode;
 }
 
@@ -29,6 +30,7 @@ export function AppShell({
   moodHeadline,
   moodDetails,
   rightPanel,
+  isPreview = false,
   children,
 }: AppShellProps) {
   const [panelOpen, setPanelOpen] = useState(true);
@@ -85,6 +87,30 @@ export function AppShell({
 
       {/* Main area */}
       <div className="h-screen flex flex-col ml-[var(--sidebar-width)] overflow-hidden">
+        {/* Preview banner */}
+        {isPreview && (
+          <div
+            className="flex items-center justify-between px-5 py-2 font-sans text-[12px]"
+            style={{ backgroundColor: "var(--espresso)", color: "var(--cream)" }}
+          >
+            <span>You're viewing a live preview of Signalera</span>
+            <button
+              onClick={() => {
+                window.location.href = "/auth";
+              }}
+              style={{
+                color: "var(--gold)",
+                fontWeight: 600,
+                cursor: "pointer",
+                background: "none",
+                border: "none",
+              }}
+            >
+              Sign in free →
+            </button>
+          </div>
+        )}
+
         {/* Mood bar */}
         <MoodBar mood={mood} headline={moodHeadline} details={moodDetails} />
 

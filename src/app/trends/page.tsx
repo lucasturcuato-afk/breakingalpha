@@ -1,16 +1,17 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import { SignalCard } from "@/components/trends/signal-card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { TrendingUp, Sparkles, Plus, ExternalLink } from "lucide-react";
+import { TrendingUp, Sparkles, Plus, ExternalLink, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { createBrowserClient } from "@supabase/ssr";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { trackClientEvent } from "@/lib/track-event";
+import { SignInModal } from "@/components/auth/sign-in-modal";
 import type { SignalData } from "@/components/trends";
 
 const INDUSTRY_VERTICALS = [
@@ -130,6 +131,18 @@ export default function TrendsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [memoSignal, setMemoSignal] = useState<SignalData | null>(null);
   const [addingThesis, setAddingThesis] = useState(false);
+  const [isSignedOut, setIsSignedOut] = useState(false);
+  const [showSignIn, setShowSignIn] = useState(false);
+
+  useEffect(() => {
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setIsSignedOut(user === null);
+    }).catch(() => setIsSignedOut(true));
+  }, []);
 
   // Personalization helpers — soft-fail when profile is null.
   const profileSectors = useMemo(
@@ -185,6 +198,11 @@ export default function TrendsPage() {
     return [...filtered].sort((a, b) => personalBoost(b) - personalBoost(a));
   }, [anomalyFilter, selectedVerticals, verticalMatchMode, selectedActivities, activityMatchMode, profileSectors, watchlistUpper]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const gatedIds = useMemo(
+    () => isSignedOut ? new Set(filtered.slice(0, 3).map((s) => s.id)) : null,
+    [isSignedOut, filtered],
+  );
+
   const grouped = useMemo(() => {
     const verticals = new Map<string, SignalData[]>();
     const activities = new Map<string, SignalData[]>();
@@ -210,124 +228,150 @@ export default function TrendsPage() {
 
   return (
     <AppShell pageTitle="Trends" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
+      {/* Preview nudge banner */}
+      {isSignedOut && (
+        <div className="px-6 py-3 border-b border-gold/20 flex items-center justify-between" style={{ backgroundColor: "var(--gold-muted)" }}>
+          <p className="font-sans text-[12px] text-text-secondary">
+            Previewing trend signals — sign in to unlock all {filtered.length} signals and filters.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowSignIn(true)}
+            className="flex-shrink-0 ml-4 font-sans text-[12px] font-semibold cursor-pointer"
+            style={{ color: "var(--espresso)" }}
+          >
+            Sign in free →
+          </button>
+        </div>
+      )}
+
       {/* Filter bar */}
-      <div className="sticky top-0 z-10 bg-parchment border-b border-border-base px-6 py-3 space-y-3">
-        {/* Row 1: Industry Vertical pills */}
-        <div>
-          <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1.5">
-            Industry Vertical
+      {isSignedOut ? (
+        <div className="sticky top-0 z-10 bg-parchment border-b border-border-base px-6 py-3">
+          <p className="font-sans text-[12px] text-text-muted flex items-center gap-1.5">
+            <Lock size={12} />
+            Filters available after sign in
           </p>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {INDUSTRY_VERTICALS.map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() =>
-                  setSelectedVerticals((prev) =>
-                    prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v],
-                  )
-                }
-                className={cn(
-                  "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
-                  selectedVerticals.includes(v)
-                    ? "border-gold bg-gold-muted text-gold"
-                    : "border-border-base bg-white text-text-muted hover:text-text-primary",
-                )}
-              >
-                {v}
-              </button>
-            ))}
-            {selectedVerticals.length >= 2 && (
-              <div className="flex items-center gap-1 ml-1">
-                {(["any", "all"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setVerticalMatchMode(mode)}
-                    className={cn(
-                      "px-2.5 py-0.5 rounded font-data text-[9px] font-bold uppercase cursor-pointer transition-colors border",
-                      verticalMatchMode === mode
-                        ? "border-gold bg-gold-muted text-gold"
-                        : "border-border-base bg-white text-text-muted hover:text-text-primary",
-                    )}
-                  >
-                    Match {mode}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
-
-        {/* Row 2: Activity Type pills */}
-        <div>
-          <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1.5">
-            Activity Type
-          </p>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {ACTIVITY_TYPES.map((a) => (
-              <button
-                key={a}
-                type="button"
-                onClick={() =>
-                  setSelectedActivities((prev) =>
-                    prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a],
-                  )
-                }
-                className={cn(
-                  "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
-                  selectedActivities.includes(a)
-                    ? "border-gold bg-gold-muted text-gold"
-                    : "border-border-base bg-white text-text-muted hover:text-text-primary",
-                )}
-              >
-                {a}
-              </button>
-            ))}
-            {selectedActivities.length >= 2 && (
-              <div className="flex items-center gap-1 ml-1">
-                {(["any", "all"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setActivityMatchMode(mode)}
-                    className={cn(
-                      "px-2.5 py-0.5 rounded font-data text-[9px] font-bold uppercase cursor-pointer transition-colors border",
-                      activityMatchMode === mode
-                        ? "border-gold bg-gold-muted text-gold"
-                        : "border-border-base bg-white text-text-muted hover:text-text-primary",
-                    )}
-                  >
-                    Match {mode}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Row 3: Severity + count */}
-        <div className="flex items-center gap-1.5">
-          {["all", "critical", "high", "medium", "low"].map((level) => (
-            <button
-              key={level}
-              type="button"
-              onClick={() => setAnomalyFilter(level)}
-              className={cn(
-                "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
-                anomalyFilter === level
-                  ? "border-gold bg-gold-muted text-gold"
-                  : "border-border-base bg-white text-text-muted hover:text-text-primary",
+      ) : (
+        <div className="sticky top-0 z-10 bg-parchment border-b border-border-base px-6 py-3 space-y-3">
+          {/* Row 1: Industry Vertical pills */}
+          <div>
+            <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1.5">
+              Industry Vertical
+            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {INDUSTRY_VERTICALS.map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() =>
+                    setSelectedVerticals((prev) =>
+                      prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v],
+                    )
+                  }
+                  className={cn(
+                    "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                    selectedVerticals.includes(v)
+                      ? "border-gold bg-gold-muted text-gold"
+                      : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                  )}
+                >
+                  {v}
+                </button>
+              ))}
+              {selectedVerticals.length >= 2 && (
+                <div className="flex items-center gap-1 ml-1">
+                  {(["any", "all"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setVerticalMatchMode(mode)}
+                      className={cn(
+                        "px-2.5 py-0.5 rounded font-data text-[9px] font-bold uppercase cursor-pointer transition-colors border",
+                        verticalMatchMode === mode
+                          ? "border-gold bg-gold-muted text-gold"
+                          : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                      )}
+                    >
+                      Match {mode}
+                    </button>
+                  ))}
+                </div>
               )}
-            >
-              {level === "all" ? "All" : level.charAt(0).toUpperCase() + level.slice(1)}
-            </button>
-          ))}
-          <span className="ml-auto font-sans text-[11px] text-text-muted">
-            {filtered.length} signals
-          </span>
+            </div>
+          </div>
+
+          {/* Row 2: Activity Type pills */}
+          <div>
+            <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1.5">
+              Activity Type
+            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {ACTIVITY_TYPES.map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() =>
+                    setSelectedActivities((prev) =>
+                      prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a],
+                    )
+                  }
+                  className={cn(
+                    "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                    selectedActivities.includes(a)
+                      ? "border-gold bg-gold-muted text-gold"
+                      : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                  )}
+                >
+                  {a}
+                </button>
+              ))}
+              {selectedActivities.length >= 2 && (
+                <div className="flex items-center gap-1 ml-1">
+                  {(["any", "all"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setActivityMatchMode(mode)}
+                      className={cn(
+                        "px-2.5 py-0.5 rounded font-data text-[9px] font-bold uppercase cursor-pointer transition-colors border",
+                        activityMatchMode === mode
+                          ? "border-gold bg-gold-muted text-gold"
+                          : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                      )}
+                    >
+                      Match {mode}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Row 3: Severity + count */}
+          <div className="flex items-center gap-1.5">
+            {["all", "critical", "high", "medium", "low"].map((level) => (
+              <button
+                key={level}
+                type="button"
+                onClick={() => setAnomalyFilter(level)}
+                className={cn(
+                  "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                  anomalyFilter === level
+                    ? "border-gold bg-gold-muted text-gold"
+                    : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                )}
+              >
+                {level === "all" ? "All" : level.charAt(0).toUpperCase() + level.slice(1)}
+              </button>
+            ))}
+            <span className="ml-auto font-sans text-[11px] text-text-muted">
+              {filtered.length} signals
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Content */}
       <div className="px-6 py-5">
@@ -345,14 +389,17 @@ export default function TrendsPage() {
                 BY INDUSTRY
               </h2>
               <div className="space-y-6">
-                {grouped.verticals.map(([vertical, signals]) => (
+                {grouped.verticals.map(([vertical, signals]) => {
+                  const visibleSignals = gatedIds ? signals.filter((s) => gatedIds.has(s.id)) : signals;
+                  if (visibleSignals.length === 0) return null;
+                  return (
                   <div key={vertical}>
                     <h3 className="font-sans text-[10px] font-semibold uppercase tracking-widest text-text-muted mb-3">
                       {vertical}
-                      <span className="ml-2 font-data text-[10px] text-text-faint">{signals.length}</span>
+                      <span className="ml-2 font-data text-[10px] text-text-faint">{visibleSignals.length}</span>
                     </h3>
                     <div className="grid grid-cols-2 gap-2.5">
-                      {signals.map((signal) => (
+                      {visibleSignals.map((signal) => (
                         <div
                           key={signal.id}
                           onClick={() => {
@@ -381,7 +428,7 @@ export default function TrendsPage() {
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); setMemoSignal(signal); }}
+                                  onClick={(e) => { e.stopPropagation(); if (isSignedOut) { setShowSignIn(true); return; } setMemoSignal(signal); }}
                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gold text-cream font-sans text-[11px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
                                 >
                                   <Sparkles size={11} />
@@ -392,6 +439,7 @@ export default function TrendsPage() {
                                   disabled={addingThesis}
                                   onClick={async (e) => {
                                     e.stopPropagation();
+                                    if (isSignedOut) { setShowSignIn(true); return; }
                                     setAddingThesis(true);
                                     try {
                                       await getSupabase().from("theses").insert({
@@ -430,7 +478,8 @@ export default function TrendsPage() {
                       ))}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -440,14 +489,17 @@ export default function TrendsPage() {
                 BY ACTIVITY
               </h2>
               <div className="space-y-6">
-                {grouped.activities.map(([activity, signals]) => (
+                {grouped.activities.map(([activity, signals]) => {
+                  const visibleSignals = gatedIds ? signals.filter((s) => gatedIds.has(s.id)) : signals;
+                  if (visibleSignals.length === 0) return null;
+                  return (
                   <div key={activity}>
                     <h3 className="font-sans text-[10px] font-semibold uppercase tracking-widest text-text-muted mb-3">
                       {activity}
-                      <span className="ml-2 font-data text-[10px] text-text-faint">{signals.length}</span>
+                      <span className="ml-2 font-data text-[10px] text-text-faint">{visibleSignals.length}</span>
                     </h3>
                     <div className="grid grid-cols-2 gap-2.5">
-                      {signals.map((signal) => (
+                      {visibleSignals.map((signal) => (
                         <div
                           key={signal.id}
                           onClick={() => {
@@ -476,7 +528,7 @@ export default function TrendsPage() {
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); setMemoSignal(signal); }}
+                                  onClick={(e) => { e.stopPropagation(); if (isSignedOut) { setShowSignIn(true); return; } setMemoSignal(signal); }}
                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gold text-cream font-sans text-[11px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
                                 >
                                   <Sparkles size={11} />
@@ -487,6 +539,7 @@ export default function TrendsPage() {
                                   disabled={addingThesis}
                                   onClick={async (e) => {
                                     e.stopPropagation();
+                                    if (isSignedOut) { setShowSignIn(true); return; }
                                     setAddingThesis(true);
                                     try {
                                       await getSupabase().from("theses").insert({
@@ -525,9 +578,39 @@ export default function TrendsPage() {
                       ))}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
+
+            {/* Gate row — signed-out users see first 3 signals then this */}
+            {isSignedOut && (
+              <div className="relative mt-2">
+                <div
+                  className="pointer-events-none absolute -top-16 left-0 right-0 h-16"
+                  style={{ background: "linear-gradient(to bottom, transparent, var(--parchment))" }}
+                />
+                <div
+                  className="flex items-center justify-between px-4 py-3 rounded-xl border"
+                  style={{ borderColor: "rgba(201,146,42,0.3)", backgroundColor: "var(--gold-muted)" }}
+                >
+                  <div className="flex items-center gap-2">
+                    <Lock size={14} style={{ color: "var(--gold)" }} />
+                    <span className="font-sans text-[13px] font-semibold text-espresso">
+                      Sign in to see all {filtered.length} signals
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowSignIn(true)}
+                    className="font-sans text-[12px] font-semibold cursor-pointer"
+                    style={{ color: "var(--gold)" }}
+                  >
+                    Sign in →
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -540,6 +623,12 @@ export default function TrendsPage() {
           type="brief"
         />
       )}
+      <SignInModal
+        isOpen={showSignIn}
+        onClose={() => setShowSignIn(false)}
+        headline="Sign in to unlock signals"
+        message="Create a free account to see all signals, generate memos, and track theses."
+      />
     </AppShell>
   );
 }

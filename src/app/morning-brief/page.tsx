@@ -22,6 +22,7 @@ import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
 import type { StoryData } from "@/components/dashboard";
 import type { DealData } from "@/components/brief";
 import { createBrowserClient } from "@supabase/ssr";
+import { SignInModal } from "@/components/auth/sign-in-modal";
 
 function getSupabase() {
   return createBrowserClient(
@@ -85,6 +86,8 @@ export default function MorningBriefPage() {
   const [leadMemoOpen, setLeadMemoOpen] = useState(false);
   const [leadMemoContent, setLeadMemoContent] = useState("");
   const [toast, setToast] = useState("");
+  const [user, setUser] = useState<{ id: string } | null | undefined>(undefined);
+  const [showSignIn, setShowSignIn] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -203,6 +206,12 @@ export default function MorningBriefPage() {
     load();
   }, []);
 
+  useEffect(() => {
+    getSupabase().auth.getUser().then(({ data }) => {
+      setUser(data.user ? { id: data.user.id } : null);
+    }).catch(() => setUser(null));
+  }, []);
+
   const sectorSignals = useMemo(() => {
     if (!briefing?.sector_breakdown) return [];
     let entries = Object.entries(briefing.sector_breakdown);
@@ -304,6 +313,10 @@ export default function MorningBriefPage() {
               <button
                 type="button"
                 onClick={() => {
+                  if (user === null) {
+                    setShowSignIn(true);
+                    return;
+                  }
                   const content = document.querySelector("main")?.innerText || "";
                   const blob = new Blob([content], { type: "text/plain" });
                   const a = document.createElement("a");
@@ -463,18 +476,75 @@ export default function MorningBriefPage() {
               </section>
             )}
 
+            {/* Personalization nudge for signed-out users */}
+            {user === null && briefing && (
+              <div className="my-6 px-4 py-4 rounded-xl border text-center" style={{ background: 'rgba(245, 166, 35, 0.08)', borderColor: 'var(--gold-border)' }}>
+                <p className="font-sans text-[13px] text-espresso font-semibold mb-1">
+                  This brief is personalized for signed-in users.
+                </p>
+                <p className="font-sans text-[12px] text-text-secondary mb-3">
+                  Sign in to get a brief built around your sectors and watchlist.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowSignIn(true)}
+                  className="px-4 py-2 rounded-xl font-sans text-[12px] font-semibold cursor-pointer transition-colors"
+                  style={{ background: 'var(--gold)', color: 'var(--cream)' }}
+                >
+                  Sign in with Google — Free
+                </button>
+              </div>
+            )}
+
             {/* Stories */}
             {stories.length > 0 && (
               <section>
                 <h2 className="font-sans text-[10px] uppercase tracking-widest font-bold text-text-muted mb-3">
                   {storiesLabel}
                 </h2>
-                <LeadStoryCard story={stories[0]} />
-                <div className="mt-2">
-                  {stories.slice(1).map((story, i) => (
-                    <CompactStoryCard key={story.id} story={story} number={i + 2} />
-                  ))}
-                </div>
+                {(() => {
+                  const GATE_LIMIT = user === null ? 3 : stories.length;
+                  const visibleStories = stories.slice(0, GATE_LIMIT);
+                  const hasMore = user === null && stories.length > GATE_LIMIT;
+                  return (
+                    <>
+                      {visibleStories[0] && <LeadStoryCard story={visibleStories[0]} />}
+                      <div className="mt-2">
+                        {visibleStories.slice(1).map((story, i) => (
+                          <CompactStoryCard key={story.id} story={story} number={i + 2} />
+                        ))}
+                      </div>
+                      {hasMore && (
+                        <div className="relative mt-2">
+                          <div style={{ maxHeight: '48px', overflow: 'hidden', pointerEvents: 'none', userSelect: 'none', opacity: 0.7 }}>
+                            {stories[GATE_LIMIT] && (
+                              <div className="bg-white border border-border-base rounded-xl p-3">
+                                <p className="font-data text-[9px] text-text-muted">{stories[GATE_LIMIT].source}</p>
+                                <p className="font-display text-[13px] font-bold text-espresso leading-snug mt-1 line-clamp-1">{stories[GATE_LIMIT].title}</p>
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '40px', background: 'linear-gradient(to bottom, transparent, var(--cream))' }} />
+                        </div>
+                      )}
+                      {hasMore && (
+                        <div className="flex items-center justify-between px-3 py-2.5 mt-1 rounded-xl border" style={{ background: 'rgba(245, 166, 35, 0.08)', borderColor: 'var(--gold-border)' }}>
+                          <span className="font-sans text-[12px]" style={{ color: 'var(--gold)' }}>
+                            Sign in to see all {stories.length} stories
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setShowSignIn(true)}
+                            className="font-sans text-[11px] font-semibold cursor-pointer ml-3 flex-shrink-0"
+                            style={{ color: 'var(--gold)', background: 'none', border: 'none', padding: 0 }}
+                          >
+                            Sign in →
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </section>
             )}
           </>
@@ -493,6 +563,12 @@ export default function MorningBriefPage() {
         title={briefing?.headline || "Morning Brief"}
         content={leadMemoContent}
         type="brief"
+      />
+      <SignInModal
+        isOpen={showSignIn}
+        onClose={() => setShowSignIn(false)}
+        headline="Personalize your morning brief"
+        message="Sign in to get a brief built around your sectors and watchlist."
       />
     </AppShell>
   );

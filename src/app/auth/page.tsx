@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { cn } from "@/lib/utils";
 import { Mail, Lock, Eye, EyeOff, Check } from "lucide-react";
+import Link from "next/link";
 
 type AuthMode = "signin" | "signup";
 
@@ -137,7 +138,8 @@ export default function AuthPage() {
       </div>
 
       {/* ── Right panel: Auth card (45%) ── */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12 lg:w-[45%] bg-[#111111]">
+      <div className="flex-1 flex items-center justify-center px-6 py-12 lg:w-[45%] bg-[#111111]" style={{ position: 'relative' }}>
+        <BackToPreviewLink />
         <div className="w-full max-w-[420px]">
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center justify-center gap-2 mb-10">
@@ -335,5 +337,31 @@ export default function AuthPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function BackToPreviewLink() {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <Link
+      href="/preview"
+      style={{
+        position: 'absolute',
+        top: '16px',
+        left: '20px',
+        fontFamily: 'Inter, sans-serif',
+        fontSize: '12px',
+        color: hovered ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.5)',
+        textDecoration: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px',
+        transition: 'color 0.15s',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      ← Back to preview
+    </Link>
   );
 }

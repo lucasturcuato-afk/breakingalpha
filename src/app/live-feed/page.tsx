@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { AppShell } from "@/components/shell";
 import { FilterBar, FeedRow } from "@/components/feed";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { createBrowserClient } from "@supabase/ssr";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
 import type { StoryData } from "@/components/dashboard";
+import { SignInModal } from "@/components/auth/sign-in-modal";
 
 interface LiveStory extends StoryData {
   _publishedAt?: string;
@@ -81,6 +82,8 @@ export default function LiveFeedPage() {
     return new Set();
   });
   const prevIdsRef = useRef<Set<string>>(new Set());
+  const [user, setUser] = useState<{ id: string } | null | undefined>(undefined);
+  const [showSignIn, setShowSignIn] = useState(false);
 
   const handleBookmark = useCallback((id: string) => {
     setSavedIds((prev) => {
@@ -185,6 +188,12 @@ export default function LiveFeedPage() {
     return () => clearTimeout(timer);
   }, [newArticleIds]);
 
+  useEffect(() => {
+    getSupabase().auth.getUser().then(({ data }) => {
+      setUser(data.user ? { id: data.user.id } : null);
+    }).catch(() => setUser(null));
+  }, []);
+
   // Sort articles
   const sortedArticles = useMemo(() => {
     const copy = [...articles];
@@ -288,6 +297,23 @@ export default function LiveFeedPage() {
         </div>
       </div>
 
+      {/* Preview banner for signed-out users */}
+      {user === null && (
+        <div className="flex items-center justify-between mb-4 px-4 py-2.5 rounded-xl border mx-6 mt-4" style={{ background: 'rgba(245, 166, 35, 0.08)', borderColor: 'var(--gold-border)' }}>
+          <span className="font-sans text-[12px]" style={{ color: 'var(--gold)' }}>
+            You&apos;re viewing a preview. Sign in to personalize your feed.
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowSignIn(true)}
+            className="font-sans text-[11px] font-semibold cursor-pointer ml-3 flex-shrink-0"
+            style={{ color: 'var(--gold)', background: 'none', border: 'none', padding: 0 }}
+          >
+            Sign in →
+          </button>
+        </div>
+      )}
+
       {/* Feed */}
       <div>
         {loading && articles.length === 0 ? (
@@ -328,44 +354,102 @@ export default function LiveFeedPage() {
             />
           )
         ) : (
-          grouped.map((group) => (
-            <div key={group.label}>
-              {/* Time bucket header */}
-              <div className="sticky top-[108px] z-[5] bg-parchment/95 backdrop-blur-sm px-6 py-1.5 border-b border-border-subtle">
-                <div className="flex items-center gap-2">
-                  <span className="font-data text-[9px] font-bold uppercase tracking-widest text-text-muted">
-                    {group.label}
-                  </span>
-                  <span className="font-data text-[9px] text-text-faint">
-                    {group.stories.length} {group.stories.length === 1 ? "article" : "articles"}
-                  </span>
-                  {group.label === "LAST HOUR" && newArticleIds.size > 0 && (
-                    <span className="inline-flex items-center gap-1 ml-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-signal-up animate-pulse" />
-                      <span className="font-data text-[9px] text-signal-up font-semibold">
-                        {newArticleIds.size} new
-                      </span>
-                    </span>
-                  )}
-                </div>
-              </div>
+          (() => {
+            const GATE_LIMIT = user === null ? 5 : filtered.length;
+            let shownCount = 0;
+            const gatedGroups: React.ReactElement[] = [];
+            let gateHit = false;
 
-              {/* Articles in bucket */}
-              {group.stories.map((story) => (
-                <div key={story.id} className="relative">
-                  {newArticleIds.has(story.id) && (
-                    <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-signal-up" />
-                  )}
-                  <FeedRow
-                    story={{ ...story, saved: savedIds.has(story.id) }}
-                    onBookmark={handleBookmark}
-                  />
+            for (const group of grouped) {
+              if (gateHit) break;
+              const remaining = GATE_LIMIT - shownCount;
+              const visibleStories = group.stories.slice(0, remaining);
+              shownCount += visibleStories.length;
+              if (shownCount >= GATE_LIMIT && user === null && filtered.length > GATE_LIMIT) {
+                gateHit = true;
+              }
+
+              gatedGroups.push(
+                <div key={group.label}>
+                  {/* Time bucket header */}
+                  <div className="sticky top-[108px] z-[5] bg-parchment/95 backdrop-blur-sm px-6 py-1.5 border-b border-border-subtle">
+                    <div className="flex items-center gap-2">
+                      <span className="font-data text-[9px] font-bold uppercase tracking-widest text-text-muted">
+                        {group.label}
+                      </span>
+                      <span className="font-data text-[9px] text-text-faint">
+                        {group.stories.length} {group.stories.length === 1 ? "article" : "articles"}
+                      </span>
+                      {group.label === "LAST HOUR" && newArticleIds.size > 0 && (
+                        <span className="inline-flex items-center gap-1 ml-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-signal-up animate-pulse" />
+                          <span className="font-data text-[9px] text-signal-up font-semibold">
+                            {newArticleIds.size} new
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Articles in bucket */}
+                  {visibleStories.map((story) => (
+                    <div key={story.id} className="relative">
+                      {newArticleIds.has(story.id) && (
+                        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-signal-up" />
+                      )}
+                      <FeedRow
+                        story={{ ...story, saved: savedIds.has(story.id) }}
+                        onBookmark={handleBookmark}
+                      />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          ))
+              );
+            }
+
+            return (
+              <>
+                {gatedGroups}
+                {gateHit && (
+                  <>
+                    <div className="relative mt-2 mx-6">
+                      <div style={{ maxHeight: '48px', overflow: 'hidden', pointerEvents: 'none', userSelect: 'none', opacity: 0.7 }}>
+                        {filtered[GATE_LIMIT] && (
+                          <div className="bg-white border border-border-base rounded-xl p-3">
+                            <p className="font-data text-[9px] text-text-muted">{filtered[GATE_LIMIT].source}</p>
+                            <p className="font-display text-[13px] font-bold text-espresso leading-snug mt-1 line-clamp-1">{filtered[GATE_LIMIT].title}</p>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '40px', background: 'linear-gradient(to bottom, transparent, var(--cream))' }} />
+                    </div>
+                    <div className="flex items-center justify-between px-3 py-2.5 mt-1 mx-6 rounded-xl border" style={{ background: 'rgba(245, 166, 35, 0.08)', borderColor: 'var(--gold-border)' }}>
+                      <span className="font-sans text-[12px]" style={{ color: 'var(--gold)' }}>
+                        Sign in to see the full live feed
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowSignIn(true)}
+                        className="font-sans text-[11px] font-semibold cursor-pointer ml-3 flex-shrink-0"
+                        style={{ color: 'var(--gold)', background: 'none', border: 'none', padding: 0 }}
+                      >
+                        Sign in →
+                      </button>
+                    </div>
+                  </>
+                )}
+              </>
+            );
+          })()
         )}
       </div>
+
+      <SignInModal
+        isOpen={showSignIn}
+        onClose={() => setShowSignIn(false)}
+        headline="Sign in to access the live feed"
+        message="Get real-time deal flow, M&A signals, and market coverage with a free account."
+      />
     </AppShell>
   );
 }
