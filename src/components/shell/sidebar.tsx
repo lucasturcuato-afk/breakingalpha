@@ -76,7 +76,7 @@ export function Sidebar({
   unreadCount = 0,
 }: SidebarProps) {
   const pathname = usePathname();
-  const [user, setUser] = useState<{ id: string; name: string; email: string; role: string } | null>(null);
+  const [user, setUser] = useState<{ id: string; name: string; email: string; role: string } | null | undefined>(undefined);
   const [watchlistCount, setWatchlistCount] = useState(0);
   const [notifDrawerOpen, setNotifDrawerOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -93,7 +93,10 @@ export function Sidebar({
   useEffect(() => {
     const supabase = getSupabase();
     supabase.auth.getUser().then(({ data: { user: authUser } }) => {
-      if (!authUser) return;
+      if (!authUser) {
+        setUser(null);
+        return;
+      }
       setUser({
         id: authUser.id,
         name: authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "User",
@@ -138,6 +141,7 @@ export function Sidebar({
 
   // Fetch notifications on mount
   useEffect(() => {
+    if (!user) return; // undefined (loading) or null (signed out) — skip
     fetch("/api/watchlist-notifications")
       .then((r) => r.ok ? r.json() : { notifications: [] })
       .then((d) => {
@@ -145,7 +149,7 @@ export function Sidebar({
         setNotifLoaded(true);
       })
       .catch(() => setNotifLoaded(true));
-  }, []);
+  }, [user]);
 
   const markRead = useCallback(async (id: string) => {
     setNotifications((prev) =>
@@ -210,62 +214,75 @@ export function Sidebar({
         </nav>
 
         {/* Bell button */}
-        <div className="px-3 pb-2">
-          <button
-            type="button"
-            onClick={() => setNotifDrawerOpen(true)}
-            className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-text-muted hover:bg-parchment-mid hover:text-espresso transition-colors cursor-pointer relative"
-            aria-label="Notifications"
-          >
-            <Bell size={15} />
-            <span className="font-sans text-[13px] font-medium flex-1 text-left">Notifications</span>
-            {unreadBadge && (
-              <span
-                style={{
-                  minWidth: '18px', height: '18px', borderRadius: '4px',
-                  background: '#d97706', color: '#fff',
-                  fontSize: '9px', fontWeight: 700,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: '0 4px',
-                }}
-              >
-                {unreadBadge}
-              </span>
-            )}
-          </button>
-        </div>
+        {!!user && (
+          <div className="px-3 pb-2">
+            <button
+              type="button"
+              onClick={() => setNotifDrawerOpen(true)}
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-text-muted hover:bg-parchment-mid hover:text-espresso transition-colors cursor-pointer relative"
+              aria-label="Notifications"
+            >
+              <Bell size={15} />
+              <span className="font-sans text-[13px] font-medium flex-1 text-left">Notifications</span>
+              {unreadBadge && (
+                <span
+                  style={{
+                    minWidth: '18px', height: '18px', borderRadius: '4px',
+                    background: '#d97706', color: '#fff',
+                    fontSize: '9px', fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '0 4px',
+                  }}
+                >
+                  {unreadBadge}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
 
         {/* User footer */}
         <div className="border-t border-border-base px-3 py-3.5">
-          <div className="flex items-center gap-2.5 bg-parchment-mid border border-border-base rounded-lg px-3 py-2.5">
-            <div className="w-8 h-8 rounded-lg bg-espresso flex items-center justify-center flex-shrink-0">
-              <span className="font-display text-[11px] font-bold text-gold">
-                {userInitials}
-              </span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-sans text-[12px] font-bold text-text-primary truncate">
-                {userName}
-              </p>
-              <p className="font-sans text-[10px] text-text-muted">{userRole}</p>
-            </div>
-            <Link href="/settings/profile" aria-label="Settings">
-              <Settings size={14} className="text-text-faint hover:text-text-muted transition-colors" />
-            </Link>
+          {user === null ? (
             <button
               type="button"
-              title="Sign out"
-              aria-label="Sign out"
-              className="text-text-faint hover:text-signal-dn transition-colors cursor-pointer"
-              onClick={async () => {
-                const supabase = getSupabase();
-                await supabase.auth.signOut();
-                window.location.href = "/";
-              }}
+              onClick={() => { window.location.href = "/auth"; }}
+              className="w-full flex items-center justify-center gap-2 h-10 rounded-xl font-sans text-[13px] font-semibold cursor-pointer transition-all"
+              style={{ backgroundColor: "var(--espresso)", color: "var(--cream)" }}
             >
-              <LogOut size={14} />
+              Sign in free →
             </button>
-          </div>
+          ) : !!user ? (
+            <div className="flex items-center gap-2.5 bg-parchment-mid border border-border-base rounded-lg px-3 py-2.5">
+              <div className="w-8 h-8 rounded-lg bg-espresso flex items-center justify-center flex-shrink-0">
+                <span className="font-display text-[11px] font-bold text-gold">
+                  {userInitials}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-sans text-[12px] font-bold text-text-primary truncate">
+                  {userName}
+                </p>
+                <p className="font-sans text-[10px] text-text-muted">{userRole}</p>
+              </div>
+              <Link href="/settings/profile" aria-label="Settings">
+                <Settings size={14} className="text-text-faint hover:text-text-muted transition-colors" />
+              </Link>
+              <button
+                type="button"
+                title="Sign out"
+                aria-label="Sign out"
+                className="text-text-faint hover:text-signal-dn transition-colors cursor-pointer"
+                onClick={async () => {
+                  const supabase = getSupabase();
+                  await supabase.auth.signOut();
+                  window.location.href = "/";
+                }}
+              >
+                <LogOut size={14} />
+              </button>
+            </div>
+          ) : null /* loading state: render nothing */}
         </div>
       </aside>
 
