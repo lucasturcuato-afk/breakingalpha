@@ -13,7 +13,7 @@ interface TickerPreviewCardProps {
 
 export function TickerPreviewCard({ ticker, name, price, pct, articleCount = 20, href }: TickerPreviewCardProps) {
   const pctColor = pct == null ? 'var(--text-muted)' : pct >= 0 ? '#16a34a' : '#dc2626';
-  const pctSign = pct != null && pct >= 0 ? '+' : '';
+  const pctSign = pct != null && pct > 0 ? '+' : '';
 
   return (
     <Link href={href} className="block bg-white border border-border-base rounded-xl p-3.5 hover:border-border-hover transition-colors group">
