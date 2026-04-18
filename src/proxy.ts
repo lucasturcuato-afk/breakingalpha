@@ -26,6 +26,8 @@ export async function proxy(request: NextRequest) {
   const isOnboardingPage = path === '/onboarding'
   const isPublicPath =
     path === '/' ||
+    path === '/preview' ||
+    path === '/about' ||
     path.startsWith('/auth/callback') ||
     path.startsWith('/api/') // let API routes enforce their own auth
 
