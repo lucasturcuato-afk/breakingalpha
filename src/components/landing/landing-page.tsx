@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { X, Check, Sparkles, LayoutGrid, Clock, FileText, Briefcase, Star, TrendingUp } from "lucide-react";
+import { X, Check, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { AISignalBar } from "@/components/dashboard/ai-signal-bar";
 import { LeadStoryCard, CompactStoryCard } from "@/components/dashboard/story-card";
-import { AuthGate } from "./auth-gate";
+import { TickerPreviewCard } from "./ticker-preview-card";
 import type { StoryData } from "@/components/dashboard/story-card";
 
 // ── Mock data (same shape as the real dashboard) ──────────────────────────────
@@ -58,6 +58,7 @@ const previewStories: StoryData[] = [
   },
 ];
 
+// Static decorative spark arrays — visual texture only, not live data
 const sparkSP = [4380, 4395, 4370, 4410, 4425, 4415, 4440, 4455, 4460, 4472, 4468, 4480];
 const sparkVIX = [18.5, 17.2, 16.8, 15.9, 15.2, 14.8, 14.5, 14.1, 14.3, 14.6, 14.2, 14.2];
 const sparkYield = [4.52, 4.48, 4.45, 4.42, 4.40, 4.38, 4.35, 4.33, 4.30, 4.28, 4.25, 4.22];
@@ -168,50 +169,40 @@ function SignInPrompt({ onDismiss }: { onDismiss: () => void }) {
   );
 }
 
-// ── Module teaser cards (gated) ───────────────────────────────────────────────
-
-function ModuleTeaser({
-  icon,
-  label,
-  description,
-}: {
-  icon: ReactNode;
-  label: string;
-  description: string;
-}) {
-  return (
-    <div className="bg-white border border-border-base rounded-2xl p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <div className="w-7 h-7 rounded-lg bg-parchment-mid border border-border-base flex items-center justify-center text-text-faint">
-          {icon}
-        </div>
-        <span className="font-sans text-[12px] font-semibold text-text-primary">{label}</span>
-      </div>
-      <p className="font-sans text-[11px] text-text-muted leading-snug">{description}</p>
-      <div className="mt-3 space-y-1.5">
-        {[60, 80, 45].map((w, i) => (
-          <div
-            key={i}
-            className="h-2 rounded-full bg-border-subtle"
-            style={{ width: `${w}%` }}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ── Main landing page ─────────────────────────────────────────────────────────
 
 export function LandingPage() {
   const [showPrompt, setShowPrompt] = useState(false);
 
+  const [marketData, setMarketData] = useState<{
+    sp500?: { price: string; pct: number } | null;
+    vix?: { price: string; pct: number } | null;
+    yield10y?: { price: string; pct: number } | null;
+    signalsToday?: { count: number } | null;
+  } | null>(null);
+
+  const [tickerQuotes, setTickerQuotes] = useState<Record<string, { price: string; pct: number }>>({});
+
   useEffect(() => {
     const dismissed = sessionStorage.getItem("signalera_prompt_dismissed");
     if (!dismissed) {
-      const timer = setTimeout(() => setShowPrompt(true), 700);
+      const timer = setTimeout(() => setShowPrompt(true), 3000);
       return () => clearTimeout(timer);
     }
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/market-snapshot")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d) setMarketData(d); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/watchlist-quotes?symbols=META,NVDA,GOOGL,AMZN")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.quotes) setTickerQuotes(d.quotes); })
+      .catch(() => {});
   }, []);
 
   function handleDismiss() {
@@ -268,14 +259,16 @@ export function LandingPage() {
 
           {/* Headline */}
           <h1 className="font-display text-[52px] font-extrabold text-espresso leading-[1.05] tracking-tight mb-4">
-            Where Markets
+            Stop piecing together
             <br />
-            Make Sense.
+            your morning
+            <br />
+            from 12 tabs.
           </h1>
 
           {/* Subhead */}
-          <p className="font-sans text-[17px] text-text-secondary leading-relaxed mb-8 max-w-[520px]">
-            Analyst-grade briefings, live deal flow, and investment theses — personalized to your sectors, your watchlist, and how you invest.
+          <p className="font-sans text-[17px] text-text-secondary leading-relaxed mb-8 max-w-[540px]">
+            Signalera synthesizes market-moving news, deal flow, and investment signals into one analyst-grade brief — built around what you actually track.
           </p>
 
           {/* CTAs */}
@@ -299,6 +292,11 @@ export function LandingPage() {
               See a preview ↓
             </button>
           </div>
+
+          {/* Social proof */}
+          <p className="mt-4 font-sans text-[12px] text-text-faint">
+            25 sectors tracked · 14 signals scored daily · Updated 6am and 8pm PST
+          </p>
         </div>
       </section>
 
@@ -306,46 +304,51 @@ export function LandingPage() {
       <section id="preview-section" className="max-w-[1200px] mx-auto px-6 pb-16">
         {/* Section label */}
         <div className="flex items-center gap-3 mb-4">
-          <p className="font-sans text-[10px] font-semibold uppercase tracking-widest text-text-faint">
-            Live Dashboard Preview
-          </p>
+          <div className="flex items-center gap-1.5">
+            <p className="font-sans text-[10px] font-semibold uppercase tracking-widest text-text-faint">
+              Live Dashboard Preview
+            </p>
+            {marketData && (
+              <div className="flex items-center gap-1">
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--gold)' }} />
+                <span className="font-data text-[10px] text-gold">Live</span>
+              </div>
+            )}
+          </div>
           <div className="flex-1 h-px bg-border-subtle" />
-          <span className="font-sans text-[10px] text-text-faint">
-            Sign in to see your personalized feed
-          </span>
         </div>
 
         {/* Stat cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4">
           <StatCard
             label="S&P 500"
-            value="4,480.22"
-            change={0.38}
+            value={marketData?.sp500?.price ?? "—"}
+            change={marketData?.sp500?.pct ?? 0}
             accentGold
             sparkData={sparkSP}
-            detailRows={[{ label: "Day range", value: "4,370 – 4,482" }]}
+            detailRows={[{ label: "Day range", value: "—" }]}
           />
           <StatCard
             label="VIX Fear Index"
-            value="14.22"
-            change={-3.12}
+            value={marketData?.vix?.price ?? "—"}
+            change={marketData?.vix?.pct ?? 0}
             sparkData={sparkVIX}
-            detailRows={[{ label: "5d avg", value: "15.1" }]}
+            detailRows={[{ label: "5d avg", value: "—" }]}
           />
           <StatCard
             label="10Y Yield"
-            value="4.22%"
-            change={-0.08}
+            value={marketData?.yield10y?.price ?? "—"}
+            change={marketData?.yield10y?.pct ?? 0}
             sparkData={sparkYield}
-            detailRows={[{ label: "Real rate", value: "1.85%" }]}
+            detailRows={[{ label: "Real rate", value: "—" }]}
           />
           <StatCard
             label="Signals Today"
-            value="14"
-            change={16.67}
+            value={marketData?.signalsToday?.count?.toString() ?? "—"}
+            change={0}
             accentGold
             sparkData={sparkSignals}
-            detailRows={[{ label: "Bullish", value: "8" }, { label: "Bearish", value: "6" }]}
+            detailRows={[{ label: "Bullish", value: "—" }, { label: "Bearish", value: "—" }]}
           />
         </div>
 
@@ -360,21 +363,20 @@ export function LandingPage() {
 
         {/* Stories */}
         <div className="mb-6">
+          {/* Stories label row */}
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-sans text-[11px] font-semibold uppercase tracking-widest text-text-muted">
               Top Stories — Today
             </h2>
-            <button
-              type="button"
-              onClick={() => { window.location.href = "/auth"; }}
+            <a
+              href="/morning-brief"
               className="font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors cursor-pointer"
             >
-              Sign in to see all →
-            </button>
+              Full live feed →
+            </a>
           </div>
 
-          {/* Lead story + 2 compact stories — visible but actions intercepted */}
-          {/* onClickCapture fires before child handlers, routing all clicks to /auth */}
+          {/* 3 stories — all clickable, route to /auth on click */}
           <div
             onClickCapture={(e) => {
               e.preventDefault();
@@ -389,106 +391,100 @@ export function LandingPage() {
             </div>
           </div>
 
-          {/* Gated stories */}
-          <div className="mt-2">
-            <AuthGate message="Sign in to access all 14 stories in your personalized feed">
-              <div className="space-y-0">
-                <CompactStoryCard story={previewStories[3]} number={4} />
-                <CompactStoryCard story={{ ...previewStories[0], id: "5", title: "Apollo Weighs $3B Bid for Global Infrastructure Assets", sector: "Private Equity", timestamp: "4h ago" }} number={5} />
-              </div>
-            </AuthGate>
+          {/* Gradient fade gate — partial 4th story */}
+          <div className="relative mt-2">
+            {/* Partially visible 4th story — clipped */}
+            <div style={{ maxHeight: '48px', overflow: 'hidden', pointerEvents: 'none', userSelect: 'none', opacity: 0.7 }}>
+              <CompactStoryCard story={previewStories[3]} number={4} />
+            </div>
+            {/* Gradient overlay */}
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '40px', background: 'linear-gradient(to bottom, transparent, var(--parchment))' }} />
+          </div>
+
+          {/* Inline sign-in row */}
+          <div className="flex items-center justify-between px-3 py-2.5 mt-1 bg-gold-muted border border-gold-border rounded-xl">
+            <div className="flex items-center gap-2">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gold" aria-hidden><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span className="font-sans text-[12px] text-gold">
+                {marketData?.signalsToday?.count != null && marketData.signalsToday.count > 3
+                  ? `${marketData.signalsToday.count - 3} more signals today`
+                  : "More signals today"} — Sign in to read all
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => { window.location.href = "/auth"; }}
+              className="font-sans text-[11px] font-semibold text-gold hover:text-gold-dark transition-colors cursor-pointer"
+              style={{ background: 'none', border: 'none', padding: 0 }}
+            >
+              Sign in →
+            </button>
           </div>
         </div>
 
-        {/* Gated modules grid */}
+        {/* Company Intelligence section */}
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-3">
             <p className="font-sans text-[10px] font-semibold uppercase tracking-widest text-text-faint">
-              Research Modules
+              Live Company Intelligence
             </p>
             <div className="flex-1 h-px bg-border-subtle" />
           </div>
-          <AuthGate message="Sign in to access your Thesis Board, Deal Flow tracker, and Watchlist">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <ModuleTeaser
-                icon={<FileText size={14} />}
-                label="Thesis Board"
-                description="AI-generated investment theses updated as new signals arrive"
+          <div className="grid grid-cols-2 gap-2.5" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+            {([
+              { ticker: "META", name: "Meta Platforms", href: "/watchlist/META" },
+              { ticker: "NVDA", name: "NVIDIA Corp.", href: "/watchlist/NVDA" },
+              { ticker: "GOOGL", name: "Alphabet Inc.", href: "/watchlist/GOOGL" },
+              { ticker: "AMZN", name: "Amazon.com", href: "/watchlist/AMZN" },
+            ] as const).map(({ ticker, name, href }) => (
+              <TickerPreviewCard
+                key={ticker}
+                ticker={ticker}
+                name={name}
+                price={tickerQuotes[ticker]?.price}
+                pct={tickerQuotes[ticker]?.pct}
+                articleCount={20}
+                href={href}
               />
-              <ModuleTeaser
-                icon={<Briefcase size={14} />}
-                label="Deal Flow"
-                description="Live M&A pipeline with stage tracking and AI memos"
-              />
-              <ModuleTeaser
-                icon={<Star size={14} />}
-                label="Watchlist"
-                description="Personalized coverage for your tickers and sectors"
-              />
-            </div>
-          </AuthGate>
-        </div>
-
-        {/* Nav preview (gated) */}
-        <AuthGate message="Morning Brief, Evening Wrap, Company Intel, and Trends — all personalized">
-          <div className="bg-white border border-border-base rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <p className="font-sans text-[10px] font-semibold uppercase tracking-widest text-text-faint">
-                Full Navigation
-              </p>
-            </div>
-            <div className="grid grid-cols-4 gap-2">
-              {[
-                { icon: <Clock size={13} />, label: "Morning Brief" },
-                { icon: <LayoutGrid size={13} />, label: "Dashboard" },
-                { icon: <TrendingUp size={13} />, label: "Trends" },
-                { icon: <Briefcase size={13} />, label: "Deal Flow" },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-parchment-mid border border-border-subtle"
-                >
-                  <span className="text-text-faint">{item.icon}</span>
-                  <span className="font-sans text-[12px] font-medium text-text-muted">{item.label}</span>
-                </div>
-              ))}
-            </div>
+            ))}
           </div>
-        </AuthGate>
+          <p className="mt-3 text-center font-sans text-[12px] text-text-faint">
+            <a href="/morning-brief" className="hover:text-text-muted transition-colors">
+              Explore company coverage →
+            </a>
+          </p>
+        </div>
       </section>
 
-      {/* ── Bottom CTA ─────────────────────────────────────────────────── */}
-      <section className="border-t border-border-base bg-cream">
-        <div className="max-w-[1200px] mx-auto px-6 py-16 text-center">
-          <p className="font-sans text-[11px] font-semibold uppercase tracking-widest text-gold mb-4">
-            Personalized to your portfolio
+      {/* ── Dark bottom CTA ────────────────────────────────────────────── */}
+      <section style={{ background: 'var(--espresso)' }} className="py-16">
+        <div className="max-w-[480px] mx-auto px-6 text-center">
+          <p className="font-sans text-[11px] uppercase tracking-widest mb-4" style={{ color: 'var(--gold)' }}>
+            Built for finance professionals
           </p>
-          <h2 className="font-display text-[40px] font-extrabold text-espresso leading-tight mb-4">
-            Markets move fast.
-            <br />
-            Your intelligence should too.
+          <h2 className="font-display text-[36px] font-extrabold leading-tight mb-4" style={{ color: 'var(--cream)' }}>
+            Your edge starts here.
           </h2>
-          <p className="font-sans text-[15px] text-text-secondary leading-relaxed max-w-[520px] mx-auto mb-8">
-            Signalera learns your sectors, tracks your watchlist, and delivers briefings built for how you actually invest. Set up takes 90 seconds.
+          <p className="font-sans text-[14px] leading-relaxed mb-8" style={{ color: 'rgba(255,255,255,0.65)' }}>
+            Morning briefs, live deal flow, investment theses — personalized to your sectors and watchlist. Free to start, 90 seconds to set up.
           </p>
-
-          <div className="flex items-center justify-center gap-4 flex-wrap">
-            <Button
-              variant="gold"
-              size="lg"
-              onClick={() => { window.location.href = "/auth"; }}
-            >
-              Sign in with Google — Free Access
-            </Button>
+          <Button
+            variant="gold"
+            size="lg"
+            onClick={() => { window.location.href = "/auth"; }}
+          >
+            Sign in with Google — Free Access
+          </Button>
+          <div className="mt-4">
             <Link
               href="/auth"
-              className="font-sans text-[13px] text-text-secondary hover:text-text-primary transition-colors"
+              className="font-sans text-[13px] transition-colors"
+              style={{ color: 'rgba(255,255,255,0.65)' }}
             >
               Or sign in with email →
             </Link>
           </div>
-
-          <p className="mt-6 font-sans text-[11px] text-text-faint">
+          <p className="mt-6 font-sans text-[11px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
             No credit card. No paywall. Personalization unlocks when you sign in.
           </p>
         </div>
