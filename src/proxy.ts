@@ -28,6 +28,11 @@ export async function proxy(request: NextRequest) {
     path === '/' ||
     path === '/preview' ||
     path === '/about' ||
+    path === '/morning-brief' ||
+    path === '/live-feed' ||
+    path === '/trends' ||
+    path === '/company' ||
+    path.startsWith('/watchlist/') || // identifier detail pages; /watchlist (personal list) stays gated
     path.startsWith('/auth/callback') ||
     path.startsWith('/api/') // let API routes enforce their own auth
 

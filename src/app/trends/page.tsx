@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import { SignalCard } from "@/components/trends/signal-card";
@@ -11,6 +11,7 @@ import { MemoModal } from "@/components/memo/MemoModal";
 import { createBrowserClient } from "@supabase/ssr";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { trackClientEvent } from "@/lib/track-event";
+import { SignInModal } from "@/components/auth/sign-in-modal";
 import type { SignalData } from "@/components/trends";
 
 const INDUSTRY_VERTICALS = [
@@ -130,6 +131,18 @@ export default function TrendsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [memoSignal, setMemoSignal] = useState<SignalData | null>(null);
   const [addingThesis, setAddingThesis] = useState(false);
+  const [user, setUser] = useState<{ id: string } | null | undefined>(undefined);
+  const [showSignIn, setShowSignIn] = useState(false);
+
+  useEffect(() => {
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user ? { id: data.user.id } : null);
+    }).catch(() => setUser(null));
+  }, []);
 
   // Personalization helpers — soft-fail when profile is null.
   const profileSectors = useMemo(
@@ -392,6 +405,7 @@ export default function TrendsPage() {
                                   disabled={addingThesis}
                                   onClick={async (e) => {
                                     e.stopPropagation();
+                                    if (user === null) { setShowSignIn(true); return; }
                                     setAddingThesis(true);
                                     try {
                                       await getSupabase().from("theses").insert({
@@ -487,6 +501,7 @@ export default function TrendsPage() {
                                   disabled={addingThesis}
                                   onClick={async (e) => {
                                     e.stopPropagation();
+                                    if (user === null) { setShowSignIn(true); return; }
                                     setAddingThesis(true);
                                     try {
                                       await getSupabase().from("theses").insert({
@@ -540,6 +555,12 @@ export default function TrendsPage() {
           type="brief"
         />
       )}
+      <SignInModal
+        isOpen={showSignIn}
+        onClose={() => setShowSignIn(false)}
+        headline="Sign in to track this thesis"
+        message="Create a free account to add signals to your thesis board."
+      />
     </AppShell>
   );
 }
