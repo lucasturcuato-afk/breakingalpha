@@ -53,9 +53,9 @@
 - Company Intel entity consistency — `articles.companies` column now written with fully filtered `clean_companies` list (blocklist + Wikidata) before insert, matching `company_mentions`; fixes autonomous loop's `trend_mapper.py` Jaccard clustering and `observe.py` deduplication operating on clean data; brace-escaping bug in Gemini prompt fixed (PR #81)
 - Watchlist V4A — drag-to-reorder (HTML5 DnD + `sort_order` column + `PATCH /api/watchlist-reorder`), keyboard nav (J/K/Enter/A/Esc/? on watchlist, J/K/O/B/N/Esc on detail), XLSX export (SheetJS, Articles + Summary sheets), Tailwind v4 JIT safelist via `@source inline()` (PR #97)
 - Watchlist V4B — real SheetJS XLSX export, in-app notifications (bell + drawer + Realtime badge), mobile bottom sheet, relevance scoring improvements (boilerplate penalty, prominence boost, score_breakdown), GDELT conditional, article clustering UI with expandable rows (PR #98)
+- Watchlist V4C — XLSX Summary dedup fix, price alert UI + `/api/watchlist-alerts` route + schema, price alert trigger in watchlist_sync.py with 4h cooldown and Finnhub quote fetch (PR #99)
 
 ## In Progress
-- **Watchlist V4C** (branch noah/watchlist-v4c, PR pending) — XLSX Summary dedup fix, price alert UI + API + schema, price alert trigger in watchlist_sync.py (writes to watchlist_notifications on threshold cross). Requires two manual Supabase migrations: `backend/watchlist_alerts_schema.sql` + `backend/watchlist_notifications_schema.sql`.
 
 ## Next — Noah
 ### Autonomous Improvement Phase 1 (complete ✓)
