@@ -6,11 +6,12 @@ import { AppShell } from "@/components/shell";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Search, Building2, Bookmark, Sparkles, ExternalLink } from "lucide-react";
+import { Search, Building2, Bookmark, Sparkles, ExternalLink, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserClient } from "@supabase/ssr";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { MemoModal } from "@/components/memo/MemoModal";
+import { SignInModal } from "@/components/auth/sign-in-modal";
 import {
   CompanyArticle,
   buildMemoContent,
@@ -181,6 +182,18 @@ export default function CompanyIntelPage() {
   const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
   const [verticalMatchMode, setVerticalMatchMode] = useState<"any" | "all">("any");
   const [credMap, setCredMap] = useState<Map<string, number>>(new Map());
+  const [isSignedOut, setIsSignedOut] = useState(false);
+  const [showSignIn, setShowSignIn] = useState(false);
+
+  useEffect(() => {
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setIsSignedOut(user === null);
+    }).catch(() => setIsSignedOut(true));
+  }, []);
 
   // Build company list from article mentions
   useEffect(() => {
@@ -372,74 +385,105 @@ export default function CompanyIntelPage() {
             Companies extracted from {companies.length > 0 ? `${companies.length} article mentions` : "your news feed"}. Click any company to see related coverage.
           </p>
 
+          {/* Preview nudge banner */}
+          {isSignedOut && (
+            <div className="mb-5 px-4 py-3 rounded-xl border border-gold/20 flex items-center justify-between" style={{ backgroundColor: "var(--gold-muted)" }}>
+              <p className="font-sans text-[12px] text-text-secondary">
+                Previewing company intelligence — sign in to search, filter, and track companies.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowSignIn(true)}
+                className="flex-shrink-0 ml-4 font-sans text-[12px] font-semibold cursor-pointer"
+                style={{ color: "var(--espresso)" }}
+              >
+                Sign in free →
+              </button>
+            </div>
+          )}
+
           {/* Search */}
-          <div className="relative mb-4">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search companies..."
-              className="pl-9 font-sans"
-            />
-          </div>
+          {isSignedOut ? (
+            <div className="relative mb-4 flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-border-base bg-parchment-mid">
+              <Lock size={13} className="text-text-faint" />
+              <span className="font-sans text-[12px] text-text-faint">Search available after sign in</span>
+            </div>
+          ) : (
+            <div className="relative mb-4">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search companies..."
+                className="pl-9 font-sans"
+              />
+            </div>
+          )}
 
           {/* Industry Vertical Filter */}
-          <div className="mb-5">
-            <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1.5">Sector</p>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {INDUSTRY_VERTICALS.map((v) => {
-                const isActive = selectedVerticals.includes(v);
-                return (
+          {isSignedOut ? (
+            <div className="mb-5 flex items-center gap-1.5">
+              <Lock size={12} className="text-text-faint" />
+              <span className="font-sans text-[12px] text-text-faint">Sector filters available after sign in</span>
+            </div>
+          ) : (
+            <div className="mb-5">
+              <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1.5">Sector</p>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {INDUSTRY_VERTICALS.map((v) => {
+                  const isActive = selectedVerticals.includes(v);
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() =>
+                        setSelectedVerticals((prev) =>
+                          prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v],
+                        )
+                      }
+                      className={cn(
+                        "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                        isActive
+                          ? "border-gold bg-gold-muted text-gold"
+                          : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                      )}
+                    >
+                      {v}
+                    </button>
+                  );
+                })}
+                {selectedVerticals.length > 0 && (
                   <button
-                    key={v}
                     type="button"
-                    onClick={() =>
-                      setSelectedVerticals((prev) =>
-                        prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v],
-                      )
-                    }
-                    className={cn(
-                      "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
-                      isActive
-                        ? "border-gold bg-gold-muted text-gold"
-                        : "border-border-base bg-white text-text-muted hover:text-text-primary",
-                    )}
+                    onClick={() => { setSelectedVerticals([]); setVerticalMatchMode("any"); }}
+                    className="px-3 py-1 font-data text-[10px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
                   >
-                    {v}
+                    Clear filters
                   </button>
-                );
-              })}
-              {selectedVerticals.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => { setSelectedVerticals([]); setVerticalMatchMode("any"); }}
-                  className="px-3 py-1 font-data text-[10px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
-                >
-                  Clear filters
-                </button>
+                )}
+              </div>
+              {selectedVerticals.length >= 2 && (
+                <div className="flex items-center gap-1.5 mt-2">
+                  <span className="font-data text-[9px] uppercase tracking-widest text-text-faint">Match:</span>
+                  {(["any", "all"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setVerticalMatchMode(mode)}
+                      className={cn(
+                        "px-2.5 py-0.5 rounded font-data text-[9px] font-bold uppercase cursor-pointer transition-colors border",
+                        verticalMatchMode === mode
+                          ? "border-gold bg-gold-muted text-gold"
+                          : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                      )}
+                    >
+                      {mode === "any" ? "Match Any" : "Match All"}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
-            {selectedVerticals.length >= 2 && (
-              <div className="flex items-center gap-1.5 mt-2">
-                <span className="font-data text-[9px] uppercase tracking-widest text-text-faint">Match:</span>
-                {(["any", "all"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setVerticalMatchMode(mode)}
-                    className={cn(
-                      "px-2.5 py-0.5 rounded font-data text-[9px] font-bold uppercase cursor-pointer transition-colors border",
-                      verticalMatchMode === mode
-                        ? "border-gold bg-gold-muted text-gold"
-                        : "border-border-base bg-white text-text-muted hover:text-text-primary",
-                    )}
-                  >
-                    {mode === "any" ? "Match Any" : "Match All"}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          )}
 
           {/* Company grid */}
           {loading ? (
@@ -455,30 +499,59 @@ export default function CompanyIntelPage() {
               description={search ? "Try a different search term" : "Companies will appear once articles are ingested"}
             />
           ) : (
-            <div className="grid grid-cols-3 gap-2">
-              {filtered.map((company) => (
-                <button
-                  key={company.name}
-                  type="button"
-                  onClick={() => setSelectedCompany(company)}
-                  className={cn(
-                    "flex flex-col items-start p-3 rounded-xl border bg-white text-left",
-                    "transition-all duration-[var(--duration-base)] cursor-pointer",
-                    selectedCompany?.name === company.name
-                      ? "border-gold shadow-[0_2px_8px_rgba(201,146,42,0.12)]"
-                      : "border-border-base hover:border-border-hover",
-                  )}
-                >
-                  <div className="flex items-center gap-2 mb-1 w-full">
-                    <span className="font-display text-[14px] font-bold text-espresso truncate flex-1">
-                      {company.name}
-                    </span>
-                    <span className="font-data text-[10px] text-gold bg-gold-muted border border-gold-border px-1.5 py-0.5 rounded-md flex-shrink-0">
-                      {company.mentions}x
-                    </span>
+            <div>
+              <div className="grid grid-cols-3 gap-2">
+                {(isSignedOut ? filtered.slice(0, 6) : filtered).map((company) => (
+                  <button
+                    key={company.name}
+                    type="button"
+                    onClick={() => setSelectedCompany(company)}
+                    className={cn(
+                      "flex flex-col items-start p-3 rounded-xl border bg-white text-left",
+                      "transition-all duration-[var(--duration-base)] cursor-pointer",
+                      selectedCompany?.name === company.name
+                        ? "border-gold shadow-[0_2px_8px_rgba(201,146,42,0.12)]"
+                        : "border-border-base hover:border-border-hover",
+                    )}
+                  >
+                    <div className="flex items-center gap-2 mb-1 w-full">
+                      <span className="font-display text-[14px] font-bold text-espresso truncate flex-1">
+                        {company.name}
+                      </span>
+                      <span className="font-data text-[10px] text-gold bg-gold-muted border border-gold-border px-1.5 py-0.5 rounded-md flex-shrink-0">
+                        {company.mentions}x
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              {isSignedOut && filtered.length > 6 && (
+                <div className="relative mt-2">
+                  <div
+                    className="pointer-events-none absolute -top-16 left-0 right-0 h-16"
+                    style={{ background: "linear-gradient(to bottom, transparent, var(--parchment))" }}
+                  />
+                  <div
+                    className="flex items-center justify-between px-4 py-3 rounded-xl border"
+                    style={{ borderColor: "rgba(201,146,42,0.3)", backgroundColor: "var(--gold-muted)" }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Lock size={14} style={{ color: "var(--gold)" }} />
+                      <span className="font-sans text-[13px] font-semibold text-espresso">
+                        Sign in to see all {filtered.length} companies
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowSignIn(true)}
+                      className="font-sans text-[12px] font-semibold cursor-pointer"
+                      style={{ color: "var(--gold)" }}
+                    >
+                      Sign in →
+                    </button>
                   </div>
-                </button>
-              ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -512,7 +585,7 @@ export default function CompanyIntelPage() {
               <div className="flex items-center gap-2 mb-4">
                 <button
                   type="button"
-                  onClick={() => handleAddToWatchlist(selectedCompany.name)}
+                  onClick={() => { if (isSignedOut) { setShowSignIn(true); return; } handleAddToWatchlist(selectedCompany.name); }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-parchment-mid border border-border-base font-sans text-[11px] font-medium text-text-secondary hover:border-border-hover transition-colors cursor-pointer"
                 >
                   <Bookmark size={11} />
@@ -522,6 +595,7 @@ export default function CompanyIntelPage() {
                   <button
                     type="button"
                     onClick={() => {
+                      if (isSignedOut) { setShowSignIn(true); return; }
                       if (articlesLoading) return;
                       if (companyArticles.length === 0) {
                         setMemoToast("No articles found for this company — memo cannot be grounded");
@@ -695,6 +769,12 @@ export default function CompanyIntelPage() {
           systemPrompt={buildMemoSystemPrompt(selectedCompany.name)}
         />
       )}
+      <SignInModal
+        isOpen={showSignIn}
+        onClose={() => setShowSignIn(false)}
+        headline="Sign in to unlock Company Intel"
+        message="Create a free account to search, filter, track watchlists, and generate company memos."
+      />
     </AppShell>
   );
 }
