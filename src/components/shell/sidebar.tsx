@@ -149,7 +149,7 @@ export function Sidebar({
         setNotifLoaded(true);
       })
       .catch(() => setNotifLoaded(true));
-  }, [user]);
+  }, [user?.id]);
 
   const markRead = useCallback(async (id: string) => {
     setNotifications((prev) =>
