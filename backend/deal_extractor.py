@@ -1,82 +1,102 @@
 """
 deal_extractor.py
-Runs after ingest — scans recent articles with Groq AI,
+Runs after ingest — scans recent articles with Gemini AI,
 extracts deals, and upserts them into the deal_flow Supabase table.
 """
 
-import os, json, re, time, random
+import os, json, re
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
-from groq import Groq, RateLimitError
+from google import genai
+from google.genai import types
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
-groq     = Groq(api_key=os.environ["GROQ_API_KEY"])
+gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+GEMINI_MODEL = "gemini-2.0-flash"
 
-SYSTEM_PROMPT = """You are a financial analyst extracting deal intelligence from news articles.
+SYSTEM_PROMPT = """You are a senior investment banking analyst
+extracting deal intelligence from financial news articles.
 
-Given an article title and summary, determine if it describes a specific financial transaction or deal.
-Qualifying deals include: M&A, LBO, IPO, VC/PE funding rounds, SPAC mergers, asset sales, minority stake acquisitions, recapitalizations, bankruptcy restructurings.
+A qualifying deal MUST be a specific, named financial transaction
+that has been announced, rumored, or closed. It must have a named
+target company AND a named acquirer or lead investor.
 
-If a deal is present, respond ONLY with a valid JSON object using this exact schema:
+HARD DISQUALIFIERS — return {"is_deal": false} immediately if:
+- The article is about a company valuation, market cap, or
+  stock price (e.g. "Anthropic valued at $X" with no transaction)
+- The article is about earnings, revenue, profit, or guidance
+- The article mentions a company "in talks" with no named
+  counterparty
+- The article is about a fund's general portfolio or strategy,
+  not a specific investment
+- The only dollar figure is a company valuation, not deal size
+
+DEAL VALUE vs VALUATION — critical distinction:
+- Deal value: the amount being paid or raised in this transaction
+- Valuation: what the company is worth (market cap, post-money val)
+- If only a valuation is mentioned with no transaction, is_deal = false
+- Only populate "valuation" field if a specific deal amount is stated
+
+If a qualifying deal is present, respond ONLY with valid JSON:
 {
   "is_deal": true,
-  "company": "Target company name (the company being acquired, funded, or going public)",
-  "acquirer": "Acquiring company or investor (if known, else null)",
-  "deal_type": "One of: M&A | LBO | IPO | VC Round | PE Investment | Asset Sale | SPAC | Recap | Minority Stake | Restructuring | Other",
-  "stage": "One of: rumored | announced | under_loi | diligence | signed | closed",
-  "valuation": "Dollar value string if mentioned (e.g. '$4.2B', '$850M EV'), else null",
-  "sector": "One of: Technology M&A & Investment Banking | Venture Capital & Startup Funding | Private Equity & Buyouts | Public Markets & Earnings | Geopolitics & Macro | Fintech & Crypto | Healthcare & Biotech | Energy & Climate | Consumer & Retail | Real Estate & REITs",
-  "thesis": "One sentence: why this deal matters from an IB/PE/VC perspective",
+  "company": "Target company name",
+  "acquirer": "Named acquirer or lead investor (null if genuinely
+               unknown — not 'undisclosed investors')",
+  "deal_type": "One of: M&A | LBO | IPO | VC Round | PE Investment
+                | Asset Sale | SPAC | Recap | Minority Stake
+                | Restructuring | Debt Financing",
+  "stage": "One of: rumored | announced | under_loi | closed",
+  "valuation": "Specific deal amount only (e.g. '$500M round'),
+                NOT company valuation. null if not stated.",
+  "sector": "One of: Technology | Venture Capital | Private Equity
+             | Public Markets | Fintech | Healthcare | Energy
+             | Consumer & Retail | Real Estate | Geopolitics",
+  "thesis": "One sentence: why this deal matters from an IB/PE/VC
+             perspective. Name the strategic rationale, not just
+             what happened.",
   "source_url": null
 }
 
-If no specific deal is present, respond ONLY with: {"is_deal": false}
-Do not add any text outside the JSON."""
+If no qualifying deal: {"is_deal": false}
+No text outside the JSON. No markdown."""
 
-def groq_with_backoff(messages, temperature=0.1, max_tokens=400, max_retries=5):
-    """Call Groq with exponential backoff + jitter on 429 rate limit errors."""
-    for attempt in range(max_retries):
-        try:
-            resp = groq.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            return resp.choices[0].message.content.strip()
-        except RateLimitError:
-            if attempt == max_retries - 1:
-                raise
-            wait = (2 ** attempt) + random.uniform(0, 1)
-            print(f"  ⚠ Groq 429 — waiting {wait:.1f}s (attempt {attempt+1}/{max_retries})")
-            time.sleep(wait)
-        except Exception:
-            raise
-    raise RateLimitError("Groq rate limit: max retries exceeded")
+
+def gemini_extract(system_prompt, user_content):
+    try:
+        response = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=user_content,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.1,
+                max_output_tokens=500,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                response_mime_type="application/json",
+            ),
+        )
+        return (response.text or "").strip()
+    except Exception as e:
+        print(f"  ⚠ Gemini error: {e}")
+        return None
+
 
 def extract_deal(title, summary, url):
     content = f"Title: {title}\nSummary: {summary or ''}"
     try:
-        raw = groq_with_backoff(
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user",   "content": content},
-            ],
-            temperature=0.1,
-            max_tokens=400,
-        )
+        raw = gemini_extract(SYSTEM_PROMPT, content)
+        if not raw:
+            return None
         raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
         data = json.loads(raw)
         if data.get("is_deal"):
             data["source_url"] = url
             return data
         return None
-    except RateLimitError:
-        print(f"  ✗ Groq rate limit exhausted for '{title[:50]}'")
-        return None
     except Exception as e:
-        print(f"  ⚠ Groq error for '{title[:50]}': {e}")
+        print(f"  ⚠ Error for '{title[:50]}': {e}")
         return None
+
 
 def stage_label(stage):
     mapping = {
@@ -88,6 +108,7 @@ def stage_label(stage):
         "closed":    "closed",
     }
     return mapping.get(stage, "rumored")
+
 
 def run():
     print("🔍 Deal Extractor starting...")
@@ -122,9 +143,6 @@ def run():
             continue
 
         deal = extract_deal(title, summary, url)
-
-        # Inter-article sleep with jitter to avoid bursting the rate limit
-        time.sleep(1.0 + random.uniform(0, 0.5))
 
         if not deal:
             continue
@@ -176,3 +194,45 @@ def run():
             print(f"  ⚠ Supabase error: {e}")
 
     print(f"\n✅ Done — {extracted} deals extracted, {upserted} new deals added to pipeline")
+
+
+def cleanup_bad_deals():
+    """
+    One-time cleanup: remove deals that were extracted with bad
+    data quality (deal_type=Other with no valuation and no
+    acquirer, or auto_extracted=True deals where both valuation
+    and acquirer are null).
+    Run once manually after deploying the Gemini migration.
+    """
+    print("🧹 Cleaning up low-quality auto-extracted deals...")
+    try:
+        # Delete deals with type Other AND no acquirer AND no valuation
+        supabase.table("deal_flow")\
+            .delete()\
+            .eq("auto_extracted", True)\
+            .eq("deal_type", "Other")\
+            .is_("acquirer", "null")\
+            .is_("valuation", "null")\
+            .execute()
+        print(f"  ✓ Removed Other/empty deals")
+
+        # Delete auto-extracted deals with no acquirer AND no valuation
+        # (regardless of type — these are the lowest quality extractions)
+        supabase.table("deal_flow")\
+            .delete()\
+            .eq("auto_extracted", True)\
+            .is_("acquirer", "null")\
+            .is_("valuation", "null")\
+            .execute()
+        print(f"  ✓ Removed no-acquirer/no-valuation deals")
+        print("✅ Cleanup complete")
+    except Exception as e:
+        print(f"  ✗ Cleanup error: {e}")
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "cleanup":
+        cleanup_bad_deals()
+    else:
+        run()

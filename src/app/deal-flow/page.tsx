@@ -195,6 +195,7 @@ function DealFlowContent() {
   const [activityMatchMode, setActivityMatchMode] = useState<"any" | "all">("any");
   const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
   const [verticalMatchMode, setVerticalMatchMode] = useState<"any" | "all">("any");
+  const [showAllTypes, setShowAllTypes] = useState(false);
 
   // Profile-based sector pre-filter
   const { profile } = useUserProfile();
@@ -355,6 +356,17 @@ function DealFlowContent() {
 
   const filtered = useMemo(() => {
     return deals.filter((d) => {
+      // Minimum quality: hide deals with no acquirer AND no valuation/value
+      const hasAcquirer = !!(d.acquirer && d.acquirer.trim());
+      const hasValue = !!(d.valuation && d.valuation.trim()) || !!(d.value && d.value.trim());
+      if (!hasAcquirer && !hasValue) return false;
+
+      // Default hide deal_type "Other" unless showAllTypes is on
+      if (!showAllTypes) {
+        const dt = (d.deal_type || "").toLowerCase();
+        if (dt === "other") return false;
+      }
+
       const stage = getDealStage(d);
       const stageMatch = filterStage === "ALL" || stage === filterStage;
       const q = search.toLowerCase();
@@ -379,7 +391,7 @@ function DealFlowContent() {
       }
       return stageMatch && searchMatch && activityMatch && verticalMatch;
     });
-  }, [deals, filterStage, search, selectedActivityTypes, activityMatchMode, selectedVerticals, verticalMatchMode]);
+  }, [deals, filterStage, search, selectedActivityTypes, activityMatchMode, selectedVerticals, verticalMatchMode, showAllTypes]);
 
   return (
     <AppShell pageTitle="Deal Flow" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
@@ -588,6 +600,18 @@ function DealFlowContent() {
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={() => setShowAllTypes((v) => !v)}
+              className={cn(
+                "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                showAllTypes
+                  ? "border-gold bg-gold-muted text-gold"
+                  : "border-border-base bg-white text-text-muted hover:text-text-primary",
+              )}
+            >
+              {showAllTypes ? "All types" : "Show all types"}
+            </button>
           </div>
         )}
 
@@ -746,10 +770,15 @@ function DealFlowContent() {
 
         {/* Deal count */}
         {!loading && filtered.length > 0 && (
-          <p className="font-data text-[10px] text-text-faint mb-3">
-            {filtered.length} {filtered.length === 1 ? "DEAL" : "DEALS"}
-            {filterStage !== "ALL" && ` · ${STAGE_CONFIG[filterStage]?.label}`}
-          </p>
+          <div className="mb-3">
+            <p className="font-data text-[10px] text-text-faint">
+              {filtered.length} {filtered.length === 1 ? "DEAL" : "DEALS"}
+              {filterStage !== "ALL" && ` · ${STAGE_CONFIG[filterStage]?.label}`}
+            </p>
+            <p className="font-sans text-[11px] text-text-faint mt-0.5">
+              Showing confirmed deals with named parties and deal value. Add a deal manually with + Add Deal.
+            </p>
+          </div>
         )}
 
         {/* Deal list */}
