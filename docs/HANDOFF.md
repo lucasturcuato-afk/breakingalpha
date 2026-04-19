@@ -157,6 +157,8 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
 
 ## Recently Completed (2026-04-18)
+**V4D Phase 2 — Signed-out shell experience (PR #100 merged to main):** PreviewContext + tri-state auth in AppShell; redirects signed-out → `/preview`, signed-in → `/dashboard`. Added dark espresso banner + sidebar CTA. Content gates on `/trends` (first 3 signals) and `/company` (first 6 companies) with gradient fade, lock icons, SignInModal. Auth detection: `getUser()` resolves ~200ms post-mount, initializes `isSignedOut: false` to avoid tri-state timing bug. `/proxy.ts` whitelist expanded for public routes.
+
 **Watchlist V4C sprint (PR #99 merged to main):** XLSX Summary dedup fix, price alert UI + `/api/watchlist-alerts` route, price alert trigger in watchlist_sync.py with 4h cooldown. Requires manual Supabase migration: `backend/watchlist_alerts_schema.sql`.
 
 ## Recently Completed (2026-04-17)
