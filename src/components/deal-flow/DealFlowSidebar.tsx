@@ -56,6 +56,30 @@ const STATUS_COLORS: Record<string, string> = {
 
 const DOT_OPACITIES = [1.0, 0.72, 0.52, 0.38, 0.28];
 
+// Fix 2: canonical sector labels matching the filter chips on the page
+const CANONICAL_SECTORS = [
+  "Technology",
+  "Healthcare & Biotech",
+  "Energy & Oil/Gas",
+  "Financial Services",
+  "Consumer & Retail",
+  "Industrials & Manufacturing",
+  "Aerospace & Defense",
+  "Real Estate",
+  "Media & Telecom",
+  "Materials & Mining",
+  "Agriculture",
+];
+
+function normalizeSector(sector: string): string {
+  const lower = sector.toLowerCase();
+  const matches = CANONICAL_SECTORS.filter((c) => lower.includes(c.toLowerCase()));
+  if (matches.length > 0) {
+    return matches.reduce((a, b) => (a.length <= b.length ? a : b));
+  }
+  return sector.length > 24 ? sector.slice(0, 24).trimEnd() + "…" : sector;
+}
+
 export function DealFlowSidebar({ deals }: DealFlowSidebarProps) {
   const { thisWeek, delta, topTypes, maxTypeCount, topSectors, largestDeals } =
     useMemo(() => {
@@ -85,14 +109,21 @@ export function DealFlowSidebar({ deals }: DealFlowSidebarProps) {
         .slice(0, 5);
       const maxTypeCount = topTypes[0]?.[1] || 1;
 
+      // Fix 2: normalize verbose sector strings before counting
       const sectorCounts: Record<string, number> = {};
       for (const d of deals) {
-        if (d.sector) sectorCounts[d.sector] = (sectorCounts[d.sector] || 0) + 1;
+        if (d.sector) {
+          const key = normalizeSector(d.sector);
+          sectorCounts[key] = (sectorCounts[key] || 0) + 1;
+        }
       }
       const topSectors = Object.entries(sectorCounts)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5);
 
+      // Fix 1: deduplicate by id then by company name before taking top 3
+      const seenIds = new Set<string>();
+      const seenCompanies = new Set<string>();
       const largestDeals = [...deals]
         .filter((d) => d.value || d.valuation)
         .sort(
@@ -100,13 +131,20 @@ export function DealFlowSidebar({ deals }: DealFlowSidebarProps) {
             parseValue(b.value || b.valuation) -
             parseValue(a.value || a.valuation),
         )
+        .filter((d) => {
+          const companyKey = d.company.toLowerCase();
+          if (seenIds.has(d.id) || seenCompanies.has(companyKey)) return false;
+          seenIds.add(d.id);
+          seenCompanies.add(companyKey);
+          return true;
+        })
         .slice(0, 3);
 
       return { thisWeek, delta, topTypes, maxTypeCount, topSectors, largestDeals };
     }, [deals]);
 
   return (
-    <aside className="w-[268px] shrink-0 border-l border-border-base overflow-y-auto bg-white dark:bg-espresso">
+    <aside className="w-[268px] shrink-0 border-l border-border-base overflow-y-auto bg-parchment-mid dark:bg-espresso">
       {/* Section 1 — Pipeline velocity */}
       <div className="px-5 py-4 border-b border-border-base">
         <p className="text-[10px] font-semibold uppercase tracking-widest text-text-faint mb-3">
