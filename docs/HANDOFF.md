@@ -156,6 +156,9 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 4. Are there active paying users? (determines urgency of fixes)
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
 
+## Recently Completed (2026-04-19)
+**Opening screen cinematic landing redesign (noah/opening-screen merged to main):** Full-viewport component with 4-column scrolling signal feed background (16 real deal/market signals, 4 parallax speeds), dark vignette + amber scan line (6s sweep). 7-step animation sequence: wordmark fade → divider extend → tagline letter-spacing → feed blur-to-sharp → hero copy up → stats row up → scan line activate. Two CTAs: "Get Started" → /auth, "Explore Preview" → /preview. Stats: 25 Sectors, 600+ Companies, 200+ Deals, 2 Daily Briefs. Zero external animation libraries. Signed-out users render OpeningScreen; signed-in still redirect to /dashboard. Fixed .gitignore for frontend/.next/ and frontend/node_modules/.
+
 ## Recently Completed (2026-04-18)
 **V4D Phase 2 — Signed-out shell experience (PR #100 merged to main):** PreviewContext + tri-state auth in AppShell; redirects signed-out → `/preview`, signed-in → `/dashboard`. Added dark espresso banner + sidebar CTA. Content gates on `/trends` (first 3 signals) and `/company` (first 6 companies) with gradient fade, lock icons, SignInModal. Auth detection: `getUser()` resolves ~200ms post-mount, initializes `isSignedOut: false` to avoid tri-state timing bug. `/proxy.ts` whitelist expanded for public routes.
 
