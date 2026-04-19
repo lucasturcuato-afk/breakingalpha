@@ -15,6 +15,15 @@ GEMINI_MODEL = "gemini-2.5-flash"
 
 MORNING_SYSTEM = """You are a senior investment banking analyst preparing the daily morning briefing for a capital markets team.
 
+WATCHLIST DIRECTIVE:
+The articles marked [WATCHLIST] below are from companies and tickers that users are actively tracking. When these companies appear in the news, prioritize them in your analysis:
+- If a watchlist company is involved in a deal, it MUST appear in top_deals and deals_and_ma
+- If a watchlist company has notable earnings or market moves, it MUST appear in public_markets or sector_spotlight
+- Mention watchlist companies by name explicitly — do not bury them in generic sector commentary
+- If watchlist signals are weak or off-topic today, it is acceptable to omit them — do not force irrelevant content
+
+This directive applies only when [WATCHLIST] articles are present in the input. If no [WATCHLIST] articles are provided, ignore this directive entirely.
+
 You will receive a list of recent news articles, each tagged with a Signal line written by a buy-side analyst. Use those signals to anchor your analysis.
 
 SECTION RULES — read before writing anything: Only include a section if you have specific, non-generic content from the provided articles. If a section has no real signal — no named company, concrete rate figure, specific country, or actionable catalyst — OMIT that key from the JSON output entirely. Fewer sections with strong signal beats a complete schema with filler. BANNED phrases in every field: "does not directly impact", "no geopolitical developments", "no direct geopolitical", "investors should monitor", "broadly supportive", "ongoing uncertainty", "markets reacted to", "could also affect", "this is consistent with", "highlight", "broadly positive", "limited direct impact", "while not directly". If you cannot write a sentence without a banned phrase, omit the section.
@@ -56,6 +65,15 @@ A qualifying top_deals entry MUST satisfy ALL FOUR of the following — if any o
 Exclude without exception: earnings reports, revenue or profit results, stock price moves, analyst upgrades or downgrades, product launches, index inclusions, executive appointments, general company performance news, and fundraising stories without a named lead investor and confirmed amount — even if the article features a well-known company. If no qualifying deal exists in the provided articles, return an empty top_deals array rather than filling it with non-deal stories. Never use bracket placeholders — always write the actual name. When stating implications, use hedged language ('may signal', 'suggests') unless multiple articles confirm the same direction — never imply sector-wide repricing, macro conclusions, or broader competitive dynamics from a single story. Banned phrases unless strongly evidenced by multiple articles: 'ongoing consolidation', 'sector rotation', 'broader trend', 'continued pressure'."""
 
 EVENING_SYSTEM = """You are a senior investment banking analyst preparing the evening market wrap briefing.
+
+WATCHLIST DIRECTIVE:
+The articles marked [WATCHLIST] below are from companies and tickers that users are actively tracking. When these companies appear in the news, prioritize them in your analysis:
+- If a watchlist company is involved in a deal, it MUST appear in top_deals and deals_and_ma
+- If a watchlist company has notable earnings or market moves, it MUST appear in public_markets or sector_spotlight
+- Mention watchlist companies by name explicitly — do not bury them in generic sector commentary
+- If watchlist signals are weak or off-topic today, it is acceptable to omit them — do not force irrelevant content
+
+This directive applies only when [WATCHLIST] articles are present in the input. If no [WATCHLIST] articles are provided, ignore this directive entirely.
 
 You will receive today's news articles, each tagged with a Signal line written by a buy-side analyst. Use those signals to anchor your wrap.
 
@@ -285,6 +303,73 @@ def gemini_generate(system, user_content, temperature=0.3, max_tokens=4096):
     )
     return (response.text or "").strip()
 
+def fetch_watchlist_signals(cutoff_hours: int = 24) -> tuple[list[dict], list[str]]:
+    """
+    Fetch recently cached watchlist articles across all tracked identifiers.
+    Returns (articles, identifiers) where:
+      - articles: list of article dicts with title, summary, identifier, source_type
+      - identifiers: list of all distinct identifiers currently in the watchlist table
+
+    Designed to be called during synthesis to inject watchlist context into the brief.
+    Always fails gracefully — returns ([], []) on any error so the main pipeline never crashes.
+    """
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=cutoff_hours)).isoformat()
+
+        # Fetch all distinct identifiers currently tracked by any user
+        watchlist_resp = supabase.table("watchlist")\
+            .select("identifier")\
+            .execute()
+
+        if not watchlist_resp.data:
+            print("  ℹ Watchlist empty — no watchlist signals to inject")
+            return [], []
+
+        identifiers = list({row["identifier"] for row in watchlist_resp.data if row.get("identifier")})
+
+        if not identifiers:
+            return [], []
+
+        # Cap at 50 identifiers to keep the .in_() query manageable
+        identifiers = identifiers[:50]
+
+        print(f"  📋 Watchlist: {len(identifiers)} tracked identifiers")
+
+        # Fetch cached articles for those identifiers from the last cutoff_hours
+        articles_resp = supabase.table("watchlist_articles")\
+            .select("identifier, title, summary, source, source_type, published_at, relevance_score, url")\
+            .in_("identifier", identifiers)\
+            .gte("fetched_at", cutoff)\
+            .order("relevance_score", desc=True)\
+            .limit(50)\
+            .execute()
+
+        articles = articles_resp.data or []
+
+        if not articles:
+            print(f"  ℹ No recent watchlist articles found (cutoff: {cutoff_hours}h)")
+            return [], identifiers
+
+        # Deduplicate by title (exact match)
+        seen_titles = set()
+        deduped = []
+        for a in articles:
+            title = (a.get("title") or "").strip().lower()
+            if title and title not in seen_titles:
+                seen_titles.add(title)
+                deduped.append(a)
+
+        # Take top 8 by relevance_score
+        top_articles = deduped[:8]
+
+        print(f"  ✅ Watchlist signals: {len(top_articles)} articles from {len(identifiers)} identifiers")
+        return top_articles, identifiers
+
+    except Exception as e:
+        print(f"  ⚠ fetch_watchlist_signals failed (non-fatal): {e}")
+        return [], []
+
+
 def run(brief_type="morning"):
     print(f"📝 Synthesizing {brief_type} briefing...")
 
@@ -311,6 +396,42 @@ def run(brief_type="morning"):
     print(f"  📰 Synthesis input: {len(spine)} spine + {len(floor)} floor articles "
           f"({len(spine) + len(floor)} total, from pool of up to 60)")
 
+    # ── Watchlist signal injection ──────────────────────────────────────────
+    watchlist_articles, watchlist_identifiers = fetch_watchlist_signals(cutoff_hours=24)
+
+    watchlist_text = ""
+    if watchlist_articles:
+        watchlist_lines = []
+        for a in watchlist_articles:
+            identifier = a.get("identifier", "")
+            title = a.get("title", "")
+            summary = (a.get("summary") or "")[:200]
+            source = a.get("source", "")
+            score = a.get("relevance_score", "")
+            line = f"[WATCHLIST: {identifier}] {title}"
+            if summary:
+                line += f"\n{summary}"
+            if source:
+                line += f"\nSource: {source}"
+            if score:
+                line += f" | Relevance: {score}"
+            watchlist_lines.append(line)
+
+        watchlist_text = (
+            "\n\n--- WATCHLIST SIGNALS (actively tracked by users) ---\n\n"
+            + "\n\n".join(watchlist_lines)
+        )
+        print(f"  📌 Injecting {len(watchlist_articles)} watchlist signals into prompt")
+    elif watchlist_identifiers:
+        # Identifiers exist but no fresh articles — note the tracked companies only
+        watchlist_text = (
+            f"\n\n--- TRACKED COMPANIES (no fresh articles today) ---\n"
+            f"Users are tracking: {', '.join(watchlist_identifiers[:20])}\n"
+            f"Mention these if they appear in the main articles above."
+        )
+        print(f"  📌 No fresh watchlist articles, but noting {len(watchlist_identifiers)} tracked identifiers")
+    # ── End watchlist injection ──────────────────────────────────────────────
+
     # Spine: full summary context (300 chars) — these are the dominant stories
     spine_texts = [
         f"[{a.get('sector','')}] {a.get('title','')}\n{(a.get('summary','') or '')[:300]}"
@@ -327,6 +448,8 @@ def run(brief_type="morning"):
     article_text = "\n\n".join(spine_texts)
     if floor_texts:
         article_text += "\n\n--- ADDITIONAL SECTOR SIGNALS ---\n\n" + "\n\n".join(floor_texts)
+    if watchlist_text:
+        article_text += watchlist_text
 
     system = MORNING_SYSTEM if brief_type == "morning" else EVENING_SYSTEM
 

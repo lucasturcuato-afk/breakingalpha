@@ -56,6 +56,7 @@
 - Watchlist V4C — XLSX Summary dedup fix, price alert UI + `/api/watchlist-alerts` route + schema, price alert trigger in watchlist_sync.py with 4h cooldown and Finnhub quote fetch (PR #99)
 
 ## In Progress
+- **Morning Brief watchlist integration** (branch: noah/watchlist-brief-integration) — watchlist-aware synthesis in `synthesize.py`: `fetch_watchlist_signals()` + WATCHLIST DIRECTIVE in system prompts + `[WATCHLIST]`-labeled article injection after floor articles. Shared brief approach (one brief for all users, watchlist-aware at generation time); per-user section ordering remains in `/api/briefing/route.ts`. Dry-run validated against live Supabase. End-to-end test requires next cron run.
 
 ## Next — Noah
 ### Autonomous Improvement Phase 1 (complete ✓)
