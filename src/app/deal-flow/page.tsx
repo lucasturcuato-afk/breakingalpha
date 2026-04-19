@@ -19,6 +19,7 @@ import {
   Star,
 } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
+import { DealFlowSidebar } from "@/components/deal-flow/DealFlowSidebar";
 import { createBrowserClient } from "@supabase/ssr";
 
 function getSupabase() {
@@ -395,7 +396,8 @@ function DealFlowContent() {
 
   return (
     <AppShell pageTitle="Deal Flow" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
-      <div className="p-6 max-w-[960px]">
+      <div className="flex flex-1 overflow-hidden">
+      <div className="flex-1 min-w-0 overflow-y-auto p-6">
         {/* Header */}
         <div className="flex items-start justify-between mb-1">
           <div>
@@ -940,6 +942,8 @@ function DealFlowContent() {
             description="Try a different search term or filter"
           />
         )}
+      </div>
+      <DealFlowSidebar deals={deals} />
       </div>
 
       {/* Memo Modal */}
