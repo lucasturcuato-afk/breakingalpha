@@ -321,7 +321,7 @@ export function OpeningScreen() {
             }}
           >
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <div style={{ height: "36px" }} />
+              <div style={{ height: "16px" }} />
 
               <h1 style={{
                 fontFamily: "var(--font-display), Georgia, serif",
