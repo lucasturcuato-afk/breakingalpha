@@ -33,9 +33,9 @@ const COLUMN_INDICES = [
 
 const STATS = [
   { num: "25", label: "Sectors" },
-  { num: "14", label: "Signals daily" },
-  { num: "200+", label: "Deals tracked" },
-  { num: "6am", label: "Morning brief" },
+  { num: "600+", label: "Companies tracked" },
+  { num: "200+", label: "Deals in pipeline" },
+  { num: "6am + 8pm", label: "Daily briefs" },
 ];
 
 function buildCardHTML(signal: Signal): string {
