@@ -339,7 +339,7 @@ export function OpeningScreen() {
               <p style={{
                 fontFamily: "sans-serif",
                 fontSize: "13.5px",
-                color: "rgba(255,255,255,0.44)",
+                color: "rgba(255,255,255,0.72)",
                 lineHeight: 1.72,
                 maxWidth: "355px",
                 marginBottom: "36px",
