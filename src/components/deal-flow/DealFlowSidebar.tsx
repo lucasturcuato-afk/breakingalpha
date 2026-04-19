@@ -91,11 +91,16 @@ function normalizeSector(sector: string): string {
 
 // ── Fix 4: company name normalization for dedup ───────────────────────────────
 
-const COMPANY_SUFFIX_RE =
-  /\s*\b(inc\.?|corp\.?|pbc\.?|ltd\.?|group|llc\.?|co\.?|plc\.?|holdings?)\b\.?\s*$/i;
-
 function normalizeCompany(name: string): string {
-  return name.toLowerCase().replace(COMPANY_SUFFIX_RE, "").trim();
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(
+      /\b(inc|corp|pbc|ltd|group|llc|plc|co|company|holdings|international|technologies|technology|solutions|services|capital|partners|ventures|management|global|systems|networks)\b/g,
+      "",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
