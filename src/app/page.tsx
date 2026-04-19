@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { OpeningScreen } from "@/components/landing/opening-screen";
 
 export default async function Home() {
   const cookieStore = await cookies();
@@ -30,5 +31,5 @@ export default async function Home() {
     redirect("/dashboard");
   }
 
-  redirect("/preview");
+  return <OpeningScreen />;
 }
