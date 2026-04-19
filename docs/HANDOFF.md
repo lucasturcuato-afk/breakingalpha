@@ -156,6 +156,17 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 4. Are there active paying users? (determines urgency of fixes)
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
 
+## In Progress (2026-04-19)
+**Watchlist Brief Integration (branch: noah/watchlist-brief-integration):**
+- `fetch_watchlist_signals()` added to `synthesize.py` — fetches all distinct identifiers from `watchlist` table (capped at 50), then retrieves top 8 cached articles from `watchlist_articles` (last 24h, sorted by `relevance_score`). Fails gracefully: any error returns `([], [])` and never crashes the pipeline.
+- WATCHLIST DIRECTIVE added to both `MORNING_SYSTEM` and `EVENING_SYSTEM`: instructs Gemini to prioritize watchlist companies in `top_deals`, `deals_and_ma`, `public_markets`, `sector_spotlight`. Directive is self-disabling: explicitly tells Gemini to ignore it if no `[WATCHLIST]` articles are present.
+- Watchlist signals injected as `[WATCHLIST: identifier]`-labeled articles appended after floor articles in synthesis prompt. Fallback path: if identifiers exist but no fresh articles, injects a `--- TRACKED COMPANIES ---` note instead.
+- **Architecture note:** This creates a SHARED brief (one for all users) with watchlist-aware synthesis. Per-user personalization (section ordering, sector reordering) remains in the existing `/api/briefing/route.ts` layer (Lucas's work) — untouched.
+- **No manual Supabase steps required** after merge.
+- **Dry-run tested:** `fetch_watchlist_signals()` confirmed live against Supabase — found 38 tracked identifiers, no fresh articles (expected — watchlist_sync hasn't run today yet).
+- **End-to-end test:** requires next cron run (6am or 8pm PST) with Gemini quota active.
+- Does NOT touch: `/api/briefing/route.ts`, `run.py` step manifest, `watchlist_sync.py`, frontend, pipeline steps 13/14.
+
 ## Recently Completed (2026-04-19)
 **Opening screen cinematic landing redesign (noah/opening-screen merged to main):** Full-viewport component with 4-column scrolling signal feed background (16 real deal/market signals, 4 parallax speeds), dark vignette + amber scan line (6s sweep). 7-step animation sequence: wordmark fade → divider extend → tagline letter-spacing → feed blur-to-sharp → hero copy up → stats row up → scan line activate. Two CTAs: "Get Started" → /auth, "Explore Preview" → /preview. Stats: 25 Sectors, 600+ Companies, 200+ Deals, 2 Daily Briefs. Zero external animation libraries. Signed-out users render OpeningScreen; signed-in still redirect to /dashboard. Fixed .gitignore for frontend/.next/ and frontend/node_modules/.
 
