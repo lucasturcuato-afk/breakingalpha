@@ -156,13 +156,9 @@ function SignInPrompt({ onDismiss }: { onDismiss: () => void }) {
             Sign in with email
           </button>
 
-          <button
-            type="button"
-            onClick={onDismiss}
-            className="block w-full text-center mt-4 font-sans text-[12px] text-text-faint hover:text-text-muted transition-colors cursor-pointer"
-          >
+          <Link href="/preview" className="block w-full text-center mt-4 font-sans text-[12px] text-text-faint hover:text-text-muted transition-colors cursor-pointer">
             Explore the preview first →
-          </button>
+          </Link>
         </div>
       </div>
     </div>
@@ -280,17 +276,9 @@ export function LandingPage() {
             >
               Get Started — It&apos;s Free
             </Button>
-            <button
-              type="button"
-              onClick={() => {
-                document
-                  .getElementById("preview-section")
-                  ?.scrollIntoView({ behavior: "smooth" });
-              }}
-              className="font-sans text-[13px] text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
-            >
-              See a preview ↓
-            </button>
+            <Link href="/preview" className="font-sans text-[13px] text-text-secondary hover:text-text-primary transition-colors">
+              Explore preview →
+            </Link>
           </div>
 
           {/* Social proof */}
