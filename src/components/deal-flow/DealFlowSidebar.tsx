@@ -146,7 +146,8 @@ export function DealFlowSidebar({ deals }: DealFlowSidebarProps) {
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5);
 
-      // Largest deals — dedup by normalized company name, display shortest variant
+      // Largest deals — sort by value, dedup by normalized name (keeping highest),
+      // then slice to top 3 and map to shortest display name
       const shortestName: Record<string, string> = {};
       for (const d of deals) {
         const key = normalizeCompany(d.company);
@@ -155,17 +156,23 @@ export function DealFlowSidebar({ deals }: DealFlowSidebarProps) {
         }
       }
 
+      const sortedByValue = [...deals]
+        .filter((d) => d.value || d.valuation)
+        .sort((a, b) => parseValue(b.value || b.valuation) - parseValue(a.value || a.valuation));
+
       const seenKeys = new Set<string>();
-      const largestDeals: Array<Deal & { displayCompany: string }> = [];
-      for (const d of [...deals]
-        .filter((x) => x.value || x.valuation)
-        .sort((a, b) => parseValue(b.value || b.valuation) - parseValue(a.value || a.valuation))) {
-        const key = normalizeCompany(d.company);
-        if (seenKeys.has(key)) continue;
-        seenKeys.add(key);
-        largestDeals.push({ ...d, displayCompany: shortestName[key] ?? d.company });
-        if (largestDeals.length === 3) break;
-      }
+      const largestDeals = sortedByValue
+        .filter((d) => {
+          const key = normalizeCompany(d.company);
+          if (seenKeys.has(key)) return false;
+          seenKeys.add(key);
+          return true;
+        })
+        .slice(0, 3)
+        .map((d) => ({
+          ...d,
+          displayCompany: shortestName[normalizeCompany(d.company)] ?? d.company,
+        }));
 
       return { thisWeek, delta, topTypes, maxTypeCount, topSectors, largestDeals };
     }, [deals]);
