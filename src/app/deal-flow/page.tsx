@@ -549,8 +549,8 @@ function DealFlowContent() {
 
         {/* Profile sector pre-filter banner */}
         {profileApplied && !profileBannerDismissed && selectedVerticals.length > 0 && (
-          <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-4">
-            <span className="font-sans text-[12px] text-amber-800">
+          <div className="flex items-center justify-between bg-amber-50 dark:bg-overlay border border-amber-200 dark:border-border-default rounded-xl px-4 py-2.5 mb-4">
+            <span className="font-sans text-[12px] text-amber-800 dark:text-gold">
               Showing deals in your tracked sectors.{" "}
               <button
                 type="button"
@@ -593,7 +593,7 @@ function DealFlowContent() {
                 "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
                 filterStage === "ALL"
                   ? "border-gold bg-gold-muted text-gold"
-                  : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                  : "border-border-base bg-white dark:bg-elevated text-text-muted hover:text-text-primary",
               )}
             >
               All ({deals.length})
@@ -624,7 +624,7 @@ function DealFlowContent() {
                 "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
                 showAllTypes
                   ? "border-gold bg-gold-muted text-gold"
-                  : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                  : "border-border-base bg-white dark:bg-elevated text-text-muted hover:text-text-primary",
               )}
             >
               {showAllTypes ? "All types" : "Show all types"}
@@ -821,9 +821,9 @@ function DealFlowContent() {
                     setExpanded(isExp ? null : deal.id);
                   }}
                   className={cn(
-                    "bg-white border border-border-base rounded-xl py-4 cursor-pointer",
+                    "bg-white dark:bg-elevated border border-border-base rounded-xl py-4 cursor-pointer",
                     "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",
-                    "hover:border-gold-border hover:shadow-[0_2px_12px_rgba(201,146,42,0.06)]",
+                    "hover:border-gold-border dark:hover:bg-overlay hover:shadow-[0_2px_12px_rgba(201,146,42,0.06)]",
                     showGoldBorder ? "border-l-2 border-gold pl-[14px] pr-5 -ml-[1px]" : "px-5",
                   )}
                 >
