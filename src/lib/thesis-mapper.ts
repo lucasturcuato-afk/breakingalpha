@@ -140,27 +140,64 @@ export function thesisDedupKey(row: { title?: string | null; sector?: string | n
 }
 
 /**
- * Deduplicate a list of theses by `(title|sector)`, keeping the row with the
- * most recent `generated_at`. Ties resolve to the first occurrence.
+ * Fuzzy dedup key — uses the first 5 words of the title + sector to catch
+ * near-duplicate theses like "SpaceX IPO Momentum Builds" vs
+ * "SpaceX IPO Momentum Builds Amid Musk's Social Media Activity".
+ */
+export function thesisFuzzyKey(row: { title?: string | null; sector?: string | null }): string {
+  const words = String(row.title ?? "").trim().toLowerCase().split(/\s+/).slice(0, 5).join(" ");
+  const sector = String(row.sector ?? "").trim().toLowerCase();
+  return `${words}|${sector}`;
+}
+
+/**
+ * Deduplicate a list of theses by exact `(title|sector)` AND fuzzy
+ * (first-5-words|sector), keeping the row with the most recent
+ * `generated_at`. Ties resolve to the first occurrence.
  */
 export function dedupByTitleSector<T extends { title?: string | null; sector?: string | null; generated_at?: string | null }>(
   rows: T[],
 ): { deduped: T[]; dupeCount: number } {
-  const map = new Map<string, T>();
+  const exactMap = new Map<string, T>();
+  const fuzzyMap = new Map<string, T>();
   let dupeCount = 0;
+
+  function isNewerThan(row: T, existing: T): boolean {
+    return new Date(row.generated_at ?? 0).getTime() > new Date(existing.generated_at ?? 0).getTime();
+  }
+
   for (const row of rows) {
-    const key = thesisDedupKey(row);
-    const existing = map.get(key);
-    if (!existing) {
-      map.set(key, row);
+    const exactKey = thesisDedupKey(row);
+    const fuzzyKey = thesisFuzzyKey(row);
+
+    // Check exact match first
+    const exactExisting = exactMap.get(exactKey);
+    if (exactExisting) {
+      dupeCount++;
+      if (isNewerThan(row, exactExisting)) {
+        exactMap.set(exactKey, row);
+        fuzzyMap.set(fuzzyKey, row);
+      }
       continue;
     }
-    dupeCount++;
-    const existingAt = new Date(existing.generated_at ?? 0).getTime();
-    const nextAt = new Date(row.generated_at ?? 0).getTime();
-    if (nextAt > existingAt) {
-      map.set(key, row);
+
+    // Check fuzzy match (catches "SpaceX IPO Momentum Builds" vs
+    // "SpaceX IPO Momentum Builds Amid Musk's Social Media Activity")
+    const fuzzyExisting = fuzzyMap.get(fuzzyKey);
+    if (fuzzyExisting) {
+      dupeCount++;
+      if (isNewerThan(row, fuzzyExisting)) {
+        // Remove old exact key and replace with new
+        exactMap.delete(thesisDedupKey(fuzzyExisting));
+        exactMap.set(exactKey, row);
+        fuzzyMap.set(fuzzyKey, row);
+      }
+      continue;
     }
+
+    exactMap.set(exactKey, row);
+    fuzzyMap.set(fuzzyKey, row);
   }
-  return { deduped: Array.from(map.values()), dupeCount };
+
+  return { deduped: Array.from(exactMap.values()), dupeCount };
 }

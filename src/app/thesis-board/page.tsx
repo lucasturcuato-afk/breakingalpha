@@ -47,14 +47,6 @@ function thesisToContent(thesis: ThesisItem): ContentDescriptor {
   };
 }
 
-function sectorMatchesProfile(thesisSector: string, profileSectors: string[]): boolean {
-  const lower = thesisSector.toLowerCase();
-  return profileSectors.some((ps) => {
-    const pl = ps.toLowerCase();
-    return lower.includes(pl) || pl.includes(lower);
-  });
-}
-
 // Note: the single source of truth `mapThesisRow` lives in `@/lib/thesis-mapper`.
 // The API already returns canonical shape, but re-mapping here keeps the
 // component resilient if the API ever returns a raw row (e.g. older build).
@@ -527,11 +519,7 @@ function ThesisBoardContent() {
               <div className="flex gap-2">
                 {(
                   [
-                    { key: "recommended" as const, label: "Recommended", count: (() => {
-                      const sectors = profile?.sectors ?? [];
-                      if (sectors.length === 0) return theses.filter((t) => !userArchivedIds.has(t.id)).length;
-                      return theses.filter((t) => !userArchivedIds.has(t.id) && sectorMatchesProfile(t.sector, sectors)).length;
-                    })() },
+                    { key: "recommended" as const, label: "Recommended", count: theses.filter((t) => !userArchivedIds.has(t.id)).length },
                     { key: "HIGH" as const, label: "HIGH", count: convictionCounts.HIGH },
                     { key: "MEDIUM" as const, label: "MEDIUM", count: convictionCounts.MEDIUM },
                     { key: "WATCH" as const, label: "WATCH", count: convictionCounts.WATCH },
