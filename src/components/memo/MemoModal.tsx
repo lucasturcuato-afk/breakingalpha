@@ -1,104 +1,77 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import type { JSX } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { X, Copy, Check, Download, Loader2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
 
-function inlineBold(text: string, keyBase: string): (string | JSX.Element)[] {
-  const parts = text.split(/(\*\*[^*]+\*\*)/);
-  return parts.map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return (
-        <strong key={`${keyBase}-b-${i}`} className="font-bold text-espresso">
-          {part.slice(2, -2)}
-        </strong>
-      );
+/* ── Markdown component overrides ── */
+
+const mdComponents: Components = {
+  h1: ({ children }) => (
+    <h1 className="font-display text-[17px] font-bold text-text-primary mb-2 mt-4">
+      {children}
+    </h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="font-display text-[15px] font-bold text-text-primary mb-2 mt-4">
+      {children}
+    </h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="font-sans text-[11px] font-bold text-gold uppercase tracking-wider mb-2 mt-4">
+      {children}
+    </h3>
+  ),
+  p: ({ children }) => (
+    <p className="font-sans text-[13px] text-text-secondary leading-relaxed mb-3">
+      {children}
+    </p>
+  ),
+  strong: ({ children }) => (
+    <strong className="font-bold text-gold">{children}</strong>
+  ),
+  hr: () => <hr className="border-border-base my-4" />,
+  ul: ({ children }) => (
+    <ul className="list-disc pl-4 space-y-1 text-text-secondary mb-3">
+      {children}
+    </ul>
+  ),
+  ol: ({ children }) => (
+    <ol className="list-decimal pl-4 space-y-1 text-text-secondary mb-3">
+      {children}
+    </ol>
+  ),
+  li: ({ children }) => (
+    <li className="font-sans text-[13px] leading-relaxed">{children}</li>
+  ),
+};
+
+/* ── Section parser for ink fade animation ── */
+
+function parseSections(text: string): string[] {
+  // Split on markdown headings (# ## ###), keeping the heading with its body
+  const lines = text.split("\n");
+  const sections: string[] = [];
+  let current: string[] = [];
+
+  for (const line of lines) {
+    if (/^#{1,3}\s/.test(line) && current.length > 0) {
+      sections.push(current.join("\n"));
+      current = [line];
+    } else {
+      current.push(line);
     }
-    return part;
-  });
+  }
+  if (current.length > 0) {
+    sections.push(current.join("\n"));
+  }
+  return sections;
 }
 
-function renderMarkdown(text: string, isStreaming: boolean): JSX.Element[] {
-  const allLines = text.split("\n");
-  const lines = isStreaming ? allLines.slice(0, -1) : allLines;
-
-  const elements: JSX.Element[] = [];
-  let paragraphLines: string[] = [];
-  let bulletLines: string[] = [];
-  let bulletStartIdx = 0;
-
-  function flushParagraph(idx: number) {
-    if (paragraphLines.length === 0) return;
-    const combined = paragraphLines.join(" ").trim();
-    if (combined) {
-      elements.push(
-        <p key={`p-${idx}`} className="font-sans text-[13px] text-text-secondary leading-[1.85] mb-2">
-          {inlineBold(combined, `p-${idx}`)}
-        </p>,
-      );
-    }
-    paragraphLines = [];
-  }
-
-  function flushBullets(idx: number) {
-    if (bulletLines.length === 0) return;
-    elements.push(
-      <ul key={`ul-${bulletStartIdx}`} className="list-disc ml-4 space-y-1 mb-2">
-        {bulletLines.map((b, j) => (
-          <li key={`li-${bulletStartIdx}-${j}`} className="font-sans text-[13px] text-text-secondary leading-[1.85]">
-            {inlineBold(b, `li-${bulletStartIdx}-${j}`)}
-          </li>
-        ))}
-      </ul>,
-    );
-    bulletLines = [];
-    bulletStartIdx = idx;
-  }
-
-  lines.forEach((line, i) => {
-    if (line.startsWith("## ")) {
-      flushParagraph(i);
-      flushBullets(i);
-      elements.push(
-        <h2 key={`h2-${i}`} className="font-display text-[15px] font-bold text-espresso mt-5 mb-2">
-          {inlineBold(line.slice(3).trim(), `h2-${i}`)}
-        </h2>,
-      );
-      return;
-    }
-    if (line.startsWith("# ")) {
-      flushParagraph(i);
-      flushBullets(i);
-      elements.push(
-        <h1 key={`h1-${i}`} className="font-display text-[17px] font-bold text-espresso mt-5 mb-2">
-          {inlineBold(line.slice(2).trim(), `h1-${i}`)}
-        </h1>,
-      );
-      return;
-    }
-    if (/^[*-] /.test(line)) {
-      flushParagraph(i);
-      if (bulletLines.length === 0) bulletStartIdx = i;
-      bulletLines.push(line.slice(2));
-      return;
-    }
-    if (line.trim() === "") {
-      flushParagraph(i);
-      flushBullets(i);
-      return;
-    }
-    // Plain text — flush bullets first, accumulate paragraph
-    flushBullets(i);
-    paragraphLines.push(line);
-  });
-
-  flushParagraph(lines.length);
-  flushBullets(lines.length);
-
-  return elements;
-}
+/* ── Types ── */
 
 export type MemoType = "deal" | "thesis" | "brief" | "article" | "company";
 
@@ -126,10 +99,10 @@ const TYPE_LABELS: Record<MemoType, string> = {
 export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt, preloadedMemo, onGenerated }: MemoModalProps) {
   const [mounted, setMounted] = useState(false);
   const [memo, setMemo] = useState("");
-  const [displayed, setDisplayed] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [visibleSections, setVisibleSections] = useState<Set<number>>(new Set());
 
   // Keep onGenerated ref in sync to avoid stale closure bugs
   const onGeneratedRef = useRef(onGenerated);
@@ -141,13 +114,12 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
   useEffect(() => {
     if (!isOpen || !content) return;
     setMemo("");
-    setDisplayed("");
     setError("");
     setCopied(false);
+    setVisibleSections(new Set());
 
     // If a preloaded memo was provided, skip the API call entirely.
     if (preloadedMemo) {
-      // loading stays false — we never called setLoading(true) above
       setMemo(preloadedMemo);
       return;
     }
@@ -170,9 +142,7 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
         if (!cancelled && data.memo) {
           setMemo(data.memo);
           onGeneratedRef.current?.(data.memo);
-          // Fire-and-forget behavioral event — informs inferred weights.
-          // We don't have a sector here; caller uses `systemPrompt` to pass
-          // context, so we just log the memo_type + title as an identifier.
+          // Fire-and-forget behavioral event
           try {
             void fetch("/api/user-events", {
               method: "POST",
@@ -199,18 +169,26 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
     return () => { cancelled = true; };
   }, [isOpen, content, type, preloadedMemo]);
 
-  // Typewriter effect at 12ms/char
+  // Parse sections from memo
+  const sections = useMemo(() => parseSections(memo), [memo]);
+
+  // Ink fade animation — stagger each section
   useEffect(() => {
-    if (!memo) { setDisplayed(""); return; }
-    setDisplayed("");
-    let i = 0;
-    const id = setInterval(() => {
-      i++;
-      setDisplayed(memo.slice(0, i));
-      if (i >= memo.length) clearInterval(id);
-    }, 12);
-    return () => clearInterval(id);
-  }, [memo]);
+    if (sections.length === 0) {
+      setVisibleSections(new Set());
+      return;
+    }
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    for (let i = 0; i < sections.length; i++) {
+      const timer = setTimeout(() => {
+        setVisibleSections((prev) => new Set(prev).add(i));
+      }, i * 180);
+      timers.push(timer);
+    }
+
+    return () => timers.forEach(clearTimeout);
+  }, [sections]);
 
   // Escape to close
   useEffect(() => {
@@ -247,7 +225,7 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white border border-border-base rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl"
+        className="bg-parchment border border-border-base rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border-base flex-shrink-0">
@@ -271,11 +249,8 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <div className="flex items-center justify-center py-16">
               <Loader2 size={24} className="text-gold animate-spin" />
-              <p className="font-data text-[10px] text-text-faint uppercase tracking-widest">
-                Generating {TYPE_LABELS[type]}...
-              </p>
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-16 gap-2">
@@ -289,11 +264,21 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
               </button>
             </div>
           ) : (
-            <div className="font-sans text-[13px] text-text-secondary leading-[1.85]">
-              {renderMarkdown(displayed, memo.length > 0 && displayed.length < memo.length)}
-              {memo && displayed.length < memo.length && (
-                <span className="inline-block w-0.5 h-3.5 bg-gold ml-0.5 animate-pulse align-text-bottom" />
-              )}
+            <div>
+              {sections.map((section, i) => (
+                <div
+                  key={i}
+                  className="transition-all duration-[400ms] ease-out"
+                  style={{
+                    opacity: visibleSections.has(i) ? 1 : 0,
+                    transform: visibleSections.has(i) ? "translateY(0)" : "translateY(8px)",
+                  }}
+                >
+                  <ReactMarkdown components={mdComponents}>
+                    {section}
+                  </ReactMarkdown>
+                </div>
+              ))}
             </div>
           )}
         </div>
