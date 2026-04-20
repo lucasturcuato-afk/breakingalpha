@@ -77,12 +77,19 @@ function sectorMatches(articleSector: string | undefined, profileSectors: string
 }
 
 export default function DashboardPage() {
-  const { profile } = useUserProfile();
+  const { profile, refetch: refetchProfile } = useUserProfile();
   const [stories, setStories] = useState<StoryData[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
   const [storyCount, setStoryCount] = useState(0);
   const [marketCards, setMarketCards] = useState<Record<string, MarketCardData | null>>({});
   const [storyTab, setStoryTab] = useState<"for-you" | "all">("all");
+
+  // Refetch profile when window regains focus (e.g. returning from settings)
+  useEffect(() => {
+    function onFocus() { refetchProfile(); }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refetchProfile]);
 
   useEffect(() => {
     async function loadStories() {
@@ -169,7 +176,7 @@ export default function DashboardPage() {
 
   // Read user's market_cards preference from profile (or use defaults)
   const userMarketCards = useMemo(() => {
-    const raw = (profile as Record<string, unknown> | null)?.market_cards;
+    const raw = profile?.market_cards;
     if (Array.isArray(raw) && raw.length > 0) return raw as string[];
     return DEFAULT_MARKET_CARDS;
   }, [profile]);

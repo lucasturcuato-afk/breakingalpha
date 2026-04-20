@@ -68,6 +68,11 @@ const RISK_OPTIONS: { id: RiskAppetite; label: string }[] = [
 
 const DEFAULT_MARKET_CARDS = ["SPY", "VIX", "TNX", "SIGNALS"];
 
+const MARKET_CARD_OPTIONS = [
+  "SPY", "QQQ", "DIA", "VIX", "TNX", "DXY",
+  "BTC", "ETH", "GOLD", "OIL", "SIGNALS",
+];
+
 interface PreferencesFormProps {
   initialFirstName: string;
   initialFirmOrSchool: string;
@@ -367,33 +372,28 @@ export function PreferencesForm({
         <h2 className="font-display text-[16px] font-bold text-espresso mb-1">
           Dashboard Market Cards
         </h2>
-        <p className="font-sans text-[12px] text-text-secondary mb-2">
-          Choose up to 4 indices or tickers to display on your dashboard.
-          Use SIGNALS for the signals counter.
+        <p className="font-sans text-[12px] text-text-secondary mb-3">
+          {marketCards.length} / 4 selected
         </p>
-        <p className="font-sans text-[10px] text-text-muted mb-4">
-          Available: SPY, VIX, TNX, QQQ, DIA, IWM, GLD, TLT, DXY, BTC, ETH, GOLD, OIL, SIGNALS
-        </p>
-        <div className="grid grid-cols-4 gap-3">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i}>
-              <label className="font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wide mb-1 block">
-                Card {i + 1}
-              </label>
-              <Input
-                value={marketCards[i] ?? ""}
-                onChange={(e) => {
-                  const val = e.target.value.toUpperCase().replace(/[^A-Z0-9\-^.]/g, "");
-                  setMarketCards((prev) => {
-                    const next = [...prev];
-                    next[i] = val;
-                    return next;
-                  });
+        <div className="flex flex-wrap gap-2">
+          {MARKET_CARD_OPTIONS.map((sym) => {
+            const selected = marketCards.includes(sym);
+            const atMax = marketCards.length >= 4 && !selected;
+            return (
+              <Pill
+                key={sym}
+                label={sym}
+                selected={selected}
+                onClick={() => {
+                  if (selected) {
+                    setMarketCards((prev) => prev.filter((s) => s !== sym));
+                  } else if (!atMax) {
+                    setMarketCards((prev) => [...prev, sym]);
+                  }
                 }}
-                placeholder={DEFAULT_MARKET_CARDS[i] ?? "e.g. AAPL"}
               />
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 

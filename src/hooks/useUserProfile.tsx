@@ -14,6 +14,7 @@ export interface UserProfile {
   investment_horizon?: string | null;
   workflow_style?: string | null;
   watchlist_tickers?: string[] | null;
+  market_cards?: string[] | null;
   onboarding_completed?: boolean;
 }
 
