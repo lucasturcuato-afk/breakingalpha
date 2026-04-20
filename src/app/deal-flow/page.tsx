@@ -943,7 +943,7 @@ function DealFlowContent() {
           />
         )}
       </div>
-      <DealFlowSidebar deals={deals} />
+      <DealFlowSidebar deals={deals} userProfile={profile} />
       </div>
 
       {/* Memo Modal */}
