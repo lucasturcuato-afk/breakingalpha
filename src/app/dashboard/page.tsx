@@ -25,6 +25,8 @@ import { FileText } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
+import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
+import type { ContentDescriptor } from "@/lib/personalization";
 
 function getSupabase() {
   return createBrowserClient(
@@ -50,7 +52,16 @@ interface MarketIndices {
   tnx: { value: string; pct: number } | null;
 }
 
-// ── "For You" filtering helpers ──
+// ── "For You" scoring helpers ──
+
+function storyToContent(story: StoryData): ContentDescriptor {
+  return {
+    sectors: [story.sector, ...(story.industry_verticals ?? [])].filter(Boolean) as string[],
+    tickers: story.tags ?? [],
+    title: story.title,
+    categories: story.activity_types ?? [],
+  };
+}
 
 function sectorMatches(articleSector: string | undefined, profileSectors: string[]): boolean {
   if (!articleSector) return false;
@@ -59,27 +70,6 @@ function sectorMatches(articleSector: string | undefined, profileSectors: string
     const pl = ps.toLowerCase();
     return lower.includes(pl) || pl.includes(lower);
   });
-}
-
-function tickerMentioned(story: StoryData, tickers: string[]): boolean {
-  if (!tickers.length) return false;
-  const text = `${story.title} ${story.tags?.join(" ") ?? ""}`.toUpperCase();
-  return tickers.some((t) => text.includes(t.toUpperCase()));
-}
-
-function sentimentScore(sentiment: string, riskAppetite: string): number {
-  const s = sentiment.toLowerCase();
-  if (riskAppetite === "aggressive") {
-    if (s === "bullish" || s === "positive") return 2;
-    if (s === "bearish" || s === "negative") return 0;
-    return 1;
-  }
-  if (riskAppetite === "defensive") {
-    if (s === "bearish" || s === "negative" || s === "risk-off" || s === "macro") return 2;
-    if (s === "bullish" || s === "positive") return 0;
-    return 1;
-  }
-  return 1; // balanced — no re-sort
 }
 
 export default function DashboardPage() {
@@ -198,34 +188,10 @@ export default function DashboardPage() {
     }
   }, [profile]);
 
-  // "For You" filtered stories
+  // "For You" scored + sorted stories
   const forYouStories = useMemo(() => {
     if (!profile) return stories;
-    const sectors = profile.sectors ?? [];
-    const tickers = profile.watchlist_tickers ?? [];
-    const riskAppetite = profile.risk_appetite ?? "balanced";
-
-    // Step 1: filter by sector (if profile has sectors)
-    let filtered = sectors.length > 0
-      ? stories.filter((s) => sectorMatches(s.sector, sectors))
-      : [...stories];
-
-    // If sector filter produces nothing, show all
-    if (filtered.length === 0) filtered = [...stories];
-
-    // Step 2: sort by sentiment alignment (if not balanced)
-    if (riskAppetite !== "balanced") {
-      filtered.sort((a, b) => sentimentScore(b.sentiment, riskAppetite) - sentimentScore(a.sentiment, riskAppetite));
-    }
-
-    // Step 3: boost watchlist tickers to top
-    if (tickers.length > 0) {
-      const watchlistItems = filtered.filter((s) => tickerMentioned(s, tickers));
-      const rest = filtered.filter((s) => !tickerMentioned(s, tickers));
-      filtered = [...watchlistItems, ...rest];
-    }
-
-    return filtered;
+    return sortByRelevance(stories, profile, storyToContent);
   }, [stories, profile]);
 
   const displayStories = storyTab === "for-you" ? forYouStories : stories;
@@ -407,9 +373,9 @@ export default function DashboardPage() {
             <>
               {/* Lead story */}
               <div className="relative">
-                {storyTab === "for-you" && watchlistTickers.length > 0 && tickerMentioned(displayStories[0], watchlistTickers) && (
-                  <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-200 rounded px-1.5 py-0.5 mb-1">
-                    {"📌"} In your watchlist
+                {storyTab === "for-you" && (displayStories[0].tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
+                  <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 mb-1">
+                    Watching
                   </span>
                 )}
                 <LeadStoryCard story={displayStories[0]} />
@@ -419,9 +385,9 @@ export default function DashboardPage() {
               <div className="mt-2 space-y-0">
                 {displayStories.slice(1).map((story, i) => (
                   <div key={story.id}>
-                    {storyTab === "for-you" && watchlistTickers.length > 0 && tickerMentioned(story, watchlistTickers) && (
-                      <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-200 rounded px-1.5 py-0.5 ml-3 mb-0.5">
-                        {"📌"} In your watchlist
+                    {storyTab === "for-you" && (story.tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
+                      <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 ml-3 mb-0.5">
+                        Watching
                       </span>
                     )}
                     <CompactStoryCard story={story} number={i + 2} />
