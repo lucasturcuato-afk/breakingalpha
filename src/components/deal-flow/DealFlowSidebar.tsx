@@ -221,7 +221,7 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
   }, [deals, hasUserSectors, userSectors, userProfile]);
 
   return (
-    <aside className="w-[268px] shrink-0 border-l border-border-base overflow-y-auto [scrollbar-gutter:stable] bg-cream">
+    <aside className="w-[268px] shrink-0 border-l border-border-base overflow-y-auto [scrollbar-gutter:stable] bg-cream dark:bg-sidebar-bg">
       {/* Section 0 — Saved deals (only shown when there are saves) */}
       {enrichedSavedDeals.length > 0 && (
         <div className="px-5 py-4 border-b border-border-base">
@@ -308,7 +308,7 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
           Your Sectors
         </p>
         {!hasUserSectors ? (
-          <div className="rounded-md border border-border-base bg-parchment-mid px-3 py-2.5">
+          <div className="rounded-md border border-border-base dark:border-border-default bg-parchment-mid dark:bg-overlay px-3 py-2.5">
             <p className="text-[11px] font-medium text-text-primary mb-0.5">
               No sectors tracked
             </p>

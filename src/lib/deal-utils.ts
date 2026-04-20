@@ -53,6 +53,21 @@ const SECTOR_EXPLICIT: [string, string][] = [
   ["private equity", "Private Equity"],
 ];
 
+export function getDealTypeStyle(dealType: string): string {
+  const t = dealType?.toLowerCase() ?? "";
+  if (t.includes("m&a") || t.includes("merger") || t.includes("acquisition") || t.includes("lbo"))
+    return "bg-blue-500/10 text-blue-600 dark:text-blue-300 border-blue-500/20";
+  if (t.includes("vc") || t.includes("venture"))
+    return "bg-purple-500/10 text-purple-600 dark:text-purple-300 border-purple-500/20";
+  if (t.includes("ipo") || t.includes("spac") || t.includes("capital markets"))
+    return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border-emerald-500/20";
+  if (t.includes("pe") || t.includes("private equity") || t.includes("buyout") || t.includes("minority stake"))
+    return "bg-amber-500/10 text-amber-600 dark:text-amber-300 border-amber-500/20";
+  if (t.includes("asset sale") || t.includes("restructur") || t.includes("recap") || t.includes("debt"))
+    return "bg-rose-500/10 text-rose-600 dark:text-rose-300 border-rose-500/20";
+  return "bg-white/[0.06] text-[#9a9a94] border-white/[0.10]";
+}
+
 export function normalizeSector(sector: string): string {
   const lower = sector.toLowerCase();
   for (const [pattern, label] of SECTOR_EXPLICIT) {

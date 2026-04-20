@@ -1,38 +1,85 @@
 import type { CSSProperties } from "react";
 
-export const SECTOR_COLORS: Record<string, { bg: string; text: string; darkBg: string; darkText: string }> = {
-  "Technology M&A": { bg: "#E8F4FD", text: "#1565C0", darkBg: "#1a3a5c", darkText: "#90CAF9" },
-  "Technology M&A & Investment Banking": { bg: "#E8F4FD", text: "#1565C0", darkBg: "#1a3a5c", darkText: "#90CAF9" },
-  "Healthcare & Biotech": { bg: "#E8F5E9", text: "#2E7D32", darkBg: "#1a3d1f", darkText: "#A5D6A7" },
-  "Fintech & Crypto": { bg: "#FFF8E1", text: "#F57F17", darkBg: "#3d2e00", darkText: "#FFE082" },
-  "Geopolitics & Macro": { bg: "#FCE4EC", text: "#880E4F", darkBg: "#3d0a1f", darkText: "#F48FB1" },
-  "Public Markets & Earnings": { bg: "#EDE7F6", text: "#4527A0", darkBg: "#1a0a3d", darkText: "#CE93D8" },
-  "Private Equity": { bg: "#FBE9E7", text: "#BF360C", darkBg: "#3d1200", darkText: "#FFAB91" },
-  "Real Estate": { bg: "#E0F2F1", text: "#00695C", darkBg: "#003d35", darkText: "#80CBC4" },
-  "Energy & Climate": { bg: "#F1F8E9", text: "#33691E", darkBg: "#1a2d00", darkText: "#C5E1A5" },
-  "Venture Capital & Startup Funding": { bg: "#E3F2FD", text: "#0277BD", darkBg: "#012d4d", darkText: "#81D4FA" },
-  "Defense & Aerospace": { bg: "#ECEFF1", text: "#455A64", darkBg: "#1a2327", darkText: "#B0BEC5" },
+// SECTOR VERTICALS — always neutral, these are taxonomy labels not signals
+const NEUTRAL_PILL: CSSProperties = {
+  backgroundColor: "rgba(255, 255, 255, 0.06)",
+  color: "#9a9a94",
+  border: "1px solid rgba(255, 255, 255, 0.10)",
 };
 
-export function getSectorStyle(sector: string | null | undefined, isDark = false): CSSProperties {
+// Activity type → semantic color (matches getDealTypeStyle in deal-utils.ts)
+function getActivityColor(activity: string): CSSProperties {
+  const t = activity?.toLowerCase() ?? "";
+  if (t.includes("m&a") || t.includes("merger") || t.includes("acquisition") || t.includes("lbo"))
+    return { backgroundColor: "rgba(59,130,246,0.10)", color: "#93c5fd", border: "1px solid rgba(59,130,246,0.20)" };
+  if (t.includes("venture capital") || t.includes("vc ") || t.includes("startup funding"))
+    return { backgroundColor: "rgba(168,85,247,0.10)", color: "#d8b4fe", border: "1px solid rgba(168,85,247,0.20)" };
+  if (t.includes("ipo") || t.includes("spac") || t.includes("capital markets"))
+    return { backgroundColor: "rgba(16,185,129,0.10)", color: "#6ee7b7", border: "1px solid rgba(16,185,129,0.20)" };
+  if (t.includes("private equity") || t.includes("buyout") || t.includes("minority stake"))
+    return { backgroundColor: "rgba(245,158,11,0.10)", color: "#fcd34d", border: "1px solid rgba(245,158,11,0.20)" };
+  if (t.includes("restructur") || t.includes("asset sale") || t.includes("debt financ") || t.includes("recap"))
+    return { backgroundColor: "rgba(244,63,94,0.10)", color: "#fda4af", border: "1px solid rgba(244,63,94,0.20)" };
+  if (t.includes("earnings") || t.includes("results") || t.includes("public markets"))
+    return { backgroundColor: "rgba(14,165,233,0.10)", color: "#7dd3fc", border: "1px solid rgba(14,165,233,0.20)" };
+  if (
+    t.includes("geopolit") || t.includes("macro") || t.includes("regulation") ||
+    t.includes("legal") || t.includes("leadership") || t.includes("operations")
+  )
+    return { backgroundColor: "rgba(100,116,139,0.12)", color: "#cbd5e1", border: "1px solid rgba(100,116,139,0.22)" };
+  if (t.includes("fundrais") || t.includes("crypto") || t.includes("digital assets"))
+    return { backgroundColor: "rgba(139,92,246,0.10)", color: "#c4b5fd", border: "1px solid rgba(139,92,246,0.20)" };
+  return NEUTRAL_PILL;
+}
+
+// Known sector verticals — always get neutral pill
+const SECTOR_VERTICALS = [
+  "technology", "healthcare", "biotech", "energy", "oil", "gas",
+  "financial services", "consumer", "retail", "industrials", "manufacturing",
+  "aerospace", "defense", "real estate", "media", "telecom",
+  "materials", "mining", "agriculture", "fintech",
+];
+
+function isSectorVertical(tag: string): boolean {
+  const t = tag?.toLowerCase() ?? "";
+  return SECTOR_VERTICALS.some((s) => t.includes(s));
+}
+
+// Legacy: getSectorStyle — now always returns neutral for true sectors
+export function getSectorStyle(
+  sector: string | null | undefined,
+  _isDark = false,
+): CSSProperties {
   if (!sector) return {};
-  const match = Object.keys(SECTOR_COLORS).find(
-    (k) => sector.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(sector.toLowerCase()),
-  );
-  const colors = match ? SECTOR_COLORS[match] : null;
-  if (!colors) return {};
-  return isDark
-    ? { backgroundColor: colors.darkBg, color: colors.darkText }
-    : { backgroundColor: colors.bg, color: colors.text };
+  if (isSectorVertical(sector)) return NEUTRAL_PILL;
+  return getActivityColor(sector);
 }
 
-const VERTICAL_STYLE = { bg: "rgba(96, 165, 250, 0.08)", text: "#93c5fd", border: "rgba(96, 165, 250, 0.2)" };
-const ACTIVITY_STYLE = { bg: "rgba(212, 168, 75, 0.08)", text: "#d4a84b", border: "rgba(212, 168, 75, 0.2)" };
-
+// Vertical filter bar chips — neutral (filter UI, not data badges)
 export function getVerticalStyle(_vertical: string): { bg: string; text: string; border: string } {
-  return VERTICAL_STYLE;
+  return {
+    bg: "rgba(255, 255, 255, 0.06)",
+    text: "#9a9a94",
+    border: "rgba(255, 255, 255, 0.10)",
+  };
 }
 
+// Activity type filter bar chips — neutral (filter UI, not data badges)
 export function getActivityTypeStyle(_activityType: string): { bg: string; text: string; border: string } {
-  return ACTIVITY_STYLE;
+  return {
+    bg: "rgba(255, 255, 255, 0.06)",
+    text: "#9a9a94",
+    border: "rgba(255, 255, 255, 0.10)",
+  };
 }
+
+// Tag pill helper — detects type and applies correct style
+// Use this for article/story tag pills across Live Feed, Trends, Dashboard
+export function getTagPillStyle(tag: string): CSSProperties {
+  if (!tag) return NEUTRAL_PILL;
+  if (isSectorVertical(tag)) return NEUTRAL_PILL;
+  return getActivityColor(tag);
+}
+
+// Keep SECTOR_COLORS export as empty object to avoid breaking any imports
+export const SECTOR_COLORS: Record<string, never> = {};

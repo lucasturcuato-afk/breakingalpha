@@ -5,7 +5,7 @@ import { stripHtml } from "@/lib/strip-html";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
-import { getSectorStyle, getVerticalStyle, getActivityTypeStyle } from "@/lib/sector-colors";
+import { getSectorStyle, getTagPillStyle } from "@/lib/sector-colors";
 import { Badge } from "@/components/ui/badge";
 import { BookmarkButton } from "@/components/ui/bookmark";
 import { Sparkles, Plus, MessageSquare, Loader2 } from "lucide-react";
@@ -127,23 +127,15 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
           <div className="flex flex-wrap gap-1.5">
             {/* Industry Vertical Pills */}
             {(story.industry_verticals ?? []).length > 0
-              ? (story.industry_verticals ?? []).map((v) => {
-                  const style = getVerticalStyle(v)
-                  return (
-                    <span
-                      key={v}
-                      style={{
-                        backgroundColor: style.bg,
-                        color: style.text,
-                        border: `1px solid ${style.border}`,
-                        borderRadius: "3px",
-                      }}
-                      className="inline-flex items-center px-2 py-0.5 text-xs font-medium"
-                    >
-                      {v}
-                    </span>
-                  )
-                })
+              ? (story.industry_verticals ?? []).map((v) => (
+                  <span
+                    key={v}
+                    style={{ ...getTagPillStyle(v), borderRadius: "3px" }}
+                    className="inline-flex items-center px-2 py-0.5 text-xs font-medium"
+                  >
+                    {v}
+                  </span>
+                ))
               : story.sector
               ? (
                   <span
@@ -156,23 +148,15 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
               : null
             }
             {/* Activity Type Pills */}
-            {(story.activity_types ?? []).map((a) => {
-              const style = getActivityTypeStyle(a)
-              return (
-                <span
-                  key={a}
-                  style={{
-                    backgroundColor: style.bg,
-                    color: style.text,
-                    border: `1px solid ${style.border}`,
-                    borderRadius: "3px",
-                  }}
-                  className="inline-flex items-center px-2 py-0.5 text-xs font-medium"
-                >
-                  {a}
-                </span>
-              )
-            })}
+            {(story.activity_types ?? []).map((a) => (
+              <span
+                key={a}
+                style={{ ...getTagPillStyle(a), borderRadius: "3px" }}
+                className="inline-flex items-center px-2 py-0.5 text-xs font-medium"
+              >
+                {a}
+              </span>
+            ))}
           </div>
           <span className="font-sans text-[11px] text-text-muted font-medium">
             {story.source}
@@ -371,23 +355,15 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
             <div className="flex flex-wrap gap-1.5">
               {/* Industry Vertical Pills */}
               {(story.industry_verticals ?? []).length > 0
-                ? (story.industry_verticals ?? []).map((v) => {
-                    const style = getVerticalStyle(v)
-                    return (
-                      <span
-                        key={v}
-                        style={{
-                          backgroundColor: style.bg,
-                          color: style.text,
-                          border: `1px solid ${style.border}`,
-                          borderRadius: "3px",
-                        }}
-                        className="inline-flex items-center px-2 py-0.5 text-xs font-medium"
-                      >
-                        {v}
-                      </span>
-                    )
-                  })
+                ? (story.industry_verticals ?? []).map((v) => (
+                    <span
+                      key={v}
+                      style={{ ...getTagPillStyle(v), borderRadius: "3px" }}
+                      className="inline-flex items-center px-2 py-0.5 text-xs font-medium"
+                    >
+                      {v}
+                    </span>
+                  ))
                 : story.sector
                 ? (
                     <span
@@ -400,23 +376,15 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
                 : null
               }
               {/* Activity Type Pills */}
-              {(story.activity_types ?? []).map((a) => {
-                const style = getActivityTypeStyle(a)
-                return (
-                  <span
-                    key={a}
-                    style={{
-                      backgroundColor: style.bg,
-                      color: style.text,
-                      border: `1px solid ${style.border}`,
-                      borderRadius: "3px",
-                    }}
-                    className="inline-flex items-center px-2 py-0.5 text-xs font-medium"
-                  >
-                    {a}
-                  </span>
-                )
-              })}
+              {(story.activity_types ?? []).map((a) => (
+                <span
+                  key={a}
+                  style={{ ...getTagPillStyle(a), borderRadius: "3px" }}
+                  className="inline-flex items-center px-2 py-0.5 text-xs font-medium"
+                >
+                  {a}
+                </span>
+              ))}
             </div>
             <span className="font-sans text-[10px] text-text-muted">
               {story.source}

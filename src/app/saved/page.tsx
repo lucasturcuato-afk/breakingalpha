@@ -98,7 +98,7 @@ export default function SavedDealsPage() {
 
   return (
     <AppShell pageTitle="Saved Deals">
-      <div className="max-w-3xl mx-auto px-6 py-8">
+      <div className="max-w-3xl mx-auto px-6 py-8 dark:bg-[#161616] min-h-full">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -123,7 +123,7 @@ export default function SavedDealsPage() {
             <button
               type="button"
               onClick={() => exportCSV(sorted)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-base bg-white text-[11px] font-medium text-text-muted hover:text-text-primary hover:border-gold-border transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-base bg-white dark:bg-[#1e1e1e] dark:border-white/[0.14] text-[11px] font-medium text-text-muted hover:text-text-primary hover:border-gold-border transition-colors"
             >
               <Download size={12} />
               Export CSV
@@ -144,7 +144,7 @@ export default function SavedDealsPage() {
                   "px-2.5 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
                   sortKey === key
                     ? "border-gold bg-gold/10 text-gold"
-                    : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                    : "border-border-base bg-white dark:bg-[#1e1e1e] text-text-muted hover:text-text-primary",
                 )}
               >
                 {key === "saved_at" ? "Date Saved" : key === "company" ? "Company" : "Value"}
@@ -193,7 +193,7 @@ export default function SavedDealsPage() {
                 <div
                   key={deal.id}
                   className={cn(
-                    "bg-white border border-border-base rounded-xl px-5 py-4",
+                    "bg-white dark:bg-[#1e1e1e] border border-border-base dark:border-white/[0.14] rounded-xl px-5 py-4",
                     "transition-all duration-300 ease-out",
                     isRemoving && "opacity-0 scale-y-95 pointer-events-none",
                   )}
