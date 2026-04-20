@@ -399,7 +399,12 @@ export default function TrendsPage() {
                       <span className="ml-2 font-data text-[10px] text-text-faint">{visibleSignals.length}</span>
                     </h3>
                     <div className="grid grid-cols-2 gap-2.5">
-                      {visibleSignals.map((signal) => (
+                      {visibleSignals.map((signal) => {
+                        const boost = personalBoost(signal);
+                        const isRelevant = boost > 0;
+                        const hasWatchlistMention = watchlistUpper.length > 0 &&
+                          watchlistUpper.some((t) => `${signal.title} ${signal.description}`.toUpperCase().includes(t));
+                        return (
                         <div
                           key={signal.id}
                           onClick={() => {
@@ -412,8 +417,16 @@ export default function TrendsPage() {
                               });
                             }
                           }}
-                          className="cursor-pointer"
+                          className={cn(
+                            "cursor-pointer transition-opacity",
+                            profileSectors.length > 0 && !isRelevant && "opacity-60",
+                          )}
                         >
+                          {hasWatchlistMention && (
+                            <span className="inline-flex items-center gap-1 font-sans text-[9px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 mb-1">
+                              Watchlist mention
+                            </span>
+                          )}
                           <SignalCard signal={signal} />
                           <div
                             className={cn(
@@ -475,7 +488,8 @@ export default function TrendsPage() {
                             </div>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                   );
@@ -499,7 +513,12 @@ export default function TrendsPage() {
                       <span className="ml-2 font-data text-[10px] text-text-faint">{visibleSignals.length}</span>
                     </h3>
                     <div className="grid grid-cols-2 gap-2.5">
-                      {visibleSignals.map((signal) => (
+                      {visibleSignals.map((signal) => {
+                        const boost = personalBoost(signal);
+                        const isRelevant = boost > 0;
+                        const hasWatchlistMention = watchlistUpper.length > 0 &&
+                          watchlistUpper.some((t) => `${signal.title} ${signal.description}`.toUpperCase().includes(t));
+                        return (
                         <div
                           key={signal.id}
                           onClick={() => {
@@ -512,8 +531,16 @@ export default function TrendsPage() {
                               });
                             }
                           }}
-                          className="cursor-pointer"
+                          className={cn(
+                            "cursor-pointer transition-opacity",
+                            profileSectors.length > 0 && !isRelevant && "opacity-60",
+                          )}
                         >
+                          {hasWatchlistMention && (
+                            <span className="inline-flex items-center gap-1 font-sans text-[9px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 mb-1">
+                              Watchlist mention
+                            </span>
+                          )}
                           <SignalCard signal={signal} />
                           <div
                             className={cn(
@@ -575,7 +602,8 @@ export default function TrendsPage() {
                             </div>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                   );
