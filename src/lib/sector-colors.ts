@@ -1,11 +1,29 @@
 import type { CSSProperties } from "react";
 
-// SECTOR VERTICALS — always neutral, these are taxonomy labels not signals
+// SECTOR VERTICALS — always neutral, these are taxonomy labels not signals.
+//
+// NOTE: This CSS-properties value targets DARK MODE only (translucent white on
+// dark surfaces). For LIGHT MODE, consumers should prefer the className-based
+// path via `NEUTRAL_PILL_CLASSNAME` + `isSectorVertical`, which uses Tailwind's
+// `dark:` variant so the same pill renders legibly in both themes. The
+// inline-style variant is retained for sites that already rely on
+// `getTagPillStyle` / `getSectorStyle` returning a CSSProperties object.
 const NEUTRAL_PILL: CSSProperties = {
   backgroundColor: "rgba(255, 255, 255, 0.06)",
   color: "#9a9a94",
   border: "1px solid rgba(255, 255, 255, 0.10)",
 };
+
+// Tailwind classes for neutral pills that render correctly in both light and
+// dark modes. Use with `isSectorVertical(tag)` — when true, prefer this over
+// the inline-style NEUTRAL_PILL. Activity-type pills (M&A, VC, IPO, …) keep
+// their semantic colors via `getActivityColor` / `getTagPillStyle`.
+//
+//   Light:  subtle parchment-darker bg, text-muted-ish foreground
+//   Dark:   translucent white bg, mid-gray foreground
+export const NEUTRAL_PILL_CLASSNAME =
+  "bg-black/[0.04] text-text-secondary border border-black/[0.08] " +
+  "dark:bg-white/[0.06] dark:text-text-secondary dark:border-white/[0.10]";
 
 // Activity type → semantic color (matches getDealTypeStyle in deal-utils.ts)
 function getActivityColor(activity: string): CSSProperties {
@@ -40,8 +58,9 @@ const SECTOR_VERTICALS = [
   "materials", "mining", "agriculture", "fintech",
 ];
 
-function isSectorVertical(tag: string): boolean {
+export function isSectorVertical(tag: string | null | undefined): boolean {
   const t = tag?.toLowerCase() ?? "";
+  if (!t) return false;
   return SECTOR_VERTICALS.some((s) => t.includes(s));
 }
 

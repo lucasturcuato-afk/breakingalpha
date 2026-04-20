@@ -10,6 +10,10 @@ interface StatCardProps {
   accentGold?: boolean;
   sparkData?: number[];
   detailRows?: { label: string; value: string }[];
+  /** When true, card renders "Markets closed · last: {value}" instead of percent-change. */
+  stale?: boolean;
+  /** Optional edit-mode overlay (swap dropdown + minus button). */
+  editOverlay?: React.ReactNode;
 }
 
 export function StatCard({
@@ -19,6 +23,8 @@ export function StatCard({
   accentGold = false,
   sparkData = [],
   detailRows = [],
+  stale = false,
+  editOverlay,
 }: StatCardProps) {
   const [hovered, setHovered] = useState(false);
 
@@ -31,12 +37,14 @@ export function StatCard({
       className={cn(
         "relative bg-white border border-border-base rounded-2xl overflow-hidden",
         "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",
-        "hover:-translate-y-0.5 hover:border-border-hover hover:shadow-[0_2px_12px_rgba(201,146,42,0.06)]",
+        !editOverlay &&
+          "hover:-translate-y-0.5 hover:border-border-hover hover:shadow-[0_2px_12px_rgba(201,146,42,0.06)]",
         "group",
       )}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={() => !editOverlay && setHovered(true)}
+      onMouseLeave={() => !editOverlay && setHovered(false)}
     >
+      {editOverlay}
       {/* Top accent line */}
       <div
         className={cn(
@@ -55,17 +63,41 @@ export function StatCard({
         </p>
 
         {/* Value + change */}
-        <div className="flex items-baseline gap-2 mt-1.5">
-          <span className={cn(
-            "font-data text-[21px] font-bold",
-            accentGold ? "text-gold" : "text-espresso",
-          )}>
-            {value}
-          </span>
-          <span className={cn("font-data text-[11px] font-semibold", changeColor)}>
-            {changeSign}{change.toFixed(2)}%
-          </span>
-        </div>
+        {stale ? (
+          <div className="mt-1.5">
+            <span
+              className={cn(
+                "font-data text-[21px] font-bold",
+                accentGold ? "text-gold" : "text-espresso",
+              )}
+            >
+              {value}
+            </span>
+            <span className="block font-sans text-[10px] text-text-muted mt-0.5">
+              Markets closed · last
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-baseline gap-2 mt-1.5">
+            <span
+              className={cn(
+                "font-data text-[21px] font-bold",
+                accentGold ? "text-gold" : "text-espresso",
+              )}
+            >
+              {value}
+            </span>
+            <span
+              className={cn(
+                "font-data text-[11px] font-semibold",
+                changeColor,
+              )}
+            >
+              {changeSign}
+              {change.toFixed(2)}%
+            </span>
+          </div>
+        )}
 
         {/* Spark area */}
         <div className="h-[30px] mt-1.5 relative">

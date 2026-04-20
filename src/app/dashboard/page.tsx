@@ -19,9 +19,14 @@ import {
   WatchlistFeed,
 } from "@/components/dashboard";
 import type { StoryData } from "@/components/dashboard";
+import {
+  MarketCardEditor,
+  MARKET_CARD_OPTIONS,
+  labelForSymbol,
+} from "@/components/dashboard/market-card-editor";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
-import { FileText } from "lucide-react";
+import { FileText, Pencil, Plus, Check } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
@@ -52,9 +57,36 @@ interface MarketCardData {
   label: string;
   value: string;
   pct: number;
+  asOf?: string | null;
+  closed?: boolean;
 }
 
 const DEFAULT_MARKET_CARDS = ["SPY", "VIX", "TNX", "SIGNALS"];
+const MIN_CARDS = 2;
+const MAX_CARDS = 4;
+
+// Static Tailwind classes per card count — referenced here so the v4 JIT
+// content scanner picks them up (dynamic template strings would be stripped).
+function gridColsForCount(n: number): string {
+  switch (n) {
+    case 2:
+      return "grid-cols-2";
+    case 3:
+      return "grid-cols-3";
+    case 4:
+      return "grid-cols-4";
+    default:
+      return "grid-cols-4";
+  }
+}
+
+// Return the first option not already in `used`, or null if none.
+function firstAvailableSymbol(used: string[]): string | null {
+  for (const opt of MARKET_CARD_OPTIONS) {
+    if (!used.includes(opt.symbol)) return opt.symbol;
+  }
+  return null;
+}
 
 // ── "For You" scoring helpers ──
 
@@ -77,12 +109,16 @@ function sectorMatches(articleSector: string | undefined, profileSectors: string
 }
 
 export default function DashboardPage() {
-  const { profile, refetch: refetchProfile } = useUserProfile();
+  const { profile, refetch: refetchProfile, updateProfile } = useUserProfile();
   const [stories, setStories] = useState<StoryData[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
   const [storyCount, setStoryCount] = useState(0);
   const [marketCards, setMarketCards] = useState<Record<string, MarketCardData | null>>({});
   const [storyTab, setStoryTab] = useState<"for-you" | "all">("all");
+  const [isEditingCards, setIsEditingCards] = useState(false);
+  // Local override of the user's chosen cards. Used while editing, and as a
+  // fallback persist-path when save fails (so UI stays consistent).
+  const [marketCardsOverride, setMarketCardsOverride] = useState<string[] | null>(null);
 
   // Refetch profile when window regains focus (e.g. returning from settings)
   useEffect(() => {
@@ -174,12 +210,66 @@ export default function DashboardPage() {
     loadStories();
   }, []);
 
-  // Read user's market_cards preference from profile (or use defaults)
+  // Read user's market_cards preference from profile (or use defaults).
+  // When a local override is set (edit mode, optimistic UI), prefer that.
   const userMarketCards = useMemo(() => {
+    if (marketCardsOverride) return marketCardsOverride;
     const raw = profile?.market_cards;
     if (Array.isArray(raw) && raw.length > 0) return raw as string[];
     return DEFAULT_MARKET_CARDS;
-  }, [profile]);
+  }, [profile, marketCardsOverride]);
+
+  // Edit-mode handlers — all operate on local state; persistence happens on Done.
+  function swapCardSymbol(index: number, newSymbol: string) {
+    setMarketCardsOverride((prev) => {
+      const base = prev ?? userMarketCards;
+      const next = [...base];
+      next[index] = newSymbol;
+      return next;
+    });
+  }
+
+  function removeCardAt(index: number) {
+    setMarketCardsOverride((prev) => {
+      const base = prev ?? userMarketCards;
+      if (base.length <= MIN_CARDS) return base;
+      return base.filter((_, i) => i !== index);
+    });
+  }
+
+  function addCard() {
+    setMarketCardsOverride((prev) => {
+      const base = prev ?? userMarketCards;
+      if (base.length >= MAX_CARDS) return base;
+      const next = firstAvailableSymbol(base);
+      if (!next) return base;
+      return [...base, next];
+    });
+  }
+
+  function enterEditMode() {
+    // Seed override from current cards so removals/swaps don't get clobbered.
+    setMarketCardsOverride(userMarketCards);
+    setIsEditingCards(true);
+  }
+
+  async function finishEditing() {
+    const next = marketCardsOverride;
+    setIsEditingCards(false);
+    if (!next) return;
+
+    // Unauthenticated (profile === null): skip persistence, keep local state.
+    if (profile) {
+      // Fire and forget — optimistic UI already shows `next` via override.
+      updateProfile({ market_cards: next }).then((ok) => {
+        if (ok) {
+          // Clear the override so profile becomes the source of truth again.
+          setMarketCardsOverride(null);
+        }
+        // On failure: keep override in place so UI is consistent with intent.
+      });
+    }
+  }
 
   // Fetch market card data for user's chosen symbols
   useEffect(() => {
@@ -282,36 +372,103 @@ export default function DashboardPage() {
         />
 
         {/* Stat cards — dynamic from user profile */}
-        <div className={cn("grid gap-2.5 mt-4", `grid-cols-${Math.min(userMarketCards.length, 4)}`)}>
-          {userMarketCards.map((sym, i) => {
-            if (sym === "SIGNALS") {
+        <div className="relative mt-4">
+          {/* Edit-mode toolbar: pencil to enter, Done + Plus while editing. */}
+          <div className="absolute -top-6 right-0 flex items-center gap-2">
+            {isEditingCards ? (
+              <>
+                <button
+                  type="button"
+                  onClick={addCard}
+                  disabled={userMarketCards.length >= MAX_CARDS}
+                  aria-label="Add card"
+                  className={cn(
+                    "inline-flex items-center gap-1 font-sans text-[10px] font-semibold",
+                    "text-gold hover:text-gold-dark transition-colors cursor-pointer",
+                    "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-gold",
+                  )}
+                >
+                  <Plus size={11} />
+                  Add
+                </button>
+                <button
+                  type="button"
+                  onClick={finishEditing}
+                  aria-label="Done editing"
+                  className={cn(
+                    "inline-flex items-center gap-1 font-sans text-[10px] font-semibold",
+                    "text-gold hover:text-gold-dark transition-colors cursor-pointer",
+                  )}
+                >
+                  <Check size={11} />
+                  Done
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={enterEditMode}
+                aria-label="Customize cards"
+                className={cn(
+                  "inline-flex items-center gap-1 font-sans text-[10px] font-semibold",
+                  "text-gold hover:text-gold-dark transition-colors cursor-pointer",
+                )}
+              >
+                <Pencil size={11} />
+                Customize
+              </button>
+            )}
+          </div>
+
+          <div
+            className={cn(
+              "grid gap-2.5",
+              gridColsForCount(userMarketCards.length),
+            )}
+          >
+            {userMarketCards.map((sym, i) => {
+              const overlay = isEditingCards ? (
+                <MarketCardEditor
+                  currentSymbol={sym}
+                  selectedSymbols={userMarketCards}
+                  onSwap={(next) => swapCardSymbol(i, next)}
+                  onRemove={() => removeCardAt(i)}
+                  disableRemove={userMarketCards.length <= MIN_CARDS}
+                />
+              ) : undefined;
+
+              if (sym === "SIGNALS") {
+                return (
+                  <StatCard
+                    key={`${sym}-${i}`}
+                    label={labelForSymbol("SIGNALS")}
+                    value={String(storyCount)}
+                    change={0}
+                    accentGold
+                    sparkData={sparkSignals}
+                    detailRows={[
+                      { label: "Bullish", value: "—" },
+                      { label: "Bearish", value: "—" },
+                    ]}
+                    editOverlay={overlay}
+                  />
+                );
+              }
+              const card = marketCards[sym.toUpperCase()];
               return (
                 <StatCard
-                  key="SIGNALS"
-                  label="Signals Today"
-                  value={String(storyCount)}
-                  change={0}
-                  accentGold
-                  sparkData={sparkSignals}
-                  detailRows={[
-                    { label: "Bullish", value: "—" },
-                    { label: "Bearish", value: "—" },
-                  ]}
+                  key={`${sym}-${i}`}
+                  label={card?.label ?? labelForSymbol(sym)}
+                  value={card?.value ?? "—"}
+                  change={card?.pct ?? 0}
+                  stale={card?.closed ?? false}
+                  accentGold={i === 0}
+                  detailRows={[]}
+                  editOverlay={overlay}
                 />
               );
-            }
-            const card = marketCards[sym.toUpperCase()];
-            return (
-              <StatCard
-                key={sym}
-                label={card?.label ?? sym}
-                value={card?.value ?? "—"}
-                change={card?.pct ?? 0}
-                accentGold={i === 0}
-                detailRows={[]}
-              />
-            );
-          })}
+            })}
+          </div>
         </div>
 
         {/* System Intelligence */}
