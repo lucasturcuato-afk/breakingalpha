@@ -21,9 +21,9 @@ const SYMBOL_MAP: Record<
   { yahoo: string; label: string; format: Format; assetClass: AssetClass }
 > = {
   // ── Canonical 10 symbols (in the picker) ──
-  SPY:  { yahoo: "SPY",       label: "S&P 500",    format: "index",   assetClass: "equity-index" },
-  QQQ:  { yahoo: "QQQ",       label: "Nasdaq 100", format: "index",   assetClass: "equity-index" },
-  DIA:  { yahoo: "DIA",       label: "Dow Jones",  format: "index",   assetClass: "equity-index" },
+  SPY:  { yahoo: "^GSPC",     label: "S&P 500",    format: "index",   assetClass: "equity-index" },
+  QQQ:  { yahoo: "^NDX",      label: "Nasdaq 100", format: "index",   assetClass: "equity-index" },
+  DIA:  { yahoo: "^DJI",      label: "Dow Jones",  format: "index",   assetClass: "equity-index" },
   VIX:  { yahoo: "^VIX",      label: "VIX",        format: "vix",     assetClass: "24h" },
   TNX:  { yahoo: "^TNX",      label: "10Y Yield",  format: "yield",   assetClass: "24h" },
   "BTC-USD": { yahoo: "BTC-USD", label: "Bitcoin",    format: "btc",     assetClass: "24h" },
