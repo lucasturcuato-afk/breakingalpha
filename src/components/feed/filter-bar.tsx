@@ -178,7 +178,7 @@ export function FilterBar({
 }: FilterBarProps) {
   return (
     <div
-      className="bg-parchment dark:bg-[#0f0f0f]"
+      className="bg-parchment dark:bg-[#161616]"
       style={{ padding: "6px 16px 5px", borderBottom: "1px solid #1e1e1e" }}
     >
       {/* Row 1 — SECTORS */}
