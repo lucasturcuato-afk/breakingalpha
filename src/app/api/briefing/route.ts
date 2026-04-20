@@ -90,6 +90,8 @@ interface BriefPersonalization {
   lead_with: string;
   end_with: string;
   role_context: string;
+  watchlist_tickers: string[];
+  risk_appetite: string;
 }
 
 function buildBriefPersonalization(
@@ -186,6 +188,20 @@ function buildBriefPersonalization(
   if (horizon === "medium") role_context += " Prioritize events in the next 30 days.";
   if (horizon === "long") role_context += " Include structural/thematic context, de-emphasize daily noise.";
 
+  // Risk appetite context
+  const riskAppetite = profile.risk_appetite;
+  if (riskAppetite === "defensive") {
+    role_context += " Emphasize downside risks and hedging opportunities.";
+  } else if (riskAppetite === "aggressive") {
+    role_context += " Emphasize upside catalysts and contrarian opportunities.";
+  }
+
+  // Watchlist awareness
+  const watchlist = profile.watchlist_tickers ?? [];
+  if (watchlist.length > 0) {
+    role_context += ` Highlight any mentions of watchlist tickers: ${watchlist.join(", ")}.`;
+  }
+
   return {
     format_label,
     section_order,
@@ -194,6 +210,8 @@ function buildBriefPersonalization(
     lead_with,
     end_with,
     role_context: role_context.trim(),
+    watchlist_tickers: watchlist,
+    risk_appetite: riskAppetite ?? "balanced",
   };
 }
 

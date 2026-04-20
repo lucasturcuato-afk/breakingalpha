@@ -20,6 +20,9 @@ import { MemoModal } from "@/components/memo/MemoModal";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
 import type { StoryData } from "@/components/dashboard";
 import { createBrowserClient } from "@supabase/ssr";
+import { useUserProfile } from "@/hooks/useUserProfile";
+import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
+import type { ContentDescriptor } from "@/lib/personalization";
 
 function getSupabase() {
   return createBrowserClient(
@@ -57,7 +60,16 @@ interface BriefingData {
   created_at?: string;
 }
 
+function storyToContent(story: StoryData): ContentDescriptor {
+  return {
+    sectors: [story.sector].filter(Boolean) as string[],
+    tickers: story.tags ?? [],
+    title: story.title,
+  };
+}
+
 export default function EveningWrapPage() {
+  const { profile } = useUserProfile();
   const [briefing, setBriefing] = useState<BriefingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [sectorFilter, setSectorFilter] = useState<string | null>(null);
@@ -73,6 +85,7 @@ export default function EveningWrapPage() {
   const [leadMemoOpen, setLeadMemoOpen] = useState(false);
   const [leadMemoContent, setLeadMemoContent] = useState("");
   const [toast, setToast] = useState("");
+  const [formatLabel, setFormatLabel] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -112,6 +125,9 @@ export default function EveningWrapPage() {
           setIsStale(data.is_stale === true);
           if (data.last_attempt_status) {
             setLastRunStatus(data.last_attempt_status);
+          }
+          if (data.personalization?.format_label) {
+            setFormatLabel(data.personalization.format_label);
           }
         }
 
@@ -202,6 +218,12 @@ export default function EveningWrapPage() {
     }));
   }, [briefing]);
 
+  // Personalized story ordering
+  const rankedStories = useMemo(() => {
+    if (!profile) return stories;
+    return sortByRelevance(stories, profile, storyToContent);
+  }, [stories, profile]);
+
   return (
     <AppShell
       pageTitle="Evening Wrap"
@@ -240,7 +262,7 @@ export default function EveningWrapPage() {
           <>
             <BriefHeader
               type="evening"
-              headline={briefing.headline || "Evening Market Wrap"}
+              headline={briefing.headline || formatLabel || "Evening Market Wrap"}
               summary={briefing.summary || ""}
               marketTone={briefing.market_tone || "MIXED"}
               storyCount={stories.length}
@@ -393,15 +415,29 @@ export default function EveningWrapPage() {
               </section>
             )}
 
-            {stories.length > 0 && (
+            {rankedStories.length > 0 && (
               <section>
                 <h2 className="font-sans text-[10px] uppercase tracking-widest font-bold text-text-muted mb-3">
                   {storiesLabel}
                 </h2>
-                <LeadStoryCard story={stories[0]} />
+                <div className="relative">
+                  {(rankedStories[0].tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
+                    <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 mb-1">
+                      Watching
+                    </span>
+                  )}
+                  <LeadStoryCard story={rankedStories[0]} />
+                </div>
                 <div className="mt-2">
-                  {stories.slice(1).map((story, i) => (
-                    <CompactStoryCard key={story.id} story={story} number={i + 2} />
+                  {rankedStories.slice(1).map((story, i) => (
+                    <div key={story.id}>
+                      {(story.tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
+                        <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 ml-3 mb-0.5">
+                          Watching
+                        </span>
+                      )}
+                      <CompactStoryCard story={story} number={i + 2} />
+                    </div>
                   ))}
                 </div>
               </section>
