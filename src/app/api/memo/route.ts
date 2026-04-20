@@ -17,16 +17,6 @@ interface UserProfile {
   onboarding_completed?: boolean | null;
 }
 
-const roleLabels: Record<string, string> = {
-  student_analyst: "a student analyst building investment knowledge",
-  buy_side: "a buy-side analyst at an investment fund",
-  sell_side: "a sell-side analyst covering equities",
-  private_equity: "a private equity professional evaluating deals",
-  ria: "a registered investment advisor managing client portfolios",
-  family_office: "a family office investment professional",
-  other: "a finance professional",
-};
-
 async function fetchUserProfile(userId: string): Promise<UserProfile | null> {
   try {
     const supabase = createClient(
@@ -273,7 +263,8 @@ export async function POST(request: NextRequest) {
       }
       return NextResponse.json({ memo });
     } catch (err) {
-      console.error("Gemini memo error:", err);
+      console.error("[memo] Gemini content-path error:", err);
+      console.error("[memo] error detail:", err instanceof Error ? err.message : String(err));
       return NextResponse.json(
         { error: "Failed to generate memo" },
         { status: 500 }
@@ -317,7 +308,8 @@ Sections: TRANSACTION OVERVIEW, STRATEGIC RATIONALE, KEY RISKS, ANALYST TAKE. Un
     }
     return NextResponse.json({ memo });
   } catch (err) {
-    console.error("Gemini memo error:", err);
+    console.error("[memo] Gemini legacy-path error:", err);
+    console.error("[memo] error detail:", err instanceof Error ? err.message : String(err));
     return NextResponse.json(
       { error: "Failed to generate memo" },
       { status: 500 }
