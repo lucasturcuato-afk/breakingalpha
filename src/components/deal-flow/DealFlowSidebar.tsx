@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { Bookmark, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { normalizeSector } from "@/lib/deal-utils";
+import { normalizeSector, dealRelevanceScore } from "@/lib/deal-utils";
 import type { EnrichedDeal } from "@/hooks/useSavedDeals";
 
 interface Deal {
@@ -24,6 +24,7 @@ interface UserProfile {
   sectors?: string[] | null;
   watchlist_tickers?: string[] | null;
   role?: string | null;
+  inferred_sector_weights?: Record<string, number> | null;
 }
 
 interface DealFlowSidebarProps {
@@ -120,6 +121,7 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
     trackedSectors,
     otherSectors,
     largestDeals,
+    highRelevanceCount,
   } = useMemo(() => {
     const now = Date.now();
     const WEEK = 7 * 24 * 60 * 60 * 1000;
@@ -201,6 +203,10 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
         displayCompany: shortestName[normalizeCompany(d.company)] ?? d.company,
       }));
 
+    const highRelevanceCount = deals.filter(
+      (d) => dealRelevanceScore(d, userProfile) === "high",
+    ).length;
+
     return {
       thisWeek,
       delta,
@@ -210,8 +216,9 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
       trackedSectors,
       otherSectors,
       largestDeals,
+      highRelevanceCount,
     };
-  }, [deals, hasUserSectors, userSectors]);
+  }, [deals, hasUserSectors, userSectors, userProfile]);
 
   return (
     <aside className="w-[268px] shrink-0 border-l border-border-base overflow-y-auto [scrollbar-gutter:stable] bg-cream">
@@ -286,6 +293,12 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
           <p className="text-[11px] text-gold mt-2 font-medium">
             {inSectorCount} in your sectors
           </p>
+        )}
+        {highRelevanceCount > 0 && (
+          <div className="flex items-center gap-[5px] mt-[3px]">
+            <div className="w-[6px] h-[6px] rounded-full bg-gold flex-shrink-0" />
+            <span className="text-[11px] text-gold">{highRelevanceCount} highly relevant</span>
+          </div>
         )}
       </div>
 
