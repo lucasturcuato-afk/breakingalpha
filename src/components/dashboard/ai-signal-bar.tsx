@@ -2,19 +2,26 @@
 
 import { cn } from "@/lib/utils";
 import { Sparkles } from "lucide-react";
+import { useUserProfile } from "@/hooks/useUserProfile";
+import { sectorMatchesProfile } from "@/lib/personalization";
 
 interface AISignalBarProps {
   text: string;
   boldParts?: string[];
   ctaHref?: string;
+  signalSectors?: string[];
 }
 
 export function AISignalBar({
   text = "Fed language shift detected across 3 FOMC transcripts — dovish pivot probability rising. Bond markets already pricing in.",
   boldParts = ["Fed language shift", "dovish pivot probability rising"],
   ctaHref,
+  signalSectors,
 }: AISignalBarProps) {
-  // Bold specific parts of the text
+  const { profile } = useUserProfile();
+  const watchlist = (profile?.watchlist_tickers ?? []).map((t) => t.toUpperCase());
+
+  // Bold specific parts + highlight watchlist tickers in gold
   let rendered = text;
   for (const part of boldParts) {
     rendered = rendered.replace(
@@ -22,6 +29,17 @@ export function AISignalBar({
       `<strong class="text-cream dark:text-foreground font-semibold">${part}</strong>`,
     );
   }
+  // Highlight watchlist tickers mentioned in the signal text
+  for (const ticker of watchlist) {
+    const regex = new RegExp(`\\b${ticker}\\b`, "g");
+    rendered = rendered.replace(
+      regex,
+      `<span class="text-gold font-bold">${ticker}</span>`,
+    );
+  }
+
+  // Check if signal matches user's focus areas
+  const matchesFocus = signalSectors?.some((s) => sectorMatchesProfile(s, profile)) ?? false;
 
   const hour = new Date().getHours();
   const briefLink = ctaHref || (hour >= 17 ? "/evening-wrap" : "/morning-brief");
@@ -43,6 +61,11 @@ export function AISignalBar({
       <div className="flex-1 min-w-0">
         <p className="font-sans text-[9px] uppercase tracking-widest text-gold font-semibold mb-0.5">
           Signalera AI · Live Signal
+          {matchesFocus && (
+            <span className="ml-2 text-cream/60 normal-case tracking-normal">
+              · Matches your focus
+            </span>
+          )}
         </p>
         <p
           className="font-sans text-[12px] text-gold-light leading-relaxed truncate"

@@ -6,6 +6,8 @@ import { getSectorStyle } from "@/lib/sector-colors";
 import { Check, X } from "lucide-react";
 import type { ThesisItem } from "./thesis-types";
 import { ConvictionRing } from "./ConvictionRing";
+import { useUserProfile } from "@/hooks/useUserProfile";
+import { isOnWatchlist } from "@/lib/personalization";
 
 interface ThesisListProps {
   theses: ThesisItem[];
@@ -61,6 +63,8 @@ export function ThesisList({
   onQuickAction,
   matchedSectors,
 }: ThesisListProps) {
+  const { profile } = useUserProfile();
+
   const filtered = useMemo(() => {
     if (isArchiveView) {
       return [...theses].sort((a, b) => convictionRank(b) - convictionRank(a));
@@ -124,7 +128,12 @@ export function ThesisList({
                 )}
               </div>
               {matchedSectors && matchedSectors.length > 0 && isSectorMatched(thesis.sector, matchedSectors) && (
-                <p className="font-sans text-[9px] text-amber-600 mt-0.5">Matched to your sectors</p>
+                <p className="font-sans text-[9px] text-gold-dark mt-0.5">Matched to your sectors</p>
+              )}
+              {thesis.ticker && isOnWatchlist(thesis.ticker, profile) && (
+                <span className="inline-flex items-center font-sans text-[9px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1 py-0 mt-0.5">
+                  Watching
+                </span>
               )}
             </div>
 
