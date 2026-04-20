@@ -36,13 +36,13 @@ const CHIP_BASE: CSSProperties = {
 const CHIP_INACTIVE: CSSProperties = {
   backgroundColor: "transparent",
   color: "#6b7280",
-  border: "1px solid #2a2a2a",
+  border: "1px solid rgba(255,255,255,0.14)",
 };
 
 const CHIP_HOVER: CSSProperties = {
   backgroundColor: "transparent",
   color: "#9ca3af",
-  border: "1px solid #4b5563",
+  border: "1px solid rgba(255,255,255,0.22)",
 };
 
 const ROW_LABEL: CSSProperties = {
@@ -50,7 +50,7 @@ const ROW_LABEL: CSSProperties = {
   fontWeight: 700,
   letterSpacing: "0.1em",
   textTransform: "uppercase",
-  color: "#4b5563",
+  color: "#6b7280",
   width: "64px",
   flexShrink: 0,
 };
@@ -178,7 +178,7 @@ export function FilterBar({
 }: FilterBarProps) {
   return (
     <div
-      className="bg-parchment"
+      className="bg-parchment dark:bg-[#161616]"
       style={{ padding: "6px 16px 5px", borderBottom: "1px solid #1e1e1e" }}
     >
       {/* Row 1 — SECTORS */}
