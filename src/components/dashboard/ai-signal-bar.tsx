@@ -19,7 +19,7 @@ export function AISignalBar({
   for (const part of boldParts) {
     rendered = rendered.replace(
       part,
-      `<strong class="text-cream font-semibold">${part}</strong>`,
+      `<strong class="text-cream dark:text-foreground font-semibold">${part}</strong>`,
     );
   }
 
@@ -31,7 +31,7 @@ export function AISignalBar({
     <div
       className={cn(
         "flex items-center gap-3 px-4 py-3",
-        "bg-espresso rounded-xl",
+        "bg-espresso dark:bg-overlay dark:border dark:border-border-default rounded-xl",
       )}
     >
       {/* Icon */}
