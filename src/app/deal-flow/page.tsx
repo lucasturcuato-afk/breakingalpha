@@ -201,7 +201,7 @@ function DealFlowContent() {
   const [showAllTypes, setShowAllTypes] = useState(false);
 
   // Saved deals
-  const { savedDeals, isSaved, toggleSave } = useSavedDeals();
+  const { enrichedSavedDeals, isSaved, toggleSave } = useSavedDeals({ deals });
 
   // Profile-based sector pre-filter
   const { profile } = useUserProfile();
@@ -963,7 +963,7 @@ function DealFlowContent() {
           />
         )}
       </div>
-      <DealFlowSidebar deals={deals} userProfile={profile} savedDeals={savedDeals} toggleSave={toggleSave} />
+      <DealFlowSidebar deals={deals} userProfile={profile} enrichedSavedDeals={enrichedSavedDeals} toggleSave={toggleSave} />
       </div>
 
       {/* Memo Modal */}

@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { Bookmark, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { SavedDeal } from "@/hooks/useSavedDeals";
+import type { EnrichedDeal } from "@/hooks/useSavedDeals";
 
 interface Deal {
   id: string;
@@ -28,7 +28,7 @@ interface UserProfile {
 interface DealFlowSidebarProps {
   deals: Deal[];
   userProfile?: UserProfile | null;
-  savedDeals?: SavedDeal[];
+  enrichedSavedDeals?: EnrichedDeal[];
   toggleSave?: (dealId: string) => Promise<void>;
 }
 
@@ -129,7 +129,7 @@ const DOT_OPACITIES = [1.0, 0.72, 0.52, 0.38, 0.28];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function DealFlowSidebar({ deals, userProfile, savedDeals = [], toggleSave }: DealFlowSidebarProps) {
+export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], toggleSave }: DealFlowSidebarProps) {
   const userSectors = useMemo(
     () => userProfile?.sectors?.filter(Boolean) ?? [],
     [userProfile],
@@ -238,25 +238,10 @@ export function DealFlowSidebar({ deals, userProfile, savedDeals = [], toggleSav
     };
   }, [deals, hasUserSectors, userSectors]);
 
-  // Build a map from deal id → company name for saved section display
-  const dealById = useMemo(() => {
-    const m: Record<string, Deal> = {};
-    for (const d of deals) m[d.id] = d;
-    return m;
-  }, [deals]);
-
-  const savedWithMeta = useMemo(
-    () =>
-      savedDeals
-        .map((s) => ({ ...s, deal: dealById[s.deal_id] }))
-        .filter((s) => s.deal != null) as Array<SavedDeal & { deal: Deal }>,
-    [savedDeals, dealById],
-  );
-
   return (
     <aside className="w-[268px] shrink-0 border-l border-border-base overflow-y-auto [scrollbar-gutter:stable] bg-cream">
       {/* Section 0 — Saved deals (only shown when there are saves) */}
-      {savedWithMeta.length > 0 && (
+      {enrichedSavedDeals.length > 0 && (
         <div className="px-5 py-4 border-b border-border-base">
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">
@@ -270,8 +255,8 @@ export function DealFlowSidebar({ deals, userProfile, savedDeals = [], toggleSav
             </Link>
           </div>
           <div className="space-y-2">
-            {savedWithMeta.slice(0, 4).map(({ deal_id, deal }) => (
-              <div key={deal_id} className="flex items-center gap-2">
+            {enrichedSavedDeals.slice(0, 4).map((deal) => (
+              <div key={deal.id} className="flex items-center gap-2">
                 <Bookmark size={10} className="text-gold shrink-0" fill="currentColor" />
                 <span className="text-[11px] text-text-primary flex-1 truncate">
                   {deal.company}
@@ -279,7 +264,7 @@ export function DealFlowSidebar({ deals, userProfile, savedDeals = [], toggleSav
                 {toggleSave && (
                   <button
                     type="button"
-                    onClick={() => toggleSave(deal_id)}
+                    onClick={() => toggleSave(deal.id)}
                     className="text-text-muted hover:text-red-400 transition-colors shrink-0"
                     aria-label="Remove saved deal"
                   >
@@ -288,9 +273,9 @@ export function DealFlowSidebar({ deals, userProfile, savedDeals = [], toggleSav
                 )}
               </div>
             ))}
-            {savedWithMeta.length > 4 && (
+            {enrichedSavedDeals.length > 4 && (
               <p className="text-[10px] text-text-muted">
-                +{savedWithMeta.length - 4} more
+                +{enrichedSavedDeals.length - 4} more
               </p>
             )}
           </div>

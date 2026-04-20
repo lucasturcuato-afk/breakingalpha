@@ -1,37 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/shell";
 import { cn } from "@/lib/utils";
 import { Bookmark, Briefcase, ArrowLeft, Download, X } from "lucide-react";
-import { useSavedDeals } from "@/hooks/useSavedDeals";
-import { createBrowserClient } from "@supabase/ssr";
-import { useEffect } from "react";
-
-function getSupabase() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  );
-}
-
-interface Deal {
-  id: string;
-  company: string;
-  acquirer?: string | null;
-  deal_type?: string | null;
-  stage?: string | null;
-  status?: string | null;
-  value?: string | null;
-  valuation?: string | null;
-  sector?: string | null;
-  notes?: string | null;
-  source?: string | null;
-  source_url?: string | null;
-  updated_at?: string;
-  ingested_at?: string;
-}
+import { useSavedDeals, type EnrichedDeal } from "@/hooks/useSavedDeals";
 
 type SortKey = "saved_at" | "company" | "value";
 
@@ -42,7 +16,7 @@ const STAGE_CONFIG: Record<string, { label: string; color: string }> = {
   closed: { label: "CLOSED", color: "text-text-muted bg-parchment-mid border-border-base" },
 };
 
-function getDealStage(deal: Deal): string {
+function getDealStage(deal: EnrichedDeal): string {
   return deal.stage || deal.status || "rumored";
 }
 
@@ -60,8 +34,8 @@ function parseValue(val: string | null | undefined): number {
   return n;
 }
 
-function exportCSV(deals: Deal[]) {
-  const headers = ["Company", "Acquirer", "Deal Type", "Stage", "Value", "Sector", "Source"];
+function exportCSV(deals: EnrichedDeal[]) {
+  const headers = ["Company", "Acquirer", "Deal Type", "Stage", "Value", "Sector", "Source", "Saved At"];
   const rows = deals.map((d) => [
     d.company,
     d.acquirer ?? "",
@@ -70,6 +44,7 @@ function exportCSV(deals: Deal[]) {
     d.value || d.valuation || "",
     d.sector ?? "",
     d.source ?? "",
+    d.saved_at ? new Date(d.saved_at).toLocaleDateString() : "",
   ]);
   const csv = [headers, ...rows]
     .map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
@@ -84,63 +59,41 @@ function exportCSV(deals: Deal[]) {
 }
 
 export default function SavedDealsPage() {
-  const { savedDeals, toggleSave, isLoading } = useSavedDeals();
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [dealsLoading, setDealsLoading] = useState(true);
-  const [sortKey, setSortKey] = useState<SortKey>("saved_at");
+  const { enrichedSavedDeals, toggleSave, isLoading } = useSavedDeals();
+
+  // Local display list for fade-out animation — seeded once on load
+  const [displayDeals, setDisplayDeals] = useState<EnrichedDeal[]>([]);
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
+  const [sortKey, setSortKey] = useState<SortKey>("saved_at");
+  const seeded = useRef(false);
 
-  // Fetch full deal objects for saved IDs
+  // Seed display list once loading completes
   useEffect(() => {
-    async function load() {
-      if (isLoading) return;
-      if (savedDeals.length === 0) {
-        setDealsLoading(false);
-        return;
-      }
-      const ids = savedDeals.map((s) => s.deal_id);
-      const { data } = await getSupabase()
-        .from("deal_flow")
-        .select("*")
-        .in("id", ids);
-      setDeals(data ?? []);
-      setDealsLoading(false);
+    if (!isLoading && !seeded.current) {
+      setDisplayDeals(enrichedSavedDeals);
+      seeded.current = true;
     }
-    load();
-  }, [isLoading, savedDeals]);
-
-  const savedAt = useMemo(() => {
-    const m: Record<string, string> = {};
-    for (const s of savedDeals) m[s.deal_id] = s.saved_at;
-    return m;
-  }, [savedDeals]);
+  }, [isLoading, enrichedSavedDeals]);
 
   const sorted = useMemo(() => {
-    return [...deals].sort((a, b) => {
+    return [...displayDeals].sort((a, b) => {
       if (sortKey === "company") return a.company.localeCompare(b.company);
       if (sortKey === "value") return parseValue(b.value || b.valuation) - parseValue(a.value || a.valuation);
-      // saved_at desc
-      const ta = savedAt[a.id] ?? "";
-      const tb = savedAt[b.id] ?? "";
-      return tb.localeCompare(ta);
+      // saved_at desc (default)
+      return (b.saved_at ?? "").localeCompare(a.saved_at ?? "");
     });
-  }, [deals, sortKey, savedAt]);
+  }, [displayDeals, sortKey]);
 
   async function handleUnsave(dealId: string) {
     setRemovingIds((s) => new Set([...s, dealId]));
     await toggleSave(dealId);
-    // Fade-out: brief delay then cleanup
     setTimeout(() => {
-      setRemovingIds((s) => {
-        const next = new Set(s);
-        next.delete(dealId);
-        return next;
-      });
-      setDeals((prev) => prev.filter((d) => d.id !== dealId));
+      setRemovingIds((s) => { const n = new Set(s); n.delete(dealId); return n; });
+      setDisplayDeals((prev) => prev.filter((d) => d.id !== dealId));
     }, 300);
   }
 
-  const loading = isLoading || dealsLoading;
+  const hasSaved = displayDeals.length > 0;
 
   return (
     <AppShell pageTitle="Saved Deals">
@@ -165,7 +118,7 @@ export default function SavedDealsPage() {
               {sorted.length} saved deal{sorted.length !== 1 ? "s" : ""}
             </p>
           </div>
-          {sorted.length > 0 && (
+          {hasSaved && (
             <button
               type="button"
               onClick={() => exportCSV(sorted)}
@@ -177,8 +130,8 @@ export default function SavedDealsPage() {
           )}
         </div>
 
-        {/* Sort controls */}
-        {sorted.length > 1 && (
+        {/* Sort controls — shown whenever there are saved deals */}
+        {hasSaved && (
           <div className="flex items-center gap-1 mb-4">
             <span className="font-data text-[10px] uppercase tracking-widest text-text-muted mr-1">Sort:</span>
             {(["saved_at", "company", "value"] as SortKey[]).map((key) => (
@@ -200,7 +153,7 @@ export default function SavedDealsPage() {
         )}
 
         {/* Loading */}
-        {loading && (
+        {isLoading && (
           <div className="space-y-3">
             {[...Array(3)].map((_, i) => (
               <div key={i} className="h-20 bg-parchment-mid rounded-xl animate-pulse" />
@@ -209,7 +162,7 @@ export default function SavedDealsPage() {
         )}
 
         {/* Empty state */}
-        {!loading && sorted.length === 0 && (
+        {!isLoading && !hasSaved && (
           <div className="text-center py-16">
             <Bookmark size={32} className="text-border-base mx-auto mb-3" />
             <p className="font-display text-[16px] font-semibold text-text-primary mb-1">No saved deals yet</p>
@@ -227,7 +180,7 @@ export default function SavedDealsPage() {
         )}
 
         {/* Deal list */}
-        {!loading && sorted.length > 0 && (
+        {!isLoading && sorted.length > 0 && (
           <div className="space-y-2">
             {sorted.map((deal) => {
               const stage = getDealStage(deal);
@@ -274,9 +227,9 @@ export default function SavedDealsPage() {
                           </span>
                         )}
                       </div>
-                      {savedAt[deal.id] && (
+                      {deal.saved_at && (
                         <p className="font-data text-[10px] text-text-muted mt-1.5">
-                          Saved {new Date(savedAt[deal.id]).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          Saved {new Date(deal.saved_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                         </p>
                       )}
                     </div>
@@ -302,7 +255,6 @@ export default function SavedDealsPage() {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 mt-2 font-data text-[10px] text-gold hover:opacity-80 transition-opacity"
-                      onClick={(e) => e.stopPropagation()}
                     >
                       View source →
                     </a>

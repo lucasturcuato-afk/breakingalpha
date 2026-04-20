@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 
 function getSupabase() {
@@ -15,20 +15,55 @@ export interface SavedDeal {
   saved_at: string;
 }
 
+export interface Deal {
+  id: string;
+  company: string;
+  acquirer?: string | null;
+  deal_type?: string | null;
+  stage?: string | null;
+  status?: string | null;
+  value?: string | null;
+  valuation?: string | null;
+  sector?: string | null;
+  notes?: string | null;
+  summary?: string | null;
+  thesis?: string | null;
+  source?: string | null;
+  source_url?: string | null;
+  auto_extracted?: boolean;
+  updated_at?: string;
+  ingested_at?: string;
+}
+
+export interface EnrichedDeal extends Deal {
+  saved_at: string;
+}
+
+interface UseSavedDealsOptions {
+  deals?: Deal[];
+}
+
 interface UseSavedDealsReturn {
   savedDealIds: Set<string>;
   savedDeals: SavedDeal[];
+  enrichedSavedDeals: EnrichedDeal[];
   isSaved: (dealId: string) => boolean;
   toggleSave: (dealId: string) => Promise<void>;
   isLoading: boolean;
   error: string | null;
 }
 
-export function useSavedDeals(): UseSavedDealsReturn {
+export function useSavedDeals(options?: UseSavedDealsOptions): UseSavedDealsReturn {
+  const externalDeals = options?.deals;
+  const hasExternalDeals = externalDeals !== undefined;
+
   const [savedDeals, setSavedDeals] = useState<SavedDeal[]>([]);
+  const [fetchedDeals, setFetchedDeals] = useState<Deal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const fetchedIdsRef = useRef<string>("");
 
+  // Load saved deal IDs from user_saved_deals
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -47,25 +82,71 @@ export function useSavedDeals(): UseSavedDealsReturn {
         .eq("user_id", user.id)
         .order("saved_at", { ascending: false });
 
-      if (!cancelled) {
-        if (error) {
-          console.error("[useSavedDeals] Load error:", error.message);
-          setError(error.message);
-        } else {
-          setSavedDeals(data ?? []);
-        }
+      if (cancelled) return;
+
+      if (error) {
+        console.error("[useSavedDeals] Load error:", error.message);
+        setError(error.message);
         setIsLoading(false);
+        return;
       }
+
+      const rows = data ?? [];
+      console.debug("[useSavedDeals] Loaded saved IDs:", rows.length, rows);
+      setSavedDeals(rows);
+      setIsLoading(false);
     }
     load();
     return () => { cancelled = true; };
   }, []);
 
-  // Memoize the Set so toggleSave's closure sees a stable reference
+  // When no external deals provided, fetch full deal data from deal_flow
+  useEffect(() => {
+    if (hasExternalDeals) return;
+    if (isLoading || savedDeals.length === 0) return;
+
+    const ids = savedDeals.map((s) => s.deal_id).sort().join(",");
+    if (ids === fetchedIdsRef.current) return; // avoid re-fetching same set
+    fetchedIdsRef.current = ids;
+
+    let cancelled = false;
+    getSupabase()
+      .from("deal_flow")
+      .select("*")
+      .in("id", savedDeals.map((s) => s.deal_id))
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("[useSavedDeals] Deal fetch error:", error.message);
+        } else {
+          console.debug("[useSavedDeals] Fetched full deals:", data?.length, data);
+          setFetchedDeals(data ?? []);
+        }
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, savedDeals, hasExternalDeals]);
+
+  // Memoize Set for O(1) lookups
   const savedDealIds = useMemo(
     () => new Set(savedDeals.map((s) => s.deal_id)),
     [savedDeals],
   );
+
+  // Enrich saved deals with full Deal data + saved_at
+  const enrichedSavedDeals = useMemo((): EnrichedDeal[] => {
+    const source = externalDeals ?? fetchedDeals;
+    const dealMap: Record<string, Deal> = {};
+    for (const d of source) dealMap[d.id] = d;
+
+    return savedDeals
+      .map((s): EnrichedDeal | null => {
+        const deal = dealMap[s.deal_id];
+        if (!deal) return null;
+        return { ...deal, saved_at: s.saved_at };
+      })
+      .filter((d): d is EnrichedDeal => d !== null);
+  }, [savedDeals, externalDeals, fetchedDeals]);
 
   const isSaved = useCallback(
     (dealId: string) => savedDealIds.has(dealId),
@@ -113,5 +194,5 @@ export function useSavedDeals(): UseSavedDealsReturn {
     }
   }, [savedDeals, savedDealIds]);
 
-  return { savedDealIds, savedDeals, isSaved, toggleSave, isLoading, error };
+  return { savedDealIds, savedDeals, enrichedSavedDeals, isSaved, toggleSave, isLoading, error };
 }
