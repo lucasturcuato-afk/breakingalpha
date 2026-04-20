@@ -78,27 +78,6 @@ const DEAL_TYPE_COLORS: Record<string, string> = {
   "Secondary": "text-text-muted bg-parchment-mid border-border-base",
 };
 
-const SECTOR_COLORS: Record<string, string> = {
-  "Technology": "#3b82f6",
-  "Technology M&A": "#3b82f6",
-  "Healthcare": "#10b981",
-  "Healthcare & Biotech": "#10b981",
-  "Energy": "#f59e0b",
-  "Energy & Climate": "#f59e0b",
-  "Fintech": "#8b5cf6",
-  "Fintech & Crypto": "#8b5cf6",
-  "Consumer": "#ec4899",
-  "Consumer & Retail": "#ec4899",
-  "Real Estate": "#6366f1",
-  "Real Estate & REITs": "#6366f1",
-  "Private Equity": "#14b8a6",
-  "Venture Capital": "#a855f7",
-  "Geopolitics & Macro": "#64748b",
-};
-
-function getSectorColor(sector: string): string {
-  return SECTOR_COLORS[sector] || "#64748b";
-}
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -806,7 +785,6 @@ function DealFlowContent() {
             {filtered.map((deal) => {
               const stage = getDealStage(deal);
               const stageConf = STAGE_CONFIG[stage] || STAGE_CONFIG.rumored;
-              const secColor = deal.sector ? getSectorColor(deal.sector) : "#64748b";
               const isExp = expanded === deal.id;
               const isAdded = addedSet.has(deal.company);
               const displayValue = deal.value || deal.valuation;
@@ -896,13 +874,10 @@ function DealFlowContent() {
                       <span
                         className={cn(
                           "font-data text-[10px] font-bold px-2 py-0.5 rounded-md border",
-                          isHighRelevance ? "text-gold bg-gold/10 border-gold/20" : "",
+                          isHighRelevance
+                            ? "text-gold bg-gold/10 border-gold/20"
+                            : "bg-white/[0.06] text-[#9a9a94] border border-white/[0.10] dark:bg-white/[0.06] dark:text-[#9a9a94] dark:border-white/[0.10]",
                         )}
-                        style={isHighRelevance ? undefined : {
-                          color: secColor,
-                          backgroundColor: secColor + "15",
-                          borderColor: secColor + "28",
-                        }}
                       >
                         {deal.sector.split(" ")[0]}
                       </span>
