@@ -1,6 +1,6 @@
 # Signalera Handoff
 
-## Current Status (2026-04-15)
+## Current Status (2026-04-19)
 - Live at https://breakingalpha.vercel.app (deploying as Signalera)
 - Full rebrand from BreakingAlpha to Signalera shipped — logo, fonts, theme, auth page
 - Auth middleware protecting all routes — unauthenticated users redirect to /auth
@@ -103,6 +103,8 @@ Replaced GitHub Actions native cron on 2026-04-13 — GitHub's built-in schedule
 
 **pipeline_runs, run_articles, brief_quality_scores, selection_audit, trend_clusters:** Phase 1 observation layer tables — see git history for schemas.
 
+**user_saved_deals:** id (uuid), user_id (uuid FK auth.users), deal_id (text, composite key: `company|acquirer|deal_type`), saved_at (timestamptz). User-scoped RLS (read/insert/delete own rows). **Manual Supabase step:** Run `GRANT SELECT, INSERT, DELETE ON user_saved_deals TO authenticated` on any new environment.
+
 ## Full Diagnostic Audit (2026-04-10)
 
 ### What Was Audited
@@ -155,6 +157,9 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 3. ~~What is Lucas's scope for the autonomous improvement loop?~~ — RESOLVED: 12-step pipeline with thesis grading, pattern memory, source credibility, adversarial review (phases 2–6 shipped)
 4. Are there active paying users? (determines urgency of fixes)
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
+
+## Recently Completed (2026-04-19)
+**Deal Flow personalization and saved deals (PRs #104–#107 merged to main):** Two-column layout with analytics sidebar (268px: Pipeline Velocity, By Deal Type, Top Sectors, Largest Deals); company deduplication via `normalizeCompany()`. User profile integration: sector tracking/other split, watchlist highlighting, sector filter nudge. Saved deals table + RLS + `/api/saved-deals` server route; `/saved` page with sort controls, fade-out unsave, CSV export. Relevance scoring: `dealRelevanceScore()` + gold dot/border system (≥1.5 threshold); high-relevance row in sidebar. Fire-and-forget event tracking (`thesis_viewed`, `memo_generated`, `sector_filter_applied`) → `inferred_sector_weights`. **Manual Supabase steps:** Run `GRANT SELECT, INSERT, DELETE ON user_saved_deals TO authenticated` on any new environment. Gold dots won't appear until 4+ behavioral events compound past 1.5 threshold.
 
 ## In Progress (2026-04-19)
 **Watchlist Brief Integration (branch: noah/watchlist-brief-integration):**
@@ -245,6 +250,8 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 10. **Phase 1 hardening — observe.py reconstruction fix (PR #56)** — `_reconstruct_selected()` rewritten to mirror current `synthesize._select_articles_for_synthesis()` (spine=12, floor=6, sector_cap=3, floor_min=7). `audit.py` `_TARGET_COUNT` corrected 20→18. Stale `_diversify_articles` reconstruction logic replaced. No schema changes.
 
 ## Pending / Known Issues
+- **Tier 2 saved deals RLS grant** — must run `GRANT SELECT, INSERT, DELETE ON user_saved_deals TO authenticated` manually in Supabase SQL editor for new environments (migration file incomplete).
+- **Relevance scoring cold start** — gold dots won't appear on fresh accounts until 4+ behavioral events compound inferred_sector_weights past 1.5 threshold. Expected, not a bug.
 - **V4C watchlist_price_alerts table** — must run `backend/watchlist_alerts_schema.sql` manually in Supabase SQL editor before price alert UI/trigger is functional.
 - **V4B watchlist_notifications table** — must run `backend/watchlist_notifications_schema.sql` manually in Supabase SQL editor before bell drawer shows real data.
 - **V4B score_breakdown column** — run `ALTER TABLE watchlist_articles ADD COLUMN IF NOT EXISTS score_breakdown jsonb` if column was not added via V4B migration.
