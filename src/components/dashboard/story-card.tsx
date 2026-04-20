@@ -5,7 +5,10 @@ import { stripHtml } from "@/lib/strip-html";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
-import { getSectorStyle, getTagPillStyle } from "@/lib/sector-colors";
+import {
+  getSectorStyle,
+  getTagPillStyle,
+} from "@/lib/sector-colors";
 import { Badge } from "@/components/ui/badge";
 import { BookmarkButton } from "@/components/ui/bookmark";
 import { Sparkles, Plus, MessageSquare, Loader2 } from "lucide-react";
@@ -147,7 +150,7 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
                 )
               : null
             }
-            {/* Activity Type Pills */}
+            {/* Activity Type Pills — keep semantic colors */}
             {(story.activity_types ?? []).map((a) => (
               <span
                 key={a}
@@ -375,7 +378,7 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
                   )
                 : null
               }
-              {/* Activity Type Pills */}
+              {/* Activity Type Pills — keep semantic colors */}
               {(story.activity_types ?? []).map((a) => (
                 <span
                   key={a}
