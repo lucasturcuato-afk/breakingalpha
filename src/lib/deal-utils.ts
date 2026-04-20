@@ -67,7 +67,7 @@ export function dealRelevanceScore(
 ): "high" | "none" {
   if (!profile || !deal.sector) return "none";
   const weight = localSectorWeight(profile, normalizeSector(deal.sector));
-  return weight >= 1.2 ? "high" : "none";
+  return weight >= 1.5 ? "high" : "none";
 }
 
 export function dealIsWatchlistMatch(

@@ -811,7 +811,7 @@ function DealFlowContent() {
               const isAdded = addedSet.has(deal.company);
               const displayValue = deal.value || deal.valuation;
               const isHighRelevance = dealRelevanceScore(deal, profile) === "high";
-              const showGoldBorder = isHighRelevance && dealIsWatchlistMatch(deal, profile);
+              const showGoldBorder = isHighRelevance && isSaved(deal.id);
 
               return (
                 <div
