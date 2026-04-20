@@ -23,6 +23,9 @@ import type { StoryData } from "@/components/dashboard";
 import type { DealData } from "@/components/brief";
 import { createBrowserClient } from "@supabase/ssr";
 import { SignInModal } from "@/components/auth/sign-in-modal";
+import { useUserProfile } from "@/hooks/useUserProfile";
+import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
+import type { ContentDescriptor } from "@/lib/personalization";
 
 function getSupabase() {
   return createBrowserClient(
@@ -70,7 +73,16 @@ interface BriefingData {
   created_at?: string;
 }
 
+function storyToContent(story: StoryData): ContentDescriptor {
+  return {
+    sectors: [story.sector].filter(Boolean) as string[],
+    tickers: story.tags ?? [],
+    title: story.title,
+  };
+}
+
 export default function MorningBriefPage() {
+  const { profile } = useUserProfile();
   const [briefing, setBriefing] = useState<BriefingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [sectorFilter, setSectorFilter] = useState<string | null>(null);
@@ -88,6 +100,7 @@ export default function MorningBriefPage() {
   const [toast, setToast] = useState("");
   const [user, setUser] = useState<{ id: string } | null | undefined>(undefined);
   const [showSignIn, setShowSignIn] = useState(false);
+  const [formatLabel, setFormatLabel] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -134,6 +147,9 @@ export default function MorningBriefPage() {
           setIsStale(data.is_stale === true);
           if (data.last_attempt_status) {
             setLastRunStatus(data.last_attempt_status);
+          }
+          if (data.personalization?.format_label) {
+            setFormatLabel(data.personalization.format_label);
           }
         }
 
@@ -231,6 +247,12 @@ export default function MorningBriefPage() {
     }));
   }, [briefing]);
 
+  // Personalized story ordering
+  const rankedStories = useMemo(() => {
+    if (!profile) return stories;
+    return sortByRelevance(stories, profile, storyToContent);
+  }, [stories, profile]);
+
   const handleLeadAddThesis = async () => {
     setAddingThesis(true);
     try {
@@ -292,7 +314,7 @@ export default function MorningBriefPage() {
           <>
             <BriefHeader
               type="morning"
-              headline={briefing.headline || "Morning Market Brief"}
+              headline={briefing.headline || formatLabel || "Morning Market Brief"}
               summary={briefing.summary || ""}
               marketTone={briefing.market_tone || "MIXED"}
               storyCount={stories.length}
@@ -358,9 +380,9 @@ export default function MorningBriefPage() {
                     <div
                       key={i}
                       className={cn(
-                        "p-3.5 rounded-xl border border-border-base border-t-2 border-t-gold/15 bg-white",
+                        "p-3.5 rounded-xl border border-border-base dark:border-border-default border-t-2 border-t-gold/15 bg-white dark:bg-elevated",
                         "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",
-                        "hover:-translate-y-0.5 hover:border-border-hover hover:shadow-[0_2px_12px_rgba(201,146,42,0.06)]",
+                        "hover:-translate-y-0.5 hover:border-border-hover dark:hover:bg-overlay hover:shadow-[0_2px_12px_rgba(201,146,42,0.06)]",
                       )}
                     >
                       <div className="flex items-center justify-between mb-1.5">
@@ -497,30 +519,46 @@ export default function MorningBriefPage() {
             )}
 
             {/* Stories */}
-            {stories.length > 0 && (
+            {rankedStories.length > 0 && (
               <section>
                 <h2 className="font-sans text-[10px] uppercase tracking-widest font-bold text-text-muted mb-3">
                   {storiesLabel}
                 </h2>
                 {(() => {
-                  const GATE_LIMIT = user === null ? 3 : stories.length;
-                  const visibleStories = stories.slice(0, GATE_LIMIT);
-                  const hasMore = user === null && stories.length > GATE_LIMIT;
+                  const GATE_LIMIT = user === null ? 3 : rankedStories.length;
+                  const visibleStories = rankedStories.slice(0, GATE_LIMIT);
+                  const hasMore = user === null && rankedStories.length > GATE_LIMIT;
                   return (
                     <>
-                      {visibleStories[0] && <LeadStoryCard story={visibleStories[0]} />}
+                      {visibleStories[0] && (
+                        <div className="relative">
+                          {(visibleStories[0].tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
+                            <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 mb-1">
+                              Watching
+                            </span>
+                          )}
+                          <LeadStoryCard story={visibleStories[0]} />
+                        </div>
+                      )}
                       <div className="mt-2">
                         {visibleStories.slice(1).map((story, i) => (
-                          <CompactStoryCard key={story.id} story={story} number={i + 2} />
+                          <div key={story.id}>
+                            {(story.tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
+                              <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 ml-3 mb-0.5">
+                                Watching
+                              </span>
+                            )}
+                            <CompactStoryCard story={story} number={i + 2} />
+                          </div>
                         ))}
                       </div>
                       {hasMore && (
                         <div className="relative mt-2">
                           <div style={{ maxHeight: '48px', overflow: 'hidden', pointerEvents: 'none', userSelect: 'none', opacity: 0.7 }}>
-                            {stories[GATE_LIMIT] && (
+                            {rankedStories[GATE_LIMIT] && (
                               <div className="bg-white border border-border-base rounded-xl p-3">
-                                <p className="font-data text-[9px] text-text-muted">{stories[GATE_LIMIT].source}</p>
-                                <p className="font-display text-[13px] font-bold text-espresso leading-snug mt-1 line-clamp-1">{stories[GATE_LIMIT].title}</p>
+                                <p className="font-data text-[9px] text-text-muted">{rankedStories[GATE_LIMIT].source}</p>
+                                <p className="font-display text-[13px] font-bold text-espresso leading-snug mt-1 line-clamp-1">{rankedStories[GATE_LIMIT].title}</p>
                               </div>
                             )}
                           </div>
@@ -530,7 +568,7 @@ export default function MorningBriefPage() {
                       {hasMore && (
                         <div className="flex items-center justify-between px-3 py-2.5 mt-1 rounded-xl border" style={{ background: 'rgba(245, 166, 35, 0.08)', borderColor: 'var(--gold-border)' }}>
                           <span className="font-sans text-[12px]" style={{ color: 'var(--gold)' }}>
-                            Sign in to see all {stories.length} stories
+                            Sign in to see all {rankedStories.length} stories
                           </span>
                           <button
                             type="button"

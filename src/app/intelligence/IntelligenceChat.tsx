@@ -63,7 +63,11 @@ const SUGGESTED_PROMPTS = [
 
 /* ── Component ── */
 
-export function IntelligenceChat() {
+interface IntelligenceChatProps {
+  userId: string;
+}
+
+export function IntelligenceChat({ userId }: IntelligenceChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -98,12 +102,15 @@ export function IntelligenceChat() {
         const res = await fetch("/api/intelligence", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: trimmed, history }),
+          body: JSON.stringify({ query: trimmed, userId, history }),
         });
 
         if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body.error || `API error: ${res.status}`);
+          const errBody = await res.json().catch(() => ({}));
+          if (res.status === 429) {
+            throw new Error(errBody.error || "Rate limit exceeded — try again later.");
+          }
+          throw new Error(errBody.error || `API error: ${res.status}`);
         }
 
         const data = await res.json();
@@ -122,7 +129,7 @@ export function IntelligenceChat() {
         setLoading(false);
       }
     },
-    [messages, loading],
+    [messages, loading, userId],
   );
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -267,7 +274,7 @@ export function IntelligenceChat() {
           disabled={loading || !input.trim()}
           className={cn(
             "flex-shrink-0 p-3 rounded-xl",
-            "bg-gold text-white hover:bg-gold/90 transition-colors cursor-pointer",
+            "bg-gold text-cream hover:bg-gold/90 transition-colors cursor-pointer",
             "disabled:opacity-40 disabled:cursor-not-allowed",
           )}
         >

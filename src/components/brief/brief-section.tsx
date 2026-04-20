@@ -33,7 +33,7 @@ export function BriefSection({
     <div
       onClick={onToggle}
       className={cn(
-        "p-4 rounded-xl border border-border-base bg-white group min-h-[160px]",
+        "p-4 rounded-xl border border-border-base bg-white dark:bg-elevated dark:border-border-default group min-h-[160px]",
         fullWidth && "col-span-2",
         "cursor-pointer transition-all duration-200 hover:ring-1 hover:ring-gold/40 hover:shadow-sm",
       )}

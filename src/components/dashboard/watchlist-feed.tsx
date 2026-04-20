@@ -48,7 +48,7 @@ export function WatchlistFeed() {
 
   if (loading) {
     return (
-      <div className="bg-parchment border border-border-base rounded-2xl p-5">
+      <div className="bg-parchment dark:bg-elevated border border-border-base rounded-2xl p-5">
         <div className="animate-pulse space-y-3">
           <div className="h-4 bg-parchment-mid rounded w-1/3" />
           <div className="h-3 bg-parchment-mid rounded w-full" />
@@ -61,7 +61,7 @@ export function WatchlistFeed() {
   if (identifiers.length === 0) return null;
 
   return (
-    <div className="bg-parchment border border-border-base rounded-2xl p-5">
+    <div className="bg-parchment dark:bg-elevated border border-border-base rounded-2xl p-5">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Eye size={14} className="text-gold" />
