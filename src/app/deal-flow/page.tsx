@@ -23,7 +23,7 @@ import { MemoModal } from "@/components/memo/MemoModal";
 import { DealFlowSidebar } from "@/components/deal-flow/DealFlowSidebar";
 import { useSavedDeals } from "@/hooks/useSavedDeals";
 import { createBrowserClient } from "@supabase/ssr";
-import { dealRelevanceScore, dealIsWatchlistMatch } from "@/lib/deal-utils";
+import { dealRelevanceScore, dealIsWatchlistMatch, getDealTypeStyle } from "@/lib/deal-utils";
 
 function fireEvent(event_type: string, payload: Record<string, unknown> = {}) {
   fetch("/api/user-events", {
@@ -71,12 +71,6 @@ const STAGE_CONFIG: Record<string, { label: string; color: string }> = {
   closed: { label: "CLOSED", color: "text-text-muted bg-parchment-mid border-border-base" },
 };
 
-const DEAL_TYPE_COLORS: Record<string, string> = {
-  "M&A": "text-blue-600 bg-blue-50 border-blue-200",
-  "IPO": "text-violet-600 bg-violet-50 border-violet-200",
-  "Debt Raise": "text-signal-warn bg-signal-warn/10 border-signal-warn/30",
-  "Secondary": "text-text-muted bg-parchment-mid border-border-base",
-};
 
 
 function timeAgo(dateStr: string): string {
@@ -632,7 +626,7 @@ function DealFlowContent() {
                       className={cn(
                         "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
                         isActive
-                          ? "border-gold bg-gold-muted text-gold"
+                          ? getDealTypeStyle(type)
                           : "border-border-base bg-white text-text-muted hover:text-text-primary",
                       )}
                     >
@@ -865,7 +859,7 @@ function DealFlowContent() {
                     {deal.deal_type && (
                       <span className={cn(
                         "font-data text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border",
-                        DEAL_TYPE_COLORS[deal.deal_type] || "text-text-muted bg-parchment-mid border-border-base",
+                        getDealTypeStyle(deal.deal_type),
                       )}>
                         {deal.deal_type}
                       </span>
