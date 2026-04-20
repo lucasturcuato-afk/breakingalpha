@@ -282,7 +282,13 @@ export default function DashboardPage() {
         />
 
         {/* Stat cards — dynamic from user profile */}
-        <div className={cn("grid gap-2.5 mt-4", `grid-cols-${Math.min(userMarketCards.length, 4)}`)}>
+        <div className={cn(
+          "grid gap-2.5 mt-4",
+          userMarketCards.length === 1 && "grid-cols-1",
+          userMarketCards.length === 2 && "grid-cols-2",
+          userMarketCards.length === 3 && "grid-cols-3",
+          userMarketCards.length >= 4 && "grid-cols-4",
+        )}>
           {userMarketCards.map((sym, i) => {
             if (sym === "SIGNALS") {
               return (

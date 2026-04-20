@@ -374,6 +374,9 @@ export function PreferencesForm({
         </h2>
         <p className="font-sans text-[12px] text-text-secondary mb-3">
           {marketCards.length} / 4 selected
+          {marketCards.length >= 4 && (
+            <span className="ml-2 text-gold-dark font-semibold">Maximum 4 cards</span>
+          )}
         </p>
         <div className="flex flex-wrap gap-2">
           {MARKET_CARD_OPTIONS.map((sym) => {
@@ -384,6 +387,7 @@ export function PreferencesForm({
                 key={sym}
                 label={sym}
                 selected={selected}
+                disabled={atMax}
                 onClick={() => {
                   if (selected) {
                     setMarketCards((prev) => prev.filter((s) => s !== sym));
@@ -431,22 +435,27 @@ export function PreferencesForm({
 function Pill({
   label,
   selected,
+  disabled,
   onClick,
 }: {
   label: string;
   selected: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={cn(
         "px-3.5 py-2 rounded-lg border font-sans text-[12px] font-medium",
-        "transition-all duration-150 cursor-pointer",
+        "transition-all duration-150",
         selected
-          ? "border-gold bg-gold-muted text-gold-dark"
-          : "border-border-base bg-parchment-mid text-text-secondary hover:border-border-hover",
+          ? "border-gold bg-gold-muted text-gold-dark cursor-pointer"
+          : disabled
+            ? "border-border-base bg-parchment-mid text-text-faint cursor-not-allowed opacity-50"
+            : "border-border-base bg-parchment-mid text-text-secondary hover:border-border-hover cursor-pointer",
       )}
     >
       {label}
