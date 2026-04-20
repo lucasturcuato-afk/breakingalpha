@@ -25,29 +25,40 @@ export const NEUTRAL_PILL_CLASSNAME =
   "bg-black/[0.04] text-text-secondary border border-black/[0.08] " +
   "dark:bg-white/[0.06] dark:text-text-secondary dark:border-white/[0.10]";
 
-// Activity type → semantic color (matches getDealTypeStyle in deal-utils.ts)
+// Activity type → semantic color (matches getDealTypeStyle in deal-utils.ts).
+// Each branch resolves to CSS variables defined in src/styles/tokens.css so
+// pills render legibly in both light and dark modes. Activity pills sit at
+// ~8-10% bg / 20-26% border — visibly more prominent than sector pills.
 function getActivityColor(activity: string): CSSProperties {
   const t = activity?.toLowerCase() ?? "";
   if (t.includes("m&a") || t.includes("merger") || t.includes("acquisition") || t.includes("lbo"))
-    return { backgroundColor: "rgba(59,130,246,0.10)", color: "#93c5fd", border: "1px solid rgba(59,130,246,0.20)" };
+    return pillFromActivityVars("ma");
   if (t.includes("venture capital") || t.includes("vc ") || t.includes("startup funding"))
-    return { backgroundColor: "rgba(168,85,247,0.10)", color: "#d8b4fe", border: "1px solid rgba(168,85,247,0.20)" };
+    return pillFromActivityVars("vc");
   if (t.includes("ipo") || t.includes("spac") || t.includes("capital markets"))
-    return { backgroundColor: "rgba(16,185,129,0.10)", color: "#6ee7b7", border: "1px solid rgba(16,185,129,0.20)" };
+    return pillFromActivityVars("ipo");
   if (t.includes("private equity") || t.includes("buyout") || t.includes("minority stake"))
-    return { backgroundColor: "rgba(245,158,11,0.10)", color: "#fcd34d", border: "1px solid rgba(245,158,11,0.20)" };
+    return pillFromActivityVars("pe");
   if (t.includes("restructur") || t.includes("asset sale") || t.includes("debt financ") || t.includes("recap"))
-    return { backgroundColor: "rgba(244,63,94,0.10)", color: "#fda4af", border: "1px solid rgba(244,63,94,0.20)" };
+    return pillFromActivityVars("restructure");
   if (t.includes("earnings") || t.includes("results") || t.includes("public markets"))
-    return { backgroundColor: "rgba(14,165,233,0.10)", color: "#7dd3fc", border: "1px solid rgba(14,165,233,0.20)" };
+    return pillFromActivityVars("earnings");
   if (
     t.includes("geopolit") || t.includes("macro") || t.includes("regulation") ||
     t.includes("legal") || t.includes("leadership") || t.includes("operations")
   )
-    return { backgroundColor: "rgba(100,116,139,0.18)", color: "#e2e8f0", border: "1px solid rgba(100,116,139,0.32)" };
+    return pillFromActivityVars("slate");
   if (t.includes("fundrais") || t.includes("crypto") || t.includes("digital assets"))
-    return { backgroundColor: "rgba(139,92,246,0.10)", color: "#c4b5fd", border: "1px solid rgba(139,92,246,0.20)" };
+    return pillFromActivityVars("crypto");
   return NEUTRAL_PILL;
+}
+
+function pillFromActivityVars(name: string): CSSProperties {
+  return {
+    backgroundColor: `var(--pill-activity-${name}-bg)`,
+    color: `var(--pill-activity-${name}-text)`,
+    border: `1px solid var(--pill-activity-${name}-border)`,
+  };
 }
 
 // Known sector verticals — always get neutral pill

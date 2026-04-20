@@ -120,6 +120,34 @@
   --pill-sector-agriculture-bg: rgba(34,197,94,0.06);
   --pill-sector-agriculture-text: #166534;
   --pill-sector-agriculture-border: rgba(34,197,94,0.20);
+
+  /* ── Activity pill palette (light) ──
+     Activity pills are more prominent than sector pills: bg 8-10%, border
+     20-26%, text in Tailwind 700-800 range for legibility on cream/white. */
+  --pill-activity-ma-bg: rgba(59,130,246,0.08);
+  --pill-activity-ma-text: #1d4ed8;
+  --pill-activity-ma-border: rgba(59,130,246,0.22);
+  --pill-activity-vc-bg: rgba(168,85,247,0.08);
+  --pill-activity-vc-text: #6d28d9;
+  --pill-activity-vc-border: rgba(168,85,247,0.22);
+  --pill-activity-ipo-bg: rgba(16,185,129,0.08);
+  --pill-activity-ipo-text: #047857;
+  --pill-activity-ipo-border: rgba(16,185,129,0.22);
+  --pill-activity-pe-bg: rgba(245,158,11,0.10);
+  --pill-activity-pe-text: #b45309;
+  --pill-activity-pe-border: rgba(245,158,11,0.26);
+  --pill-activity-restructure-bg: rgba(244,63,94,0.08);
+  --pill-activity-restructure-text: #be123c;
+  --pill-activity-restructure-border: rgba(244,63,94,0.22);
+  --pill-activity-earnings-bg: rgba(14,165,233,0.08);
+  --pill-activity-earnings-text: #0369a1;
+  --pill-activity-earnings-border: rgba(14,165,233,0.22);
+  --pill-activity-slate-bg: rgba(100,116,139,0.10);
+  --pill-activity-slate-text: #334155;
+  --pill-activity-slate-border: rgba(100,116,139,0.26);
+  --pill-activity-crypto-bg: rgba(139,92,246,0.08);
+  --pill-activity-crypto-text: #5b21b6;
+  --pill-activity-crypto-border: rgba(139,92,246,0.22);
 }
 
 /* ── Dark mode overrides ── */
@@ -202,4 +230,33 @@ html.dark {
   --pill-sector-agriculture-bg: rgba(34,197,94,0.05);
   --pill-sector-agriculture-text: #86efac;
   --pill-sector-agriculture-border: rgba(34,197,94,0.18);
+
+  /* ── Activity pill palette (dark) ──
+     Mirrors the prior hardcoded values (~10% bg / 20% border / light-range
+     text). Slate keeps the boosted 18/32 values from the earlier commit so
+     geopolitics/macro/regulation pills stay legible. */
+  --pill-activity-ma-bg: rgba(59,130,246,0.10);
+  --pill-activity-ma-text: #93c5fd;
+  --pill-activity-ma-border: rgba(59,130,246,0.20);
+  --pill-activity-vc-bg: rgba(168,85,247,0.10);
+  --pill-activity-vc-text: #d8b4fe;
+  --pill-activity-vc-border: rgba(168,85,247,0.20);
+  --pill-activity-ipo-bg: rgba(16,185,129,0.10);
+  --pill-activity-ipo-text: #6ee7b7;
+  --pill-activity-ipo-border: rgba(16,185,129,0.20);
+  --pill-activity-pe-bg: rgba(245,158,11,0.10);
+  --pill-activity-pe-text: #fcd34d;
+  --pill-activity-pe-border: rgba(245,158,11,0.20);
+  --pill-activity-restructure-bg: rgba(244,63,94,0.10);
+  --pill-activity-restructure-text: #fda4af;
+  --pill-activity-restructure-border: rgba(244,63,94,0.20);
+  --pill-activity-earnings-bg: rgba(14,165,233,0.10);
+  --pill-activity-earnings-text: #7dd3fc;
+  --pill-activity-earnings-border: rgba(14,165,233,0.20);
+  --pill-activity-slate-bg: rgba(100,116,139,0.18);
+  --pill-activity-slate-text: #e2e8f0;
+  --pill-activity-slate-border: rgba(100,116,139,0.32);
+  --pill-activity-crypto-bg: rgba(139,92,246,0.10);
+  --pill-activity-crypto-text: #c4b5fd;
+  --pill-activity-crypto-border: rgba(139,92,246,0.20);
 }
