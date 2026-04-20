@@ -8,8 +8,6 @@ import { createBrowserClient } from "@supabase/ssr";
 import {
   getSectorStyle,
   getTagPillStyle,
-  isSectorVertical,
-  NEUTRAL_PILL_CLASSNAME,
 } from "@/lib/sector-colors";
 import { Badge } from "@/components/ui/badge";
 import { BookmarkButton } from "@/components/ui/bookmark";
@@ -132,38 +130,17 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
           <div className="flex flex-wrap gap-1.5">
             {/* Industry Vertical Pills */}
             {(story.industry_verticals ?? []).length > 0
-              ? (story.industry_verticals ?? []).map((v) =>
-                  isSectorVertical(v) ? (
-                    <span
-                      key={v}
-                      className={cn(
-                        "inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-[3px]",
-                        NEUTRAL_PILL_CLASSNAME,
-                      )}
-                    >
-                      {v}
-                    </span>
-                  ) : (
-                    <span
-                      key={v}
-                      style={{ ...getTagPillStyle(v), borderRadius: "3px" }}
-                      className="inline-flex items-center px-2 py-0.5 text-xs font-medium"
-                    >
-                      {v}
-                    </span>
-                  ),
-                )
-              : story.sector
-              ? isSectorVertical(story.sector) ? (
+              ? (story.industry_verticals ?? []).map((v) => (
                   <span
-                    className={cn(
-                      "font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide",
-                      NEUTRAL_PILL_CLASSNAME,
-                    )}
+                    key={v}
+                    style={{ ...getTagPillStyle(v), borderRadius: "3px" }}
+                    className="inline-flex items-center px-2 py-0.5 text-xs font-medium"
                   >
-                    {story.sector}
+                    {v}
                   </span>
-                ) : (
+                ))
+              : story.sector
+              ? (
                   <span
                     style={getSectorStyle(story.sector)}
                     className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
@@ -381,38 +358,17 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
             <div className="flex flex-wrap gap-1.5">
               {/* Industry Vertical Pills */}
               {(story.industry_verticals ?? []).length > 0
-                ? (story.industry_verticals ?? []).map((v) =>
-                    isSectorVertical(v) ? (
-                      <span
-                        key={v}
-                        className={cn(
-                          "inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-[3px]",
-                          NEUTRAL_PILL_CLASSNAME,
-                        )}
-                      >
-                        {v}
-                      </span>
-                    ) : (
-                      <span
-                        key={v}
-                        style={{ ...getTagPillStyle(v), borderRadius: "3px" }}
-                        className="inline-flex items-center px-2 py-0.5 text-xs font-medium"
-                      >
-                        {v}
-                      </span>
-                    ),
-                  )
-                : story.sector
-                ? isSectorVertical(story.sector) ? (
+                ? (story.industry_verticals ?? []).map((v) => (
                     <span
-                      className={cn(
-                        "font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide flex-shrink-0",
-                        NEUTRAL_PILL_CLASSNAME,
-                      )}
+                      key={v}
+                      style={{ ...getTagPillStyle(v), borderRadius: "3px" }}
+                      className="inline-flex items-center px-2 py-0.5 text-xs font-medium"
                     >
-                      {story.sector}
+                      {v}
                     </span>
-                  ) : (
+                  ))
+                : story.sector
+                ? (
                     <span
                       style={getSectorStyle(story.sector)}
                       className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide flex-shrink-0"
