@@ -16,8 +16,15 @@ interface Deal {
   ingested_at?: string;
 }
 
+interface UserProfile {
+  sectors?: string[] | null;
+  watchlist_tickers?: string[] | null;
+  role?: string | null;
+}
+
 interface DealFlowSidebarProps {
   deals: Deal[];
+  userProfile?: UserProfile | null;
 }
 
 // ── Value parsing / formatting ────────────────────────────────────────────────
@@ -58,9 +65,7 @@ const STATUS_COLORS: Record<string, string> = {
   closed: "text-text-muted",
 };
 
-// ── Fix 2 + 3: sector normalization ──────────────────────────────────────────
-// Explicit overrides are checked before substring matching. Ordered longest-first
-// so more-specific strings don't get swallowed by a shorter partial match.
+// ── Sector normalization ──────────────────────────────────────────────────────
 
 const SECTOR_EXPLICIT: [string, string][] = [
   ["venture capital & startup funding", "Venture Capital"],
@@ -89,7 +94,7 @@ function normalizeSector(sector: string): string {
   return sector.length > 24 ? sector.slice(0, 24).trimEnd() + "…" : sector;
 }
 
-// ── Fix 4: company name normalization for dedup ───────────────────────────────
+// ── Company name normalization for dedup ─────────────────────────────────────
 
 function normalizeCompany(name: string): string {
   return name
@@ -103,87 +108,132 @@ function normalizeCompany(name: string): string {
     .trim();
 }
 
+// ── Sector matching against user profile preferences ─────────────────────────
+
+function sectorMatchesUserPref(normalizedSector: string, userSectors: string[]): boolean {
+  const ns = normalizedSector.toLowerCase();
+  return userSectors.some((pref) => {
+    const ps = pref.toLowerCase();
+    return ns.includes(ps) || ps.includes(ns);
+  });
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const DOT_OPACITIES = [1.0, 0.72, 0.52, 0.38, 0.28];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function DealFlowSidebar({ deals }: DealFlowSidebarProps) {
-  const { thisWeek, delta, topTypes, maxTypeCount, topSectors, largestDeals } =
-    useMemo(() => {
-      const now = Date.now();
-      const WEEK = 7 * 24 * 60 * 60 * 1000;
+export function DealFlowSidebar({ deals, userProfile }: DealFlowSidebarProps) {
+  const userSectors = useMemo(
+    () => userProfile?.sectors?.filter(Boolean) ?? [],
+    [userProfile],
+  );
+  const hasUserSectors = userSectors.length > 0;
 
-      const thisWeek = deals.filter((d) => {
-        const ts = d.updated_at || d.ingested_at;
-        return ts ? now - new Date(ts).getTime() < WEEK : false;
-      }).length;
+  const {
+    thisWeek,
+    delta,
+    inSectorCount,
+    topTypes,
+    maxTypeCount,
+    trackedSectors,
+    otherSectors,
+    largestDeals,
+  } = useMemo(() => {
+    const now = Date.now();
+    const WEEK = 7 * 24 * 60 * 60 * 1000;
 
-      const lastWeek = deals.filter((d) => {
-        const ts = d.updated_at || d.ingested_at;
-        if (!ts) return false;
-        const age = now - new Date(ts).getTime();
-        return age >= WEEK && age < 2 * WEEK;
-      }).length;
+    const thisWeek = deals.filter((d) => {
+      const ts = d.updated_at || d.ingested_at;
+      return ts ? now - new Date(ts).getTime() < WEEK : false;
+    }).length;
 
-      const delta = thisWeek - lastWeek;
+    const lastWeek = deals.filter((d) => {
+      const ts = d.updated_at || d.ingested_at;
+      if (!ts) return false;
+      const age = now - new Date(ts).getTime();
+      return age >= WEEK && age < 2 * WEEK;
+    }).length;
 
-      // By deal type
-      const typeCounts: Record<string, number> = {};
-      for (const d of deals) {
-        if (d.deal_type) typeCounts[d.deal_type] = (typeCounts[d.deal_type] || 0) + 1;
+    const delta = thisWeek - lastWeek;
+
+    // In-sector count: deals whose normalized sector matches any user sector
+    const inSectorCount = hasUserSectors
+      ? deals.filter((d) => {
+          if (!d.sector) return false;
+          return sectorMatchesUserPref(normalizeSector(d.sector), userSectors);
+        }).length
+      : 0;
+
+    // By deal type
+    const typeCounts: Record<string, number> = {};
+    for (const d of deals) {
+      if (d.deal_type) typeCounts[d.deal_type] = (typeCounts[d.deal_type] || 0) + 1;
+    }
+    const topTypes = Object.entries(typeCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    const maxTypeCount = topTypes[0]?.[1] || 1;
+
+    // By sector — normalize verbose strings to canonical short labels
+    const sectorCounts: Record<string, number> = {};
+    for (const d of deals) {
+      if (d.sector) {
+        const key = normalizeSector(d.sector);
+        sectorCounts[key] = (sectorCounts[key] || 0) + 1;
       }
-      const topTypes = Object.entries(typeCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5);
-      const maxTypeCount = topTypes[0]?.[1] || 1;
+    }
+    const allSectors = Object.entries(sectorCounts).sort((a, b) => b[1] - a[1]);
 
-      // By sector — normalize verbose strings to canonical short labels
-      const sectorCounts: Record<string, number> = {};
-      for (const d of deals) {
-        if (d.sector) {
-          const key = normalizeSector(d.sector);
-          sectorCounts[key] = (sectorCounts[key] || 0) + 1;
-        }
+    // Split into tracked (matches user prefs) and other active
+    const trackedSectors = allSectors
+      .filter(([s]) => hasUserSectors && sectorMatchesUserPref(s, userSectors))
+      .slice(0, 5);
+    const otherSectors = allSectors
+      .filter(([s]) => !hasUserSectors || !sectorMatchesUserPref(s, userSectors))
+      .slice(0, hasUserSectors ? 3 : 5);
+
+    // Largest deals — sort by value, dedup by normalized name, slice top 3
+    const shortestName: Record<string, string> = {};
+    for (const d of deals) {
+      const key = normalizeCompany(d.company);
+      if (!shortestName[key] || d.company.length < shortestName[key].length) {
+        shortestName[key] = d.company;
       }
-      const topSectors = Object.entries(sectorCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5);
+    }
 
-      // Largest deals — sort by value, dedup by normalized name (keeping highest),
-      // then slice to top 3 and map to shortest display name
-      const shortestName: Record<string, string> = {};
-      for (const d of deals) {
+    const sortedByValue = [...deals]
+      .filter((d) => d.value || d.valuation)
+      .sort((a, b) => parseValue(b.value || b.valuation) - parseValue(a.value || a.valuation));
+
+    const seenKeys = new Set<string>();
+    const largestDeals = sortedByValue
+      .filter((d) => {
         const key = normalizeCompany(d.company);
-        if (!shortestName[key] || d.company.length < shortestName[key].length) {
-          shortestName[key] = d.company;
-        }
-      }
+        if (seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return true;
+      })
+      .slice(0, 3)
+      .map((d) => ({
+        ...d,
+        displayCompany: shortestName[normalizeCompany(d.company)] ?? d.company,
+      }));
 
-      const sortedByValue = [...deals]
-        .filter((d) => d.value || d.valuation)
-        .sort((a, b) => parseValue(b.value || b.valuation) - parseValue(a.value || a.valuation));
-
-      const seenKeys = new Set<string>();
-      const largestDeals = sortedByValue
-        .filter((d) => {
-          const key = normalizeCompany(d.company);
-          if (seenKeys.has(key)) return false;
-          seenKeys.add(key);
-          return true;
-        })
-        .slice(0, 3)
-        .map((d) => ({
-          ...d,
-          displayCompany: shortestName[normalizeCompany(d.company)] ?? d.company,
-        }));
-
-      return { thisWeek, delta, topTypes, maxTypeCount, topSectors, largestDeals };
-    }, [deals]);
+    return {
+      thisWeek,
+      delta,
+      inSectorCount,
+      topTypes,
+      maxTypeCount,
+      trackedSectors,
+      otherSectors,
+      largestDeals,
+    };
+  }, [deals, hasUserSectors, userSectors]);
 
   return (
-    // Fix 1: bg-cream is theme-aware (light: #fffdf9, dark: #0f0c07)
     <aside className="w-[268px] shrink-0 border-l border-border-base overflow-y-auto bg-cream">
       {/* Section 1 — Pipeline velocity */}
       <div className="px-5 py-4 border-b border-border-base">
@@ -210,64 +260,69 @@ export function DealFlowSidebar({ deals }: DealFlowSidebarProps) {
             {delta > 0 ? `+${delta}` : delta === 0 ? "—" : String(delta)} vs last wk
           </span>
         </div>
+        {hasUserSectors && inSectorCount > 0 && (
+          <p className="text-[11px] text-gold mt-2 font-medium">
+            {inSectorCount} in your sectors
+          </p>
+        )}
       </div>
 
-      {/* Section 2 — By deal type */}
+      {/* Section 2 — Your Sectors */}
       <div className="px-5 py-4 border-b border-border-base">
         <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted mb-3">
-          By Deal Type
+          Your Sectors
         </p>
-        {topTypes.length === 0 ? (
-          <p className="text-[11px] text-text-muted">No data yet</p>
+        {!hasUserSectors ? (
+          <div className="rounded-md border border-border-base bg-parchment-mid px-3 py-2.5">
+            <p className="text-[11px] font-medium text-text-primary mb-0.5">
+              No sectors tracked
+            </p>
+            <p className="text-[10px] text-text-muted leading-snug">
+              Add sector focus in your profile to see personalized deal tracking here.
+            </p>
+          </div>
         ) : (
           <div className="space-y-2.5">
-            {topTypes.map(([type, count]) => (
-              <div key={type} className="flex items-center gap-2">
-                <span className="text-[11px] text-text-primary w-[88px] truncate shrink-0">
-                  {type}
-                </span>
-                <div className="flex-1 h-[3px] bg-border-base rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gold rounded-full"
-                    style={{ width: `${(count / maxTypeCount) * 100}%` }}
+            {trackedSectors.length === 0 ? (
+              <p className="text-[11px] text-text-muted">No deals in your sectors yet</p>
+            ) : (
+              trackedSectors.map(([sector, count], i) => (
+                <div key={sector} className="flex items-center gap-2">
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-gold shrink-0"
+                    style={{ opacity: DOT_OPACITIES[i] ?? 0.28 }}
                   />
+                  <span className="text-[11px] text-text-primary flex-1 truncate">
+                    {sector}
+                  </span>
+                  <span className="rounded-full bg-gold/10 px-1.5 py-0.5 text-[10px] font-medium text-gold shrink-0 leading-none">
+                    {count}
+                  </span>
                 </div>
-                <span className="text-[11px] text-text-muted w-4 text-right shrink-0">
-                  {count}
-                </span>
-              </div>
-            ))}
+              ))
+            )}
+            {otherSectors.length > 0 && (
+              <>
+                <p className="text-[9px] font-semibold uppercase tracking-widest text-text-muted pt-0.5">
+                  Other Active
+                </p>
+                {otherSectors.map(([sector, count]) => (
+                  <div key={sector} className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-border-base shrink-0" />
+                    <span className="text-[11px] text-text-muted flex-1 truncate">
+                      {sector}
+                    </span>
+                    <span className="text-[11px] text-text-muted shrink-0">{count}</span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         )}
       </div>
 
-      {/* Section 3 — Top sectors */}
+      {/* Section 3 — Largest deals */}
       <div className="px-5 py-4 border-b border-border-base">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted mb-3">
-          Top Sectors
-        </p>
-        {topSectors.length === 0 ? (
-          <p className="text-[11px] text-text-muted">No data yet</p>
-        ) : (
-          <div className="space-y-2.5">
-            {topSectors.map(([sector, count], i) => (
-              <div key={sector} className="flex items-center gap-2">
-                <span
-                  className="w-1.5 h-1.5 rounded-full bg-gold shrink-0"
-                  style={{ opacity: DOT_OPACITIES[i] ?? 0.28 }}
-                />
-                <span className="text-[11px] text-text-primary flex-1 truncate">
-                  {sector}
-                </span>
-                <span className="text-[11px] text-text-muted shrink-0">{count}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Section 4 — Largest deals */}
-      <div className="px-5 py-4">
         <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted mb-3">
           Largest Deals
         </p>
@@ -305,6 +360,35 @@ export function DealFlowSidebar({ deals }: DealFlowSidebarProps) {
                 </div>
               );
             })}
+          </div>
+        )}
+      </div>
+
+      {/* Section 4 — By deal type */}
+      <div className="px-5 py-4">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted mb-3">
+          By Deal Type
+        </p>
+        {topTypes.length === 0 ? (
+          <p className="text-[11px] text-text-muted">No data yet</p>
+        ) : (
+          <div className="space-y-2.5">
+            {topTypes.map(([type, count]) => (
+              <div key={type} className="flex items-center gap-2">
+                <span className="text-[11px] text-text-primary w-[88px] truncate shrink-0">
+                  {type}
+                </span>
+                <div className="flex-1 h-[3px] bg-border-base rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gold rounded-full"
+                    style={{ width: `${(count / maxTypeCount) * 100}%` }}
+                  />
+                </div>
+                <span className="text-[11px] text-text-muted w-4 text-right shrink-0">
+                  {count}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>
