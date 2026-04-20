@@ -1,6 +1,6 @@
 # Signalera Handoff
 
-## Current Status (2026-04-19)
+## Current Status (2026-04-20)
 - Live at https://breakingalpha.vercel.app (deploying as Signalera)
 - Full rebrand from BreakingAlpha to Signalera shipped — logo, fonts, theme, auth page
 - Auth middleware protecting all routes — unauthenticated users redirect to /auth
@@ -157,6 +157,9 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 3. ~~What is Lucas's scope for the autonomous improvement loop?~~ — RESOLVED: 12-step pipeline with thesis grading, pattern memory, source credibility, adversarial review (phases 2–6 shipped)
 4. Are there active paying users? (determines urgency of fixes)
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
+
+## Recently Completed (2026-04-20)
+**Dark mode overhaul (PRs #108–#110 merged to main):** New CSS token system (5-level surface depth + warm off-white text + consistent border tokens) in `src/styles/tokens.css` and Tailwind mappings in globals.css. 10+ components patched (sidebar, topbar, mood-bar, brief-section, feed-row, deal-card, etc.). `dark-mode-overhaul` branch includes `src/lib/deal-utils.ts` getDealTypeStyle() and `src/lib/sector-colors.ts` rewrite (semantic pill color mapping via getTagPillStyle()) not yet merged separately to main.
 
 ## Recently Completed (2026-04-19)
 **Deal Flow personalization and saved deals (PRs #104–#107 merged to main):** Two-column layout with analytics sidebar (268px: Pipeline Velocity, By Deal Type, Top Sectors, Largest Deals); company deduplication via `normalizeCompany()`. User profile integration: sector tracking/other split, watchlist highlighting, sector filter nudge. Saved deals table + RLS + `/api/saved-deals` server route; `/saved` page with sort controls, fade-out unsave, CSV export. Relevance scoring: `dealRelevanceScore()` + gold dot/border system (≥1.5 threshold); high-relevance row in sidebar. Fire-and-forget event tracking (`thesis_viewed`, `memo_generated`, `sector_filter_applied`) → `inferred_sector_weights`. **Manual Supabase steps:** Run `GRANT SELECT, INSERT, DELETE ON user_saved_deals TO authenticated` on any new environment. Gold dots won't appear until 4+ behavioral events compound past 1.5 threshold.
