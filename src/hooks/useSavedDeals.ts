@@ -183,10 +183,16 @@ export function useSavedDeals(options?: UseSavedDealsOptions): UseSavedDealsRetu
         .eq("deal_id", dealId);
       if (error) err = error.message;
     } else {
-      const { error } = await supabase
+      // Omit user_id — let RLS WITH CHECK populate it via auth.uid()
+      const result = await supabase
         .from("user_saved_deals")
-        .insert({ user_id: user.id, deal_id: dealId });
-      if (error) err = error.message;
+        .insert({ deal_id: dealId });
+      console.log("[useSavedDeals] DIAG insert result:", {
+        status: result.status,
+        statusText: result.statusText,
+        error: result.error,
+      });
+      if (result.error) err = result.error.message;
     }
 
     if (err) {
