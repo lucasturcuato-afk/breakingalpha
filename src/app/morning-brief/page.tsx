@@ -377,7 +377,7 @@ export default function MorningBriefPage() {
                         </span>
                       )}
                       {deal.one_liner && (
-                        <p className="font-sans text-[11px] text-text-secondary leading-snug">
+                        <p className="font-sans text-[11px] text-text-secondary dark:text-[#e8e8e4] leading-snug">
                           {stripHtml(deal.one_liner)}
                         </p>
                       )}
