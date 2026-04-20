@@ -22,6 +22,7 @@ import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { cacheGet, cacheSet, buildCacheKey } from "@/lib/response-cache";
+import { getUserProfile, buildPersonalizationContext } from "@/lib/user-profile";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -191,7 +192,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    /* ── 4. Build conversation contents ── */
+    /* ── 4. Build personalized system prompt ── */
+    const profile = await getUserProfile(supabase, user.id);
+    const personalizationCtx = buildPersonalizationContext(profile);
+    const systemPrompt = personalizationCtx
+      ? SYSTEM_PROMPT + "\n\nUSER PROFILE:\n" + personalizationCtx
+      : SYSTEM_PROMPT;
+
+    /* ── 5. Build conversation contents ── */
     const contextBlock =
       contextChunks.length > 0
         ? "CONTEXT FROM YOUR INTELLIGENCE DATABASE:\n\n" +
@@ -227,12 +235,12 @@ export async function POST(request: NextRequest) {
       parts: [{ text: message }],
     });
 
-    /* ── 5. Generate response ── */
+    /* ── 6. Generate response ── */
     const completion = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: conversationContents,
       config: {
-        systemInstruction: SYSTEM_PROMPT,
+        systemInstruction: systemPrompt,
         temperature: 0.4,
         maxOutputTokens: 1500,
         thinkingConfig: { thinkingBudget: 0 },
@@ -247,7 +255,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    /* ── 6. Cache the response (first messages only) ── */
+    /* ── 7. Cache the response (first messages only) ── */
     if (isFirstMessage) {
       cacheSet<CachedResponse>(cacheKey, { response, sources });
     }
