@@ -173,9 +173,34 @@ def resolve_company_name(identifier: str, entry_type: str, display_name: str | N
     return display_name or identifier
 
 
-def score_relevance(article: dict, company_name: str) -> int:
-    title = (article.get("title") or "").lower()
-    summary = (article.get("summary") or "").lower()
+def _count_mentions(text: str, company_name: str, ticker: str | None) -> int:
+    """Case-insensitive word-boundary count of company / ticker mentions in `text`.
+    Used for v4b relevance scoring — operates on the article summary/body.
+    """
+    if not text:
+        return 0
+    count = 0
+    name = (company_name or "").strip()
+    if name:
+        # Match whole word occurrences of the company name (case-insensitive).
+        try:
+            count += len(re.findall(r"\b" + re.escape(name) + r"\b", text, re.IGNORECASE))
+        except re.error:
+            pass
+    tick = (ticker or "").strip()
+    if tick and tick.upper() != name.upper():
+        try:
+            count += len(re.findall(r"\b" + re.escape(tick) + r"\b", text, re.IGNORECASE))
+        except re.error:
+            pass
+    return count
+
+
+def score_relevance(article: dict, company_name: str, ticker: str | None = None) -> int:
+    title_raw = article.get("title") or ""
+    summary_raw = article.get("summary") or ""
+    title = title_raw.lower()
+    summary = summary_raw.lower()
     name = company_name.lower()
     identifier = (article.get("article_id") or "").split("-")[0]
 
@@ -223,9 +248,34 @@ def score_relevance(article: dict, company_name: str) -> int:
     score = base + title_bonus + noise_penalty + boilerplate_penalty + prominence_bonus
     score = max(1, min(10, score))
 
+    # v4b — body_mention_count cap. The article "body" here is the summary text
+    # surfaced by the upstream news API (watchlist_articles has no separate
+    # content column). If zero body mentions, cap relevance at 30% of max
+    # (score ≤ 3 on the 1–10 scale) — otherwise preserve the existing score.
+    body_mention_count = _count_mentions(summary_raw, company_name, ticker)
+    title_mention_count = _count_mentions(title_raw, company_name, ticker)
+    capped = False
+    if body_mention_count == 0:
+        new_score = min(score, 3)
+        if new_score != score:
+            capped = True
+        score = new_score
+
     article["score_breakdown"] = (
         f"base:{base} title:{title_bonus:+d} noise:{noise_penalty:+d} "
-        f"boilerplate:{boilerplate_penalty:+d} prominence:{prominence_bonus:+d} = {score}"
+        f"boilerplate:{boilerplate_penalty:+d} prominence:{prominence_bonus:+d} "
+        f"body_mentions:{body_mention_count} title_mentions:{title_mention_count} "
+        f"{'CAPPED ' if capped else ''}= {score}"
+    )
+
+    logger.info(
+        "[watchlist_sync] %s article=%s body_mentions=%d title_mentions=%d score=%d%s",
+        ticker or company_name,
+        article.get("article_id") or "?",
+        body_mention_count,
+        title_mention_count,
+        score,
+        " (capped)" if capped else "",
     )
 
     return score
@@ -638,7 +688,11 @@ def sync_identifier(identifier: str, entry_type: str, display_name: str | None) 
         for article in all_articles:
             article["title"] = strip_html(article.get("title") or "")
             article["summary"] = strip_html(article.get("summary") or "")
-            article["relevance_score"] = score_relevance(article, company_name)
+            article["relevance_score"] = score_relevance(
+                article,
+                company_name,
+                ticker=identifier if entry_type == "ticker" else None,
+            )
 
         # Drop articles with very low relevance scores
         all_articles = [a for a in all_articles if a.get("relevance_score", 5) >= 3]

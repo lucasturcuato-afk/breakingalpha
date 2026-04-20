@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/shell";
@@ -17,7 +17,26 @@ import {
   Minus,
   ChevronRight,
   Globe,
+  GripVertical,
 } from "lucide-react";
+import {
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { createBrowserClient } from "@supabase/ssr";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { WatchlistAddInput, type AddType } from "@/components/watchlist/WatchlistAddInput";
@@ -370,11 +389,6 @@ export default function WatchlistPage() {
   const [selectedIdentifier, setSelectedIdentifier] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<"newest" | "relevant">("newest");
   const [ageFilter, setAgeFilter] = useState<"all" | "today" | "week" | "month">("all");
-  const [dragState, setDragState] = useState<{
-    draggingId: string | null;
-    dragOverId: string | null;
-    dragGroup: string | null;
-  }>({ draggingId: null, dragOverId: null, dragGroup: null });
   const [dragError, setDragError] = useState<string | null>(null);
   const dragErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedEntryIndex, setSelectedEntryIndex] = useState<number | null>(null);
@@ -636,30 +650,14 @@ export default function WatchlistPage() {
     ).slice(0, 60);
   }, [selectedIdentifier, articlesByIdentifier, sortMode, ageFilter]);
 
-  const handleDragStart = useCallback((e: React.DragEvent, entry: WatchlistEntry, group: string) => {
-    setDragState({ draggingId: entry.id, dragOverId: null, dragGroup: group });
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", entry.id);
-    // Set transparent drag image for cleaner UX
-    const ghost = document.createElement("div");
-    ghost.style.position = "absolute";
-    ghost.style.top = "-1000px";
-    document.body.appendChild(ghost);
-    e.dataTransfer.setDragImage(ghost, 0, 0);
-    setTimeout(() => { try { document.body.removeChild(ghost); } catch { /* already removed */ } }, 0);
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent, entry: WatchlistEntry, group: string) => {
-    e.preventDefault();
-    if (dragState.dragGroup !== group) return; // block cross-group
-    if (dragState.dragOverId !== entry.id) {
-      setDragState(prev => ({ ...prev, dragOverId: entry.id }));
-    }
-  }, [dragState.dragGroup, dragState.dragOverId]);
-
-  const handleDragEnd = useCallback(() => {
-    setDragState({ draggingId: null, dragOverId: null, dragGroup: null });
-  }, []);
+  // Pointer sensor with a small activation distance prevents clicks from starting a drag;
+  // TouchSensor with a long-press delay enables drag-reorder on touch devices without
+  // stealing taps that should navigate into a row.
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const persistReorder = useCallback(async (updates: { id: string; sort_order: number }[]) => {
     try {
@@ -678,55 +676,43 @@ export default function WatchlistPage() {
     }
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent, targetEntry: WatchlistEntry, group: string) => {
-    e.preventDefault();
-    if (dragState.dragGroup !== group || !dragState.draggingId) return;
-    if (dragState.draggingId === targetEntry.id) {
-      setDragState({ draggingId: null, dragOverId: null, dragGroup: null });
-      return;
-    }
+  const handleGroupDragEnd = useCallback(
+    (group: "ticker" | "company") =>
+      (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
 
-    // Get the entries for this group
-    const groupEntries = group === "sector" ? sectorEntries
-      : group === "ticker" ? publicEntries
-      : privateEntries;
+        const groupEntries = group === "ticker" ? publicEntries : privateEntries;
+        const fromIdx = groupEntries.findIndex((e) => e.id === String(active.id));
+        const toIdx = groupEntries.findIndex((e) => e.id === String(over.id));
+        if (fromIdx === -1 || toIdx === -1) return;
 
-    const fromIdx = groupEntries.findIndex(e => e.id === dragState.draggingId);
-    const toIdx = groupEntries.findIndex(e => e.id === targetEntry.id);
-    if (fromIdx === -1 || toIdx === -1) {
-      setDragState({ draggingId: null, dragOverId: null, dragGroup: null });
-      return;
-    }
+        const reordered = arrayMove(groupEntries, fromIdx, toIdx);
+        const updates = reordered.map((entry, idx) => ({
+          id: entry.id,
+          sort_order: (idx + 1) * 1000,
+        }));
 
-    // Reorder within the group
-    const reordered = [...groupEntries];
-    const [moved] = reordered.splice(fromIdx, 1);
-    reordered.splice(toIdx, 0, moved);
+        const prevWatchlist = [...watchlist];
+        const newWatchlist =
+          group === "ticker"
+            ? [
+                ...watchlist.filter((e) => e.type === "sector"),
+                ...reordered,
+                ...watchlist.filter((e) => e.type === "company"),
+              ]
+            : [...watchlist.filter((e) => e.type !== "company"), ...reordered];
+        setWatchlist(newWatchlist);
 
-    // Assign sort_order with 1000-spacing
-    const updates = reordered.map((entry, idx) => ({
-      id: entry.id,
-      sort_order: (idx + 1) * 1000,
-    }));
-
-    // Optimistic update: rebuild watchlist with new order
-    const newWatchlist = group === "ticker"
-      ? [...watchlist.filter(e => e.type === "sector"), ...reordered, ...watchlist.filter(e => e.type === "company")]
-      : [...watchlist.filter(e => e.type !== "company"), ...reordered];
-
-    const prevWatchlist = [...watchlist];
-    setWatchlist(newWatchlist);
-    setDragState({ draggingId: null, dragOverId: null, dragGroup: null });
-
-    // Persist to backend
-    persistReorder(updates).catch(() => {
-      // Revert on error
-      setWatchlist(prevWatchlist);
-      setDragError("Reorder failed — changes reverted");
-      if (dragErrorTimeoutRef.current) clearTimeout(dragErrorTimeoutRef.current);
-      dragErrorTimeoutRef.current = setTimeout(() => setDragError(null), 3000);
-    });
-  }, [dragState, sectorEntries, publicEntries, privateEntries, watchlist, persistReorder]);
+        persistReorder(updates).catch(() => {
+          setWatchlist(prevWatchlist);
+          setDragError("Reorder failed — changes reverted");
+          if (dragErrorTimeoutRef.current) clearTimeout(dragErrorTimeoutRef.current);
+          dragErrorTimeoutRef.current = setTimeout(() => setDragError(null), 3000);
+        });
+      },
+    [publicEntries, privateEntries, watchlist, persistReorder],
+  );
 
   function isTyping(): boolean {
     const el = document.activeElement;
@@ -970,86 +956,39 @@ export default function WatchlistPage() {
                 {publicEntries.length > 0 && (
                   <>
                     <p className="font-data text-[8px] uppercase tracking-widest text-text-faint mb-1.5 mt-1">Public Companies</p>
-                    {publicEntries.map((entry) => {
-                      const price = prices[entry.identifier];
-                      const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
-                      const subtitle = cleanDisplayName(entry.display_name ?? LEGACY_TICKER_NAMES[entry.identifier.toUpperCase()]);
-                      return (
-                        <div
-                          key={entry.id}
-                          data-entry-id={entry.id}
-                          draggable={true}
-                          onDragStart={(e) => handleDragStart(e, entry, "ticker")}
-                          onDragOver={(e) => handleDragOver(e, entry, "ticker")}
-                          onDragEnd={handleDragEnd}
-                          onDrop={(e) => handleDrop(e, entry, "ticker")}
-                          onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
-                          className={cn(
-                            "flex gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
-                            "items-start",
-                            "min-h-[56px]",
-                            selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id
-                              ? "border-l-2 border-l-amber-500 bg-amber-50/30"
-                              : selectedIdentifier === entry.identifier
-                                ? "border-l-2 border-l-gold bg-gold-muted/30"
-                                : "bg-white dark:bg-elevated hover:border-border-hover",
-                            dragState.draggingId === entry.id ? "opacity-50" : "",
-                            dragState.dragOverId === entry.id && dragState.draggingId !== entry.id ? "border-t-2 border-t-amber-500" : "",
-                          )}
-                        >
-                          {/* Drag handle — hidden on mobile (touch drag not supported in V4B) */}
-                          {!isMobile && (
-                            <div
-                              className="flex-shrink-0 self-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing px-1 text-text-faint"
-                              draggable={false}
-                            >
-                              ⠿
-                            </div>
-                          )}
-
-                          {/* LEFT: identifier + optional display_name subtitle */}
-                          <div className="flex flex-col min-w-0 flex-1">
-                            <span className="font-data text-[13px] font-bold text-text-primary truncate">
-                              {entry.identifier}
-                            </span>
-                            {subtitle && (
-                              <span className="font-data text-[9px] text-text-faint">
-                                {subtitle}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* RIGHT: article count, price, hover actions, chevron */}
-                          <div className="flex items-center gap-2 flex-shrink-0 self-center">
-                            {articleCount > 0 && (
-                              <span className="font-data text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
-                                {articleCount >= 20 ? "20+" : articleCount}
-                              </span>
-                            )}
-                            {entry.type === "ticker" && price && (
-                              <span className={cn("font-data text-[11px] tabular-nums", price.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
-                                ${price.price} <span className="text-[10px]">{price.pct >= 0 ? "+" : ""}{price.pct}%</span>
-                              </span>
-                            )}
-                            <div
-                              className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <button type="button" onClick={() => setMemoEntry(entry)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Generate memo">
-                                <Sparkles size={11} className="text-gold" />
-                              </button>
-                              <button type="button" onClick={() => router.push(`/watchlist/${encodeURIComponent(entry.identifier)}`)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Open brief">
-                                <ExternalLink size={11} className="text-text-muted" />
-                              </button>
-                              <button type="button" onClick={() => handleRemove(entry.id)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Remove">
-                                <Trash2 size={11} className="text-text-faint hover:text-signal-dn" />
-                              </button>
-                            </div>
-                            <ChevronRight size={10} className="text-text-faint" />
-                          </div>
-                        </div>
-                      );
-                    })}
+                    <DndContext
+                      sensors={dndSensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleGroupDragEnd("ticker")}
+                    >
+                      <SortableContext
+                        items={publicEntries.map((e) => e.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <ul className="space-y-1.5 list-none p-0 m-0">
+                          {publicEntries.map((entry) => {
+                            const price = prices[entry.identifier];
+                            const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
+                            const subtitle = cleanDisplayName(entry.display_name ?? LEGACY_TICKER_NAMES[entry.identifier.toUpperCase()]);
+                            return (
+                              <SortableEntryRow
+                                key={entry.id}
+                                entry={entry}
+                                isSelected={selectedIdentifier === entry.identifier}
+                                isKeyboardActive={selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id}
+                                onSelect={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
+                                subtitle={subtitle ?? null}
+                                articleCount={articleCount}
+                                price={price}
+                                onGenerateMemo={() => setMemoEntry(entry)}
+                                onOpenBrief={() => router.push(`/watchlist/${encodeURIComponent(entry.identifier)}`)}
+                                onRemove={() => handleRemove(entry.id)}
+                              />
+                            );
+                          })}
+                        </ul>
+                      </SortableContext>
+                    </DndContext>
                   </>
                 )}
 
@@ -1057,86 +996,39 @@ export default function WatchlistPage() {
                 {privateEntries.length > 0 && (
                   <>
                     <p className="font-data text-[8px] uppercase tracking-widest text-text-faint mb-1.5 mt-1">Private Companies</p>
-                    {privateEntries.map((entry) => {
-                      const price = prices[entry.identifier];
-                      const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
-                      const subtitle = cleanDisplayName(entry.display_name ?? LEGACY_TICKER_NAMES[entry.identifier.toUpperCase()]);
-                      return (
-                        <div
-                          key={entry.id}
-                          data-entry-id={entry.id}
-                          draggable={true}
-                          onDragStart={(e) => handleDragStart(e, entry, "company")}
-                          onDragOver={(e) => handleDragOver(e, entry, "company")}
-                          onDragEnd={handleDragEnd}
-                          onDrop={(e) => handleDrop(e, entry, "company")}
-                          onClick={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
-                          className={cn(
-                            "flex gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
-                            "items-start",
-                            "min-h-[56px]",
-                            selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id
-                              ? "border-l-2 border-l-amber-500 bg-amber-50/30"
-                              : selectedIdentifier === entry.identifier
-                                ? "border-l-2 border-l-gold bg-gold-muted/30"
-                                : "bg-white dark:bg-elevated hover:border-border-hover",
-                            dragState.draggingId === entry.id ? "opacity-50" : "",
-                            dragState.dragOverId === entry.id && dragState.draggingId !== entry.id ? "border-t-2 border-t-amber-500" : "",
-                          )}
-                        >
-                          {/* Drag handle — hidden on mobile (touch drag not supported in V4B) */}
-                          {!isMobile && (
-                            <div
-                              className="flex-shrink-0 self-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing px-1 text-text-faint"
-                              draggable={false}
-                            >
-                              ⠿
-                            </div>
-                          )}
-
-                          {/* LEFT: identifier + optional display_name subtitle */}
-                          <div className="flex flex-col min-w-0 flex-1">
-                            <span className="font-data text-[13px] font-bold text-text-primary truncate">
-                              {entry.identifier}
-                            </span>
-                            {subtitle && (
-                              <span className="font-data text-[9px] text-text-faint">
-                                {subtitle}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* RIGHT: article count, price, hover actions, chevron */}
-                          <div className="flex items-center gap-2 flex-shrink-0 self-center">
-                            {articleCount > 0 && (
-                              <span className="font-data text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
-                                {articleCount >= 20 ? "20+" : articleCount}
-                              </span>
-                            )}
-                            {entry.type === "ticker" && price && (
-                              <span className={cn("font-data text-[11px] tabular-nums", price.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
-                                ${price.price} <span className="text-[10px]">{price.pct >= 0 ? "+" : ""}{price.pct}%</span>
-                              </span>
-                            )}
-                            <div
-                              className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <button type="button" onClick={() => setMemoEntry(entry)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Generate memo">
-                                <Sparkles size={11} className="text-gold" />
-                              </button>
-                              <button type="button" onClick={() => router.push(`/watchlist/${encodeURIComponent(entry.identifier)}`)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Open brief">
-                                <ExternalLink size={11} className="text-text-muted" />
-                              </button>
-                              <button type="button" onClick={() => handleRemove(entry.id)} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Remove">
-                                <Trash2 size={11} className="text-text-faint hover:text-signal-dn" />
-                              </button>
-                            </div>
-                            <ChevronRight size={10} className="text-text-faint" />
-                          </div>
-                        </div>
-                      );
-                    })}
+                    <DndContext
+                      sensors={dndSensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleGroupDragEnd("company")}
+                    >
+                      <SortableContext
+                        items={privateEntries.map((e) => e.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <ul className="space-y-1.5 list-none p-0 m-0">
+                          {privateEntries.map((entry) => {
+                            const price = prices[entry.identifier];
+                            const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
+                            const subtitle = cleanDisplayName(entry.display_name ?? LEGACY_TICKER_NAMES[entry.identifier.toUpperCase()]);
+                            return (
+                              <SortableEntryRow
+                                key={entry.id}
+                                entry={entry}
+                                isSelected={selectedIdentifier === entry.identifier}
+                                isKeyboardActive={selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id}
+                                onSelect={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
+                                subtitle={subtitle ?? null}
+                                articleCount={articleCount}
+                                price={price}
+                                onGenerateMemo={() => setMemoEntry(entry)}
+                                onOpenBrief={() => router.push(`/watchlist/${encodeURIComponent(entry.identifier)}`)}
+                                onRemove={() => handleRemove(entry.id)}
+                              />
+                            );
+                          })}
+                        </ul>
+                      </SortableContext>
+                    </DndContext>
                   </>
                 )}
               </div>
@@ -1503,5 +1395,119 @@ export default function WatchlistPage() {
         ?
       </button>
     </AppShell>
+  );
+}
+
+/** Single sortable watchlist row — wraps the row content in useSortable so
+ *  both PointerSensor (desktop) and TouchSensor (mobile) can drive reorder.
+ *  The drag handle owns the sensor listeners, so clicking the row body still
+ *  triggers selection. */
+function SortableEntryRow(props: {
+  entry: WatchlistEntry;
+  isSelected: boolean;
+  isKeyboardActive: boolean;
+  onSelect: () => void;
+  subtitle: string | null;
+  articleCount: number;
+  price?: WatchlistPrice;
+  onGenerateMemo: () => void;
+  onOpenBrief: () => void;
+  onRemove: () => void;
+}): ReactNode {
+  const {
+    entry,
+    isSelected,
+    isKeyboardActive,
+    onSelect,
+    subtitle,
+    articleCount,
+    price,
+    onGenerateMemo,
+    onOpenBrief,
+    onRemove,
+  } = props;
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: entry.id });
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      data-entry-id={entry.id}
+      onClick={onSelect}
+      className={cn(
+        "flex gap-3 px-4 py-3 border border-border-base rounded-xl group cursor-pointer transition-colors",
+        "items-start min-h-[56px]",
+        isKeyboardActive
+          ? "border-l-2 border-l-amber-500 bg-amber-50/30"
+          : isSelected
+            ? "border-l-2 border-l-gold bg-gold-muted/30"
+            : "bg-white dark:bg-elevated hover:border-border-hover",
+        isDragging && "opacity-60 shadow-md z-10",
+      )}
+    >
+      {/* Drag handle — owns sensor listeners so row click still selects */}
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        onClick={(e) => e.stopPropagation()}
+        className="flex-shrink-0 self-center opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing px-1 text-text-faint touch-none"
+        aria-label={`Reorder ${entry.identifier}`}
+      >
+        <GripVertical size={12} />
+      </button>
+
+      {/* LEFT: identifier + optional display_name subtitle */}
+      <div className="flex flex-col min-w-0 flex-1">
+        <span className="font-data text-[13px] font-bold text-text-primary truncate">
+          {entry.identifier}
+        </span>
+        {subtitle && (
+          <span className="font-data text-[9px] text-text-faint">{subtitle}</span>
+        )}
+      </div>
+
+      {/* RIGHT: article count, price, hover actions, chevron */}
+      <div className="flex items-center gap-2 flex-shrink-0 self-center">
+        {articleCount > 0 && (
+          <span className="font-data text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
+            {articleCount >= 20 ? "20+" : articleCount}
+          </span>
+        )}
+        {entry.type === "ticker" && price && (
+          <span className={cn("font-data text-[11px] tabular-nums", price.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
+            ${price.price} <span className="text-[10px]">{price.pct >= 0 ? "+" : ""}{price.pct}%</span>
+          </span>
+        )}
+        <div
+          className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button type="button" onClick={onGenerateMemo} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Generate memo">
+            <Sparkles size={11} className="text-gold" />
+          </button>
+          <button type="button" onClick={onOpenBrief} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Open brief">
+            <ExternalLink size={11} className="text-text-muted" />
+          </button>
+          <button type="button" onClick={onRemove} className="p-1 rounded-md hover:bg-parchment-mid cursor-pointer" aria-label="Remove">
+            <Trash2 size={11} className="text-text-faint hover:text-signal-dn" />
+          </button>
+        </div>
+        <ChevronRight size={10} className="text-text-faint" />
+      </div>
+    </li>
   );
 }
