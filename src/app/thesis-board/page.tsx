@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import type { ThesisItem, ThesisStatus, WeeklyDigest, PatternRow, SourceCredibilityRow } from "@/components/thesis";
 import { mapThesisRow } from "@/lib/thesis-mapper";
 import { trackClientEvent } from "@/lib/track-event";
-import { sortByRelevance, isOnWatchlist, sectorMatchesProfile as sectorMatchesProfileLib } from "@/lib/personalization";
+import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
 import type { ContentDescriptor } from "@/lib/personalization";
 
 interface RelatedArticle {

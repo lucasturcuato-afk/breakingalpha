@@ -415,6 +415,10 @@ export function PreferencesForm({
           </span>
         )}
       </div>
+      <p className="font-sans text-[11px] text-text-muted leading-relaxed">
+        Changes to your preferences will be reflected across your dashboard and briefs within a few minutes.
+        Some content (like Morning Briefs) updates with the next pipeline run.
+      </p>
     </div>
   );
 }

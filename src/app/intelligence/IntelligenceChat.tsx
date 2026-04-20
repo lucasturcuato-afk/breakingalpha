@@ -270,7 +270,7 @@ export function IntelligenceChat() {
           disabled={loading || !input.trim()}
           className={cn(
             "flex-shrink-0 p-3 rounded-xl",
-            "bg-gold text-white hover:bg-gold/90 transition-colors cursor-pointer",
+            "bg-gold text-cream hover:bg-gold/90 transition-colors cursor-pointer",
             "disabled:opacity-40 disabled:cursor-not-allowed",
           )}
         >
