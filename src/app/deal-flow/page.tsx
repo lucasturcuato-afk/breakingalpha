@@ -835,12 +835,13 @@ function DealFlowContent() {
                         type="button"
                         onClick={(e) => { e.stopPropagation(); toggleSave(deal.id); }}
                         className={cn(
-                          "cursor-pointer flex-shrink-0 transition-colors",
+                          "cursor-pointer flex-shrink-0 transition-colors p-1.5 -m-1.5 rounded",
                           isSaved(deal.id)
                             ? "text-gold"
                             : "text-text-muted hover:text-gold",
                         )}
                         aria-label={isSaved(deal.id) ? "Remove from saved deals" : "Save deal"}
+                        aria-pressed={isSaved(deal.id)}
                       >
                         <Bookmark size={12} fill={isSaved(deal.id) ? "currentColor" : "none"} />
                       </button>

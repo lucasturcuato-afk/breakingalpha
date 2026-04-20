@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 
 function getSupabase() {
@@ -35,7 +35,11 @@ export function useSavedDeals(): UseSavedDealsReturn {
       setIsLoading(true);
       const supabase = getSupabase();
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setIsLoading(false); return; }
+      if (!user) {
+        console.debug("[useSavedDeals] No authenticated user — skipping load");
+        setIsLoading(false);
+        return;
+      }
 
       const { data, error } = await supabase
         .from("user_saved_deals")
@@ -44,8 +48,12 @@ export function useSavedDeals(): UseSavedDealsReturn {
         .order("saved_at", { ascending: false });
 
       if (!cancelled) {
-        if (error) setError(error.message);
-        else setSavedDeals(data ?? []);
+        if (error) {
+          console.error("[useSavedDeals] Load error:", error.message);
+          setError(error.message);
+        } else {
+          setSavedDeals(data ?? []);
+        }
         setIsLoading(false);
       }
     }
@@ -53,27 +61,34 @@ export function useSavedDeals(): UseSavedDealsReturn {
     return () => { cancelled = true; };
   }, []);
 
-  const savedDealIds = new Set(savedDeals.map((s) => s.deal_id));
-
-  const isSaved = useCallback(
-    (dealId: string) => savedDealIds.has(dealId),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Memoize the Set so toggleSave's closure sees a stable reference
+  const savedDealIds = useMemo(
+    () => new Set(savedDeals.map((s) => s.deal_id)),
     [savedDeals],
   );
 
+  const isSaved = useCallback(
+    (dealId: string) => savedDealIds.has(dealId),
+    [savedDealIds],
+  );
+
   const toggleSave = useCallback(async (dealId: string) => {
-    const supabase = getSupabase();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
     const alreadySaved = savedDealIds.has(dealId);
-
-    // Optimistic update
     const prev = savedDeals;
+
+    // Optimistic update fires synchronously — before any await
     if (alreadySaved) {
       setSavedDeals((s) => s.filter((d) => d.deal_id !== dealId));
     } else {
       setSavedDeals((s) => [{ deal_id: dealId, saved_at: new Date().toISOString() }, ...s]);
+    }
+
+    const supabase = getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      console.error("[useSavedDeals] toggleSave: no authenticated user — reverting");
+      setSavedDeals(prev);
+      return;
     }
 
     let err: string | null = null;
@@ -92,6 +107,7 @@ export function useSavedDeals(): UseSavedDealsReturn {
     }
 
     if (err) {
+      console.error("[useSavedDeals] toggleSave DB error:", err);
       setSavedDeals(prev);
       setError(err);
     }
