@@ -29,7 +29,7 @@ export interface MarketCardOption {
 // only (story count) and never hits the API.
 export const MARKET_CARD_OPTIONS: MarketCardOption[] = [
   { symbol: "SPY", label: "S&P 500" },
-  { symbol: "QQQ", label: "Nasdaq 100" },
+  { symbol: "QQQ", label: "Nasdaq" },
   { symbol: "DIA", label: "Dow Jones" },
   { symbol: "VIX", label: "VIX" },
   { symbol: "TNX", label: "10Y Yield" },

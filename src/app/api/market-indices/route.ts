@@ -22,7 +22,7 @@ const SYMBOL_MAP: Record<
 > = {
   // ── Canonical 10 symbols (in the picker) ──
   SPY:  { yahoo: "^GSPC",     label: "S&P 500",    format: "index",   assetClass: "equity-index" },
-  QQQ:  { yahoo: "^NDX",      label: "Nasdaq 100", format: "index",   assetClass: "equity-index" },
+  QQQ:  { yahoo: "^IXIC",     label: "Nasdaq",     format: "index",   assetClass: "equity-index" },
   DIA:  { yahoo: "^DJI",      label: "Dow Jones",  format: "index",   assetClass: "equity-index" },
   VIX:  { yahoo: "^VIX",      label: "VIX",        format: "vix",     assetClass: "24h" },
   TNX:  { yahoo: "^TNX",      label: "10Y Yield",  format: "yield",   assetClass: "24h" },
