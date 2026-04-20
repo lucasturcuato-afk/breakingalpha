@@ -235,11 +235,7 @@ export function DealFlowSidebar({ deals, userProfile }: DealFlowSidebarProps) {
   }, [deals, hasUserSectors, userSectors]);
 
   return (
-<<<<<<< HEAD
     <aside className="w-[268px] shrink-0 border-l border-border-base overflow-y-auto [scrollbar-gutter:stable] bg-cream">
-=======
-    <aside className="w-[268px] shrink-0 border-l border-border-base overflow-y-auto bg-cream">
->>>>>>> 7e06a50 (feat: personalize DealFlowSidebar with user profile sectors)
       {/* Section 1 — Pipeline velocity */}
       <div className="px-5 py-4 border-b border-border-base">
         <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted mb-3">
@@ -285,15 +281,12 @@ export function DealFlowSidebar({ deals, userProfile }: DealFlowSidebarProps) {
             <p className="text-[10px] text-text-muted leading-snug">
               Add sector focus in your profile to see personalized deal tracking here.
             </p>
-<<<<<<< HEAD
             <Link
               href="/settings/profile"
               className="block mt-1.5 text-[11px] font-medium text-gold hover:opacity-80 transition-opacity"
             >
               Complete your profile →
             </Link>
-=======
->>>>>>> 7e06a50 (feat: personalize DealFlowSidebar with user profile sectors)
           </div>
         ) : (
           <div className="space-y-2.5">
