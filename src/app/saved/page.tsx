@@ -6,6 +6,7 @@ import { AppShell } from "@/components/shell";
 import { cn } from "@/lib/utils";
 import { Bookmark, Briefcase, ArrowLeft, Download, X } from "lucide-react";
 import { useSavedDeals, type EnrichedDeal } from "@/hooks/useSavedDeals";
+import { normalizeSector } from "@/lib/deal-utils";
 
 type SortKey = "saved_at" | "company" | "value";
 
@@ -42,8 +43,8 @@ function exportCSV(deals: EnrichedDeal[]) {
     d.deal_type ?? "",
     getDealStage(d),
     d.value || d.valuation || "",
-    d.sector ?? "",
-    d.source ?? "",
+    d.sector ? normalizeSector(d.sector) : "",
+    d.source_url ?? "",
     d.saved_at ? new Date(d.saved_at).toLocaleDateString() : "",
   ]);
   const csv = [headers, ...rows]
