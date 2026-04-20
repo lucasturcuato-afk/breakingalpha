@@ -82,6 +82,44 @@
   --topbar-height: 52px;
   --moodbar-height: 36px;
   --right-panel-width: 268px;
+
+  /* ── Sector pill palette (light) ──
+     Subtle desaturated tints. Activity pills stay ~10% bg / 20% border;
+     sectors sit below them at ~5–7% bg / 18–22% border so activity reads
+     more prominently in the visual hierarchy. */
+  --pill-sector-tech-bg: rgba(59,130,246,0.06);
+  --pill-sector-tech-text: #1e40af;
+  --pill-sector-tech-border: rgba(59,130,246,0.20);
+  --pill-sector-health-bg: rgba(20,184,166,0.06);
+  --pill-sector-health-text: #115e59;
+  --pill-sector-health-border: rgba(20,184,166,0.20);
+  --pill-sector-finserv-bg: rgba(16,185,129,0.06);
+  --pill-sector-finserv-text: #065f46;
+  --pill-sector-finserv-border: rgba(16,185,129,0.20);
+  --pill-sector-energy-bg: rgba(245,158,11,0.06);
+  --pill-sector-energy-text: #92400e;
+  --pill-sector-energy-border: rgba(245,158,11,0.20);
+  --pill-sector-consumer-bg: rgba(244,63,94,0.06);
+  --pill-sector-consumer-text: #9f1239;
+  --pill-sector-consumer-border: rgba(244,63,94,0.20);
+  --pill-sector-industrials-bg: rgba(100,116,139,0.08);
+  --pill-sector-industrials-text: #475569;
+  --pill-sector-industrials-border: rgba(100,116,139,0.22);
+  --pill-sector-aerospace-bg: rgba(99,102,241,0.06);
+  --pill-sector-aerospace-text: #3730a3;
+  --pill-sector-aerospace-border: rgba(99,102,241,0.20);
+  --pill-sector-realestate-bg: rgba(161,161,170,0.08);
+  --pill-sector-realestate-text: #52525b;
+  --pill-sector-realestate-border: rgba(161,161,170,0.22);
+  --pill-sector-media-bg: rgba(139,92,246,0.06);
+  --pill-sector-media-text: #5b21b6;
+  --pill-sector-media-border: rgba(139,92,246,0.20);
+  --pill-sector-materials-bg: rgba(180,83,9,0.07);
+  --pill-sector-materials-text: #7c2d12;
+  --pill-sector-materials-border: rgba(180,83,9,0.22);
+  --pill-sector-agriculture-bg: rgba(34,197,94,0.06);
+  --pill-sector-agriculture-text: #166534;
+  --pill-sector-agriculture-border: rgba(34,197,94,0.20);
 }
 
 /* ── Dark mode overrides ── */
@@ -126,4 +164,42 @@ html.dark {
   /* ── Delta / status ── */
   --positive: #4caf7d;
   --negative: #e05c5c;
+
+  /* ── Sector pill palette (dark) ──
+     Mirrors light-mode intent but uses lighter text tones so pills stay
+     legible on dark surfaces. Backgrounds and borders are a touch weaker
+     than their light counterparts to avoid visual noise in dark mode. */
+  --pill-sector-tech-bg: rgba(59,130,246,0.05);
+  --pill-sector-tech-text: #93c5fd;
+  --pill-sector-tech-border: rgba(59,130,246,0.18);
+  --pill-sector-health-bg: rgba(20,184,166,0.05);
+  --pill-sector-health-text: #5eead4;
+  --pill-sector-health-border: rgba(20,184,166,0.18);
+  --pill-sector-finserv-bg: rgba(16,185,129,0.05);
+  --pill-sector-finserv-text: #6ee7b7;
+  --pill-sector-finserv-border: rgba(16,185,129,0.18);
+  --pill-sector-energy-bg: rgba(245,158,11,0.05);
+  --pill-sector-energy-text: #fcd34d;
+  --pill-sector-energy-border: rgba(245,158,11,0.18);
+  --pill-sector-consumer-bg: rgba(244,63,94,0.05);
+  --pill-sector-consumer-text: #fda4af;
+  --pill-sector-consumer-border: rgba(244,63,94,0.18);
+  --pill-sector-industrials-bg: rgba(100,116,139,0.08);
+  --pill-sector-industrials-text: #cbd5e1;
+  --pill-sector-industrials-border: rgba(100,116,139,0.22);
+  --pill-sector-aerospace-bg: rgba(99,102,241,0.05);
+  --pill-sector-aerospace-text: #a5b4fc;
+  --pill-sector-aerospace-border: rgba(99,102,241,0.18);
+  --pill-sector-realestate-bg: rgba(161,161,170,0.06);
+  --pill-sector-realestate-text: #d4d4d8;
+  --pill-sector-realestate-border: rgba(161,161,170,0.20);
+  --pill-sector-media-bg: rgba(139,92,246,0.05);
+  --pill-sector-media-text: #c4b5fd;
+  --pill-sector-media-border: rgba(139,92,246,0.18);
+  --pill-sector-materials-bg: rgba(180,83,9,0.05);
+  --pill-sector-materials-text: #fdba74;
+  --pill-sector-materials-border: rgba(180,83,9,0.18);
+  --pill-sector-agriculture-bg: rgba(34,197,94,0.05);
+  --pill-sector-agriculture-text: #86efac;
+  --pill-sector-agriculture-border: rgba(34,197,94,0.18);
 }

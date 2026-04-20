@@ -13,8 +13,11 @@
  * overlay the existing card chrome without duplicating its render logic.
  */
 
+import type { CSSProperties, ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { Minus, ChevronDown } from "lucide-react";
+import { Minus, ChevronDown, GripVertical } from "lucide-react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 export interface MarketCardOption {
   symbol: string;
@@ -132,5 +135,64 @@ export function MarketCardEditor({
 export function labelForSymbol(symbol: string): string {
   return (
     MARKET_CARD_OPTIONS.find((o) => o.symbol === symbol)?.label ?? symbol
+  );
+}
+
+/**
+ * SortableMarketCard — drag-to-reorder wrapper used only while the user is in
+ * edit mode. Renders a small gold grip handle in the top-left corner and wires
+ * in @dnd-kit/sortable so the card can be dragged horizontally. Outside of
+ * edit mode, callers should render the children directly (no wrapper) so no
+ * dnd-kit overhead leaks into the normal view.
+ */
+export function SortableMarketCard({
+  id,
+  children,
+}: {
+  id: string;
+  children: ReactNode;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "relative",
+        // Subtle gold outline on the card being dragged.
+        isDragging && "rounded-2xl border border-gold/40",
+      )}
+    >
+      {/* Grip handle — gold at 60% opacity by default, 100% on hover. */}
+      <button
+        type="button"
+        aria-label="Drag to reorder"
+        className={cn(
+          "absolute top-2 left-2 z-20 p-0.5",
+          "text-gold opacity-60 hover:opacity-100 transition-opacity",
+          "cursor-grab active:cursor-grabbing",
+          "focus:outline-none focus-visible:ring-1 focus-visible:ring-gold rounded",
+        )}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical size={12} />
+      </button>
+      {children}
+    </div>
   );
 }

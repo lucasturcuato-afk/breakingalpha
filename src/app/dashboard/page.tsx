@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
 import { useUserProfile } from "@/hooks/useUserProfile";
@@ -22,8 +22,23 @@ import type { StoryData } from "@/components/dashboard";
 import {
   MarketCardEditor,
   MARKET_CARD_OPTIONS,
+  SortableMarketCard,
   labelForSymbol,
 } from "@/components/dashboard/market-card-editor";
+import {
+  DndContext,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  horizontalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FileText, Pencil, Plus, Check } from "lucide-react";
@@ -119,6 +134,14 @@ export default function DashboardPage() {
   // Local override of the user's chosen cards. Used while editing, and as a
   // fallback persist-path when save fails (so UI stays consistent).
   const [marketCardsOverride, setMarketCardsOverride] = useState<string[] | null>(null);
+
+  // DnD sensors — Pointer for mouse/stylus, Touch for mobile drag. Short
+  // activation distances so small drags still register; touch uses a 150ms
+  // delay so scrolling and tapping remain responsive.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+  );
 
   // Refetch profile when window regains focus (e.g. returning from settings)
   useEffect(() => {
@@ -271,6 +294,27 @@ export default function DashboardPage() {
     }
   }
 
+  // Drag-to-reorder — update local state immediately, then persist through the
+  // same path Done uses. Runs while the user is still in edit mode, so the
+  // override stays set; Done clears it on success.
+  function handleCardDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = userMarketCards.indexOf(String(active.id));
+    const newIndex = userMarketCards.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const next = arrayMove(userMarketCards, oldIndex, newIndex);
+    setMarketCardsOverride(next);
+
+    if (profile) {
+      updateProfile({ market_cards: next }).catch(() => {
+        // Keep the override so the UI stays consistent with intent.
+      });
+    }
+  }
+
   // Fetch market card data for user's chosen symbols
   useEffect(() => {
     async function loadMarketCards() {
@@ -306,6 +350,42 @@ export default function DashboardPage() {
 
   // Compute mood from live VIX data
   const { mood, moodHeadline, moodDetails } = useLiveMood();
+
+  // Shared per-card render — used by both the edit-mode sortable grid and the
+  // static normal-mode grid. Returns a StatCard keyed on symbol so React list
+  // reconciliation stays stable as the row order changes.
+  function renderStatCard(sym: string, i: number, overlay?: ReactNode) {
+    if (sym === "SIGNALS") {
+      return (
+        <StatCard
+          key={sym}
+          label={labelForSymbol("SIGNALS")}
+          value={String(storyCount)}
+          change={0}
+          accentGold
+          sparkData={sparkSignals}
+          detailRows={[
+            { label: "Bullish", value: "—" },
+            { label: "Bearish", value: "—" },
+          ]}
+          editOverlay={overlay}
+        />
+      );
+    }
+    const card = marketCards[sym.toUpperCase()];
+    return (
+      <StatCard
+        key={sym}
+        label={card?.label ?? labelForSymbol(sym)}
+        value={card?.value ?? "—"}
+        change={card?.pct ?? 0}
+        stale={card?.closed ?? false}
+        accentGold={i === 0}
+        detailRows={[]}
+        editOverlay={overlay}
+      />
+    );
+  }
 
   // Personalized greeting subtitle
   const greetingSubtitle = useMemo(() => {
@@ -420,55 +500,51 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <div
-            className={cn(
-              "grid gap-2.5",
-              gridColsForCount(userMarketCards.length),
-            )}
-          >
-            {userMarketCards.map((sym, i) => {
-              const overlay = isEditingCards ? (
-                <MarketCardEditor
-                  currentSymbol={sym}
-                  selectedSymbols={userMarketCards}
-                  onSwap={(next) => swapCardSymbol(i, next)}
-                  onRemove={() => removeCardAt(i)}
-                  disableRemove={userMarketCards.length <= MIN_CARDS}
-                />
-              ) : undefined;
-
-              if (sym === "SIGNALS") {
-                return (
-                  <StatCard
-                    key={`${sym}-${i}`}
-                    label={labelForSymbol("SIGNALS")}
-                    value={String(storyCount)}
-                    change={0}
-                    accentGold
-                    sparkData={sparkSignals}
-                    detailRows={[
-                      { label: "Bullish", value: "—" },
-                      { label: "Bearish", value: "—" },
-                    ]}
-                    editOverlay={overlay}
-                  />
-                );
-              }
-              const card = marketCards[sym.toUpperCase()];
-              return (
-                <StatCard
-                  key={`${sym}-${i}`}
-                  label={card?.label ?? labelForSymbol(sym)}
-                  value={card?.value ?? "—"}
-                  change={card?.pct ?? 0}
-                  stale={card?.closed ?? false}
-                  accentGold={i === 0}
-                  detailRows={[]}
-                  editOverlay={overlay}
-                />
-              );
-            })}
-          </div>
+          {isEditingCards ? (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleCardDragEnd}
+            >
+              <SortableContext
+                items={userMarketCards}
+                strategy={horizontalListSortingStrategy}
+              >
+                <div
+                  className={cn(
+                    "grid gap-2.5",
+                    gridColsForCount(userMarketCards.length),
+                  )}
+                >
+                  {userMarketCards.map((sym, i) => {
+                    const overlay: ReactNode = (
+                      <MarketCardEditor
+                        currentSymbol={sym}
+                        selectedSymbols={userMarketCards}
+                        onSwap={(next) => swapCardSymbol(i, next)}
+                        onRemove={() => removeCardAt(i)}
+                        disableRemove={userMarketCards.length <= MIN_CARDS}
+                      />
+                    );
+                    return (
+                      <SortableMarketCard key={sym} id={sym}>
+                        {renderStatCard(sym, i, overlay)}
+                      </SortableMarketCard>
+                    );
+                  })}
+                </div>
+              </SortableContext>
+            </DndContext>
+          ) : (
+            <div
+              className={cn(
+                "grid gap-2.5",
+                gridColsForCount(userMarketCards.length),
+              )}
+            >
+              {userMarketCards.map((sym, i) => renderStatCard(sym, i))}
+            </div>
+          )}
         </div>
 
         {/* System Intelligence */}

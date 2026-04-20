@@ -44,7 +44,7 @@ function getActivityColor(activity: string): CSSProperties {
     t.includes("geopolit") || t.includes("macro") || t.includes("regulation") ||
     t.includes("legal") || t.includes("leadership") || t.includes("operations")
   )
-    return { backgroundColor: "rgba(100,116,139,0.12)", color: "#cbd5e1", border: "1px solid rgba(100,116,139,0.22)" };
+    return { backgroundColor: "rgba(100,116,139,0.18)", color: "#e2e8f0", border: "1px solid rgba(100,116,139,0.32)" };
   if (t.includes("fundrais") || t.includes("crypto") || t.includes("digital assets"))
     return { backgroundColor: "rgba(139,92,246,0.10)", color: "#c4b5fd", border: "1px solid rgba(139,92,246,0.20)" };
   return NEUTRAL_PILL;
@@ -64,13 +64,56 @@ export function isSectorVertical(tag: string | null | undefined): boolean {
   return SECTOR_VERTICALS.some((s) => t.includes(s));
 }
 
-// Legacy: getSectorStyle — now always returns neutral for true sectors
+// Per-sector desaturated tint. Resolves via the CSS variables defined in
+// src/styles/tokens.css for both light and dark mode. Sectors that don't
+// match any keyword fall back to the neutral pill.
+export function getSectorColor(sector: string | null | undefined): CSSProperties {
+  const t = sector?.toLowerCase() ?? "";
+  if (!t) return NEUTRAL_PILL;
+
+  if (t.includes("technology"))
+    return pillFromVars("tech");
+  if (t.includes("healthcare") || t.includes("biotech"))
+    return pillFromVars("health");
+  if (t.includes("financial services") || t.includes("fintech"))
+    return pillFromVars("finserv");
+  if (t.includes("energy") || t.includes("oil") || t.includes("gas"))
+    return pillFromVars("energy");
+  if (t.includes("consumer") || t.includes("retail"))
+    return pillFromVars("consumer");
+  if (t.includes("industrials") || t.includes("manufacturing"))
+    return pillFromVars("industrials");
+  if (t.includes("aerospace") || t.includes("defense"))
+    return pillFromVars("aerospace");
+  if (t.includes("real estate"))
+    return pillFromVars("realestate");
+  if (t.includes("media") || t.includes("telecom"))
+    return pillFromVars("media");
+  if (t.includes("materials") || t.includes("mining"))
+    return pillFromVars("materials");
+  if (t.includes("agriculture"))
+    return pillFromVars("agriculture");
+
+  return NEUTRAL_PILL;
+}
+
+function pillFromVars(name: string): CSSProperties {
+  return {
+    backgroundColor: `var(--pill-sector-${name}-bg)`,
+    color: `var(--pill-sector-${name}-text)`,
+    border: `1px solid var(--pill-sector-${name}-border)`,
+  };
+}
+
+// getSectorStyle — routes true sector verticals to their per-sector tint,
+// anything else to the activity-type palette. Kept for backwards compat with
+// existing consumers that pass CSSProperties through inline style.
 export function getSectorStyle(
   sector: string | null | undefined,
   _isDark = false,
 ): CSSProperties {
   if (!sector) return {};
-  if (isSectorVertical(sector)) return NEUTRAL_PILL;
+  if (isSectorVertical(sector)) return getSectorColor(sector);
   return getActivityColor(sector);
 }
 
@@ -92,11 +135,13 @@ export function getActivityTypeStyle(_activityType: string): { bg: string; text:
   };
 }
 
-// Tag pill helper — detects type and applies correct style
-// Use this for article/story tag pills across Live Feed, Trends, Dashboard
+// Tag pill helper — detects type and applies correct style.
+// Sector verticals get their desaturated per-sector tint; activity types get
+// the more prominent semantic color. Use this for article/story tag pills
+// across Live Feed, Trends, Dashboard.
 export function getTagPillStyle(tag: string): CSSProperties {
   if (!tag) return NEUTRAL_PILL;
-  if (isSectorVertical(tag)) return NEUTRAL_PILL;
+  if (isSectorVertical(tag)) return getSectorColor(tag);
   return getActivityColor(tag);
 }
 
