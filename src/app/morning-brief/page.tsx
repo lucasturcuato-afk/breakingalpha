@@ -358,9 +358,9 @@ export default function MorningBriefPage() {
                     <div
                       key={i}
                       className={cn(
-                        "p-3.5 rounded-xl border border-border-base border-t-2 border-t-gold/15 bg-white",
+                        "p-3.5 rounded-xl border border-border-base dark:border-border-default border-t-2 border-t-gold/15 bg-white dark:bg-elevated",
                         "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",
-                        "hover:-translate-y-0.5 hover:border-border-hover hover:shadow-[0_2px_12px_rgba(201,146,42,0.06)]",
+                        "hover:-translate-y-0.5 hover:border-border-hover dark:hover:bg-overlay hover:shadow-[0_2px_12px_rgba(201,146,42,0.06)]",
                       )}
                     >
                       <div className="flex items-center justify-between mb-1.5">
