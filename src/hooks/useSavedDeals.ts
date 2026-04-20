@@ -71,7 +71,7 @@ export function useSavedDeals(options?: UseSavedDealsOptions): UseSavedDealsRetu
       const supabase = getSupabase();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        console.debug("[useSavedDeals] No authenticated user — skipping load");
+        console.log("[useSavedDeals] DIAG: no authenticated user", { user });
         setIsLoading(false);
         return;
       }
@@ -84,6 +84,8 @@ export function useSavedDeals(options?: UseSavedDealsOptions): UseSavedDealsRetu
 
       if (cancelled) return;
 
+      console.log("[useSavedDeals] DIAG: query result", { userId: user.id, data, error });
+
       if (error) {
         console.error("[useSavedDeals] Load error:", error.message);
         setError(error.message);
@@ -92,7 +94,7 @@ export function useSavedDeals(options?: UseSavedDealsOptions): UseSavedDealsRetu
       }
 
       const rows = data ?? [];
-      console.debug("[useSavedDeals] Loaded saved IDs:", rows.length, rows);
+      console.log("[useSavedDeals] DIAG: setting savedDeals", rows.length, rows);
       setSavedDeals(rows);
       setIsLoading(false);
     }
