@@ -63,7 +63,11 @@ const SUGGESTED_PROMPTS = [
 
 /* ── Component ── */
 
-export function IntelligenceChat() {
+interface IntelligenceChatProps {
+  userId: string;
+}
+
+export function IntelligenceChat({ userId }: IntelligenceChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -98,7 +102,7 @@ export function IntelligenceChat() {
         const res = await fetch("/api/intelligence", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: trimmed, history }),
+          body: JSON.stringify({ query: trimmed, userId, history }),
         });
 
         if (!res.ok) {
@@ -125,7 +129,7 @@ export function IntelligenceChat() {
         setLoading(false);
       }
     },
-    [messages, loading],
+    [messages, loading, userId],
   );
 
   const handleSubmit = (e: React.FormEvent) => {

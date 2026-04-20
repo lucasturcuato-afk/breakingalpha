@@ -10,7 +10,7 @@ export default async function IntelligencePage() {
   if (!user) redirect("/auth");
   return (
     <AppShell pageTitle="Intelligence">
-      <IntelligenceChat />
+      <IntelligenceChat userId={user.id} />
     </AppShell>
   );
 }

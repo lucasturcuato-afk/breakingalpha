@@ -34,6 +34,9 @@ const SYSTEM_PROMPT =
 
 const RATE_LIMIT_CHAT = 20; // messages per 24h
 
+const EMPTY_KB_RESPONSE =
+  "I don't have enough research data yet. The knowledge base will populate after the next pipeline run.";
+
 interface HistoryEntry {
   role: "user" | "model";
   text: string;
@@ -63,17 +66,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  let body: { message?: string; history?: HistoryEntry[] };
+  /* ── Step 1: Parse request body ── */
+  let query: string;
+  let history: HistoryEntry[] | undefined;
   try {
-    body = await request.json();
-  } catch {
+    const body = await request.json();
+    // Accept "query" (preferred) or "message" (legacy)
+    query = body.query ?? body.message ?? "";
+    history = body.history;
+  } catch (err) {
+    console.error("[intelligence] Step 1 — parse body failed:", err);
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { message, history } = body;
-  if (!message || typeof message !== "string") {
+  if (!query || typeof query !== "string") {
     return NextResponse.json(
-      { error: "message is required and must be a string" },
+      { error: "query is required and must be a string" },
       { status: 400 },
     );
   }
@@ -93,7 +101,7 @@ export async function POST(request: NextRequest) {
 
   /* ── Cache check (only for first message, no history) ── */
   const isFirstMessage = !history || history.length === 0;
-  const cacheKey = buildCacheKey(user.id, message);
+  const cacheKey = buildCacheKey(user.id, query);
 
   if (isFirstMessage) {
     const cached = cacheGet<CachedResponse>(cacheKey);
@@ -107,22 +115,34 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  /* ── Step 2: Embed the user's query ── */
+  let embedding: number[];
   try {
-    /* ── 1. Embed the user's message ── */
     const embedResponse = await ai.models.embedContent({
-      model: "gemini-embedding-exp-03-07",
-      contents: message,
+      model: "text-embedding-004",
+      contents: query,
     });
 
-    const embedding = embedResponse.embeddings?.[0]?.values;
-    if (!embedding) {
+    const values = embedResponse.embeddings?.[0]?.values;
+    if (!values) {
+      console.error("[intelligence] Step 2 — embedding returned no values");
       return NextResponse.json(
         { error: "Failed to generate embedding" },
         { status: 500 },
       );
     }
+    embedding = values;
+  } catch (err) {
+    console.error("[intelligence] Step 2 — embed query failed:", err);
+    return NextResponse.json(
+      { error: "Failed to generate embedding" },
+      { status: 500 },
+    );
+  }
 
-    /* ── 2. Retrieve nearest neighbours via pgvector RPC ── */
+  /* ── Step 3: Search embeddings via RPC ── */
+  let typedMatches: MatchRow[];
+  try {
     const { data: matches, error: matchError } = await supabase.rpc(
       "match_content_embeddings",
       {
@@ -133,7 +153,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (matchError) {
-      console.error("[intelligence] match_content_embeddings error:", matchError);
+      console.error("[intelligence] Step 3 — match_content_embeddings error:", matchError);
       // If the RPC doesn't exist yet, give a helpful message
       if (matchError.message?.includes("function") || matchError.code === "42883") {
         return NextResponse.json(
@@ -147,59 +167,81 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    /* ── 3. Batch-fetch full content for matches ── */
-    const sources: SourceInfo[] = [];
-    const contextChunks: string[] = [];
+    typedMatches = (matches ?? []) as MatchRow[];
+  } catch (err) {
+    console.error("[intelligence] Step 3 — RPC call failed:", err);
+    return NextResponse.json(
+      { error: "Vector search failed" },
+      { status: 500 },
+    );
+  }
 
-    const typedMatches = (matches ?? []) as MatchRow[];
+  /* ── Empty results: graceful 200 ── */
+  if (typedMatches.length === 0) {
+    return NextResponse.json({
+      response: EMPTY_KB_RESPONSE,
+      sources: [],
+      remaining: rl.remaining,
+    });
+  }
 
-    if (typedMatches.length > 0) {
-      const articleIds = typedMatches.filter((m) => m.content_type === "article").map((m) => m.content_id);
-      const thesisIds = typedMatches.filter((m) => m.content_type === "thesis").map((m) => m.content_id);
+  /* ── Step 4: Fetch full content for matched IDs ── */
+  const sources: SourceInfo[] = [];
+  const contextChunks: string[] = [];
 
-      const [articlesResult, thesesResult] = await Promise.all([
-        articleIds.length > 0
-          ? supabase.from("articles").select("id, title, summary, source").in("id", articleIds)
-          : Promise.resolve({ data: [] as { id: string; title: string; summary: string; source: string }[] }),
-        thesisIds.length > 0
-          ? supabase.from("theses").select("id, title, sector, rationale, conviction, horizon").in("id", thesisIds)
-          : Promise.resolve({ data: [] as { id: string; title: string; sector: string; rationale: string; conviction: string; horizon: string }[] }),
-      ]);
+  try {
+    const articleIds = typedMatches.filter((m) => m.content_type === "article").map((m) => m.content_id);
+    const thesisIds = typedMatches.filter((m) => m.content_type === "thesis").map((m) => m.content_id);
 
-      // Build lookup maps
-      const articleMap = new Map((articlesResult.data ?? []).map((a) => [a.id, a]));
-      const thesisMap = new Map((thesesResult.data ?? []).map((t) => [t.id, t]));
+    const [articlesResult, thesesResult] = await Promise.all([
+      articleIds.length > 0
+        ? supabase.from("articles").select("id, title, summary, source").in("id", articleIds)
+        : Promise.resolve({ data: [] as { id: string; title: string; summary: string; source: string }[] }),
+      thesisIds.length > 0
+        ? supabase.from("theses").select("id, title, sector, rationale, conviction, horizon").in("id", thesisIds)
+        : Promise.resolve({ data: [] as { id: string; title: string; sector: string; rationale: string; conviction: string; horizon: string }[] }),
+    ]);
 
-      // Maintain match order (by similarity) when building context
-      for (const match of typedMatches) {
-        if (match.content_type === "article") {
-          const article = articleMap.get(match.content_id);
-          if (article) {
-            sources.push({ type: "article", title: article.title, id: article.id });
-            contextChunks.push(
-              `[Article: "${article.title}" — ${article.source || "unknown source"}]\n${article.summary || "No summary available."}`,
-            );
-          }
-        } else if (match.content_type === "thesis") {
-          const thesis = thesisMap.get(match.content_id);
-          if (thesis) {
-            sources.push({ type: "thesis", title: thesis.title || `${thesis.sector} thesis`, id: thesis.id });
-            contextChunks.push(
-              `[Thesis: "${thesis.title}" — ${thesis.sector} (${thesis.conviction}, ${thesis.horizon || "medium-term"})]\n${thesis.rationale || "No rationale available."}`,
-            );
-          }
+    // Build lookup maps
+    const articleMap = new Map((articlesResult.data ?? []).map((a) => [a.id, a]));
+    const thesisMap = new Map((thesesResult.data ?? []).map((t) => [t.id, t]));
+
+    // Maintain match order (by similarity) when building context
+    for (const match of typedMatches) {
+      if (match.content_type === "article") {
+        const article = articleMap.get(match.content_id);
+        if (article) {
+          sources.push({ type: "article", title: article.title, id: article.id });
+          contextChunks.push(
+            `[Article: "${article.title}" — ${article.source || "unknown source"}]\n${article.summary || "No summary available."}`,
+          );
+        }
+      } else if (match.content_type === "thesis") {
+        const thesis = thesisMap.get(match.content_id);
+        if (thesis) {
+          sources.push({ type: "thesis", title: thesis.title || `${thesis.sector} thesis`, id: thesis.id });
+          contextChunks.push(
+            `[Thesis: "${thesis.title}" — ${thesis.sector} (${thesis.conviction}, ${thesis.horizon || "medium-term"})]\n${thesis.rationale || "No rationale available."}`,
+          );
         }
       }
     }
+  } catch (err) {
+    console.error("[intelligence] Step 4 — fetch content failed:", err);
+    return NextResponse.json(
+      { error: "Failed to fetch matched content" },
+      { status: 500 },
+    );
+  }
 
-    /* ── 4. Build personalized system prompt ── */
+  /* ── Step 5: Generate response with Gemini ── */
+  try {
     const profile = await getUserProfile(supabase, user.id);
     const personalizationCtx = buildPersonalizationContext(profile);
     const systemPrompt = personalizationCtx
       ? SYSTEM_PROMPT + "\n\nUSER PROFILE:\n" + personalizationCtx
       : SYSTEM_PROMPT;
 
-    /* ── 5. Build conversation contents ── */
     const contextBlock =
       contextChunks.length > 0
         ? "CONTEXT FROM YOUR INTELLIGENCE DATABASE:\n\n" +
@@ -232,10 +274,9 @@ export async function POST(request: NextRequest) {
     // Add current message
     conversationContents.push({
       role: "user",
-      parts: [{ text: message }],
+      parts: [{ text: query }],
     });
 
-    /* ── 6. Generate response ── */
     const completion = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: conversationContents,
@@ -249,20 +290,21 @@ export async function POST(request: NextRequest) {
 
     const response = completion.text;
     if (!response) {
+      console.error("[intelligence] Step 5 — Gemini returned empty response");
       return NextResponse.json(
         { error: "Gemini returned an empty response — retry" },
         { status: 500 },
       );
     }
 
-    /* ── 7. Cache the response (first messages only) ── */
+    /* ── Cache the response (first messages only) ── */
     if (isFirstMessage) {
       cacheSet<CachedResponse>(cacheKey, { response, sources });
     }
 
     return NextResponse.json({ response, sources, remaining: rl.remaining });
   } catch (err) {
-    console.error("[intelligence] error:", err);
+    console.error("[intelligence] Step 5 — generate response failed:", err);
     return NextResponse.json(
       { error: "Failed to generate intelligence response" },
       { status: 500 },
