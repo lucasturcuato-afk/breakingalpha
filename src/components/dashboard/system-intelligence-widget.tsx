@@ -42,69 +42,29 @@ export function SystemIntelligenceWidget() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  const stats: { label: string; value: string }[] = [
-    {
-      label: "Last run",
-      value: relativeTime(data?.lastRun ?? null),
-    },
-    {
-      label: "Avg quality",
-      value: data?.avgQualityScore != null ? `${data.avgQualityScore} / 10` : "\u2014",
-    },
-    {
-      label: "Top pattern",
-      value: data?.topPattern
-        ? `${data.topPattern.sector} ${data.topPattern.horizon} \u00B7 ${Math.round(data.topPattern.win_rate * 100)}% confirm`
-        : "\u2014",
-    },
-    {
-      label: "Top source",
-      value: data?.topSource
-        ? `${data.topSource.source} \u00B7 ${Math.round(data.topSource.win_rate * 100)}% win rate`
-        : "\u2014",
-    },
-    {
-      label: "Thesis track",
-      value: data?.thesisOutcomes
-        ? `${data.thesisOutcomes.confirmed}\u2713 ${data.thesisOutcomes.invalidated}\u2717 ${data.thesisOutcomes.pending} pending`
-        : "\u2014",
-    },
-    {
-      label: "RAG index",
-      value: data?.embeddingCoverage
-        ? `${data.embeddingCoverage.articles + data.embeddingCoverage.theses} docs`
-        : "\u2014",
-    },
-  ];
+  const pendingCount = data?.thesisOutcomes?.pending ?? 0;
 
   return (
-    <div className="bg-cream border border-border-base rounded-xl px-4 py-2.5 flex items-center gap-3">
-      <span
-        className="font-sans text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap"
-        style={{ color: "var(--text-muted)" }}
-      >
-        <span style={{ color: "#D4A843" }}>{"\u2726"} </span>
-        SIGNALERA INTELLIGENCE
+    <div className="border border-border-base rounded-lg px-3 py-1.5 flex items-center gap-2.5">
+      <span className="font-sans text-[10px] font-semibold uppercase tracking-wider text-text-muted whitespace-nowrap">
+        <span className="text-gold">{"\u2726"} </span>
+        Signalera Intelligence
       </span>
 
-      {stats.map((stat, i) => (
-        <span key={stat.label} className="flex items-center gap-3">
-          {i > 0 && (
-            <span className="border-l border-border-base h-4" aria-hidden="true" />
-          )}
-          <span className="font-sans text-[11px] text-text-secondary whitespace-nowrap">
-            <span className="text-text-muted">{stat.label}:</span>{" "}
-            {stat.value}
-          </span>
-        </span>
-      ))}
+      <span className="border-l border-border-base h-3" aria-hidden="true" />
+      <span className="font-sans text-[10px] text-text-secondary whitespace-nowrap">
+        <span className="text-text-muted">Last run:</span>{" "}
+        {relativeTime(data?.lastRun ?? null)}
+      </span>
 
-      <span className="border-l border-border-base h-4" aria-hidden="true" />
-      <span className="flex items-center gap-1.5 font-sans text-[11px] text-text-secondary whitespace-nowrap">
-        <span
-          className="w-1.5 h-1.5 rounded-full animate-pulse"
-          style={{ backgroundColor: "#D4A843" }}
-        />
+      <span className="border-l border-border-base h-3" aria-hidden="true" />
+      <span className="font-sans text-[10px] text-text-secondary whitespace-nowrap">
+        {pendingCount} theses pending
+      </span>
+
+      <span className="border-l border-border-base h-3" aria-hidden="true" />
+      <span className="flex items-center gap-1 font-sans text-[10px] text-text-secondary whitespace-nowrap">
+        <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse" />
         Learning active
       </span>
     </div>

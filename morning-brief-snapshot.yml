@@ -1,0 +1,256 @@
+- generic [active] [ref=e1]:
+  - complementary [ref=e2]:
+    - generic [ref=e4]:
+      - img "Signalera" [ref=e6]
+      - generic [ref=e7]:
+        - generic [ref=e8]: Signalera
+        - generic [ref=e9]: Where Markets Make Sense
+    - navigation [ref=e10]:
+      - generic [ref=e11]:
+        - paragraph [ref=e12]: Main
+        - list [ref=e13]:
+          - listitem [ref=e14]:
+            - link "Dashboard" [ref=e15] [cursor=pointer]:
+              - /url: /dashboard
+          - listitem [ref=e22]:
+            - link "Morning Brief Live" [ref=e23] [cursor=pointer]:
+              - /url: /morning-brief
+          - listitem [ref=e31]:
+            - link "Evening Wrap" [ref=e32] [cursor=pointer]:
+              - /url: /evening-wrap
+          - listitem [ref=e37]:
+            - link "Live Feed" [ref=e38] [cursor=pointer]:
+              - /url: /live-feed
+      - generic [ref=e41]:
+        - paragraph [ref=e42]: Research
+        - list [ref=e43]:
+          - listitem [ref=e44]:
+            - link "Thesis Board" [ref=e45] [cursor=pointer]:
+              - /url: /thesis-board
+          - listitem [ref=e50]:
+            - link "Deal Flow" [ref=e51] [cursor=pointer]:
+              - /url: /deal-flow
+          - listitem [ref=e56]:
+            - link "Company Intel" [ref=e57] [cursor=pointer]:
+              - /url: /company
+          - listitem [ref=e62]:
+            - link "Trends" [ref=e63] [cursor=pointer]:
+              - /url: /trends
+          - listitem [ref=e68]:
+            - link "Track Record" [ref=e69] [cursor=pointer]:
+              - /url: /track-record
+          - listitem [ref=e77]:
+            - link "Watchlist" [ref=e78] [cursor=pointer]:
+              - /url: /watchlist
+    - generic [ref=e83]:
+      - generic [ref=e85]: J
+      - generic [ref=e86]:
+        - paragraph [ref=e87]: jlturcuato
+        - paragraph [ref=e352]: Analyst
+      - link "Settings" [ref=e88] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e89]
+      - button "Sign out" [ref=e92] [cursor=pointer]:
+        - img [ref=e93]
+  - generic [ref=e96]:
+    - generic [ref=e97]:
+      - paragraph [ref=e99]:
+        - text: Risk-Off regime
+        - generic [ref=e100]: · VIX 18.5
+        - generic [ref=e101]: · 10Y 4.52%
+      - generic [ref=e102]: Risk-Off
+    - generic [ref=e103]:
+      - heading "Morning Brief" [level=1] [ref=e104]
+      - button "Ask Signalera anything... ⌘K" [ref=e106] [cursor=pointer]:
+        - img [ref=e107]
+        - generic [ref=e110]: Ask Signalera anything...
+        - generic [ref=e111]: ⌘K
+      - generic [ref=e112]:
+        - button "Toggle dark mode" [ref=e113] [cursor=pointer]:
+          - img [ref=e114]
+        - button "Notifications" [ref=e117] [cursor=pointer]:
+          - img [ref=e118]
+        - button "User menu" [ref=e122] [cursor=pointer]:
+          - generic [ref=e123]: J
+    - generic [ref=e124]:
+      - main [ref=e125]:
+        - generic [ref=e129]:
+          - generic [ref=e130]:
+            - generic [ref=e131]: SPY
+            - generic [ref=e132]: "694.46"
+            - generic [ref=e133]: ▲ 1.22%
+          - generic [ref=e134]:
+            - generic [ref=e135]: QQQ
+            - generic [ref=e136]: "628.60"
+            - generic [ref=e137]: ▲ 1.82%
+          - generic [ref=e138]:
+            - generic [ref=e139]: AAPL
+            - generic [ref=e140]: "258.83"
+            - generic [ref=e141]: ▼ 0.14%
+          - generic [ref=e142]:
+            - generic [ref=e143]: NVDA
+            - generic [ref=e144]: "196.51"
+            - generic [ref=e145]: ▲ 3.80%
+          - generic [ref=e146]:
+            - generic [ref=e147]: MSFT
+            - generic [ref=e148]: "393.11"
+            - generic [ref=e149]: ▲ 2.27%
+          - generic [ref=e150]:
+            - generic [ref=e151]: META
+            - generic [ref=e152]: "662.49"
+            - generic [ref=e153]: ▲ 4.41%
+          - generic [ref=e154]:
+            - generic [ref=e155]: GOOGL
+            - generic [ref=e156]: "332.91"
+            - generic [ref=e157]: ▲ 3.61%
+          - generic [ref=e158]:
+            - generic [ref=e159]: AMZN
+            - generic [ref=e160]: "249.02"
+            - generic [ref=e161]: ▲ 3.81%
+          - generic [ref=e162]:
+            - generic [ref=e163]: TSLA
+            - generic [ref=e164]: "364.20"
+            - generic [ref=e165]: ▲ 3.34%
+          - generic [ref=e166]:
+            - generic [ref=e167]: GLD
+            - generic [ref=e168]: "445.09"
+            - generic [ref=e169]: ▲ 2.23%
+          - generic [ref=e170]:
+            - generic [ref=e171]: TLT
+            - generic [ref=e172]: "87.21"
+            - generic [ref=e173]: ▲ 0.53%
+          - generic [ref=e174]:
+            - generic [ref=e175]: BTC
+            - generic [ref=e176]: "32.87"
+            - generic [ref=e177]: ▲ 1.29%
+          - generic [ref=e178]:
+            - generic [ref=e179]: SPY
+            - generic [ref=e180]: "694.46"
+            - generic [ref=e181]: ▲ 1.22%
+          - generic [ref=e182]:
+            - generic [ref=e183]: QQQ
+            - generic [ref=e184]: "628.60"
+            - generic [ref=e185]: ▲ 1.82%
+          - generic [ref=e186]:
+            - generic [ref=e187]: AAPL
+            - generic [ref=e188]: "258.83"
+            - generic [ref=e189]: ▼ 0.14%
+          - generic [ref=e190]:
+            - generic [ref=e191]: NVDA
+            - generic [ref=e192]: "196.51"
+            - generic [ref=e193]: ▲ 3.80%
+          - generic [ref=e194]:
+            - generic [ref=e195]: MSFT
+            - generic [ref=e196]: "393.11"
+            - generic [ref=e197]: ▲ 2.27%
+          - generic [ref=e198]:
+            - generic [ref=e199]: META
+            - generic [ref=e200]: "662.49"
+            - generic [ref=e201]: ▲ 4.41%
+          - generic [ref=e202]:
+            - generic [ref=e203]: GOOGL
+            - generic [ref=e204]: "332.91"
+            - generic [ref=e205]: ▲ 3.61%
+          - generic [ref=e206]:
+            - generic [ref=e207]: AMZN
+            - generic [ref=e208]: "249.02"
+            - generic [ref=e209]: ▲ 3.81%
+          - generic [ref=e210]:
+            - generic [ref=e211]: TSLA
+            - generic [ref=e212]: "364.20"
+            - generic [ref=e213]: ▲ 3.34%
+          - generic [ref=e214]:
+            - generic [ref=e215]: GLD
+            - generic [ref=e216]: "445.09"
+            - generic [ref=e217]: ▲ 2.23%
+          - generic [ref=e218]:
+            - generic [ref=e219]: TLT
+            - generic [ref=e220]: "87.21"
+            - generic [ref=e221]: ▲ 0.53%
+          - generic [ref=e222]:
+            - generic [ref=e223]: BTC
+            - generic [ref=e224]: "32.87"
+            - generic [ref=e225]: ▲ 1.29%
+          - generic [ref=e226]:
+            - generic [ref=e227]: SPY
+            - generic [ref=e228]: "694.46"
+            - generic [ref=e229]: ▲ 1.22%
+          - generic [ref=e230]:
+            - generic [ref=e231]: QQQ
+            - generic [ref=e232]: "628.60"
+            - generic [ref=e233]: ▲ 1.82%
+          - generic [ref=e234]:
+            - generic [ref=e235]: AAPL
+            - generic [ref=e236]: "258.83"
+            - generic [ref=e237]: ▼ 0.14%
+          - generic [ref=e238]:
+            - generic [ref=e239]: NVDA
+            - generic [ref=e240]: "196.51"
+            - generic [ref=e241]: ▲ 3.80%
+          - generic [ref=e242]:
+            - generic [ref=e243]: MSFT
+            - generic [ref=e244]: "393.11"
+            - generic [ref=e245]: ▲ 2.27%
+          - generic [ref=e246]:
+            - generic [ref=e247]: META
+            - generic [ref=e248]: "662.49"
+            - generic [ref=e249]: ▲ 4.41%
+          - generic [ref=e250]:
+            - generic [ref=e251]: GOOGL
+            - generic [ref=e252]: "332.91"
+            - generic [ref=e253]: ▲ 3.61%
+          - generic [ref=e254]:
+            - generic [ref=e255]: AMZN
+            - generic [ref=e256]: "249.02"
+            - generic [ref=e257]: ▲ 3.81%
+          - generic [ref=e258]:
+            - generic [ref=e259]: TSLA
+            - generic [ref=e260]: "364.20"
+            - generic [ref=e261]: ▲ 3.34%
+          - generic [ref=e262]:
+            - generic [ref=e263]: GLD
+            - generic [ref=e264]: "445.09"
+            - generic [ref=e265]: ▲ 2.23%
+          - generic [ref=e266]:
+            - generic [ref=e267]: TLT
+            - generic [ref=e268]: "87.21"
+            - generic [ref=e269]: ▲ 0.53%
+          - generic [ref=e270]:
+            - generic [ref=e271]: BTC
+            - generic [ref=e272]: "32.87"
+            - generic [ref=e273]: ▲ 1.29%
+        - generic [ref=e274]:
+          - generic [ref=e353]:
+            - paragraph [ref=e354]: Morning Review
+            - heading "Tuesday, April 14" [level=1] [ref=e355]
+            - paragraph [ref=e356]
+            - generic [ref=e358] [cursor=pointer]
+          - generic [ref=e367]:
+            - button "↓ Export Brief" [ref=e368] [cursor=pointer]
+            - button "↗ Share" [ref=e369] [cursor=pointer]
+          - generic [ref=e370]:
+            - heading "Top Deals to Watch" [level=2] [ref=e372]
+            - generic [ref=e374]
+          - generic [ref=e393]:
+            - heading "Analyst Briefing" [level=2] [ref=e394]
+            - generic [ref=e395]
+          - generic [ref=e440]:
+            - generic [ref=e441]
+            - generic [ref=e448]
+          - generic [ref=e458]:
+            - heading "Top Stories" [level=2] [ref=e459]
+            - generic [ref=e461]
+            - generic [ref=e490]
+      - generic [ref=e290]:
+        - button "Collapse panel" [ref=e291] [cursor=pointer]:
+          - img [ref=e292]
+        - generic [ref=e295]:
+          - generic [ref=e296]:
+            - heading "Active Theses" [level=3] [ref=e298]
+            - generic [ref=e299]
+          - generic [ref=e316]:
+            - heading "Watchlist" [level=3] [ref=e318]
+            - generic [ref=e319]
+  - button "Open Next.js Dev Tools" [ref=e347] [cursor=pointer]:
+    - img [ref=e348]
+  - alert [ref=e351]

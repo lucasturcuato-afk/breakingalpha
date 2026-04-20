@@ -48,7 +48,7 @@ export function StatCard({
         )}
       />
 
-      <div className="px-4 pt-4 pb-3">
+      <div className="px-3 pt-3 pb-2.5">
         {/* Label */}
         <p className="font-sans text-[10px] uppercase tracking-widest text-text-muted">
           {label}
@@ -68,7 +68,7 @@ export function StatCard({
         </div>
 
         {/* Spark area */}
-        <div className="h-[38px] mt-2 relative">
+        <div className="h-[30px] mt-1.5 relative">
           {/* Bar chart (fades out on hover) */}
           <div
             className={cn(
@@ -142,7 +142,7 @@ export function StatCard({
 
 function Sparkline({ data, color }: { data: number[]; color: string }) {
   const width = 200;
-  const height = 38;
+  const height = 30;
   const padding = 2;
 
   const max = Math.max(...data);

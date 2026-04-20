@@ -17,8 +17,8 @@ export function OnboardingBanner() {
   if (!show) return null;
 
   return (
-    <div className="mb-3 flex items-center gap-3 bg-gold/10 border border-gold/30 rounded-xl px-4 py-3">
-      <span className="font-sans text-[12px] text-espresso">
+    <div className="mb-2 flex items-center gap-3 bg-gold/10 border border-gold/30 rounded-lg px-3 py-2">
+      <span className="font-sans text-[11px] text-espresso">
         Welcome to Signalera. Complete your profile to get personalized signals.
       </span>
       <a

@@ -1,0 +1,44 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e5]: Signalera
+      - generic [ref=e6]:
+        - heading "Institutional-grade market intelligence." [level=1] [ref=e7]:
+          - text: Institutional-grade
+          - text: market intelligence.
+        - paragraph [ref=e8]: Join analysts tracking signals that move markets.
+        - generic [ref=e9]:
+          - generic [ref=e10]:
+            - img [ref=e12]
+            - generic [ref=e14]: Live AI-generated market signals
+          - generic [ref=e15]:
+            - img [ref=e17]
+            - generic [ref=e19]: Real-time deal flow and M&A tracking
+          - generic [ref=e20]:
+            - img [ref=e22]
+            - generic [ref=e24]: AI thesis board updated as markets move
+      - paragraph [ref=e26]: Trusted by analysts at top-tier firms
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e30]:
+          - button "Sign In" [ref=e31] [cursor=pointer]
+          - button "Create Account" [ref=e32] [cursor=pointer]
+        - button "Continue with Google" [ref=e33] [cursor=pointer]:
+          - img [ref=e34]
+          - text: Continue with Google
+        - generic [ref=e41]: or
+        - generic [ref=e43]:
+          - generic [ref=e44]:
+            - img [ref=e45]
+            - textbox "Email address" [ref=e48]
+          - generic [ref=e49]:
+            - img [ref=e50]
+            - textbox "Password" [ref=e53]
+            - button [ref=e54] [cursor=pointer]:
+              - img [ref=e55]
+          - button "Forgot password?" [ref=e59] [cursor=pointer]
+          - button "Sign In" [ref=e60] [cursor=pointer]
+      - paragraph [ref=e61]: By continuing, you agree to Signalera's Terms of Service and Privacy Policy.
+  - button "Open Next.js Dev Tools" [ref=e67] [cursor=pointer]:
+    - img [ref=e68]
+  - alert [ref=e71]

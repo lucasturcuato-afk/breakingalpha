@@ -82,10 +82,10 @@ export function Greeting({
       <p className="font-sans text-[11px] uppercase tracking-widest text-gold font-medium">
         {dateStr} · {marketStatus}
       </p>
-      <h2 className="font-display text-[28px] font-extrabold text-espresso mt-1 leading-tight">
+      <h2 className="font-display text-[26px] font-extrabold text-espresso mt-0.5 leading-tight">
         Good {timeOfDay}, {userName}.
       </h2>
-      <p className="font-sans text-[13px] text-text-secondary mt-1">
+      <p className="font-sans text-[13px] text-text-secondary mt-0.5">
         {storyCount > 0
           ? `${storyCount} high-signal stories in your feed — ${context}`
           : `No new stories yet — ${context}`}

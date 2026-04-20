@@ -285,7 +285,7 @@ export default function DashboardPage() {
         </>
       }
     >
-      <div className="p-6 space-y-5 max-w-[960px]">
+      <div className="px-6 py-4 max-w-[960px]">
         {/* Onboarding banner */}
         <OnboardingBanner />
 
@@ -296,7 +296,7 @@ export default function DashboardPage() {
         />
 
         {/* Stat cards */}
-        <div className="grid grid-cols-4 gap-2.5">
+        <div className="grid grid-cols-4 gap-2.5 mt-4">
           <StatCard
             label="S&P 500"
             value={indices.spx?.value ?? "—"}
@@ -330,22 +330,28 @@ export default function DashboardPage() {
         </div>
 
         {/* System Intelligence */}
-        <SystemIntelligenceWidget />
+        <div className="mt-2">
+          <SystemIntelligenceWidget />
+        </div>
 
         {/* AI signal bar */}
-        <AISignalBar
-          text="Fed language shift detected across 3 FOMC transcripts — dovish pivot probability rising. Bond markets already pricing in."
-          boldParts={["Fed language shift", "dovish pivot probability rising"]}
-        />
+        <div className="mt-3">
+          <AISignalBar
+            text="Fed language shift detected across 3 FOMC transcripts — dovish pivot probability rising. Bond markets already pricing in."
+            boldParts={["Fed language shift", "dovish pivot probability rising"]}
+          />
+        </div>
 
         {/* Watchlist Feed */}
-        <WatchlistFeed />
+        <div className="mt-4">
+          <WatchlistFeed />
+        </div>
 
         {/* Stories section */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-4">
-              <h2 className="font-sans text-[11px] font-semibold uppercase tracking-widest text-text-muted">
+        <div className="mt-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+              <h2 className="font-sans text-[10px] font-medium uppercase tracking-wider text-text-muted">
                 Top Stories — hover to expand
               </h2>
               {/* Tab bar */}
