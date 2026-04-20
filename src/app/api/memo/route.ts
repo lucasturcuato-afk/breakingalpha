@@ -110,6 +110,28 @@ Tone: balanced, client-aware.`;
     augmented += "\n\n" + strategyOverlays[strategyType];
   }
 
+  // Risk appetite framing
+  const riskAppetite = profile.risk_appetite;
+  if (riskAppetite === "defensive") {
+    augmented += "\n\nRISK POSTURE: Reader has a defensive risk appetite. Emphasize downside risks, capital preservation, and hedging considerations. Lead bear case analysis.";
+  } else if (riskAppetite === "aggressive") {
+    augmented += "\n\nRISK POSTURE: Reader has an aggressive risk appetite. Emphasize asymmetric upside, contrarian angles, and catalyst-driven opportunities. Frame risks as manageable where evidence supports it.";
+  }
+
+  // Investment horizon context
+  const horizon = (profile as Record<string, unknown>).investment_horizon as string | null;
+  if (horizon === "short") {
+    augmented += "\n\nTIME HORIZON: Reader operates on a short-term horizon (weeks to months). Prioritize near-term catalysts, event-driven angles, and technical setup.";
+  } else if (horizon === "long") {
+    augmented += "\n\nTIME HORIZON: Reader operates on a long-term horizon (multi-year). Prioritize structural themes, secular trends, and durable competitive advantages over near-term noise.";
+  }
+
+  // Watchlist ticker awareness
+  const watchlist = profile.watchlist_tickers ?? [];
+  if (watchlist.length > 0) {
+    augmented += `\n\nWATCHLIST: Reader actively monitors these tickers: ${watchlist.join(", ")}. If the memo subject relates to any of these, call out the connection explicitly.`;
+  }
+
   return augmented;
 }
 
