@@ -68,7 +68,7 @@ export function FeedRow({ story, onBookmark }: FeedRowProps) {
       className={cn(
         "border-b border-border-subtle",
         "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",
-        "hover:bg-parchment-mid",
+        "hover:bg-parchment-mid dark:bg-[#161616] dark:hover:bg-[#1e1e1e]",
         story.read && "opacity-72",
       )}
       onMouseEnter={() => setExpanded(true)}
