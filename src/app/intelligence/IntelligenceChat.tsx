@@ -102,8 +102,11 @@ export function IntelligenceChat() {
         });
 
         if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body.error || `API error: ${res.status}`);
+          const errBody = await res.json().catch(() => ({}));
+          if (res.status === 429) {
+            throw new Error(errBody.error || "Rate limit exceeded — try again later.");
+          }
+          throw new Error(errBody.error || `API error: ${res.status}`);
         }
 
         const data = await res.json();

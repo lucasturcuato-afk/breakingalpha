@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { createClient } from "@supabase/supabase-js";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -200,9 +201,24 @@ Hard rules: no invented counterparties, dollar figures, or valuation assumptions
   company: "You are a sector analyst. Write a company intelligence brief. Use only facts from the provided articles. Sections: Company Brief (sector and primary business), Recent Developments (Direct articles only), Sector Context (Context articles as backdrop), Key Watchpoints (2–3 from Direct articles only), Signal Quality (one controlled label + one sentence). Under 300 words.",
 };
 
+const RATE_LIMIT_MEMO = 10; // memos per 24h
+
 export async function POST(request: NextRequest) {
   const { user } = await getSupabaseWithUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  /* ── Rate limit ── */
+  const rl = checkRateLimit(user.id, "memo", RATE_LIMIT_MEMO);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      {
+        error: `Rate limit exceeded — ${rl.limit} memos per day. Resets ${new Date(rl.resetAt).toLocaleTimeString()}.`,
+        remaining: 0,
+        resetAt: rl.resetAt,
+      },
+      { status: 429 },
+    );
+  }
 
   // Fetch user profile for personalization (soft-fail)
   const profile = await fetchUserProfile(user.id);
