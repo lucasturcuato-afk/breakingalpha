@@ -23,6 +23,15 @@ import { MemoModal } from "@/components/memo/MemoModal";
 import { DealFlowSidebar } from "@/components/deal-flow/DealFlowSidebar";
 import { useSavedDeals } from "@/hooks/useSavedDeals";
 import { createBrowserClient } from "@supabase/ssr";
+import { dealRelevanceScore, dealIsWatchlistMatch } from "@/lib/deal-utils";
+
+function fireEvent(event_type: string, payload: Record<string, unknown> = {}) {
+  fetch("/api/user-events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event_type, payload }),
+  }).catch(() => {});
+}
 
 function getSupabase() {
   return createBrowserClient(
@@ -305,6 +314,7 @@ function DealFlowContent() {
   const openMemo = (deal: Deal, e: React.MouseEvent) => {
     e.stopPropagation();
     setMemoDeal(deal);
+    fireEvent("memo_generated", { company: deal.company, sector: deal.sector ?? undefined });
   };
 
   /* ── Add deal ── */
@@ -684,11 +694,13 @@ function DealFlowContent() {
                     <button
                       key={v}
                       type="button"
-                      onClick={() =>
+                      onClick={() => {
+                        const isActivating = !selectedVerticals.includes(v);
                         setSelectedVerticals((prev) =>
                           prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v],
-                        )
-                      }
+                        );
+                        if (isActivating) fireEvent("sector_filter_applied", { sector: v });
+                      }}
                       className={cn(
                         "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
                         isActive
@@ -798,20 +810,29 @@ function DealFlowContent() {
               const isExp = expanded === deal.id;
               const isAdded = addedSet.has(deal.company);
               const displayValue = deal.value || deal.valuation;
+              const isHighRelevance = dealRelevanceScore(deal, profile) === "high";
+              const showGoldBorder = isHighRelevance && isSaved(deal.id);
 
               return (
                 <div
                   key={deal.id}
-                  onClick={() => setExpanded(isExp ? null : deal.id)}
+                  onClick={() => {
+                    if (!isExp) fireEvent("thesis_viewed", { company: deal.company, sector: deal.sector ?? undefined });
+                    setExpanded(isExp ? null : deal.id);
+                  }}
                   className={cn(
-                    "bg-white border border-border-base rounded-xl px-5 py-4 cursor-pointer",
+                    "bg-white border border-border-base rounded-xl py-4 cursor-pointer",
                     "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",
                     "hover:border-gold-border hover:shadow-[0_2px_12px_rgba(201,146,42,0.06)]",
+                    showGoldBorder ? "border-l-2 border-gold pl-[14px] pr-5 -ml-[1px]" : "px-5",
                   )}
                 >
                   {/* Top row: company + status */}
                   <div className="flex items-start justify-between gap-3 mb-2">
                     <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+                      {isHighRelevance && (
+                        <span className="w-[6px] h-[6px] rounded-full bg-gold flex-shrink-0" />
+                      )}
                       <span className="font-display text-[16px] font-bold text-espresso">
                         {deal.company}
                       </span>
@@ -873,8 +894,11 @@ function DealFlowContent() {
                     )}
                     {deal.sector && (
                       <span
-                        className="font-data text-[10px] font-bold px-2 py-0.5 rounded-md border"
-                        style={{
+                        className={cn(
+                          "font-data text-[10px] font-bold px-2 py-0.5 rounded-md border",
+                          isHighRelevance ? "text-gold bg-gold/10 border-gold/20" : "",
+                        )}
+                        style={isHighRelevance ? undefined : {
                           color: secColor,
                           backgroundColor: secColor + "15",
                           borderColor: secColor + "28",
