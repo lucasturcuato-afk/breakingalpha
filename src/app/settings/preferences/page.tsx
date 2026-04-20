@@ -52,6 +52,7 @@ export default async function PreferencesPage() {
           initialWorkflow={profile.workflow_style}
           initialRisk={profile.risk_appetite}
           initialWatchlist={profile.watchlist_tickers}
+          initialMarketCards={(profile as unknown as Record<string, unknown>).market_cards as string[] | undefined}
         />
 
         {/* Divider */}

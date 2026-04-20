@@ -48,7 +48,7 @@ export function Topbar({
   }, []);
 
   return (
-    <div className="h-[var(--topbar-height)] bg-cream border-b border-border-base flex items-center px-5 gap-4">
+    <div className="h-[var(--topbar-height)] bg-sidebar-bg border-b border-border-base flex items-center px-5 gap-4">
       {/* Page title */}
       <h1 className="font-display text-[15px] font-bold text-espresso whitespace-nowrap">
         {pageTitle}
@@ -62,6 +62,7 @@ export function Topbar({
           className={cn(
             "flex items-center gap-2 w-full max-w-[280px]",
             "bg-parchment-mid border border-border-base rounded-lg",
+            "dark:bg-elevated dark:border-border-default",
             "px-3 h-8",
             "transition-colors duration-[var(--duration-base)]",
             "hover:border-gold-border",

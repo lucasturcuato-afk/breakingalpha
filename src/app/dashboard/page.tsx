@@ -25,6 +25,8 @@ import { FileText } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
+import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
+import type { ContentDescriptor } from "@/lib/personalization";
 
 function getSupabase() {
   return createBrowserClient(
@@ -44,13 +46,25 @@ function timeAgo(dateStr: string): string {
 
 const sparkSignals = [3, 5, 2, 7, 4, 8, 6, 9, 5, 11, 8, 14];
 
-interface MarketIndices {
-  spx: { value: string; pct: number } | null;
-  vix: { value: string; pct: number } | null;
-  tnx: { value: string; pct: number } | null;
+interface MarketCardData {
+  symbol: string;
+  label: string;
+  value: string;
+  pct: number;
 }
 
-// ── "For You" filtering helpers ──
+const DEFAULT_MARKET_CARDS = ["SPY", "VIX", "TNX", "SIGNALS"];
+
+// ── "For You" scoring helpers ──
+
+function storyToContent(story: StoryData): ContentDescriptor {
+  return {
+    sectors: [story.sector, ...(story.industry_verticals ?? [])].filter(Boolean) as string[],
+    tickers: story.tags ?? [],
+    title: story.title,
+    categories: story.activity_types ?? [],
+  };
+}
 
 function sectorMatches(articleSector: string | undefined, profileSectors: string[]): boolean {
   if (!articleSector) return false;
@@ -61,33 +75,12 @@ function sectorMatches(articleSector: string | undefined, profileSectors: string
   });
 }
 
-function tickerMentioned(story: StoryData, tickers: string[]): boolean {
-  if (!tickers.length) return false;
-  const text = `${story.title} ${story.tags?.join(" ") ?? ""}`.toUpperCase();
-  return tickers.some((t) => text.includes(t.toUpperCase()));
-}
-
-function sentimentScore(sentiment: string, riskAppetite: string): number {
-  const s = sentiment.toLowerCase();
-  if (riskAppetite === "aggressive") {
-    if (s === "bullish" || s === "positive") return 2;
-    if (s === "bearish" || s === "negative") return 0;
-    return 1;
-  }
-  if (riskAppetite === "defensive") {
-    if (s === "bearish" || s === "negative" || s === "risk-off" || s === "macro") return 2;
-    if (s === "bullish" || s === "positive") return 0;
-    return 1;
-  }
-  return 1; // balanced — no re-sort
-}
-
 export default function DashboardPage() {
   const { profile } = useUserProfile();
   const [stories, setStories] = useState<StoryData[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
   const [storyCount, setStoryCount] = useState(0);
-  const [indices, setIndices] = useState<MarketIndices>({ spx: null, vix: null, tnx: null });
+  const [marketCards, setMarketCards] = useState<Record<string, MarketCardData | null>>({});
   const [storyTab, setStoryTab] = useState<"for-you" | "all">("all");
 
   useEffect(() => {
@@ -173,23 +166,29 @@ export default function DashboardPage() {
     loadStories();
   }, []);
 
+  // Read user's market_cards preference from profile (or use defaults)
+  const userMarketCards = useMemo(() => {
+    const raw = (profile as Record<string, unknown> | null)?.market_cards;
+    if (Array.isArray(raw) && raw.length > 0) return raw as string[];
+    return DEFAULT_MARKET_CARDS;
+  }, [profile]);
+
+  // Fetch market card data for user's chosen symbols
   useEffect(() => {
-    async function loadIndices() {
+    async function loadMarketCards() {
+      const marketSymbols = userMarketCards.filter((s) => s !== "SIGNALS");
+      if (marketSymbols.length === 0) return;
       try {
-        const res = await fetch("/api/market-indices");
+        const res = await fetch(`/api/market-indices?symbols=${marketSymbols.join(",")}`);
         if (!res.ok) return;
         const data = await res.json();
-        setIndices({
-          spx: data.spx ?? null,
-          vix: data.vix ?? null,
-          tnx: data.tnx ?? null,
-        });
+        setMarketCards(data.cards ?? {});
       } catch {
-        // Leave indices as null — cards will show "—"
+        // Leave cards empty — will show "—"
       }
     }
-    loadIndices();
-  }, []);
+    loadMarketCards();
+  }, [userMarketCards]);
 
   // Switch to "For You" tab when profile is loaded and onboarded
   useEffect(() => {
@@ -198,34 +197,10 @@ export default function DashboardPage() {
     }
   }, [profile]);
 
-  // "For You" filtered stories
+  // "For You" scored + sorted stories
   const forYouStories = useMemo(() => {
     if (!profile) return stories;
-    const sectors = profile.sectors ?? [];
-    const tickers = profile.watchlist_tickers ?? [];
-    const riskAppetite = profile.risk_appetite ?? "balanced";
-
-    // Step 1: filter by sector (if profile has sectors)
-    let filtered = sectors.length > 0
-      ? stories.filter((s) => sectorMatches(s.sector, sectors))
-      : [...stories];
-
-    // If sector filter produces nothing, show all
-    if (filtered.length === 0) filtered = [...stories];
-
-    // Step 2: sort by sentiment alignment (if not balanced)
-    if (riskAppetite !== "balanced") {
-      filtered.sort((a, b) => sentimentScore(b.sentiment, riskAppetite) - sentimentScore(a.sentiment, riskAppetite));
-    }
-
-    // Step 3: boost watchlist tickers to top
-    if (tickers.length > 0) {
-      const watchlistItems = filtered.filter((s) => tickerMentioned(s, tickers));
-      const rest = filtered.filter((s) => !tickerMentioned(s, tickers));
-      filtered = [...watchlistItems, ...rest];
-    }
-
-    return filtered;
+    return sortByRelevance(stories, profile, storyToContent);
   }, [stories, profile]);
 
   const displayStories = storyTab === "for-you" ? forYouStories : stories;
@@ -295,38 +270,37 @@ export default function DashboardPage() {
           context={greetingSubtitle ?? "markets are adjusting to new export policy data."}
         />
 
-        {/* Stat cards */}
-        <div className="grid grid-cols-4 gap-2.5 mt-4">
-          <StatCard
-            label="S&P 500"
-            value={indices.spx?.value ?? "—"}
-            change={indices.spx?.pct ?? 0}
-            accentGold
-            detailRows={[]}
-          />
-          <StatCard
-            label="VIX Fear Index"
-            value={indices.vix?.value ?? "—"}
-            change={indices.vix?.pct ?? 0}
-            detailRows={[]}
-          />
-          <StatCard
-            label="10Y Yield"
-            value={indices.tnx?.value ?? "—"}
-            change={indices.tnx?.pct ?? 0}
-            detailRows={[]}
-          />
-          <StatCard
-            label="Signals Today"
-            value={String(storyCount)}
-            change={0}
-            accentGold
-            sparkData={sparkSignals}
-            detailRows={[
-              { label: "Bullish", value: "—" },
-              { label: "Bearish", value: "—" },
-            ]}
-          />
+        {/* Stat cards — dynamic from user profile */}
+        <div className={cn("grid gap-2.5 mt-4", `grid-cols-${Math.min(userMarketCards.length, 4)}`)}>
+          {userMarketCards.map((sym, i) => {
+            if (sym === "SIGNALS") {
+              return (
+                <StatCard
+                  key="SIGNALS"
+                  label="Signals Today"
+                  value={String(storyCount)}
+                  change={0}
+                  accentGold
+                  sparkData={sparkSignals}
+                  detailRows={[
+                    { label: "Bullish", value: "—" },
+                    { label: "Bearish", value: "—" },
+                  ]}
+                />
+              );
+            }
+            const card = marketCards[sym.toUpperCase()];
+            return (
+              <StatCard
+                key={sym}
+                label={card?.label ?? sym}
+                value={card?.value ?? "—"}
+                change={card?.pct ?? 0}
+                accentGold={i === 0}
+                detailRows={[]}
+              />
+            );
+          })}
         </div>
 
         {/* System Intelligence */}
@@ -407,9 +381,9 @@ export default function DashboardPage() {
             <>
               {/* Lead story */}
               <div className="relative">
-                {storyTab === "for-you" && watchlistTickers.length > 0 && tickerMentioned(displayStories[0], watchlistTickers) && (
-                  <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-200 rounded px-1.5 py-0.5 mb-1">
-                    {"📌"} In your watchlist
+                {storyTab === "for-you" && (displayStories[0].tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
+                  <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 mb-1">
+                    Watching
                   </span>
                 )}
                 <LeadStoryCard story={displayStories[0]} />
@@ -419,9 +393,9 @@ export default function DashboardPage() {
               <div className="mt-2 space-y-0">
                 {displayStories.slice(1).map((story, i) => (
                   <div key={story.id}>
-                    {storyTab === "for-you" && watchlistTickers.length > 0 && tickerMentioned(story, watchlistTickers) && (
-                      <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-200 rounded px-1.5 py-0.5 ml-3 mb-0.5">
-                        {"📌"} In your watchlist
+                    {storyTab === "for-you" && (story.tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
+                      <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 ml-3 mb-0.5">
+                        Watching
                       </span>
                     )}
                     <CompactStoryCard story={story} number={i + 2} />

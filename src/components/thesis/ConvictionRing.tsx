@@ -35,7 +35,7 @@ export function ConvictionRing({
 
   const thickness = Math.max(2, Math.round(size * 0.1))
   const innerSize = size - thickness * 2
-  const fontSize = Math.max(8, Math.round(size * 0.26))
+  const fontSize = Math.max(7, Math.round(size * 0.2))
 
   return (
     <div
@@ -74,7 +74,7 @@ export function ConvictionRing({
             style={{
               fontFamily: 'Inter, sans-serif',
               fontSize: `${fontSize}px`,
-              fontWeight: 700,
+              fontWeight: 600,
               letterSpacing: '0.04em',
               lineHeight: '1',
               color,

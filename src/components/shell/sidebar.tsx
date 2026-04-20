@@ -186,7 +186,7 @@ export function Sidebar({
 
   return (
     <>
-      <aside className="fixed left-0 top-0 bottom-0 w-[var(--sidebar-width)] bg-cream border-r border-border-base flex flex-col z-40">
+      <aside className="fixed left-0 top-0 bottom-0 w-[var(--sidebar-width)] bg-sidebar-bg border-r border-border-base flex flex-col z-40">
         {/* Logo area */}
         <div style={{ borderBottom: '1px solid var(--border-base)', padding: '10px 14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0px', width: '100%' }}>
@@ -303,7 +303,7 @@ export function Sidebar({
           zIndex: 9001,
           overflow: 'hidden',
           transition: 'width 0.22s cubic-bezier(0.4,0,0.2,1)',
-          background: '#fff',
+          background: 'var(--elevated)',
           borderLeft: '1px solid var(--border-base)',
           boxShadow: notifDrawerOpen ? '-4px 0 24px rgba(0,0,0,0.1)' : 'none',
           display: 'flex',
@@ -415,8 +415,8 @@ function NavGroup({
                   "font-sans text-[13px] font-medium",
                   "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",
                   isActive
-                    ? "bg-espresso text-cream [&_svg]:text-gold"
-                    : "text-text-muted [&_svg]:text-text-faint hover:bg-parchment-mid hover:text-espresso [&:hover_svg]:text-gold-dark",
+                    ? "bg-espresso text-cream [&_svg]:text-gold dark:bg-elevated dark:text-foreground dark:border dark:border-border-default"
+                    : "text-text-muted [&_svg]:text-text-faint hover:bg-parchment-mid hover:text-espresso [&:hover_svg]:text-gold-dark dark:text-text-secondary dark:hover:bg-overlay",
                 )}
               >
                 {item.icon}

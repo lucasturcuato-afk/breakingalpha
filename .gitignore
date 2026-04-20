@@ -55,3 +55,4 @@ __pycache__/
 .claude/agent-memory/
 .claude/worktrees/
 .worktrees/
+.playwright-mcp/

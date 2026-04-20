@@ -60,17 +60,17 @@ export function TickerStrip({ quotes: externalQuotes }: TickerStripProps) {
   const items = [...quotes, ...quotes, ...quotes];
 
   return (
-    <div className="relative h-8 bg-espresso overflow-hidden border-b border-espresso-light/30">
+    <div className="relative h-8 bg-espresso dark:bg-sidebar-bg overflow-hidden border-b border-espresso-light/30 dark:border-border-subtle">
       {/* Fade edges */}
-      <div className="absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-espresso to-transparent z-10" />
-      <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-espresso to-transparent z-10" />
+      <div className="absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-espresso dark:from-[#080808] to-transparent z-10" />
+      <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-espresso dark:from-[#080808] to-transparent z-10" />
 
       {/* Scrolling track */}
       <div className="flex items-center h-full animate-[ticker-scroll_60s_linear_infinite]">
         {items.map((q, i) => (
           <div key={`${q.symbol}-${i}`} className="flex items-center gap-1.5 px-4 flex-shrink-0">
-            <span className="font-data text-[10px] text-text-muted">{q.symbol}</span>
-            <span className="font-data text-[11px] font-bold text-cream">{q.price}</span>
+            <span className="font-data text-[10px] text-text-muted dark:text-text-muted">{q.symbol}</span>
+            <span className="font-data text-[11px] font-bold text-cream dark:text-text-secondary">{q.price}</span>
             <span
               className={cn(
                 "font-data text-[10px] font-semibold",

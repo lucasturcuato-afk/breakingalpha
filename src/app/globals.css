@@ -44,6 +44,21 @@
   --color-signal-warn: var(--signal-warn);
   --color-signal-ai: var(--signal-ai);
 
+  /* ── Surface depth system ── */
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+  --color-overlay: var(--overlay);
+
+  /* ── Semantic tokens ── */
+  --color-foreground: var(--foreground);
+  --color-border-default: var(--border-default);
+  --color-border-strong: var(--border-strong);
+
+  /* ── Delta colors ── */
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+
   /* ── Spacing (4px grid) ── */
   --spacing-1: var(--space-1);
   --spacing-2: var(--space-2);
@@ -164,7 +179,7 @@
 
 /* ── Dark mode card utility ── */
 html.dark .bg-white {
-  background-color: #111108;
+  background-color: var(--elevated);
 }
 
 /* ── Keyframe animations ── */

@@ -33,7 +33,7 @@ export function BriefSection({
     <div
       onClick={onToggle}
       className={cn(
-        "p-4 rounded-xl border border-border-base bg-white group min-h-[160px]",
+        "p-4 rounded-xl border border-border-base bg-white dark:bg-elevated dark:border-border-default group min-h-[160px]",
         fullWidth && "col-span-2",
         "cursor-pointer transition-all duration-200 hover:ring-1 hover:ring-gold/40 hover:shadow-sm",
       )}
@@ -48,7 +48,7 @@ export function BriefSection({
       </h3>
 
       {/* Content — full text always visible */}
-      <p className="font-sans text-[13px] text-text-secondary leading-[1.72]">
+      <p className="font-sans text-[13px] text-text-secondary dark:text-[#e8e8e4] leading-[1.72]">
         {cleanContent}
       </p>
 

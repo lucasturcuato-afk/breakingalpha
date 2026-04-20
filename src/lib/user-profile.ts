@@ -50,6 +50,7 @@ export interface UserProfile {
   onboarding_completed: boolean;
   inferred_sector_weights: Record<string, number>;
   inferred_weights_updated_at: string | null;
+  market_cards: string[] | null;
   updated_at: string | null;
 }
 
@@ -105,6 +106,7 @@ const DEFAULT_PROFILE = (id: string): UserProfile => ({
   onboarding_completed: false,
   inferred_sector_weights: {},
   inferred_weights_updated_at: null,
+  market_cards: null,
   updated_at: null,
 });
 
@@ -160,6 +162,7 @@ const UPSERT_WHITELIST = [
   "onboarding_completed",
   "inferred_sector_weights",
   "inferred_weights_updated_at",
+  "market_cards",
 ] as const;
 
 // DDL to run against Supabase if any of the newer profile columns are missing.

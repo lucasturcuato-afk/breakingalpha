@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils";
 import type { ThesisItem, ThesisStatus, WeeklyDigest, PatternRow, SourceCredibilityRow } from "@/components/thesis";
 import { mapThesisRow } from "@/lib/thesis-mapper";
 import { trackClientEvent } from "@/lib/track-event";
+import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
+import type { ContentDescriptor } from "@/lib/personalization";
 
 interface RelatedArticle {
   id: string;
@@ -37,12 +39,12 @@ interface UserThesisState {
   updated_at?: string;
 }
 
-function sectorMatchesProfile(thesisSector: string, profileSectors: string[]): boolean {
-  const lower = thesisSector.toLowerCase();
-  return profileSectors.some((ps) => {
-    const pl = ps.toLowerCase();
-    return lower.includes(pl) || pl.includes(lower);
-  });
+function thesisToContent(thesis: ThesisItem): ContentDescriptor {
+  return {
+    sectors: [thesis.sector].filter(Boolean),
+    tickers: thesis.supporting_article_ids ?? [], // no tickers on thesis directly
+    title: thesis.title,
+  };
 }
 
 // Note: the single source of truth `mapThesisRow` lives in `@/lib/thesis-mapper`.
@@ -418,13 +420,12 @@ function ThesisBoardContent() {
     const isNotUserArchived = (t: ThesisItem) => !userArchivedIds.has(t.id);
 
     if (convictionFilter === "recommended") {
-      const sectors = profile?.sectors ?? [];
-      if (sectors.length === 0) {
-        return theses.filter(isNotUserArchived);
+      const active = theses.filter(isNotUserArchived);
+      if (!profile || (profile.sectors ?? []).length === 0) {
+        return active;
       }
-      return theses
-        .filter((t) => isNotUserArchived(t) && sectorMatchesProfile(t.sector, sectors))
-        .sort((a, b) => ((b.adversarial_score ?? -1) - (a.adversarial_score ?? -1)));
+      // Use the scoring engine for relevance-ranked ordering
+      return sortByRelevance(active, profile, thesisToContent);
     }
     if (convictionFilter === "archived") return archivedTheses;
     if (convictionFilter === "pending_review") {
@@ -518,11 +519,7 @@ function ThesisBoardContent() {
               <div className="flex gap-2">
                 {(
                   [
-                    { key: "recommended" as const, label: "Recommended", count: (() => {
-                      const sectors = profile?.sectors ?? [];
-                      if (sectors.length === 0) return theses.filter((t) => !userArchivedIds.has(t.id)).length;
-                      return theses.filter((t) => !userArchivedIds.has(t.id) && sectorMatchesProfile(t.sector, sectors)).length;
-                    })() },
+                    { key: "recommended" as const, label: "Recommended", count: theses.filter((t) => !userArchivedIds.has(t.id)).length },
                     { key: "HIGH" as const, label: "HIGH", count: convictionCounts.HIGH },
                     { key: "MEDIUM" as const, label: "MEDIUM", count: convictionCounts.MEDIUM },
                     { key: "WATCH" as const, label: "WATCH", count: convictionCounts.WATCH },

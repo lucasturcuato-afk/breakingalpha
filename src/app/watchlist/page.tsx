@@ -857,7 +857,7 @@ export default function WatchlistPage() {
                 { label: "Losers", sub: `of ${tickers.length} tickers`, value: losers, icon: <TrendingDown size={12} />, color: "text-signal-dn" },
                 { label: "Flat", sub: `of ${tickers.length} tickers`, value: flat, icon: <Minus size={12} />, color: "text-text-muted" },
               ].map((s) => (
-                <div key={s.label} className="bg-white border border-border-base rounded-xl p-3 text-center">
+                <div key={s.label} className="bg-white dark:bg-elevated border border-border-base rounded-xl p-3 text-center">
                   <div className={cn("flex items-center justify-center gap-1 mb-0.5", s.color)}>
                     {s.icon}
                     <span className="font-data text-[16px] font-bold">{s.value}</span>
@@ -873,14 +873,14 @@ export default function WatchlistPage() {
             <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: '8px', marginTop: '4px' }}>
               <Link
                 href="/watchlist/export"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-base bg-white text-text-muted font-data text-[10px] hover:text-text-primary transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-base bg-white dark:bg-elevated text-text-muted font-data text-[10px] hover:text-text-primary transition-colors cursor-pointer"
               >
                 Export Report
               </Link>
               <a
                 href="/api/export/watchlist-xlsx"
                 download
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-base bg-white text-text-muted font-data text-[10px] hover:text-text-primary transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-base bg-white dark:bg-elevated text-text-muted font-data text-[10px] hover:text-text-primary transition-colors cursor-pointer"
               >
                 Export Excel (.xlsx)
               </a>
@@ -990,7 +990,7 @@ export default function WatchlistPage() {
                               ? "border-l-2 border-l-amber-500 bg-amber-50/30"
                               : selectedIdentifier === entry.identifier
                                 ? "border-l-2 border-l-gold bg-gold-muted/30"
-                                : "bg-white hover:border-border-hover",
+                                : "bg-white dark:bg-elevated hover:border-border-hover",
                             dragState.draggingId === entry.id ? "opacity-50" : "",
                             dragState.dragOverId === entry.id && dragState.draggingId !== entry.id ? "border-t-2 border-t-amber-500" : "",
                           )}
@@ -1077,7 +1077,7 @@ export default function WatchlistPage() {
                               ? "border-l-2 border-l-amber-500 bg-amber-50/30"
                               : selectedIdentifier === entry.identifier
                                 ? "border-l-2 border-l-gold bg-gold-muted/30"
-                                : "bg-white hover:border-border-hover",
+                                : "bg-white dark:bg-elevated hover:border-border-hover",
                             dragState.draggingId === entry.id ? "opacity-50" : "",
                             dragState.dragOverId === entry.id && dragState.draggingId !== entry.id ? "border-t-2 border-t-amber-500" : "",
                           )}
@@ -1167,7 +1167,7 @@ export default function WatchlistPage() {
                     "px-2.5 py-1 rounded-md font-data text-[9px] cursor-pointer transition-colors border",
                     ageFilter === f
                       ? "border-gold bg-gold-muted text-gold font-semibold"
-                      : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                      : "border-border-base bg-white dark:bg-elevated text-text-muted hover:text-text-primary",
                   )}
                 >
                   {f === "all" ? "All" : f === "today" ? "Today" : f === "week" ? "This Week" : "This Month"}
@@ -1183,7 +1183,7 @@ export default function WatchlistPage() {
                     "px-2.5 py-1 rounded-md font-data text-[9px] cursor-pointer transition-colors border",
                     sortMode === mode
                       ? "border-gold bg-gold-muted text-gold font-semibold"
-                      : "border-border-base bg-white text-text-muted hover:text-text-primary",
+                      : "border-border-base bg-white dark:bg-elevated text-text-muted hover:text-text-primary",
                   )}
                 >
                   {mode === "newest" ? "Newest" : "Relevant"}
@@ -1252,7 +1252,7 @@ export default function WatchlistPage() {
           ) : (
             <div className="space-y-2">
               {displayedArticles.map((a) => (
-                <div key={a.id} className="bg-white border border-border-base rounded-xl p-3">
+                <div key={a.id} className="bg-white dark:bg-elevated border border-border-base dark:border-border-default rounded-xl p-3">
                   <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                     {(a.industry_verticals ?? []).map((v) => (
                       <span key={v} className="font-data text-[9px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200">
@@ -1469,7 +1469,7 @@ export default function WatchlistPage() {
           onClick={() => setShowShortcutLegend(false)}
         >
           <div
-            className="bg-white border border-border-base rounded-xl p-5 shadow-2xl min-w-[220px]"
+            className="bg-white dark:bg-elevated border border-border-base dark:border-border-default rounded-xl p-5 shadow-2xl min-w-[220px]"
             onClick={(e) => e.stopPropagation()}
           >
             <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">Keyboard Shortcuts</p>
@@ -1495,7 +1495,7 @@ export default function WatchlistPage() {
       <button
         type="button"
         onClick={() => setShowShortcutLegend(prev => !prev)}
-        className="fixed bottom-6 right-6 z-50 w-8 h-8 rounded-full bg-white border border-border-base shadow-md flex items-center justify-center font-data text-[12px] text-text-muted hover:text-espresso hover:border-gold transition-colors cursor-pointer"
+        className="fixed bottom-6 right-6 z-50 w-8 h-8 rounded-full bg-white dark:bg-elevated border border-border-base shadow-md flex items-center justify-center font-data text-[12px] text-text-muted hover:text-espresso hover:border-gold transition-colors cursor-pointer"
         aria-label="Keyboard shortcuts"
       >
         ?

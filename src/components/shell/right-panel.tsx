@@ -20,7 +20,7 @@ export function RightPanel({ open, onToggle, children }: RightPanelProps) {
         className={cn(
           "absolute -left-3 top-4 z-10",
           "w-6 h-6 flex items-center justify-center",
-          "bg-cream border border-border-base rounded-full",
+          "bg-cream dark:bg-elevated border border-border-base rounded-full",
           "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",
           "hover:border-border-hover hover:bg-parchment-mid",
           "cursor-pointer",
@@ -39,7 +39,7 @@ export function RightPanel({ open, onToggle, children }: RightPanelProps) {
       {/* Panel body */}
       <div
         className={cn(
-          "h-full overflow-hidden border-l border-border-base bg-cream",
+          "h-full overflow-hidden border-l border-border-base bg-cream dark:bg-sidebar-bg",
           "transition-all duration-[var(--duration-slow)] ease-[var(--ease-out)]",
           open ? "w-[var(--right-panel-width)]" : "w-0 border-l-0",
         )}

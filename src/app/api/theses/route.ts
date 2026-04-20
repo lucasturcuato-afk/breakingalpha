@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
-import { mapThesisRow, dedupByTitleSector, thesisDedupKey } from "@/lib/thesis-mapper";
+import { mapThesisRow, dedupByTitleSector, thesisDedupKey, thesisFuzzyKey } from "@/lib/thesis-mapper";
 import { getUserProfile, sectorWeight } from "@/lib/user-profile";
 
 export const dynamic = "force-dynamic";
@@ -570,13 +570,18 @@ ${clusterBlocks}`;
           recentErr.message,
         );
       } else if (Array.isArray(recent) && recent.length > 0) {
-        const recentKeys = new Set(
+        const recentExactKeys = new Set(
           recent.map((r) => thesisDedupKey({ title: r.title, sector: r.sector })),
         );
-        const beforeCount = filteredRows.length;
-        filteredRows = filteredRows.filter(
-          (r) => !recentKeys.has(thesisDedupKey({ title: r.title, sector: r.sector })),
+        const recentFuzzyKeys = new Set(
+          recent.map((r) => thesisFuzzyKey({ title: r.title, sector: r.sector })),
         );
+        const beforeCount = filteredRows.length;
+        filteredRows = filteredRows.filter((r) => {
+          const exact = thesisDedupKey({ title: r.title, sector: r.sector });
+          const fuzzy = thesisFuzzyKey({ title: r.title, sector: r.sector });
+          return !recentExactKeys.has(exact) && !recentFuzzyKeys.has(fuzzy);
+        });
         const skipped = beforeCount - filteredRows.length;
         if (skipped > 0) {
           console.log(
