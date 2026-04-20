@@ -119,8 +119,9 @@ export async function POST(request: NextRequest) {
   let embedding: number[];
   try {
     const embedResponse = await ai.models.embedContent({
-      model: "gemini-embedding-exp-03-07",
+      model: "gemini-embedding-001",
       contents: query,
+      config: { outputDimensionality: 768 },
     });
 
     const values = embedResponse.embeddings?.[0]?.values;

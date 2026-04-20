@@ -12,7 +12,7 @@ from google import genai
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
-EMBEDDING_MODEL = "gemini-embedding-exp-03-07"
+EMBEDDING_MODEL = "gemini-embedding-001"
 BATCH_SIZE = 20
 MAX_ITEMS_PER_RUN = 200
 SLEEP_BETWEEN_BATCHES = 0.5
@@ -83,7 +83,9 @@ def _embed_text(text: str) -> list[float] | None:
     """Call Gemini embedding API. Returns 768-dim vector or None on failure."""
     try:
         response = gemini_client.models.embed_content(
-            model=EMBEDDING_MODEL, contents=text
+            model=EMBEDDING_MODEL,
+            contents=text,
+            config={"output_dimensionality": 768},
         )
         return response.embeddings[0].values
     except Exception as e:
