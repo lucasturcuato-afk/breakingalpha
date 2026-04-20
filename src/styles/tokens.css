@@ -37,6 +37,21 @@
   --signal-warn: #f59e0b;
   --signal-ai: #7c3aed;
 
+  /* ── Surface depth system ── */
+  --sidebar-bg: var(--cream);
+  --surface: var(--parchment);
+  --elevated: #ffffff;
+  --overlay: var(--parchment-mid);
+
+  /* ── Semantic layout tokens ── */
+  --foreground: var(--text-primary);
+  --border-default: var(--border-base);
+  --border-strong: var(--border-hover);
+
+  /* ── Delta / status ── */
+  --positive: var(--signal-up);
+  --negative: var(--signal-dn);
+
   /* ── Spacing (4px base grid) ── */
   --space-1: 4px;
   --space-2: 8px;
@@ -71,24 +86,44 @@
 
 /* ── Dark mode overrides ── */
 html.dark {
-  --cream: #0f0c07;
-  --parchment: #0a0a0b;
-  --parchment-mid: #1a1208;
-  --espresso: #f5f0e8;
-  --espresso-light: #d4c8b0;
+  --cream: #0f0f0f;
+  --parchment: #0f0f0f;
+  --parchment-mid: #252525;
+  --espresso: #e8e8e4;
+  --espresso-light: #9a9a94;
 
-  --gold: #d4a03a;
-  --gold-light: #e8b84b;
-  --gold-dark: #c9922a;
-  --gold-muted: #c9922a18;
-  --gold-border: #c9922a44;
+  --gold: #c9a84c;
+  --gold-light: #d4b86a;
+  --gold-dark: #a8873a;
+  --gold-muted: rgba(201, 168, 76, 0.15);
+  --gold-border: rgba(201, 168, 76, 0.35);
 
-  --border-base: #2a2010;
-  --border-subtle: #1e1a0f;
-  --border-hover: #c9922a55;
+  --border-base: rgba(255, 255, 255, 0.14);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.22);
 
-  --text-primary: #f5f0e8;
-  --text-secondary: #c0a870;
-  --text-muted: #8a7a60;
-  --text-faint: #5a4a2a;
+  --text-primary: #e8e8e4;
+  --text-secondary: #9a9a94;
+  --text-muted: #555550;
+  --text-faint: #3a3a36;
+
+  --signal-up: #4caf7d;
+  --signal-dn: #e05c5c;
+  --signal-warn: #f59e0b;
+  --signal-ai: #a78bfa;
+
+  /* ── Dark surface depth ── */
+  --sidebar-bg: #080808;
+  --surface: #161616;
+  --elevated: #1e1e1e;
+  --overlay: #252525;
+
+  /* ── Semantic layout tokens ── */
+  --foreground: #e8e8e4;
+  --border-default: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.22);
+
+  /* ── Delta / status ── */
+  --positive: #4caf7d;
+  --negative: #e05c5c;
 }
