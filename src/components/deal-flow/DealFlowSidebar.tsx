@@ -2,7 +2,10 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
+import { Bookmark, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { normalizeSector } from "@/lib/deal-utils";
+import type { EnrichedDeal } from "@/hooks/useSavedDeals";
 
 interface Deal {
   id: string;
@@ -26,6 +29,8 @@ interface UserProfile {
 interface DealFlowSidebarProps {
   deals: Deal[];
   userProfile?: UserProfile | null;
+  enrichedSavedDeals?: EnrichedDeal[];
+  toggleSave?: (dealId: string) => Promise<void>;
 }
 
 // ── Value parsing / formatting ────────────────────────────────────────────────
@@ -68,32 +73,6 @@ const STATUS_COLORS: Record<string, string> = {
 
 // ── Sector normalization ──────────────────────────────────────────────────────
 
-const SECTOR_EXPLICIT: [string, string][] = [
-  ["venture capital & startup funding", "Venture Capital"],
-  ["private equity & buyouts", "Private Equity"],
-  ["technology m&a & investment banking", "Technology"],
-  ["healthcare & biotech", "Healthcare & Biotech"],
-  ["energy & oil/gas", "Energy & Oil/Gas"],
-  ["financial services", "Financial Services"],
-  ["consumer & retail", "Consumer & Retail"],
-  ["industrials & manufacturing", "Industrials & Manufacturing"],
-  ["aerospace & defense", "Aerospace & Defense"],
-  ["real estate", "Real Estate"],
-  ["media & telecom", "Media & Telecom"],
-  ["materials & mining", "Materials & Mining"],
-  ["agriculture", "Agriculture"],
-  ["technology", "Technology"],
-  ["venture capital", "Venture Capital"],
-  ["private equity", "Private Equity"],
-];
-
-function normalizeSector(sector: string): string {
-  const lower = sector.toLowerCase();
-  for (const [pattern, label] of SECTOR_EXPLICIT) {
-    if (lower.includes(pattern)) return label;
-  }
-  return sector.length > 24 ? sector.slice(0, 24).trimEnd() + "…" : sector;
-}
 
 // ── Company name normalization for dedup ─────────────────────────────────────
 
@@ -125,7 +104,7 @@ const DOT_OPACITIES = [1.0, 0.72, 0.52, 0.38, 0.28];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function DealFlowSidebar({ deals, userProfile }: DealFlowSidebarProps) {
+export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], toggleSave }: DealFlowSidebarProps) {
   const userSectors = useMemo(
     () => userProfile?.sectors?.filter(Boolean) ?? [],
     [userProfile],
@@ -236,6 +215,48 @@ export function DealFlowSidebar({ deals, userProfile }: DealFlowSidebarProps) {
 
   return (
     <aside className="w-[268px] shrink-0 border-l border-border-base overflow-y-auto [scrollbar-gutter:stable] bg-cream">
+      {/* Section 0 — Saved deals (only shown when there are saves) */}
+      {enrichedSavedDeals.length > 0 && (
+        <div className="px-5 py-4 border-b border-border-base">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+              Saved Deals
+            </p>
+            <Link
+              href="/saved"
+              className="text-[10px] font-medium text-gold hover:opacity-80 transition-opacity"
+            >
+              View all →
+            </Link>
+          </div>
+          <div className="space-y-2">
+            {enrichedSavedDeals.slice(0, 4).map((deal) => (
+              <div key={deal.id} className="flex items-center gap-2">
+                <Bookmark size={10} className="text-gold shrink-0" fill="currentColor" />
+                <span className="text-[11px] text-text-primary flex-1 truncate">
+                  {deal.company}
+                </span>
+                {toggleSave && (
+                  <button
+                    type="button"
+                    onClick={() => toggleSave(deal.id)}
+                    className="text-text-muted hover:text-red-400 transition-colors shrink-0"
+                    aria-label="Remove saved deal"
+                  >
+                    <X size={10} />
+                  </button>
+                )}
+              </div>
+            ))}
+            {enrichedSavedDeals.length > 4 && (
+              <p className="text-[10px] text-text-muted">
+                +{enrichedSavedDeals.length - 4} more
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Section 1 — Pipeline velocity */}
       <div className="px-5 py-4 border-b border-border-base">
         <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted mb-3">

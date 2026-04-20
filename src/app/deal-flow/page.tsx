@@ -17,9 +17,11 @@ import {
   X,
   Check,
   Star,
+  Bookmark,
 } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { DealFlowSidebar } from "@/components/deal-flow/DealFlowSidebar";
+import { useSavedDeals } from "@/hooks/useSavedDeals";
 import { createBrowserClient } from "@supabase/ssr";
 
 function getSupabase() {
@@ -197,6 +199,9 @@ function DealFlowContent() {
   const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
   const [verticalMatchMode, setVerticalMatchMode] = useState<"any" | "all">("any");
   const [showAllTypes, setShowAllTypes] = useState(false);
+
+  // Saved deals
+  const { enrichedSavedDeals, isSaved, toggleSave } = useSavedDeals({ deals });
 
   // Profile-based sector pre-filter
   const { profile } = useUserProfile();
@@ -822,8 +827,23 @@ function DealFlowContent() {
                           "font-data text-[11px] cursor-pointer flex-shrink-0",
                           isAdded ? "text-signal-up" : "text-gold hover:text-gold-dark",
                         )}
+                        aria-label={isAdded ? "Remove from watchlist" : "Add to watchlist"}
                       >
                         {isAdded ? <Check size={12} /> : <Star size={12} />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); toggleSave(deal.id); }}
+                        className={cn(
+                          "cursor-pointer flex-shrink-0 transition-colors p-1.5 -m-1.5 rounded",
+                          isSaved(deal.id)
+                            ? "text-gold"
+                            : "text-text-muted hover:text-gold",
+                        )}
+                        aria-label={isSaved(deal.id) ? "Remove from saved deals" : "Save deal"}
+                        aria-pressed={isSaved(deal.id)}
+                      >
+                        <Bookmark size={12} fill={isSaved(deal.id) ? "currentColor" : "none"} />
                       </button>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
@@ -943,7 +963,7 @@ function DealFlowContent() {
           />
         )}
       </div>
-      <DealFlowSidebar deals={deals} userProfile={profile} />
+      <DealFlowSidebar deals={deals} userProfile={profile} enrichedSavedDeals={enrichedSavedDeals} toggleSave={toggleSave} />
       </div>
 
       {/* Memo Modal */}
