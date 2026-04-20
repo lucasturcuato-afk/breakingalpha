@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils";
 import type { ThesisItem, ThesisStatus, WeeklyDigest, PatternRow, SourceCredibilityRow } from "@/components/thesis";
 import { mapThesisRow } from "@/lib/thesis-mapper";
 import { trackClientEvent } from "@/lib/track-event";
+import { sortByRelevance, isOnWatchlist, sectorMatchesProfile as sectorMatchesProfileLib } from "@/lib/personalization";
+import type { ContentDescriptor } from "@/lib/personalization";
 
 interface RelatedArticle {
   id: string;
@@ -35,6 +37,14 @@ interface UserThesisState {
   notes?: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+function thesisToContent(thesis: ThesisItem): ContentDescriptor {
+  return {
+    sectors: [thesis.sector].filter(Boolean),
+    tickers: thesis.supporting_article_ids ?? [], // no tickers on thesis directly
+    title: thesis.title,
+  };
 }
 
 function sectorMatchesProfile(thesisSector: string, profileSectors: string[]): boolean {
@@ -418,13 +428,12 @@ function ThesisBoardContent() {
     const isNotUserArchived = (t: ThesisItem) => !userArchivedIds.has(t.id);
 
     if (convictionFilter === "recommended") {
-      const sectors = profile?.sectors ?? [];
-      if (sectors.length === 0) {
-        return theses.filter(isNotUserArchived);
+      const active = theses.filter(isNotUserArchived);
+      if (!profile || (profile.sectors ?? []).length === 0) {
+        return active;
       }
-      return theses
-        .filter((t) => isNotUserArchived(t) && sectorMatchesProfile(t.sector, sectors))
-        .sort((a, b) => ((b.adversarial_score ?? -1) - (a.adversarial_score ?? -1)));
+      // Use the scoring engine for relevance-ranked ordering
+      return sortByRelevance(active, profile, thesisToContent);
     }
     if (convictionFilter === "archived") return archivedTheses;
     if (convictionFilter === "pending_review") {
