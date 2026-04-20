@@ -20,3 +20,5 @@ CREATE POLICY "Users manage own saved deals"
 
 CREATE INDEX IF NOT EXISTS idx_user_saved_deals_user_id ON user_saved_deals(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_saved_deals_deal_id  ON user_saved_deals(deal_id);
+
+GRANT SELECT, INSERT, DELETE ON user_saved_deals TO authenticated;

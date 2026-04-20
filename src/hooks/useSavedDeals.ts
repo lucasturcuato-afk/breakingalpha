@@ -63,40 +63,29 @@ export function useSavedDeals(options?: UseSavedDealsOptions): UseSavedDealsRetu
   const [error, setError] = useState<string | null>(null);
   const fetchedIdsRef = useRef<string>("");
 
-  // Load saved deal IDs from user_saved_deals
+  // Load saved deal IDs via API route (server-side auth, correct auth.uid())
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setIsLoading(true);
-      const supabase = getSupabase();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.log("[useSavedDeals] DIAG: no authenticated user", { user });
-        setIsLoading(false);
-        return;
+      try {
+        const res = await fetch("/api/saved-deals");
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          console.error("[useSavedDeals] Load error:", res.status, body);
+          setIsLoading(false);
+          return;
+        }
+        const { savedDeals: rows } = await res.json();
+        if (!cancelled) {
+          console.log("[useSavedDeals] Loaded saved IDs:", rows.length, rows);
+          setSavedDeals(rows ?? []);
+          setIsLoading(false);
+        }
+      } catch (e) {
+        console.error("[useSavedDeals] Load exception:", e);
+        if (!cancelled) setIsLoading(false);
       }
-
-      const { data, error } = await supabase
-        .from("user_saved_deals")
-        .select("deal_id, saved_at")
-        .eq("user_id", user.id)
-        .order("saved_at", { ascending: false });
-
-      if (cancelled) return;
-
-      console.log("[useSavedDeals] DIAG: query result", { userId: user.id, data, error });
-
-      if (error) {
-        console.error("[useSavedDeals] Load error:", error.message);
-        setError(error.message);
-        setIsLoading(false);
-        return;
-      }
-
-      const rows = data ?? [];
-      console.log("[useSavedDeals] DIAG: setting savedDeals", rows.length, rows);
-      setSavedDeals(rows);
-      setIsLoading(false);
     }
     load();
     return () => { cancelled = true; };
@@ -108,7 +97,7 @@ export function useSavedDeals(options?: UseSavedDealsOptions): UseSavedDealsRetu
     if (isLoading || savedDeals.length === 0) return;
 
     const ids = savedDeals.map((s) => s.deal_id).sort().join(",");
-    if (ids === fetchedIdsRef.current) return; // avoid re-fetching same set
+    if (ids === fetchedIdsRef.current) return;
     fetchedIdsRef.current = ids;
 
     let cancelled = false;
@@ -121,7 +110,6 @@ export function useSavedDeals(options?: UseSavedDealsOptions): UseSavedDealsRetu
         if (error) {
           console.error("[useSavedDeals] Deal fetch error:", error.message);
         } else {
-          console.debug("[useSavedDeals] Fetched full deals:", data?.length, data);
           setFetchedDeals(data ?? []);
         }
       });
@@ -129,13 +117,11 @@ export function useSavedDeals(options?: UseSavedDealsOptions): UseSavedDealsRetu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, savedDeals, hasExternalDeals]);
 
-  // Memoize Set for O(1) lookups
   const savedDealIds = useMemo(
     () => new Set(savedDeals.map((s) => s.deal_id)),
     [savedDeals],
   );
 
-  // Enrich saved deals with full Deal data + saved_at
   const enrichedSavedDeals = useMemo((): EnrichedDeal[] => {
     const source = externalDeals ?? fetchedDeals;
     const dealMap: Record<string, Deal> = {};
@@ -159,45 +145,30 @@ export function useSavedDeals(options?: UseSavedDealsOptions): UseSavedDealsRetu
     const alreadySaved = savedDealIds.has(dealId);
     const prev = savedDeals;
 
-    // Optimistic update fires synchronously — before any await
+    // Optimistic update — fires synchronously before any await
     if (alreadySaved) {
       setSavedDeals((s) => s.filter((d) => d.deal_id !== dealId));
     } else {
       setSavedDeals((s) => [{ deal_id: dealId, saved_at: new Date().toISOString() }, ...s]);
     }
 
-    const supabase = getSupabase();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      console.error("[useSavedDeals] toggleSave: no authenticated user — reverting");
-      setSavedDeals(prev);
-      return;
-    }
-
-    let err: string | null = null;
-    if (alreadySaved) {
-      const { error } = await supabase
-        .from("user_saved_deals")
-        .delete()
-        .eq("user_id", user.id)
-        .eq("deal_id", dealId);
-      if (error) err = error.message;
-    } else {
-      const result = await supabase
-        .from("user_saved_deals")
-        .insert({ user_id: user.id, deal_id: dealId });
-      console.log("[useSavedDeals] DIAG insert result:", {
-        status: result.status,
-        statusText: result.statusText,
-        error: result.error,
+    try {
+      const res = await fetch("/api/saved-deals", {
+        method: alreadySaved ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deal_id: dealId }),
       });
-      if (result.error) err = result.error.message;
-    }
 
-    if (err) {
-      console.error("[useSavedDeals] toggleSave DB error:", err);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error("[useSavedDeals] toggleSave error:", res.status, body);
+        setSavedDeals(prev);
+        setError(body.error ?? "Failed to save deal");
+      }
+    } catch (e) {
+      console.error("[useSavedDeals] toggleSave exception:", e);
       setSavedDeals(prev);
-      setError(err);
+      setError("Network error");
     }
   }, [savedDeals, savedDealIds]);
 
