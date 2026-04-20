@@ -5,25 +5,6 @@ import { mapThesisRow } from "@/lib/thesis-mapper";
 
 export const dynamic = "force-dynamic";
 
-// Service-role client bypasses RLS — appropriate for authenticated user actions
-// routed through this server-only endpoint. Falls back to anon key if no
-// SUPABASE_SERVICE_ROLE_KEY is set (RLS must then allow UPDATE for the user).
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  { auth: { persistSession: false } }
-);
-
-if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  console.warn(
-    "[theses PATCH] SUPABASE_SERVICE_ROLE_KEY not set — using anon key.\n" +
-    "If UPDATE fails due to RLS, run this in Supabase SQL editor:\n" +
-    "  CREATE POLICY \"allow_authenticated_update\" ON theses\n" +
-    "  FOR UPDATE TO authenticated\n" +
-    "  USING (true) WITH CHECK (true);"
-  );
-}
-
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -31,12 +12,14 @@ export async function PATCH(
   const { user } = await getSupabaseWithUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
+  const supabaseAdmin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { auth: { persistSession: false } },
+  );
+
   const { id } = await params;
   const body = await request.json();
-
-  console.log("=== PATCH START ===");
-  console.log("id:", id);
-  console.log("body:", JSON.stringify(body));
 
   const updateData: Record<string, string> = {};
   if (body.status) updateData.status = body.status;
