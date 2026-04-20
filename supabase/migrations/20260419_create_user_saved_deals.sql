@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS user_saved_deals (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     UUID NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   deal_id     TEXT NOT NULL,
   saved_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (user_id, deal_id)
