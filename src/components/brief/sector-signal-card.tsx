@@ -36,7 +36,7 @@ export function SectorSignalCard({
       <h4 className="font-sans text-[11px] font-bold uppercase tracking-wide text-text-primary mb-1.5">
         {sector}
       </h4>
-      <p className="font-sans text-[11px] text-text-secondary leading-snug">
+      <p className="font-sans text-[11px] text-text-secondary dark:text-[#e8e8e4] leading-snug">
         {analysis}
       </p>
     </div>

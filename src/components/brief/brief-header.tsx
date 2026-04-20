@@ -144,8 +144,7 @@ export function BriefHeader({
           {headline}
         </h2>
         <p
-          className="font-sans text-[13px] leading-relaxed"
-          style={{ color: 'var(--espresso)', opacity: 0.75 }}
+          className="font-sans text-[13px] leading-relaxed text-espresso/75 dark:text-[#f5f5f3] dark:opacity-100"
         >
           {summary}
         </p>

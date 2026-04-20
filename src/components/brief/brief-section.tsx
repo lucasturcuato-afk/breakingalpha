@@ -48,7 +48,7 @@ export function BriefSection({
       </h3>
 
       {/* Content — full text always visible */}
-      <p className="font-sans text-[13px] text-text-secondary leading-[1.72]">
+      <p className="font-sans text-[13px] text-text-secondary dark:text-[#e8e8e4] leading-[1.72]">
         {cleanContent}
       </p>
 
