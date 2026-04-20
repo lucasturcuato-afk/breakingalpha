@@ -66,6 +66,8 @@ const RISK_OPTIONS: { id: RiskAppetite; label: string }[] = [
 
 /* ── Props ── */
 
+const DEFAULT_MARKET_CARDS = ["SPY", "VIX", "TNX", "SIGNALS"];
+
 interface PreferencesFormProps {
   initialFirstName: string;
   initialFirmOrSchool: string;
@@ -76,6 +78,7 @@ interface PreferencesFormProps {
   initialWorkflow: WorkflowStyle | null;
   initialRisk: RiskAppetite;
   initialWatchlist: string[];
+  initialMarketCards?: string[];
 }
 
 /* ── Component ── */
@@ -90,6 +93,7 @@ export function PreferencesForm({
   initialWorkflow,
   initialRisk,
   initialWatchlist,
+  initialMarketCards,
 }: PreferencesFormProps) {
   const router = useRouter();
 
@@ -103,6 +107,9 @@ export function PreferencesForm({
   const [risk, setRisk] = useState<RiskAppetite>(initialRisk);
   const [watchlist, setWatchlist] = useState<string[]>(initialWatchlist);
   const [tickerInput, setTickerInput] = useState("");
+  const [marketCards, setMarketCards] = useState<string[]>(
+    initialMarketCards && initialMarketCards.length > 0 ? initialMarketCards : DEFAULT_MARKET_CARDS,
+  );
 
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -152,6 +159,7 @@ export function PreferencesForm({
           workflow_style: workflow,
           risk_appetite: risk,
           watchlist_tickers: watchlist,
+          market_cards: marketCards.filter(Boolean).slice(0, 4),
         }),
       });
 
@@ -352,6 +360,38 @@ export function PreferencesForm({
             ))}
           </div>
         )}
+      </section>
+
+      {/* SECTION 6 — Dashboard Market Cards */}
+      <section className="bg-parchment border border-border-base rounded-2xl p-6">
+        <h2 className="font-display text-[16px] font-bold text-espresso mb-1">
+          Dashboard Market Cards
+        </h2>
+        <p className="font-sans text-[12px] text-text-secondary mb-4">
+          Choose up to 4 indices or tickers to display on your dashboard.
+          Use SIGNALS for the signals counter.
+        </p>
+        <div className="grid grid-cols-4 gap-3">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i}>
+              <label className="font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wide mb-1 block">
+                Card {i + 1}
+              </label>
+              <Input
+                value={marketCards[i] ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value.toUpperCase().replace(/[^A-Z0-9\-^.]/g, "");
+                  setMarketCards((prev) => {
+                    const next = [...prev];
+                    next[i] = val;
+                    return next;
+                  });
+                }}
+                placeholder={DEFAULT_MARKET_CARDS[i] ?? "e.g. AAPL"}
+              />
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* Save button */}

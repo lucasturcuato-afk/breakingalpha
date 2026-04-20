@@ -46,11 +46,14 @@ function timeAgo(dateStr: string): string {
 
 const sparkSignals = [3, 5, 2, 7, 4, 8, 6, 9, 5, 11, 8, 14];
 
-interface MarketIndices {
-  spx: { value: string; pct: number } | null;
-  vix: { value: string; pct: number } | null;
-  tnx: { value: string; pct: number } | null;
+interface MarketCardData {
+  symbol: string;
+  label: string;
+  value: string;
+  pct: number;
 }
+
+const DEFAULT_MARKET_CARDS = ["SPY", "VIX", "TNX", "SIGNALS"];
 
 // ── "For You" scoring helpers ──
 
@@ -77,7 +80,7 @@ export default function DashboardPage() {
   const [stories, setStories] = useState<StoryData[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
   const [storyCount, setStoryCount] = useState(0);
-  const [indices, setIndices] = useState<MarketIndices>({ spx: null, vix: null, tnx: null });
+  const [marketCards, setMarketCards] = useState<Record<string, MarketCardData | null>>({});
   const [storyTab, setStoryTab] = useState<"for-you" | "all">("all");
 
   useEffect(() => {
@@ -163,23 +166,29 @@ export default function DashboardPage() {
     loadStories();
   }, []);
 
+  // Read user's market_cards preference from profile (or use defaults)
+  const userMarketCards = useMemo(() => {
+    const raw = (profile as Record<string, unknown> | null)?.market_cards;
+    if (Array.isArray(raw) && raw.length > 0) return raw as string[];
+    return DEFAULT_MARKET_CARDS;
+  }, [profile]);
+
+  // Fetch market card data for user's chosen symbols
   useEffect(() => {
-    async function loadIndices() {
+    async function loadMarketCards() {
+      const marketSymbols = userMarketCards.filter((s) => s !== "SIGNALS");
+      if (marketSymbols.length === 0) return;
       try {
-        const res = await fetch("/api/market-indices");
+        const res = await fetch(`/api/market-indices?symbols=${marketSymbols.join(",")}`);
         if (!res.ok) return;
         const data = await res.json();
-        setIndices({
-          spx: data.spx ?? null,
-          vix: data.vix ?? null,
-          tnx: data.tnx ?? null,
-        });
+        setMarketCards(data.cards ?? {});
       } catch {
-        // Leave indices as null — cards will show "—"
+        // Leave cards empty — will show "—"
       }
     }
-    loadIndices();
-  }, []);
+    loadMarketCards();
+  }, [userMarketCards]);
 
   // Switch to "For You" tab when profile is loaded and onboarded
   useEffect(() => {
@@ -261,38 +270,37 @@ export default function DashboardPage() {
           context={greetingSubtitle ?? "markets are adjusting to new export policy data."}
         />
 
-        {/* Stat cards */}
-        <div className="grid grid-cols-4 gap-2.5 mt-4">
-          <StatCard
-            label="S&P 500"
-            value={indices.spx?.value ?? "—"}
-            change={indices.spx?.pct ?? 0}
-            accentGold
-            detailRows={[]}
-          />
-          <StatCard
-            label="VIX Fear Index"
-            value={indices.vix?.value ?? "—"}
-            change={indices.vix?.pct ?? 0}
-            detailRows={[]}
-          />
-          <StatCard
-            label="10Y Yield"
-            value={indices.tnx?.value ?? "—"}
-            change={indices.tnx?.pct ?? 0}
-            detailRows={[]}
-          />
-          <StatCard
-            label="Signals Today"
-            value={String(storyCount)}
-            change={0}
-            accentGold
-            sparkData={sparkSignals}
-            detailRows={[
-              { label: "Bullish", value: "—" },
-              { label: "Bearish", value: "—" },
-            ]}
-          />
+        {/* Stat cards — dynamic from user profile */}
+        <div className={cn("grid gap-2.5 mt-4", `grid-cols-${Math.min(userMarketCards.length, 4)}`)}>
+          {userMarketCards.map((sym, i) => {
+            if (sym === "SIGNALS") {
+              return (
+                <StatCard
+                  key="SIGNALS"
+                  label="Signals Today"
+                  value={String(storyCount)}
+                  change={0}
+                  accentGold
+                  sparkData={sparkSignals}
+                  detailRows={[
+                    { label: "Bullish", value: "—" },
+                    { label: "Bearish", value: "—" },
+                  ]}
+                />
+              );
+            }
+            const card = marketCards[sym.toUpperCase()];
+            return (
+              <StatCard
+                key={sym}
+                label={card?.label ?? sym}
+                value={card?.value ?? "—"}
+                change={card?.pct ?? 0}
+                accentGold={i === 0}
+                detailRows={[]}
+              />
+            );
+          })}
         </div>
 
         {/* System Intelligence */}
