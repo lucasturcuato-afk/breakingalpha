@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
@@ -28,9 +28,15 @@ const SECTOR_ETF_MAP: Record<string, string> = {
  * POST /api/theses/backfill-tickers
  * One-time: backfill null tickers via Gemini, then clean up duplicates.
  */
-export async function POST() {
-  const { user } = await getSupabaseWithUser();
-  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+export async function POST(request: NextRequest) {
+  // Internal key bypass for CLI / cron usage
+  const internalKey = request.headers.get("x-internal-key");
+  if (internalKey && internalKey === process.env.INTERNAL_API_KEY) {
+    // Authorized via internal key — skip session auth
+  } else {
+    const { user } = await getSupabaseWithUser();
+    if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
 
   const adminSupabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
