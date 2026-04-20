@@ -24,6 +24,7 @@ import { DealFlowSidebar } from "@/components/deal-flow/DealFlowSidebar";
 import { useSavedDeals } from "@/hooks/useSavedDeals";
 import { createBrowserClient } from "@supabase/ssr";
 import { dealRelevanceScore, dealIsWatchlistMatch, getDealTypeStyle } from "@/lib/deal-utils";
+import { useLiveMood } from "@/hooks/useLiveMood";
 
 function fireEvent(event_type: string, payload: Record<string, unknown> = {}) {
   fetch("/api/user-events", {
@@ -163,6 +164,7 @@ export default function DealFlowPage() {
 }
 
 function DealFlowContent() {
+  const { mood, moodHeadline, moodDetails } = useLiveMood();
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStage, setFilterStage] = useState<StageFilter>("ALL");
@@ -383,7 +385,7 @@ function DealFlowContent() {
   }, [deals, filterStage, search, selectedActivityTypes, activityMatchMode, selectedVerticals, verticalMatchMode, showAllTypes]);
 
   return (
-    <AppShell pageTitle="Deal Flow" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
+    <AppShell pageTitle="Deal Flow" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
       <div className="flex flex-1 overflow-hidden">
       <div className="flex-1 min-w-0 overflow-y-auto p-6">
         {/* Header */}

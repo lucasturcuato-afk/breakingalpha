@@ -101,6 +101,7 @@ export default function MorningBriefPage() {
   const [user, setUser] = useState<{ id: string } | null | undefined>(undefined);
   const [showSignIn, setShowSignIn] = useState(false);
   const [formatLabel, setFormatLabel] = useState<string | null>(null);
+  const [userAddendum, setUserAddendum] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -150,6 +151,9 @@ export default function MorningBriefPage() {
           }
           if (data.personalization?.format_label) {
             setFormatLabel(data.personalization.format_label);
+          }
+          if (typeof data.user_addendum === "string") {
+            setUserAddendum(data.user_addendum);
           }
         }
 
@@ -276,9 +280,15 @@ export default function MorningBriefPage() {
   return (
     <AppShell
       pageTitle="Morning Brief"
-      mood="risk-off"
-      moodHeadline="Risk-Off regime"
-      moodDetails={["VIX 18.5", "10Y 4.52%"]}
+      mood={
+        briefing?.market_tone?.toLowerCase().includes("bearish") || briefing?.market_tone?.toLowerCase().includes("risk-off")
+          ? "risk-off"
+          : briefing?.market_tone?.toLowerCase().includes("bullish") || briefing?.market_tone?.toLowerCase().includes("risk-on")
+            ? "risk-on"
+            : "neutral"
+      }
+      moodHeadline={briefing?.market_tone || "Loading..."}
+      moodDetails={[]}
       rightPanel={
         <>
           <PanelWidget title="Active Theses">
@@ -329,6 +339,18 @@ export default function MorningBriefPage() {
               }}
               onAddThesis={handleLeadAddThesis}
             />
+
+            {/* Per-user personalized addendum from user_synthesis pipeline */}
+            {userAddendum && (
+              <div className="mb-4 px-4 py-3 rounded-xl border border-gold/20 bg-gold-muted/30">
+                <p className="font-sans text-[10px] uppercase tracking-widest font-bold text-gold mb-1.5">
+                  Your Personalized Briefing
+                </p>
+                <p className="font-sans text-[12px] text-text-primary leading-relaxed whitespace-pre-line">
+                  {userAddendum}
+                </p>
+              </div>
+            )}
 
             {/* Export & Share */}
             <div className="flex items-center gap-2 mb-4">

@@ -12,6 +12,10 @@ const SYMBOL_MAP: Record<string, { yahoo: string; label: string; format: "price"
   GLD:  { yahoo: "GLD",   label: "Gold",            format: "price" },
   TLT:  { yahoo: "TLT",   label: "20Y Treasury",    format: "price" },
   DXY:  { yahoo: "DX-Y.NYB", label: "US Dollar",    format: "price" },
+  BTC:  { yahoo: "BTC-USD",  label: "Bitcoin",        format: "price" },
+  ETH:  { yahoo: "ETH-USD",  label: "Ethereum",       format: "price" },
+  GOLD: { yahoo: "GC=F",     label: "Gold Futures",    format: "price" },
+  OIL:  { yahoo: "CL=F",     label: "Crude Oil",       format: "price" },
 };
 
 async function fetchYahoo(symbol: string): Promise<{ raw: number; pct: number } | null> {

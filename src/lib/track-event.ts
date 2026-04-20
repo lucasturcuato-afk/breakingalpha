@@ -31,8 +31,12 @@ export function trackClientEvent(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ event_type, payload }),
       keepalive: true,
-    }).catch(() => {
-      // Silent — event tracking must never break UX.
+    }).then((res) => {
+      if (!res.ok) {
+        console.error(`[track-event] ${event_type} failed: HTTP ${res.status}`);
+      }
+    }).catch((err) => {
+      console.error(`[track-event] ${event_type} network error:`, err);
     });
   } catch {
     // ignore

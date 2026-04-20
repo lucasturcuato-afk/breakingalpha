@@ -3,6 +3,7 @@ embedding_job.py — BreakingAlpha
 Embeds articles and theses into content_embeddings for RAG retrieval.
 Uses Gemini embedding API + pgvector.
 """
+from __future__ import annotations
 
 import os
 import time
@@ -93,13 +94,14 @@ def _embed_text(text: str) -> list[float] | None:
         return None
 
 
-def _store_embedding(content_type: str, content_id: str, embedding: list[float]):
+def _store_embedding(content_type: str, content_id: str, embedding: list[float], content_text: str):
     """Insert a row into content_embeddings."""
     supabase.table("content_embeddings").insert(
         {
             "content_type": content_type,
             "content_id": content_id,
             "embedding": embedding,
+            "content_text": content_text,
         }
     ).execute()
 
@@ -113,7 +115,7 @@ def _process_batch(items: list[dict], content_type: str) -> int:
         if embedding is None:
             continue
         try:
-            _store_embedding(content_type, row["id"], embedding)
+            _store_embedding(content_type, row["id"], embedding, text)
             success += 1
         except Exception as e:
             print(f"  ⚠️  Insert error for {content_type} {row['id']}: {e}")

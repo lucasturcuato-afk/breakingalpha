@@ -16,6 +16,7 @@ import { mapThesisRow } from "@/lib/thesis-mapper";
 import { trackClientEvent } from "@/lib/track-event";
 import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
 import type { ContentDescriptor } from "@/lib/personalization";
+import { useLiveMood } from "@/hooks/useLiveMood";
 
 interface RelatedArticle {
   id: string;
@@ -42,7 +43,7 @@ interface UserThesisState {
 function thesisToContent(thesis: ThesisItem): ContentDescriptor {
   return {
     sectors: [thesis.sector].filter(Boolean),
-    tickers: thesis.supporting_article_ids ?? [], // no tickers on thesis directly
+    tickers: thesis.ticker ? [thesis.ticker] : [],
     title: thesis.title,
   };
 }
@@ -183,6 +184,7 @@ function ThesisBoardContent() {
   const [userThesisStates, setUserThesisStates] = useState<UserThesisState[]>([]);
   const [viewMode, setViewMode] = useState<"list" | "board">("list");
   const { profile } = useUserProfile();
+  const { mood, moodHeadline, moodDetails } = useLiveMood();
 
   // Switch to recommended filter when profile is loaded and onboarded
   useEffect(() => {
@@ -420,12 +422,17 @@ function ThesisBoardContent() {
     const isNotUserArchived = (t: ThesisItem) => !userArchivedIds.has(t.id);
 
     if (convictionFilter === "recommended") {
-      const active = theses.filter(isNotUserArchived);
+      // Only show HIGH or MEDIUM conviction theses in Recommended tab
+      const highMed = theses.filter(
+        (t) =>
+          (t.conviction === "HIGH" || t.conviction === "BULLISH" || t.conviction === "MEDIUM") &&
+          isNotUserArchived(t)
+      );
       if (!profile || (profile.sectors ?? []).length === 0) {
-        return active;
+        return highMed;
       }
       // Use the scoring engine for relevance-ranked ordering
-      return sortByRelevance(active, profile, thesisToContent);
+      return sortByRelevance(highMed, profile, thesisToContent);
     }
     if (convictionFilter === "archived") return archivedTheses;
     if (convictionFilter === "pending_review") {
@@ -453,7 +460,7 @@ function ThesisBoardContent() {
   }, [theses, archivedTheses, convictionFilter, profile, userArchivedIds]);
 
   return (
-    <AppShell pageTitle="Thesis Board" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
+    <AppShell pageTitle="Thesis Board" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
       <div className="p-6">
         {loading ? (
           <div className="space-y-3">
@@ -519,7 +526,7 @@ function ThesisBoardContent() {
               <div className="flex gap-2">
                 {(
                   [
-                    { key: "recommended" as const, label: "Recommended", count: theses.filter((t) => !userArchivedIds.has(t.id)).length },
+                    { key: "recommended" as const, label: "Recommended", count: theses.filter((t) => !userArchivedIds.has(t.id) && (t.conviction === "HIGH" || t.conviction === "BULLISH" || t.conviction === "MEDIUM")).length },
                     { key: "HIGH" as const, label: "HIGH", count: convictionCounts.HIGH },
                     { key: "MEDIUM" as const, label: "MEDIUM", count: convictionCounts.MEDIUM },
                     { key: "WATCH" as const, label: "WATCH", count: convictionCounts.WATCH },

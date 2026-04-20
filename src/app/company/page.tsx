@@ -24,6 +24,7 @@ import {
 } from "@/lib/company-intel";
 import { CompletenessBadge, SignalScore, SourceCredibilityBadge, getCompleteness, getAdjustedScore } from "@/lib/article-signal";
 import type { Completeness } from "@/lib/article-signal";
+import { useLiveMood } from "@/hooks/useLiveMood";
 
 function getSupabase() {
   return createBrowserClient(
@@ -170,6 +171,7 @@ const COMPANY_VERTICAL_OVERRIDES: Record<string, string> = {
 };
 
 export default function CompanyIntelPage() {
+  const { mood, moodHeadline, moodDetails } = useLiveMood();
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [companies, setCompanies] = useState<CompanyData[]>([]);
@@ -374,7 +376,7 @@ export default function CompanyIntelPage() {
   };
 
   return (
-    <AppShell pageTitle="Company Intel" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
+    <AppShell pageTitle="Company Intel" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
       <div className="flex h-[calc(100vh-var(--topbar-height)-var(--moodbar-height))]">
         {/* Main panel */}
         <div className={cn("flex-1 overflow-y-auto p-6", selectedCompany && "pr-0")}>

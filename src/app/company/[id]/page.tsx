@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { AppShell } from "@/components/shell";
+import { LiveMoodShell } from "@/components/shell/live-mood-shell";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { CompanyDetailClient } from "@/components/company/company-detail-client";
 import {
@@ -83,12 +83,7 @@ export default async function CompanyDetailPage({
   const systemPrompt = buildMemoSystemPrompt(companyName);
 
   return (
-    <AppShell
-      pageTitle="Company Intel"
-      mood="neutral"
-      moodHeadline="Markets steady"
-      moodDetails={["VIX 14.2", "S&amp;P +0.38%"]}
-    >
+    <LiveMoodShell pageTitle="Company Intel">
       <CompanyDetailClient
         companyName={companyName}
         industry={identity?.industry ?? null}
@@ -99,6 +94,6 @@ export default async function CompanyDetailPage({
         totalArticles={classified.length}
         credibilityMap={credibilityMap}
       />
-    </AppShell>
+    </LiveMoodShell>
   );
 }

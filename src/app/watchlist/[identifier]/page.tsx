@@ -12,6 +12,7 @@ import { MemoModal } from "@/components/memo/MemoModal";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import { buildArticleOrFilter } from "@/lib/watchlist-utils";
 import { clusterArticles, type ArticleCluster } from "@/lib/clustering-utils";
+import { useLiveMood } from "@/hooks/useLiveMood";
 
 function getSupabase() {
   return createBrowserClient(
@@ -130,6 +131,7 @@ export default function WatchlistIdentifierPage({
 }: {
   params: Promise<{ identifier: string }>;
 }) {
+  const { mood, moodHeadline, moodDetails } = useLiveMood();
   const { identifier } = use(params);
   const decoded = decodeURIComponent(identifier);
   const ident = decoded.toLowerCase();
@@ -698,9 +700,9 @@ Constraints:
   return (
     <AppShell
       pageTitle={decoded}
-      mood="neutral"
-      moodHeadline="Markets steady"
-      moodDetails={["VIX 14.2", "S&P +0.38%"]}
+      mood={mood}
+      moodHeadline={moodHeadline}
+      moodDetails={moodDetails}
     >
       <style>{`
   @media print {

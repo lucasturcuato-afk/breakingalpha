@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
-import { trackEvent, type UserEventType } from "@/lib/user-profile";
+import type { UserEventType } from "@/lib/user-profile";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -21,7 +22,7 @@ const VALID_TYPES: UserEventType[] = [
 
 export async function POST(request: NextRequest) {
   try {
-    const { supabase, user } = await getSupabaseWithUser();
+    const { user } = await getSupabaseWithUser();
     if (!user) {
       // Don't 401 — this is fire-and-forget and a 401 would spam the console.
       return NextResponse.json({ ok: false, reason: "unauthenticated" }, { status: 204 });
@@ -39,7 +40,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await trackEvent(supabase, user.id, body.event_type, body.payload ?? {});
+    // Use service role client to bypass RLS on user_events table
+    const adminSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+
+    const { error } = await adminSupabase.from("user_events").insert({
+      user_id: user.id,
+      event_type: body.event_type,
+      payload: body.payload ?? {},
+    });
+
+    if (error) {
+      console.error("[user-events] insert failed:", error.message);
+      return NextResponse.json({ ok: false, reason: error.message }, { status: 200 });
+    }
+
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.warn("[user-events] error:", err);

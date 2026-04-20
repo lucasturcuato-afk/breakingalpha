@@ -13,6 +13,7 @@ import { useUserProfile } from "@/hooks/useUserProfile";
 import { trackClientEvent } from "@/lib/track-event";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import type { SignalData } from "@/components/trends";
+import { useLiveMood } from "@/hooks/useLiveMood";
 
 const INDUSTRY_VERTICALS = [
   "Technology", "Healthcare & Biotech", "Energy & Oil/Gas", "Financial Services",
@@ -121,6 +122,7 @@ function getSupabase() {
 }
 
 export default function TrendsPage() {
+  const { mood, moodHeadline, moodDetails } = useLiveMood();
   const router = useRouter();
   const { profile } = useUserProfile();
   const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
@@ -227,7 +229,7 @@ export default function TrendsPage() {
   }, [filtered]);
 
   return (
-    <AppShell pageTitle="Trends" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
+    <AppShell pageTitle="Trends" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
       {/* Preview nudge banner */}
       {isSignedOut && (
         <div className="px-6 py-3 border-b border-gold/20 flex items-center justify-between" style={{ backgroundColor: "var(--gold-muted)" }}>

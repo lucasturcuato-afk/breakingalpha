@@ -17,6 +17,7 @@ import { SignInModal } from "@/components/auth/sign-in-modal";
 import { FileText } from "lucide-react";
 import Link from "next/link";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
+import { useLiveMood } from "@/hooks/useLiveMood";
 
 function getSupabase() {
   return createBrowserClient(
@@ -37,6 +38,7 @@ function timeAgo(dateStr: string): string {
 const sparkSignals = [3, 5, 2, 7, 4, 8, 6, 9, 5, 11, 8, 14];
 
 export default function PreviewPage() {
+  const { mood, moodHeadline, moodDetails } = useLiveMood();
   const [stories, setStories] = useState<StoryData[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
   const [storyCount, setStoryCount] = useState(0);
@@ -152,9 +154,9 @@ export default function PreviewPage() {
     <PreviewContext.Provider value={true}>
       <AppShell
         pageTitle="Dashboard"
-        mood="risk-off"
-        moodHeadline="Risk-Off regime"
-        moodDetails={["VIX 18.5 ▲", "10Y 4.52%", "DXY strengthening"]}
+        mood={mood}
+        moodHeadline={moodHeadline}
+        moodDetails={moodDetails}
         isPreview={true}
       >
         <div className="p-6 space-y-5 max-w-[960px]">

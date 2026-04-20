@@ -11,6 +11,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
 import type { StoryData } from "@/components/dashboard";
 import { SignInModal } from "@/components/auth/sign-in-modal";
+import { useLiveMood } from "@/hooks/useLiveMood";
 
 interface LiveStory extends StoryData {
   _publishedAt?: string;
@@ -64,6 +65,7 @@ function getTimeBucket(dateStr: string): string {
 }
 
 export default function LiveFeedPage() {
+  const { mood, moodHeadline, moodDetails } = useLiveMood();
   const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
   const [selectedActivityTypes, setSelectedActivityTypes] = useState<string[]>([]);
   const [showAlertsOnly, setShowAlertsOnly] = useState(false);
@@ -252,7 +254,7 @@ export default function LiveFeedPage() {
   }, [filtered]);
 
   return (
-    <AppShell pageTitle="Live Feed" mood="risk-off" moodHeadline="Risk-Off regime" moodDetails={["VIX 18.5", "10Y 4.52%"]}>
+    <AppShell pageTitle="Live Feed" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
       {/* Toolbar */}
       <div className="sticky top-0 z-10 bg-parchment border-b border-border-base">
         <FilterBar

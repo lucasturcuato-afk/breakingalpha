@@ -279,8 +279,34 @@ export async function GET(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Run both queries in parallel — briefing row + latest pipeline_run for this type
-  const [briefingResult, runResult] = await Promise.all([
+  // Print user_briefings DDL (informational — run in Supabase SQL editor if not yet applied)
+  console.log(`[briefing] user_briefings DDL:
+create table if not exists public.user_briefings (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  briefing_type text not null,
+  addendum text not null default '',
+  profile_hash text,
+  generated_at timestamptz not null default now()
+);
+create index if not exists user_briefings_user_type_idx on public.user_briefings(user_id, briefing_type);
+create index if not exists user_briefings_generated_at_idx on public.user_briefings(generated_at desc);
+`);
+
+  // Run queries in parallel — briefing row + latest pipeline_run + user addendum
+  const userId = token ? await (async () => {
+    try {
+      const authedClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        { global: { headers: { Authorization: `Bearer ${token}` } } }
+      );
+      const { data: { user } } = await authedClient.auth.getUser();
+      return user?.id ?? null;
+    } catch { return null; }
+  })() : null;
+
+  const [briefingResult, runResult, addendumResult] = await Promise.all([
     supabase
       .from("briefings")
       .select("*")
@@ -294,9 +320,35 @@ export async function GET(request: NextRequest) {
       .eq("brief_type", type)
       .order("started_at", { ascending: false })
       .limit(1),
+    // Best-effort: fetch per-user addendum from user_briefings (written by user_synthesis.py)
+    userId
+      ? supabase
+          .from("user_briefings")
+          .select("addendum, generated_at")
+          .eq("user_id", userId)
+          .eq("briefing_type", type)
+          .order("generated_at", { ascending: false })
+          .limit(1)
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
   const { data: bData, error } = briefingResult;
+  // Per-user addendum from user_synthesis.py (best-effort, never blocks)
+  const userAddendum: string | null = (() => {
+    try {
+      const row = addendumResult?.data?.[0];
+      if (row && typeof (row as Record<string, unknown>).addendum === "string") {
+        return (row as Record<string, unknown>).addendum as string;
+      }
+    } catch {
+      // user_briefings table may not exist yet — soft-fail
+    }
+    return null;
+  })();
+  if (addendumResult?.error) {
+    console.log("[briefing] user_briefings lookup failed (continuing):", addendumResult.error.message);
+  }
+
   // pipeline_runs is not in the generated Supabase Database type; cast explicitly.
   const lastRun = (runResult.data?.[0] ?? null) as {
     id: string; status: string; started_at: string;
@@ -341,6 +393,7 @@ export async function GET(request: NextRequest) {
       briefing: raw,
       pref_applied: false,
       personalization: buildBriefPersonalization(userProfile, type),
+      user_addendum: userAddendum,
       briefing_age_hours: briefingAgeHours,
       is_stale: isStale,
       last_attempt_status: lastRun?.status ?? null,
@@ -381,6 +434,7 @@ export async function GET(request: NextRequest) {
     briefing,
     pref_applied: true,
     personalization: buildBriefPersonalization(userProfile, type),
+    user_addendum: userAddendum,
     profile_role: userProfile?.role ?? null,
     profile_risk_appetite: userProfile?.risk_appetite ?? null,
     briefing_age_hours: briefingAgeHours,

@@ -86,6 +86,7 @@ export default function EveningWrapPage() {
   const [leadMemoContent, setLeadMemoContent] = useState("");
   const [toast, setToast] = useState("");
   const [formatLabel, setFormatLabel] = useState<string | null>(null);
+  const [userAddendum, setUserAddendum] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -128,6 +129,9 @@ export default function EveningWrapPage() {
           }
           if (data.personalization?.format_label) {
             setFormatLabel(data.personalization.format_label);
+          }
+          if (typeof data.user_addendum === "string") {
+            setUserAddendum(data.user_addendum);
           }
         }
 
@@ -227,9 +231,15 @@ export default function EveningWrapPage() {
   return (
     <AppShell
       pageTitle="Evening Wrap"
-      mood="neutral"
-      moodHeadline="Session closed"
-      moodDetails={["S&P +0.38%", "VIX 14.2"]}
+      mood={
+        briefing?.market_tone?.toLowerCase().includes("bearish") || briefing?.market_tone?.toLowerCase().includes("risk-off")
+          ? "risk-off"
+          : briefing?.market_tone?.toLowerCase().includes("bullish") || briefing?.market_tone?.toLowerCase().includes("risk-on")
+            ? "risk-on"
+            : "neutral"
+      }
+      moodHeadline={briefing?.market_tone || "Session closed"}
+      moodDetails={[]}
       rightPanel={
         <>
           <PanelWidget title="Active Theses">
@@ -295,6 +305,18 @@ export default function EveningWrapPage() {
                 }
               }}
             />
+
+            {/* Per-user personalized addendum from user_synthesis pipeline */}
+            {userAddendum && (
+              <div className="mb-4 px-4 py-3 rounded-xl border border-gold/20 bg-gold-muted/30">
+                <p className="font-sans text-[10px] uppercase tracking-widest font-bold text-gold mb-1.5">
+                  Your Personalized Wrap
+                </p>
+                <p className="font-sans text-[12px] text-text-primary leading-relaxed whitespace-pre-line">
+                  {userAddendum}
+                </p>
+              </div>
+            )}
 
             {/* Export & Share */}
             <div className="flex items-center gap-2 mb-4">

@@ -23,6 +23,7 @@ import { MemoModal } from "@/components/memo/MemoModal";
 import { WatchlistAddInput, type AddType } from "@/components/watchlist/WatchlistAddInput";
 import { buildArticleOrFilter } from "@/lib/watchlist-utils";
 import { trackClientEvent } from "@/lib/track-event";
+import { useLiveMood } from "@/hooks/useLiveMood";
 
 function getSupabase() {
   return createBrowserClient(
@@ -356,6 +357,7 @@ function cleanDisplayName(name: string | null | undefined): string | null {
 }
 
 export default function WatchlistPage() {
+  const { mood, moodHeadline, moodDetails } = useLiveMood();
   const router = useRouter();
   const [memoEntry, setMemoEntry] = useState<WatchlistEntry | null>(null);
   const [articleMemoEntry, setArticleMemoEntry] = useState<MatchedArticle | null>(null);
@@ -813,7 +815,7 @@ export default function WatchlistPage() {
   }, [selectedEntryIndex, allEntries]);
 
   return (
-    <AppShell pageTitle="Watchlist" mood="neutral" moodHeadline="Markets steady" moodDetails={["VIX 14.2", "S&P +0.38%"]}>
+    <AppShell pageTitle="Watchlist" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
       <div
         style={{
           display: 'flex',

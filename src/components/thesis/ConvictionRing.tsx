@@ -35,7 +35,6 @@ export function ConvictionRing({
 
   const thickness = Math.max(2, Math.round(size * 0.1))
   const innerSize = size - thickness * 2
-  const fontSize = Math.max(7, Math.round(size * 0.2))
 
   return (
     <div
@@ -71,10 +70,9 @@ export function ConvictionRing({
           }}
         >
           <span
+            className="text-[9px] font-medium"
             style={{
               fontFamily: 'Inter, sans-serif',
-              fontSize: `${fontSize}px`,
-              fontWeight: 600,
               letterSpacing: '0.04em',
               lineHeight: '1',
               color,

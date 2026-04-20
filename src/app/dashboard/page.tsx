@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
 import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
 import type { ContentDescriptor } from "@/lib/personalization";
+import { useLiveMood } from "@/hooks/useLiveMood";
 
 function getSupabase() {
   return createBrowserClient(
@@ -206,6 +207,9 @@ export default function DashboardPage() {
   const displayStories = storyTab === "for-you" ? forYouStories : stories;
   const watchlistTickers = profile?.watchlist_tickers ?? [];
 
+  // Compute mood from live VIX data
+  const { mood, moodHeadline, moodDetails } = useLiveMood();
+
   // Personalized greeting subtitle
   const greetingSubtitle = useMemo(() => {
     if (!profile || !profile.onboarding_completed) return undefined;
@@ -243,9 +247,9 @@ export default function DashboardPage() {
   return (
     <AppShell
       pageTitle="Dashboard"
-      mood="risk-off"
-      moodHeadline="Risk-Off regime"
-      moodDetails={["VIX 18.5 ▲", "10Y 4.52%", "DXY strengthening"]}
+      mood={mood}
+      moodHeadline={moodHeadline}
+      moodDetails={moodDetails}
       rightPanel={
         <>
           <PanelWidget title="Daily Briefs">

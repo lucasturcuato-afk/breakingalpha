@@ -406,7 +406,7 @@ Return a JSON array only. Each object must have exactly these fields:
   rationale: string (3-4 sentences, specific companies and data),
   catalyst: string (1-2 sentences, what triggered this),
   supporting_article_ids: string[] (minimum 2 article IDs),
-  ticker: string | null (single primary US ticker this thesis can be graded against — e.g. "AAPL", "MSFT", or null if the thesis is macro/sector and has no one primary ticker),
+  ticker: string (REQUIRED — single primary US ticker this thesis can be graded against. For company-specific theses use the company ticker e.g. "AAPL", "MSFT". For macro/sector theses use the most relevant sector ETF: "SPY" for broad market, "XLF" for financials, "XLK" for tech, "XLE" for energy, "XLV" for healthcare, "XLI" for industrials, "XLC" for communications, "XLY" for consumer discretionary, "XLP" for consumer staples, "XLU" for utilities, "XLB" for materials, "XLRE" for real estate, "GLD" for gold, "TLT" for bonds, "DXY" for dollar. NEVER return null — always pick the single best ticker),
   horizon: "7d" | "30d" | "90d" (how long until this thesis should be graded — match the catalyst timing),
   verifiable_signal: string (ONE sentence stating a concrete, falsifiable outcome that will confirm or invalidate the thesis — e.g. "AAPL closes above $230 within 30 days" or "TSLA Q2 earnings beat consensus by >5%")
 }
@@ -516,13 +516,35 @@ ${clusterBlocks}`;
       }
     }
 
+    // Sector → ETF fallback map for when Gemini returns null ticker
+    const SECTOR_ETF_MAP: Record<string, string> = {
+      technology: "XLK", tech: "XLK", software: "XLK",
+      financials: "XLF", finance: "XLF", banking: "XLF",
+      healthcare: "XLV", health: "XLV", biotech: "XLV", pharma: "XLV",
+      energy: "XLE", oil: "XLE", "oil & gas": "XLE",
+      industrials: "XLI", industrial: "XLI", defense: "XLI", aerospace: "XLI",
+      "consumer discretionary": "XLY", retail: "XLY", "consumer cyclical": "XLY",
+      "consumer staples": "XLP",
+      communications: "XLC", media: "XLC", telecom: "XLC",
+      utilities: "XLU",
+      materials: "XLB",
+      "real estate": "XLRE",
+      general: "SPY", macro: "SPY", market: "SPY",
+    };
+
+    function resolveTicker(rawTicker: string | null | undefined, sector: string): string {
+      if (typeof rawTicker === "string" && rawTicker.trim().length > 0) {
+        return rawTicker.trim().toUpperCase();
+      }
+      const sectorLower = sector.trim().toLowerCase();
+      return SECTOR_ETF_MAP[sectorLower] || "SPY";
+    }
+
     const generatedAtIso = new Date().toISOString();
     const rows = theses.map(
       (t) => {
         const horizon = t.horizon === "7d" || t.horizon === "90d" ? t.horizon : "30d";
-        const ticker = typeof t.ticker === "string" && t.ticker.trim().length > 0
-          ? t.ticker.trim().toUpperCase()
-          : null;
+        const ticker = resolveTicker(t.ticker, t.sector);
         return {
           title: t.title,
           conviction: t.conviction,
@@ -561,7 +583,7 @@ ${clusterBlocks}`;
       const sevenDaysAgoIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const { data: recent, error: recentErr } = await supabase
         .from("theses")
-        .select("title, sector, generated_at, user_id")
+        .select("title, sector, ticker, generated_at, user_id")
         .gte("generated_at", sevenDaysAgoIso)
         .eq("user_id", user.id);
       if (recentErr) {
@@ -576,11 +598,18 @@ ${clusterBlocks}`;
         const recentFuzzyKeys = new Set(
           recent.map((r) => thesisFuzzyKey({ title: r.title, sector: r.sector })),
         );
+        // Ticker dedup: skip thesis if same ticker already has a thesis in last 7d
+        const recentTickers = new Set(
+          recent
+            .map((r) => typeof (r as Record<string, unknown>).ticker === "string" ? ((r as Record<string, unknown>).ticker as string).toUpperCase() : null)
+            .filter((t): t is string => t !== null),
+        );
         const beforeCount = filteredRows.length;
         filteredRows = filteredRows.filter((r) => {
           const exact = thesisDedupKey({ title: r.title, sector: r.sector });
           const fuzzy = thesisFuzzyKey({ title: r.title, sector: r.sector });
-          return !recentExactKeys.has(exact) && !recentFuzzyKeys.has(fuzzy);
+          const tickerDupe = r.ticker ? recentTickers.has(r.ticker) : false;
+          return !recentExactKeys.has(exact) && !recentFuzzyKeys.has(fuzzy) && !tickerDupe;
         });
         const skipped = beforeCount - filteredRows.length;
         if (skipped > 0) {

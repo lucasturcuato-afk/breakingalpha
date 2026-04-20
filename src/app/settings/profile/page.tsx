@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Save, Check, Briefcase, TrendingUp, GraduationCap, Building2, Shield, Zap, Scale, BarChart3 } from "lucide-react";
 import { useUserProfile } from "@/hooks/useUserProfile";
+import { useLiveMood } from "@/hooks/useLiveMood";
 import type { ReactNode } from "react";
 
 /* ── Role options (matching user_profiles.role enum) ── */
@@ -58,6 +59,7 @@ function getSupabase() {
 }
 
 export default function ProfileSettingsPage() {
+  const { mood, moodHeadline, moodDetails } = useLiveMood();
   const { refetch: refetchGlobalProfile } = useUserProfile();
   const [firstName, setFirstName] = useState("");
   const [firmOrSchool, setFirmOrSchool] = useState("");
@@ -158,7 +160,7 @@ export default function ProfileSettingsPage() {
   }
 
   return (
-    <AppShell pageTitle="Profile Settings" mood="neutral" moodHeadline="Markets steady" moodDetails={[]}>
+    <AppShell pageTitle="Profile Settings" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
       <div className="p-6 max-w-[640px]">
         {/* Header */}
         <h1 className="font-display text-[24px] font-extrabold text-espresso mb-1">

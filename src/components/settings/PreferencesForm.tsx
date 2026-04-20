@@ -367,9 +367,12 @@ export function PreferencesForm({
         <h2 className="font-display text-[16px] font-bold text-espresso mb-1">
           Dashboard Market Cards
         </h2>
-        <p className="font-sans text-[12px] text-text-secondary mb-4">
+        <p className="font-sans text-[12px] text-text-secondary mb-2">
           Choose up to 4 indices or tickers to display on your dashboard.
           Use SIGNALS for the signals counter.
+        </p>
+        <p className="font-sans text-[10px] text-text-muted mb-4">
+          Available: SPY, VIX, TNX, QQQ, DIA, IWM, GLD, TLT, DXY, BTC, ETH, GOLD, OIL, SIGNALS
         </p>
         <div className="grid grid-cols-4 gap-3">
           {[0, 1, 2, 3].map((i) => (
