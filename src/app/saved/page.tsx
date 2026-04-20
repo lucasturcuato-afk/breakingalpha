@@ -68,9 +68,9 @@ export default function SavedDealsPage() {
   const [sortKey, setSortKey] = useState<SortKey>("saved_at");
   const seeded = useRef(false);
 
-  // Seed display list once loading completes
+  // Seed display list once: wait until loading is done AND enriched data has arrived
   useEffect(() => {
-    if (!isLoading && !seeded.current) {
+    if (!isLoading && !seeded.current && enrichedSavedDeals.length > 0) {
       setDisplayDeals(enrichedSavedDeals);
       seeded.current = true;
     }
