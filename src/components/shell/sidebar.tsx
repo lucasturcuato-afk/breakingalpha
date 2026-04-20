@@ -17,6 +17,7 @@ import {
   TrendingUp,
   Star,
   Trophy,
+  Sparkles,
   Settings,
   LogOut,
   Bell,
@@ -45,6 +46,7 @@ const researchNav: NavItem[] = [
   { label: "Trends", href: "/trends", icon: <TrendingUp size={16} /> },
   { label: "Track Record", href: "/track-record", icon: <Trophy size={16} /> },
   { label: "Watchlist", href: "/watchlist", icon: <Star size={16} /> },
+  { label: "Intelligence", href: "/intelligence", icon: <Sparkles size={16} /> },
 ];
 
 interface Notification {

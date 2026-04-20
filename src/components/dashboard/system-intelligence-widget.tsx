@@ -7,6 +7,8 @@ interface IntelligenceData {
   avgQualityScore: number | null;
   topPattern: { sector: string; horizon: string; win_rate: number } | null;
   topSource: { source: string; win_rate: number } | null;
+  thesisOutcomes: { confirmed: number; invalidated: number; inconclusive: number; pending: number } | null;
+  embeddingCoverage: { articles: number; theses: number } | null;
 }
 
 function relativeTime(iso: string | null): string {
@@ -59,6 +61,18 @@ export function SystemIntelligenceWidget() {
       label: "Top source",
       value: data?.topSource
         ? `${data.topSource.source} \u00B7 ${Math.round(data.topSource.win_rate * 100)}% win rate`
+        : "\u2014",
+    },
+    {
+      label: "Thesis track",
+      value: data?.thesisOutcomes
+        ? `${data.thesisOutcomes.confirmed}\u2713 ${data.thesisOutcomes.invalidated}\u2717 ${data.thesisOutcomes.pending} pending`
+        : "\u2014",
+    },
+    {
+      label: "RAG index",
+      value: data?.embeddingCoverage
+        ? `${data.embeddingCoverage.articles + data.embeddingCoverage.theses} docs`
         : "\u2014",
     },
   ];

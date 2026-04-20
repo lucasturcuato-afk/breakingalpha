@@ -28,6 +28,8 @@ import source_credibility
 import adversarial
 import watchlist_sync
 import user_synthesis
+import user_signal_aggregator
+import embedding_job
 
 logger = logging.getLogger("run")
 if not logger.handlers:
@@ -61,44 +63,50 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"  ⚠ Backfill failed (pipeline unaffected): {e}")
 
-    print("\n[2/12] SYNTHESIZE")
+    print("\n[1c/15] USER SIGNAL AGGREGATION")
+    try:
+        user_signal_aggregator.main()
+    except Exception as e:
+        print(f"  ⚠ User signal aggregation failed (pipeline unaffected): {e}")
+
+    print("\n[2/15] SYNTHESIZE")
     synth_result = run_synthesize(brief_type) or {}
 
-    print("\n[3/12] DEAL EXTRACTION")
+    print("\n[3/15] DEAL EXTRACTION")
     run_deal_extractor()
 
-    print("\n[4/12] OBSERVE")
+    print("\n[4/15] OBSERVE")
     run_id = None
     try:
         run_id = observe.record_run(brief_type, started_at, ingest_count=ingest_count)
     except Exception as e:
         print(f"  ⚠ Observer failed (pipeline unaffected): {e}")
 
-    print("\n[5/12] CRITIQUE")
+    print("\n[5/15] CRITIQUE")
     try:
         critique.score_run(brief_type, started_at, run_id=run_id)
     except Exception as e:
         print(f"  ⚠ Critic failed (pipeline unaffected): {e}")
 
-    print("\n[6/12] AUDIT")
+    print("\n[6/15] AUDIT")
     try:
         audit.audit_run(brief_type, run_id=run_id)
     except Exception as e:
         print(f"  ⚠ Auditor failed (pipeline unaffected): {e}")
 
-    print("\n[7/12] TREND MAP")
+    print("\n[7/15] TREND MAP")
     try:
         trend_mapper.map_trends(brief_type, started_at, run_id=run_id)
     except Exception as e:
         print(f"  ⚠ Trend Mapper failed (pipeline unaffected): {e}")
 
-    print("\n[8/12] SUMMARY")
+    print("\n[8/15] SUMMARY")
     try:
         summarize.print_summary(brief_type, run_id=run_id)
     except Exception as e:
         print(f"  ⚠ Summary failed (pipeline unaffected): {e}")
 
-    print("\n[9/12] THESIS GRADING")
+    print("\n[9/15] THESIS GRADING")
     if brief_type == "morning":
         try:
             thesis_grader.main()
@@ -107,7 +115,7 @@ if __name__ == "__main__":
     else:
         logger.info("thesis_grader: skipped (morning only)")
 
-    print("\n[10/12] PATTERN MEMORY")
+    print("\n[10/15] PATTERN MEMORY")
     if brief_type == "morning":
         try:
             pattern_memory.main()
@@ -116,7 +124,7 @@ if __name__ == "__main__":
     else:
         logger.info("pattern_memory: skipped (morning only)")
 
-    print("\n[11/12] SOURCE CREDIBILITY")
+    print("\n[11/15] SOURCE CREDIBILITY")
     if brief_type == "morning":
         try:
             source_credibility.main()
@@ -140,7 +148,13 @@ if __name__ == "__main__":
     except Exception as e:
         logger.warning("watchlist sync failed (pipeline unaffected): %s", e)
 
-    print("\n[14/14] USER-AWARE BRIEF PERSONALIZATION")
+    print("\n[14/16] CONTENT EMBEDDINGS (RAG)")
+    try:
+        embedding_job.main()
+    except Exception as e:
+        logger.warning("embedding_job step failed (pipeline unaffected): %s", e)
+
+    print("\n[15/16] USER-AWARE BRIEF PERSONALIZATION")
     try:
         user_synthesis.run(brief_type)
     except Exception as e:
@@ -197,7 +211,8 @@ if __name__ == "__main__":
 # STEP MANIFEST — canonical pipeline order (update when adding steps)
 # ---------------------------------------------------------------------------
 # 1:    ingest
-# 2:    synthesize
+# 1c:   user_signal_aggregator  (aggregate user behavioral events → digest)
+# 2:    synthesize              (consumes user_signal_digest for engagement context)
 # 3:    deal_extractor
 # 4:    observe
 # 5:    critique
@@ -209,6 +224,7 @@ if __name__ == "__main__":
 # 11:   source_credibility   (morning only)
 # 12:   adversarial          (Sunday morning only)
 # 13:   watchlist_sync       (V3A — Noah)
-# 14:   user_synthesis       (Lucas personalization sprint — per-user addendum)
+# 14:   embedding_job        (RAG content embeddings for Intelligence chat)
+# 15:   user_synthesis       (Lucas personalization sprint — per-user addendum)
 # [POST] brief scoring, brief improvement addendum
 # ---------------------------------------------------------------------------

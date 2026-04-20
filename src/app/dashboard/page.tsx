@@ -16,6 +16,7 @@ import {
   WatchlistWidget,
   OnboardingBanner,
   SystemIntelligenceWidget,
+  WatchlistFeed,
 } from "@/components/dashboard";
 import type { StoryData } from "@/components/dashboard";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -336,6 +337,9 @@ export default function DashboardPage() {
           text="Fed language shift detected across 3 FOMC transcripts — dovish pivot probability rising. Bond markets already pricing in."
           boldParts={["Fed language shift", "dovish pivot probability rising"]}
         />
+
+        {/* Watchlist Feed */}
+        <WatchlistFeed />
 
         {/* Stories section */}
         <div>

@@ -370,6 +370,71 @@ def fetch_watchlist_signals(cutoff_hours: int = 24) -> tuple[list[dict], list[st
         return [], []
 
 
+def _fetch_aggregate_engagement() -> str:
+    """
+    Query user_signal_digest to build a short engagement-context block for
+    the synthesis prompt. Aggregates across all users to surface what the
+    readership collectively cares about most. Soft-fails to "".
+    """
+    try:
+        resp = (
+            supabase.table("user_signal_digest")
+            .select("top_sectors, top_tickers, engagement_level, event_count")
+            .execute()
+        )
+        rows = resp.data or []
+        if not rows:
+            return ""
+
+        from collections import defaultdict
+        sector_agg: dict[str, float] = defaultdict(float)
+        ticker_agg: dict[str, float] = defaultdict(float)
+        total_events = 0
+
+        for row in rows:
+            total_events += row.get("event_count", 0)
+
+            sectors = row.get("top_sectors") or []
+            if isinstance(sectors, str):
+                sectors = json.loads(sectors)
+            for s in sectors:
+                if isinstance(s, dict) and s.get("sector"):
+                    sector_agg[s["sector"]] += s.get("score", 0)
+
+            tickers = row.get("top_tickers") or []
+            if isinstance(tickers, str):
+                tickers = json.loads(tickers)
+            for t in tickers:
+                if isinstance(t, dict) and t.get("ticker"):
+                    ticker_agg[t["ticker"]] += t.get("score", 0)
+
+        if not sector_agg and not ticker_agg:
+            return ""
+
+        lines = ["USER ENGAGEMENT SIGNALS (last 30 days):"]
+        top_sectors = sorted(sector_agg.items(), key=lambda x: -x[1])[:5]
+        if top_sectors:
+            sector_list = ", ".join(f"{s} ({round(v, 1)})" for s, v in top_sectors)
+            lines.append(f"- Most engaged sectors: {sector_list}")
+
+        top_tickers = sorted(ticker_agg.items(), key=lambda x: -x[1])[:5]
+        if top_tickers:
+            ticker_list = ", ".join(f"{t} ({round(v, 1)})" for t, v in top_tickers)
+            lines.append(f"- Most engaged tickers: {ticker_list}")
+
+        lines.append(f"- Total engagement events: {total_events}")
+        lines.append(
+            "When these sectors or tickers appear in today's articles, "
+            "give them slightly more prominence in your analysis — but never "
+            "force irrelevant content or invent information."
+        )
+
+        return "\n".join(lines)
+    except Exception as e:
+        print(f"  ⚠ _fetch_aggregate_engagement failed (non-fatal): {e}")
+        return ""
+
+
 def run(brief_type="morning"):
     print(f"📝 Synthesizing {brief_type} briefing...")
 
@@ -477,6 +542,12 @@ def run(brief_type="morning"):
                 print(f"  📎 Injected {len(addendum_text)}-char brief improvement addendum")
     except Exception as e:
         print(f"  ⚠ Brief addendum injection skipped: {e}")
+
+    # --- User engagement signal injection (soft-fail) ---
+    engagement_ctx = _fetch_aggregate_engagement()
+    if engagement_ctx:
+        system = engagement_ctx + "\n\n" + system
+        print(f"  📈 Injected {len(engagement_ctx)}-char user engagement context")
 
     data = None
     raw = ""

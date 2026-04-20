@@ -89,5 +89,54 @@ export async function GET() {
     /* soft-fail */
   }
 
-  return NextResponse.json({ lastRun, avgQualityScore, topPattern, topSource });
+  // 5. Thesis outcome stats (last 90 days)
+  let thesisOutcomes: { confirmed: number; invalidated: number; inconclusive: number; pending: number } | null = null;
+  try {
+    const cutoff = new Date(Date.now() - 90 * 86400000).toISOString();
+    const { data } = await supabase
+      .from("theses")
+      .select("outcome")
+      .gte("generated_at", cutoff);
+    if (data && data.length > 0) {
+      const counts = { confirmed: 0, invalidated: 0, inconclusive: 0, pending: 0 };
+      for (const row of data) {
+        const o = row.outcome;
+        if (o === "confirmed") counts.confirmed++;
+        else if (o === "invalidated") counts.invalidated++;
+        else if (o === "inconclusive") counts.inconclusive++;
+        else counts.pending++;
+      }
+      thesisOutcomes = counts;
+    }
+  } catch {
+    /* soft-fail */
+  }
+
+  // 6. Embedding coverage (how many articles/theses are embedded)
+  let embeddingCoverage: { articles: number; theses: number } | null = null;
+  try {
+    const { count: articleCount } = await supabase
+      .from("content_embeddings")
+      .select("id", { count: "exact", head: true })
+      .eq("content_type", "article");
+    const { count: thesisCount } = await supabase
+      .from("content_embeddings")
+      .select("id", { count: "exact", head: true })
+      .eq("content_type", "thesis");
+    embeddingCoverage = {
+      articles: articleCount ?? 0,
+      theses: thesisCount ?? 0,
+    };
+  } catch {
+    /* soft-fail */
+  }
+
+  return NextResponse.json({
+    lastRun,
+    avgQualityScore,
+    topPattern,
+    topSource,
+    thesisOutcomes,
+    embeddingCoverage,
+  });
 }
