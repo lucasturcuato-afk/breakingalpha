@@ -29,51 +29,28 @@ const ACTIVITY_TYPES = [
 
 interface TrendClusterRow {
   id: string;
-  label: string | null;
-  cluster_type: string | null;
+  cluster_label: string | null;
+  summary: string | null;
+  sector: string | null;
+  signal_strength: number | null;
   article_count: number | null;
-  source_count: number | null;
-  strength_score: number | null;
-  confidence_score: number | null;
-  top_companies: string[] | null;
-  top_themes: string[] | null;
-  top_sectors: string[] | null;
   created_at: string;
-  novelty_score: number | null;
-  cross_source_flag: boolean | null;
 }
 
-function strengthToAnomaly(score: number | null): "critical" | "high" | "medium" | "low" {
-  if (score == null) return "low";
-  if (score >= 0.8) return "critical";
-  if (score >= 0.6) return "high";
-  if (score >= 0.4) return "medium";
+function mapSignalStrength(v: number | null): "critical" | "high" | "medium" | "low" {
+  if (v == null) return "low";
+  if (v >= 8) return "critical";
+  if (v >= 5) return "high";
+  if (v >= 3) return "medium";
   return "low";
-}
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
-
-function safeArray(raw: unknown): string[] {
-  if (Array.isArray(raw)) return raw;
-  if (typeof raw === "string") {
-    try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
-  }
-  return [];
 }
 
 function sectorToVertical(sector: string): string[] {
   const s = sector.toLowerCase();
-  if (s.includes("tech") || s.includes("ai") || s.includes("software") || s.includes("semiconductor")) return ["Technology"];
+  if (s.includes("tech") || s.includes("ai") || s.includes("software")) return ["Technology"];
+  if (s.includes("semi")) return ["Technology"];
   if (s.includes("health") || s.includes("biotech") || s.includes("pharma")) return ["Healthcare & Biotech"];
-  if (s.includes("energy") || s.includes("oil") || s.includes("gas")) return ["Energy & Oil/Gas"];
+  if (s.includes("energy") || s.includes("oil") || s.includes("gas") || s.includes("nuclear")) return ["Energy & Oil/Gas"];
   if (s.includes("financ") || s.includes("bank") || s.includes("insurance")) return ["Financial Services"];
   if (s.includes("consumer") || s.includes("retail")) return ["Consumer & Retail"];
   if (s.includes("industrial") || s.includes("manufactur")) return ["Industrials & Manufacturing"];
@@ -81,31 +58,30 @@ function sectorToVertical(sector: string): string[] {
   if (s.includes("real estate") || s.includes("reit")) return ["Real Estate"];
   if (s.includes("media") || s.includes("telecom")) return ["Media & Telecom"];
   if (s.includes("material") || s.includes("mining")) return ["Materials & Mining"];
+  if (s.includes("agri")) return ["Agriculture"];
   if (s.includes("crypto") || s.includes("digital asset")) return ["Crypto & Digital Assets"];
   return [sector];
 }
 
-function clusterToSignal(row: TrendClusterRow): SignalData {
-  const companies = safeArray(row.top_companies).slice(0, 3);
-  const themes = safeArray(row.top_themes).slice(0, 3);
-  const rawSectors = safeArray(row.top_sectors).slice(0, 3);
-  // Map raw sector strings to filter-compatible industry verticals
-  const verticals = [...new Set(rawSectors.flatMap(sectorToVertical))];
-  const parts: string[] = [];
-  if (companies.length) parts.push(`Key players: ${companies.join(", ")}.`);
-  if (themes.length) parts.push(`Themes: ${themes.join(", ")}.`);
-  parts.push(`${row.article_count ?? 0} articles from ${row.source_count ?? 0} sources.`);
-  if (row.cluster_type === "emerging") parts.push("Emerging trend.");
-  if (row.cross_source_flag) parts.push("Multi-source corroboration.");
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
 
+function clusterToSignal(row: TrendClusterRow): SignalData {
+  const verticals = row.sector ? sectorToVertical(row.sector) : [];
   return {
     id: row.id,
-    title: row.label || "Untitled cluster",
-    anomaly: strengthToAnomaly(row.strength_score),
-    description: parts.join(" "),
-    timestamp: relativeTime(row.created_at),
+    title: row.cluster_label || "Untitled cluster",
+    anomaly: mapSignalStrength(row.signal_strength),
+    description: row.summary || "",
+    timestamp: timeAgo(row.created_at),
     industry_verticals: verticals,
-    activity_types: [], // trend_clusters has no activity_types — show all when no activity filter selected
+    activity_types: [],
   };
 }
 
@@ -142,9 +118,9 @@ export default function TrendsPage() {
     // Fetch real trend clusters (last 7 days, ordered by strength)
     supabase
       .from("trend_clusters")
-      .select("id, label, cluster_type, article_count, source_count, strength_score, confidence_score, top_companies, top_themes, top_sectors, created_at, novelty_score, cross_source_flag")
+      .select("id, cluster_label, summary, sector, signal_strength, article_count, created_at")
       .gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString())
-      .order("strength_score", { ascending: false })
+      .order("signal_strength", { ascending: false })
       .limit(50)
       .then(({ data, error }) => {
         if (error) {
@@ -388,9 +364,10 @@ export default function TrendsPage() {
       {/* Content */}
       <div className="px-6 py-5">
         {signalsLoading ? (
-          <div className="flex flex-col items-center py-16 gap-3">
-            <div className="w-8 h-8 rounded-full border-2 border-gold border-t-transparent animate-spin" />
-            <p className="font-sans text-[12px] text-text-muted">Loading trend signals...</p>
+          <div className="grid grid-cols-2 gap-2.5">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-28 rounded-xl border border-border-base bg-white animate-pulse" />
+            ))}
           </div>
         ) : allSignals.length === 0 ? (
           <EmptyState

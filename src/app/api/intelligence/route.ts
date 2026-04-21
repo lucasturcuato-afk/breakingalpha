@@ -118,9 +118,9 @@ export async function POST(request: NextRequest) {
   /* ── Step 2: Embed the user's query ── */
   let embedding: number[];
   try {
-    console.log("[intelligence] Step 2 — embedding model: gemini-embedding-001, query length:", query.length);
+    console.log("[intelligence] Step 2 — embedding model: text-embedding-004, query length:", query.length);
     const embedResponse = await ai.models.embedContent({
-      model: "gemini-embedding-001",
+      model: "text-embedding-004",
       contents: query,
       config: { outputDimensionality: 768 },
     });
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
     embedding = values;
     console.log("[intelligence] Step 2 — embedding success, vector length:", embedding.length);
   } catch (err) {
-    console.error("[intelligence] Step 2 — embed query failed:", err);
+    console.error("[intelligence] Step 2 — embed query failed:", err instanceof Error ? err.message : err);
     return NextResponse.json(
       { error: "Failed to generate embedding" },
       { status: 500 },
@@ -150,8 +150,8 @@ export async function POST(request: NextRequest) {
       "match_content_embeddings",
       {
         query_embedding: JSON.stringify(embedding),
-        match_threshold: 0.5,
-        match_count: 8,
+        match_threshold: 0.25,
+        match_count: 12,
       },
     );
 
@@ -179,62 +179,82 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  /* ── Empty results: graceful 200 ── */
-  if (typedMatches.length === 0) {
-    return NextResponse.json({
-      response: EMPTY_KB_RESPONSE,
-      sources: [],
-      remaining: rl.remaining,
-    });
-  }
-
-  /* ── Step 4: Fetch full content for matched IDs ── */
+  /* ── Recency fallback when vector search returns 0 results ── */
   const sources: SourceInfo[] = [];
   const contextChunks: string[] = [];
 
-  try {
-    const articleIds = typedMatches.filter((m) => m.content_type === "article").map((m) => m.content_id);
-    const thesisIds = typedMatches.filter((m) => m.content_type === "thesis").map((m) => m.content_id);
+  if (typedMatches.length === 0) {
+    console.log("[intelligence] Step 3b — no vector matches, falling back to recent content");
+    try {
+      const [recentArticles, recentTheses] = await Promise.all([
+        supabase.from("articles").select("id, title, summary, source").order("created_at", { ascending: false }).limit(5),
+        supabase.from("theses").select("id, title, sector, rationale, conviction, horizon").order("created_at", { ascending: false }).limit(3),
+      ]);
+      for (const a of recentArticles.data ?? []) {
+        sources.push({ type: "article", title: a.title, id: a.id });
+        contextChunks.push(`[Article: "${a.title}" — ${a.source || "unknown source"}]\n${a.summary || "No summary available."}`);
+      }
+      for (const t of recentTheses.data ?? []) {
+        sources.push({ type: "thesis", title: t.title || `${t.sector} thesis`, id: t.id });
+        contextChunks.push(`[Thesis: "${t.title}" — ${t.sector} (${t.conviction}, ${t.horizon || "medium-term"})]\n${t.rationale || "No rationale available."}`);
+      }
+    } catch (err) {
+      console.error("[intelligence] Step 3b — recency fallback failed:", err instanceof Error ? err.message : err);
+    }
 
-    const [articlesResult, thesesResult] = await Promise.all([
-      articleIds.length > 0
-        ? supabase.from("articles").select("id, title, summary, source").in("id", articleIds)
-        : Promise.resolve({ data: [] as { id: string; title: string; summary: string; source: string }[] }),
-      thesisIds.length > 0
-        ? supabase.from("theses").select("id, title, sector, rationale, conviction, horizon").in("id", thesisIds)
-        : Promise.resolve({ data: [] as { id: string; title: string; sector: string; rationale: string; conviction: string; horizon: string }[] }),
-    ]);
+    if (contextChunks.length === 0) {
+      return NextResponse.json({
+        response: EMPTY_KB_RESPONSE,
+        sources: [],
+        remaining: rl.remaining,
+      });
+    }
+  }
 
-    // Build lookup maps
-    const articleMap = new Map((articlesResult.data ?? []).map((a) => [a.id, a]));
-    const thesisMap = new Map((thesesResult.data ?? []).map((t) => [t.id, t]));
+  /* ── Step 4: Fetch full content for matched IDs (skip if fallback already populated) ── */
+  if (contextChunks.length === 0) {
+    try {
+      const articleIds = typedMatches.filter((m) => m.content_type === "article").map((m) => m.content_id);
+      const thesisIds = typedMatches.filter((m) => m.content_type === "thesis").map((m) => m.content_id);
 
-    // Maintain match order (by similarity) when building context
-    for (const match of typedMatches) {
-      if (match.content_type === "article") {
-        const article = articleMap.get(match.content_id);
-        if (article) {
-          sources.push({ type: "article", title: article.title, id: article.id });
-          contextChunks.push(
-            `[Article: "${article.title}" — ${article.source || "unknown source"}]\n${article.summary || "No summary available."}`,
-          );
-        }
-      } else if (match.content_type === "thesis") {
-        const thesis = thesisMap.get(match.content_id);
-        if (thesis) {
-          sources.push({ type: "thesis", title: thesis.title || `${thesis.sector} thesis`, id: thesis.id });
-          contextChunks.push(
-            `[Thesis: "${thesis.title}" — ${thesis.sector} (${thesis.conviction}, ${thesis.horizon || "medium-term"})]\n${thesis.rationale || "No rationale available."}`,
-          );
+      const [articlesResult, thesesResult] = await Promise.all([
+        articleIds.length > 0
+          ? supabase.from("articles").select("id, title, summary, source").in("id", articleIds)
+          : Promise.resolve({ data: [] as { id: string; title: string; summary: string; source: string }[] }),
+        thesisIds.length > 0
+          ? supabase.from("theses").select("id, title, sector, rationale, conviction, horizon").in("id", thesisIds)
+          : Promise.resolve({ data: [] as { id: string; title: string; sector: string; rationale: string; conviction: string; horizon: string }[] }),
+      ]);
+
+      const articleMap = new Map((articlesResult.data ?? []).map((a) => [a.id, a]));
+      const thesisMap = new Map((thesesResult.data ?? []).map((t) => [t.id, t]));
+
+      for (const match of typedMatches) {
+        if (match.content_type === "article") {
+          const article = articleMap.get(match.content_id);
+          if (article) {
+            sources.push({ type: "article", title: article.title, id: article.id });
+            contextChunks.push(
+              `[Article: "${article.title}" — ${article.source || "unknown source"}]\n${article.summary || "No summary available."}`,
+            );
+          }
+        } else if (match.content_type === "thesis") {
+          const thesis = thesisMap.get(match.content_id);
+          if (thesis) {
+            sources.push({ type: "thesis", title: thesis.title || `${thesis.sector} thesis`, id: thesis.id });
+            contextChunks.push(
+              `[Thesis: "${thesis.title}" — ${thesis.sector} (${thesis.conviction}, ${thesis.horizon || "medium-term"})]\n${thesis.rationale || "No rationale available."}`,
+            );
+          }
         }
       }
+    } catch (err) {
+      console.error("[intelligence] Step 4 — fetch content failed:", err instanceof Error ? err.message : err);
+      return NextResponse.json(
+        { error: "Failed to fetch matched content" },
+        { status: 500 },
+      );
     }
-  } catch (err) {
-    console.error("[intelligence] Step 4 — fetch content failed:", err);
-    return NextResponse.json(
-      { error: "Failed to fetch matched content" },
-      { status: 500 },
-    );
   }
 
   /* ── Step 5: Generate response with Gemini ── */
