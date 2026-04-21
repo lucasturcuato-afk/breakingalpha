@@ -207,7 +207,7 @@ export default function TrendsPage() {
     // no-op (all signals get boost=0, original order preserved).
     if (!profileSectors.length && !watchlistUpper.length) return filtered;
     return [...filtered].sort((a, b) => personalBoost(b) - personalBoost(a));
-  }, [anomalyFilter, selectedVerticals, verticalMatchMode, selectedActivities, activityMatchMode, profileSectors, watchlistUpper]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [allSignals, anomalyFilter, selectedVerticals, verticalMatchMode, selectedActivities, activityMatchMode, profileSectors, watchlistUpper]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const gatedIds = useMemo(
     () => isSignedOut ? new Set(filtered.slice(0, 3).map((s) => s.id)) : null,
