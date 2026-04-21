@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
   let embedding: number[];
   try {
     const embedResponse = await ai.models.embedContent({
-      model: "gemini-embedding-001",
+      model: "gemini-embedding-exp-03-07",
       contents: query,
       config: { outputDimensionality: 768 },
     });
