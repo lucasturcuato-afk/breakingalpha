@@ -1,0 +1,55 @@
+name: BreakingAlpha Grading
+
+on:
+  schedule:
+    - cron: '0 4 * * *'   # daily at 04:00 UTC
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Bypass the overdue gate and grade every ungraded thesis'
+        type: boolean
+        default: false
+  repository_dispatch:
+    types: [grading-trigger]
+
+jobs:
+  grading:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Compute force flag
+        id: flags
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ github.event.inputs.force }}" = "true" ]; then
+              echo "force_flag=--force" >> $GITHUB_OUTPUT
+            else
+              echo "force_flag=" >> $GITHUB_OUTPUT
+            fi
+          elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            if [ "${{ github.event.client_payload.force }}" = "true" ]; then
+              echo "force_flag=--force" >> $GITHUB_OUTPUT
+            else
+              echo "force_flag=" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "force_flag=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run daily grading
+        working-directory: backend
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+        run: python cron/daily_grading.py ${{ steps.flags.outputs.force_flag }}

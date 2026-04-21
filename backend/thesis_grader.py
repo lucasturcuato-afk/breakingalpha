@@ -453,10 +453,14 @@ def grade_one(thesis: dict) -> dict | None:
 # main()
 # ==========================================================================
 
-def main() -> dict | None:
+def main(force: bool = False) -> dict | None:
     """
     Pull all theses where outcome IS NULL, filter to overdue rows, and
     grade each one. Returns a summary dict or None on catastrophic failure.
+
+    When ``force=True``, the ``_is_overdue()`` gate is bypassed and every
+    ungraded candidate is graded immediately. Intended for backfill and
+    manual/on-demand runs (cron-job.org → /api/grading/trigger → workflow).
     """
     try:
         if not _preflight_schema():
@@ -480,7 +484,17 @@ def main() -> dict | None:
         )
         candidates = resp.data or []
         now = datetime.now(timezone.utc)
-        overdue = [t for t in candidates if _is_overdue(t, now)]
+        if force:
+            overdue = candidates
+            logger.info(
+                "thesis_grader: FORCE mode — grading all %d ungraded candidates",
+                len(candidates),
+            )
+            print(
+                f"  [thesis_grader] FORCE mode — grading all {len(candidates)} ungraded candidates"
+            )
+        else:
+            overdue = [t for t in candidates if _is_overdue(t, now)]
         logger.info(
             "thesis_grader: %d candidates, %d overdue",
             len(candidates), len(overdue),
@@ -514,4 +528,7 @@ def main() -> dict | None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    main()
+    _force_env = os.environ.get("THESIS_GRADER_FORCE", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+    main(force=_force_env)
