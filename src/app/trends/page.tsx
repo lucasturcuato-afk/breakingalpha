@@ -69,10 +69,28 @@ function safeArray(raw: unknown): string[] {
   return [];
 }
 
+function sectorToVertical(sector: string): string[] {
+  const s = sector.toLowerCase();
+  if (s.includes("tech") || s.includes("ai") || s.includes("software") || s.includes("semiconductor")) return ["Technology"];
+  if (s.includes("health") || s.includes("biotech") || s.includes("pharma")) return ["Healthcare & Biotech"];
+  if (s.includes("energy") || s.includes("oil") || s.includes("gas")) return ["Energy & Oil/Gas"];
+  if (s.includes("financ") || s.includes("bank") || s.includes("insurance")) return ["Financial Services"];
+  if (s.includes("consumer") || s.includes("retail")) return ["Consumer & Retail"];
+  if (s.includes("industrial") || s.includes("manufactur")) return ["Industrials & Manufacturing"];
+  if (s.includes("defense") || s.includes("aerospace")) return ["Aerospace & Defense"];
+  if (s.includes("real estate") || s.includes("reit")) return ["Real Estate"];
+  if (s.includes("media") || s.includes("telecom")) return ["Media & Telecom"];
+  if (s.includes("material") || s.includes("mining")) return ["Materials & Mining"];
+  if (s.includes("crypto") || s.includes("digital asset")) return ["Crypto & Digital Assets"];
+  return [sector];
+}
+
 function clusterToSignal(row: TrendClusterRow): SignalData {
   const companies = safeArray(row.top_companies).slice(0, 3);
   const themes = safeArray(row.top_themes).slice(0, 3);
-  const sectors = safeArray(row.top_sectors).slice(0, 3);
+  const rawSectors = safeArray(row.top_sectors).slice(0, 3);
+  // Map raw sector strings to filter-compatible industry verticals
+  const verticals = [...new Set(rawSectors.flatMap(sectorToVertical))];
   const parts: string[] = [];
   if (companies.length) parts.push(`Key players: ${companies.join(", ")}.`);
   if (themes.length) parts.push(`Themes: ${themes.join(", ")}.`);
@@ -86,8 +104,8 @@ function clusterToSignal(row: TrendClusterRow): SignalData {
     anomaly: strengthToAnomaly(row.strength_score),
     description: parts.join(" "),
     timestamp: relativeTime(row.created_at),
-    industry_verticals: sectors,
-    activity_types: themes,
+    industry_verticals: verticals,
+    activity_types: [], // trend_clusters has no activity_types — show all when no activity filter selected
   };
 }
 
