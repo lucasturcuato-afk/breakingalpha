@@ -10,9 +10,17 @@ import { KanbanBoard } from "@/components/thesis/kanban-board";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FileText, Archive, RefreshCw, ChevronDown, ChevronUp, LayoutList, LayoutGrid } from "lucide-react";
+import { createBrowserClient } from "@supabase/ssr";
 import { cn } from "@/lib/utils";
 import type { ThesisItem, ThesisStatus, WeeklyDigest, PatternRow, SourceCredibilityRow } from "@/components/thesis";
 import { mapThesisRow } from "@/lib/thesis-mapper";
+
+function getSupabase() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  );
+}
 import { trackClientEvent } from "@/lib/track-event";
 import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
 import type { ContentDescriptor } from "@/lib/personalization";
@@ -266,31 +274,19 @@ function ThesisBoardContent() {
   const fetchArticlesForThesis = useCallback(async (thesis: ThesisItem) => {
     if (relatedArticles[thesis.id]) return;
     try {
+      const supabase = getSupabase();
       const ids = thesis.supporting_article_ids;
       if (ids && ids.length > 0) {
-        const res = await fetch("/api/theses");
-        // Use a direct Supabase fetch via the browser client
-        const { createBrowserClient } = await import("@supabase/ssr");
-        const supabase = createBrowserClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        );
         const { data } = await supabase
           .from("articles")
           .select("id, title, source, ingested_at, published_at, summary, sentiment, sector")
           .in("id", ids);
-        void res; // consumed above but we only need supabase data
         if (data && data.length > 0) {
           setRelatedArticles((prev) => ({ ...prev, [thesis.id]: data }));
           return;
         }
       }
       // Fallback: sector-matched
-      const { createBrowserClient } = await import("@supabase/ssr");
-      const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      );
       const { data } = await supabase
         .from("articles")
         .select("id, title, source, ingested_at, published_at, summary, sentiment, sector")
