@@ -231,12 +231,12 @@ export default function TrackRecordPage() {
           )}
         </div>
 
-        {!loading && confirmedCount === 0 && invalidatedCount === 0 ? (
+        {!loading && gradedTheses.length === 0 ? (
           <div className="py-16">
             <EmptyState
               icon={<Trophy size={32} />}
               title="Track record building"
-              description="Thesis outcomes will appear here once the grading pipeline has run. Check back after your first theses are confirmed or invalidated."
+              description="Thesis outcomes will appear here once the grading pipeline has run. Check back after your first theses are graded."
             />
           </div>
         ) : (
