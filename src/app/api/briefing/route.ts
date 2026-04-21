@@ -279,19 +279,7 @@ export async function GET(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Print user_briefings DDL (informational — run in Supabase SQL editor if not yet applied)
-  console.log(`[briefing] user_briefings DDL:
-create table if not exists public.user_briefings (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null,
-  briefing_type text not null,
-  addendum text not null default '',
-  profile_hash text,
-  generated_at timestamptz not null default now()
-);
-create index if not exists user_briefings_user_type_idx on public.user_briefings(user_id, briefing_type);
-create index if not exists user_briefings_generated_at_idx on public.user_briefings(generated_at desc);
-`);
+  // DDL for user_briefings — see Supabase migrations
 
   // Run queries in parallel — briefing row + latest pipeline_run + user addendum
   const userId = token ? await (async () => {
