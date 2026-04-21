@@ -65,12 +65,17 @@ export default function TrackRecordPage() {
   const [patterns, setPatterns] = useState<PatternRow[]>([]);
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [verdicts, setVerdicts] = useState<VerdictRow[]>([]);
+  const [nextCheckAfter, setNextCheckAfter] = useState<string | null>(null);
+  const [overdueCount, setOverdueCount] = useState<number>(0);
 
   useEffect(() => {
     async function load() {
       const supabase = getSupabase();
 
       try {
+        const nowIso = new Date().toISOString();
+        const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+
         // All queries in parallel
         const [
           totalRes,
@@ -81,6 +86,9 @@ export default function TrackRecordPage() {
           sourcesRes,
           verdictsRes,
           lastUpdatedRes,
+          nextCheckRes,
+          overdueWithCheckRes,
+          overdueNullCheckRes,
         ] = await Promise.all([
           supabase.from("theses").select("id", { count: "exact", head: true }),
           supabase.from("theses").select("id", { count: "exact", head: true }).eq("outcome", "confirmed"),
@@ -90,6 +98,9 @@ export default function TrackRecordPage() {
           supabase.from("source_credibility").select("source, win_rate, n_theses").order("win_rate", { ascending: false }).limit(10),
           supabase.from("theses").select("id, title, sector, outcome, outcome_notes, updated_at, ticker").not("outcome", "is", null).order("updated_at", { ascending: false }).limit(10),
           supabase.from("theses").select("updated_at").not("outcome", "is", null).order("updated_at", { ascending: false }).limit(1),
+          supabase.from("theses").select("check_after").is("outcome", null).not("check_after", "is", null).order("check_after", { ascending: true }).limit(1),
+          supabase.from("theses").select("id", { count: "exact", head: true }).is("outcome", null).lt("check_after", nowIso),
+          supabase.from("theses").select("id", { count: "exact", head: true }).is("outcome", null).is("check_after", null).lt("generated_at", thirtyDaysAgoIso),
         ]);
 
         setTotalCount(totalRes.count ?? 0);
@@ -103,6 +114,14 @@ export default function TrackRecordPage() {
         if (lastUpdatedRes.data && lastUpdatedRes.data.length > 0) {
           setLastUpdated(lastUpdatedRes.data[0].updated_at);
         }
+
+        if (nextCheckRes.data && nextCheckRes.data.length > 0) {
+          setNextCheckAfter((nextCheckRes.data[0] as { check_after: string | null }).check_after ?? null);
+        } else {
+          setNextCheckAfter(null);
+        }
+
+        setOverdueCount((overdueWithCheckRes.count ?? 0) + (overdueNullCheckRes.count ?? 0));
       } catch (e) {
         console.error("Track record load error:", e);
       } finally {
@@ -160,6 +179,25 @@ export default function TrackRecordPage() {
     }
   }, [lastUpdated]);
 
+  const formattedNextCheckAfter = useMemo(() => {
+    if (!nextCheckAfter) return null;
+    try {
+      return new Date(nextCheckAfter).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return null;
+    }
+  }, [nextCheckAfter]);
+
+  const showPipelineStatus =
+    !loading && totalCount > 0 && confirmedCount === 0 && invalidatedCount === 0;
+  const awaitingCount = totalCount - confirmedCount - invalidatedCount;
+
   const MIN_ROWS = 3;
 
   return (
@@ -177,6 +215,19 @@ export default function TrackRecordPage() {
             <p className="font-data text-text-faint text-[11px] mt-1">
               Last updated: {formattedLastUpdated}
             </p>
+          )}
+          {showPipelineStatus && (
+            <>
+              <p className="font-data text-text-faint text-[11px] mt-1">
+                {awaitingCount} {awaitingCount === 1 ? "thesis" : "theses"} awaiting grading
+                {overdueCount > 0 ? ` \u00B7 ${overdueCount} overdue` : ""}
+              </p>
+              <p className="font-data text-text-faint text-[11px] mt-1">
+                {formattedNextCheckAfter
+                  ? `Next check: ${formattedNextCheckAfter}`
+                  : "No thesis has a scheduled grading date yet"}
+              </p>
+            </>
           )}
         </div>
 
