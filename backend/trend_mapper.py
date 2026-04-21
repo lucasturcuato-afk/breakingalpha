@@ -65,6 +65,7 @@ import re
 import json
 import time
 from collections import defaultdict
+from datetime import datetime, timedelta
 from supabase import create_client
 from google import genai
 from google.genai.types import GenerateContentConfig, ThinkingConfig
@@ -1060,6 +1061,55 @@ def generate_cluster_headline(label, top_themes, top_companies, top_sectors,
         return label, ""
 
 
+def compute_sparkline_for_cluster(top_companies, top_themes):
+    """Compute 12-week sparkline for a cluster based on article title search."""
+    search_terms = []
+    for c in (top_companies or [])[:3]:
+        if len(c) > 2:
+            search_terms.append(c.lower())
+    for t in (top_themes or [])[:2]:
+        if len(t) > 2:
+            search_terms.append(t.lower())
+    if not search_terms:
+        return None
+
+    cutoff = (datetime.utcnow() - timedelta(days=90)).isoformat()
+    primary_term = search_terms[0]
+    try:
+        result = (
+            supabase.table("articles")
+            .select("id, published_at, ingested_at")
+            .gte("ingested_at", cutoff)
+            .ilike("title", f"%{primary_term}%")
+            .order("ingested_at", desc=True)
+            .limit(200)
+            .execute()
+        )
+        articles = result.data or []
+    except Exception:
+        return None
+
+    now = datetime.utcnow()
+    weeks = []
+    for i in range(11, -1, -1):
+        ws = now - timedelta(weeks=i)
+        ws = ws - timedelta(days=ws.weekday())
+        ws = ws.replace(hour=0, minute=0, second=0, microsecond=0)
+        weeks.append(ws.strftime("%Y-%m-%d"))
+
+    counts = defaultdict(int)
+    for a in articles:
+        date_str = a.get("published_at") or a.get("ingested_at") or ""
+        try:
+            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            wk = dt - timedelta(days=dt.weekday())
+            counts[wk.strftime("%Y-%m-%d")] += 1
+        except Exception:
+            pass
+
+    return [{"week": w, "count": counts.get(w, 0)} for w in weeks]
+
+
 def persist_trend_clusters(rows):
     """
     Insert a list of trend_clusters row dicts into Supabase.
@@ -1225,6 +1275,7 @@ def map_trends(brief_type, started_at, run_id=None):
                 "novelty_score":              novelty_score,
                 "cross_source_flag":          cross_source_flag,
                 "provenance":                 "reconstructed",
+                "sparkline_data":             json.dumps(compute_sparkline_for_cluster(top_companies_list, top_themes_list)),
             }
             rows.append(row)
 

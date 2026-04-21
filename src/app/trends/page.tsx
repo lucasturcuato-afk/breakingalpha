@@ -50,6 +50,7 @@ interface TrendSignal {
   representative_article_ids: string[];
   lookback_run_count: number;
   created_at: string;
+  sparkline_data: { week: string; count: number }[] | null;
 }
 
 interface SourceArticle {
@@ -102,6 +103,17 @@ function strengthToAnomaly(score: number): AnomalyLevel {
 function cleanLabel(label: string): string {
   if (!label) return "Untitled Signal";
   return label.replace(/:\s*/g, " \u2014 ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function deduplicateSignals(signals: TrendSignal[]): TrendSignal[] {
+  const seen = new Map<string, TrendSignal>();
+  for (const s of signals) {
+    const key = s.label.toLowerCase().trim();
+    if (!seen.has(key) || new Date(s.created_at) > new Date(seen.get(key)!.created_at)) {
+      seen.set(key, s);
+    }
+  }
+  return [...seen.values()].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 }
 
 function buildFallbackDescription(s: TrendSignal): string {
@@ -205,7 +217,6 @@ export default function TrendsPage() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [articleCache, setArticleCache] = useState<Record<string, SourceArticle[]>>({});
   const [thesesForMatch, setThesesForMatch] = useState<RelatedThesis[]>([]);
-  const [sparklineData, setSparklineData] = useState<Record<string, number[]>>({});
   const [modalSignal, setModalSignal] = useState<TrendSignal | null>(null);
 
   // ── Personalization ──
@@ -247,9 +258,9 @@ export default function TrendsPage() {
         const supabase = getSupabase();
         const { data, error } = await supabase
           .from("trend_clusters")
-          .select("id, label, headline, tagline, cluster_type, article_count, source_count, strength_score, novelty_score, cross_source_flag, underrepresented_flag, top_companies, top_themes, top_sectors, representative_article_ids, lookback_run_count, created_at")
+          .select("id, label, headline, tagline, cluster_type, article_count, source_count, strength_score, novelty_score, cross_source_flag, underrepresented_flag, top_companies, top_themes, top_sectors, representative_article_ids, lookback_run_count, created_at, sparkline_data")
           .order("created_at", { ascending: false })
-          .limit(200);
+          .limit(500);
 
         if (error) {
           console.error("[trends] fetch error:", error.message);
@@ -272,8 +283,9 @@ export default function TrendsPage() {
             representative_article_ids: safeArray(row.representative_article_ids),
             lookback_run_count: row.lookback_run_count ?? 0,
             created_at: row.created_at,
+            sparkline_data: row.sparkline_data ?? null,
           }));
-          setAllSignals(mapped);
+          setAllSignals(deduplicateSignals(mapped));
         }
       } catch (e) {
         console.error("[trends] load error:", e);
@@ -292,58 +304,11 @@ export default function TrendsPage() {
       .then(({ data }) => { if (data) setThesesForMatch(data); });
   }, []);
 
-  // ── Real sparklines from article dates ──
-  useEffect(() => {
-    if (allSignals.length === 0) return;
-    async function loadSparklines() {
-      const supabase = getSupabase();
-      const allIds: string[] = [];
-      const signalArticleMap = new Map<string, string[]>();
-      for (const s of allSignals) {
-        if (s.representative_article_ids.length > 0) {
-          signalArticleMap.set(s.id, s.representative_article_ids);
-          allIds.push(...s.representative_article_ids);
-        }
-      }
-      if (allIds.length === 0) return;
-      const uniqueIds = [...new Set(allIds)].slice(0, 500);
-      const { data: articles } = await supabase
-        .from("articles")
-        .select("id, published_at, ingested_at")
-        .in("id", uniqueIds);
-      if (!articles) return;
-
-      const articleDateMap = new Map<string, string>();
-      for (const a of articles) {
-        const dateStr = (a.published_at || a.ingested_at || "").split("T")[0];
-        if (dateStr) articleDateMap.set(a.id, dateStr);
-      }
-
-      const now = new Date();
-      const days = 14;
-      const dayKeys: string[] = [];
-      for (let i = days - 1; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        dayKeys.push(d.toISOString().split("T")[0]);
-      }
-
-      const sparklines: Record<string, number[]> = {};
-      for (const [signalId, articleIds] of signalArticleMap) {
-        const counts = new Map<string, number>();
-        for (const dk of dayKeys) counts.set(dk, 0);
-        for (const aid of articleIds) {
-          const dateKey = articleDateMap.get(aid);
-          if (dateKey && counts.has(dateKey)) {
-            counts.set(dateKey, (counts.get(dateKey) ?? 0) + 1);
-          }
-        }
-        sparklines[signalId] = dayKeys.map((dk) => counts.get(dk) ?? 0);
-      }
-      setSparklineData(sparklines);
-    }
-    loadSparklines();
-  }, [allSignals]);
+  // ── Sparkline data from DB (12-week precomputed) ──
+  function getSparkCounts(signal: TrendSignal): number[] {
+    if (!signal.sparkline_data || signal.sparkline_data.length === 0) return [];
+    return signal.sparkline_data.map((w) => w.count);
+  }
 
   // ── Fetch articles when modal opens ──
   useEffect(() => {
@@ -642,7 +607,7 @@ export default function TrendsPage() {
                       {/* Signal cards */}
                       <div className="space-y-2">
                         {visibleSignals.map((s) => {
-                          const sd = toSignalData(s, sparklineData[s.id] ?? []);
+                          const sd = toSignalData(s, getSparkCounts(s));
                           return (
                             <div key={s.id} onClick={() => handleCardClick(s)} className="cursor-pointer">
                               <SignalCard signal={sd} />
@@ -748,13 +713,13 @@ export default function TrendsPage() {
             {/* Modal body */}
             <div className="px-6 py-4 space-y-5">
               {/* Sparkline chart */}
-              {(sparklineData[modalSignal.id] ?? []).some((v) => v > 0) && (
+              {getSparkCounts(modalSignal).some((v) => v > 0) && (
                 <div>
                   <p className="font-data text-[9px] uppercase tracking-widest text-text-muted mb-2">
-                    Article volume — last 14 days
+                    Article volume — last 12 weeks
                   </p>
                   <div className="h-16 bg-parchment rounded-lg p-2">
-                    <SignalSparklineLarge data={sparklineData[modalSignal.id] ?? []} />
+                    <SignalSparklineLarge data={getSparkCounts(modalSignal)} />
                   </div>
                 </div>
               )}
@@ -770,12 +735,14 @@ export default function TrendsPage() {
                   <p className="font-data text-[18px] font-semibold text-espresso mt-1">{modalSignal.source_count}</p>
                 </div>
                 <div className="bg-parchment rounded-lg p-3">
-                  <p className="font-data text-[9px] uppercase tracking-widest text-text-muted">Strength</p>
-                  <p className="font-data text-[18px] font-semibold text-espresso mt-1">{(modalSignal.strength_score * 100).toFixed(0)}%</p>
+                  <p className="font-data text-[9px] uppercase tracking-widest text-text-muted">First seen</p>
+                  <p className="font-data text-[14px] font-semibold text-espresso mt-1">{new Date(modalSignal.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</p>
                 </div>
                 <div className="bg-parchment rounded-lg p-3">
-                  <p className="font-data text-[9px] uppercase tracking-widest text-text-muted">Novelty</p>
-                  <p className="font-data text-[18px] font-semibold text-espresso mt-1">{(modalSignal.novelty_score * 100).toFixed(0)}%</p>
+                  <p className="font-data text-[9px] uppercase tracking-widest text-text-muted">Status</p>
+                  <p className={cn("font-data text-[14px] font-semibold mt-1", modalSignal.lookback_run_count <= 1 ? "text-signal-up" : "text-text-primary")}>
+                    {modalSignal.lookback_run_count <= 1 ? "Emerging" : "Recurring"}
+                  </p>
                 </div>
               </div>
 
