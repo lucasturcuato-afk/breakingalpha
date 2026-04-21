@@ -61,9 +61,18 @@ function relativeTime(iso: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+function safeArray(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+  }
+  return [];
+}
+
 function clusterToSignal(row: TrendClusterRow): SignalData {
-  const companies = (row.top_companies ?? []).slice(0, 3);
-  const themes = (row.top_themes ?? []).slice(0, 3);
+  const companies = safeArray(row.top_companies).slice(0, 3);
+  const themes = safeArray(row.top_themes).slice(0, 3);
+  const sectors = safeArray(row.top_sectors).slice(0, 3);
   const parts: string[] = [];
   if (companies.length) parts.push(`Key players: ${companies.join(", ")}.`);
   if (themes.length) parts.push(`Themes: ${themes.join(", ")}.`);
@@ -77,8 +86,8 @@ function clusterToSignal(row: TrendClusterRow): SignalData {
     anomaly: strengthToAnomaly(row.strength_score),
     description: parts.join(" "),
     timestamp: relativeTime(row.created_at),
-    industry_verticals: (row.top_sectors ?? []).slice(0, 3),
-    activity_types: (row.top_themes ?? []).slice(0, 3),
+    industry_verticals: sectors,
+    activity_types: themes,
   };
 }
 
