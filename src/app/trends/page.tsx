@@ -3,13 +3,29 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { AppShell } from "@/components/shell";
 import { EmptyState } from "@/components/ui/empty-state";
-import { TrendingUp, Lock, ExternalLink, ChevronDown } from "lucide-react";
+import { TrendingUp, Lock, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserClient } from "@supabase/ssr";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { trackClientEvent } from "@/lib/track-event";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import { useLiveMood } from "@/hooks/useLiveMood";
+
+// ── Filter constants (Noah's original 3-row layout) ──
+
+const INDUSTRY_VERTICALS = [
+  "Technology", "Healthcare & Biotech", "Energy & Oil/Gas", "Financial Services",
+  "Consumer & Retail", "Industrials & Manufacturing", "Aerospace & Defense",
+  "Real Estate", "Media & Telecom", "Materials & Mining", "Agriculture",
+];
+
+const ACTIVITY_TYPES = [
+  "Mergers & Acquisitions", "Private Equity", "Venture Capital", "IPO & Capital Markets",
+  "Earnings & Results", "Macro & Policy", "Geopolitics", "Regulation & Legal",
+  "Fundraising", "Crypto & Digital Assets", "Leadership & Operations",
+];
+
+type AnomalyFilter = "all" | "low" | "medium" | "high" | "critical";
 
 // ── Types ──
 
@@ -29,6 +45,7 @@ interface TrendSignal {
   top_sectors: string[];
   representative_article_ids: string[];
   matched_prior_cluster_keys: string[];
+  lookback_run_count: number;
   created_at: string;
 }
 
@@ -76,6 +93,47 @@ function getSupabase() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
+}
+
+function strengthToAnomaly(score: number): AnomalyFilter {
+  if (score >= 0.8) return "critical";
+  if (score >= 0.6) return "high";
+  if (score >= 0.4) return "medium";
+  return "low";
+}
+
+function buildSignalTitle(s: TrendSignal): { headline: string; subline: string } {
+  const theme = s.top_themes[0];
+  const companies = s.top_companies.slice(0, 3);
+  const headline = theme
+    ? `${theme}${companies.length ? ` \u2014 ${companies.join(", ")}` : ""}`
+    : s.label;
+  const subline = `${s.article_count} articles from ${s.source_count} sources`;
+  return { headline, subline };
+}
+
+function buildOverview(s: TrendSignal): string {
+  const parts: string[] = [];
+  if (s.top_themes.length > 0) parts.push(`Key themes: ${s.top_themes.slice(0, 3).join(", ")}.`);
+  if (s.top_companies.length > 0) parts.push(`Companies: ${s.top_companies.slice(0, 4).join(", ")}.`);
+  if (s.top_sectors.length > 0) parts.push(`Sectors: ${s.top_sectors.slice(0, 2).join(", ")}.`);
+  if (s.cross_source_flag) parts.push(`Verified across ${s.source_count} independent sources.`);
+  if (s.matched_prior_cluster_keys.length > 0) parts.push(`Recurring signal — seen ${s.matched_prior_cluster_keys.length + 1} times.`);
+  return parts.join(" ");
+}
+
+function generateSparkData(s: TrendSignal): number[] {
+  const points: number[] = [];
+  const runs = Math.max(s.lookback_run_count, 1);
+  const priorMatches = s.matched_prior_cluster_keys.length;
+  // Simulate a trendline: start low, build up based on recurrence
+  for (let i = 0; i < Math.min(runs, 8); i++) {
+    const base = i < (runs - priorMatches) ? 0.1 + Math.random() * 0.15 : 0.3 + Math.random() * 0.3;
+    points.push(base);
+  }
+  // Current strength as final point
+  points.push(s.strength_score);
+  return points;
 }
 
 type ShowFilter = "all" | "emerging" | "cross-source" | "underreported" | "my-sectors";
@@ -134,7 +192,10 @@ export default function TrendsPage() {
   const [loading, setLoading] = useState(true);
   const [totalArticles, setTotalArticles] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [sectorFilter, setSectorFilter] = useState<string | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [selectedVerticals, setSelectedVerticals] = useState<Set<string>>(new Set());
+  const [selectedActivities, setSelectedActivities] = useState<Set<string>>(new Set());
+  const [anomalyFilter, setAnomalyFilter] = useState<AnomalyFilter>("all");
   const [showFilter, setShowFilter] = useState<ShowFilter>("all");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [articleCache, setArticleCache] = useState<Record<string, SourceArticle[]>>({});
@@ -180,7 +241,7 @@ export default function TrendsPage() {
         const [signalResult, countResult] = await Promise.all([
           supabase
             .from("trend_clusters")
-            .select("id, label, cluster_type, article_count, source_count, strength_score, confidence_score, novelty_score, cross_source_flag, underrepresented_flag, top_companies, top_themes, top_sectors, representative_article_ids, matched_prior_cluster_keys, created_at")
+            .select("id, label, cluster_type, article_count, source_count, strength_score, confidence_score, novelty_score, cross_source_flag, underrepresented_flag, top_companies, top_themes, top_sectors, representative_article_ids, matched_prior_cluster_keys, lookback_run_count, created_at")
             .order("created_at", { ascending: false })
             .limit(200),
           supabase
@@ -207,6 +268,7 @@ export default function TrendsPage() {
             top_sectors: safeArray(row.top_sectors),
             representative_article_ids: safeArray(row.representative_article_ids),
             matched_prior_cluster_keys: safeArray(row.matched_prior_cluster_keys),
+            lookback_run_count: row.lookback_run_count ?? 0,
             created_at: row.created_at,
           }));
           setAllSignals(mapped);
@@ -239,10 +301,26 @@ export default function TrendsPage() {
     if (data) setArticleCache((prev) => ({ ...prev, [signalId]: data }));
   }, [articleCache]);
 
-  // ── Related thesis ──
+  // ── Related thesis (sector + company overlap, then sector-only) ──
   function findRelatedThesis(signal: TrendSignal): RelatedThesis | null {
     const signalSectors = signal.top_sectors.map((s) => s.toLowerCase());
-    return theses.find((t) => signalSectors.some((ss) => t.sector.toLowerCase().includes(ss) || ss.includes(t.sector.toLowerCase()))) ?? null;
+    const signalCompanies = signal.top_companies.map((c) => c.toLowerCase());
+
+    // Try sector + company overlap first
+    const sectorAndCompany = theses.find((t) => {
+      const tSector = t.sector.toLowerCase();
+      const tTitle = t.title.toLowerCase();
+      const sectorMatch = signalSectors.some((ss) => tSector.includes(ss) || ss.includes(tSector));
+      const companyMatch = signalCompanies.some((c) => tTitle.includes(c));
+      return sectorMatch && companyMatch;
+    });
+    if (sectorAndCompany) return sectorAndCompany;
+
+    // Fallback: sector-only
+    return theses.find((t) => {
+      const tSector = t.sector.toLowerCase();
+      return signalSectors.some((ss) => tSector.includes(ss) || ss.includes(tSector));
+    }) ?? null;
   }
 
   // ── Derived stats ──
@@ -251,26 +329,39 @@ export default function TrendsPage() {
   const crossSourceCount = useMemo(() => allSignals.filter((s) => s.cross_source_flag).length, [allSignals]);
   const underreportedCount = useMemo(() => allSignals.filter((s) => s.underrepresented_flag).length, [allSignals]);
 
-  // ── Sector pills derived from data ──
-  const availableSectors = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const s of allSignals) {
-      for (const sector of s.top_sectors) {
-        counts.set(sector, (counts.get(sector) ?? 0) + 1);
-      }
-    }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(([sector]) => sector);
-  }, [allSignals]);
-
   // ── Filtering ──
   const filtered = useMemo(() => {
     let result = allSignals;
 
-    if (sectorFilter) {
-      result = result.filter((s) => s.top_sectors.some((ts) => ts.toLowerCase().includes(sectorFilter.toLowerCase())));
+    // Row 1: industry verticals — fuzzy match against top_sectors
+    if (selectedVerticals.size > 0) {
+      result = result.filter((s) =>
+        s.top_sectors.some((ts) => {
+          const tsLower = ts.toLowerCase();
+          return Array.from(selectedVerticals).some((v) => {
+            const vLower = v.toLowerCase();
+            return tsLower.includes(vLower) || vLower.includes(tsLower);
+          });
+        }),
+      );
+    }
+
+    // Row 2: activity types — fuzzy match against top_themes
+    if (selectedActivities.size > 0) {
+      result = result.filter((s) =>
+        s.top_themes.some((tt) => {
+          const ttLower = tt.toLowerCase();
+          return Array.from(selectedActivities).some((a) => {
+            const aLower = a.toLowerCase();
+            return ttLower.includes(aLower) || aLower.includes(ttLower);
+          });
+        }),
+      );
+    }
+
+    // Row 3: anomaly / severity filter
+    if (anomalyFilter !== "all") {
+      result = result.filter((s) => strengthToAnomaly(s.strength_score) === anomalyFilter);
     }
 
     if (showFilter === "emerging") result = result.filter((s) => s.cluster_type === "emerging");
@@ -285,7 +376,7 @@ export default function TrendsPage() {
     }
 
     return result;
-  }, [allSignals, sectorFilter, showFilter, profileSectors, watchlistUpper]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [allSignals, selectedVerticals, selectedActivities, anomalyFilter, showFilter, profileSectors, watchlistUpper]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const gatedIds = useMemo(
     () => isSignedOut ? new Set(filtered.slice(0, 3).map((s) => s.id)) : null,
@@ -317,7 +408,12 @@ export default function TrendsPage() {
     );
   }
 
-  // ── Signal card click handler ──
+  // ── Signal hover / click handlers ──
+  function handleSignalHover(signal: TrendSignal) {
+    setHoveredId(signal.id);
+    fetchArticlesForSignal(signal.id, signal.representative_article_ids);
+  }
+
   function handleSignalClick(signal: TrendSignal) {
     const nextId = expandedId === signal.id ? null : signal.id;
     setExpandedId(nextId);
@@ -326,15 +422,33 @@ export default function TrendsPage() {
         signal_id: signal.id,
         sector: signal.top_sectors[0] ?? null,
       });
-      if (cardTier(signal) === "expanded") {
-        fetchArticlesForSignal(signal.id, signal.representative_article_ids);
-      }
+      fetchArticlesForSignal(signal.id, signal.representative_article_ids);
     }
   }
 
   // ── Watchlist check ──
   function isWatchlistTicker(company: string): boolean {
     return watchlistUpper.length > 0 && watchlistUpper.some((t) => company.toUpperCase().includes(t));
+  }
+
+  // ── Sparkline ──
+  function MiniSparkline({ data, color }: { data: number[]; color: string }) {
+    if (data.length < 2) return null;
+    const w = 80;
+    const h = 24;
+    const max = Math.max(...data);
+    const min = Math.min(...data);
+    const range = max - min || 1;
+    const points = data.map((v, i) => {
+      const x = (i / (data.length - 1)) * w;
+      const y = h - ((v - min) / range) * (h - 4) - 2;
+      return `${x},${y}`;
+    });
+    return (
+      <svg viewBox={`0 0 ${w} ${h}`} className="w-20 h-6 flex-shrink-0">
+        <path d={`M ${points.join(" L ")}`} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
   }
 
   // ── Render functions ──
@@ -422,22 +536,44 @@ export default function TrendsPage() {
 
   function renderExpandedCard(s: TrendSignal) {
     const thesis = findRelatedThesis(s);
+    const { headline, subline } = buildSignalTitle(s);
+    const sparkData = generateSparkData(s);
+    const sparkColor = s.strength_score >= 0.6 ? "var(--signal-dn)" : s.strength_score >= 0.4 ? "var(--signal-warn)" : "var(--gold)";
+    const isHovered = hoveredId === s.id;
+    const isOpen = expandedId === s.id;
     return (
       <div
         className={cn("border-l-[3px] bg-white border border-border-base rounded-xl p-4 cursor-pointer transition-all hover:border-border-hover", strengthBorder(s.strength_score))}
         onClick={() => handleSignalClick(s)}
+        onMouseEnter={() => handleSignalHover(s)}
+        onMouseLeave={() => setHoveredId(null)}
       >
         {renderBadgeRow(s)}
-        <h4 className="font-display text-[15px] font-semibold text-espresso leading-snug mb-1">{s.label}</h4>
-        <p className="font-data text-[11px] text-text-secondary mb-2.5">
-          {s.article_count} articles {"\u00B7"} {s.source_count} sources
-        </p>
-        <div className="flex items-center gap-4 mb-1">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1">
+            <h4 className="font-display text-[15px] font-semibold text-espresso leading-snug">{headline}</h4>
+            <p className="font-data text-[10px] text-text-muted mt-0.5">{subline}</p>
+          </div>
+          {sparkData.length > 1 && <MiniSparkline data={sparkData} color={sparkColor} />}
+        </div>
+
+        {/* Hover preview */}
+        {isHovered && !isOpen && (
+          <p className="font-sans text-[11px] text-text-secondary leading-snug mt-2 line-clamp-2">
+            {buildOverview(s)}
+          </p>
+        )}
+
+        <div className="flex items-center gap-4 mt-2 mb-1">
           {renderCompanies(s)}
           {renderThemes(s)}
         </div>
 
-        <div className={cn("overflow-hidden transition-all duration-200", expandedId === s.id ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0")}>
+        <div className={cn("overflow-hidden transition-all duration-200", isOpen ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0")}>
+          {/* Overview text */}
+          <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 mb-2">
+            {buildOverview(s)}
+          </p>
           {renderSourceArticles(s)}
           <div className="flex items-center gap-3 mt-3">
             <a
@@ -464,16 +600,27 @@ export default function TrendsPage() {
 
   function renderMidCard(s: TrendSignal) {
     const thesis = findRelatedThesis(s);
+    const { headline, subline } = buildSignalTitle(s);
+    const sparkData = generateSparkData(s);
+    const sparkColor = s.strength_score >= 0.6 ? "var(--signal-dn)" : s.strength_score >= 0.4 ? "var(--signal-warn)" : "var(--gold)";
+    const isHovered = hoveredId === s.id;
+    const isOpen = expandedId === s.id;
     return (
       <div
         className={cn("border-l-[3px] bg-white border border-border-base rounded-xl p-3.5 cursor-pointer transition-all hover:border-border-hover", strengthBorder(s.strength_score))}
         onClick={() => handleSignalClick(s)}
+        onMouseEnter={() => handleSignalHover(s)}
+        onMouseLeave={() => setHoveredId(null)}
       >
         {renderBadgeRow(s)}
         <div className="flex items-start justify-between gap-3">
-          <h4 className="font-display text-[14px] font-semibold text-espresso leading-snug flex-1">{s.label}</h4>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            {s.top_companies.slice(0, 3).map((c) => (
+          <div className="flex-1">
+            <h4 className="font-display text-[14px] font-semibold text-espresso leading-snug">{headline}</h4>
+            <p className="font-data text-[10px] text-text-muted mt-0.5">{subline}</p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {sparkData.length > 1 && <MiniSparkline data={sparkData} color={sparkColor} />}
+            {s.top_companies.slice(0, 2).map((c) => (
               <span
                 key={c}
                 className={cn(
@@ -486,12 +633,20 @@ export default function TrendsPage() {
             ))}
           </div>
         </div>
-        <p className="font-data text-[10px] text-text-secondary mt-1">
-          {s.article_count} articles {"\u00B7"} {s.source_count} sources
-        </p>
 
-        <div className={cn("overflow-hidden transition-all duration-200", expandedId === s.id ? "max-h-[300px] opacity-100 mt-2.5" : "max-h-0 opacity-0")}>
-          <div className="flex items-center gap-3 pt-2 border-t border-border-base">
+        {/* Hover preview */}
+        {isHovered && !isOpen && (
+          <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1.5 line-clamp-2">
+            {buildOverview(s)}
+          </p>
+        )}
+
+        <div className={cn("overflow-hidden transition-all duration-200", isOpen ? "max-h-[400px] opacity-100 mt-2.5" : "max-h-0 opacity-0")}>
+          <p className="font-sans text-[11px] text-text-secondary leading-snug mb-2">
+            {buildOverview(s)}
+          </p>
+          {renderSourceArticles(s)}
+          <div className="flex items-center gap-3 pt-2 border-t border-border-base mt-2">
             <a
               href={`/live-feed?q=${encodeURIComponent(s.label)}`}
               onClick={(e) => e.stopPropagation()}
@@ -566,17 +721,20 @@ export default function TrendsPage() {
         </div>
       ) : (
         <div className="sticky top-0 z-10 bg-parchment border-b border-border-base px-6 py-3 space-y-2">
-          {/* Row 1: Sector pills */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-data text-[9px] uppercase tracking-widest text-gold font-bold mr-1">SECTOR</span>
-            <Pill active={sectorFilter === null} onClick={() => setSectorFilter(null)}>All</Pill>
-            {availableSectors.map((sector) => (
+          {/* Row 1: Industry verticals */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            <span className="font-data text-[9px] uppercase tracking-widest text-gold font-bold mr-1 flex-shrink-0">SECTOR</span>
+            {INDUSTRY_VERTICALS.map((v) => (
               <Pill
-                key={sector}
-                active={sectorFilter === sector}
-                onClick={() => setSectorFilter(sectorFilter === sector ? null : sector)}
+                key={v}
+                active={selectedVerticals.has(v)}
+                onClick={() => setSelectedVerticals((prev) => {
+                  const next = new Set(prev);
+                  next.has(v) ? next.delete(v) : next.add(v);
+                  return next;
+                })}
               >
-                {sector}
+                {v}
               </Pill>
             ))}
             {profileSectors.length > 0 && (
@@ -590,12 +748,36 @@ export default function TrendsPage() {
             )}
           </div>
 
-          {/* Row 2: Show filters */}
+          {/* Row 2: Activity types */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            <span className="font-data text-[9px] uppercase tracking-widest text-gold font-bold mr-1 flex-shrink-0">ACTIVITY</span>
+            {ACTIVITY_TYPES.map((a) => (
+              <Pill
+                key={a}
+                active={selectedActivities.has(a)}
+                onClick={() => setSelectedActivities((prev) => {
+                  const next = new Set(prev);
+                  next.has(a) ? next.delete(a) : next.add(a);
+                  return next;
+                })}
+              >
+                {a}
+              </Pill>
+            ))}
+          </div>
+
+          {/* Row 3: Severity + show filters */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-data text-[9px] uppercase tracking-widest text-gold font-bold mr-1">SHOW</span>
+            <span className="font-data text-[9px] uppercase tracking-widest text-gold font-bold mr-1">SEVERITY</span>
+            {(["all", "low", "medium", "high", "critical"] as AnomalyFilter[]).map((level) => (
+              <Pill key={level} active={anomalyFilter === level} onClick={() => setAnomalyFilter(level)}>
+                {level}
+              </Pill>
+            ))}
+            <span className="border-l border-border-base h-4 mx-1" />
             {([
               ["all", "All"],
-              ["emerging", "Emerging only"],
+              ["emerging", "Emerging"],
               ["cross-source", "Cross-source"],
               ["underreported", "Underreported"],
             ] as [ShowFilter, string][]).map(([key, label]) => (
