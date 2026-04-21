@@ -7,12 +7,9 @@ import { MoodBar, type MoodType } from "./mood-bar";
 import { Topbar } from "./topbar";
 import { RightPanel } from "./right-panel";
 import { CommandPalette } from "./command-palette";
-import type { NotificationItem } from "./notification-dropdown";
+import { MobileBottomNav } from "./mobile-bottom-nav";
 
 const PANEL_STORAGE_KEY = "signalera_right_panel_open";
-
-// Notifications — coming soon, wired to empty for now
-const notifications: NotificationItem[] = [];
 
 interface AppShellProps {
   pageTitle: string;
@@ -36,6 +33,7 @@ export function AppShell({
   const [panelOpen, setPanelOpen] = useState(true);
   const [commandOpen, setCommandOpen] = useState(false);
   const [userInitials, setUserInitials] = useState("–");
+  const [authed, setAuthed] = useState(false);
 
   useEffect(() => {
     const supabase = createBrowserClient(
@@ -43,7 +41,11 @@ export function AppShell({
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     );
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
+      if (!user) {
+        setAuthed(false);
+        return;
+      }
+      setAuthed(true);
       const name = user.user_metadata?.full_name || user.email?.split("@")[0] || "";
       const initials = name
         .split(" ")
@@ -53,6 +55,13 @@ export function AppShell({
         .slice(0, 2);
       setUserInitials(initials || "–");
     });
+
+    const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthed(!!session?.user);
+    });
+    return () => {
+      authSub.subscription.unsubscribe();
+    };
   }, []);
 
   // Persist panel state
@@ -82,18 +91,20 @@ export function AppShell({
 
   return (
     <>
-      {/* Sidebar (fixed, outside flex flow) */}
-      <Sidebar />
+      {/* Sidebar (fixed, outside flex flow) — desktop only */}
+      <div className="hidden md:block">
+        <Sidebar />
+      </div>
 
-      {/* Main area */}
-      <div className="h-screen flex flex-col ml-[var(--sidebar-width)] overflow-hidden">
+      {/* Main area — full width on mobile, offset by sidebar on md+ */}
+      <div className="h-screen flex flex-col md:ml-[var(--sidebar-width)] overflow-hidden">
         {/* Preview banner */}
         {isPreview && (
           <div
             className="flex items-center justify-between px-5 py-2 font-sans text-[12px]"
             style={{ backgroundColor: "var(--espresso)", color: "var(--cream)" }}
           >
-            <span>You're viewing a live preview of Signalera</span>
+            <span>You&apos;re viewing a live preview of Signalera</span>
             <button
               onClick={() => {
                 window.location.href = "/auth";
@@ -118,25 +129,30 @@ export function AppShell({
         <Topbar
           pageTitle={pageTitle}
           userInitials={userInitials}
-          notifications={notifications}
+          authed={authed}
           onCommandOpen={() => setCommandOpen(true)}
         />
 
         {/* Content + right panel */}
         <div className="flex-1 flex overflow-hidden">
           {/* Scrollable content area */}
-          <main className="flex-1 overflow-y-auto bg-parchment">
+          <main className="flex-1 overflow-y-auto bg-parchment pb-[56px] md:pb-0">
             {children}
           </main>
 
-          {/* Collapsible right panel */}
+          {/* Collapsible right panel — hidden on mobile */}
           {rightPanel && (
-            <RightPanel open={panelOpen} onToggle={togglePanel}>
-              {rightPanel}
-            </RightPanel>
+            <div className="hidden lg:block">
+              <RightPanel open={panelOpen} onToggle={togglePanel}>
+                {rightPanel}
+              </RightPanel>
+            </div>
           )}
         </div>
       </div>
+
+      {/* Mobile bottom navigation — only visible <md */}
+      <MobileBottomNav />
 
       {/* Command palette overlay */}
       <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />

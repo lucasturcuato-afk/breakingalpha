@@ -1,35 +1,34 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Bell, Search, Sun, Moon, User } from "lucide-react";
-import { NotificationDropdown, type NotificationItem } from "./notification-dropdown";
+import { NotificationDropdown } from "./notification-dropdown";
 import { useTheme } from "@/components/providers/theme-provider";
+import { useNotifications } from "@/hooks/useNotifications";
 import Link from "next/link";
 
 interface TopbarProps {
   pageTitle: string;
   userInitials?: string;
-  notifications?: NotificationItem[];
+  authed?: boolean;
   onCommandOpen?: () => void;
 }
 
 export function Topbar({
   pageTitle,
   userInitials = "LT",
-  notifications: initialNotifications = [],
+  authed = false,
   onCommandOpen,
 }: TopbarProps) {
-  const [notifItems, setNotifItems] = useState<NotificationItem[]>(initialNotifications);
   const [notifOpen, setNotifOpen] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
-  const hasUnread = notifItems.some((n) => !n.read);
   const { theme, toggleTheme, mounted } = useTheme();
 
-  // Sync if parent passes new notifications
-  useEffect(() => {
-    if (initialNotifications.length > 0) setNotifItems(initialNotifications);
-  }, [initialNotifications]);
+  // Live-polled notifications. Hook short-circuits + cleans up when unauthenticated.
+  const { notifications, unreadCount, markRead, markAllRead } = useNotifications(authed);
+  const hasUnread = unreadCount > 0;
+  const badgeText = unreadCount > 9 ? "9+" : String(unreadCount);
 
   // Close on outside click
   useEffect(() => {
@@ -42,10 +41,6 @@ export function Topbar({
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [notifOpen]);
-
-  const handleMarkAllRead = useCallback(() => {
-    setNotifItems([]);
-  }, []);
 
   return (
     <div className="h-[var(--topbar-height)] bg-sidebar-bg border-b border-border-base flex items-center px-5 gap-4">
@@ -103,33 +98,45 @@ export function Topbar({
           )}
         </button>
 
-        {/* Notification bell */}
-        <div ref={bellRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setNotifOpen(!notifOpen)}
-            className={cn(
-              "w-8 h-8 flex items-center justify-center rounded-lg",
-              "bg-parchment-mid border border-border-base",
-              "transition-colors duration-[var(--duration-base)]",
-              "hover:border-border-hover",
-              "cursor-pointer",
-            )}
-            aria-label="Notifications"
-          >
-            <Bell size={14} className="text-text-muted" />
-            {hasUnread && (
-              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-gold animate-pulse" />
-            )}
-          </button>
+        {/* Notification bell — only visible when authenticated */}
+        {authed && (
+          <div ref={bellRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setNotifOpen(!notifOpen)}
+              className={cn(
+                "w-8 h-8 flex items-center justify-center rounded-lg",
+                "bg-parchment-mid border border-border-base",
+                "transition-colors duration-[var(--duration-base)]",
+                "hover:border-border-hover",
+                "cursor-pointer",
+              )}
+              aria-label="Notifications"
+            >
+              <Bell size={14} className="text-text-muted" />
+              {hasUnread && (
+                <span
+                  className={cn(
+                    "absolute -top-1 -right-1 min-w-[16px] h-[16px] rounded-full",
+                    "bg-gold text-cream",
+                    "flex items-center justify-center px-1",
+                    "font-sans text-[9px] font-bold leading-none",
+                  )}
+                >
+                  {badgeText}
+                </span>
+              )}
+            </button>
 
-          {notifOpen && (
-            <NotificationDropdown
-              items={notifItems}
-              onMarkAllRead={handleMarkAllRead}
-            />
-          )}
-        </div>
+            {notifOpen && (
+              <NotificationDropdown
+                notifications={notifications}
+                onMarkAllRead={markAllRead}
+                onMarkRead={markRead}
+              />
+            )}
+          </div>
+        )}
 
         {/* User avatar with dropdown */}
         <UserMenu userInitials={userInitials} />
