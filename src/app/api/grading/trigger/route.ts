@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       {
         error: "GITHUB_DISPATCH_TOKEN not configured",
         setup:
-          "Provision a fine-grained PAT with contents:read + actions:write scopes on lucasturcuato-afk/breakingalpha; set as GITHUB_DISPATCH_TOKEN env var",
+          "Provision a fine-grained PAT with contents: read & write on lucasturcuato-afk/breakingalpha (metadata: read is auto-included); set as GITHUB_DISPATCH_TOKEN env var",
       },
       { status: 503 },
     );
