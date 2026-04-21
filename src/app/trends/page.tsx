@@ -37,8 +37,16 @@ function mapSignalStrength(strength: number | null): "critical" | "high" | "medi
   return "low";
 }
 
-function sectorToVertical(sector: string | null): string[] {
-  if (!sector) return [];
+/** Parse JSONB fields that Supabase may return as JSON strings */
+function safeArray(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch { return []; }
+  }
+  return [];
+}
+
+function sectorToVertical(sector: string): string[] {
   const s = sector.toLowerCase();
   if (s.includes("tech") || s.includes("ai") || s.includes("software") || s.includes("semi")) return ["Technology"];
   if (s.includes("health") || s.includes("biotech") || s.includes("pharma")) return ["Healthcare & Biotech"];
@@ -101,7 +109,7 @@ export default function TrendsPage() {
         const supabase = getSupabase();
         const { data, error } = await supabase
           .from("trend_clusters")
-          .select("id, cluster_label, summary, sector, signal_strength, article_count, created_at")
+          .select("id, label, cluster_type, article_count, source_count, strength_score, top_companies, top_themes, top_sectors, created_at, cross_source_flag")
           .order("created_at", { ascending: false })
           .limit(100);
 
@@ -112,16 +120,30 @@ export default function TrendsPage() {
         }
 
         if (data && data.length > 0) {
-          const mapped: SignalData[] = data.map((row) => ({
-            id: row.id,
-            title: row.cluster_label || "Untitled Signal",
-            anomaly: mapSignalStrength(row.signal_strength),
-            description: row.summary || "",
-            sparkData: [],
-            timestamp: timeAgo(row.created_at),
-            industry_verticals: sectorToVertical(row.sector),
-            activity_types: [],
-          }));
+          const mapped: SignalData[] = data.map((row) => {
+            const companies = safeArray(row.top_companies).slice(0, 3);
+            const themes = safeArray(row.top_themes).slice(0, 3);
+            const rawSectors = safeArray(row.top_sectors);
+            const verticals = [...new Set(rawSectors.flatMap(sectorToVertical))];
+
+            const parts: string[] = [];
+            if (companies.length) parts.push(`Key players: ${companies.join(", ")}.`);
+            if (themes.length) parts.push(`Themes: ${themes.join(", ")}.`);
+            parts.push(`${row.article_count ?? 0} articles from ${row.source_count ?? 0} sources.`);
+            if (row.cluster_type === "emerging") parts.push("Emerging trend.");
+            if (row.cross_source_flag) parts.push("Multi-source corroboration.");
+
+            return {
+              id: row.id,
+              title: row.label || "Untitled Signal",
+              anomaly: mapSignalStrength(row.strength_score),
+              description: parts.join(" "),
+              sparkData: [],
+              timestamp: timeAgo(row.created_at),
+              industry_verticals: verticals,
+              activity_types: [],
+            };
+          });
           setAllSignals(mapped);
         }
       } catch (e) {

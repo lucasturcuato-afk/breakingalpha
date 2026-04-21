@@ -118,9 +118,9 @@ export async function POST(request: NextRequest) {
   /* ── Step 2: Embed the user's query ── */
   let embedding: number[];
   try {
-    console.log("[intelligence] Step 2 — embedding model: text-embedding-004, query length:", query.length);
+    console.log("[intelligence] Step 2 — embedding model: gemini-embedding-001, query length:", query.length);
     const embedResponse = await ai.models.embedContent({
-      model: "text-embedding-004",
+      model: "gemini-embedding-001",
       contents: query,
       config: { outputDimensionality: 768 },
     });
