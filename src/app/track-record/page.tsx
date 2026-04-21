@@ -4,7 +4,9 @@ import { useState, useEffect, useMemo } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
 import Link from "next/link";
+import { Trophy } from "lucide-react";
 import { getSectorStyle } from "@/lib/sector-colors";
+import { EmptyState } from "@/components/ui/empty-state";
 
 function getSupabase() {
   return createBrowserClient(
@@ -178,6 +180,16 @@ export default function TrackRecordPage() {
           )}
         </div>
 
+        {!loading && confirmedCount === 0 && invalidatedCount === 0 ? (
+          <div className="py-16">
+            <EmptyState
+              icon={<Trophy size={32} />}
+              title="Track record building"
+              description="Thesis outcomes will appear here once the grading pipeline has run. Check back after your first theses are confirmed or invalidated."
+            />
+          </div>
+        ) : (
+        <>
         {/* SUMMARY STATS */}
         <div className="grid grid-cols-4 gap-3">
           <StatCard label="Total Theses" value={String(totalCount)} loading={loading} />
@@ -361,6 +373,8 @@ export default function TrackRecordPage() {
             </div>
           )}
         </Section>
+        </>
+        )}
       </div>
     </AppShell>
   );

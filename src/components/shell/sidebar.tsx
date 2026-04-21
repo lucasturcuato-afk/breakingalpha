@@ -364,22 +364,23 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
     <>
       <aside className="fixed left-0 top-0 bottom-0 w-[var(--sidebar-width)] bg-sidebar-bg border-r border-border-base flex flex-col z-40">
         {/* Logo area */}
-        <div style={{ borderBottom: '1px solid var(--border-base)', padding: '10px 14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0px', width: '100%' }}>
-            <div style={{ width: '80px', height: '72px', overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
+        <div className="border-b border-border-base px-3.5 py-2.5">
+          <div className="flex items-center w-full">
+            <div className="w-20 h-[72px] overflow-hidden shrink-0 relative">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/logo-icon.png"
                 alt="Signalera"
-                style={{ position: 'absolute', width: '480px', height: '480px', left: '50%', top: '50%', transform: 'translate(-53%, -53%)', objectFit: 'contain' }}
+                className="absolute w-[480px] h-[480px] left-1/2 top-1/2 object-contain"
+                style={{ transform: 'translate(-53%, -53%)' }}
               />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: '22px', fontWeight: 700, fontFamily: '"Playfair Display", serif', letterSpacing: '-0.3px', lineHeight: 1.1, whiteSpace: 'nowrap' }}>
+            <div className="flex flex-col gap-1 min-w-0 flex-1">
+              <div className="font-display text-[22px] font-bold tracking-tight leading-none whitespace-nowrap">
                 <span className="text-foreground">Signal</span>
                 <span className="text-gold">era</span>
               </div>
-              <div className="text-muted-foreground" style={{ fontSize: '9px', fontWeight: 500, fontFamily: 'Inter, sans-serif', letterSpacing: '1.5px', textTransform: 'uppercase' as const, lineHeight: 1.4, wordBreak: 'break-word' }}>
+              <div className="font-sans text-[9px] font-medium tracking-[1.5px] uppercase leading-snug break-words text-text-muted">
                 Where Markets Make Sense
               </div>
             </div>
@@ -497,8 +498,7 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
             <button
               type="button"
               onClick={() => { window.location.href = "/auth"; }}
-              className="w-full flex items-center justify-center gap-2 h-10 rounded-xl font-sans text-[13px] font-semibold cursor-pointer transition-all"
-              style={{ backgroundColor: "var(--espresso)", color: "var(--cream)" }}
+              className="w-full flex items-center justify-center gap-2 h-10 rounded-xl font-sans text-[13px] font-semibold cursor-pointer transition-all bg-espresso text-cream"
             >
               Sign in free →
             </button>
@@ -539,8 +539,7 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
       {/* Notification drawer overlay */}
       {notifDrawerOpen && (
         <div
-          className="fixed inset-0 z-[9000]"
-          style={{ background: 'rgba(30,20,10,0.25)' }}
+          className="fixed inset-0 z-[9000] bg-espresso/25"
           onClick={() => setNotifDrawerOpen(false)}
         />
       )}

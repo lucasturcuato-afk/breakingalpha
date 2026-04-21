@@ -65,7 +65,7 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-const sparkSignals = [3, 5, 2, 7, 4, 8, 6, 9, 5, 11, 8, 14];
+const SPARK_DAYS = 12;
 
 interface MarketCardData {
   symbol: string;
@@ -129,6 +129,11 @@ export default function DashboardPage() {
   const [storiesLoading, setStoriesLoading] = useState(true);
   const [storyCount, setStoryCount] = useState(0);
   const [marketCards, setMarketCards] = useState<Record<string, MarketCardData | null>>({});
+  const [bullishCount, setBullishCount] = useState(0);
+  const [bearishCount, setBearishCount] = useState(0);
+  const [sparkSignals, setSparkSignals] = useState<number[]>([]);
+  const [briefingHeadline, setBriefingHeadline] = useState<string | null>(null);
+  const [marketTone, setMarketTone] = useState<string | null>(null);
   const [storyTab, setStoryTab] = useState<"for-you" | "all">("all");
   const [isEditingCards, setIsEditingCards] = useState(false);
   // Local override of the user's chosen cards. Used while editing, and as a
@@ -158,11 +163,57 @@ export default function DashboardPage() {
         // Count articles ingested today (since midnight UTC)
         const todayMidnight = new Date();
         todayMidnight.setUTCHours(0, 0, 0, 0);
-        const { count } = await supabase
-          .from("articles")
-          .select("id", { count: "exact", head: true })
-          .gte("ingested_at", todayMidnight.toISOString());
+        const [{ count }, { count: bullish }, { count: bearish }] = await Promise.all([
+          supabase
+            .from("articles")
+            .select("id", { count: "exact", head: true })
+            .gte("ingested_at", todayMidnight.toISOString()),
+          supabase
+            .from("articles")
+            .select("id", { count: "exact", head: true })
+            .gte("ingested_at", todayMidnight.toISOString())
+            .ilike("sentiment", "%bullish%"),
+          supabase
+            .from("articles")
+            .select("id", { count: "exact", head: true })
+            .gte("ingested_at", todayMidnight.toISOString())
+            .ilike("sentiment", "%bearish%"),
+        ]);
         setStoryCount(count ?? 0);
+        setBullishCount(bullish ?? 0);
+        setBearishCount(bearish ?? 0);
+
+        // Sparkline: article counts per day for last 12 days
+        const sparkStart = new Date();
+        sparkStart.setUTCHours(0, 0, 0, 0);
+        sparkStart.setUTCDate(sparkStart.getUTCDate() - (SPARK_DAYS - 1));
+        const { data: sparkRows } = await supabase
+          .from("articles")
+          .select("ingested_at")
+          .gte("ingested_at", sparkStart.toISOString());
+        if (sparkRows) {
+          const buckets = new Array(SPARK_DAYS).fill(0);
+          const baseMs = sparkStart.getTime();
+          const dayMs = 86400000;
+          for (const row of sparkRows) {
+            const idx = Math.floor((new Date(row.ingested_at).getTime() - baseMs) / dayMs);
+            if (idx >= 0 && idx < SPARK_DAYS) buckets[idx]++;
+          }
+          setSparkSignals(buckets);
+        }
+
+        // Fetch latest briefing headline + market_tone
+        const { data: briefRow } = await supabase
+          .from("briefings")
+          .select("headline, market_tone")
+          .neq("headline", "Market Intelligence Unavailable")
+          .order("created_at", { ascending: false })
+          .limit(1);
+        if (briefRow?.[0]) {
+          const b = briefRow[0] as { headline: string | null; market_tone: string | null };
+          if (b.headline) setBriefingHeadline(b.headline);
+          if (b.market_tone) setMarketTone(b.market_tone);
+        }
 
         // Get top 4 stories
         const { data, error } = await supabase
@@ -365,8 +416,8 @@ export default function DashboardPage() {
           accentGold
           sparkData={sparkSignals}
           detailRows={[
-            { label: "Bullish", value: "—" },
-            { label: "Bearish", value: "—" },
+            { label: "Bullish", value: String(bullishCount) },
+            { label: "Bearish", value: String(bearishCount) },
           ]}
           editOverlay={overlay}
         />
@@ -418,8 +469,19 @@ export default function DashboardPage() {
       return "Risk-off conditions detected — prioritizing macro signals.";
     }
 
+    // Market tone from latest briefing
+    if (marketTone) {
+      const toneMap: Record<string, string> = {
+        "RISK-ON": "markets are risk-on — momentum signals dominating your feed.",
+        "RISK-OFF": "risk-off tone detected — defensive themes rising in your feed.",
+        "MIXED": "mixed signals across sectors — watch for divergences.",
+        "NEUTRAL": "markets are consolidating — monitoring for directional catalysts.",
+      };
+      return toneMap[marketTone] ?? undefined;
+    }
+
     return undefined;
-  }, [profile, stories, watchlistTickers]);
+  }, [profile, stories, watchlistTickers, marketTone]);
 
   return (
     <AppShell
@@ -555,8 +617,8 @@ export default function DashboardPage() {
         {/* AI signal bar */}
         <div className="mt-3">
           <AISignalBar
-            text="Fed language shift detected across 3 FOMC transcripts — dovish pivot probability rising. Bond markets already pricing in."
-            boldParts={["Fed language shift", "dovish pivot probability rising"]}
+            text={briefingHeadline ?? "Loading intelligence briefing..."}
+            boldParts={[]}
           />
         </div>
 

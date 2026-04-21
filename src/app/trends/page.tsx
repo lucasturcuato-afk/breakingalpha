@@ -27,92 +27,60 @@ const ACTIVITY_TYPES = [
   "Fundraising", "Crypto & Digital Assets", "Leadership & Operations",
 ] as const;
 
-const allSignals: SignalData[] = [
-  {
-    id: "s1", title: "AI Chip Export Controls Expanding", anomaly: "critical",
-    description: "Commerce Dept expanding restrictions to custom NVIDIA variants. Impact could reach $8B+ in China revenue by FY2026.",
-    sparkData: [40, 42, 45, 52, 58, 72, 85, 90, 88, 95], timestamp: "12m ago",
-    industry_verticals: ["Technology"],
-    activity_types: ["Regulation & Legal", "Mergers & Acquisitions"],
-  },
-  {
-    id: "s2", title: "Semiconductor M&A Freeze Deepening", anomaly: "high",
-    description: "Antitrust reviews now averaging 18 months for chip deals. Intel-Tower and Synopsys-Ansys still pending.",
-    sparkData: [20, 22, 18, 15, 12, 10, 8, 6, 5, 4], timestamp: "2h ago",
-    industry_verticals: ["Technology"],
-    activity_types: ["Mergers & Acquisitions"],
-  },
-  {
-    id: "s3", title: "Cloud Capex Guidance Surging", anomaly: "high",
-    description: "Combined hyperscaler capex for 2024 now $180B+, up 35% YoY. AI infrastructure spend driving reacceleration.",
-    sparkData: [100, 108, 115, 125, 138, 145, 155, 162, 170, 180], timestamp: "5h ago",
-    industry_verticals: ["Technology"],
-    activity_types: ["Earnings & Results"],
-  },
-  {
-    id: "s4", title: "Down Round Frequency Rising in Series B-C", anomaly: "medium",
-    description: "22% of Series B-C rounds in Q1 were down rounds, up from 8% in 2021. Seed stage recovering faster.",
-    sparkData: [5, 7, 10, 12, 15, 17, 19, 20, 21, 22], timestamp: "1d ago",
-    industry_verticals: ["Technology", "Financial Services"],
-    activity_types: ["Venture Capital", "Fundraising"],
-  },
-  {
-    id: "s5", title: "AI Startup Valuations Decoupling from SaaS", anomaly: "medium",
-    description: "AI companies raising at 40-80x revenue while traditional SaaS compressed to 8-12x. Bifurcation deepening.",
-    sparkData: [15, 18, 22, 28, 35, 42, 50, 58, 65, 72], timestamp: "1d ago",
-    industry_verticals: ["Technology"],
-    activity_types: ["Venture Capital", "IPO & Capital Markets"],
-  },
-  {
-    id: "s6", title: "VIX Term Structure Flattening", anomaly: "medium",
-    description: "Contango compression suggests rising near-term uncertainty. 1M-3M spread at lowest since Oct 2023.",
-    sparkData: [8, 7.5, 7, 6.2, 5.5, 4.8, 4.2, 3.5, 3, 2.5], timestamp: "3h ago",
-    industry_verticals: ["Financial Services"],
-    activity_types: ["Macro & Policy"],
-  },
-  {
-    id: "s7", title: "Market Breadth Deteriorating", anomaly: "high",
-    description: "Advance-decline line diverging from index highs. Only 38% of S&P above 50-day MA despite index near ATH.",
-    sparkData: [72, 68, 62, 55, 50, 45, 42, 40, 38, 38], timestamp: "6h ago",
-    industry_verticals: ["Financial Services"],
-    activity_types: ["Macro & Policy"],
-  },
-  {
-    id: "s8", title: "GLP-1 Drug Competition Heating Up", anomaly: "medium",
-    description: "Amgen and Pfizer GLP-1 candidates entering Phase 3. TAM estimates rising from $50B to $100B+ by 2030.",
-    sparkData: [30, 35, 42, 50, 58, 65, 72, 80, 90, 100], timestamp: "1d ago",
-    industry_verticals: ["Healthcare & Biotech"],
-    activity_types: ["Earnings & Results", "Mergers & Acquisitions"],
-  },
-  {
-    id: "s9", title: "Nuclear SMR Permitting Accelerating", anomaly: "low",
-    description: "NRC reviewing 4 SMR designs simultaneously. AI data center PPAs creating demand certainty for developers.",
-    sparkData: [1, 1, 1, 2, 2, 2, 3, 3, 4, 4], timestamp: "2d ago",
-    industry_verticals: ["Energy & Oil/Gas"],
-    activity_types: ["Regulation & Legal"],
-  },
-  {
-    id: "s10", title: "Japan Rate Normalization Accelerating", anomaly: "high",
-    description: "Spring wage negotiations delivering 5.2% increases. BOJ widely expected to raise rates in July. Yen carry unwind risk elevated.",
-    sparkData: [0, 0, 0, 0, 0.1, 0.1, 0.25, 0.25, 0.5, 0.75], timestamp: "6h ago",
-    industry_verticals: ["Financial Services"],
-    activity_types: ["Macro & Policy", "Geopolitics"],
-  },
-  {
-    id: "s11", title: "PE Take-Private Activity Surging", anomaly: "low",
-    description: "12 software take-privates announced in Q1, most since 2019. Average premium 35-45% to undisturbed price.",
-    sparkData: [3, 4, 5, 6, 8, 8, 10, 11, 11, 12], timestamp: "2d ago",
-    industry_verticals: ["Financial Services", "Technology"],
-    activity_types: ["Private Equity", "Mergers & Acquisitions"],
-  },
-  {
-    id: "s12", title: "Bitcoin ETF Flow Reversal Pattern", anomaly: "medium",
-    description: "Inflows resumed after 3-day pause. Pattern consistent with institutional rebalancing rather than conviction buying.",
-    sparkData: [500, 450, 380, 200, -50, -100, 80, 250, 350, 420], timestamp: "1h ago",
-    industry_verticals: ["Financial Services"],
-    activity_types: ["Crypto & Digital Assets"],
-  },
-];
+interface TrendClusterRow {
+  id: string;
+  label: string | null;
+  cluster_type: string | null;
+  article_count: number | null;
+  source_count: number | null;
+  strength_score: number | null;
+  confidence_score: number | null;
+  top_companies: string[] | null;
+  top_themes: string[] | null;
+  top_sectors: string[] | null;
+  created_at: string;
+  novelty_score: number | null;
+  cross_source_flag: boolean | null;
+}
+
+function strengthToAnomaly(score: number | null): "critical" | "high" | "medium" | "low" {
+  if (score == null) return "low";
+  if (score >= 0.8) return "critical";
+  if (score >= 0.6) return "high";
+  if (score >= 0.4) return "medium";
+  return "low";
+}
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function clusterToSignal(row: TrendClusterRow): SignalData {
+  const companies = (row.top_companies ?? []).slice(0, 3);
+  const themes = (row.top_themes ?? []).slice(0, 3);
+  const parts: string[] = [];
+  if (companies.length) parts.push(`Key players: ${companies.join(", ")}.`);
+  if (themes.length) parts.push(`Themes: ${themes.join(", ")}.`);
+  parts.push(`${row.article_count ?? 0} articles from ${row.source_count ?? 0} sources.`);
+  if (row.cluster_type === "emerging") parts.push("Emerging trend.");
+  if (row.cross_source_flag) parts.push("Multi-source corroboration.");
+
+  return {
+    id: row.id,
+    title: row.label || "Untitled cluster",
+    anomaly: strengthToAnomaly(row.strength_score),
+    description: parts.join(" "),
+    timestamp: relativeTime(row.created_at),
+    industry_verticals: (row.top_sectors ?? []).slice(0, 3),
+    activity_types: (row.top_themes ?? []).slice(0, 3),
+  };
+}
 
 function getSupabase() {
   return createBrowserClient(
@@ -135,15 +103,30 @@ export default function TrendsPage() {
   const [addingThesis, setAddingThesis] = useState(false);
   const [isSignedOut, setIsSignedOut] = useState(false);
   const [showSignIn, setShowSignIn] = useState(false);
+  const [allSignals, setAllSignals] = useState<SignalData[]>([]);
+  const [signalsLoading, setSignalsLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    );
+    const supabase = getSupabase();
     supabase.auth.getUser().then(({ data: { user } }) => {
       setIsSignedOut(user === null);
     }).catch(() => setIsSignedOut(true));
+
+    // Fetch real trend clusters (last 7 days, ordered by strength)
+    supabase
+      .from("trend_clusters")
+      .select("id, label, cluster_type, article_count, source_count, strength_score, confidence_score, top_companies, top_themes, top_sectors, created_at, novelty_score, cross_source_flag")
+      .gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString())
+      .order("strength_score", { ascending: false })
+      .limit(50)
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("Failed to load trend clusters:", error);
+        } else if (data && data.length > 0) {
+          setAllSignals((data as TrendClusterRow[]).map(clusterToSignal));
+        }
+        setSignalsLoading(false);
+      });
   }, []);
 
   // Personalization helpers — soft-fail when profile is null.
@@ -377,7 +360,18 @@ export default function TrendsPage() {
 
       {/* Content */}
       <div className="px-6 py-5">
-        {filtered.length === 0 ? (
+        {signalsLoading ? (
+          <div className="flex flex-col items-center py-16 gap-3">
+            <div className="w-8 h-8 rounded-full border-2 border-gold border-t-transparent animate-spin" />
+            <p className="font-sans text-[12px] text-text-muted">Loading trend signals...</p>
+          </div>
+        ) : allSignals.length === 0 ? (
+          <EmptyState
+            icon={<TrendingUp size={32} />}
+            title="No trend clusters yet"
+            description="Trend signals will appear after the pipeline runs and identifies recurring narratives."
+          />
+        ) : filtered.length === 0 ? (
           <EmptyState
             icon={<TrendingUp size={32} />}
             title="No signals match your filters"
