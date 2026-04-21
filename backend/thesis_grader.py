@@ -498,6 +498,13 @@ def _parse_verdict(text: str) -> GeminiVerdict:
         parsed["key_evidence_ids"] = [str(x) for x in ids_raw if x]
     else:
         parsed["key_evidence_ids"] = []
+    sw = parsed.get("signals_weighted")
+    if isinstance(sw, dict):
+        for k, v in list(sw.items()):
+            try:
+                sw[k] = max(0.0, min(1.0, float(v)))
+            except Exception:
+                sw[k] = 0.0
     return GeminiVerdict.model_validate(parsed)
 
 
