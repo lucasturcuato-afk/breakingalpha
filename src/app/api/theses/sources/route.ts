@@ -10,7 +10,7 @@ export async function GET() {
   try {
     const { data, error } = await supabase
       .from("source_credibility")
-      .select("source, win_rate, sample_size")
+      .select("source, win_rate, n_theses")
       .order("win_rate", { ascending: false })
       .limit(5);
 
