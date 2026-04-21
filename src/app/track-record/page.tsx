@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Trophy } from "lucide-react";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { EmptyState } from "@/components/ui/empty-state";
+import { VerdictEvolution } from "@/components/track-record/verdict-evolution";
 
 function getSupabase() {
   return createBrowserClient(
@@ -311,6 +312,9 @@ export default function TrackRecordPage() {
             </div>
           )}
         </Section>
+
+        {/* VERDICT EVOLUTION */}
+        <VerdictEvolution />
 
         {/* PATTERN LIBRARY */}
         <Section title="What&apos;s Been Working">
