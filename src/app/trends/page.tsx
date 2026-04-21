@@ -27,31 +27,23 @@ const ACTIVITY_TYPES = [
   "Fundraising", "Crypto & Digital Assets", "Leadership & Operations",
 ] as const;
 
-interface TrendClusterRow {
-  id: string;
-  cluster_label: string | null;
-  summary: string | null;
-  sector: string | null;
-  signal_strength: number | null;
-  article_count: number | null;
-  created_at: string;
-}
+// ── Helpers for mapping trend_clusters → SignalData ──
 
-function mapSignalStrength(v: number | null): "critical" | "high" | "medium" | "low" {
-  if (v == null) return "low";
-  if (v >= 8) return "critical";
-  if (v >= 5) return "high";
-  if (v >= 3) return "medium";
+function mapSignalStrength(strength: number | null): "critical" | "high" | "medium" | "low" {
+  if (!strength && strength !== 0) return "medium";
+  if (strength >= 0.8) return "critical";
+  if (strength >= 0.6) return "high";
+  if (strength >= 0.4) return "medium";
   return "low";
 }
 
-function sectorToVertical(sector: string): string[] {
+function sectorToVertical(sector: string | null): string[] {
+  if (!sector) return [];
   const s = sector.toLowerCase();
-  if (s.includes("tech") || s.includes("ai") || s.includes("software")) return ["Technology"];
-  if (s.includes("semi")) return ["Technology"];
+  if (s.includes("tech") || s.includes("ai") || s.includes("software") || s.includes("semi")) return ["Technology"];
   if (s.includes("health") || s.includes("biotech") || s.includes("pharma")) return ["Healthcare & Biotech"];
   if (s.includes("energy") || s.includes("oil") || s.includes("gas") || s.includes("nuclear")) return ["Energy & Oil/Gas"];
-  if (s.includes("financ") || s.includes("bank") || s.includes("insurance")) return ["Financial Services"];
+  if (s.includes("financ") || s.includes("bank") || s.includes("insurance") || s.includes("crypto")) return ["Financial Services"];
   if (s.includes("consumer") || s.includes("retail")) return ["Consumer & Retail"];
   if (s.includes("industrial") || s.includes("manufactur")) return ["Industrials & Manufacturing"];
   if (s.includes("defense") || s.includes("aerospace")) return ["Aerospace & Defense"];
@@ -59,30 +51,17 @@ function sectorToVertical(sector: string): string[] {
   if (s.includes("media") || s.includes("telecom")) return ["Media & Telecom"];
   if (s.includes("material") || s.includes("mining")) return ["Materials & Mining"];
   if (s.includes("agri")) return ["Agriculture"];
-  if (s.includes("crypto") || s.includes("digital asset")) return ["Crypto & Digital Assets"];
-  return [sector];
+  return [];
 }
 
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
+function timeAgo(dateStr: string | null): string {
+  if (!dateStr) return "";
+  const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
-}
-
-function clusterToSignal(row: TrendClusterRow): SignalData {
-  const verticals = row.sector ? sectorToVertical(row.sector) : [];
-  return {
-    id: row.id,
-    title: row.cluster_label || "Untitled cluster",
-    anomaly: mapSignalStrength(row.signal_strength),
-    description: row.summary || "",
-    timestamp: timeAgo(row.created_at),
-    industry_verticals: verticals,
-    activity_types: [],
-  };
 }
 
 function getSupabase() {
@@ -114,22 +93,44 @@ export default function TrendsPage() {
     supabase.auth.getUser().then(({ data: { user } }) => {
       setIsSignedOut(user === null);
     }).catch(() => setIsSignedOut(true));
+  }, []);
 
-    // Fetch real trend clusters (last 7 days, ordered by strength)
-    supabase
-      .from("trend_clusters")
-      .select("id, cluster_label, summary, sector, signal_strength, article_count, created_at")
-      .gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString())
-      .order("signal_strength", { ascending: false })
-      .limit(50)
-      .then(({ data, error }) => {
+  useEffect(() => {
+    async function loadSignals() {
+      try {
+        const supabase = getSupabase();
+        const { data, error } = await supabase
+          .from("trend_clusters")
+          .select("id, cluster_label, summary, sector, signal_strength, article_count, created_at")
+          .order("created_at", { ascending: false })
+          .limit(100);
+
         if (error) {
-          console.error("Failed to load trend clusters:", error);
-        } else if (data && data.length > 0) {
-          setAllSignals((data as TrendClusterRow[]).map(clusterToSignal));
+          console.error("[trends] fetch error:", error.message);
+          setSignalsLoading(false);
+          return;
         }
+
+        if (data && data.length > 0) {
+          const mapped: SignalData[] = data.map((row) => ({
+            id: row.id,
+            title: row.cluster_label || "Untitled Signal",
+            anomaly: mapSignalStrength(row.signal_strength),
+            description: row.summary || "",
+            sparkData: [],
+            timestamp: timeAgo(row.created_at),
+            industry_verticals: sectorToVertical(row.sector),
+            activity_types: [],
+          }));
+          setAllSignals(mapped);
+        }
+      } catch (e) {
+        console.error("[trends] load error:", e);
+      } finally {
         setSignalsLoading(false);
-      });
+      }
+    }
+    loadSignals();
   }, []);
 
   // Personalization helpers — soft-fail when profile is null.
@@ -364,9 +365,9 @@ export default function TrendsPage() {
       {/* Content */}
       <div className="px-6 py-5">
         {signalsLoading ? (
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="space-y-3">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-28 rounded-xl border border-border-base bg-white animate-pulse" />
+              <div key={i} className="h-24 rounded-xl bg-parchment-mid animate-pulse" />
             ))}
           </div>
         ) : allSignals.length === 0 ? (

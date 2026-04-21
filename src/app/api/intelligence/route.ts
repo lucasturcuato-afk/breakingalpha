@@ -184,25 +184,24 @@ export async function POST(request: NextRequest) {
   const contextChunks: string[] = [];
 
   if (typedMatches.length === 0) {
-    console.log("[intelligence] Step 3b — no vector matches, falling back to recent content");
+    // Fallback: grab recent content directly instead of returning empty
+    console.log("[intelligence] Step 3 — no vector matches, using recency fallback");
     try {
       const [recentArticles, recentTheses] = await Promise.all([
-        supabase.from("articles").select("id, title, summary, source").order("created_at", { ascending: false }).limit(5),
-        supabase.from("theses").select("id, title, sector, rationale, conviction, horizon").order("created_at", { ascending: false }).limit(3),
+        supabase.from("articles").select("id, title, summary, source").order("ingested_at", { ascending: false }).limit(5),
+        supabase.from("theses").select("id, title, sector, rationale, conviction, horizon").order("generated_at", { ascending: false }).limit(3),
       ]);
-      for (const a of recentArticles.data ?? []) {
-        sources.push({ type: "article", title: a.title, id: a.id });
-        contextChunks.push(`[Article: "${a.title}" — ${a.source || "unknown source"}]\n${a.summary || "No summary available."}`);
-      }
-      for (const t of recentTheses.data ?? []) {
-        sources.push({ type: "thesis", title: t.title || `${t.sector} thesis`, id: t.id });
-        contextChunks.push(`[Thesis: "${t.title}" — ${t.sector} (${t.conviction}, ${t.horizon || "medium-term"})]\n${t.rationale || "No rationale available."}`);
-      }
-    } catch (err) {
-      console.error("[intelligence] Step 3b — recency fallback failed:", err instanceof Error ? err.message : err);
-    }
 
-    if (contextChunks.length === 0) {
+      for (const a of (recentArticles.data ?? [])) {
+        sources.push({ type: "article", title: a.title, id: a.id });
+        contextChunks.push(`[Article: "${a.title}" — ${a.source || "unknown source"}]\n${a.summary || "No summary."}`);
+      }
+      for (const t of (recentTheses.data ?? [])) {
+        sources.push({ type: "thesis", title: t.title || `${t.sector} thesis`, id: t.id });
+        contextChunks.push(`[Thesis: "${t.title}" — ${t.sector} (${t.conviction}, ${t.horizon || "medium-term"})]\n${t.rationale || "No rationale."}`);
+      }
+    } catch (fallbackErr) {
+      console.error("[intelligence] recency fallback failed:", fallbackErr);
       return NextResponse.json({
         response: EMPTY_KB_RESPONSE,
         sources: [],
