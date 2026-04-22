@@ -17,6 +17,8 @@ interface BriefSectionProps {
   sectionKey?: string;
   onRate?: (sectionKey: string, rating: 1 | -1) => void;
   currentRating?: number;
+  /** When true, tightens padding and body font by ~1px for side-quadrant typography tiering. */
+  compact?: boolean;
 }
 
 export function BriefSection({
@@ -32,6 +34,7 @@ export function BriefSection({
   sectionKey,
   onRate,
   currentRating = 0,
+  compact = false,
 }: BriefSectionProps) {
   const cleanContent = stripHtml(content);
 
@@ -42,7 +45,8 @@ export function BriefSection({
     <div
       onClick={onToggle}
       className={cn(
-        "relative p-4 rounded-xl border border-border-base bg-white dark:bg-elevated dark:border-border-default group min-h-[160px]",
+        "relative rounded-xl border border-border-base bg-white dark:bg-elevated dark:border-border-default group",
+        compact ? "p-3 min-h-[140px]" : "p-4 min-h-[160px]",
         fullWidth && "col-span-2",
         "cursor-pointer transition-all duration-200 hover:ring-1 hover:ring-gold/40 hover:shadow-sm",
       )}
@@ -57,7 +61,12 @@ export function BriefSection({
       </h3>
 
       {/* Content — full text always visible */}
-      <p className="font-sans text-[13px] text-text-secondary dark:text-[#e8e8e4] leading-[1.72]">
+      <p
+        className={cn(
+          "font-sans text-text-secondary dark:text-[#e8e8e4] leading-[1.72]",
+          compact ? "text-[12px]" : "text-[13px]",
+        )}
+      >
         {cleanContent}
       </p>
 
