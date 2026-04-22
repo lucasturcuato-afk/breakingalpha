@@ -147,7 +147,7 @@ export function Topbar({
 
 /* ── User menu dropdown ── */
 
-function UserMenu({ userInitials }: { userInitials: string }) {
+function UserMenu({ userInitials: _userInitials }: { userInitials: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -167,11 +167,27 @@ function UserMenu({ userInitials }: { userInitials: string }) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-8 h-8 rounded-lg bg-espresso flex items-center justify-center cursor-pointer"
+        className={cn(
+          "w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer",
+          "border border-gold-border",
+          "transition-[box-shadow,border-color] duration-[var(--duration-base)]",
+          "brand-mark-pulse",
+        )}
+        style={{ backgroundColor: "var(--gold-muted)" }}
         aria-label="User menu"
       >
-        <span className="font-display text-[11px] font-bold text-gold">
-          {userInitials}
+        <span
+          className="font-display text-[13px] font-bold leading-none"
+          style={{
+            backgroundImage:
+              "linear-gradient(180deg, var(--gold-light) 0%, var(--gold) 55%, var(--gold-dark) 100%)",
+            backgroundClip: "text",
+            WebkitBackgroundClip: "text",
+            color: "transparent",
+            WebkitTextFillColor: "transparent",
+          }}
+        >
+          S
         </span>
       </button>
 

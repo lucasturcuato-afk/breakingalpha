@@ -47,6 +47,7 @@ import {
   RotateCcw,
   Check,
 } from "lucide-react";
+import { Wordmark } from "@/components/ui/wordmark";
 
 interface NavItem {
   id: string;
@@ -364,27 +365,8 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
     <>
       <aside className="fixed left-0 top-0 bottom-0 w-[var(--sidebar-width)] bg-sidebar-bg border-r border-border-base flex flex-col z-40">
         {/* Logo area */}
-        <div className="border-b border-border-base px-3.5 py-2.5">
-          <div className="flex items-center w-full">
-            <div className="w-20 h-[72px] overflow-hidden shrink-0 relative">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/logo-icon.png"
-                alt="Signalera"
-                className="absolute w-[480px] h-[480px] left-1/2 top-1/2 object-contain"
-                style={{ transform: 'translate(-53%, -53%)' }}
-              />
-            </div>
-            <div className="flex flex-col gap-1 min-w-0 flex-1">
-              <div className="font-display text-[22px] font-bold tracking-tight leading-none whitespace-nowrap">
-                <span className="text-foreground">Signal</span>
-                <span className="text-gold">era</span>
-              </div>
-              <div className="font-sans text-[9px] font-medium tracking-[1.5px] uppercase leading-snug break-words text-text-muted">
-                Where Markets Make Sense
-              </div>
-            </div>
-          </div>
+        <div className="border-b border-border-base px-4 py-4 flex items-center">
+          <Wordmark size="lg" />
         </div>
 
         {/* Nav body */}
