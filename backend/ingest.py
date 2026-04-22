@@ -76,11 +76,35 @@ ACTIVITY_TYPES = [
 ]
 
 
-def validate_tags(tags: list, whitelist: list, max_count: int = 3) -> list:
-    """Validate tags against a whitelist and cap at max_count."""
+def validate_tags(tags, whitelist: list, max_count: int = 3) -> list:
+    """Validate tags against a whitelist and cap at max_count.
+
+    Robust to LLMs that return a bare string, a list containing
+    comma-concatenated elements (e.g. ["Technology, Financial Services"]),
+    or mixed-case / padded values. Every input is split on commas and each
+    piece must match an entry in the whitelist character-for-character
+    (after stripping surrounding whitespace). Anything that doesn't match
+    is dropped; duplicates are removed preserving first-seen order.
+    """
+    if isinstance(tags, str):
+        tags = [tags]
     if not isinstance(tags, list):
         return []
-    return [t for t in tags if t in whitelist][:max_count]
+
+    whitelist_set = set(whitelist)
+    result: list = []
+    seen: set = set()
+    for raw in tags:
+        if not isinstance(raw, str):
+            continue
+        for piece in raw.split(","):
+            t = piece.strip()
+            if t and t in whitelist_set and t not in seen:
+                seen.add(t)
+                result.append(t)
+                if len(result) >= max_count:
+                    return result
+    return result
 
 FILTER_PROMPT = """You are a senior analyst at a top investment firm. Analyze this article and determine its relevance to financial markets and investing.
 
