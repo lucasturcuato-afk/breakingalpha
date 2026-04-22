@@ -22,6 +22,7 @@ import type { StoryData } from "@/components/dashboard";
 import { createBrowserClient } from "@supabase/ssr";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
+import { trackClientEvent } from "@/lib/track-event";
 import type { ContentDescriptor } from "@/lib/personalization";
 
 function getSupabase() {
@@ -82,12 +83,31 @@ export default function EveningWrapPage() {
   const [memoContent, setMemoContent] = useState("");
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [addingThesis, setAddingThesis] = useState(false);
+  const [sectionRatings, setSectionRatings] = useState<Record<string, number>>({});
   const [leadMemoOpen, setLeadMemoOpen] = useState(false);
   const [leadMemoContent, setLeadMemoContent] = useState("");
   const [toast, setToast] = useState("");
   const [formatLabel, setFormatLabel] = useState<string | null>(null);
   const [userAddendum, setUserAddendum] = useState<string | null>(null);
   const router = useRouter();
+
+  // Fetch existing section ratings on mount
+  useEffect(() => {
+    fetch("/api/brief-rating")
+      .then(r => r.json())
+      .then(d => setSectionRatings(d.ratings ?? {}))
+      .catch(() => {});
+  }, []);
+
+  function handleSectionRate(sectionKey: string, rating: 1 | -1) {
+    setSectionRatings(prev => ({ ...prev, [sectionKey]: rating }));
+    trackClientEvent("brief_section_rated", { section_key: sectionKey, rating });
+    fetch("/api/brief-rating", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ section_key: sectionKey, rating }),
+    }).catch(() => {});
+  }
 
   useEffect(() => {
     async function load() {
@@ -389,6 +409,9 @@ export default function EveningWrapPage() {
                           setAddingThesis(false);
                         }
                       }}
+                      sectionKey={section.key}
+                      onRate={handleSectionRate}
+                      currentRating={sectionRatings[section.key] ?? 0}
                     />
                   ))}
                 </div>

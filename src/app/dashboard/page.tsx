@@ -19,6 +19,8 @@ import {
   WatchlistFeed,
 } from "@/components/dashboard";
 import type { StoryData } from "@/components/dashboard";
+import { CompetitorAlertsWidget } from "@/components/dashboard/competitor-alerts-widget";
+import { CollectiveSignalsWidget } from "@/components/dashboard/collective-signals-widget";
 import {
   MarketCardEditor,
   MARKET_CARD_OPTIONS,
@@ -499,6 +501,12 @@ export default function DashboardPage() {
           </PanelWidget>
           <PanelWidget title="Watchlist">
             <WatchlistWidget />
+          </PanelWidget>
+          <PanelWidget title="Competitor Activity">
+            <CompetitorAlertsWidget />
+          </PanelWidget>
+          <PanelWidget title="Community Signals">
+            <CollectiveSignalsWidget />
           </PanelWidget>
         </>
       }

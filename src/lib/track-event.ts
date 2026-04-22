@@ -18,7 +18,8 @@ export type ClientEventType =
   | "watchlist_added"
   | "watchlist_removed"
   | "sector_filter_applied"
-  | "onboarding_completed";
+  | "onboarding_completed"
+  | "brief_section_rated";
 
 export function trackClientEvent(
   event_type: ClientEventType,

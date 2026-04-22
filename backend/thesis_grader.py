@@ -30,6 +30,7 @@ return cleanly (soft-fail).
 Every public function is wrapped in an outer try/except and returns None
 on failure — the pipeline must never crash because of this module.
 """
+from __future__ import annotations
 
 import os
 import json

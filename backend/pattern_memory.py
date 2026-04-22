@@ -19,6 +19,8 @@ context (sector + horizon).
 Wired into `backend/run.py` as a soft-fail step after `thesis_grader`.
 """
 
+from __future__ import annotations
+
 import os
 import json
 import logging

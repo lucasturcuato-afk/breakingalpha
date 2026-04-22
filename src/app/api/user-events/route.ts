@@ -18,6 +18,7 @@ const VALID_TYPES: UserEventType[] = [
   "watchlist_removed",
   "sector_filter_applied",
   "onboarding_completed",
+  "brief_section_rated",
 ];
 
 export async function POST(request: NextRequest) {

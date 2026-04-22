@@ -18,6 +18,8 @@ after `pattern_memory`. Exposes `load_win_rates()` as a read helper for
 `trend_mapper.py` to fetch `{source: win_rate}` at scoring time.
 """
 
+from __future__ import annotations
+
 import os
 import json
 import logging

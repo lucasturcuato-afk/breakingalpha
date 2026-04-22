@@ -17,6 +17,8 @@ Two functions:
 Wired into backend/run.py as soft-fail steps after synthesize.run().
 """
 
+from __future__ import annotations
+
 import os
 import json
 import logging
