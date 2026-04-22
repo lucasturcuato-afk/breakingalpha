@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { getVerticalStyle, getActivityTypeStyle } from "@/lib/sector-colors";
 import { Bell, Bookmark } from "lucide-react";
@@ -61,11 +61,12 @@ interface ChipProps {
   label: string;
   isActive: boolean;
   activeStyle: { bg: string; text: string; border: string };
-  onToggle: () => void;
+  onToggle: (label: string) => void;
 }
 
-function Chip({ label, isActive, activeStyle, onToggle }: ChipProps) {
+const Chip = memo(function Chip({ label, isActive, activeStyle, onToggle }: ChipProps) {
   const [hovered, setHovered] = useState(false);
+  const handleClick = useCallback(() => onToggle(label), [onToggle, label]);
 
   const dynamicStyle: CSSProperties = isActive
     ? {
@@ -80,7 +81,7 @@ function Chip({ label, isActive, activeStyle, onToggle }: ChipProps) {
   return (
     <button
       type="button"
-      onClick={onToggle}
+      onClick={handleClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{ ...CHIP_BASE, ...dynamicStyle }}
@@ -88,7 +89,7 @@ function Chip({ label, isActive, activeStyle, onToggle }: ChipProps) {
       {label}
     </button>
   );
-}
+});
 
 // ── Utility chip (Alerts / Saved) ───────────────────────────────────────────
 
@@ -165,7 +166,15 @@ interface FilterBarProps {
   alertCount?: number;
 }
 
-export function FilterBar({
+// Precompute active styles per label once. `getVerticalStyle` / `getActivityTypeStyle`
+// may return fresh objects each call, which would break Chip's memo on
+// reference-compare; memoizing at module load gives every chip a stable ref.
+const VERTICAL_STYLES: ReadonlyArray<{ label: string; style: { bg: string; text: string; border: string } }> =
+  INDUSTRY_VERTICALS.map((v) => ({ label: v, style: getVerticalStyle(v) }));
+const ACTIVITY_STYLES: ReadonlyArray<{ label: string; style: { bg: string; text: string; border: string } }> =
+  ACTIVITY_TYPES.map((a) => ({ label: a, style: getActivityTypeStyle(a) }));
+
+function FilterBarInner({
   selectedVerticals,
   selectedActivityTypes,
   onVerticalToggle,
@@ -176,6 +185,12 @@ export function FilterBar({
   onSavedToggle,
   alertCount = 0,
 }: FilterBarProps) {
+  // Set membership checks: building Sets once is O(k) but then lookup is O(1)
+  // per chip instead of O(k) per chip via Array.includes. With 22 chips and
+  // growing selection lists this is a visible saving.
+  const verticalSelectedSet = useMemo(() => new Set(selectedVerticals), [selectedVerticals]);
+  const activitySelectedSet = useMemo(() => new Set(selectedActivityTypes), [selectedActivityTypes]);
+
   return (
     <div
       className="bg-parchment dark:bg-[#161616]"
@@ -188,13 +203,13 @@ export function FilterBar({
           className="no-scrollbar"
           style={{ display: "flex", alignItems: "center", gap: "6px", overflowX: "auto", flex: 1 }}
         >
-          {INDUSTRY_VERTICALS.map((v) => (
+          {VERTICAL_STYLES.map(({ label, style }) => (
             <Chip
-              key={v}
-              label={v}
-              isActive={selectedVerticals.includes(v)}
-              activeStyle={getVerticalStyle(v)}
-              onToggle={() => onVerticalToggle(v)}
+              key={label}
+              label={label}
+              isActive={verticalSelectedSet.has(label)}
+              activeStyle={style}
+              onToggle={onVerticalToggle}
             />
           ))}
         </div>
@@ -210,13 +225,13 @@ export function FilterBar({
           className="no-scrollbar"
           style={{ display: "flex", alignItems: "center", gap: "6px", overflowX: "auto", flex: 1 }}
         >
-          {ACTIVITY_TYPES.map((a) => (
+          {ACTIVITY_STYLES.map(({ label, style }) => (
             <Chip
-              key={a}
-              label={a}
-              isActive={selectedActivityTypes.includes(a)}
-              activeStyle={getActivityTypeStyle(a)}
-              onToggle={() => onActivityTypeToggle(a)}
+              key={label}
+              label={label}
+              isActive={activitySelectedSet.has(label)}
+              activeStyle={style}
+              onToggle={onActivityTypeToggle}
             />
           ))}
         </div>
@@ -241,3 +256,11 @@ export function FilterBar({
     </div>
   );
 }
+
+/**
+ * FilterBar is memoized so that unrelated parent re-renders (60s article poll,
+ * mood updates, sort changes, etc.) don't re-reconcile all 24 chips. When
+ * `selectedVerticals` / `selectedActivityTypes` change, the new array ref
+ * propagates and the bar re-renders as expected — but only then.
+ */
+export const FilterBar = memo(FilterBarInner);

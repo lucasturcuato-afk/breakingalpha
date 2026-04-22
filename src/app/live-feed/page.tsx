@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef, useDeferredValue } from "react";
 import { AppShell } from "@/components/shell";
 import { FilterBar, FeedRow } from "@/components/feed";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -223,21 +223,47 @@ export default function LiveFeedPage() {
     setSelectedActivityTypes((prev) => prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]);
   }, []);
 
+  const handleAlertsToggle = useCallback(() => setShowAlertsOnly((prev) => !prev), []);
+  const handleSavedToggle = useCallback(() => setShowSavedOnly((prev) => !prev), []);
+
+  // Defer the filter-state that drives the expensive list recomputation. The
+  // chips themselves keep reading `selectedVerticals`/`selectedActivityTypes`
+  // so their active color flips instantly on click. The ~100-row feed
+  // re-reconciliation runs as a concurrent transition and can be interrupted
+  // if the user clicks another chip before it finishes.
+  const deferredVerticals = useDeferredValue(selectedVerticals);
+  const deferredActivityTypes = useDeferredValue(selectedActivityTypes);
+  const deferredShowAlerts = useDeferredValue(showAlertsOnly);
+  const deferredShowSaved = useDeferredValue(showSavedOnly);
+  const isFilterPending =
+    deferredVerticals !== selectedVerticals ||
+    deferredActivityTypes !== selectedActivityTypes ||
+    deferredShowAlerts !== showAlertsOnly ||
+    deferredShowSaved !== showSavedOnly;
+
   // Filter
   const filtered: LiveStory[] = useMemo(() => {
     return sortedArticles.filter((story) => {
-      if (showSavedOnly && !savedIds.has(story.id)) return false;
-      if (showAlertsOnly && !story.isAlert) return false;
+      if (deferredShowSaved && !savedIds.has(story.id)) return false;
+      if (deferredShowAlerts && !story.isAlert) return false;
 
-      const verticalMatch = selectedVerticals.length === 0 ||
-        (story.industry_verticals ?? []).some((v) => selectedVerticals.includes(v));
+      const verticalMatch = deferredVerticals.length === 0 ||
+        (story.industry_verticals ?? []).some((v) => deferredVerticals.includes(v));
 
-      const activityMatch = selectedActivityTypes.length === 0 ||
-        (story.activity_types ?? []).some((a) => selectedActivityTypes.includes(a));
+      const activityMatch = deferredActivityTypes.length === 0 ||
+        (story.activity_types ?? []).some((a) => deferredActivityTypes.includes(a));
 
       return verticalMatch && activityMatch;
     });
-  }, [sortedArticles, savedIds, showSavedOnly, showAlertsOnly, selectedVerticals, selectedActivityTypes]);
+  }, [sortedArticles, savedIds, deferredShowSaved, deferredShowAlerts, deferredVerticals, deferredActivityTypes]);
+
+  // Alert count used to be computed inline as `articles.filter(...).length` on
+  // every render. Pull it out so chip clicks don't re-scan 100 articles to
+  // compute a number that only changes when `articles` changes.
+  const alertCount = useMemo(
+    () => articles.reduce((n, s) => n + (s.isAlert ? 1 : 0), 0),
+    [articles],
+  );
 
   // Group by time bucket
   const grouped = useMemo(() => {
@@ -263,10 +289,10 @@ export default function LiveFeedPage() {
           onVerticalToggle={handleVerticalToggle}
           onActivityTypeToggle={handleActivityTypeToggle}
           showAlertsOnly={showAlertsOnly}
-          onAlertsToggle={() => setShowAlertsOnly((prev) => !prev)}
+          onAlertsToggle={handleAlertsToggle}
           showSavedOnly={showSavedOnly}
-          onSavedToggle={() => setShowSavedOnly((prev) => !prev)}
-          alertCount={articles.filter((s) => s.isAlert).length}
+          onSavedToggle={handleSavedToggle}
+          alertCount={alertCount}
         />
         {/* Sort + refresh row */}
         <div className="flex items-center justify-end gap-3 px-6 py-1.5 border-t border-border-subtle">
@@ -317,7 +343,12 @@ export default function LiveFeedPage() {
       )}
 
       {/* Feed */}
-      <div>
+      <div
+        style={{
+          opacity: isFilterPending ? 0.6 : 1,
+          transition: "opacity 120ms ease-out",
+        }}
+      >
         {loading && articles.length === 0 ? (
           <div className="space-y-0">
             {[1, 2, 3, 4, 5].map((i) => (
@@ -400,7 +431,8 @@ export default function LiveFeedPage() {
                         <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-signal-up" />
                       )}
                       <FeedRow
-                        story={{ ...story, saved: savedIds.has(story.id) }}
+                        story={story}
+                        saved={savedIds.has(story.id)}
                         onBookmark={handleBookmark}
                       />
                     </div>

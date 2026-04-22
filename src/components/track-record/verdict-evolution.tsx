@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import { Clock } from "lucide-react";
 import { getSectorStyle } from "@/lib/sector-colors";
 
 type VerdictLabel = "confirmed" | "invalidated" | "inconclusive";
@@ -113,11 +114,30 @@ function OutcomeBadge({ verdict }: { verdict: VerdictLabel }) {
 
 function InlineEmptyBuildingState() {
   return (
-    <div className="flex items-center gap-2 bg-white rounded-xl border border-border-base p-4">
-      <span className="w-2 h-2 rounded-full bg-signal-warn animate-pulse flex-shrink-0" />
-      <span className="font-sans text-[12px] text-text-secondary">
+    <div className="relative flex items-center gap-3 bg-white dark:bg-elevated rounded-xl border border-border-base p-5 overflow-hidden">
+      <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gold rounded-l-xl" />
+      <div className="flex items-center gap-2 flex-shrink-0 ml-1">
+        <span className="track-record-pending-dot w-1.5 h-1.5 rounded-full bg-gold" />
+        <Clock size={13} className="text-gold" />
+      </div>
+      <span className="font-sans text-[12.5px] text-text-primary leading-snug">
         Building track record &mdash; check back after more theses are graded.
       </span>
+    </div>
+  );
+}
+
+function VerdictSkeletonChart() {
+  const heights = [60, 45, 72, 38, 55, 80, 30, 62, 48];
+  return (
+    <div className="flex items-end gap-1.5 h-24 px-3 py-2 bg-white dark:bg-elevated rounded-lg border border-border-base">
+      {heights.map((h, i) => (
+        <div
+          key={i}
+          className="flex-1 skeleton-shimmer animate-pulse bg-parchment-mid rounded-t-sm"
+          style={{ height: `${h}%` }}
+        />
+      ))}
     </div>
   );
 }
@@ -198,9 +218,21 @@ export function VerdictEvolution() {
         Verdict Evolution
       </h2>
       {loading ? (
-        <div className="h-20 rounded-xl bg-parchment-mid animate-pulse" />
+        <>
+          <VerdictSkeletonChart />
+          <p className="font-sans text-[11px] text-text-primary mt-2 inline-flex items-center gap-1.5">
+            <Clock size={11} className="text-gold" />
+            Next run 8:10 PM PT daily
+          </p>
+        </>
       ) : !hasRows ? (
-        <InlineEmptyBuildingState />
+        <>
+          <InlineEmptyBuildingState />
+          <p className="font-sans text-[11px] text-text-primary mt-2 inline-flex items-center gap-1.5">
+            <Clock size={11} className="text-gold" />
+            Next run 8:10 PM PT daily
+          </p>
+        </>
       ) : (
         <div className="grid gap-2 md:grid-cols-2">
           {rows.map((r) => {

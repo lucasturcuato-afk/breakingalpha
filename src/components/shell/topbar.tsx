@@ -91,10 +91,23 @@ export function Topbar({
         >
           {!mounted ? (
             <span className="w-3.5 h-3.5" />
-          ) : theme === "dark" ? (
-            <Sun size={14} className="text-gold" />
           ) : (
-            <Moon size={14} className="text-text-muted" />
+            <div className="relative w-4 h-4">
+              <Sun
+                size={14}
+                className={cn(
+                  "absolute inset-0 transition-all duration-200 text-gold",
+                  theme === "dark" ? "opacity-100 rotate-0" : "opacity-0 -rotate-90",
+                )}
+              />
+              <Moon
+                size={14}
+                className={cn(
+                  "absolute inset-0 transition-all duration-200 text-text-muted",
+                  theme === "dark" ? "opacity-0 rotate-90" : "opacity-100 rotate-0",
+                )}
+              />
+            </div>
           )}
         </button>
 
@@ -147,7 +160,7 @@ export function Topbar({
 
 /* ── User menu dropdown ── */
 
-function UserMenu({ userInitials }: { userInitials: string }) {
+function UserMenu({ userInitials: _userInitials }: { userInitials: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -167,11 +180,27 @@ function UserMenu({ userInitials }: { userInitials: string }) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-8 h-8 rounded-lg bg-espresso flex items-center justify-center cursor-pointer"
+        className={cn(
+          "w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer",
+          "border border-gold-border",
+          "transition-[box-shadow,border-color] duration-[var(--duration-base)]",
+          "brand-mark-pulse",
+        )}
+        style={{ backgroundColor: "var(--gold-muted)" }}
         aria-label="User menu"
       >
-        <span className="font-display text-[11px] font-bold text-gold">
-          {userInitials}
+        <span
+          className="font-display text-[13px] font-bold leading-none"
+          style={{
+            backgroundImage:
+              "linear-gradient(180deg, var(--gold-light) 0%, var(--gold) 55%, var(--gold-dark) 100%)",
+            backgroundClip: "text",
+            WebkitBackgroundClip: "text",
+            color: "transparent",
+            WebkitTextFillColor: "transparent",
+          }}
+        >
+          S
         </span>
       </button>
 

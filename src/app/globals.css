@@ -150,36 +150,93 @@
   opacity: 0.72;
 }
 
-/* ── Scrollbar styling ── */
-
+/* ── Scrollbar styling — gold thumb, transparent track, both modes ── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
-
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: var(--border-base);
-  border-radius: var(--radius-lg);
+  background: var(--gold);
+  opacity: 0.4;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-faint);
+  background: var(--gold-light);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+/* Firefox */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--gold) transparent;
+}
+html.dark {
+  scrollbar-color: var(--gold) transparent;
 }
 
 /* ── Selection ── */
 
 ::selection {
-  background: var(--gold-muted);
-  color: var(--espresso);
+  background: rgba(212, 168, 75, 0.3);
+  color: #f5e6d3;
+}
+html:not(.dark) ::selection {
+  background: rgba(212, 168, 75, 0.3);
+  color: #1a1208;
+}
+
+/* ── Focus rings: 2px Heritage Gold with 2px offset on all interactive elements ── */
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
 }
 
 /* ── Dark mode card utility ── */
 html.dark .bg-white {
   background-color: var(--elevated);
+}
+
+/* Dark-mode card elevation: subtle 1px border + top-edge inset highlight */
+html.dark .bg-white,
+html.dark .bg-elevated,
+html.dark .bg-surface,
+html.dark [data-card="true"] {
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.04),
+    0 1px 2px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* Dark mode: subtle gold glow on primary buttons */
+html.dark .button-glow-on-hover:hover,
+html.dark button[data-variant="primary"]:hover {
+  box-shadow: 0 0 16px rgba(212, 168, 75, 0.28);
+}
+html.dark a.bg-gold:hover,
+html.dark button.bg-gold:hover {
+  box-shadow: 0 0 16px rgba(212, 168, 75, 0.28);
+}
+@media (prefers-reduced-motion: reduce) {
+  html.dark .button-glow-on-hover:hover,
+  html.dark button[data-variant="primary"]:hover,
+  html.dark a.bg-gold:hover,
+  html.dark button.bg-gold:hover {
+    box-shadow: none;
+  }
 }
 
 /* ── Keyframe animations ── */
@@ -206,6 +263,114 @@ html.dark .bg-white {
 }
 .onboarding-row-pulse {
   animation: onboarding-row-pulse 400ms ease-in-out;
+}
+
+/* ── Brand mark pulse (topbar avatar) ── */
+@keyframes brand-mark-pulse {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+.brand-mark-pulse {
+  animation: brand-mark-pulse 2.8s ease-in-out infinite;
+}
+/* Dark-mode: bump background + border alpha so the gold S reads intentional on near-black sidebar */
+html.dark .brand-mark-pulse {
+  background-color: rgba(212, 168, 75, 0.22) !important;
+  border-color: rgba(212, 168, 75, 0.55) !important;
+  box-shadow: 0 0 12px rgba(212, 168, 75, 0.35);
+}
+html.dark .brand-mark-pulse:hover {
+  box-shadow: 0 0 18px rgba(212, 168, 75, 0.55);
+}
+
+/* ── Motion system (subagent 2) ── */
+
+/* Bar chart / sparkline build-in animation */
+@keyframes bar-sweep-in {
+  from { transform: scaleX(0); opacity: 0; }
+  to { transform: scaleX(1); opacity: 1; }
+}
+.bar-sweep-in {
+  transform-origin: left center;
+  animation: bar-sweep-in 400ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Card hover lift */
+.card-hover-lift {
+  transition:
+    transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.card-hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(26, 18, 8, 0.08);
+}
+html.dark .card-hover-lift:hover {
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(212, 168, 75, 0.15);
+}
+
+/* Live signal pulse glow for AI signal bar */
+@keyframes ai-signal-glow {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px rgba(212, 168, 75, 0.25),
+      0 0 12px rgba(212, 168, 75, 0.15);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(212, 168, 75, 0.55),
+      0 0 18px rgba(212, 168, 75, 0.35);
+  }
+}
+.ai-signal-glow {
+  animation: ai-signal-glow 3s ease-in-out infinite;
+}
+
+/* Skeleton shimmer */
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--parchment-mid) 0%,
+    var(--parchment) 50%,
+    var(--parchment-mid) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+}
+html.dark .skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--surface) 0%,
+    var(--elevated) 50%,
+    var(--surface) 100%
+  );
+  background-size: 200% 100%;
+}
+
+/* Track record pending-state pulse — "confidently waiting" */
+@keyframes track-record-pending-dot {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1.0; transform: scale(1.15); }
+}
+.track-record-pending-dot {
+  animation: track-record-pending-dot 2s ease-in-out infinite;
+}
+
+/* Consolidated reduced-motion fallbacks */
+@media (prefers-reduced-motion: reduce) {
+  .brand-mark-pulse { animation: none; opacity: 1; }
+  .bar-sweep-in { animation: none; }
+  .card-hover-lift { transition: none; }
+  .card-hover-lift:hover { transform: none; }
+  .ai-signal-glow { animation: none; }
+  .skeleton-shimmer { animation: none; }
+  .track-record-pending-dot { animation: none; opacity: 0.85; }
 }
 
 /* Conviction ring inner cutout — matches parent surface */

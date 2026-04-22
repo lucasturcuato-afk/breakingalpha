@@ -10,6 +10,7 @@ interface AISignalBarProps {
   boldParts?: string[];
   ctaHref?: string;
   signalSectors?: string[];
+  isFresh?: boolean;
 }
 
 export function AISignalBar({
@@ -17,6 +18,7 @@ export function AISignalBar({
   boldParts = ["Fed language shift", "dovish pivot probability rising"],
   ctaHref,
   signalSectors,
+  isFresh = true,
 }: AISignalBarProps) {
   const { profile } = useUserProfile();
   const watchlist = (profile?.watchlist_tickers ?? []).map((t) => t.toUpperCase());
@@ -50,6 +52,7 @@ export function AISignalBar({
       className={cn(
         "flex items-center gap-3 px-4 py-3",
         "bg-espresso dark:bg-overlay dark:border dark:border-border-default rounded-xl",
+        isFresh && "ai-signal-glow",
       )}
     >
       {/* Icon */}

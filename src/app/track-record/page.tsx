@@ -4,9 +4,10 @@ import { useState, useEffect, useMemo } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
 import Link from "next/link";
-import { Trophy } from "lucide-react";
+import { Trophy, Clock } from "lucide-react";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { EmptyState } from "@/components/ui/empty-state";
+import AnimatedNumber from "@/components/ui/animated-number";
 import { VerdictEvolution } from "@/components/track-record/verdict-evolution";
 
 function getSupabase() {
@@ -20,6 +21,23 @@ interface GradedThesis {
   sector: string;
   outcome: string;
   adversarial_score: number | null;
+}
+
+interface RawVerdict {
+  thesis_id: string;
+  graded_at: string;
+  verdict: string;
+  confidence: number | null;
+}
+
+interface ThesisMeta {
+  id: string;
+  title: string | null;
+  sector: string | null;
+  ticker: string | null;
+  adversarial_score: number | null;
+  generated_at: string | null;
+  check_after: string | null;
 }
 
 interface PatternRow {
@@ -62,11 +80,11 @@ export default function TrackRecordPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [confirmedCount, setConfirmedCount] = useState(0);
   const [invalidatedCount, setInvalidatedCount] = useState(0);
+  const [trackedCount, setTrackedCount] = useState(0);
   const [gradedTheses, setGradedTheses] = useState<GradedThesis[]>([]);
   const [patterns, setPatterns] = useState<PatternRow[]>([]);
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [verdicts, setVerdicts] = useState<VerdictRow[]>([]);
-  const [nextCheckAfter, setNextCheckAfter] = useState<string | null>(null);
   const [overdueCount, setOverdueCount] = useState<number>(0);
 
   useEffect(() => {
@@ -77,52 +95,95 @@ export default function TrackRecordPage() {
         const nowIso = new Date().toISOString();
         const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
 
-        // All queries in parallel
+        // thesis_verdicts is the authoritative source of truth for graded outcomes.
+        // theses.outcome is a nullable mirror that can lag or be empty even when
+        // verdicts exist (see PR #118). Derive all counts + lists from thesis_verdicts.
         const [
           totalRes,
-          confirmedRes,
-          invalidatedRes,
-          gradedRes,
+          verdictsAllRes,
+          thesesMetaRes,
           patternsRes,
           sourcesRes,
-          verdictsRes,
-          lastUpdatedRes,
-          nextCheckRes,
-          overdueWithCheckRes,
-          overdueNullCheckRes,
         ] = await Promise.all([
           supabase.from("theses").select("id", { count: "exact", head: true }),
-          supabase.from("theses").select("id", { count: "exact", head: true }).eq("outcome", "confirmed"),
-          supabase.from("theses").select("id", { count: "exact", head: true }).eq("outcome", "invalidated"),
-          supabase.from("theses").select("sector, outcome, adversarial_score").not("outcome", "is", null),
+          supabase
+            .from("thesis_verdicts")
+            .select("thesis_id, graded_at, verdict, confidence")
+            .order("graded_at", { ascending: false }),
+          supabase
+            .from("theses")
+            .select("id, title, sector, ticker, adversarial_score, generated_at, check_after"),
           supabase.from("pattern_library").select("sector, horizon, dominant_signal, win_rate, n_observed, n_confirmed").gte("n_observed", 3).order("win_rate", { ascending: false }).limit(5),
           supabase.from("source_credibility").select("source, win_rate, n_theses").order("win_rate", { ascending: false }).limit(10),
-          supabase.from("theses").select("id, title, sector, outcome, outcome_notes, updated_at, ticker").not("outcome", "is", null).order("updated_at", { ascending: false }).limit(10),
-          supabase.from("theses").select("updated_at").not("outcome", "is", null).order("updated_at", { ascending: false }).limit(1),
-          supabase.from("theses").select("check_after").is("outcome", null).not("check_after", "is", null).order("check_after", { ascending: true }).limit(1),
-          supabase.from("theses").select("id", { count: "exact", head: true }).is("outcome", null).lt("check_after", nowIso),
-          supabase.from("theses").select("id", { count: "exact", head: true }).is("outcome", null).is("check_after", null).lt("generated_at", thirtyDaysAgoIso),
         ]);
 
+        const rawVerdicts = (verdictsAllRes.data as RawVerdict[] | null) ?? [];
+        const thesesMeta = (thesesMetaRes.data as ThesisMeta[] | null) ?? [];
+        const thesesById = new Map<string, ThesisMeta>();
+        for (const t of thesesMeta) thesesById.set(t.id, t);
+
+        // Latest verdict per thesis (rawVerdicts is sorted graded_at desc, so first wins)
+        const latestVerdictByThesis = new Map<string, RawVerdict>();
+        for (const v of rawVerdicts) {
+          if (!v.thesis_id) continue;
+          if (!latestVerdictByThesis.has(v.thesis_id)) {
+            latestVerdictByThesis.set(v.thesis_id, v);
+          }
+        }
+
+        // Build derived state from verdicts+meta
+        const derivedGraded: GradedThesis[] = [];
+        const derivedRecent: VerdictRow[] = [];
+        let confirmed = 0;
+        let invalidated = 0;
+
+        for (const [thesisId, v] of latestVerdictByThesis) {
+          const meta = thesesById.get(thesisId);
+          const outcome = v.verdict || "inconclusive";
+          if (outcome === "confirmed") confirmed += 1;
+          if (outcome === "invalidated") invalidated += 1;
+          derivedGraded.push({
+            sector: meta?.sector ?? "Unknown",
+            outcome,
+            adversarial_score: meta?.adversarial_score ?? null,
+          });
+          derivedRecent.push({
+            id: thesisId,
+            title: meta?.title ?? "Untitled thesis",
+            sector: meta?.sector ?? null,
+            outcome,
+            outcome_notes: null,
+            updated_at: v.graded_at,
+            ticker: meta?.ticker ?? null,
+          });
+        }
+
+        // Sort Recent Verdicts by graded_at desc and keep top 10
+        derivedRecent.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+
+        // Pending/overdue derived from thesis metadata: "not yet graded" = no entry in
+        // latestVerdictByThesis. Walk thesesMeta client-side.
+        const gradedIds = new Set(latestVerdictByThesis.keys());
+        let overdue = 0;
+        for (const t of thesesMeta) {
+          if (gradedIds.has(t.id)) continue;
+          if (t.check_after && t.check_after < nowIso) {
+            overdue += 1;
+          } else if (!t.check_after && t.generated_at && t.generated_at < thirtyDaysAgoIso) {
+            overdue += 1;
+          }
+        }
+
         setTotalCount(totalRes.count ?? 0);
-        setConfirmedCount(confirmedRes.count ?? 0);
-        setInvalidatedCount(invalidatedRes.count ?? 0);
-        setGradedTheses((gradedRes.data as GradedThesis[]) ?? []);
+        setConfirmedCount(confirmed);
+        setInvalidatedCount(invalidated);
+        setTrackedCount(latestVerdictByThesis.size);
+        setGradedTheses(derivedGraded);
+        setVerdicts(derivedRecent.slice(0, 10));
         setPatterns((patternsRes.data as PatternRow[]) ?? []);
         setSources((sourcesRes.data as SourceRow[]) ?? []);
-        setVerdicts((verdictsRes.data as VerdictRow[]) ?? []);
-
-        if (lastUpdatedRes.data && lastUpdatedRes.data.length > 0) {
-          setLastUpdated(lastUpdatedRes.data[0].updated_at);
-        }
-
-        if (nextCheckRes.data && nextCheckRes.data.length > 0) {
-          setNextCheckAfter((nextCheckRes.data[0] as { check_after: string | null }).check_after ?? null);
-        } else {
-          setNextCheckAfter(null);
-        }
-
-        setOverdueCount((overdueWithCheckRes.count ?? 0) + (overdueNullCheckRes.count ?? 0));
+        setLastUpdated(rawVerdicts[0]?.graded_at ?? null);
+        setOverdueCount(overdue);
       } catch (e) {
         console.error("Track record load error:", e);
       } finally {
@@ -180,24 +241,27 @@ export default function TrackRecordPage() {
     }
   }, [lastUpdated]);
 
-  const formattedNextCheckAfter = useMemo(() => {
-    if (!nextCheckAfter) return null;
-    try {
-      return new Date(nextCheckAfter).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return null;
-    }
-  }, [nextCheckAfter]);
+  // Next grading run = next 8:10 PM in America/Los_Angeles. The grader is a daily
+  // cron; per-thesis theses.check_after values can point far in the future for
+  // inconclusive verdicts and are not meaningful for "when does the pipeline run
+  // next." Compute purely from the clock.
+  const formattedNextRun = useMemo(() => {
+    const nextRun = getNextGradingRunPT(new Date());
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Los_Angeles",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    }).format(nextRun);
+  }, []);
 
-  const showPipelineStatus =
-    !loading && totalCount > 0 && confirmedCount === 0 && invalidatedCount === 0;
-  const awaitingCount = totalCount - confirmedCount - invalidatedCount;
+  // "Awaiting grading" = distinct theses that have never received a verdict.
+  // A thesis with any verdict (including "inconclusive") counts as tracked.
+  const awaitingCount = Math.max(0, totalCount - trackedCount);
+  const showPipelineStatus = !loading && awaitingCount > 0;
+  const showGradingHeader = !loading && trackedCount > 0;
 
   const MIN_ROWS = 3;
 
@@ -212,44 +276,68 @@ export default function TrackRecordPage() {
           <p className="font-sans text-[13px] text-text-secondary mt-1">
             How Signalera&apos;s thesis intelligence performs over time.
           </p>
-          {formattedLastUpdated && (
+          {showGradingHeader && (
+            <p className="font-data text-text-muted text-[11px] mt-1.5 inline-flex items-center gap-2 flex-wrap">
+              <span>
+                <span className="font-semibold text-text-primary">{trackedCount}</span>{" "}
+                {trackedCount === 1 ? "thesis" : "theses"} tracked
+              </span>
+              {formattedLastUpdated && (
+                <>
+                  <span className="text-text-faint">·</span>
+                  <span>Last graded {formattedLastUpdated}</span>
+                </>
+              )}
+              <span className="text-text-faint">·</span>
+              <span className="inline-flex items-center gap-1 text-gold">
+                <Clock size={11} className="text-gold" />
+                Next run 8:10 PM PT daily
+              </span>
+            </p>
+          )}
+          {!showGradingHeader && formattedLastUpdated && (
             <p className="font-data text-text-faint text-[11px] mt-1">
               Last updated: {formattedLastUpdated}
             </p>
           )}
           {showPipelineStatus && (
-            <>
-              <p className="font-data text-text-faint text-[11px] mt-1">
-                {awaitingCount} {awaitingCount === 1 ? "thesis" : "theses"} awaiting grading
-                {overdueCount > 0 ? ` \u00B7 ${overdueCount} overdue` : ""}
-              </p>
-              <p className="font-data text-text-faint text-[11px] mt-1">
-                {formattedNextCheckAfter
-                  ? `Next check: ${formattedNextCheckAfter}`
-                  : "No thesis has a scheduled grading date yet"}
-              </p>
-            </>
+            <div className="mt-3 inline-flex items-center gap-2.5 bg-gold-muted border border-gold-border rounded-lg px-3 py-2">
+              <span className="track-record-pending-dot w-1.5 h-1.5 rounded-full bg-gold flex-shrink-0" />
+              <div className="flex items-center gap-3">
+                <span className="font-sans text-[11px] text-text-primary">
+                  <span className="font-data font-semibold">{awaitingCount}</span>{" "}
+                  {awaitingCount === 1 ? "thesis" : "theses"} awaiting grading
+                  {overdueCount > 0 ? ` \u00B7 ${overdueCount} overdue` : ""}
+                </span>
+                <span className="text-text-muted">|</span>
+                <span className="font-sans text-[11px] text-text-muted">
+                  Next check: {formattedNextRun}
+                </span>
+              </div>
+            </div>
           )}
         </div>
 
         {!loading && gradedTheses.length === 0 ? (
-          <div className="py-16">
+          <div className="relative rounded-2xl bg-gradient-to-b from-gold-muted/40 to-transparent border border-gold-border/60">
             <EmptyState
               icon={<Trophy size={32} />}
-              title="Track record building"
-              description="Thesis outcomes will appear here once the grading pipeline has run. Check back after your first theses are graded."
+              title="Track record calibrating"
+              description="Thesis outcomes will appear here once the grading pipeline has run. Grading runs nightly at 8:10 PM PT."
             />
           </div>
         ) : (
         <>
         {/* SUMMARY STATS */}
         <div className="grid grid-cols-4 gap-3">
-          <StatCard label="Total Theses" value={String(totalCount)} loading={loading} />
-          <StatCard label="Confirmed" value={String(confirmedCount)} loading={loading} />
-          <StatCard label="Invalidated" value={String(invalidatedCount)} loading={loading} />
+          <StatCard label="Total Theses" value={totalCount} loading={loading} />
+          <StatCard label="Confirmed" value={confirmedCount} loading={loading} />
+          <StatCard label="Invalidated" value={invalidatedCount} loading={loading} />
           <StatCard
             label="Confirmation Rate"
-            value={confirmationRate !== null ? `${confirmationRate}%` : "--"}
+            value={confirmationRate}
+            suffix="%"
+            placeholder="--"
             gold
             loading={loading}
           />
@@ -278,7 +366,7 @@ export default function TrackRecordPage() {
                   {sectorGroups.map((g, i) => (
                     <tr
                       key={g.sector}
-                      className={`border-b border-border-base last:border-b-0 ${i === 0 ? "bg-gold/5" : ""}`}
+                      className={`card-hover-lift border-b border-border-base last:border-b-0 ${i === 0 ? "bg-gold/5" : ""}`}
                     >
                       <td className="py-2 px-2">
                         <span
@@ -296,7 +384,7 @@ export default function TrackRecordPage() {
                           <span className="font-data font-semibold">{g.win_rate}%</span>
                           <div className="flex-1 h-1.5 rounded-full bg-gold/20 max-w-[80px]">
                             <div
-                              className="h-full rounded-full bg-gold"
+                              className="bar-sweep-in h-full rounded-full bg-gold"
                               style={{ width: `${g.win_rate}%` }}
                             />
                           </div>
@@ -368,7 +456,7 @@ export default function TrackRecordPage() {
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <div className="w-[60px] h-1.5 rounded-full bg-gold/20">
                       <div
-                        className="h-full rounded-full bg-gold"
+                        className="bar-sweep-in h-full rounded-full bg-gold"
                         style={{ width: `${s.win_rate !== null ? Math.round(s.win_rate * 100) : 0}%` }}
                       />
                     </div>
@@ -395,7 +483,7 @@ export default function TrackRecordPage() {
                 <Link
                   key={v.id}
                   href={`/thesis-board?thesis=${v.id}`}
-                  className="block bg-white rounded-xl border border-border-base p-3 hover:border-gold/40 transition-colors"
+                  className="card-hover-lift block bg-white rounded-xl border border-border-base p-3 hover:border-gold/40 transition-colors"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
@@ -440,24 +528,35 @@ export default function TrackRecordPage() {
 function StatCard({
   label,
   value,
+  suffix,
+  placeholder = "--",
   gold,
   loading,
 }: {
   label: string;
-  value: string;
+  value: number | null;
+  suffix?: string;
+  placeholder?: string;
   gold?: boolean;
   loading?: boolean;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-border-base p-4">
+    <div className="card-hover-lift bg-white rounded-xl border border-border-base p-4">
       <div className="font-sans text-[10px] uppercase tracking-widest text-text-muted mb-1">
         {label}
       </div>
       {loading ? (
-        <div className="h-8 w-16 rounded bg-parchment-mid animate-pulse" />
+        <div className="skeleton-shimmer h-8 w-16 rounded" />
+      ) : value === null ? (
+        <div className={`font-data text-2xl font-bold ${gold ? "text-gold" : "text-espresso"}`}>
+          {placeholder}
+        </div>
       ) : (
         <div className={`font-data text-2xl font-bold ${gold ? "text-gold" : "text-espresso"}`}>
-          {value}
+          <AnimatedNumber
+            value={value}
+            format={(n) => `${Math.round(n)}${suffix ?? ""}`}
+          />
         </div>
       )}
     </div>
@@ -495,9 +594,13 @@ function OutcomeBadge({ outcome }: { outcome: string }) {
 
 function EmptyBuildingState() {
   return (
-    <div className="flex items-center gap-2 bg-white rounded-xl border border-border-base p-4">
-      <span className="w-2 h-2 rounded-full bg-signal-warn animate-pulse flex-shrink-0" />
-      <span className="font-sans text-[12px] text-text-secondary">
+    <div className="relative flex items-center gap-3 bg-white dark:bg-elevated rounded-xl border border-border-base p-5 overflow-hidden">
+      <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gold rounded-l-xl" />
+      <div className="flex items-center gap-2 flex-shrink-0 ml-1">
+        <span className="track-record-pending-dot w-1.5 h-1.5 rounded-full bg-gold" />
+        <Clock size={13} className="text-gold" />
+      </div>
+      <span className="font-sans text-[12.5px] text-text-primary leading-snug">
         Building track record &mdash; check back after more theses are graded.
       </span>
     </div>
@@ -514,4 +617,46 @@ function formatDate(dateStr: string | null): string {
   } catch {
     return "";
   }
+}
+
+/**
+ * Returns the next time the daily grading cron will fire — next 8:10 PM in
+ * America/Los_Angeles. Handles PST/PDT transitions correctly by resolving
+ * LA-local "YYYY-MM-DD HH:MM" components first, then converting to UTC using
+ * the LA offset at the target instant.
+ */
+export function getNextGradingRunPT(now: Date, hour = 20, minute = 10): Date {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Los_Angeles",
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const parts = fmt.formatToParts(now);
+  const p = (t: string) => Number(parts.find((x) => x.type === t)?.value ?? 0);
+  const laY = p("year");
+  const laM = p("month"); // 1-12
+  const laD = p("day");
+  const laH = p("hour");
+  const laMin = p("minute");
+
+  const currentLaMinutes = laH * 60 + laMin;
+  const targetLaMinutes = hour * 60 + minute;
+  const dayOffset = currentLaMinutes >= targetLaMinutes ? 1 : 0;
+
+  // Pretend the target LA wall-clock is UTC, then shift by LA's actual offset
+  // at that moment (handles DST: PST = UTC-8, PDT = UTC-7).
+  const pseudoUtcMs = Date.UTC(laY, laM - 1, laD + dayOffset, hour, minute, 0);
+  const offsetParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    timeZoneName: "shortOffset",
+  }).formatToParts(new Date(pseudoUtcMs));
+  const tzName = offsetParts.find((x) => x.type === "timeZoneName")?.value ?? "GMT-8";
+  const m = tzName.match(/GMT([+-]?)(\d+)/);
+  const sign = m?.[1] === "+" ? 1 : -1;
+  const offsetHours = sign * Number(m?.[2] ?? 8);
+  return new Date(pseudoUtcMs - offsetHours * 60 * 60 * 1000);
 }
