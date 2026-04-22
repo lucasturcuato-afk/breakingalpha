@@ -39,11 +39,27 @@ interface SourceRow {
 
 interface VerdictRow {
   id: string;
+  thesis_id: string;
   title: string;
   sector: string | null;
-  outcome: string;
-  outcome_notes: string | null;
-  updated_at: string;
+  verdict: string;
+  notes: string | null;
+  graded_at: string;
+  ticker: string | null;
+}
+
+interface RawRecentVerdict {
+  id: string;
+  thesis_id: string;
+  verdict: string;
+  notes: string | null;
+  graded_at: string;
+}
+
+interface RecentThesisMeta {
+  id: string;
+  title: string | null;
+  sector: string | null;
   ticker: string | null;
 }
 
@@ -99,8 +115,8 @@ export default function TrackRecordPage() {
           supabase.from("theses").select("sector, outcome, adversarial_score").not("outcome", "is", null),
           supabase.from("pattern_library").select("sector, horizon, dominant_signal, win_rate, n_observed, n_confirmed").gte("n_observed", 3).order("win_rate", { ascending: false }).limit(5),
           supabase.from("source_credibility").select("source, win_rate, n_theses").order("win_rate", { ascending: false }).limit(10),
-          supabase.from("theses").select("id, title, sector, outcome, outcome_notes, updated_at, ticker").not("outcome", "is", null).order("updated_at", { ascending: false }).limit(10),
-          supabase.from("theses").select("updated_at").not("outcome", "is", null).order("updated_at", { ascending: false }).limit(1),
+          supabase.from("thesis_verdicts").select("id, thesis_id, verdict, notes, graded_at").order("graded_at", { ascending: false }).limit(10),
+          supabase.from("thesis_verdicts").select("graded_at").order("graded_at", { ascending: false }).limit(1),
         ]);
 
         setTotalCount(totalRes.count ?? 0);
@@ -109,10 +125,39 @@ export default function TrackRecordPage() {
         setGradedTheses((gradedRes.data as GradedThesis[]) ?? []);
         setPatterns((patternsRes.data as PatternRow[]) ?? []);
         setSources((sourcesRes.data as SourceRow[]) ?? []);
-        setVerdicts((verdictsRes.data as VerdictRow[]) ?? []);
+
+        const rawVerdicts = (verdictsRes.data as RawRecentVerdict[] | null) ?? [];
+        if (rawVerdicts.length === 0) {
+          setVerdicts([]);
+        } else {
+          const thesisIds = Array.from(new Set(rawVerdicts.map((v) => v.thesis_id)));
+          const { data: metaData } = await supabase
+            .from("theses")
+            .select("id, title, sector, ticker")
+            .in("id", thesisIds);
+          const metaMap = new Map<string, RecentThesisMeta>();
+          for (const m of (metaData as RecentThesisMeta[] | null) ?? []) {
+            metaMap.set(m.id, m);
+          }
+          setVerdicts(
+            rawVerdicts.map((v) => {
+              const meta = metaMap.get(v.thesis_id);
+              return {
+                id: v.id,
+                thesis_id: v.thesis_id,
+                title: meta?.title ?? "Untitled thesis",
+                sector: meta?.sector ?? null,
+                ticker: meta?.ticker ?? null,
+                verdict: v.verdict,
+                notes: v.notes,
+                graded_at: v.graded_at,
+              };
+            }),
+          );
+        }
 
         if (lastUpdatedRes.data && lastUpdatedRes.data.length > 0) {
-          setLastUpdated(lastUpdatedRes.data[0].updated_at);
+          setLastUpdated((lastUpdatedRes.data[0] as { graded_at: string }).graded_at);
         }
       } catch (e) {
         console.error("Track record load error:", e);
@@ -353,7 +398,7 @@ export default function TrackRecordPage() {
               {verdicts.map((v) => (
                 <Link
                   key={v.id}
-                  href={`/thesis-board?thesis=${v.id}`}
+                  href={`/thesis-board?thesis=${v.thesis_id}`}
                   className="block bg-white rounded-xl border border-border-base p-3 hover:border-gold/40 transition-colors"
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -370,23 +415,23 @@ export default function TrackRecordPage() {
                             {v.sector}
                           </span>
                         )}
-                        <OutcomeBadge outcome={v.outcome} />
+                        <OutcomeBadge outcome={v.verdict} />
                         {v.ticker && (
                           <span className="font-data text-[9px] text-gold-dark bg-gold-muted px-1.5 py-0.5 rounded">
                             {v.ticker}
                           </span>
                         )}
                       </div>
-                      {v.outcome_notes && (
+                      {v.notes && (
                         <p className="font-sans text-[12px] text-text-secondary leading-snug mt-1.5 line-clamp-2">
-                          {v.outcome_notes.length > 150
-                            ? `${v.outcome_notes.slice(0, 150)}…`
-                            : v.outcome_notes}
+                          {v.notes.length > 150
+                            ? `${v.notes.slice(0, 150)}…`
+                            : v.notes}
                         </p>
                       )}
                     </div>
                     <span className="font-data text-[10px] text-text-faint flex-shrink-0 mt-0.5">
-                      {timeAgo(v.updated_at)}
+                      {timeAgo(v.graded_at)}
                     </span>
                   </div>
                 </Link>
