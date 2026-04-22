@@ -76,6 +76,9 @@ interface BriefingData {
   id?: string;
   headline?: string;
   summary?: string;
+  lead_paragraph?: string;
+  supporting_context?: string;
+  what_to_watch?: string;
   market_tone?: string;
   sections?: Record<string, string>;
   sector_breakdown?: Record<string, string>;
@@ -198,6 +201,9 @@ export default function EveningWrapPage() {
             id: b.id,
             headline: b.headline,
             summary: b.summary,
+            lead_paragraph: b.lead_paragraph,
+            supporting_context: b.supporting_context,
+            what_to_watch: b.what_to_watch,
             market_tone: b.market_tone,
             sections: sections || {},
             sector_breakdown: sectorBreakdown || {},
@@ -372,6 +378,9 @@ export default function EveningWrapPage() {
               type="evening"
               headline={briefing.headline || formatLabel || "Evening Market Wrap"}
               summary={briefing.summary || ""}
+              leadParagraph={briefing.lead_paragraph}
+              supportingContext={briefing.supporting_context}
+              whatToWatch={briefing.what_to_watch}
               marketTone={briefing.market_tone || "MIXED"}
               storyCount={stories.length}
               generatedAt={briefing.created_at}
