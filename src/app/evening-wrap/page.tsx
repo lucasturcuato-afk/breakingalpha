@@ -7,6 +7,7 @@ import { TickerStrip } from "@/components/brief/ticker-strip";
 import { MarketPulse } from "@/components/brief/market-pulse";
 import { LeadHero } from "@/components/brief/lead-hero";
 import { BriefSection } from "@/components/brief/brief-section";
+import { MorningReview } from "@/components/brief/morning-review";
 import { SectorSignalCard } from "@/components/brief/sector-signal-card";
 import { TopStories } from "@/components/brief/top-stories";
 import { ExportMenu } from "@/components/brief/export-menu";
@@ -55,6 +56,22 @@ const SECTION_TITLES: Record<string, string> = {
   closing_thoughts: "Closing Thoughts",
 };
 
+interface SectorReflection {
+  sector: string;
+  verdict: "correct" | "wrong" | "partial";
+  paragraph: string;
+}
+interface TickerReflection {
+  symbol: string;
+  verdict: "correct" | "wrong" | "partial";
+  paragraph: string;
+}
+interface MorningReviewShape {
+  aggregate_sentence?: string;
+  sector_reflections?: SectorReflection[];
+  ticker_reflection?: TickerReflection | null;
+}
+
 interface BriefingData {
   id?: string;
   headline?: string;
@@ -68,6 +85,7 @@ interface BriefingData {
     narrative: string;
     headlines?: Array<{ title: string; href?: string }>;
   } | null;
+  morning_review?: MorningReviewShape | null;
 }
 
 function storyToContent(story: StoryData): ContentDescriptor {
@@ -172,6 +190,10 @@ export default function EveningWrapPage() {
             if (typeof mp === "string") { try { return JSON.parse(mp); } catch { return null; } }
             return mp;
           })();
+          const morningReview: MorningReviewShape | null =
+            b.morning_review && typeof b.morning_review === "object"
+              ? (b.morning_review as MorningReviewShape)
+              : null;
           setBriefing({
             id: b.id,
             headline: b.headline,
@@ -181,6 +203,7 @@ export default function EveningWrapPage() {
             sector_breakdown: sectorBreakdown || {},
             created_at: b.created_at,
             market_pulse: marketPulse,
+            morning_review: morningReview,
           });
           setIsStale(data.is_stale === true);
           if (data.last_attempt_status) {
@@ -392,6 +415,11 @@ export default function EveningWrapPage() {
                 </p>
               </div>
             )}
+
+            {/* Self-reflection on this morning's brief vs actual market outcomes.
+                Renders nothing if no graded calls / no review generated. */}
+            <MorningReview review={briefing?.morning_review} />
+
 
             {/* Export & Share */}
             <div className="flex items-center gap-2 mb-4">

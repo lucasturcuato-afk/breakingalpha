@@ -4,12 +4,19 @@ Generates a detailed analyst-style morning/evening briefing using Google Gemini.
 """
 
 import os, json, re
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from supabase import create_client
 from google import genai
 from google.genai import types
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
+# Admin client for writes that must bypass RLS (e.g. morning_brief_calls).
+# Falls back to the anon client if the service role key is unavailable so
+# local dev does not hard-crash — inserts will simply fail closed.
+_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+supabase_admin = (
+    create_client(os.environ["SUPABASE_URL"], _SERVICE_KEY) if _SERVICE_KEY else supabase
+)
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 GEMINI_MODEL = "gemini-2.5-flash"
 
@@ -443,6 +450,278 @@ def _fetch_aggregate_engagement() -> str:
         return ""
 
 
+CLAIMS_EXTRACTION_SYSTEM = """You extract gradeable market calls from a morning brief.
+
+A "claim" is a directional statement about a market, sector, index, or ticker that can be verified against end-of-day price action. Examples of gradeable claims:
+- "The S&P is likely to close higher on a dovish Fed tone" -> aggregate / SPY / bullish
+- "Tech will outperform today on NVDA earnings" -> sector / XLK / bullish
+- "Energy faces pressure as crude slides" -> sector / XLE / bearish
+- "NVDA will rally on its AI guidance" -> ticker / NVDA / bullish
+
+NOT gradeable: vague commentary, retrospective observations, "watch for X", non-directional context, commentary about the previous day.
+
+For sector claims, pick the appropriate US sector ETF:
+- Technology -> XLK
+- Energy -> XLE
+- Financials -> XLF
+- Healthcare -> XLV
+- Consumer Discretionary -> XLY
+- Consumer Staples -> XLP
+- Industrials -> XLI
+- Materials -> XLB
+- Real Estate -> XLRE
+- Utilities -> XLU
+- Communication Services -> XLC
+
+For aggregate/broad-market claims, use SPY as target_symbol (or null). For index claims, use the literal ETF (SPY, QQQ, DIA).
+
+Return 3 to 7 claims. If the brief is genuinely non-directional, it is acceptable to return fewer (even zero).
+
+Respond ONLY with valid JSON in this exact schema — no preamble, no markdown fences:
+{
+  "claims": [
+    {
+      "claim_text": "<short sentence stating the directional call>",
+      "claim_type": "aggregate" | "sector" | "index" | "ticker",
+      "target_symbol": "<ticker or ETF symbol; null only for pure aggregate with no proxy>",
+      "expected_direction": "bullish" | "bearish" | "neutral",
+      "confidence": <float between 0.0 and 1.0>
+    }
+  ]
+}
+"""
+
+
+def extract_and_persist_claims(
+    brief_id: str,
+    brief_headline: str,
+    brief_summary: str,
+    brief_sections: dict,
+) -> int:
+    """
+    Extract gradeable market calls from a morning brief and persist them to
+    `morning_brief_calls`. Idempotent: deletes any existing rows for this
+    brief_id before inserting so re-runs produce a clean set.
+
+    Returns the number of claims persisted. Fails soft: any error yields 0
+    and a logged warning so the caller can safely wrap in a try/except.
+    """
+    if not brief_id:
+        print("  ⚠ extract_and_persist_claims: missing brief_id, skipping")
+        return 0
+
+    # Assemble the brief text the model will read.
+    sections_text = ""
+    if isinstance(brief_sections, dict):
+        for key, val in brief_sections.items():
+            if isinstance(val, str) and val.strip():
+                sections_text += f"\n\n[{key}]\n{val}"
+
+    user_content = (
+        f"HEADLINE: {brief_headline}\n\n"
+        f"SUMMARY: {brief_summary}\n"
+        f"{sections_text}"
+    )
+
+    try:
+        raw = gemini_generate(
+            system=CLAIMS_EXTRACTION_SYSTEM,
+            user_content=user_content,
+            temperature=0.2,
+            max_tokens=1024,
+        )
+    except Exception as e:
+        print(f"  ⚠ claims extraction: Gemini call failed: {e}")
+        return 0
+
+    # Strip possible code fences, then parse JSON.
+    raw = re.sub(r"^```json|^```|```$", "", raw or "", flags=re.MULTILINE).strip()
+    parsed = None
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if match:
+            try:
+                parsed = json.loads(match.group())
+            except Exception:
+                pass
+
+    if not isinstance(parsed, dict):
+        print(f"  ⚠ claims extraction: non-JSON response, skipping. raw={raw[:200]!r}")
+        return 0
+
+    claims = parsed.get("claims") or []
+    if not isinstance(claims, list) or not claims:
+        print("  ℹ claims extraction: model returned 0 claims")
+        # Still run the idempotent delete so stale data is not left behind.
+        try:
+            supabase_admin.table("morning_brief_calls").delete().eq("brief_id", brief_id).execute()
+        except Exception as e:
+            print(f"  ⚠ claims extraction: idempotent delete failed: {e}")
+        return 0
+
+    # Validate/normalize each claim before insert.
+    allowed_types = {"aggregate", "sector", "index", "ticker"}
+    allowed_dirs = {"bullish", "bearish", "neutral"}
+
+    rows = []
+    for c in claims:
+        if not isinstance(c, dict):
+            continue
+        claim_text = (c.get("claim_text") or "").strip()
+        claim_type = (c.get("claim_type") or "").strip().lower()
+        target_symbol = c.get("target_symbol")
+        if isinstance(target_symbol, str):
+            target_symbol = target_symbol.strip().upper() or None
+        else:
+            target_symbol = None
+        direction = (c.get("expected_direction") or "").strip().lower()
+
+        confidence = c.get("confidence")
+        try:
+            confidence = float(confidence) if confidence is not None else None
+            if confidence is not None:
+                confidence = max(0.0, min(1.0, confidence))
+        except Exception:
+            confidence = None
+
+        if not claim_text or claim_type not in allowed_types or direction not in allowed_dirs:
+            continue
+
+        rows.append({
+            "brief_id": brief_id,
+            "claim_text": claim_text,
+            "claim_type": claim_type,
+            "target_symbol": target_symbol,
+            "expected_direction": direction,
+            "confidence": confidence,
+        })
+
+    if not rows:
+        print("  ⚠ claims extraction: no valid claims after normalization")
+        return 0
+
+    # Idempotency: clear any prior rows for this brief_id before inserting.
+    try:
+        supabase_admin.table("morning_brief_calls").delete().eq("brief_id", brief_id).execute()
+    except Exception as e:
+        print(f"  ⚠ claims extraction: idempotent delete failed (continuing): {e}")
+
+    try:
+        supabase_admin.table("morning_brief_calls").insert(rows).execute()
+    except Exception as e:
+        print(f"  ⚠ claims extraction: insert failed: {e}")
+        return 0
+
+    print(f"  ✅ claims extraction: persisted {len(rows)} claim(s) for brief {brief_id}")
+    return len(rows)
+
+
+def generate_morning_review_for_evening(today_date, sb):
+    """Query today's graded morning brief calls and generate an LLM self-reflection.
+
+    Returns a dict shaped like::
+
+        {
+          "aggregate_sentence": "...",
+          "sector_reflections": [{ "sector": str, "verdict": str, "paragraph": str }],
+          "ticker_reflection": { "symbol": str, "verdict": str, "paragraph": str } | None,
+        }
+
+    Returns ``None`` if there are no graded calls yet, or if anything fails
+    (missing tables, API errors, JSON parse issues). Caller MUST treat this
+    as best-effort — an evening wrap must still ship without a review.
+    """
+    try:
+        calls_resp = (
+            sb.table("morning_brief_calls")
+            .select("*")
+            .eq("brief_date", today_date.isoformat())
+            .execute()
+        )
+    except Exception as e:
+        print(f"[synthesize] morning_brief_calls lookup failed: {e}")
+        return None
+
+    calls = calls_resp.data or []
+    if not calls:
+        return None
+
+    call_ids = [c["id"] for c in calls]
+    try:
+        outcomes_resp = (
+            sb.table("morning_brief_call_outcomes")
+            .select("*")
+            .in_("call_id", call_ids)
+            .execute()
+        )
+    except Exception as e:
+        print(f"[synthesize] morning_brief_call_outcomes lookup failed: {e}")
+        return None
+
+    outcomes_by_call = {o["call_id"]: o for o in (outcomes_resp.data or [])}
+    graded = [(c, outcomes_by_call[c["id"]]) for c in calls if c["id"] in outcomes_by_call]
+    if not graded:
+        return None  # no graded calls yet
+
+    # Aggregate stats
+    correct = sum(1 for _, o in graded if o.get("verdict") == "correct")
+    wrong = sum(1 for _, o in graded if o.get("verdict") == "wrong")
+    partial = sum(1 for _, o in graded if o.get("verdict") == "partial")
+
+    def _fmt_pct(x):
+        try:
+            return f"{float(x) * 100:+.2f}%"
+        except Exception:
+            return "n/a"
+
+    summary_block = "\n".join(
+        f"- [{o.get('verdict', '?')}] {c.get('claim_text', '')} "
+        f"→ {c.get('expected_direction', '?')} expected, "
+        f"{o.get('actual_direction', '?')} actual ({_fmt_pct(o.get('actual_pct_change'))})"
+        for c, o in graded
+    )
+
+    prompt = (
+        "Generate a self-reflection for today's evening wrap comparing the morning "
+        "brief's market calls to what actually happened.\n\n"
+        f"Morning brief calls and outcomes:\n{summary_block}\n\n"
+        f"Aggregate: {correct} correct, {wrong} wrong, {partial} partial.\n\n"
+        "Produce JSON only:\n"
+        "{\n"
+        "  \"aggregate_sentence\": \"<1-2 sentence summary — honest, never defensive>\",\n"
+        "  \"sector_reflections\": [\n"
+        "    { \"sector\": \"<name>\", \"verdict\": \"<correct|wrong|partial>\", \"paragraph\": \"<1 paragraph>\" }\n"
+        "  ],\n"
+        "  \"ticker_reflection\": { \"symbol\": \"<sym>\", \"verdict\": \"<v>\", \"paragraph\": \"<1 paragraph>\" } | null\n"
+        "}\n\n"
+        "Rules:\n"
+        "- Include sector_reflections only for sector calls with meaningful outcome.\n"
+        "- ticker_reflection: only if a high-confidence ticker call was made. Otherwise null.\n"
+        "- Total length: 200-400 words.\n"
+        "- Tone: confident, honest. \"We were wrong about X because Y\" > vague excuses.\n"
+        "- Output JSON only, no prose."
+    )
+
+    try:
+        resp = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+        )
+        text = (resp.text or "").strip()
+        # Strip code fences if present (```json ... ``` or ``` ... ```)
+        if text.startswith("```"):
+            parts = text.split("```")
+            if len(parts) >= 2:
+                text = parts[1]
+            text = text.removeprefix("json").strip()
+        return json.loads(text)
+    except Exception as e:
+        print(f"[synthesize] morning review generation failed: {e}")
+        return None
+
+
 def run(brief_type="morning"):
     print(f"📝 Synthesizing {brief_type} briefing...")
 
@@ -607,22 +886,71 @@ def run(brief_type="morning"):
         "created_at":       now,
     }
 
-    # Additive: market_pulse is an editorial opener for the brief page.
-    # Column may not exist yet — attempt insert WITH the field first; if the
-    # DB rejects it (e.g. PGRST204 "column not found"), retry without.
+    # Insert with optional market_pulse (column may not exist yet on older DBs —
+    # fall back to base row if DB rejects the extra field). Capture the
+    # generated id so downstream steps can attach (claims extraction on morning,
+    # morning_review on evening).
     mp_raw = data.get("market_pulse")
-    if isinstance(mp_raw, dict) and mp_raw.get("sentiment_word") and mp_raw.get("narrative"):
+    has_pulse = (
+        isinstance(mp_raw, dict)
+        and mp_raw.get("sentiment_word")
+        and mp_raw.get("narrative")
+    )
+    insert_resp = None
+    if has_pulse:
         row_with_pulse = {**row, "market_pulse": json.dumps(mp_raw)}
         try:
-            supabase.table("briefings").insert(row_with_pulse).execute()
+            insert_resp = supabase.table("briefings").insert(row_with_pulse).execute()
             print(f"  ✨ market_pulse saved: {mp_raw.get('sentiment_word', '')[:30]}")
         except Exception as mp_err:
             print(f"  ⚠ market_pulse insert failed ({mp_err}) — falling back to base row")
-            supabase.table("briefings").insert(row).execute()
+            insert_resp = supabase.table("briefings").insert(row).execute()
     else:
-        supabase.table("briefings").insert(row).execute()
+        insert_resp = supabase.table("briefings").insert(row).execute()
+
+    brief_id = None
+    try:
+        inserted_rows = getattr(insert_resp, "data", None) or []
+        if inserted_rows and isinstance(inserted_rows[0], dict):
+            brief_id = inserted_rows[0].get("id")
+    except Exception:
+        brief_id = None
+
+
     print(f"  ✅ {brief_type.capitalize()} briefing stored")
     print(f"  Headline: {row['headline'][:80]}")
+
+    # --- Self-grading claims extraction (morning brief only, non-fatal) ------
+    # Runs as a second, additive LLM call. Any failure is logged and swallowed
+    # so the brief still ships.
+    if brief_type == "morning":
+        try:
+            if brief_id:
+                extract_and_persist_claims(
+                    brief_id=brief_id,
+                    brief_headline=data.get("headline", ""),
+                    brief_summary=data.get("summary", ""),
+                    brief_sections=data.get("sections", {}) or {},
+                )
+            else:
+                print("  ⚠ claims extraction skipped: briefings insert did not return an id")
+        except Exception as e:
+            print(f"  ⚠ claims extraction failed (non-fatal): {e}")
+
+    # ── Evening wrap: attach self-reflection on morning brief vs market outcomes ──
+    # Non-fatal: reflection is additive and must never block the briefing from shipping.
+    if brief_type == "evening":
+        try:
+            review = generate_morning_review_for_evening(date.today(), supabase)
+            if review and brief_id:
+                supabase.table("briefings").update(
+                    {"morning_review": review}
+                ).eq("id", brief_id).execute()
+                print(f"  🔁 Attached morning_review to evening brief {brief_id}")
+            elif review and not brief_id:
+                print("  ⚠ Generated morning_review but no brief_id returned from insert")
+        except Exception as e:
+            print(f"[synthesize] morning review attach failed: {e}")  # non-fatal
 
     # Return brief text and addendum metadata for downstream consumers
     # (e.g. brief_feedback_loop.score_brief in run.py)
