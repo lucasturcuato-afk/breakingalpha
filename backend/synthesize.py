@@ -35,6 +35,10 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
   "headline": "Write the headline for the dominant story you identified above — not a category label, not a topic area, the actual named development. Count the words: must be 10–15 words. If under 10 words, rewrite it. Name the specific company, institution, index, or data point involved. State what happened or is happening, not just the subject. Must not be a generic phrase interchangeable with headlines from other days. Never bundle two unrelated themes with 'and'. BANNED patterns: any headline under 8 words; vague labels ('Markets Face Uncertainty', 'Tech Sector Active', 'Volatility Returns'); naming a secondary story when a larger deal or macro story is present in the articles. BAD example: 'SpaceX Files for IPO' (4 words, no market implication). GOOD example: 'Fed Signals June Pause as May CPI Beats, Compressing Near-Term Rate-Cut Expectations'.",
   "summary": "3-4 sentences. Each sentence must cover ONE story or ONE data point — never blend two unrelated topics into a single sentence with 'while', 'as', 'amid', or 'even as'. Every sentence must contain at least one specific company name, dollar figure, rate level, or index move. Lead with the most important implication, not a description of what happened. Banned phrases: 'mix of', 'ongoing activity', 'investment landscape', 'markets reacted to', 'could also', 'highlight', 'alongside', 'coupled with'.",
   "market_tone": "One of: RISK-ON | RISK-OFF | MIXED | NEUTRAL",
+  "market_pulse": {
+    "sentiment_word": "A single evocative adjective that captures the market's psychological state today — e.g., 'anxious', 'complacent', 'exuberant', 'defensive', 'bifurcated', 'numb'. One word. Lower-case. No punctuation.",
+    "narrative": "2-3 short paragraphs (separated by \\n\\n) written in an editorial voice. State the dominant emotional posture of capital markets today, then the two or three concrete catalysts driving that posture. Name specific companies, prints, or policy actions — no vague prose. Read it like a Stratechery opener, not a bank research note."
+  },
   "sections": {
     "deals_and_ma": "2-3 sentences. For each deal, state the acquirer, target, price or multiple, and what the transaction signals about the buyer's strategy or sector consolidation pressure — not just that the deal happened. OMIT if no named transactions in the articles.",
     "public_markets": "2-3 sentences on equity market moves, earnings beats/misses, and IPO pipeline. State the directional implication for deal valuations or risk appetite, not just the move. OMIT if no specific market moves or earnings in the articles.",
@@ -86,6 +90,10 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
   "headline": "Write the headline for the dominant story you identified above — not a category label, not a topic area, the actual named development. Count the words: must be 10–15 words. If under 10 words, rewrite it. Name the specific company, institution, index, or data point involved. State what drove the tape today, not just the subject. Must not be a generic phrase interchangeable with headlines from other days. Never bundle two unrelated themes with 'and'. BANNED patterns: any headline under 8 words; vague labels ('Markets Close Mixed', 'Tech Sells Off', 'Volatility Spikes'); naming a secondary story when a larger deal or macro story is present in the articles. BAD example: 'Stocks Close Lower' (3 words, no named driver). GOOD example: 'S&P 500 Falls 1.4% as Hotter-Than-Expected May CPI Wipes Out June Fed Cut Pricing'.",
   "summary": "3-4 sentences. Each sentence must cover ONE story or ONE data point — never blend two unrelated topics into a single sentence with 'while', 'as', 'amid', or 'even as'. Every sentence must contain a specific company name, dollar figure, rate level, or index move. State what today's developments signal going into tomorrow. Banned phrases: 'mix of', 'ongoing activity', 'investment landscape', 'markets reacted to', 'could also', 'highlight', 'alongside', 'coupled with'.",
   "market_tone": "One of: RISK-ON | RISK-OFF | MIXED | NEUTRAL",
+  "market_pulse": {
+    "sentiment_word": "A single evocative adjective capturing how today's session closed psychologically — e.g., 'relieved', 'rattled', 'bifurcated', 'defensive', 'numb', 'exuberant'. One word. Lower-case. No punctuation.",
+    "narrative": "2-3 short paragraphs (separated by \\n\\n) written in an editorial voice. Lead with the dominant emotional posture of the tape at the close, then the two or three concrete drivers — named earnings prints, Fed signal, sector moves. No hedging prose. Read it like a Stratechery close-of-day column, not a bank wrap."
+  },
   "sections": {
     "deals_and_ma": "2-3 sentences. For each deal, name acquirer and target, state the price or multiple, and explain what the transaction signals about buyer strategy or sector consolidation pressure. OMIT if no named transactions in the articles.",
     "public_markets": "2-3 sentences on how markets closed. Name the key movers and state what the tape is pricing in for tomorrow — not just that stocks went up or down. OMIT if no specific market close data or named movers in the articles.",
@@ -599,7 +607,20 @@ def run(brief_type="morning"):
         "created_at":       now,
     }
 
-    supabase.table("briefings").insert(row).execute()
+    # Additive: market_pulse is an editorial opener for the brief page.
+    # Column may not exist yet — attempt insert WITH the field first; if the
+    # DB rejects it (e.g. PGRST204 "column not found"), retry without.
+    mp_raw = data.get("market_pulse")
+    if isinstance(mp_raw, dict) and mp_raw.get("sentiment_word") and mp_raw.get("narrative"):
+        row_with_pulse = {**row, "market_pulse": json.dumps(mp_raw)}
+        try:
+            supabase.table("briefings").insert(row_with_pulse).execute()
+            print(f"  ✨ market_pulse saved: {mp_raw.get('sentiment_word', '')[:30]}")
+        except Exception as mp_err:
+            print(f"  ⚠ market_pulse insert failed ({mp_err}) — falling back to base row")
+            supabase.table("briefings").insert(row).execute()
+    else:
+        supabase.table("briefings").insert(row).execute()
     print(f"  ✅ {brief_type.capitalize()} briefing stored")
     print(f"  Headline: {row['headline'][:80]}")
 
