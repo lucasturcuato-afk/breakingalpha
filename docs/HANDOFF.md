@@ -158,22 +158,22 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 4. Are there active paying users? (determines urgency of fixes)
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
 
+## Recently Completed (2026-04-21)
+**Track record & trends polish (PRs #116–#117 merged to main):** Hybrid thesis grader (confidence scores, history, adversarial evidence), manual trigger endpoint + daily cron. Trends page signal radar redesign (tiered cards, integrated header, compact filters, two-line labels, hover preview with source articles). Track record empty state fix (gate on zero graded theses, not zero confirmed+invalidated). Schema reconciliation: discovered 20260416_add_theses_user_id.sql unapplied to production — per-user DB scoping missing (app-layer only); `sql/theses_current.sql` captures actual 26-column live schema. *Follow-ups pending for Noah:* After #118 merges, run `sql/0001_cleanup_zero_signal_calibration_rows.sql` in Supabase to wipe ~10 zero-signal rows; decide whether to ship user_id migration.
+
 ## Recently Completed (2026-04-20)
 **Dark mode overhaul (PRs #108–#110 merged to main):** New CSS token system (5-level surface depth + warm off-white text + consistent border tokens) in `src/styles/tokens.css` and Tailwind mappings in globals.css. 10+ components patched (sidebar, topbar, mood-bar, brief-section, feed-row, deal-card, etc.). `dark-mode-overhaul` branch includes `src/lib/deal-utils.ts` getDealTypeStyle() and `src/lib/sector-colors.ts` rewrite (semantic pill color mapping via getTagPillStyle()) not yet merged separately to main.
 
 ## Recently Completed (2026-04-19)
 **Deal Flow personalization and saved deals (PRs #104–#107 merged to main):** Two-column layout with analytics sidebar (268px: Pipeline Velocity, By Deal Type, Top Sectors, Largest Deals); company deduplication via `normalizeCompany()`. User profile integration: sector tracking/other split, watchlist highlighting, sector filter nudge. Saved deals table + RLS + `/api/saved-deals` server route; `/saved` page with sort controls, fade-out unsave, CSV export. Relevance scoring: `dealRelevanceScore()` + gold dot/border system (≥1.5 threshold); high-relevance row in sidebar. Fire-and-forget event tracking (`thesis_viewed`, `memo_generated`, `sector_filter_applied`) → `inferred_sector_weights`. **Manual Supabase steps:** Run `GRANT SELECT, INSERT, DELETE ON user_saved_deals TO authenticated` on any new environment. Gold dots won't appear until 4+ behavioral events compound past 1.5 threshold.
 
-## In Progress (2026-04-19)
-**Watchlist Brief Integration (branch: noah/watchlist-brief-integration):**
-- `fetch_watchlist_signals()` added to `synthesize.py` — fetches all distinct identifiers from `watchlist` table (capped at 50), then retrieves top 8 cached articles from `watchlist_articles` (last 24h, sorted by `relevance_score`). Fails gracefully: any error returns `([], [])` and never crashes the pipeline.
-- WATCHLIST DIRECTIVE added to both `MORNING_SYSTEM` and `EVENING_SYSTEM`: instructs Gemini to prioritize watchlist companies in `top_deals`, `deals_and_ma`, `public_markets`, `sector_spotlight`. Directive is self-disabling: explicitly tells Gemini to ignore it if no `[WATCHLIST]` articles are present.
-- Watchlist signals injected as `[WATCHLIST: identifier]`-labeled articles appended after floor articles in synthesis prompt. Fallback path: if identifiers exist but no fresh articles, injects a `--- TRACKED COMPANIES ---` note instead.
-- **Architecture note:** This creates a SHARED brief (one for all users) with watchlist-aware synthesis. Per-user personalization (section ordering, sector reordering) remains in the existing `/api/briefing/route.ts` layer (Lucas's work) — untouched.
-- **No manual Supabase steps required** after merge.
-- **Dry-run tested:** `fetch_watchlist_signals()` confirmed live against Supabase — found 38 tracked identifiers, no fresh articles (expected — watchlist_sync hasn't run today yet).
-- **End-to-end test:** requires next cron run (6am or 8pm PST) with Gemini quota active.
-- Does NOT touch: `/api/briefing/route.ts`, `run.py` step manifest, `watchlist_sync.py`, frontend, pipeline steps 13/14.
+## In Progress (2026-04-21)
+**PR #118 track-record-polish (branch: noah/track-record-polish):**
+- Honest empty states + backend data-layer gating for Pattern Memory and Source Credibility (previously frontend-only).
+- Two commits: `4513ea7` (main implementation) and `4744b70` (fix querying thesis_verdicts instead of stale theses.outcome mirror).
+- Includes `sql/0001_cleanup_zero_signal_calibration_rows.sql` for manual execution after merge (Supabase SQL editor).
+- Awaiting Noah's preview QA (Vercel-SSO-gated previews); PR comment #118 has full visual checklist.
+- **Schema follow-up:** Discovered 20260416_add_theses_user_id.sql never applied to production. Per-user DB scoping and dedup unique index exist only at app layer. `sql/theses_current.sql` is ground truth (26-column live schema). Decide whether to ship user_id migration with this sprint or defer.
 
 ## Recently Completed (2026-04-19)
 **Opening screen cinematic landing redesign (noah/opening-screen merged to main):** Full-viewport component with 4-column scrolling signal feed background (16 real deal/market signals, 4 parallax speeds), dark vignette + amber scan line (6s sweep). 7-step animation sequence: wordmark fade → divider extend → tagline letter-spacing → feed blur-to-sharp → hero copy up → stats row up → scan line activate. Two CTAs: "Get Started" → /auth, "Explore Preview" → /preview. Stats: 25 Sectors, 600+ Companies, 200+ Deals, 2 Daily Briefs. Zero external animation libraries. Signed-out users render OpeningScreen; signed-in still redirect to /dashboard. Fixed .gitignore for frontend/.next/ and frontend/node_modules/.
@@ -253,6 +253,8 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 10. **Phase 1 hardening — observe.py reconstruction fix (PR #56)** — `_reconstruct_selected()` rewritten to mirror current `synthesize._select_articles_for_synthesis()` (spine=12, floor=6, sector_cap=3, floor_min=7). `audit.py` `_TARGET_COUNT` corrected 20→18. Stale `_diversify_articles` reconstruction logic replaced. No schema changes.
 
 ## Pending / Known Issues
+- **Unapplied 20260416_add_theses_user_id.sql migration** — Phase 1 personalization per-user DB-level scoping + dedup unique index (`idx_theses_user_title_sector_unique`) only enforced at application layer (`/api/theses` POST). Neither `user_id` column, nor indices exist in live schema. Decide: ship migration retroactively or accept app-layer enforcement indefinitely. Ground-truth schema snapshot at `sql/theses_current.sql` (26 columns, generated 2026-04-21).
+- **PR #118 post-merge cleanup** — After #118 merges, manually run `sql/0001_cleanup_zero_signal_calibration_rows.sql` in Supabase SQL editor to wipe ~10 zero-signal rows from `pattern_library` and `source_credibility` tables.
 - **Tier 2 saved deals RLS grant** — must run `GRANT SELECT, INSERT, DELETE ON user_saved_deals TO authenticated` manually in Supabase SQL editor for new environments (migration file incomplete).
 - **Relevance scoring cold start** — gold dots won't appear on fresh accounts until 4+ behavioral events compound inferred_sector_weights past 1.5 threshold. Expected, not a bug.
 - **V4C watchlist_price_alerts table** — must run `backend/watchlist_alerts_schema.sql` manually in Supabase SQL editor before price alert UI/trigger is functional.

@@ -209,17 +209,9 @@ def aggregate_graded_theses() -> list[dict]:
 
     now_iso = datetime.now(timezone.utc).isoformat()
     pattern_rows = []
-    gated_buckets = 0
     for (sector, horizon, dom), b in buckets.items():
         n = b["n_observed"]
-        n_c = b["n_confirmed"]
-        n_i = b["n_invalidated"]
-        # Gate: skip buckets with zero calibration signal (all-inconclusive).
-        # Writing them would pollute pattern_library with 0% win_rate rows.
-        if n_c + n_i == 0:
-            gated_buckets += 1
-            continue
-        win_rate = n_c / (n_c + n_i)  # denominator is signal count, not n_observed
+        win_rate = (b["n_confirmed"] / n) if n else 0.0
         pattern_rows.append({
             "pattern_key": _make_pattern_key(sector, horizon, dom),
             "sector": sector,
@@ -227,18 +219,11 @@ def aggregate_graded_theses() -> list[dict]:
             "dominant_signal": dom,
             "signal_profile": dict(b["signal_profile"]),
             "n_observed": n,
-            "n_confirmed": n_c,
-            "n_invalidated": n_i,
+            "n_confirmed": b["n_confirmed"],
+            "n_invalidated": b["n_invalidated"],
             "win_rate": _r4(win_rate) or 0.0,
             "last_updated": now_iso,
         })
-
-    if gated_buckets and not pattern_rows:
-        logger.info(
-            "pattern_memory: gated %d bucket(s) — zero calibration signal "
-            "(all %d graded theses currently inconclusive)",
-            gated_buckets, sum(b["n_observed"] for b in buckets.values()),
-        )
     return pattern_rows
 
 

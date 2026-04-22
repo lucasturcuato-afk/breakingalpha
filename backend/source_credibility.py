@@ -175,31 +175,17 @@ def aggregate_source_outcomes() -> list[dict]:
 
     now_iso = datetime.now(timezone.utc).isoformat()
     rows = []
-    gated_sources = 0
     for src, s in stats.items():
         n = s["n_theses"]
-        n_c = s["n_confirmed"]
-        n_i = s["n_invalidated"]
-        # Gate: skip sources with zero calibration signal (all-inconclusive).
-        # Writing them would pollute source_credibility with 0% win_rate rows.
-        if n_c + n_i == 0:
-            gated_sources += 1
-            continue
-        win_rate = n_c / (n_c + n_i)  # denominator is signal count, not n_theses
+        win_rate = (s["n_confirmed"] / n) if n else 0.0
         rows.append({
             "source": src,
             "n_theses": n,
-            "n_confirmed": n_c,
-            "n_invalidated": n_i,
+            "n_confirmed": s["n_confirmed"],
+            "n_invalidated": s["n_invalidated"],
             "win_rate": _r4(win_rate) or 0.0,
             "updated_at": now_iso,
         })
-
-    if gated_sources and not rows:
-        logger.info(
-            "source_credibility: gated %d source(s) — zero calibration signal",
-            gated_sources,
-        )
     return rows
 
 

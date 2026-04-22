@@ -63,21 +63,10 @@ classified as emerging — this is correct behavior, not a bug.
 import os
 import re
 import json
-import time
 from collections import defaultdict
-from datetime import datetime, timedelta
 from supabase import create_client
-from google import genai
-from google.genai.types import GenerateContentConfig, ThinkingConfig
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
-
-# Gemini client for headline generation (optional — fails gracefully)
-try:
-    _gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-except Exception:
-    _gemini_client = None
-_HEADLINE_MODEL = "gemini-2.5-flash"
 
 # ---------------------------------------------------------------------------
 # Phase 5 — source credibility multiplier
@@ -1013,103 +1002,6 @@ def fetch_run_context(run_id, brief_type, started_at_iso):
     return articles, briefing, prior_cluster_keys_by_run
 
 
-def generate_cluster_headline(label, top_themes, top_companies, top_sectors,
-                              article_count, source_count):
-    """Generate a professional headline and tagline for a trend cluster."""
-    if _gemini_client is None:
-        return label, ""
-    try:
-        themes = top_themes if isinstance(top_themes, list) else json.loads(top_themes or "[]")
-        companies = top_companies if isinstance(top_companies, list) else json.loads(top_companies or "[]")
-        sectors = top_sectors if isinstance(top_sectors, list) else json.loads(top_sectors or "[]")
-
-        prompt = (
-            "Generate a professional financial signal headline and tagline for this "
-            "market trend cluster.\n\n"
-            f"Cluster label: {label}\n"
-            f"Themes: {', '.join(themes[:5]) if themes else 'N/A'}\n"
-            f"Companies: {', '.join(companies[:5]) if companies else 'N/A'}\n"
-            f"Sectors: {', '.join(sectors[:3]) if sectors else 'N/A'}\n"
-            f"Evidence: {article_count} articles from {source_count} sources\n\n"
-            "Rules:\n"
-            "- Headline: 5-8 words. Bloomberg terminal style. Focus on the market "
-            "action, not who's involved (unless the company IS the story).\n"
-            "- Tagline: One sentence, 15-25 words. Names key companies and the "
-            "\"so what\" — why this signal matters.\n"
-            "- Professional tone. No hype, no clickbait, no questions.\n\n"
-            'Respond in EXACTLY this JSON format, nothing else:\n'
-            '{"headline": "Your headline here", "tagline": "Your tagline here"}'
-        )
-
-        response = _gemini_client.models.generate_content(
-            model=_HEADLINE_MODEL,
-            contents=prompt,
-            config=GenerateContentConfig(
-                temperature=0.3,
-                max_output_tokens=200,
-                thinking_config=ThinkingConfig(thinking_budget=0),
-                response_mime_type="application/json",
-            ),
-        )
-        text = (response.text or "").strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-        parsed = json.loads(text)
-        return parsed.get("headline", label), parsed.get("tagline", "")
-    except Exception as e:
-        print(f"  [trend_mapper] headline generation failed for '{label}': {e}")
-        return label, ""
-
-
-def compute_sparkline_for_cluster(top_companies, top_themes):
-    """Compute 12-week sparkline for a cluster based on article title search."""
-    search_terms = []
-    for c in (top_companies or [])[:3]:
-        if len(c) > 2:
-            search_terms.append(c.lower())
-    for t in (top_themes or [])[:2]:
-        if len(t) > 2:
-            search_terms.append(t.lower())
-    if not search_terms:
-        return None
-
-    cutoff = (datetime.utcnow() - timedelta(days=90)).isoformat()
-    primary_term = search_terms[0]
-    try:
-        result = (
-            supabase.table("articles")
-            .select("id, published_at, ingested_at")
-            .gte("ingested_at", cutoff)
-            .ilike("title", f"%{primary_term}%")
-            .order("ingested_at", desc=True)
-            .limit(200)
-            .execute()
-        )
-        articles = result.data or []
-    except Exception:
-        return None
-
-    now = datetime.utcnow()
-    weeks = []
-    for i in range(11, -1, -1):
-        ws = now - timedelta(weeks=i)
-        ws = ws - timedelta(days=ws.weekday())
-        ws = ws.replace(hour=0, minute=0, second=0, microsecond=0)
-        weeks.append(ws.strftime("%Y-%m-%d"))
-
-    counts = defaultdict(int)
-    for a in articles:
-        date_str = a.get("published_at") or a.get("ingested_at") or ""
-        try:
-            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-            wk = dt - timedelta(days=dt.weekday())
-            counts[wk.strftime("%Y-%m-%d")] += 1
-        except Exception:
-            pass
-
-    return [{"week": w, "count": counts.get(w, 0)} for w in weeks]
-
-
 def persist_trend_clusters(rows):
     """
     Insert a list of trend_clusters row dicts into Supabase.
@@ -1240,20 +1132,11 @@ def map_trends(brief_type, started_at, run_id=None):
             # Cross-source flag: corroborated by 3+ distinct outlets
             cross_source_flag = len(sources) >= 3
 
-            # Generate AI headline and tagline (graceful fallback)
-            headline, tagline = generate_cluster_headline(
-                label, top_themes_list, top_companies_list, top_sectors_list,
-                len(cluster), len(sources),
-            )
-            time.sleep(0.5)  # rate-limit protection
-
             row = {
                 "run_id":                     run_id,
                 "brief_type":                 brief_type,
                 "cluster_key":                cluster_key,
                 "label":                      label,
-                "headline":                   headline,
-                "tagline":                    tagline,
                 "cluster_type":               cluster_type,
                 "article_count":              len(cluster),
                 "source_count":               len(sources),
@@ -1275,7 +1158,6 @@ def map_trends(brief_type, started_at, run_id=None):
                 "novelty_score":              novelty_score,
                 "cross_source_flag":          cross_source_flag,
                 "provenance":                 "reconstructed",
-                "sparkline_data":             json.dumps(compute_sparkline_for_cluster(top_companies_list, top_themes_list)),
             }
             rows.append(row)
 
