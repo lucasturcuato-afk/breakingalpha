@@ -8,3 +8,4 @@ export { EmptyState, type EmptyStateProps } from "./empty-state";
 export { Tooltip, type TooltipProps } from "./tooltip";
 export { BookmarkButton, type BookmarkButtonProps } from "./bookmark";
 export { Logo } from "./logo";
+export { default as AnimatedNumber, type AnimatedNumberProps } from "./animated-number";

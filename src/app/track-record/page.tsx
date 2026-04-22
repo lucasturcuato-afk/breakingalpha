@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Trophy } from "lucide-react";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { EmptyState } from "@/components/ui/empty-state";
+import AnimatedNumber from "@/components/ui/animated-number";
 import { VerdictEvolution } from "@/components/track-record/verdict-evolution";
 
 function getSupabase() {
@@ -244,12 +245,14 @@ export default function TrackRecordPage() {
         <>
         {/* SUMMARY STATS */}
         <div className="grid grid-cols-4 gap-3">
-          <StatCard label="Total Theses" value={String(totalCount)} loading={loading} />
-          <StatCard label="Confirmed" value={String(confirmedCount)} loading={loading} />
-          <StatCard label="Invalidated" value={String(invalidatedCount)} loading={loading} />
+          <StatCard label="Total Theses" value={totalCount} loading={loading} />
+          <StatCard label="Confirmed" value={confirmedCount} loading={loading} />
+          <StatCard label="Invalidated" value={invalidatedCount} loading={loading} />
           <StatCard
             label="Confirmation Rate"
-            value={confirmationRate !== null ? `${confirmationRate}%` : "--"}
+            value={confirmationRate}
+            suffix="%"
+            placeholder="--"
             gold
             loading={loading}
           />
@@ -278,7 +281,7 @@ export default function TrackRecordPage() {
                   {sectorGroups.map((g, i) => (
                     <tr
                       key={g.sector}
-                      className={`border-b border-border-base last:border-b-0 ${i === 0 ? "bg-gold/5" : ""}`}
+                      className={`card-hover-lift border-b border-border-base last:border-b-0 ${i === 0 ? "bg-gold/5" : ""}`}
                     >
                       <td className="py-2 px-2">
                         <span
@@ -296,7 +299,7 @@ export default function TrackRecordPage() {
                           <span className="font-data font-semibold">{g.win_rate}%</span>
                           <div className="flex-1 h-1.5 rounded-full bg-gold/20 max-w-[80px]">
                             <div
-                              className="h-full rounded-full bg-gold"
+                              className="bar-sweep-in h-full rounded-full bg-gold"
                               style={{ width: `${g.win_rate}%` }}
                             />
                           </div>
@@ -368,7 +371,7 @@ export default function TrackRecordPage() {
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <div className="w-[60px] h-1.5 rounded-full bg-gold/20">
                       <div
-                        className="h-full rounded-full bg-gold"
+                        className="bar-sweep-in h-full rounded-full bg-gold"
                         style={{ width: `${s.win_rate !== null ? Math.round(s.win_rate * 100) : 0}%` }}
                       />
                     </div>
@@ -395,7 +398,7 @@ export default function TrackRecordPage() {
                 <Link
                   key={v.id}
                   href={`/thesis-board?thesis=${v.id}`}
-                  className="block bg-white rounded-xl border border-border-base p-3 hover:border-gold/40 transition-colors"
+                  className="card-hover-lift block bg-white rounded-xl border border-border-base p-3 hover:border-gold/40 transition-colors"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
@@ -440,24 +443,35 @@ export default function TrackRecordPage() {
 function StatCard({
   label,
   value,
+  suffix,
+  placeholder = "--",
   gold,
   loading,
 }: {
   label: string;
-  value: string;
+  value: number | null;
+  suffix?: string;
+  placeholder?: string;
   gold?: boolean;
   loading?: boolean;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-border-base p-4">
+    <div className="card-hover-lift bg-white rounded-xl border border-border-base p-4">
       <div className="font-sans text-[10px] uppercase tracking-widest text-text-muted mb-1">
         {label}
       </div>
       {loading ? (
-        <div className="h-8 w-16 rounded bg-parchment-mid animate-pulse" />
+        <div className="skeleton-shimmer h-8 w-16 rounded" />
+      ) : value === null ? (
+        <div className={`font-data text-2xl font-bold ${gold ? "text-gold" : "text-espresso"}`}>
+          {placeholder}
+        </div>
       ) : (
         <div className={`font-data text-2xl font-bold ${gold ? "text-gold" : "text-espresso"}`}>
-          {value}
+          <AnimatedNumber
+            value={value}
+            format={(n) => `${Math.round(n)}${suffix ?? ""}`}
+          />
         </div>
       )}
     </div>
