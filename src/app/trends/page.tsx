@@ -162,6 +162,47 @@ function capitalizeCompany(c: string): string {
   return c.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
 }
 
+const COMPANY_TO_TICKER: Record<string, string> = {
+  "apple": "AAPL", "microsoft": "MSFT", "amazon": "AMZN", "google": "GOOGL",
+  "alphabet": "GOOGL", "meta": "META", "facebook": "META", "nvidia": "NVDA",
+  "tesla": "TSLA", "netflix": "NFLX", "anthropic": "ANTHROPIC", "openai": "OPENAI",
+  "spacex": "SPACEX", "uber": "UBER", "salesforce": "CRM", "adobe": "ADBE",
+  "intel": "INTC", "amd": "AMD", "qualcomm": "QCOM", "broadcom": "AVGO",
+  "oracle": "ORCL", "ibm": "IBM", "cisco": "CSCO", "paypal": "PYPL",
+  "shopify": "SHOP", "snap": "SNAP", "twitter": "X", "palantir": "PLTR",
+  "coinbase": "COIN", "robinhood": "HOOD", "stripe": "STRIPE",
+  "jpmorgan": "JPM", "goldman sachs": "GS", "morgan stanley": "MS",
+  "bank of america": "BAC", "citigroup": "C", "wells fargo": "WFC",
+  "boeing": "BA", "lockheed": "LMT", "raytheon": "RTX", "northrop": "NOC",
+  "lockheed martin": "LMT", "general dynamics": "GD", "l3harris": "LHX",
+  "exxon": "XOM", "chevron": "CVX", "conocophillips": "COP",
+  "applied materials": "AMAT", "lam research": "LRCX", "kla": "KLAC",
+  "halliburton": "HAL", "cursor": "CURSOR", "blue origin": "BLUE_ORIGIN",
+};
+
+function isCompanyWatched(companyName: string, watchlistTickers: string[]): boolean {
+  const lower = companyName.toLowerCase().trim();
+  const upperTickers = watchlistTickers.map(t => t.toUpperCase());
+
+  if (upperTickers.includes(lower.toUpperCase())) return true;
+
+  const mappedTicker = COMPANY_TO_TICKER[lower];
+  if (mappedTicker && upperTickers.includes(mappedTicker)) return true;
+
+  for (const ticker of upperTickers) {
+    if (lower.includes(ticker.toLowerCase()) || ticker.toLowerCase().includes(lower)) return true;
+  }
+
+  const words = lower.split(/\s+/);
+  for (const word of words) {
+    if (word.length >= 3 && upperTickers.includes(word.toUpperCase())) return true;
+    const wordMapped = COMPANY_TO_TICKER[word];
+    if (wordMapped && upperTickers.includes(wordMapped)) return true;
+  }
+
+  return false;
+}
+
 interface TimelineGroup {
   label: string;
   dateLabel: string;
@@ -201,7 +242,7 @@ const MAX_VISIBLE = 5;
 
 export default function TrendsPage() {
   const { mood, moodHeadline, moodDetails } = useLiveMood();
-  const { profile } = useUserProfile();
+  const { profile, refetch: refetchProfile } = useUserProfile();
 
   // ── State ──
   const [isSignedOut, setIsSignedOut] = useState(false);
@@ -218,6 +259,7 @@ export default function TrendsPage() {
   const [thesesForMatch, setThesesForMatch] = useState<RelatedThesis[]>([]);
   const [modalSignal, setModalSignal] = useState<TrendSignal | null>(null);
   const [memoSignal, setMemoSignal] = useState<TrendSignal | null>(null);
+  const [addingTicker, setAddingTicker] = useState<string | null>(null);
 
   // ── Personalization ──
   const profileSectors = useMemo(
@@ -445,6 +487,58 @@ export default function TrendsPage() {
         {children}
       </button>
     );
+  }
+
+  // ── Watchlist add via ticker lookup ──
+  async function handleAddToWatchlist(companyName: string) {
+    try {
+      setAddingTicker(companyName);
+      const supabase = getSupabase();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      let ticker = COMPANY_TO_TICKER[companyName.toLowerCase().trim()];
+
+      if (!ticker) {
+        try {
+          const searchRes = await fetch(`/api/finnhub-search?q=${encodeURIComponent(companyName)}`);
+          if (searchRes.ok) {
+            const searchData = await searchRes.json();
+            const results = searchData.results ?? searchData.result ?? [];
+            if (results.length > 0) {
+              ticker = results[0].symbol || results[0].ticker;
+            }
+          }
+        } catch {
+          // Search failed, use company name as identifier
+        }
+      }
+
+      const identifier = ticker || companyName.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
+
+      const { data: existing } = await supabase
+        .from("watchlist")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("identifier", identifier)
+        .maybeSingle();
+
+      if (existing) return;
+
+      await supabase.from("watchlist").insert({
+        user_id: user.id,
+        identifier: identifier,
+        display_name: companyName,
+        added_at: new Date().toISOString(),
+      });
+
+      trackClientEvent("watchlist_added", { ticker: identifier, source: "trends_modal", company: companyName });
+      refetchProfile();
+    } catch (err) {
+      console.error("[trends] watchlist add failed:", err);
+    } finally {
+      setAddingTicker(null);
+    }
   }
 
   // ── Card click → open modal ──
@@ -823,20 +917,35 @@ export default function TrendsPage() {
                   <div className="flex flex-wrap gap-1.5">
                     {modalSignal.top_companies.map((c, i) => {
                       const name = c.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
-                      const isWatched = watchlistUpper.some(t =>
-                        c.toUpperCase().includes(t) || t.includes(c.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 5))
-                      );
+                      const isWatched = isCompanyWatched(c, profile?.watchlist_tickers ?? []);
+                      const isAdding = addingTicker === c;
                       return (
                         <span
                           key={i}
                           className={cn(
-                            "font-data text-[10px] px-2 py-1 rounded",
+                            "inline-flex items-center gap-1.5 font-data text-[10px] px-2.5 py-1 rounded",
                             isWatched
                               ? "bg-gold-muted text-gold-dark border border-gold/30 font-semibold"
                               : "bg-parchment-mid text-text-primary border border-border-base",
                           )}
                         >
-                          {name}{isWatched ? " \u2726" : ""}
+                          {name}
+                          {isWatched ? (
+                            <span className="text-gold text-[10px]">{"\u2726"}</span>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={isAdding}
+                              onClick={(e) => { e.stopPropagation(); handleAddToWatchlist(c); }}
+                              className={cn(
+                                "text-[12px] font-bold ml-0.5 transition-colors cursor-pointer",
+                                isAdding ? "text-text-faint" : "text-text-muted hover:text-gold",
+                              )}
+                              title={`Add ${name} to watchlist`}
+                            >
+                              {isAdding ? "..." : "+"}
+                            </button>
+                          )}
                         </span>
                       );
                     })}
