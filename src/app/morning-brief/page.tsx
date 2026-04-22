@@ -64,6 +64,7 @@ interface TopDeal {
 }
 
 interface BriefingData {
+  id?: string;
   headline?: string;
   summary?: string;
   market_tone?: string;
@@ -117,11 +118,11 @@ export default function MorningBriefPage() {
 
   function handleSectionRate(sectionKey: string, rating: 1 | -1) {
     setSectionRatings(prev => ({ ...prev, [sectionKey]: rating }));
-    trackClientEvent("brief_section_rated", { section_key: sectionKey, rating });
+    trackClientEvent("brief_section_rated", { section_key: sectionKey, rating, briefing_id: briefing?.id });
     fetch("/api/brief-rating", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ section_key: sectionKey, rating }),
+      body: JSON.stringify({ section_key: sectionKey, rating, briefing_id: briefing?.id ?? null }),
     }).catch(() => {});
   }
 
@@ -157,6 +158,7 @@ export default function MorningBriefPage() {
           const topDeals = typeof b.top_deals === "string" ? JSON.parse(b.top_deals) : b.top_deals;
 
           setBriefing({
+            id: b.id,
             headline: b.headline,
             summary: b.summary,
             market_tone: b.market_tone,

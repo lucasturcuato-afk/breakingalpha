@@ -53,6 +53,7 @@ const SECTION_TITLES: Record<string, string> = {
 };
 
 interface BriefingData {
+  id?: string;
   headline?: string;
   summary?: string;
   market_tone?: string;
@@ -101,11 +102,11 @@ export default function EveningWrapPage() {
 
   function handleSectionRate(sectionKey: string, rating: 1 | -1) {
     setSectionRatings(prev => ({ ...prev, [sectionKey]: rating }));
-    trackClientEvent("brief_section_rated", { section_key: sectionKey, rating });
+    trackClientEvent("brief_section_rated", { section_key: sectionKey, rating, briefing_id: briefing?.id });
     fetch("/api/brief-rating", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ section_key: sectionKey, rating }),
+      body: JSON.stringify({ section_key: sectionKey, rating, briefing_id: briefing?.id ?? null }),
     }).catch(() => {});
   }
 
@@ -136,6 +137,7 @@ export default function EveningWrapPage() {
           const sections = typeof b.sections === "string" ? JSON.parse(b.sections) : b.sections;
           const sectorBreakdown = typeof b.sector_breakdown === "string" ? JSON.parse(b.sector_breakdown) : b.sector_breakdown;
           setBriefing({
+            id: b.id,
             headline: b.headline,
             summary: b.summary,
             market_tone: b.market_tone,
