@@ -80,11 +80,11 @@ export default function TrackRecordPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [confirmedCount, setConfirmedCount] = useState(0);
   const [invalidatedCount, setInvalidatedCount] = useState(0);
+  const [trackedCount, setTrackedCount] = useState(0);
   const [gradedTheses, setGradedTheses] = useState<GradedThesis[]>([]);
   const [patterns, setPatterns] = useState<PatternRow[]>([]);
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [verdicts, setVerdicts] = useState<VerdictRow[]>([]);
-  const [nextCheckAfter, setNextCheckAfter] = useState<string | null>(null);
   const [overdueCount, setOverdueCount] = useState<number>(0);
 
   useEffect(() => {
@@ -104,7 +104,6 @@ export default function TrackRecordPage() {
           thesesMetaRes,
           patternsRes,
           sourcesRes,
-          nextCheckRes,
         ] = await Promise.all([
           supabase.from("theses").select("id", { count: "exact", head: true }),
           supabase
@@ -116,7 +115,6 @@ export default function TrackRecordPage() {
             .select("id, title, sector, ticker, adversarial_score, generated_at, check_after"),
           supabase.from("pattern_library").select("sector, horizon, dominant_signal, win_rate, n_observed, n_confirmed").gte("n_observed", 3).order("win_rate", { ascending: false }).limit(5),
           supabase.from("source_credibility").select("source, win_rate, n_theses").order("win_rate", { ascending: false }).limit(10),
-          supabase.from("theses").select("check_after").not("check_after", "is", null).order("check_after", { ascending: true }).limit(50),
         ]);
 
         const rawVerdicts = (verdictsAllRes.data as RawVerdict[] | null) ?? [];
@@ -164,37 +162,27 @@ export default function TrackRecordPage() {
         derivedRecent.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
 
         // Pending/overdue derived from thesis metadata: "not yet graded" = no entry in
-        // latestVerdictByThesis. Walk thesesMeta + apply the overdue rules client-side.
+        // latestVerdictByThesis. Walk thesesMeta client-side.
         const gradedIds = new Set(latestVerdictByThesis.keys());
         let overdue = 0;
-        let nextCheckClient: string | null = null;
         for (const t of thesesMeta) {
           if (gradedIds.has(t.id)) continue;
-          if (t.check_after) {
-            if (t.check_after < nowIso) overdue += 1;
-            if (t.check_after >= nowIso) {
-              if (!nextCheckClient || t.check_after < nextCheckClient) nextCheckClient = t.check_after;
-            }
-          } else if (t.generated_at && t.generated_at < thirtyDaysAgoIso) {
-            // ungraded for 30+ days with no scheduled check
+          if (t.check_after && t.check_after < nowIso) {
+            overdue += 1;
+          } else if (!t.check_after && t.generated_at && t.generated_at < thirtyDaysAgoIso) {
             overdue += 1;
           }
         }
-        // Prefer server-side earliest future check_after if Promise.all returned one
-        const serverNextCheck = nextCheckRes.data?.find(
-          (r: { check_after: string | null }) => r.check_after && r.check_after >= nowIso && !gradedIds.has(((r as unknown) as { id?: string }).id ?? ""),
-        );
-        const resolvedNextCheck = nextCheckClient ?? serverNextCheck?.check_after ?? null;
 
         setTotalCount(totalRes.count ?? 0);
         setConfirmedCount(confirmed);
         setInvalidatedCount(invalidated);
+        setTrackedCount(latestVerdictByThesis.size);
         setGradedTheses(derivedGraded);
         setVerdicts(derivedRecent.slice(0, 10));
         setPatterns((patternsRes.data as PatternRow[]) ?? []);
         setSources((sourcesRes.data as SourceRow[]) ?? []);
         setLastUpdated(rawVerdicts[0]?.graded_at ?? null);
-        setNextCheckAfter(resolvedNextCheck);
         setOverdueCount(overdue);
       } catch (e) {
         console.error("Track record load error:", e);
@@ -253,26 +241,27 @@ export default function TrackRecordPage() {
     }
   }, [lastUpdated]);
 
-  const formattedNextCheckAfter = useMemo(() => {
-    if (!nextCheckAfter) return null;
-    try {
-      return new Date(nextCheckAfter).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return null;
-    }
-  }, [nextCheckAfter]);
+  // Next grading run = next 8:10 PM in America/Los_Angeles. The grader is a daily
+  // cron; per-thesis theses.check_after values can point far in the future for
+  // inconclusive verdicts and are not meaningful for "when does the pipeline run
+  // next." Compute purely from the clock.
+  const formattedNextRun = useMemo(() => {
+    const nextRun = getNextGradingRunPT(new Date());
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Los_Angeles",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    }).format(nextRun);
+  }, []);
 
-  const showPipelineStatus =
-    !loading && totalCount > 0 && confirmedCount === 0 && invalidatedCount === 0;
-  const awaitingCount = totalCount - confirmedCount - invalidatedCount;
-  const gradedCount = confirmedCount + invalidatedCount;
-  const showGradingHeader = !loading && gradedTheses.length > 0;
+  // "Awaiting grading" = distinct theses that have never received a verdict.
+  // A thesis with any verdict (including "inconclusive") counts as tracked.
+  const awaitingCount = Math.max(0, totalCount - trackedCount);
+  const showPipelineStatus = !loading && awaitingCount > 0;
+  const showGradingHeader = !loading && trackedCount > 0;
 
   const MIN_ROWS = 3;
 
@@ -290,8 +279,8 @@ export default function TrackRecordPage() {
           {showGradingHeader && (
             <p className="font-data text-text-muted text-[11px] mt-1.5 inline-flex items-center gap-2 flex-wrap">
               <span>
-                <span className="font-semibold text-text-primary">{gradedCount}</span>{" "}
-                {gradedCount === 1 ? "thesis" : "theses"} tracked
+                <span className="font-semibold text-text-primary">{trackedCount}</span>{" "}
+                {trackedCount === 1 ? "thesis" : "theses"} tracked
               </span>
               {formattedLastUpdated && (
                 <>
@@ -322,9 +311,7 @@ export default function TrackRecordPage() {
                 </span>
                 <span className="text-text-muted">|</span>
                 <span className="font-sans text-[11px] text-text-muted">
-                  {formattedNextCheckAfter
-                    ? `Next check: ${formattedNextCheckAfter}`
-                    : "Scheduled grading date pending"}
+                  Next check: {formattedNextRun}
                 </span>
               </div>
             </div>
@@ -630,4 +617,46 @@ function formatDate(dateStr: string | null): string {
   } catch {
     return "";
   }
+}
+
+/**
+ * Returns the next time the daily grading cron will fire — next 8:10 PM in
+ * America/Los_Angeles. Handles PST/PDT transitions correctly by resolving
+ * LA-local "YYYY-MM-DD HH:MM" components first, then converting to UTC using
+ * the LA offset at the target instant.
+ */
+export function getNextGradingRunPT(now: Date, hour = 20, minute = 10): Date {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Los_Angeles",
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const parts = fmt.formatToParts(now);
+  const p = (t: string) => Number(parts.find((x) => x.type === t)?.value ?? 0);
+  const laY = p("year");
+  const laM = p("month"); // 1-12
+  const laD = p("day");
+  const laH = p("hour");
+  const laMin = p("minute");
+
+  const currentLaMinutes = laH * 60 + laMin;
+  const targetLaMinutes = hour * 60 + minute;
+  const dayOffset = currentLaMinutes >= targetLaMinutes ? 1 : 0;
+
+  // Pretend the target LA wall-clock is UTC, then shift by LA's actual offset
+  // at that moment (handles DST: PST = UTC-8, PDT = UTC-7).
+  const pseudoUtcMs = Date.UTC(laY, laM - 1, laD + dayOffset, hour, minute, 0);
+  const offsetParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    timeZoneName: "shortOffset",
+  }).formatToParts(new Date(pseudoUtcMs));
+  const tzName = offsetParts.find((x) => x.type === "timeZoneName")?.value ?? "GMT-8";
+  const m = tzName.match(/GMT([+-]?)(\d+)/);
+  const sign = m?.[1] === "+" ? 1 : -1;
+  const offsetHours = sign * Number(m?.[2] ?? 8);
+  return new Date(pseudoUtcMs - offsetHours * 60 * 60 * 1000);
 }

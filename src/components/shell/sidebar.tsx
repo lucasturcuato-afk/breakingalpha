@@ -366,7 +366,7 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
       <aside className="fixed left-0 top-0 bottom-0 w-[var(--sidebar-width)] bg-sidebar-bg border-r border-border-base flex flex-col z-40">
         {/* Logo area */}
         <div className="border-b border-border-base px-4 py-4 flex items-center justify-center">
-          <Wordmark size="sm" />
+          <Wordmark size="md" />
         </div>
 
         {/* Nav body */}
