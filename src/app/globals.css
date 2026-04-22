@@ -150,31 +150,60 @@
   opacity: 0.72;
 }
 
-/* ── Scrollbar styling ── */
-
+/* ── Scrollbar styling — gold thumb, transparent track, both modes ── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
-
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: var(--border-base);
-  border-radius: var(--radius-lg);
+  background: var(--gold);
+  opacity: 0.4;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-faint);
+  background: var(--gold-light);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+/* Firefox */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--gold) transparent;
+}
+html.dark {
+  scrollbar-color: var(--gold) transparent;
 }
 
 /* ── Selection ── */
 
 ::selection {
-  background: var(--gold-muted);
-  color: var(--espresso);
+  background: rgba(212, 168, 75, 0.3);
+  color: #f5e6d3;
+}
+html:not(.dark) ::selection {
+  background: rgba(212, 168, 75, 0.3);
+  color: #1a1208;
+}
+
+/* ── Focus rings: 2px Heritage Gold with 2px offset on all interactive elements ── */
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
 }
 
 /* ── Dark mode card utility ── */
