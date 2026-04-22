@@ -201,7 +201,7 @@ const MAX_VISIBLE = 5;
 
 export default function TrendsPage() {
   const { mood, moodHeadline, moodDetails } = useLiveMood();
-  const { profile } = useUserProfile();
+  const { profile, refetch: refetchProfile } = useUserProfile();
 
   // ── State ──
   const [isSignedOut, setIsSignedOut] = useState(false);
@@ -448,6 +448,31 @@ export default function TrendsPage() {
   }
 
   // ── Card click → open modal ──
+  async function addToWatchlist(ticker: string) {
+    try {
+      const supabase = getSupabase();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: existing } = await supabase
+        .from("watchlist")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("identifier", ticker.toUpperCase())
+        .maybeSingle();
+      if (existing) return;
+      await supabase.from("watchlist").insert({
+        user_id: user.id,
+        identifier: ticker.toUpperCase(),
+        display_name: ticker,
+        added_at: new Date().toISOString(),
+      });
+      trackClientEvent("watchlist_added", { ticker: ticker.toUpperCase(), source: "trends_modal" });
+      refetchProfile();
+    } catch (err) {
+      console.error("[trends] watchlist add failed:", err);
+    }
+  }
+
   function handleCardClick(signal: TrendSignal) {
     console.log("[trends] card clicked, signal:", signal.id, signal.headline || signal.label);
     setModalSignal(signal);
@@ -828,13 +853,28 @@ export default function TrendsPage() {
                         <span
                           key={i}
                           className={cn(
-                            "font-data text-[10px] px-2 py-0.5 rounded",
+                            "inline-flex items-center gap-1 font-data text-[10px] px-2 py-1 rounded",
                             isWatchlist
                               ? "bg-gold-muted text-gold-dark border border-gold/30 font-semibold"
-                              : "bg-parchment-mid text-text-primary",
+                              : "bg-parchment-mid text-text-primary border border-border-base",
                           )}
                         >
-                          {name}{isWatchlist ? " \u2726" : ""}
+                          {name}
+                          {isWatchlist ? (
+                            <span className="text-gold">{"\u2726"}</span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addToWatchlist(c);
+                              }}
+                              className="text-text-muted hover:text-gold transition-colors cursor-pointer ml-0.5"
+                              title={`Add ${name} to watchlist`}
+                            >
+                              +
+                            </button>
+                          )}
                         </span>
                       );
                     })}
@@ -943,13 +983,6 @@ export default function TrendsPage() {
                 >
                   Generate Memo
                 </button>
-                <a
-                  href={`/live-feed?q=${encodeURIComponent(modalSignal.headline || modalSignal.label)}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border-base font-sans text-[11px] font-medium text-text-secondary hover:border-border-hover transition-colors"
-                >
-                  View in Live Feed {"\u2192"}
-                </a>
               </div>
             </div>
           </div>
