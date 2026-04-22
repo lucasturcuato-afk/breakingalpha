@@ -114,7 +114,6 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
   const [memoOpen, setMemoOpen] = useState(false);
   const [memoContent, setMemoContent] = useState("");
   const [bearOpen, setBearOpen] = useState(false);
-  const [signalOpen, setSignalOpen] = useState(false);
   const notesRef = useRef<HTMLTextAreaElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -144,7 +143,6 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
     setNoteSaved(false);
     setConfirmArchive(false);
     setBearOpen(false);
-    setSignalOpen(false);
   }, [thesis?.id, thesis?.notes, loadNote]);
 
   const showToast = (msg: string) => {
@@ -256,10 +254,6 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
   // ── Derived ──
   const sentiment = convictionToSentiment(thesis.conviction);
 
-  const signalBreakdown = thesis.signal_breakdown && typeof thesis.signal_breakdown === "object"
-    ? Object.entries(thesis.signal_breakdown)
-    : [];
-
   return (
     <div className="flex flex-col h-full border border-border-base rounded-2xl bg-parchment overflow-hidden relative">
 
@@ -364,35 +358,6 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
                   <div className="font-sans text-[12px] text-text-primary leading-relaxed">
                     {thesis.bear_case}
                   </div>
-                </div>
-              )}
-            </div>
-            <div className="h-px bg-border-base" />
-          </>
-        )}
-
-        {/* Signal Breakdown (collapsible) */}
-        {signalBreakdown.length > 0 && (
-          <>
-            <div>
-              <button
-                type="button"
-                onClick={() => setSignalOpen((v) => !v)}
-                className="flex items-center gap-1.5 font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider cursor-pointer hover:text-text-secondary transition-colors border-l-2 border-gold pl-2"
-              >
-                Signal Breakdown
-                {signalOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-              </button>
-              {signalOpen && (
-                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
-                  {signalBreakdown.map(([key, val]) => (
-                    <div key={key} className="contents">
-                      <span className="font-sans text-[11px] text-text-secondary">{key}</span>
-                      <span className="font-data text-[11px] text-text-primary text-right">
-                        {typeof val === "number" ? val.toFixed(2) : String(val ?? "—")}
-                      </span>
-                    </div>
-                  ))}
                 </div>
               )}
             </div>
