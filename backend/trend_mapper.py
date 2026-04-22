@@ -63,8 +63,10 @@ classified as emerging — this is correct behavior, not a bug.
 import os
 import re
 import json
+from datetime import datetime, timedelta
 from collections import defaultdict
 from supabase import create_client
+from google import genai
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 
@@ -228,7 +230,7 @@ LOOKBACK_RUN_COUNT = 7
 SIMILARITY_THRESHOLD = 0.28
 
 # Discard clusters smaller than this. Single-article "clusters" are not trends.
-MIN_CLUSTER_SIZE = 2
+MIN_CLUSTER_SIZE = 4
 
 # Pairwise similarity component weights — must sum to 1.0
 # See module docstring for full rationale. Do not adjust W_SECTOR above 0.25
@@ -1002,6 +1004,43 @@ def fetch_run_context(run_id, brief_type, started_at_iso):
     return articles, briefing, prior_cluster_keys_by_run
 
 
+def generate_cluster_headline(cluster, label):
+    """
+    Generate a concise headline + tagline for a trend cluster using Gemini.
+    Returns (headline, tagline) or (None, None) on failure.
+    """
+    try:
+        titles = [art.get("title", "") for art in cluster[:8] if art.get("title")]
+        sources = list({art.get("source", "") for art in cluster if art.get("source")})
+        companies = list({c for art in cluster for c in art.get("companies", [])})[:5]
+
+        prompt = (
+            "You are a financial news headline writer. Given the following cluster of related articles, "
+            "write a concise headline (max 12 words) and a one-sentence tagline (max 25 words) that captures "
+            "the core market narrative.\n\n"
+            f"Cluster label: {label}\n"
+            f"Companies: {', '.join(companies) if companies else 'N/A'}\n"
+            f"Sources: {', '.join(sources)}\n"
+            f"Article titles:\n" + "\n".join(f"- {t}" for t in titles) + "\n\n"
+            'Respond in JSON: {"headline": "...", "tagline": "..."}'
+        )
+
+        client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+        resp = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config={
+                "thinking_config": {"thinking_budget": 0},
+                "response_mime_type": "application/json",
+            },
+        )
+        result = json.loads(resp.text)
+        return result.get("headline"), result.get("tagline")
+    except Exception as e:
+        print(f"  [trend_mapper] headline gen failed for '{label}': {e}")
+        return None, None
+
+
 def persist_trend_clusters(rows):
     """
     Insert a list of trend_clusters row dicts into Supabase.
@@ -1132,11 +1171,46 @@ def map_trends(brief_type, started_at, run_id=None):
             # Cross-source flag: corroborated by 3+ distinct outlets
             cross_source_flag = len(sources) >= 3
 
+            # Quality gate — only surface clusters with meaningful evidence
+            if len(cluster) < 4 or len(sources) < 2:
+                print(f"  [trend_mapper]   Skipping low-evidence cluster: {label} ({len(cluster)} articles, {len(sources)} sources)")
+                continue
+
+            # Cross-run deduplication — if same label exists in last 7 days, update instead of inserting
+            cutoff = (datetime.utcnow() - timedelta(days=7)).isoformat()
+            existing = (
+                supabase.table("trend_clusters")
+                .select("id")
+                .eq("label", label)
+                .gte("created_at", cutoff)
+                .neq("run_id", run_id)
+                .limit(1)
+                .execute()
+            )
+            if existing.data:
+                print(f"  [trend_mapper]   Dedup: updating existing cluster for '{label}'")
+                supabase.table("trend_clusters").update({
+                    "run_id": run_id,
+                    "article_count": len(cluster),
+                    "source_count": len(sources),
+                    "strength_score": strength,
+                    "confidence_score": confidence,
+                    "novelty_score": novelty_score,
+                    "cross_source_flag": cross_source_flag,
+                    "representative_article_ids": json.dumps(representative_ids),
+                }).eq("id", existing.data[0]["id"]).execute()
+                continue
+
+            # Generate AI headline + tagline
+            headline, tagline = generate_cluster_headline(cluster, label)
+
             row = {
                 "run_id":                     run_id,
                 "brief_type":                 brief_type,
                 "cluster_key":                cluster_key,
                 "label":                      label,
+                "headline":                   headline,
+                "tagline":                    tagline,
                 "cluster_type":               cluster_type,
                 "article_count":              len(cluster),
                 "source_count":               len(sources),

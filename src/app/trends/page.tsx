@@ -167,6 +167,7 @@ export default function TrendsPage() {
   const [selectedVerticals, setSelectedVerticals] = useState<Set<string>>(new Set());
   const [selectedActivities, setSelectedActivities] = useState<Set<string>>(new Set());
   const [anomalyFilter, setAnomalyFilter] = useState<AnomalyFilter>("all");
+  const [totalArticleCount, setTotalArticleCount] = useState<number | null>(null);
   const [mySectorsActive, setMySectorsActive] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [articleCache, setArticleCache] = useState<Record<string, SourceArticle[]>>({});
@@ -224,6 +225,8 @@ export default function TrendsPage() {
         const { data, error } = await supabase
           .from("trend_clusters")
           .select("id, label, headline, tagline, cluster_type, article_count, source_count, strength_score, novelty_score, cross_source_flag, underrepresented_flag, top_companies, top_themes, top_sectors, representative_article_ids, lookback_run_count, created_at")
+          .gte("article_count", 3)
+          .gte("source_count", 2)
           .order("created_at", { ascending: false })
           .limit(500);
 
@@ -251,6 +254,12 @@ export default function TrendsPage() {
           }));
           setAllSignals(deduplicateSignals(mapped));
         }
+
+        // Fetch real total article count from DB
+        const { count } = await supabase
+          .from("articles")
+          .select("id", { count: "exact", head: true });
+        if (count !== null) setTotalArticleCount(count);
       } catch (e) {
         console.error("[trends] load error:", e);
       } finally {
@@ -302,7 +311,7 @@ export default function TrendsPage() {
   }
 
   // ── Derived stats ──
-  const totalArticles = useMemo(() => allSignals.reduce((sum, s) => sum + s.article_count, 0), [allSignals]);
+  const totalArticles = totalArticleCount ?? allSignals.reduce((sum, s) => sum + s.article_count, 0);
   const newTodayCount = useMemo(() => {
     const t = new Date(); t.setHours(0, 0, 0, 0);
     return allSignals.filter((s) => new Date(s.created_at) >= t).length;
