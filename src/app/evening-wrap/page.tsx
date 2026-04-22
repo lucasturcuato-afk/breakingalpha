@@ -6,6 +6,7 @@ import { PanelWidget } from "@/components/shell/right-panel";
 import { TickerStrip } from "@/components/brief/ticker-strip";
 import { BriefHeader } from "@/components/brief/brief-header";
 import { BriefSection } from "@/components/brief/brief-section";
+import { MorningReview } from "@/components/brief/morning-review";
 import { SectorSignalCard } from "@/components/brief/sector-signal-card";
 import { LeadStoryCard, CompactStoryCard } from "@/components/dashboard/story-card";
 import { ActiveThesesWidget } from "@/components/dashboard/active-theses-widget";
@@ -52,6 +53,22 @@ const SECTION_TITLES: Record<string, string> = {
   closing_thoughts: "Closing Thoughts",
 };
 
+interface SectorReflection {
+  sector: string;
+  verdict: "correct" | "wrong" | "partial";
+  paragraph: string;
+}
+interface TickerReflection {
+  symbol: string;
+  verdict: "correct" | "wrong" | "partial";
+  paragraph: string;
+}
+interface MorningReviewShape {
+  aggregate_sentence?: string;
+  sector_reflections?: SectorReflection[];
+  ticker_reflection?: TickerReflection | null;
+}
+
 interface BriefingData {
   headline?: string;
   summary?: string;
@@ -59,6 +76,7 @@ interface BriefingData {
   sections?: Record<string, string>;
   sector_breakdown?: Record<string, string>;
   created_at?: string;
+  morning_review?: MorningReviewShape | null;
 }
 
 function storyToContent(story: StoryData): ContentDescriptor {
@@ -135,6 +153,10 @@ export default function EveningWrapPage() {
           const b = data.briefing;
           const sections = typeof b.sections === "string" ? JSON.parse(b.sections) : b.sections;
           const sectorBreakdown = typeof b.sector_breakdown === "string" ? JSON.parse(b.sector_breakdown) : b.sector_breakdown;
+          const morningReview: MorningReviewShape | null =
+            b.morning_review && typeof b.morning_review === "object"
+              ? (b.morning_review as MorningReviewShape)
+              : null;
           setBriefing({
             headline: b.headline,
             summary: b.summary,
@@ -142,6 +164,7 @@ export default function EveningWrapPage() {
             sections: sections || {},
             sector_breakdown: sectorBreakdown || {},
             created_at: b.created_at,
+            morning_review: morningReview,
           });
           setIsStale(data.is_stale === true);
           if (data.last_attempt_status) {
@@ -337,6 +360,11 @@ export default function EveningWrapPage() {
                 </p>
               </div>
             )}
+
+            {/* Self-reflection on this morning's brief vs actual market outcomes.
+                Renders nothing if no graded calls / no review generated. */}
+            <MorningReview review={briefing?.morning_review} />
+
 
             {/* Export & Share */}
             <div className="flex items-center gap-2 mb-4">
