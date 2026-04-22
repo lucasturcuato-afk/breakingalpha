@@ -98,9 +98,23 @@ function strengthToAnomaly(score: number): AnomalyLevel {
   return "low";
 }
 
-function cleanLabel(label: string): string {
-  if (!label) return "Untitled Signal";
-  return label.replace(/:\s*/g, " \u2014 ").replace(/\b\w/g, (c) => c.toUpperCase());
+function getDisplayTitle(s: TrendSignal): string {
+  if (s.headline) return s.headline;
+  // Better fallback: use themes + companies to make a readable title
+  const themes = s.top_themes.filter(t => t.length > 1);
+  const companies = s.top_companies.slice(0, 2).map(c =>
+    c.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
+  );
+  if (themes.length > 0 && companies.length > 0) {
+    return `${themes[0].charAt(0).toUpperCase() + themes[0].slice(1)} Activity Around ${companies[0]}`;
+  }
+  if (themes.length > 0) return themes[0].charAt(0).toUpperCase() + themes[0].slice(1) + " Trend Detected";
+  return s.label.replace(/:\s*/g, " \u2014 ");
+}
+
+function getDisplayTagline(s: TrendSignal): string | null {
+  if (s.tagline) return s.tagline;
+  return null;
 }
 
 function deduplicateSignals(signals: TrendSignal[]): TrendSignal[] {
@@ -575,7 +589,7 @@ export default function TrendsPage() {
                       {/* Signal cards — inline layout */}
                       <div className="space-y-2">
                         {visibleSignals.map((s) => {
-                          const title = s.headline || cleanLabel(s.label);
+                          const title = getDisplayTitle(s);
                           const isRelevant = isRelevantToProfile(s);
                           const watchlistMention = hasWatchlistMatch(s);
                           const companies = s.top_companies.slice(0, 3);
@@ -588,7 +602,7 @@ export default function TrendsPage() {
                                 "bg-white border border-border-base rounded-xl p-4 cursor-pointer",
                                 "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",
                                 "hover:-translate-y-0.5 hover:border-border-hover hover:shadow-[0_2px_8px_rgba(201,146,42,0.06)]",
-                                profileSectors.length > 0 && !isRelevant && "opacity-60",
+                                profileSectors.length > 0 && !isRelevant && "opacity-90",
                               )}
                             >
                               {/* Watchlist badge */}
@@ -742,11 +756,11 @@ export default function TrendsPage() {
               </div>
 
               <h2 className="font-display text-[20px] font-bold text-espresso leading-snug">
-                {modalSignal.headline || cleanLabel(modalSignal.label)}
+                {getDisplayTitle(modalSignal)}
               </h2>
-              {modalSignal.tagline && (
+              {getDisplayTagline(modalSignal) && (
                 <p className="font-sans text-[13px] text-text-secondary mt-2 leading-relaxed">
-                  {modalSignal.tagline}
+                  {getDisplayTagline(modalSignal)}
                 </p>
               )}
             </div>
