@@ -208,6 +208,18 @@ html.dark .bg-white {
   animation: onboarding-row-pulse 400ms ease-in-out;
 }
 
+/* Track record pending-state pulse — "confidently waiting" */
+@keyframes track-record-pending-dot {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1.0; transform: scale(1.15); }
+}
+.track-record-pending-dot {
+  animation: track-record-pending-dot 2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .track-record-pending-dot { animation: none; opacity: 0.85; }
+}
+
 /* Conviction ring inner cutout — matches parent surface */
 .conviction-ring-bg {
   background-color: var(--parchment, #faf7f2);
