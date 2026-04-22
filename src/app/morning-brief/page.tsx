@@ -13,6 +13,7 @@ import { ActiveThesesWidget } from "@/components/dashboard/active-theses-widget"
 import { WatchlistWidget } from "@/components/dashboard/watchlist-widget";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/strip-html";
 import { FileText } from "lucide-react";
@@ -354,8 +355,9 @@ export default function MorningBriefPage() {
 
             {/* Export & Share */}
             <div className="flex items-center gap-2 mb-4">
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="md"
                 onClick={() => {
                   if (user === null) {
                     setShowSignIn(true);
@@ -368,21 +370,20 @@ export default function MorningBriefPage() {
                   a.download = `signalera-morning-brief-${new Date().toISOString().slice(0, 10)}.txt`;
                   a.click();
                 }}
-                className="inline-flex items-center gap-1.5 font-sans text-[11px] px-3 py-1.5 rounded-lg border border-border-base hover:border-gold hover:text-gold text-text-secondary transition-colors cursor-pointer"
               >
                 &#8595; Export Brief
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="secondary"
+                size="md"
                 onClick={() => {
                   navigator.clipboard.writeText(window.location.href);
                   setToast("Link copied");
                   setTimeout(() => setToast(""), 2000);
                 }}
-                className="inline-flex items-center gap-1.5 font-sans text-[11px] px-3 py-1.5 rounded-lg border border-border-base hover:border-gold hover:text-gold text-text-secondary transition-colors cursor-pointer"
               >
                 &#8599; Share
-              </button>
+              </Button>
               {toast && (
                 <span className="font-sans text-[11px] text-gold font-semibold animate-pulse">{toast}</span>
               )}
