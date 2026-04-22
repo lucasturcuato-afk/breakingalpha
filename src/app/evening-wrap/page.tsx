@@ -304,12 +304,17 @@ export default function EveningWrapPage() {
     }));
   }, [briefing]);
 
-  // Dashboard-mode weighted grid: longest section gets the full row, others share half-width.
+  // Dashboard-mode signal-strength ordering: top-scored section leads the 60/40 weighted layout.
   const dashboardSections = useMemo(() => {
-    if (sections.length === 0) return [] as Array<typeof sections[number] & { span: number }>;
-    const scored = sections.map((s) => ({ ...s, score: (s.content ?? "").length }));
+    if (sections.length === 0) return [] as typeof sections;
+    const scoreSection = (content: string, sectionKey: string): number => {
+      const lengthScore = (content ?? "").length;
+      const keyBoost = sectionKey === "what_to_watch" || sectionKey === "tomorrow_setup" ? 300 : 0;
+      return Math.min(lengthScore, 1500) + keyBoost;
+    };
+    const scored = sections.map((s) => ({ ...s, score: scoreSection(s.content, s.key) }));
     scored.sort((a, b) => b.score - a.score);
-    return scored.map((s, i) => ({ ...s, span: i === 0 ? 6 : 3 }));
+    return scored;
   }, [sections]);
 
   // Default active tab to first section key (or preserve if still valid)
@@ -536,50 +541,68 @@ export default function EveningWrapPage() {
                     </div>
                   </>
                 ) : (
-                  <div className="grid grid-cols-6 gap-2.5">
-                    {dashboardSections.map((section) => (
-                      <div
+                  (() => {
+                    const [leadSection, ...restSections] = dashboardSections;
+                    if (!leadSection) return null;
+
+                    const renderSection = (section: typeof dashboardSections[number], compact = false) => (
+                      <BriefSection
                         key={section.key}
-                        className={section.span === 6 ? "col-span-6" : "col-span-3"}
-                      >
-                        <BriefSection
-                          title={section.title}
-                          content={section.content}
-                          fullWidth
-                          expanded={expandedSection === section.key}
-                          onToggle={() => setExpandedSection(expandedSection === section.key ? null : section.key)}
-                          onGenerateMemo={() => {
-                            setMemoTitle(section.title);
-                            setMemoContent(stripHtml(section.content));
-                            setMemoOpen(true);
-                          }}
-                          addingThesis={addingThesis}
-                          onAddThesis={async () => {
-                            setAddingThesis(true);
-                            try {
-                              await getSupabase().from("theses").insert({
-                                title: section.title,
-                                conviction: "WATCH",
-                                sector: "General",
-                                rationale: stripHtml(section.content),
-                                source: "Evening Wrap",
-                                status: "new-signal",
-                                generated_at: new Date().toISOString(),
-                              });
-                              router.push("/thesis-board");
-                            } catch (err) {
-                              console.error("Failed to add thesis:", err);
-                            } finally {
-                              setAddingThesis(false);
-                            }
-                          }}
-                          sectionKey={section.key}
-                          onRate={handleSectionRate}
-                          currentRating={sectionRatings[section.key] ?? 0}
-                        />
+                        title={section.title}
+                        content={section.content}
+                        fullWidth
+                        compact={compact}
+                        expanded={expandedSection === section.key}
+                        onToggle={() => setExpandedSection(expandedSection === section.key ? null : section.key)}
+                        onGenerateMemo={() => {
+                          setMemoTitle(section.title);
+                          setMemoContent(stripHtml(section.content));
+                          setMemoOpen(true);
+                        }}
+                        addingThesis={addingThesis}
+                        onAddThesis={async () => {
+                          setAddingThesis(true);
+                          try {
+                            await getSupabase().from("theses").insert({
+                              title: section.title,
+                              conviction: "WATCH",
+                              sector: "General",
+                              rationale: stripHtml(section.content),
+                              source: "Evening Wrap",
+                              status: "new-signal",
+                              generated_at: new Date().toISOString(),
+                            });
+                            router.push("/thesis-board");
+                          } catch (err) {
+                            console.error("Failed to add thesis:", err);
+                          } finally {
+                            setAddingThesis(false);
+                          }
+                        }}
+                        sectionKey={section.key}
+                        onRate={handleSectionRate}
+                        currentRating={sectionRatings[section.key] ?? 0}
+                      />
+                    );
+
+                    // Fall back to single column when we have 1-2 sections — the side panel looks awkward.
+                    if (dashboardSections.length <= 2) {
+                      return (
+                        <div className="flex flex-col gap-3">
+                          {dashboardSections.map((section) => renderSection(section, false))}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="grid gap-3" style={{ gridTemplateColumns: "60fr 40fr" }}>
+                        <div>{renderSection(leadSection, false)}</div>
+                        <div className="flex flex-col gap-3">
+                          {restSections.map((section) => renderSection(section, true))}
+                        </div>
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()
                 )}
               </section>
             )}
