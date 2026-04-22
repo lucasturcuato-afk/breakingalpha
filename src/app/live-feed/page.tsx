@@ -265,6 +265,30 @@ export default function LiveFeedPage() {
     [articles],
   );
 
+  // Per-pill counts (articles matching each sector / activity) — derived from
+  // `articles` only, not from filter state, so they update on 60s poll but
+  // stay stable across filter-chip clicks. Used by FilterPill to render
+  // "Technology 12", "Healthcare 8", etc.
+  const verticalCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const a of articles) {
+      for (const v of a.industry_verticals ?? []) {
+        m.set(v, (m.get(v) ?? 0) + 1);
+      }
+    }
+    return m;
+  }, [articles]);
+
+  const activityCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const a of articles) {
+      for (const t of a.activity_types ?? []) {
+        m.set(t, (m.get(t) ?? 0) + 1);
+      }
+    }
+    return m;
+  }, [articles]);
+
   // Group by time bucket
   const grouped = useMemo(() => {
     const buckets: Record<string, LiveStory[]> = {};
@@ -293,6 +317,8 @@ export default function LiveFeedPage() {
           showSavedOnly={showSavedOnly}
           onSavedToggle={handleSavedToggle}
           alertCount={alertCount}
+          verticalCounts={verticalCounts}
+          activityCounts={activityCounts}
         />
         {/* Sort + refresh row */}
         <div className="flex items-center justify-end gap-3 px-6 py-1.5 border-t border-border-subtle">
