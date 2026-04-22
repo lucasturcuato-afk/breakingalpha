@@ -4,11 +4,14 @@ import { useState, useEffect, useMemo } from "react";
 import { AppShell } from "@/components/shell";
 import { PanelWidget } from "@/components/shell/right-panel";
 import { TickerStrip } from "@/components/brief/ticker-strip";
-import { BriefHeader } from "@/components/brief/brief-header";
+import { MarketPulse } from "@/components/brief/market-pulse";
+import { LeadHero } from "@/components/brief/lead-hero";
 import { BriefSection } from "@/components/brief/brief-section";
-import { DealCard } from "@/components/brief/deal-card";
 import { SectorSignalCard } from "@/components/brief/sector-signal-card";
-import { LeadStoryCard, CompactStoryCard } from "@/components/dashboard/story-card";
+import { TopDeals } from "@/components/brief/top-deals";
+import { TopStories } from "@/components/brief/top-stories";
+import { ExportMenu } from "@/components/brief/export-menu";
+import { ShareButton } from "@/components/brief/share-button";
 import { ActiveThesesWidget } from "@/components/dashboard/active-theses-widget";
 import { WatchlistWidget } from "@/components/dashboard/watchlist-widget";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
@@ -16,7 +19,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/strip-html";
-import { FileText } from "lucide-react";
+import { FileText, AlignLeft, LayoutGrid } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
@@ -26,7 +29,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import { trackClientEvent } from "@/lib/track-event";
 import { useUserProfile } from "@/hooks/useUserProfile";
-import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
+import { sortByRelevance } from "@/lib/personalization";
 import type { ContentDescriptor } from "@/lib/personalization";
 
 function getSupabase() {
@@ -64,6 +67,7 @@ interface TopDeal {
 }
 
 interface BriefingData {
+  id?: string;
   headline?: string;
   summary?: string;
   market_tone?: string;
@@ -73,6 +77,11 @@ interface BriefingData {
   deals?: DealData[];
   top_stories?: StoryData[];
   created_at?: string;
+  market_pulse?: {
+    sentiment_word: string;
+    narrative: string;
+    headlines?: Array<{ title: string; href?: string }>;
+  } | null;
 }
 
 function storyToContent(story: StoryData): ContentDescriptor {
@@ -101,11 +110,22 @@ export default function MorningBriefPage() {
   const [leadMemoOpen, setLeadMemoOpen] = useState(false);
   const [leadMemoContent, setLeadMemoContent] = useState("");
   const [toast, setToast] = useState("");
-  const [user, setUser] = useState<{ id: string } | null | undefined>(undefined);
+  const [user, setUser] = useState<{ id: string; email?: string | null } | null | undefined>(undefined);
   const [showSignIn, setShowSignIn] = useState(false);
   const [formatLabel, setFormatLabel] = useState<string | null>(null);
   const [userAddendum, setUserAddendum] = useState<string | null>(null);
+  const [briefView, setBriefView] = useState<"editorial" | "dashboard">("editorial");
+  const [activeTabKey, setActiveTabKey] = useState<string | null>(null);
   const router = useRouter();
+
+  // Persist brief view preference
+  useEffect(() => {
+    const stored = localStorage.getItem("signalera_brief_view");
+    if (stored === "editorial" || stored === "dashboard") setBriefView(stored);
+  }, []);
+  useEffect(() => {
+    localStorage.setItem("signalera_brief_view", briefView);
+  }, [briefView]);
 
   // Fetch existing section ratings on mount
   useEffect(() => {
@@ -155,8 +175,15 @@ export default function MorningBriefPage() {
           const sectorBreakdown = typeof b.sector_breakdown === "string" ? JSON.parse(b.sector_breakdown) : b.sector_breakdown;
 
           const topDeals = typeof b.top_deals === "string" ? JSON.parse(b.top_deals) : b.top_deals;
+          const marketPulse = (() => {
+            const mp = b.market_pulse;
+            if (!mp) return null;
+            if (typeof mp === "string") { try { return JSON.parse(mp); } catch { return null; } }
+            return mp;
+          })();
 
           setBriefing({
+            id: b.id,
             headline: b.headline,
             summary: b.summary,
             market_tone: b.market_tone,
@@ -165,6 +192,7 @@ export default function MorningBriefPage() {
             top_deals: Array.isArray(topDeals) ? topDeals : [],
             deals: b.deals || [],
             created_at: b.created_at,
+            market_pulse: marketPulse,
           });
           setIsStale(data.is_stale === true);
           if (data.last_attempt_status) {
@@ -249,7 +277,7 @@ export default function MorningBriefPage() {
 
   useEffect(() => {
     getSupabase().auth.getUser().then(({ data }) => {
-      setUser(data.user ? { id: data.user.id } : null);
+      setUser(data.user ? { id: data.user.id, email: data.user.email ?? null } : null);
     }).catch(() => setUser(null));
   }, []);
 
@@ -271,6 +299,21 @@ export default function MorningBriefPage() {
       fullWidth: key === "what_to_watch" || key === "tomorrow_setup",
     }));
   }, [briefing]);
+
+  // Dashboard-mode weighted grid: longest section gets the full row, others share half-width.
+  const dashboardSections = useMemo(() => {
+    if (sections.length === 0) return [] as Array<typeof sections[number] & { span: number }>;
+    const scored = sections.map((s) => ({ ...s, score: (s.content ?? "").length }));
+    scored.sort((a, b) => b.score - a.score);
+    return scored.map((s, i) => ({ ...s, span: i === 0 ? 6 : 3 }));
+  }, [sections]);
+
+  // Default active tab to first section key (or preserve if still valid)
+  useEffect(() => {
+    if (sections.length === 0) return;
+    const stillValid = activeTabKey && sections.some((s) => s.key === activeTabKey);
+    if (!stillValid) setActiveTabKey(sections[0].key);
+  }, [sections, activeTabKey]);
 
   // Personalized story ordering
   const rankedStories = useMemo(() => {
@@ -343,7 +386,8 @@ export default function MorningBriefPage() {
           />
         ) : (
           <>
-            <BriefHeader
+            <MarketPulse pulse={briefing?.market_pulse} />
+            <LeadHero
               type="morning"
               headline={briefing.headline || formatLabel || "Morning Market Brief"}
               summary={briefing.summary || ""}
@@ -375,35 +419,26 @@ export default function MorningBriefPage() {
 
             {/* Export & Share */}
             <div className="flex items-center gap-2 mb-4">
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={() => {
-                  if (user === null) {
-                    setShowSignIn(true);
-                    return;
-                  }
-                  const content = document.querySelector("main")?.innerText || "";
-                  const blob = new Blob([content], { type: "text/plain" });
-                  const a = document.createElement("a");
-                  a.href = URL.createObjectURL(blob);
-                  a.download = `signalera-morning-brief-${new Date().toISOString().slice(0, 10)}.txt`;
-                  a.click();
-                }}
-              >
-                &#8595; Export Brief
-              </Button>
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={() => {
-                  navigator.clipboard.writeText(window.location.href);
-                  setToast("Link copied");
-                  setTimeout(() => setToast(""), 2000);
-                }}
-              >
-                &#8599; Share
-              </Button>
+              {user === null ? (
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={() => setShowSignIn(true)}
+                >
+                  &#8595; Export Brief
+                </Button>
+              ) : (
+                <ExportMenu
+                  briefingId={briefing.id ?? null}
+                  type="morning"
+                  userEmail={user?.email ?? null}
+                />
+              )}
+              <ShareButton
+                briefingId={briefing?.id}
+                briefTitle={briefing?.headline}
+                briefType="morning"
+              />
               {toast && (
                 <span className="font-sans text-[11px] text-gold font-semibold animate-pulse">{toast}</span>
               )}
@@ -418,86 +453,156 @@ export default function MorningBriefPage() {
                   </h2>
                   <div className="flex-1 h-px bg-gold/15" />
                 </div>
-                <div className="grid grid-cols-3 gap-2.5">
-                  {briefing.top_deals.map((deal, i) => (
-                    <div
-                      key={i}
-                      className={cn(
-                        "p-3.5 rounded-xl border border-border-base dark:border-border-default border-t-2 border-t-gold/15 bg-white dark:bg-elevated",
-                        "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",
-                        "hover:-translate-y-0.5 hover:border-border-hover dark:hover:bg-overlay hover:shadow-[0_2px_12px_rgba(201,146,42,0.06)]",
-                      )}
-                    >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <h4 className="font-sans text-[14px] font-semibold text-espresso">
-                          {deal.company}
-                        </h4>
-                        <span className="font-data text-[11px] font-semibold text-gold flex-shrink-0 ml-2">
-                          {deal.value || "Undisclosed"}
-                        </span>
-                      </div>
-                      {deal.deal_type && (
-                        <span className="inline-block font-data text-[9px] uppercase tracking-wide font-bold text-gold bg-gold-muted px-1.5 py-0.5 rounded mb-1.5">
-                          {deal.deal_type}
-                        </span>
-                      )}
-                      {deal.one_liner && (
-                        <p className="font-sans text-[11px] text-text-secondary dark:text-[#e8e8e4] leading-snug">
-                          {stripHtml(deal.one_liner)}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <TopDeals deals={briefing.top_deals} />
               </section>
             )}
 
             {/* Analyst briefing sections */}
             {sections.length > 0 && (
               <section className="mb-6">
-                <h2 className="font-sans text-[10px] uppercase tracking-widest font-bold text-text-muted mb-3">
-                  Analyst Briefing
-                </h2>
-                <div className="grid grid-cols-2 gap-2.5">
-                  {sections.map((section) => (
-                    <BriefSection
-                      key={section.key}
-                      title={section.title}
-                      content={section.content}
-                      fullWidth={section.fullWidth}
-                      expanded={expandedSection === section.key}
-                      onToggle={() => setExpandedSection(expandedSection === section.key ? null : section.key)}
-                      onGenerateMemo={() => {
-                        setMemoTitle(section.title);
-                        setMemoContent(stripHtml(section.content));
-                        setMemoOpen(true);
-                      }}
-                      addingThesis={addingThesis}
-                      onAddThesis={async () => {
-                        setAddingThesis(true);
-                        try {
-                          await getSupabase().from("theses").insert({
-                            title: section.title,
-                            conviction: "WATCH",
-                            sector: "General",
-                            rationale: stripHtml(section.content),
-                            source: "Morning Brief",
-                            status: "new-signal",
-                            generated_at: new Date().toISOString(),
-                          });
-                          router.push("/thesis-board");
-                        } catch (err) {
-                          console.error("Failed to add thesis:", err);
-                        } finally {
-                          setAddingThesis(false);
-                        }
-                      }}
-                      sectionKey={section.key}
-                      onRate={handleSectionRate}
-                      currentRating={sectionRatings[section.key] ?? 0}
-                    />
-                  ))}
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="font-sans text-[10px] uppercase tracking-widest font-bold text-text-muted">
+                    Analyst Briefing
+                  </h2>
+                  <div className="flex border border-border-base rounded-lg overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setBriefView("editorial")}
+                      className={cn(
+                        "p-1.5 transition-colors cursor-pointer",
+                        briefView === "editorial" ? "bg-gold text-cream" : "text-text-muted hover:text-text-secondary",
+                      )}
+                      aria-label="Editorial view"
+                    >
+                      <AlignLeft size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBriefView("dashboard")}
+                      className={cn(
+                        "p-1.5 transition-colors cursor-pointer",
+                        briefView === "dashboard" ? "bg-gold text-cream" : "text-text-muted hover:text-text-secondary",
+                      )}
+                      aria-label="Dashboard view"
+                    >
+                      <LayoutGrid size={14} />
+                    </button>
+                  </div>
                 </div>
+
+                {briefView === "editorial" ? (
+                  <>
+                    {/* Tab row */}
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {sections.map((section) => (
+                        <button
+                          key={section.key}
+                          type="button"
+                          onClick={() => setActiveTabKey(section.key)}
+                          className={cn(
+                            "font-sans text-[11px] px-3 py-1.5 rounded-full border transition-all cursor-pointer",
+                            activeTabKey === section.key
+                              ? "bg-espresso text-cream border-espresso"
+                              : "bg-transparent text-text-secondary border-border-base hover:border-border-hover",
+                          )}
+                        >
+                          {SECTION_TITLES[section.key] || section.key}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Active tab content — full width */}
+                    <div className="grid grid-cols-1 gap-2.5">
+                      {(() => {
+                        const active = sections.find((s) => s.key === activeTabKey) ?? sections[0];
+                        if (!active) return null;
+                        return (
+                          <BriefSection
+                            key={active.key}
+                            title={active.title}
+                            content={active.content}
+                            fullWidth
+                            expanded={expandedSection === active.key}
+                            onToggle={() => setExpandedSection(expandedSection === active.key ? null : active.key)}
+                            onGenerateMemo={() => {
+                              setMemoTitle(active.title);
+                              setMemoContent(stripHtml(active.content));
+                              setMemoOpen(true);
+                            }}
+                            addingThesis={addingThesis}
+                            onAddThesis={async () => {
+                              setAddingThesis(true);
+                              try {
+                                await getSupabase().from("theses").insert({
+                                  title: active.title,
+                                  conviction: "WATCH",
+                                  sector: "General",
+                                  rationale: stripHtml(active.content),
+                                  source: "Morning Brief",
+                                  status: "new-signal",
+                                  generated_at: new Date().toISOString(),
+                                });
+                                router.push("/thesis-board");
+                              } catch (err) {
+                                console.error("Failed to add thesis:", err);
+                              } finally {
+                                setAddingThesis(false);
+                              }
+                            }}
+                            sectionKey={active.key}
+                            onRate={handleSectionRate}
+                            currentRating={sectionRatings[active.key] ?? 0}
+                          />
+                        );
+                      })()}
+                    </div>
+                  </>
+                ) : (
+                  <div className="grid grid-cols-6 gap-2.5">
+                    {dashboardSections.map((section) => (
+                      <div
+                        key={section.key}
+                        className={section.span === 6 ? "col-span-6" : "col-span-3"}
+                      >
+                        <BriefSection
+                          title={section.title}
+                          content={section.content}
+                          fullWidth
+                          expanded={expandedSection === section.key}
+                          onToggle={() => setExpandedSection(expandedSection === section.key ? null : section.key)}
+                          onGenerateMemo={() => {
+                            setMemoTitle(section.title);
+                            setMemoContent(stripHtml(section.content));
+                            setMemoOpen(true);
+                          }}
+                          addingThesis={addingThesis}
+                          onAddThesis={async () => {
+                            setAddingThesis(true);
+                            try {
+                              await getSupabase().from("theses").insert({
+                                title: section.title,
+                                conviction: "WATCH",
+                                sector: "General",
+                                rationale: stripHtml(section.content),
+                                source: "Morning Brief",
+                                status: "new-signal",
+                                generated_at: new Date().toISOString(),
+                              });
+                              router.push("/thesis-board");
+                            } catch (err) {
+                              console.error("Failed to add thesis:", err);
+                            } finally {
+                              setAddingThesis(false);
+                            }
+                          }}
+                          sectionKey={section.key}
+                          onRate={handleSectionRate}
+                          currentRating={sectionRatings[section.key] ?? 0}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </section>
             )}
 
@@ -566,70 +671,13 @@ export default function MorningBriefPage() {
 
             {/* Stories */}
             {rankedStories.length > 0 && (
-              <section>
-                <h2 className="font-sans text-[10px] uppercase tracking-widest font-bold text-text-muted mb-3">
-                  {storiesLabel}
-                </h2>
-                {(() => {
-                  const GATE_LIMIT = user === null ? 3 : rankedStories.length;
-                  const visibleStories = rankedStories.slice(0, GATE_LIMIT);
-                  const hasMore = user === null && rankedStories.length > GATE_LIMIT;
-                  return (
-                    <>
-                      {visibleStories[0] && (
-                        <div className="relative">
-                          {(visibleStories[0].tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
-                            <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 mb-1">
-                              Watching
-                            </span>
-                          )}
-                          <LeadStoryCard story={visibleStories[0]} />
-                        </div>
-                      )}
-                      <div className="mt-2">
-                        {visibleStories.slice(1).map((story, i) => (
-                          <div key={story.id}>
-                            {(story.tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
-                              <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 ml-3 mb-0.5">
-                                Watching
-                              </span>
-                            )}
-                            <CompactStoryCard story={story} number={i + 2} />
-                          </div>
-                        ))}
-                      </div>
-                      {hasMore && (
-                        <div className="relative mt-2">
-                          <div style={{ maxHeight: '48px', overflow: 'hidden', pointerEvents: 'none', userSelect: 'none', opacity: 0.7 }}>
-                            {rankedStories[GATE_LIMIT] && (
-                              <div className="bg-white border border-border-base rounded-xl p-3">
-                                <p className="font-data text-[9px] text-text-muted">{rankedStories[GATE_LIMIT].source}</p>
-                                <p className="font-display text-[13px] font-bold text-espresso leading-snug mt-1 line-clamp-1">{rankedStories[GATE_LIMIT].title}</p>
-                              </div>
-                            )}
-                          </div>
-                          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '40px', background: 'linear-gradient(to bottom, transparent, var(--cream))' }} />
-                        </div>
-                      )}
-                      {hasMore && (
-                        <div className="flex items-center justify-between px-3 py-2.5 mt-1 rounded-xl border" style={{ background: 'rgba(245, 166, 35, 0.08)', borderColor: 'var(--gold-border)' }}>
-                          <span className="font-sans text-[12px]" style={{ color: 'var(--gold)' }}>
-                            Sign in to see all {rankedStories.length} stories
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setShowSignIn(true)}
-                            className="font-sans text-[11px] font-semibold cursor-pointer ml-3 flex-shrink-0"
-                            style={{ color: 'var(--gold)', background: 'none', border: 'none', padding: 0 }}
-                          >
-                            Sign in →
-                          </button>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-              </section>
+              <TopStories
+                stories={rankedStories}
+                label={storiesLabel}
+                gateLimit={user === null ? 3 : rankedStories.length}
+                onSignInPrompt={() => setShowSignIn(true)}
+                watchlistTickers={profile?.watchlist_tickers ?? []}
+              />
             )}
           </>
         )}

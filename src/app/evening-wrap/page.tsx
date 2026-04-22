@@ -4,24 +4,27 @@ import { useState, useEffect, useMemo } from "react";
 import { AppShell } from "@/components/shell";
 import { PanelWidget } from "@/components/shell/right-panel";
 import { TickerStrip } from "@/components/brief/ticker-strip";
-import { BriefHeader } from "@/components/brief/brief-header";
+import { MarketPulse } from "@/components/brief/market-pulse";
+import { LeadHero } from "@/components/brief/lead-hero";
 import { BriefSection } from "@/components/brief/brief-section";
 import { SectorSignalCard } from "@/components/brief/sector-signal-card";
-import { LeadStoryCard, CompactStoryCard } from "@/components/dashboard/story-card";
+import { TopStories } from "@/components/brief/top-stories";
+import { ExportMenu } from "@/components/brief/export-menu";
+import { ShareButton } from "@/components/brief/share-button";
 import { ActiveThesesWidget } from "@/components/dashboard/active-theses-widget";
 import { WatchlistWidget } from "@/components/dashboard/watchlist-widget";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/strip-html";
-import { Moon } from "lucide-react";
+import { Moon, AlignLeft, LayoutGrid } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
 import type { StoryData } from "@/components/dashboard";
 import { createBrowserClient } from "@supabase/ssr";
 import { useUserProfile } from "@/hooks/useUserProfile";
-import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
+import { sortByRelevance } from "@/lib/personalization";
 import { trackClientEvent } from "@/lib/track-event";
 import type { ContentDescriptor } from "@/lib/personalization";
 
@@ -53,12 +56,18 @@ const SECTION_TITLES: Record<string, string> = {
 };
 
 interface BriefingData {
+  id?: string;
   headline?: string;
   summary?: string;
   market_tone?: string;
   sections?: Record<string, string>;
   sector_breakdown?: Record<string, string>;
   created_at?: string;
+  market_pulse?: {
+    sentiment_word: string;
+    narrative: string;
+    headlines?: Array<{ title: string; href?: string }>;
+  } | null;
 }
 
 function storyToContent(story: StoryData): ContentDescriptor {
@@ -89,7 +98,29 @@ export default function EveningWrapPage() {
   const [toast, setToast] = useState("");
   const [formatLabel, setFormatLabel] = useState<string | null>(null);
   const [userAddendum, setUserAddendum] = useState<string | null>(null);
+  const [user, setUser] = useState<{ id: string; email?: string | null } | null>(null);
+
+  useEffect(() => {
+    getSupabase()
+      .auth.getUser()
+      .then(({ data }) => {
+        setUser(data.user ? { id: data.user.id, email: data.user.email ?? null } : null);
+      })
+      .catch(() => setUser(null));
+  }, []);
+
+  const [briefView, setBriefView] = useState<"editorial" | "dashboard">("editorial");
+  const [activeTabKey, setActiveTabKey] = useState<string | null>(null);
   const router = useRouter();
+
+  // Persist brief view preference (shared with morning brief)
+  useEffect(() => {
+    const stored = localStorage.getItem("signalera_brief_view");
+    if (stored === "editorial" || stored === "dashboard") setBriefView(stored);
+  }, []);
+  useEffect(() => {
+    localStorage.setItem("signalera_brief_view", briefView);
+  }, [briefView]);
 
   // Fetch existing section ratings on mount
   useEffect(() => {
@@ -135,13 +166,21 @@ export default function EveningWrapPage() {
           const b = data.briefing;
           const sections = typeof b.sections === "string" ? JSON.parse(b.sections) : b.sections;
           const sectorBreakdown = typeof b.sector_breakdown === "string" ? JSON.parse(b.sector_breakdown) : b.sector_breakdown;
+          const marketPulse = (() => {
+            const mp = b.market_pulse;
+            if (!mp) return null;
+            if (typeof mp === "string") { try { return JSON.parse(mp); } catch { return null; } }
+            return mp;
+          })();
           setBriefing({
+            id: b.id,
             headline: b.headline,
             summary: b.summary,
             market_tone: b.market_tone,
             sections: sections || {},
             sector_breakdown: sectorBreakdown || {},
             created_at: b.created_at,
+            market_pulse: marketPulse,
           });
           setIsStale(data.is_stale === true);
           if (data.last_attempt_status) {
@@ -242,6 +281,21 @@ export default function EveningWrapPage() {
     }));
   }, [briefing]);
 
+  // Dashboard-mode weighted grid: longest section gets the full row, others share half-width.
+  const dashboardSections = useMemo(() => {
+    if (sections.length === 0) return [] as Array<typeof sections[number] & { span: number }>;
+    const scored = sections.map((s) => ({ ...s, score: (s.content ?? "").length }));
+    scored.sort((a, b) => b.score - a.score);
+    return scored.map((s, i) => ({ ...s, span: i === 0 ? 6 : 3 }));
+  }, [sections]);
+
+  // Default active tab to first section key (or preserve if still valid)
+  useEffect(() => {
+    if (sections.length === 0) return;
+    const stillValid = activeTabKey && sections.some((s) => s.key === activeTabKey);
+    if (!stillValid) setActiveTabKey(sections[0].key);
+  }, [sections, activeTabKey]);
+
   // Personalized story ordering
   const rankedStories = useMemo(() => {
     if (!profile) return stories;
@@ -290,7 +344,8 @@ export default function EveningWrapPage() {
           />
         ) : (
           <>
-            <BriefHeader
+            <MarketPulse pulse={briefing?.market_pulse} />
+            <LeadHero
               type="evening"
               headline={briefing.headline || formatLabel || "Evening Market Wrap"}
               summary={briefing.summary || ""}
@@ -340,31 +395,16 @@ export default function EveningWrapPage() {
 
             {/* Export & Share */}
             <div className="flex items-center gap-2 mb-4">
-              <button
-                type="button"
-                onClick={() => {
-                  const content = document.querySelector("main")?.innerText || "";
-                  const blob = new Blob([content], { type: "text/plain" });
-                  const a = document.createElement("a");
-                  a.href = URL.createObjectURL(blob);
-                  a.download = `signalera-evening-wrap-${new Date().toISOString().slice(0, 10)}.txt`;
-                  a.click();
-                }}
-                className="inline-flex items-center gap-1.5 font-sans text-[11px] px-3 py-1.5 rounded-lg border border-border-base hover:border-gold hover:text-gold text-text-secondary transition-colors cursor-pointer"
-              >
-                &#8595; Export Brief
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(window.location.href);
-                  setToast("Link copied");
-                  setTimeout(() => setToast(""), 2000);
-                }}
-                className="inline-flex items-center gap-1.5 font-sans text-[11px] px-3 py-1.5 rounded-lg border border-border-base hover:border-gold hover:text-gold text-text-secondary transition-colors cursor-pointer"
-              >
-                &#8599; Share
-              </button>
+              <ExportMenu
+                briefingId={briefing.id ?? null}
+                type="evening"
+                userEmail={user?.email ?? null}
+              />
+              <ShareButton
+                briefingId={briefing?.id}
+                briefTitle={briefing?.headline}
+                briefType="evening"
+              />
               {toast && (
                 <span className="font-sans text-[11px] text-gold font-semibold animate-pulse">{toast}</span>
               )}
@@ -372,49 +412,147 @@ export default function EveningWrapPage() {
 
             {sections.length > 0 && (
               <section className="mb-6">
-                <h2 className="font-sans text-[10px] uppercase tracking-widest font-bold text-text-muted mb-3">
-                  Evening Analysis
-                </h2>
-                <div className="grid grid-cols-2 gap-2.5">
-                  {sections.map((section) => (
-                    <BriefSection
-                      key={section.key}
-                      title={section.title}
-                      content={section.content}
-                      fullWidth={section.fullWidth}
-                      expanded={expandedSection === section.key}
-                      onToggle={() => setExpandedSection(expandedSection === section.key ? null : section.key)}
-                      onGenerateMemo={() => {
-                        setMemoTitle(section.title);
-                        setMemoContent(stripHtml(section.content));
-                        setMemoOpen(true);
-                      }}
-                      addingThesis={addingThesis}
-                      onAddThesis={async () => {
-                        setAddingThesis(true);
-                        try {
-                          await getSupabase().from("theses").insert({
-                            title: section.title,
-                            conviction: "WATCH",
-                            sector: "General",
-                            rationale: stripHtml(section.content),
-                            source: "Evening Wrap",
-                            status: "new-signal",
-                            generated_at: new Date().toISOString(),
-                          });
-                          router.push("/thesis-board");
-                        } catch (err) {
-                          console.error("Failed to add thesis:", err);
-                        } finally {
-                          setAddingThesis(false);
-                        }
-                      }}
-                      sectionKey={section.key}
-                      onRate={handleSectionRate}
-                      currentRating={sectionRatings[section.key] ?? 0}
-                    />
-                  ))}
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="font-sans text-[10px] uppercase tracking-widest font-bold text-text-muted">
+                    Analyst Briefing
+                  </h2>
+                  <div className="flex border border-border-base rounded-lg overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setBriefView("editorial")}
+                      className={cn(
+                        "p-1.5 transition-colors cursor-pointer",
+                        briefView === "editorial" ? "bg-gold text-cream" : "text-text-muted hover:text-text-secondary",
+                      )}
+                      aria-label="Editorial view"
+                    >
+                      <AlignLeft size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBriefView("dashboard")}
+                      className={cn(
+                        "p-1.5 transition-colors cursor-pointer",
+                        briefView === "dashboard" ? "bg-gold text-cream" : "text-text-muted hover:text-text-secondary",
+                      )}
+                      aria-label="Dashboard view"
+                    >
+                      <LayoutGrid size={14} />
+                    </button>
+                  </div>
                 </div>
+
+                {briefView === "editorial" ? (
+                  <>
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {sections.map((section) => (
+                        <button
+                          key={section.key}
+                          type="button"
+                          onClick={() => setActiveTabKey(section.key)}
+                          className={cn(
+                            "font-sans text-[11px] px-3 py-1.5 rounded-full border transition-all cursor-pointer",
+                            activeTabKey === section.key
+                              ? "bg-espresso text-cream border-espresso"
+                              : "bg-transparent text-text-secondary border-border-base hover:border-border-hover",
+                          )}
+                        >
+                          {SECTION_TITLES[section.key] || section.key}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2.5">
+                      {(() => {
+                        const active = sections.find((s) => s.key === activeTabKey) ?? sections[0];
+                        if (!active) return null;
+                        return (
+                          <BriefSection
+                            key={active.key}
+                            title={active.title}
+                            content={active.content}
+                            fullWidth
+                            expanded={expandedSection === active.key}
+                            onToggle={() => setExpandedSection(expandedSection === active.key ? null : active.key)}
+                            onGenerateMemo={() => {
+                              setMemoTitle(active.title);
+                              setMemoContent(stripHtml(active.content));
+                              setMemoOpen(true);
+                            }}
+                            addingThesis={addingThesis}
+                            onAddThesis={async () => {
+                              setAddingThesis(true);
+                              try {
+                                await getSupabase().from("theses").insert({
+                                  title: active.title,
+                                  conviction: "WATCH",
+                                  sector: "General",
+                                  rationale: stripHtml(active.content),
+                                  source: "Evening Wrap",
+                                  status: "new-signal",
+                                  generated_at: new Date().toISOString(),
+                                });
+                                router.push("/thesis-board");
+                              } catch (err) {
+                                console.error("Failed to add thesis:", err);
+                              } finally {
+                                setAddingThesis(false);
+                              }
+                            }}
+                            sectionKey={active.key}
+                            onRate={handleSectionRate}
+                            currentRating={sectionRatings[active.key] ?? 0}
+                          />
+                        );
+                      })()}
+                    </div>
+                  </>
+                ) : (
+                  <div className="grid grid-cols-6 gap-2.5">
+                    {dashboardSections.map((section) => (
+                      <div
+                        key={section.key}
+                        className={section.span === 6 ? "col-span-6" : "col-span-3"}
+                      >
+                        <BriefSection
+                          title={section.title}
+                          content={section.content}
+                          fullWidth
+                          expanded={expandedSection === section.key}
+                          onToggle={() => setExpandedSection(expandedSection === section.key ? null : section.key)}
+                          onGenerateMemo={() => {
+                            setMemoTitle(section.title);
+                            setMemoContent(stripHtml(section.content));
+                            setMemoOpen(true);
+                          }}
+                          addingThesis={addingThesis}
+                          onAddThesis={async () => {
+                            setAddingThesis(true);
+                            try {
+                              await getSupabase().from("theses").insert({
+                                title: section.title,
+                                conviction: "WATCH",
+                                sector: "General",
+                                rationale: stripHtml(section.content),
+                                source: "Evening Wrap",
+                                status: "new-signal",
+                                generated_at: new Date().toISOString(),
+                              });
+                              router.push("/thesis-board");
+                            } catch (err) {
+                              console.error("Failed to add thesis:", err);
+                            } finally {
+                              setAddingThesis(false);
+                            }
+                          }}
+                          sectionKey={section.key}
+                          onRate={handleSectionRate}
+                          currentRating={sectionRatings[section.key] ?? 0}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </section>
             )}
 
@@ -461,31 +599,11 @@ export default function EveningWrapPage() {
             )}
 
             {rankedStories.length > 0 && (
-              <section>
-                <h2 className="font-sans text-[10px] uppercase tracking-widest font-bold text-text-muted mb-3">
-                  {storiesLabel}
-                </h2>
-                <div className="relative">
-                  {(rankedStories[0].tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
-                    <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 mb-1">
-                      Watching
-                    </span>
-                  )}
-                  <LeadStoryCard story={rankedStories[0]} />
-                </div>
-                <div className="mt-2">
-                  {rankedStories.slice(1).map((story, i) => (
-                    <div key={story.id}>
-                      {(story.tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
-                        <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 ml-3 mb-0.5">
-                          Watching
-                        </span>
-                      )}
-                      <CompactStoryCard story={story} number={i + 2} />
-                    </div>
-                  ))}
-                </div>
-              </section>
+              <TopStories
+                stories={rankedStories}
+                label={storiesLabel}
+                watchlistTickers={profile?.watchlist_tickers ?? []}
+              />
             )}
           </>
         )}
