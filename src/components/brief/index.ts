@@ -6,3 +6,5 @@ export { SectorSignalCard } from "./sector-signal-card";
 export { MarketPulse, type MarketPulseData } from "./market-pulse";
 export { LeadHero, type LeadHeroProps } from "./lead-hero";
 export { ShareButton } from "./share-button";
+export { TopDeals, type TopDealItem } from "./top-deals";
+export { TopStories } from "./top-stories";
