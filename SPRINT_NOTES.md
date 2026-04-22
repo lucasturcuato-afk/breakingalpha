@@ -54,3 +54,11 @@
 - `src/app/trends/page.tsx` — Added `contested_flag` to TrendSignal interface, select query, and mapped object. CONTESTED pill rendered on signal cards (amber `signal-warn` styling) and in modal detail view.
 
 **Migration**: Run `sql/add_contested_flag.sql` in Supabase SQL Editor.
+
+## Phase 3A/3B/3C — Per-user prompt evolution
+
+**What**: Close the loop between user section ratings and synthesis output. Section preferences are aggregated from brief_section_ratings, injected into the synthesis prompt, and surfaced on the settings page.
+
+**Changes**:
+- `backend/synthesize.py` — New `_fetch_section_preferences()` function aggregates all users' section ratings (up/down/net per section_key). Injected as `[SECTION FEEDBACK]` block into system prompt. Highly-rated sections get deeper analysis; poorly-rated sections kept concise.
+- `src/app/settings/preferences/page.tsx` — Fetches user's own section ratings server-side. New "Briefing section ratings" card shows per-section up/down/net counts with green/red styling. Placed between "What Signalera has learned" and "Behavioral insights".

@@ -20,6 +20,24 @@ export default async function PreferencesPage() {
     () => ({ weights: profile.inferred_sector_weights, eventCount: 0 }),
   );
 
+  // Fetch section preferences (brief ratings aggregated for this user)
+  const sectionPrefs: Record<string, { up: number; down: number; net: number }> = {};
+  try {
+    const { data: ratings } = await supabase
+      .from("brief_section_ratings")
+      .select("section_key, rating")
+      .eq("user_id", user.id)
+      .limit(500);
+    for (const r of ratings ?? []) {
+      const sk = r.section_key;
+      if (!sectionPrefs[sk]) sectionPrefs[sk] = { up: 0, down: 0, net: 0 };
+      if (r.rating === 1) sectionPrefs[sk].up++;
+      else if (r.rating === -1) sectionPrefs[sk].down++;
+      sectionPrefs[sk].net += r.rating;
+    }
+  } catch { /* soft-fail */ }
+  const sortedSectionPrefs = Object.entries(sectionPrefs).sort((a, b) => b[1].net - a[1].net);
+
   const sortedWeights = Object.entries(weights).sort((a, b) => b[1] - a[1]);
   const updatedAt = profile.inferred_weights_updated_at
     ? new Date(profile.inferred_weights_updated_at).toLocaleString()
@@ -108,6 +126,42 @@ export default async function PreferencesPage() {
             </ul>
           )}
         </section>
+
+        {/* Section preferences (from brief ratings) */}
+        {sortedSectionPrefs.length > 0 && (
+          <section className="bg-parchment border border-border-base rounded-2xl p-6 mb-6">
+            <h2 className="font-display text-[16px] font-bold text-espresso mb-1">
+              Briefing section ratings
+            </h2>
+            <p className="font-sans text-[12px] text-text-secondary mb-4">
+              Your thumbs-up/down feedback on briefing sections. This shapes
+              how future briefings are written.
+            </p>
+            <ul className="space-y-2">
+              {sortedSectionPrefs.map(([section, counts]) => {
+                const label = section.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+                return (
+                  <li key={section} className="flex items-center gap-3">
+                    <div className="w-48 font-sans text-[12px] text-text-primary truncate">
+                      {label}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-data text-[11px] text-signal-up">
+                        +{counts.up}
+                      </span>
+                      <span className="font-data text-[11px] text-signal-dn">
+                        -{counts.down}
+                      </span>
+                    </div>
+                    <span className={`font-data text-[11px] ${counts.net > 0 ? "text-signal-up" : counts.net < 0 ? "text-signal-dn" : "text-text-muted"}`}>
+                      net {counts.net > 0 ? "+" : ""}{counts.net}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
 
         {/* Behavioral insights */}
         <div className="mb-6">

@@ -444,6 +444,52 @@ def _fetch_aggregate_engagement() -> str:
         return ""
 
 
+def _fetch_section_preferences() -> str:
+    """
+    Aggregate brief_section_ratings across all users to understand which
+    sections readers value most/least. Soft-fails to "".
+    """
+    try:
+        resp = (
+            supabase.table("brief_section_ratings")
+            .select("section_key, rating")
+            .limit(2000)
+            .execute()
+        )
+        rows = resp.data or []
+        if not rows:
+            return ""
+
+        from collections import defaultdict
+        counts: dict[str, dict[str, int]] = defaultdict(lambda: {"up": 0, "down": 0})
+        for r in rows:
+            sk = r.get("section_key", "")
+            if not sk:
+                continue
+            if r.get("rating") == 1:
+                counts[sk]["up"] += 1
+            elif r.get("rating") == -1:
+                counts[sk]["down"] += 1
+
+        if not counts:
+            return ""
+
+        lines = ["SECTION FEEDBACK (reader ratings across all users):"]
+        for sk, v in sorted(counts.items(), key=lambda x: x[1]["up"] - x[1]["down"], reverse=True):
+            net = v["up"] - v["down"]
+            emoji = "+" if net > 0 else ("-" if net < 0 else "=")
+            lines.append(f"  {sk}: {emoji}{abs(net)} (up={v['up']}, down={v['down']})")
+
+        lines.append(
+            "Expand and invest more depth in highly-rated sections. "
+            "Keep poorly-rated sections concise or consider what makes them less useful."
+        )
+        return "\n".join(lines)
+    except Exception as e:
+        print(f"  ⚠ _fetch_section_preferences failed (non-fatal): {e}")
+        return ""
+
+
 def run(brief_type="morning"):
     print(f"📝 Synthesizing {brief_type} briefing...")
 
@@ -595,6 +641,12 @@ def run(brief_type="morning"):
     if engagement_ctx:
         system = engagement_ctx + "\n\n" + system
         print(f"  📈 Injected {len(engagement_ctx)}-char user engagement context")
+
+    # --- Section preference signal injection (soft-fail) ---
+    section_prefs = _fetch_section_preferences()
+    if section_prefs:
+        system = section_prefs + "\n\n" + system
+        print(f"  📋 Injected {len(section_prefs)}-char section preference context")
 
     data = None
     raw = ""
