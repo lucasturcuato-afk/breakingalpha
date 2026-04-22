@@ -12,6 +12,7 @@ import { ActiveThesesWidget } from "@/components/dashboard/active-theses-widget"
 import { WatchlistWidget } from "@/components/dashboard/watchlist-widget";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ShareButton } from "@/components/brief/share-button";
 import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/strip-html";
 import { Moon } from "lucide-react";
@@ -53,6 +54,7 @@ const SECTION_TITLES: Record<string, string> = {
 };
 
 interface BriefingData {
+  id?: string;
   headline?: string;
   summary?: string;
   market_tone?: string;
@@ -136,6 +138,7 @@ export default function EveningWrapPage() {
           const sections = typeof b.sections === "string" ? JSON.parse(b.sections) : b.sections;
           const sectorBreakdown = typeof b.sector_breakdown === "string" ? JSON.parse(b.sector_breakdown) : b.sector_breakdown;
           setBriefing({
+            id: b.id,
             headline: b.headline,
             summary: b.summary,
             market_tone: b.market_tone,
@@ -354,17 +357,11 @@ export default function EveningWrapPage() {
               >
                 &#8595; Export Brief
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(window.location.href);
-                  setToast("Link copied");
-                  setTimeout(() => setToast(""), 2000);
-                }}
-                className="inline-flex items-center gap-1.5 font-sans text-[11px] px-3 py-1.5 rounded-lg border border-border-base hover:border-gold hover:text-gold text-text-secondary transition-colors cursor-pointer"
-              >
-                &#8599; Share
-              </button>
+              <ShareButton
+                briefingId={briefing?.id}
+                briefTitle={briefing?.headline}
+                briefType="evening"
+              />
               {toast && (
                 <span className="font-sans text-[11px] text-gold font-semibold animate-pulse">{toast}</span>
               )}

@@ -14,6 +14,7 @@ import { WatchlistWidget } from "@/components/dashboard/watchlist-widget";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
+import { ShareButton } from "@/components/brief/share-button";
 import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/strip-html";
 import { FileText } from "lucide-react";
@@ -64,6 +65,7 @@ interface TopDeal {
 }
 
 interface BriefingData {
+  id?: string;
   headline?: string;
   summary?: string;
   market_tone?: string;
@@ -157,6 +159,7 @@ export default function MorningBriefPage() {
           const topDeals = typeof b.top_deals === "string" ? JSON.parse(b.top_deals) : b.top_deals;
 
           setBriefing({
+            id: b.id,
             headline: b.headline,
             summary: b.summary,
             market_tone: b.market_tone,
@@ -393,17 +396,11 @@ export default function MorningBriefPage() {
               >
                 &#8595; Export Brief
               </Button>
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={() => {
-                  navigator.clipboard.writeText(window.location.href);
-                  setToast("Link copied");
-                  setTimeout(() => setToast(""), 2000);
-                }}
-              >
-                &#8599; Share
-              </Button>
+              <ShareButton
+                briefingId={briefing?.id}
+                briefTitle={briefing?.headline}
+                briefType="morning"
+              />
               {toast && (
                 <span className="font-sans text-[11px] text-gold font-semibold animate-pulse">{toast}</span>
               )}
