@@ -265,6 +265,24 @@ html.dark button.bg-gold:hover {
   animation: onboarding-row-pulse 400ms ease-in-out;
 }
 
+/* ── Brand mark pulse (topbar avatar) ── */
+@keyframes brand-mark-pulse {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+.brand-mark-pulse {
+  animation: brand-mark-pulse 2.8s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-mark-pulse {
+    animation: none;
+    opacity: 1;
+  }
+}
+html.dark .brand-mark-pulse:hover {
+  box-shadow: 0 0 10px rgba(212, 168, 75, 0.3);
+}
+
 /* Conviction ring inner cutout — matches parent surface */
 .conviction-ring-bg {
   background-color: var(--parchment, #faf7f2);
