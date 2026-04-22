@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     const { error } = await adminSupabase.from("user_events").insert({
       user_id: user.id,
       event_type: body.event_type,
-      payload: body.payload ?? {},
+      metadata: body.payload ?? {},
     });
 
     if (error) {

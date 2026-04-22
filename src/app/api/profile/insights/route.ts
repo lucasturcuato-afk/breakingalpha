@@ -89,7 +89,7 @@ export async function GET() {
     ).toISOString();
     const { data: events } = await supabase
       .from("user_events")
-      .select("event_type, payload, created_at")
+      .select("event_type, metadata, created_at")
       .eq("user_id", user.id)
       .gte("created_at", since)
       .limit(1000);
@@ -99,13 +99,13 @@ export async function GET() {
 
     for (const ev of (events ?? []) as {
       event_type: UserEventType;
-      payload: Record<string, unknown> | null;
+      metadata: Record<string, unknown> | null;
     }[]) {
       typeCounts[ev.event_type] = (typeCounts[ev.event_type] ?? 0) + 1;
 
       const sector =
-        typeof ev.payload?.sector === "string"
-          ? (ev.payload.sector as string).trim()
+        typeof ev.metadata?.sector === "string"
+          ? (ev.metadata.sector as string).trim()
           : "";
       if (!sector) continue;
 

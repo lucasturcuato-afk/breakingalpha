@@ -11,3 +11,15 @@
 - `src/app/evening-wrap/page.tsx` — Same changes as morning-brief.
 
 **Migration**: Run `sql/brief_section_ratings_schema.sql` against Supabase SQL Editor before deploying.
+
+## Phase 1B — Verify user_events table
+
+**Finding**: Table exists with 0 rows. The JSONB column is named `metadata` but all code (4 files) was inserting/selecting `payload` — every event write was silently failing.
+
+**Bug fix** (payload → metadata):
+- `src/lib/user-profile.ts` — `trackEvent()` insert and `updateInferredWeights()` select both fixed.
+- `src/app/api/user-events/route.ts` — insert column fixed.
+- `src/app/api/collective-signals/route.ts` — select column fixed.
+- `src/app/api/profile/insights/route.ts` — select and type cast fixed.
+
+**Verification script**: `scripts/verify_user_events.ts` — confirms table schema, identifies column mismatch, documents FK constraint on user_id.

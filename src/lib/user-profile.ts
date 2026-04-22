@@ -252,7 +252,7 @@ export async function trackEvent(
 ): Promise<void> {
   const { error } = await supabase
     .from("user_events")
-    .insert({ user_id: userId, event_type: eventType, payload });
+    .insert({ user_id: userId, event_type: eventType, metadata: payload });
 
   if (error) {
     // Most common failure is table-doesn't-exist-yet. Log once, move on.
@@ -305,7 +305,7 @@ export async function updateInferredWeights(
 
   const { data: events, error } = await supabase
     .from("user_events")
-    .select("event_type, payload, created_at")
+    .select("event_type, metadata, created_at")
     .eq("user_id", userId)
     .gte("created_at", since);
 
@@ -317,9 +317,9 @@ export async function updateInferredWeights(
   const weights: Record<string, number> = {};
   for (const ev of (events ?? []) as {
     event_type: UserEventType;
-    payload: Record<string, unknown> | null;
+    metadata: Record<string, unknown> | null;
   }[]) {
-    const payload = ev.payload ?? {};
+    const payload = ev.metadata ?? {};
     const sector =
       typeof payload.sector === "string" && payload.sector.trim().length > 0
         ? payload.sector.trim()

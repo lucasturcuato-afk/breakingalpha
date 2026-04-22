@@ -32,14 +32,14 @@ export async function GET() {
     // 2. Most active sectors — from user events in last 7 days
     const { data: recentEvents } = await supabase
       .from("user_events")
-      .select("payload")
+      .select("metadata")
       .gte("created_at", weekAgo)
       .in("event_type", ["thesis_viewed", "thesis_approved", "sector_filter_applied"])
       .limit(500);
 
     const sectorCounts = new Map<string, number>();
     for (const e of recentEvents ?? []) {
-      const payload = typeof e.payload === "string" ? JSON.parse(e.payload) : e.payload;
+      const payload = typeof e.metadata === "string" ? JSON.parse(e.metadata) : e.metadata;
       const sector = payload?.sector;
       if (sector) sectorCounts.set(sector, (sectorCounts.get(sector) ?? 0) + 1);
     }
