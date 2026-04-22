@@ -168,10 +168,10 @@ html.dark {
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-hover: rgba(255, 255, 255, 0.22);
 
-  --text-primary: #e8e8e4;
+  --text-primary: #f5e6d3;
   --text-secondary: #9a9a94;
-  --text-muted: #555550;
-  --text-faint: #3a3a36;
+  --text-muted: #8a8a80;
+  --text-faint: #5a5a54;
 
   --signal-up: #4caf7d;
   --signal-dn: #e05c5c;
@@ -185,7 +185,7 @@ html.dark {
   --overlay: #252525;
 
   /* ── Semantic layout tokens ── */
-  --foreground: #e8e8e4;
+  --foreground: #f5e6d3;
   --border-default: rgba(255, 255, 255, 0.14);
   --border-strong: rgba(255, 255, 255, 0.22);
 

@@ -91,10 +91,23 @@ export function Topbar({
         >
           {!mounted ? (
             <span className="w-3.5 h-3.5" />
-          ) : theme === "dark" ? (
-            <Sun size={14} className="text-gold" />
           ) : (
-            <Moon size={14} className="text-text-muted" />
+            <div className="relative w-4 h-4">
+              <Sun
+                size={14}
+                className={cn(
+                  "absolute inset-0 transition-all duration-200 text-gold",
+                  theme === "dark" ? "opacity-100 rotate-0" : "opacity-0 -rotate-90",
+                )}
+              />
+              <Moon
+                size={14}
+                className={cn(
+                  "absolute inset-0 transition-all duration-200 text-text-muted",
+                  theme === "dark" ? "opacity-0 rotate-90" : "opacity-100 rotate-0",
+                )}
+              />
+            </div>
           )}
         </button>
 
