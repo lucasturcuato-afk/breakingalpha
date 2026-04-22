@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { AppShell } from "@/components/shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TrendingUp, Lock, ChevronDown } from "lucide-react";
@@ -10,9 +10,7 @@ import { useUserProfile } from "@/hooks/useUserProfile";
 import { trackClientEvent } from "@/lib/track-event";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import { useLiveMood } from "@/hooks/useLiveMood";
-import { AnomalyBadge, type AnomalyLevel } from "@/components/trends/anomaly-badge";
-import type { SignalData } from "@/components/trends/signal-card";
-import { SignalCard } from "@/components/trends/signal-card";
+import type { AnomalyLevel } from "@/components/trends/anomaly-badge";
 
 // ── Filter constants (Noah's original 3-row layout) ──
 
@@ -50,7 +48,6 @@ interface TrendSignal {
   representative_article_ids: string[];
   lookback_run_count: number;
   created_at: string;
-  sparkline_data: { week: string; count: number }[] | null;
 }
 
 interface SourceArticle {
@@ -58,6 +55,7 @@ interface SourceArticle {
   title: string;
   source: string;
   published_at: string;
+  url: string | null;
 }
 
 interface RelatedThesis {
@@ -116,30 +114,8 @@ function deduplicateSignals(signals: TrendSignal[]): TrendSignal[] {
   return [...seen.values()].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 }
 
-function buildFallbackDescription(s: TrendSignal): string {
-  const companies = s.top_companies.slice(0, 4)
-    .map((c) => c.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" "));
-  if (companies.length > 0) {
-    return `${companies.join(", ")} \u2014 ${s.article_count} articles from ${s.source_count} sources`;
-  }
-  return `${s.article_count} articles from ${s.source_count} sources`;
-}
-
-function toSignalData(s: TrendSignal, sparkData: number[]): SignalData {
-  const anomaly = strengthToAnomaly(s.strength_score);
-  const title = s.headline || cleanLabel(s.label);
-  const description = s.tagline || buildFallbackDescription(s);
-
-  return {
-    id: s.id,
-    title,
-    anomaly,
-    description,
-    sparkData,
-    timestamp: timeAgo(s.created_at),
-    industry_verticals: s.top_sectors.slice(0, 2),
-    activity_types: [],
-  };
+function capitalizeCompany(c: string): string {
+  return c.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
 }
 
 interface TimelineGroup {
@@ -176,28 +152,6 @@ function groupByDate(signals: TrendSignal[]): TimelineGroup[] {
 }
 
 const MAX_VISIBLE = 5;
-
-// ── Large Sparkline for Modal ──
-
-function SignalSparklineLarge({ data }: { data: number[] }) {
-  if (data.length < 2 || data.every((v) => v === 0)) return null;
-  const w = 400;
-  const h = 48;
-  const max = Math.max(...data, 1);
-  const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * w;
-    const y = h - (v / max) * (h - 8) - 4;
-    return `${x},${y}`;
-  });
-  const areaPoints = `${points.join(" L ")} L ${w},${h} L 0,${h}`;
-
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-full" preserveAspectRatio="none">
-      <path d={`M ${areaPoints}`} fill="var(--gold-muted)" />
-      <path d={`M ${points.join(" L ")}`} fill="none" stroke="var(--gold)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 // ── Component ──
 
@@ -243,6 +197,17 @@ export default function TrendsPage() {
     return score;
   }
 
+  function isRelevantToProfile(s: TrendSignal): boolean {
+    if (!profileSectors.length && !watchlistUpper.length) return true;
+    return boostScore(s) > 0;
+  }
+
+  function hasWatchlistMatch(s: TrendSignal): boolean {
+    if (!watchlistUpper.length) return false;
+    const text = `${s.label} ${s.top_companies.join(" ")}`.toUpperCase();
+    return watchlistUpper.some((t) => text.includes(t));
+  }
+
   // ── Auth check ──
   useEffect(() => {
     const supabase = getSupabase();
@@ -258,7 +223,7 @@ export default function TrendsPage() {
         const supabase = getSupabase();
         const { data, error } = await supabase
           .from("trend_clusters")
-          .select("id, label, headline, tagline, cluster_type, article_count, source_count, strength_score, novelty_score, cross_source_flag, underrepresented_flag, top_companies, top_themes, top_sectors, representative_article_ids, lookback_run_count, created_at, sparkline_data")
+          .select("id, label, headline, tagline, cluster_type, article_count, source_count, strength_score, novelty_score, cross_source_flag, underrepresented_flag, top_companies, top_themes, top_sectors, representative_article_ids, lookback_run_count, created_at")
           .order("created_at", { ascending: false })
           .limit(500);
 
@@ -283,7 +248,6 @@ export default function TrendsPage() {
             representative_article_ids: safeArray(row.representative_article_ids),
             lookback_run_count: row.lookback_run_count ?? 0,
             created_at: row.created_at,
-            sparkline_data: row.sparkline_data ?? null,
           }));
           setAllSignals(deduplicateSignals(mapped));
         }
@@ -304,12 +268,6 @@ export default function TrendsPage() {
       .then(({ data }) => { if (data) setThesesForMatch(data); });
   }, []);
 
-  // ── Sparkline data from DB (12-week precomputed) ──
-  function getSparkCounts(signal: TrendSignal): number[] {
-    if (!signal.sparkline_data || signal.sparkline_data.length === 0) return [];
-    return signal.sparkline_data.map((w) => w.count);
-  }
-
   // ── Fetch articles when modal opens ──
   useEffect(() => {
     if (!modalSignal) return;
@@ -317,7 +275,7 @@ export default function TrendsPage() {
     const supabase = getSupabase();
     const ids = modalSignal.representative_article_ids.slice(0, 10);
     if (ids.length === 0) return;
-    supabase.from("articles").select("id, title, source, published_at").in("id", ids)
+    supabase.from("articles").select("id, title, source, published_at, url").in("id", ids)
       .then(({ data }) => {
         if (data) setArticleCache((prev) => ({ ...prev, [modalSignal.id]: data }));
       });
@@ -604,13 +562,86 @@ export default function TrendsPage() {
                         <span className="font-sans text-[11px] text-text-secondary font-data">{group.signals.length} signals</span>
                       </div>
 
-                      {/* Signal cards */}
+                      {/* Signal cards — inline layout */}
                       <div className="space-y-2">
                         {visibleSignals.map((s) => {
-                          const sd = toSignalData(s, getSparkCounts(s));
+                          const title = s.headline || cleanLabel(s.label);
+                          const isRelevant = isRelevantToProfile(s);
+                          const watchlistMention = hasWatchlistMatch(s);
+                          const companies = s.top_companies.slice(0, 3);
+
                           return (
-                            <div key={s.id} onClick={() => handleCardClick(s)} className="cursor-pointer">
-                              <SignalCard signal={sd} />
+                            <div
+                              key={s.id}
+                              onClick={() => handleCardClick(s)}
+                              className={cn(
+                                "bg-white border border-border-base rounded-xl p-4 cursor-pointer",
+                                "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",
+                                "hover:-translate-y-0.5 hover:border-border-hover hover:shadow-[0_2px_8px_rgba(201,146,42,0.06)]",
+                                profileSectors.length > 0 && !isRelevant && "opacity-60",
+                              )}
+                            >
+                              {/* Watchlist badge */}
+                              {watchlistMention && (
+                                <div className="mb-2">
+                                  <span className="inline-flex items-center gap-1 font-sans text-[9px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5">
+                                    Watching
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Row 1: Badges left, timestamp right */}
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {s.cluster_type === "emerging" && (
+                                    <span className="font-data text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-signal-up/10 text-signal-up border border-signal-up/20">
+                                      {"\u2B06"} emerging
+                                    </span>
+                                  )}
+                                  {s.top_sectors.slice(0, 1).map((v) => (
+                                    <span
+                                      key={v}
+                                      className="font-data text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-signal-ai/10 text-signal-ai border border-signal-ai/20"
+                                    >
+                                      {v}
+                                    </span>
+                                  ))}
+                                  {s.cross_source_flag && s.source_count >= 3 && (
+                                    <span className="font-data text-[9px] font-bold text-signal-up">
+                                      {"\u2713"} {s.source_count} sources
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="font-data text-[9px] text-text-faint">{timeAgo(s.created_at)}</span>
+                              </div>
+
+                              {/* Row 2: Headline left, Companies right */}
+                              <div className="flex items-start justify-between gap-4">
+                                <h4 className="font-display text-[14px] font-bold text-espresso leading-snug flex-1">
+                                  {title}
+                                </h4>
+                                {companies.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 justify-end flex-shrink-0 max-w-[200px]">
+                                    {companies.map((c, i) => {
+                                      const name = capitalizeCompany(c);
+                                      const isWatchlist = watchlistUpper.includes(c.toUpperCase());
+                                      return (
+                                        <span
+                                          key={i}
+                                          className={cn(
+                                            "font-data text-[9px] px-1.5 py-0.5 rounded",
+                                            isWatchlist
+                                              ? "bg-gold-muted text-gold-dark border border-gold/30 font-semibold"
+                                              : "text-text-muted",
+                                          )}
+                                        >
+                                          {name.toUpperCase()}{isWatchlist ? " \u2726" : ""}
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           );
                         })}
@@ -712,18 +743,6 @@ export default function TrendsPage() {
 
             {/* Modal body */}
             <div className="px-6 py-4 space-y-5">
-              {/* Sparkline chart */}
-              {getSparkCounts(modalSignal).some((v) => v > 0) && (
-                <div>
-                  <p className="font-data text-[9px] uppercase tracking-widest text-text-muted mb-2">
-                    Article volume — last 12 weeks
-                  </p>
-                  <div className="h-16 bg-parchment rounded-lg p-2">
-                    <SignalSparklineLarge data={getSparkCounts(modalSignal)} />
-                  </div>
-                </div>
-              )}
-
               {/* Evidence stats */}
               <div className="grid grid-cols-4 gap-3">
                 <div className="bg-parchment rounded-lg p-3">
@@ -752,7 +771,7 @@ export default function TrendsPage() {
                   <p className="font-data text-[9px] uppercase tracking-widest text-text-muted mb-2">Companies mentioned</p>
                   <div className="flex flex-wrap gap-1.5">
                     {modalSignal.top_companies.map((c, i) => {
-                      const name = c.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+                      const name = capitalizeCompany(c);
                       const isWatchlist = watchlistUpper.includes(c.toUpperCase());
                       return (
                         <span
@@ -786,23 +805,38 @@ export default function TrendsPage() {
                 </div>
               )}
 
-              {/* Source articles */}
+              {/* Source articles — clickable links */}
               <div>
                 <p className="font-data text-[9px] uppercase tracking-widest text-text-muted mb-2">Source articles</p>
                 {(articleCache[modalSignal.id] ?? []).length > 0 ? (
                   <div className="space-y-1">
                     {(articleCache[modalSignal.id] ?? []).map((a) => (
-                      <div key={a.id} className="flex items-center gap-2 py-2 px-3 bg-parchment rounded-lg">
+                      <a
+                        key={a.id}
+                        href={a.url || "#"}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => { e.stopPropagation(); if (!a.url) e.preventDefault(); }}
+                        className={cn(
+                          "flex items-center gap-2 py-2.5 px-3 rounded-lg transition-colors",
+                          a.url
+                            ? "bg-parchment hover:bg-parchment-mid cursor-pointer"
+                            : "bg-parchment cursor-default",
+                        )}
+                      >
                         <span className="font-data text-[9px] text-text-muted w-20 flex-shrink-0 truncate">
                           {a.source || "Unknown"}
                         </span>
-                        <span className="font-sans text-[12px] text-text-primary truncate flex-1">
+                        <span className={cn(
+                          "font-sans text-[12px] truncate flex-1",
+                          a.url ? "text-text-primary hover:text-gold transition-colors" : "text-text-primary",
+                        )}>
                           {a.title}
                         </span>
                         <span className="font-data text-[9px] text-text-faint flex-shrink-0">
                           {timeAgo(a.published_at)}
                         </span>
-                      </div>
+                      </a>
                     ))}
                   </div>
                 ) : (
