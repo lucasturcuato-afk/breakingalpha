@@ -379,6 +379,12 @@ export default function EveningWrapPage() {
         ) : (
           <>
             <MarketPulse pulse={briefing?.market_pulse} />
+
+            {/* Self-reflection on this morning's brief vs actual market outcomes.
+                Sits between Market Pulse and the Lead so users see accountability
+                before today's narrative. Renders a placeholder until outcomes land. */}
+            <MorningReview review={briefing?.morning_review} />
+
             <LeadHero
               type="evening"
               headline={briefing.headline || formatLabel || "Evening Market Wrap"}
@@ -429,11 +435,6 @@ export default function EveningWrapPage() {
                 </p>
               </div>
             )}
-
-            {/* Self-reflection on this morning's brief vs actual market outcomes.
-                Renders nothing if no graded calls / no review generated. */}
-            <MorningReview review={briefing?.morning_review} />
-
 
             {/* Export & Share */}
             <div className="flex items-center gap-2 mb-4">

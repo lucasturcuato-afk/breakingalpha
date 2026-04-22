@@ -45,19 +45,44 @@ function VerdictPill({ verdict }: { verdict: "correct" | "wrong" | "partial" }) 
   );
 }
 
+function ReviewHeader() {
+  return (
+    <div className="flex items-center gap-2 mb-3">
+      <span
+        className="font-data text-[9px] font-bold uppercase tracking-widest"
+        style={{ color: "var(--gold)" }}
+      >
+        Morning Brief Review
+      </span>
+      <div className="flex-1 h-px bg-gold/15" />
+    </div>
+  );
+}
+
 export function MorningReview({ review }: Props) {
-  if (!review || !review.aggregate_sentence) return null;
+  // Empty / pending state — surface the section so users know to expect it
+  // after market close. Placeholder renders whenever we have no review payload
+  // OR the payload is missing the aggregate sentence (nothing meaningful to show).
+  if (!review || !review.aggregate_sentence) {
+    return (
+      <section className="mb-6 p-5 rounded-xl border border-border-base bg-white dark:bg-elevated">
+        <ReviewHeader />
+        <div className="flex items-center gap-2">
+          <span
+            className="track-record-pending-dot w-1.5 h-1.5 rounded-full bg-gold flex-shrink-0"
+            aria-hidden="true"
+          />
+          <p className="font-sans text-[13px] text-text-muted leading-relaxed">
+            Appears after market close (5:00 PM PT daily).
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="mb-6 p-5 rounded-xl border border-border-base bg-white dark:bg-elevated">
-      <div className="flex items-center gap-2 mb-3">
-        <span
-          className="font-data text-[9px] font-bold uppercase tracking-widest"
-          style={{ color: "var(--gold)" }}
-        >
-          Morning Brief Review
-        </span>
-        <div className="flex-1 h-px bg-gold/15" />
-      </div>
+      <ReviewHeader />
       <p className="font-display text-[18px] text-espresso leading-snug mb-4">
         {review.aggregate_sentence}
       </p>
