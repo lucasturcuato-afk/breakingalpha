@@ -68,7 +68,7 @@ export function TopDeals({ deals }: TopDealsProps) {
             <div
               key={`${deal.company}-${i}`}
               className={cn(
-                "grid grid-cols-[1fr_auto_auto_2fr] items-center gap-3 p-3",
+                "grid grid-cols-[1fr_auto_auto_2fr] items-center gap-3 py-3.5 px-4",
                 i !== rest.length - 1 && "border-b border-border-subtle",
                 "transition-colors duration-150 hover:bg-parchment-mid/40 dark:hover:bg-overlay",
               )}

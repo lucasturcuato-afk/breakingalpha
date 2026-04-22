@@ -624,13 +624,15 @@ export default function EveningWrapPage() {
                     Sector Signals
                   </h2>
                   {briefing.sector_breakdown && Object.keys(briefing.sector_breakdown).length > 1 && (
-                    <div className="flex items-center gap-1 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <button
                         type="button"
                         onClick={() => setSectorFilter(null)}
                         className={cn(
-                          "font-data text-[9px] px-2 py-0.5 rounded-md cursor-pointer transition-colors",
-                          !sectorFilter ? "bg-espresso text-cream" : "bg-parchment-mid text-text-muted",
+                          "font-sans text-[11px] px-3 py-1.5 rounded-full border transition-all cursor-pointer",
+                          !sectorFilter
+                            ? "bg-espresso text-cream border-espresso"
+                            : "bg-transparent text-text-secondary border-border-base hover:border-border-hover",
                         )}
                       >
                         All
@@ -641,8 +643,10 @@ export default function EveningWrapPage() {
                           type="button"
                           onClick={() => setSectorFilter(sectorFilter === s ? null : s)}
                           className={cn(
-                            "font-data text-[9px] px-2 py-0.5 rounded-md cursor-pointer transition-colors",
-                            sectorFilter === s ? "bg-espresso text-cream" : "bg-parchment-mid text-text-muted",
+                            "font-sans text-[11px] px-3 py-1.5 rounded-full border transition-all cursor-pointer",
+                            sectorFilter === s
+                              ? "bg-espresso text-cream border-espresso"
+                              : "bg-transparent text-text-secondary border-border-base hover:border-border-hover",
                           )}
                         >
                           {s}
