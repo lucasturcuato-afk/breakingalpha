@@ -36,3 +36,10 @@
 - `scripts/backfill_quality_scores.py` — Backfill script for existing articles.
 
 **Migration**: Run `sql/add_quality_score.sql` in Supabase SQL Editor, then run `python3 scripts/backfill_quality_scores.py`.
+
+## Phase 2A — Temporal context injection
+
+**What**: Inject yesterday's briefing narrative into today's synthesis prompt for narrative continuity. The LLM sees yesterday's headline, market tone, summary, and key section leads — enabling it to build on threads, note escalations/resolutions, and avoid verbatim repetition.
+
+**Changes**:
+- `backend/synthesize.py` — New `[TEMPORAL CONTEXT]` block injected into system prompt before the Gemini call. Fetches the most recent same-type briefing from the last 48h. Soft-fails if no previous briefing exists or on any error.

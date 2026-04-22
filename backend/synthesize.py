@@ -552,6 +552,44 @@ def run(brief_type="morning"):
     except Exception as e:
         print(f"  ⚠ Brief addendum injection skipped: {e}")
 
+    # --- Temporal context: yesterday's briefing narrative (soft-fail) ---
+    try:
+        yesterday_cutoff = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
+        prev_resp = (
+            supabase.table("briefings")
+            .select("headline, summary, market_tone, sections")
+            .eq("briefing_type", brief_type)
+            .gte("created_at", yesterday_cutoff)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if prev_resp.data:
+            prev = prev_resp.data[0]
+            prev_sections = prev.get("sections")
+            if isinstance(prev_sections, str):
+                prev_sections = json.loads(prev_sections)
+            # Build a compact narrative summary of yesterday's brief
+            prev_parts = [f"Yesterday's headline: {prev.get('headline', '')}"]
+            prev_parts.append(f"Market tone: {prev.get('market_tone', '')}")
+            if prev.get("summary"):
+                prev_parts.append(f"Summary: {prev['summary'][:300]}")
+            # Include key section leads (first 120 chars each)
+            if isinstance(prev_sections, dict):
+                for sk, sv in list(prev_sections.items())[:4]:
+                    text = sv if isinstance(sv, str) else str(sv)
+                    prev_parts.append(f"  {sk}: {text[:120]}")
+            temporal_block = (
+                "[TEMPORAL CONTEXT — yesterday's briefing for continuity]\n"
+                + "\n".join(prev_parts)
+                + "\n\nBuild on threads from yesterday where relevant. Note what has changed, "
+                "escalated, or resolved since yesterday. Avoid repeating the same analysis verbatim.\n"
+            )
+            system = temporal_block + "\n" + system
+            print(f"  🕐 Injected temporal context ({len(temporal_block)} chars) from previous {brief_type} brief")
+    except Exception as e:
+        print(f"  ⚠ Temporal context injection skipped: {e}")
+
     # --- User engagement signal injection (soft-fail) ---
     engagement_ctx = _fetch_aggregate_engagement()
     if engagement_ctx:
