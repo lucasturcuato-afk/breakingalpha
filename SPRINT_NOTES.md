@@ -62,3 +62,10 @@
 **Changes**:
 - `backend/synthesize.py` — New `_fetch_section_preferences()` function aggregates all users' section ratings (up/down/net per section_key). Injected as `[SECTION FEEDBACK]` block into system prompt. Highly-rated sections get deeper analysis; poorly-rated sections kept concise.
 - `src/app/settings/preferences/page.tsx` — Fetches user's own section ratings server-side. New "Briefing section ratings" card shows per-section up/down/net counts with green/red styling. Placed between "What Signalera has learned" and "Behavioral insights".
+
+## Phase 4A — Thesis calibration plumbing
+
+**What**: Track confirmation rates by conviction bucket (HIGH/MEDIUM/WATCH) from thesis_verdicts history. Inject calibration notes into thesis generation prompt so the LLM can self-correct its conviction assignments.
+
+**Changes**:
+- `src/app/api/theses/route.ts` — New calibration block: fetches thesis_verdicts, joins with theses to get conviction, aggregates confirmed/invalidated/inconclusive counts per conviction bucket. Injected as `[THESIS CALIBRATION]` block into the generation prompt. If HIGH theses have low confirmation rates, the LLM is instructed to be more selective with HIGH conviction. Soft-fails on any error.

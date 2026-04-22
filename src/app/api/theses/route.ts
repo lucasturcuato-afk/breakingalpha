@@ -378,6 +378,61 @@ ${articleLines}`;
       );
     }
 
+    // Phase 4A: Thesis calibration — confirmation rates by conviction bucket
+    let calibrationBlock = "";
+    try {
+      const { data: verdictRows, error: verdictErr } = await supabase
+        .from("thesis_verdicts")
+        .select("verdict, thesis_id")
+        .limit(2000);
+
+      if (verdictErr) {
+        console.log("[theses] thesis_verdicts lookup failed (continuing):", verdictErr.message);
+      } else if (verdictRows && verdictRows.length > 0) {
+        // Get conviction for each thesis
+        const thesisIds = [...new Set(verdictRows.map((v) => v.thesis_id))];
+        const convictionMap = new Map<string, string>();
+        for (let i = 0; i < thesisIds.length; i += 100) {
+          const chunk = thesisIds.slice(i, i + 100);
+          const { data: thesisData } = await supabase
+            .from("theses")
+            .select("id, conviction")
+            .in("id", chunk);
+          for (const t of thesisData ?? []) {
+            convictionMap.set(t.id, (t.conviction || "").toUpperCase());
+          }
+        }
+
+        // Aggregate by conviction bucket
+        const buckets: Record<string, { total: number; confirmed: number; invalidated: number; inconclusive: number }> = {};
+        for (const v of verdictRows) {
+          const conv = convictionMap.get(v.thesis_id) || "UNKNOWN";
+          if (!buckets[conv]) buckets[conv] = { total: 0, confirmed: 0, invalidated: 0, inconclusive: 0 };
+          buckets[conv].total++;
+          if (v.verdict === "confirmed") buckets[conv].confirmed++;
+          else if (v.verdict === "invalidated") buckets[conv].invalidated++;
+          else buckets[conv].inconclusive++;
+        }
+
+        const lines: string[] = [];
+        for (const [conv, b] of Object.entries(buckets)) {
+          if (b.total < 2) continue;
+          const confRate = b.total > 0 ? ((b.confirmed / b.total) * 100).toFixed(0) : "0";
+          lines.push(`  - ${conv}: ${b.confirmed}/${b.total} confirmed (${confRate}%), ${b.invalidated} invalidated, ${b.inconclusive} inconclusive`);
+        }
+
+        if (lines.length > 0) {
+          calibrationBlock =
+            "THESIS CALIBRATION — historical confirmation rates by conviction level:\n" +
+            lines.join("\n") +
+            "\nUse this to calibrate your conviction assignments. If HIGH theses have a low confirmation rate, be more selective with HIGH conviction.\n\n";
+          console.log(`[theses] Injecting calibration block (${verdictRows.length} verdicts across ${Object.keys(buckets).length} buckets)`);
+        }
+      }
+    } catch (calibErr) {
+      console.log("[theses] calibration lookup threw (continuing):", calibErr instanceof Error ? calibErr.message : String(calibErr));
+    }
+
     const prompt = `You are a senior investment banking analyst at a top-tier firm (Goldman Sachs, Blackstone, KKR level). You have been given today's market narrative clusters, each representing a group of related news articles that have been algorithmically clustered by topic, company, and sector.
 
 Your job is to synthesize these clusters into 3-5 high-conviction investment theses that a portfolio manager or deal team would actually act on.
@@ -411,7 +466,7 @@ Return a JSON array only. Each object must have exactly these fields:
   verifiable_signal: string (ONE sentence stating a concrete, falsifiable outcome that will confirm or invalidate the thesis — e.g. "AAPL closes above $230 within 30 days" or "TSLA Q2 earnings beat consensus by >5%")
 }
 
-${addendumBlock}${patternBlock}CLUSTERS:
+${addendumBlock}${patternBlock}${calibrationBlock}CLUSTERS:
 ${clusterBlocks}`;
 
     const completion = await ai.models.generateContent({
