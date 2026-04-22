@@ -9,6 +9,7 @@ import { ThesisDetailPanel } from "@/components/thesis/thesis-detail-panel";
 import { KanbanBoard } from "@/components/thesis/kanban-board";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Button } from "@/components/ui/button";
 import { FileText, Archive, RefreshCw, ChevronDown, ChevronUp, LayoutList, LayoutGrid } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 import { cn } from "@/lib/utils";
@@ -476,18 +477,10 @@ function ThesisBoardContent() {
               title="No theses yet"
               description="Theses are generated automatically by the pipeline. Check back after the next pipeline run."
               action={
-                <button
-                  type="button"
-                  onClick={handleRefresh}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 px-4 py-2 rounded-lg",
-                    "bg-gold text-cream font-sans text-[12px] font-semibold",
-                    "hover:bg-gold-dark transition-colors cursor-pointer",
-                  )}
-                >
+                <Button variant="secondary" size="md" onClick={handleRefresh}>
                   <RefreshCw size={12} />
                   Refresh
-                </button>
+                </Button>
               }
             />
           </div>
@@ -578,14 +571,10 @@ function ThesisBoardContent() {
                     <LayoutGrid size={14} />
                   </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleRefresh}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gold text-cream font-sans text-[11px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
-                >
+                <Button variant="secondary" size="md" onClick={handleRefresh}>
                   <RefreshCw size={11} />
                   Refresh
-                </button>
+                </Button>
               </div>
             </div>
 

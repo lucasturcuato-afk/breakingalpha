@@ -1,7 +1,20 @@
 import { cn } from "@/lib/utils";
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "gold" | "danger";
+/**
+ * Canonical variants: `primary`, `secondary`, `tertiary`.
+ * Legacy aliases kept for backwards-compat (do not use in new code):
+ *   - `ghost`  → alias of `tertiary`
+ *   - `gold`   → alias of `primary`
+ *   - `danger` → kept (semantic, uses `signal-dn`)
+ */
+type ButtonVariant =
+  | "primary"
+  | "secondary"
+  | "tertiary"
+  | "ghost"
+  | "gold"
+  | "danger";
 type ButtonSize = "sm" | "md" | "lg";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -10,16 +23,23 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantStyles: Record<ButtonVariant, string> = {
+  // Heritage Gold solid — main CTAs (Refresh, Generate Memo, Add Deal, Sign In, Export Brief, Share).
   primary:
-    "bg-espresso text-cream hover:bg-espresso-light active:bg-espresso",
+    "bg-gold text-cream hover:bg-gold-light active:bg-gold-dark active:scale-[0.98] dark:hover:shadow-[0_0_16px_rgba(212,168,75,0.35)]",
+  // Outlined, transparent bg — alternative actions (Export, Add Note, Archive).
   secondary:
-    "bg-parchment-mid text-text-primary border border-border-base hover:border-border-hover hover:bg-parchment",
+    "bg-transparent text-text-primary border border-border-base hover:border-gold-border hover:bg-gold-muted active:scale-[0.98]",
+  // Text link — Customize, View all, Read full brief.
+  tertiary:
+    "bg-transparent text-gold hover:text-gold-dark hover:underline underline-offset-4 p-0 h-auto",
+  /** @deprecated Legacy alias — use `tertiary`. Kept only for backwards compatibility. */
   ghost:
-    "text-text-secondary hover:text-text-primary hover:bg-parchment-mid",
+    "bg-transparent text-gold hover:text-gold-dark hover:underline underline-offset-4 p-0 h-auto",
+  /** @deprecated Legacy alias — use `primary`. Kept only for backwards compatibility. */
   gold:
-    "bg-gold text-cream hover:bg-gold-dark active:bg-gold-dark",
+    "bg-gold text-cream hover:bg-gold-light active:bg-gold-dark active:scale-[0.98] dark:hover:shadow-[0_0_16px_rgba(212,168,75,0.35)]",
   danger:
-    "bg-signal-dn text-white hover:bg-red-700 active:bg-red-800",
+    "bg-signal-dn text-white hover:bg-red-700 active:bg-red-800 active:scale-[0.98]",
 };
 
 const sizeStyles: Record<ButtonSize, string> = {

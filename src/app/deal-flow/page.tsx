@@ -6,6 +6,7 @@ import { useUserProfile } from "@/hooks/useUserProfile";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   Briefcase,
@@ -401,19 +402,15 @@ function DealFlowContent() {
               AI-extracted deal pipeline · auto-updated from news ingestion
             </p>
           </div>
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="md"
             onClick={() => setShowForm((f) => !f)}
-            className={cn(
-              "inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg",
-              "border border-gold/40 bg-gold-muted text-gold",
-              "font-data text-[10px] font-bold uppercase tracking-wide",
-              "hover:bg-gold/10 transition-colors cursor-pointer flex-shrink-0",
-            )}
+            className="flex-shrink-0"
           >
             <Plus size={12} />
             Add Deal
-          </button>
+          </Button>
         </div>
 
         {/* Add Deal Form */}
