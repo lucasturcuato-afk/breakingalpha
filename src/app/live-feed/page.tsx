@@ -400,7 +400,8 @@ export default function LiveFeedPage() {
                         <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-signal-up" />
                       )}
                       <FeedRow
-                        story={{ ...story, saved: savedIds.has(story.id) }}
+                        story={story}
+                        saved={savedIds.has(story.id)}
                         onBookmark={handleBookmark}
                       />
                     </div>

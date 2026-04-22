@@ -273,8 +273,14 @@ html.dark button.bg-gold:hover {
 .brand-mark-pulse {
   animation: brand-mark-pulse 2.8s ease-in-out infinite;
 }
+/* Dark-mode: bump background + border alpha so the gold S reads intentional on near-black sidebar */
+html.dark .brand-mark-pulse {
+  background-color: rgba(212, 168, 75, 0.22) !important;
+  border-color: rgba(212, 168, 75, 0.55) !important;
+  box-shadow: 0 0 12px rgba(212, 168, 75, 0.35);
+}
 html.dark .brand-mark-pulse:hover {
-  box-shadow: 0 0 10px rgba(212, 168, 75, 0.3);
+  box-shadow: 0 0 18px rgba(212, 168, 75, 0.55);
 }
 
 /* ── Motion system (subagent 2) ── */

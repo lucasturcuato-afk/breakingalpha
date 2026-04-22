@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/strip-html";
 import { getSectorStyle, getTagPillStyle } from "@/lib/sector-colors";
-import { useState, useEffect } from "react";
+import { memo, useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import { Badge } from "@/components/ui/badge";
@@ -45,16 +45,19 @@ function sentimentLabel(sentiment: string): string {
 
 interface FeedRowProps {
   story: StoryData;
+  saved?: boolean;
   onBookmark?: (id: string) => void;
 }
 
-export function FeedRow({ story, onBookmark }: FeedRowProps) {
+function FeedRowInner({ story, saved: savedProp, onBookmark }: FeedRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [memoOpen, setMemoOpen] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const [thesisLoading, setThesisLoading] = useState(false);
   const [thesisToast, setThesisToast] = useState("");
-  const saved = story.saved ?? false;
+  // Prefer explicit `saved` prop; fall back to legacy `story.saved` for unmigrated callers
+  const saved = savedProp ?? story.saved ?? false;
+  const cleanSummary = useMemo(() => stripHtml(story.summary ?? ""), [story.summary]);
   const router = useRouter();
 
   useEffect(() => {
@@ -148,7 +151,7 @@ export function FeedRow({ story, onBookmark }: FeedRowProps) {
           >
             {story.summary && (
               <p className="font-sans text-[12px] text-text-secondary leading-[1.55] mb-2">
-                {stripHtml(story.summary)}
+                {cleanSummary}
               </p>
             )}
 
@@ -288,13 +291,23 @@ export function FeedRow({ story, onBookmark }: FeedRowProps) {
           )}
         </div>
       </div>
-      <MemoModal
-        isOpen={memoOpen}
-        onClose={() => setMemoOpen(false)}
-        title={story.title}
-        content={[story.title, stripHtml(story.summary)].join("\n\n")}
-        type="article"
-      />
+      {memoOpen && (
+        <MemoModal
+          isOpen={memoOpen}
+          onClose={() => setMemoOpen(false)}
+          title={story.title}
+          content={[story.title, cleanSummary].join("\n\n")}
+          type="article"
+        />
+      )}
     </div>
   );
 }
+
+/**
+ * Memoized so that chip filter clicks don't re-render every row in the list.
+ * Shallow compare on props works because `story` refs from the parent's
+ * `stories[]` array are stable across filter changes, `saved` is a boolean,
+ * and `onBookmark` is useCallback'd in the caller.
+ */
+export const FeedRow = memo(FeedRowInner);

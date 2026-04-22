@@ -23,6 +23,23 @@ interface GradedThesis {
   adversarial_score: number | null;
 }
 
+interface RawVerdict {
+  thesis_id: string;
+  graded_at: string;
+  verdict: string;
+  confidence: number | null;
+}
+
+interface ThesisMeta {
+  id: string;
+  title: string | null;
+  sector: string | null;
+  ticker: string | null;
+  adversarial_score: number | null;
+  generated_at: string | null;
+  check_after: string | null;
+}
+
 interface PatternRow {
   sector: string | null;
   horizon: string | null;
@@ -78,52 +95,107 @@ export default function TrackRecordPage() {
         const nowIso = new Date().toISOString();
         const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
 
-        // All queries in parallel
+        // thesis_verdicts is the authoritative source of truth for graded outcomes.
+        // theses.outcome is a nullable mirror that can lag or be empty even when
+        // verdicts exist (see PR #118). Derive all counts + lists from thesis_verdicts.
         const [
           totalRes,
-          confirmedRes,
-          invalidatedRes,
-          gradedRes,
+          verdictsAllRes,
+          thesesMetaRes,
           patternsRes,
           sourcesRes,
-          verdictsRes,
-          lastUpdatedRes,
           nextCheckRes,
-          overdueWithCheckRes,
-          overdueNullCheckRes,
         ] = await Promise.all([
           supabase.from("theses").select("id", { count: "exact", head: true }),
-          supabase.from("theses").select("id", { count: "exact", head: true }).eq("outcome", "confirmed"),
-          supabase.from("theses").select("id", { count: "exact", head: true }).eq("outcome", "invalidated"),
-          supabase.from("theses").select("sector, outcome, adversarial_score").not("outcome", "is", null),
+          supabase
+            .from("thesis_verdicts")
+            .select("thesis_id, graded_at, verdict, confidence")
+            .order("graded_at", { ascending: false }),
+          supabase
+            .from("theses")
+            .select("id, title, sector, ticker, adversarial_score, generated_at, check_after"),
           supabase.from("pattern_library").select("sector, horizon, dominant_signal, win_rate, n_observed, n_confirmed").gte("n_observed", 3).order("win_rate", { ascending: false }).limit(5),
           supabase.from("source_credibility").select("source, win_rate, n_theses").order("win_rate", { ascending: false }).limit(10),
-          supabase.from("theses").select("id, title, sector, outcome, outcome_notes, updated_at, ticker").not("outcome", "is", null).order("updated_at", { ascending: false }).limit(10),
-          supabase.from("theses").select("updated_at").not("outcome", "is", null).order("updated_at", { ascending: false }).limit(1),
-          supabase.from("theses").select("check_after").is("outcome", null).not("check_after", "is", null).order("check_after", { ascending: true }).limit(1),
-          supabase.from("theses").select("id", { count: "exact", head: true }).is("outcome", null).lt("check_after", nowIso),
-          supabase.from("theses").select("id", { count: "exact", head: true }).is("outcome", null).is("check_after", null).lt("generated_at", thirtyDaysAgoIso),
+          supabase.from("theses").select("check_after").not("check_after", "is", null).order("check_after", { ascending: true }).limit(50),
         ]);
 
+        const rawVerdicts = (verdictsAllRes.data as RawVerdict[] | null) ?? [];
+        const thesesMeta = (thesesMetaRes.data as ThesisMeta[] | null) ?? [];
+        const thesesById = new Map<string, ThesisMeta>();
+        for (const t of thesesMeta) thesesById.set(t.id, t);
+
+        // Latest verdict per thesis (rawVerdicts is sorted graded_at desc, so first wins)
+        const latestVerdictByThesis = new Map<string, RawVerdict>();
+        for (const v of rawVerdicts) {
+          if (!v.thesis_id) continue;
+          if (!latestVerdictByThesis.has(v.thesis_id)) {
+            latestVerdictByThesis.set(v.thesis_id, v);
+          }
+        }
+
+        // Build derived state from verdicts+meta
+        const derivedGraded: GradedThesis[] = [];
+        const derivedRecent: VerdictRow[] = [];
+        let confirmed = 0;
+        let invalidated = 0;
+
+        for (const [thesisId, v] of latestVerdictByThesis) {
+          const meta = thesesById.get(thesisId);
+          const outcome = v.verdict || "inconclusive";
+          if (outcome === "confirmed") confirmed += 1;
+          if (outcome === "invalidated") invalidated += 1;
+          derivedGraded.push({
+            sector: meta?.sector ?? "Unknown",
+            outcome,
+            adversarial_score: meta?.adversarial_score ?? null,
+          });
+          derivedRecent.push({
+            id: thesisId,
+            title: meta?.title ?? "Untitled thesis",
+            sector: meta?.sector ?? null,
+            outcome,
+            outcome_notes: null,
+            updated_at: v.graded_at,
+            ticker: meta?.ticker ?? null,
+          });
+        }
+
+        // Sort Recent Verdicts by graded_at desc and keep top 10
+        derivedRecent.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+
+        // Pending/overdue derived from thesis metadata: "not yet graded" = no entry in
+        // latestVerdictByThesis. Walk thesesMeta + apply the overdue rules client-side.
+        const gradedIds = new Set(latestVerdictByThesis.keys());
+        let overdue = 0;
+        let nextCheckClient: string | null = null;
+        for (const t of thesesMeta) {
+          if (gradedIds.has(t.id)) continue;
+          if (t.check_after) {
+            if (t.check_after < nowIso) overdue += 1;
+            if (t.check_after >= nowIso) {
+              if (!nextCheckClient || t.check_after < nextCheckClient) nextCheckClient = t.check_after;
+            }
+          } else if (t.generated_at && t.generated_at < thirtyDaysAgoIso) {
+            // ungraded for 30+ days with no scheduled check
+            overdue += 1;
+          }
+        }
+        // Prefer server-side earliest future check_after if Promise.all returned one
+        const serverNextCheck = nextCheckRes.data?.find(
+          (r: { check_after: string | null }) => r.check_after && r.check_after >= nowIso && !gradedIds.has(((r as unknown) as { id?: string }).id ?? ""),
+        );
+        const resolvedNextCheck = nextCheckClient ?? serverNextCheck?.check_after ?? null;
+
         setTotalCount(totalRes.count ?? 0);
-        setConfirmedCount(confirmedRes.count ?? 0);
-        setInvalidatedCount(invalidatedRes.count ?? 0);
-        setGradedTheses((gradedRes.data as GradedThesis[]) ?? []);
+        setConfirmedCount(confirmed);
+        setInvalidatedCount(invalidated);
+        setGradedTheses(derivedGraded);
+        setVerdicts(derivedRecent.slice(0, 10));
         setPatterns((patternsRes.data as PatternRow[]) ?? []);
         setSources((sourcesRes.data as SourceRow[]) ?? []);
-        setVerdicts((verdictsRes.data as VerdictRow[]) ?? []);
-
-        if (lastUpdatedRes.data && lastUpdatedRes.data.length > 0) {
-          setLastUpdated(lastUpdatedRes.data[0].updated_at);
-        }
-
-        if (nextCheckRes.data && nextCheckRes.data.length > 0) {
-          setNextCheckAfter((nextCheckRes.data[0] as { check_after: string | null }).check_after ?? null);
-        } else {
-          setNextCheckAfter(null);
-        }
-
-        setOverdueCount((overdueWithCheckRes.count ?? 0) + (overdueNullCheckRes.count ?? 0));
+        setLastUpdated(rawVerdicts[0]?.graded_at ?? null);
+        setNextCheckAfter(resolvedNextCheck);
+        setOverdueCount(overdue);
       } catch (e) {
         console.error("Track record load error:", e);
       } finally {
@@ -199,6 +271,8 @@ export default function TrackRecordPage() {
   const showPipelineStatus =
     !loading && totalCount > 0 && confirmedCount === 0 && invalidatedCount === 0;
   const awaitingCount = totalCount - confirmedCount - invalidatedCount;
+  const gradedCount = confirmedCount + invalidatedCount;
+  const showGradingHeader = !loading && gradedTheses.length > 0;
 
   const MIN_ROWS = 3;
 
@@ -213,7 +287,26 @@ export default function TrackRecordPage() {
           <p className="font-sans text-[13px] text-text-secondary mt-1">
             How Signalera&apos;s thesis intelligence performs over time.
           </p>
-          {formattedLastUpdated && (
+          {showGradingHeader && (
+            <p className="font-data text-text-muted text-[11px] mt-1.5 inline-flex items-center gap-2 flex-wrap">
+              <span>
+                <span className="font-semibold text-text-primary">{gradedCount}</span>{" "}
+                {gradedCount === 1 ? "thesis" : "theses"} tracked
+              </span>
+              {formattedLastUpdated && (
+                <>
+                  <span className="text-text-faint">·</span>
+                  <span>Last graded {formattedLastUpdated}</span>
+                </>
+              )}
+              <span className="text-text-faint">·</span>
+              <span className="inline-flex items-center gap-1 text-gold">
+                <Clock size={11} className="text-gold" />
+                Next run 8:10 PM PT daily
+              </span>
+            </p>
+          )}
+          {!showGradingHeader && formattedLastUpdated && (
             <p className="font-data text-text-faint text-[11px] mt-1">
               Last updated: {formattedLastUpdated}
             </p>

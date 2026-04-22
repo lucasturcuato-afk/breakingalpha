@@ -36,7 +36,7 @@ export function Wordmark({ size = "md", className }: WordmarkProps) {
       )}
       style={{ fontSize: sizePx[size], lineHeight: 1 }}
     >
-      <span className="text-foreground">Signal</span>
+      <span style={{ color: "var(--foreground)" }}>Signal</span>
       <span
         className="dark:[filter:drop-shadow(0_0_12px_rgba(212,168,75,0.25))]"
         style={{
