@@ -7,6 +7,7 @@ import { TickerStrip } from "@/components/brief/ticker-strip";
 import { BriefHeader } from "@/components/brief/brief-header";
 import { BriefSection } from "@/components/brief/brief-section";
 import { SectorSignalCard } from "@/components/brief/sector-signal-card";
+import { ExportMenu } from "@/components/brief/export-menu";
 import { LeadStoryCard, CompactStoryCard } from "@/components/dashboard/story-card";
 import { ActiveThesesWidget } from "@/components/dashboard/active-theses-widget";
 import { WatchlistWidget } from "@/components/dashboard/watchlist-widget";
@@ -53,6 +54,7 @@ const SECTION_TITLES: Record<string, string> = {
 };
 
 interface BriefingData {
+  id?: string;
   headline?: string;
   summary?: string;
   market_tone?: string;
@@ -89,6 +91,20 @@ export default function EveningWrapPage() {
   const [toast, setToast] = useState("");
   const [formatLabel, setFormatLabel] = useState<string | null>(null);
   const [userAddendum, setUserAddendum] = useState<string | null>(null);
+  const [user, setUser] = useState<{ id: string; email?: string | null } | null>(null);
+
+  useEffect(() => {
+    getSupabase()
+      .auth.getUser()
+      .then(({ data }) => {
+        setUser(
+          data.user
+            ? { id: data.user.id, email: data.user.email ?? null }
+            : null,
+        );
+      })
+      .catch(() => setUser(null));
+  }, []);
   const router = useRouter();
 
   // Fetch existing section ratings on mount
@@ -340,20 +356,11 @@ export default function EveningWrapPage() {
 
             {/* Export & Share */}
             <div className="flex items-center gap-2 mb-4">
-              <button
-                type="button"
-                onClick={() => {
-                  const content = document.querySelector("main")?.innerText || "";
-                  const blob = new Blob([content], { type: "text/plain" });
-                  const a = document.createElement("a");
-                  a.href = URL.createObjectURL(blob);
-                  a.download = `signalera-evening-wrap-${new Date().toISOString().slice(0, 10)}.txt`;
-                  a.click();
-                }}
-                className="inline-flex items-center gap-1.5 font-sans text-[11px] px-3 py-1.5 rounded-lg border border-border-base hover:border-gold hover:text-gold text-text-secondary transition-colors cursor-pointer"
-              >
-                &#8595; Export Brief
-              </button>
+              <ExportMenu
+                briefingId={briefing.id ?? null}
+                type="evening"
+                userEmail={user?.email ?? null}
+              />
               <button
                 type="button"
                 onClick={() => {
