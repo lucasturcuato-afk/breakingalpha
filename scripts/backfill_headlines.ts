@@ -56,7 +56,6 @@ async function main() {
   const { data: clusters, error } = await supabase
     .from("trend_clusters")
     .select("id, label, top_themes, top_companies, top_sectors, article_count, source_count")
-    .is("headline", null)
     .order("created_at", { ascending: false })
     .limit(500);
 
