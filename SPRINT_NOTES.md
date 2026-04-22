@@ -1,5 +1,21 @@
 # Intelligence Sprint Notes
 
+> Branch: `lucas/intelligence-sprint` | 8 commits | 20+ files changed
+
+## Required SQL Migrations (run in order)
+
+1. `sql/brief_section_ratings_schema.sql` — dedup + unique indexes + RLS
+2. `sql/add_quality_score.sql` — articles.quality_score column + index
+3. `sql/add_contested_flag.sql` — trend_clusters.contested_flag column
+
+After migrations, run: `python3 scripts/backfill_quality_scores.py`
+
+## Bug Found & Fixed
+
+**user_events column mismatch** (Phase 1B): The DB column is `metadata` but all 4 code files inserting/selecting used `payload`. Every behavioral event write was silently failing. Fixed across user-profile.ts, user-events/route.ts, collective-signals/route.ts, profile/insights/route.ts.
+
+---
+
 ## Phase 1A — Fix brief_section_ratings schema + route + frontend
 
 **Problem**: `brief_section_ratings` upsert was silently failing because no unique constraint existed on `(user_id, section_key)`. The route fell back to plain insert, causing duplicate rows (6 rows for 2 section_keys from 1 user). The GET route had no preferences aggregation. Neither morning-brief nor evening-wrap sent `briefing_id`.
