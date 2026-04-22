@@ -4,7 +4,7 @@ Generates a detailed analyst-style morning/evening briefing using Google Gemini.
 """
 
 import os, json, re
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from supabase import create_client
 from google import genai
 from google.genai import types
@@ -610,6 +610,110 @@ def extract_and_persist_claims(
     return len(rows)
 
 
+def generate_morning_review_for_evening(today_date, sb):
+    """Query today's graded morning brief calls and generate an LLM self-reflection.
+
+    Returns a dict shaped like::
+
+        {
+          "aggregate_sentence": "...",
+          "sector_reflections": [{ "sector": str, "verdict": str, "paragraph": str }],
+          "ticker_reflection": { "symbol": str, "verdict": str, "paragraph": str } | None,
+        }
+
+    Returns ``None`` if there are no graded calls yet, or if anything fails
+    (missing tables, API errors, JSON parse issues). Caller MUST treat this
+    as best-effort — an evening wrap must still ship without a review.
+    """
+    try:
+        calls_resp = (
+            sb.table("morning_brief_calls")
+            .select("*")
+            .eq("brief_date", today_date.isoformat())
+            .execute()
+        )
+    except Exception as e:
+        print(f"[synthesize] morning_brief_calls lookup failed: {e}")
+        return None
+
+    calls = calls_resp.data or []
+    if not calls:
+        return None
+
+    call_ids = [c["id"] for c in calls]
+    try:
+        outcomes_resp = (
+            sb.table("morning_brief_call_outcomes")
+            .select("*")
+            .in_("call_id", call_ids)
+            .execute()
+        )
+    except Exception as e:
+        print(f"[synthesize] morning_brief_call_outcomes lookup failed: {e}")
+        return None
+
+    outcomes_by_call = {o["call_id"]: o for o in (outcomes_resp.data or [])}
+    graded = [(c, outcomes_by_call[c["id"]]) for c in calls if c["id"] in outcomes_by_call]
+    if not graded:
+        return None  # no graded calls yet
+
+    # Aggregate stats
+    correct = sum(1 for _, o in graded if o.get("verdict") == "correct")
+    wrong = sum(1 for _, o in graded if o.get("verdict") == "wrong")
+    partial = sum(1 for _, o in graded if o.get("verdict") == "partial")
+
+    def _fmt_pct(x):
+        try:
+            return f"{float(x) * 100:+.2f}%"
+        except Exception:
+            return "n/a"
+
+    summary_block = "\n".join(
+        f"- [{o.get('verdict', '?')}] {c.get('claim_text', '')} "
+        f"→ {c.get('expected_direction', '?')} expected, "
+        f"{o.get('actual_direction', '?')} actual ({_fmt_pct(o.get('actual_pct_change'))})"
+        for c, o in graded
+    )
+
+    prompt = (
+        "Generate a self-reflection for today's evening wrap comparing the morning "
+        "brief's market calls to what actually happened.\n\n"
+        f"Morning brief calls and outcomes:\n{summary_block}\n\n"
+        f"Aggregate: {correct} correct, {wrong} wrong, {partial} partial.\n\n"
+        "Produce JSON only:\n"
+        "{\n"
+        "  \"aggregate_sentence\": \"<1-2 sentence summary — honest, never defensive>\",\n"
+        "  \"sector_reflections\": [\n"
+        "    { \"sector\": \"<name>\", \"verdict\": \"<correct|wrong|partial>\", \"paragraph\": \"<1 paragraph>\" }\n"
+        "  ],\n"
+        "  \"ticker_reflection\": { \"symbol\": \"<sym>\", \"verdict\": \"<v>\", \"paragraph\": \"<1 paragraph>\" } | null\n"
+        "}\n\n"
+        "Rules:\n"
+        "- Include sector_reflections only for sector calls with meaningful outcome.\n"
+        "- ticker_reflection: only if a high-confidence ticker call was made. Otherwise null.\n"
+        "- Total length: 200-400 words.\n"
+        "- Tone: confident, honest. \"We were wrong about X because Y\" > vague excuses.\n"
+        "- Output JSON only, no prose."
+    )
+
+    try:
+        resp = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+        )
+        text = (resp.text or "").strip()
+        # Strip code fences if present (```json ... ``` or ``` ... ```)
+        if text.startswith("```"):
+            parts = text.split("```")
+            if len(parts) >= 2:
+                text = parts[1]
+            text = text.removeprefix("json").strip()
+        return json.loads(text)
+    except Exception as e:
+        print(f"[synthesize] morning review generation failed: {e}")
+        return None
+
+
 def run(brief_type="morning"):
     print(f"📝 Synthesizing {brief_type} briefing...")
 
@@ -774,9 +878,9 @@ def run(brief_type="morning"):
         "created_at":       now,
     }
 
-    # Insert and capture the generated id so downstream steps (claims extraction)
-    # can attach to this brief. Fall back gracefully if the client or row shape
-    # doesn't expose an id.
+    # Insert and capture the generated id so downstream steps can attach
+    # (claims extraction on morning, morning_review on evening). Fall back
+    # gracefully if the client or row shape doesn't expose an id.
     insert_resp = supabase.table("briefings").insert(row).execute()
     brief_id = None
     try:
@@ -805,6 +909,21 @@ def run(brief_type="morning"):
                 print("  ⚠ claims extraction skipped: briefings insert did not return an id")
         except Exception as e:
             print(f"  ⚠ claims extraction failed (non-fatal): {e}")
+
+    # ── Evening wrap: attach self-reflection on morning brief vs market outcomes ──
+    # Non-fatal: reflection is additive and must never block the briefing from shipping.
+    if brief_type == "evening":
+        try:
+            review = generate_morning_review_for_evening(date.today(), supabase)
+            if review and brief_id:
+                supabase.table("briefings").update(
+                    {"morning_review": review}
+                ).eq("id", brief_id).execute()
+                print(f"  🔁 Attached morning_review to evening brief {brief_id}")
+            elif review and not brief_id:
+                print("  ⚠ Generated morning_review but no brief_id returned from insert")
+        except Exception as e:
+            print(f"[synthesize] morning review attach failed: {e}")  # non-fatal
 
     # Return brief text and addendum metadata for downstream consumers
     # (e.g. brief_feedback_loop.score_brief in run.py)
