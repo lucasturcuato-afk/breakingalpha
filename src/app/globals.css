@@ -150,6 +150,10 @@
   opacity: 0.72;
 }
 
+/* ── Utility: hide scrollbar on horizontal filter strips without disabling scroll ── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+
 /* ── Scrollbar styling — gold thumb, transparent track, both modes ── */
 ::-webkit-scrollbar {
   width: 8px;

@@ -1,8 +1,7 @@
 "use client";
 
-import { memo, useCallback, useMemo, useState } from "react";
-import type { CSSProperties } from "react";
-import { getVerticalStyle, getActivityTypeStyle } from "@/lib/sector-colors";
+import { memo, useCallback, useMemo } from "react";
+import { cn } from "@/lib/utils";
 import { Bell, Bookmark } from "lucide-react";
 
 const INDUSTRY_VERTICALS = [
@@ -17,81 +16,41 @@ const ACTIVITY_TYPES = [
   "Fundraising", "Crypto & Digital Assets", "Leadership & Operations",
 ];
 
-// ── Shared style constants ──────────────────────────────────────────────────
+// ── Filter pill ─────────────────────────────────────────────────────────────
+// Matches the Thesis Board filter-tab treatment exactly (see thesis-board/page.tsx
+// circa line 535): filled espresso pill when active, transparent with subtle
+// border when inactive. Count nested inside the pill at 70% opacity.
 
-const CHIP_BASE: CSSProperties = {
-  fontSize: "11px",
-  fontWeight: 500,
-  letterSpacing: "0.02em",
-  textTransform: "uppercase",
-  padding: "2px 7px",
-  borderRadius: "3px",
-  whiteSpace: "nowrap",
-  flexShrink: 0,
-  cursor: "pointer",
-  transition: "color 100ms, border-color 100ms",
-  lineHeight: 1.4,
-};
-
-const CHIP_INACTIVE: CSSProperties = {
-  backgroundColor: "transparent",
-  color: "#6b7280",
-  border: "1px solid rgba(255,255,255,0.14)",
-};
-
-const CHIP_HOVER: CSSProperties = {
-  backgroundColor: "transparent",
-  color: "#9ca3af",
-  border: "1px solid rgba(255,255,255,0.22)",
-};
-
-const ROW_LABEL: CSSProperties = {
-  fontSize: "9px",
-  fontWeight: 700,
-  letterSpacing: "0.1em",
-  textTransform: "uppercase",
-  color: "#6b7280",
-  width: "64px",
-  flexShrink: 0,
-};
-
-// ── Internal Chip component (owns hover state) ──────────────────────────────
-
-interface ChipProps {
+interface FilterPillProps {
   label: string;
+  count: number;
   isActive: boolean;
-  activeStyle: { bg: string; text: string; border: string };
   onToggle: (label: string) => void;
 }
 
-const Chip = memo(function Chip({ label, isActive, activeStyle, onToggle }: ChipProps) {
-  const [hovered, setHovered] = useState(false);
+const FilterPill = memo(function FilterPill({ label, count, isActive, onToggle }: FilterPillProps) {
   const handleClick = useCallback(() => onToggle(label), [onToggle, label]);
-
-  const dynamicStyle: CSSProperties = isActive
-    ? {
-        backgroundColor: activeStyle.bg,
-        color: activeStyle.text,
-        border: `1px solid ${activeStyle.border}`,
-      }
-    : hovered
-    ? CHIP_HOVER
-    : CHIP_INACTIVE;
-
   return (
     <button
       type="button"
       onClick={handleClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{ ...CHIP_BASE, ...dynamicStyle }}
+      className={cn(
+        "font-sans text-[11px] px-3 py-1.5 rounded-full border transition-all cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap flex-shrink-0",
+        isActive
+          ? "bg-espresso text-cream border-espresso"
+          : "bg-transparent text-text-secondary border-border-base hover:border-border-hover",
+      )}
     >
-      {label}
+      <span>{label}</span>
+      <span className="font-data text-[9px] opacity-70">{count}</span>
     </button>
   );
 });
 
 // ── Utility chip (Alerts / Saved) ───────────────────────────────────────────
+// Intentionally NOT a FilterPill — these are functional toggles ("show only
+// bearish", "show only saved") rather than filter categories, so they keep a
+// gold-tinted treatment that reads as a mode switch rather than a filter pick.
 
 interface UtilChipProps {
   label: string;
@@ -102,51 +61,21 @@ interface UtilChipProps {
 }
 
 function UtilChip({ label, icon, isActive, onToggle, badge }: UtilChipProps) {
-  const [hovered, setHovered] = useState(false);
-
-  const GOLD = "#d4a84b";
-  const dynamicStyle: CSSProperties = isActive
-    ? {
-        backgroundColor: "rgba(212,168,75,0.08)",
-        color: GOLD,
-        border: `1px solid rgba(212,168,75,0.3)`,
-      }
-    : hovered
-    ? CHIP_HOVER
-    : CHIP_INACTIVE;
-
   return (
     <button
       type="button"
       onClick={onToggle}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        ...CHIP_BASE,
-        ...dynamicStyle,
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "4px",
-      }}
+      className={cn(
+        "font-sans text-[11px] px-3 py-1.5 rounded-full border transition-all cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap",
+        isActive
+          ? "bg-gold-muted text-gold border-gold-border"
+          : "bg-transparent text-text-secondary border-border-base hover:border-border-hover",
+      )}
     >
       {icon}
-      {label}
+      <span>{label}</span>
       {badge != null && badge > 0 && (
-        <span
-          style={{
-            fontSize: "9px",
-            fontWeight: 700,
-            lineHeight: 1,
-            padding: "1px 4px",
-            borderRadius: "2px",
-            backgroundColor: isActive ? "rgba(212,168,75,0.2)" : "rgba(255,255,255,0.07)",
-            color: isActive ? GOLD : "#6b7280",
-            letterSpacing: 0,
-            textTransform: "none",
-          }}
-        >
-          {badge}
-        </span>
+        <span className="font-data text-[9px] opacity-70">{badge}</span>
       )}
     </button>
   );
@@ -164,15 +93,9 @@ interface FilterBarProps {
   showSavedOnly: boolean;
   onSavedToggle: () => void;
   alertCount?: number;
+  verticalCounts?: ReadonlyMap<string, number>;
+  activityCounts?: ReadonlyMap<string, number>;
 }
-
-// Precompute active styles per label once. `getVerticalStyle` / `getActivityTypeStyle`
-// may return fresh objects each call, which would break Chip's memo on
-// reference-compare; memoizing at module load gives every chip a stable ref.
-const VERTICAL_STYLES: ReadonlyArray<{ label: string; style: { bg: string; text: string; border: string } }> =
-  INDUSTRY_VERTICALS.map((v) => ({ label: v, style: getVerticalStyle(v) }));
-const ACTIVITY_STYLES: ReadonlyArray<{ label: string; style: { bg: string; text: string; border: string } }> =
-  ACTIVITY_TYPES.map((a) => ({ label: a, style: getActivityTypeStyle(a) }));
 
 function FilterBarInner({
   selectedVerticals,
@@ -184,53 +107,45 @@ function FilterBarInner({
   showSavedOnly,
   onSavedToggle,
   alertCount = 0,
+  verticalCounts,
+  activityCounts,
 }: FilterBarProps) {
-  // Set membership checks: building Sets once is O(k) but then lookup is O(1)
-  // per chip instead of O(k) per chip via Array.includes. With 22 chips and
-  // growing selection lists this is a visible saving.
+  // O(1) membership per chip instead of O(k) Array.includes.
   const verticalSelectedSet = useMemo(() => new Set(selectedVerticals), [selectedVerticals]);
   const activitySelectedSet = useMemo(() => new Set(selectedActivityTypes), [selectedActivityTypes]);
 
   return (
-    <div
-      className="bg-parchment dark:bg-[#161616]"
-      style={{ padding: "6px 16px 5px", borderBottom: "1px solid #1e1e1e" }}
-    >
+    <div className="bg-parchment dark:bg-surface px-4 py-2.5 space-y-2">
       {/* Row 1 — SECTORS */}
-      <div style={{ display: "flex", alignItems: "center", marginBottom: "4px" }}>
-        <span style={ROW_LABEL}>Sectors</span>
-        <div
-          className="no-scrollbar"
-          style={{ display: "flex", alignItems: "center", gap: "6px", overflowX: "auto", flex: 1 }}
-        >
-          {VERTICAL_STYLES.map(({ label, style }) => (
-            <Chip
+      <div className="flex items-center gap-3">
+        <span className="font-data text-[9px] font-bold uppercase tracking-widest text-gold w-[56px] flex-shrink-0">
+          Sectors
+        </span>
+        <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto flex-1">
+          {INDUSTRY_VERTICALS.map((label) => (
+            <FilterPill
               key={label}
               label={label}
+              count={verticalCounts?.get(label) ?? 0}
               isActive={verticalSelectedSet.has(label)}
-              activeStyle={style}
               onToggle={onVerticalToggle}
             />
           ))}
         </div>
       </div>
 
-      {/* Separator */}
-      <div style={{ borderBottom: "1px solid #1a1a1a", marginBottom: "4px" }} />
-
       {/* Row 2 — ACTIVITY */}
-      <div style={{ display: "flex", alignItems: "center", marginBottom: "4px" }}>
-        <span style={ROW_LABEL}>Activity</span>
-        <div
-          className="no-scrollbar"
-          style={{ display: "flex", alignItems: "center", gap: "6px", overflowX: "auto", flex: 1 }}
-        >
-          {ACTIVITY_STYLES.map(({ label, style }) => (
-            <Chip
+      <div className="flex items-center gap-3">
+        <span className="font-data text-[9px] font-bold uppercase tracking-widest text-gold w-[56px] flex-shrink-0">
+          Activity
+        </span>
+        <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto flex-1">
+          {ACTIVITY_TYPES.map((label) => (
+            <FilterPill
               key={label}
               label={label}
+              count={activityCounts?.get(label) ?? 0}
               isActive={activitySelectedSet.has(label)}
-              activeStyle={style}
               onToggle={onActivityTypeToggle}
             />
           ))}
@@ -238,17 +153,17 @@ function FilterBarInner({
       </div>
 
       {/* Row 3 — Utility (right-aligned) */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "6px" }}>
+      <div className="flex items-center justify-end gap-1.5">
         <UtilChip
           label="Alerts"
-          icon={<Bell size={9} />}
+          icon={<Bell size={11} />}
           isActive={showAlertsOnly}
           onToggle={onAlertsToggle}
           badge={alertCount}
         />
         <UtilChip
           label="Saved"
-          icon={<Bookmark size={9} />}
+          icon={<Bookmark size={11} />}
           isActive={showSavedOnly}
           onToggle={onSavedToggle}
         />
@@ -258,9 +173,8 @@ function FilterBarInner({
 }
 
 /**
- * FilterBar is memoized so that unrelated parent re-renders (60s article poll,
- * mood updates, sort changes, etc.) don't re-reconcile all 24 chips. When
- * `selectedVerticals` / `selectedActivityTypes` change, the new array ref
- * propagates and the bar re-renders as expected — but only then.
+ * Memoized so unrelated parent re-renders (60s poll, mood tick, sort change)
+ * don't re-reconcile the 22 filter pills. Re-renders only when a filter-state
+ * or counts prop ref changes.
  */
 export const FilterBar = memo(FilterBarInner);
