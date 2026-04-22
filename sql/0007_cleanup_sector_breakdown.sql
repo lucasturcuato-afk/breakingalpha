@@ -1,0 +1,21 @@
+-- 0007_cleanup_sector_breakdown.sql
+--
+-- NOTE FOR NOAH: this is a no-op migration by design.
+--
+-- The `_validate_sector_breakdown` helper in backend/synthesize.py was
+-- hardened in the brief-polish pass to enforce the 11-item
+-- INDUSTRY_VERTICALS whitelist on every key. Going forward, any compound
+-- label the model invents (e.g. "Technology AI Infrastructure") is either
+-- remapped to the matching whitelist prefix ("Technology") or dropped with a
+-- warning. All future sector_breakdown rows will therefore be clean.
+--
+-- Existing rows with bad labels are stored as JSONB in briefings.sector_breakdown
+-- and rewriting them in SQL is messy (nested key renames, narrative merges).
+-- The pragmatic fix is to re-synthesize today's brief after this change lands
+-- — that run will produce a clean sector_breakdown and will surface as the
+-- active brief. Older archived rows can stay as-is; they are not rendered on
+-- the home page and are only inspected for historical review.
+--
+-- If you want to scrub historical rows later, consider a one-off Python
+-- script that loads each briefings row, runs _validate_sector_breakdown on
+-- its sector_breakdown JSON, and writes back the result. Keep it out of SQL.

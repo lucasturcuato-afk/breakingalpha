@@ -9,6 +9,8 @@ from supabase import create_client
 from google import genai
 from google.genai import types
 
+from ingest import INDUSTRY_VERTICALS
+
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 # Admin client for writes that must bypass RLS (e.g. morning_brief_calls).
 # Falls back to the anon client if the service role key is unavailable so
@@ -37,9 +39,22 @@ SECTION RULES — read before writing anything: Only include a section if you ha
 
 HEADLINE SELECTION — complete this step before writing any JSON: Scan every article and Signal line. Rank stories by market significance in this order: (1) largest named dollar figure or confirmed transaction; (2) broadest macro or rates signal (Fed statement, inflation print, credit spread move); (3) widest sector or market-moving development. The dominant story is the one a capital markets desk would open their morning call with. Identify it explicitly, then write the headline around it. Do not let a narrower or merely interesting item displace a larger macro or deal story.
 
+SECTOR KEY RULE (CRITICAL): sector_breakdown keys MUST be exactly one of:
+"Technology", "Healthcare & Biotech", "Energy & Oil/Gas", "Financial Services",
+"Consumer & Retail", "Industrials & Manufacturing", "Aerospace & Defense",
+"Real Estate", "Media & Telecom", "Materials & Mining", "Agriculture".
+
+Do not invent compound labels like "Technology AI Infrastructure" or "Financial
+Services Private Equity". If you want to describe a sub-theme, put it in the
+narrative value — never in the key. Copy the sector name character-for-character
+from the list above.
+
 Respond ONLY with valid JSON in this exact schema — no preamble, no markdown fences:
 {
   "headline": "Write the headline for the dominant story you identified above — not a category label, not a topic area, the actual named development. Count the words: must be 10–15 words. If under 10 words, rewrite it. Name the specific company, institution, index, or data point involved. State what happened or is happening, not just the subject. Must not be a generic phrase interchangeable with headlines from other days. Never bundle two unrelated themes with 'and'. BANNED patterns: any headline under 8 words; vague labels ('Markets Face Uncertainty', 'Tech Sector Active', 'Volatility Returns'); naming a secondary story when a larger deal or macro story is present in the articles. BAD example: 'SpaceX Files for IPO' (4 words, no market implication). GOOD example: 'Fed Signals June Pause as May CPI Beats, Compressing Near-Term Rate-Cut Expectations'.",
+  "lead_paragraph": "2-3 sentences covering THE single lead story only — the dominant development you identified above. No grab bag, no blended themes. Name the specific companies, figures, institutions, or data points. Every sentence must advance the lead story; do not drift into secondary topics.",
+  "supporting_context": "2-3 sentences of related context — what else happened in the same sector or theme as the lead. Name specific companies or data points. Do not restate the lead; add color that helps a reader understand why the lead matters now.",
+  "what_to_watch": "1-2 sentences, forward-looking — what to watch in today's trading. Name a specific company, data release, or Fed speaker and commit to the binary outcome that matters. BANNED phrases: 'investors should monitor', 'watch for', 'bears watching', 'remain cautious'.",
   "summary": "3-4 sentences. Each sentence must cover ONE story or ONE data point — never blend two unrelated topics into a single sentence with 'while', 'as', 'amid', or 'even as'. Every sentence must contain at least one specific company name, dollar figure, rate level, or index move. Lead with the most important implication, not a description of what happened. Banned phrases: 'mix of', 'ongoing activity', 'investment landscape', 'markets reacted to', 'could also', 'highlight', 'alongside', 'coupled with'.",
   "market_tone": "One of: RISK-ON | RISK-OFF | MIXED | NEUTRAL",
   "market_pulse": {
@@ -92,9 +107,22 @@ SECTION RULES — read before writing anything: Only include a section if you ha
 
 HEADLINE SELECTION — complete this step before writing any JSON: Scan every article and Signal line. Rank stories by market significance in this order: (1) largest named dollar figure or confirmed transaction; (2) broadest macro or rates signal (Fed statement, inflation print, credit spread move); (3) widest sector or market-moving development. The dominant story is the one a capital markets desk would close their evening call with. Identify it explicitly, then write the headline around it. Do not let a narrower or merely interesting item displace a larger macro or deal story.
 
+SECTOR KEY RULE (CRITICAL): sector_breakdown keys MUST be exactly one of:
+"Technology", "Healthcare & Biotech", "Energy & Oil/Gas", "Financial Services",
+"Consumer & Retail", "Industrials & Manufacturing", "Aerospace & Defense",
+"Real Estate", "Media & Telecom", "Materials & Mining", "Agriculture".
+
+Do not invent compound labels like "Technology AI Infrastructure" or "Financial
+Services Private Equity". If you want to describe a sub-theme, put it in the
+narrative value — never in the key. Copy the sector name character-for-character
+from the list above.
+
 Respond ONLY with valid JSON in this exact schema — no preamble, no markdown fences:
 {
   "headline": "Write the headline for the dominant story you identified above — not a category label, not a topic area, the actual named development. Count the words: must be 10–15 words. If under 10 words, rewrite it. Name the specific company, institution, index, or data point involved. State what drove the tape today, not just the subject. Must not be a generic phrase interchangeable with headlines from other days. Never bundle two unrelated themes with 'and'. BANNED patterns: any headline under 8 words; vague labels ('Markets Close Mixed', 'Tech Sells Off', 'Volatility Spikes'); naming a secondary story when a larger deal or macro story is present in the articles. BAD example: 'Stocks Close Lower' (3 words, no named driver). GOOD example: 'S&P 500 Falls 1.4% as Hotter-Than-Expected May CPI Wipes Out June Fed Cut Pricing'.",
+  "lead_paragraph": "2-3 sentences covering THE single lead story only — the dominant development you identified above. No grab bag, no blended themes. Name the specific companies, figures, institutions, or data points. Every sentence must advance the lead story; do not drift into secondary topics.",
+  "supporting_context": "2-3 sentences of related context — what else happened in the same sector or theme as the lead. Name specific companies or data points. Do not restate the lead; add color that helps a reader understand why the lead matters now.",
+  "what_to_watch": "1-2 sentences, forward-looking — what to watch in tomorrow's trading. Name a specific company, data release, or Fed speaker and commit to the binary outcome that matters. BANNED phrases: 'investors should monitor', 'watch for', 'bears watching', 'remain cautious'.",
   "summary": "3-4 sentences. Each sentence must cover ONE story or ONE data point — never blend two unrelated topics into a single sentence with 'while', 'as', 'amid', or 'even as'. Every sentence must contain a specific company name, dollar figure, rate level, or index move. State what today's developments signal going into tomorrow. Banned phrases: 'mix of', 'ongoing activity', 'investment landscape', 'markets reacted to', 'could also', 'highlight', 'alongside', 'coupled with'.",
   "market_tone": "One of: RISK-ON | RISK-OFF | MIXED | NEUTRAL",
   "market_pulse": {
@@ -259,15 +287,20 @@ def _validate_sector_breakdown(sb):
     """
     Validate and repair sector_breakdown after parsing.
 
-    The JSON schema example in the system prompt uses 'Technology M&A' as a
-    placeholder key to show the model the expected shape. If the model echoes
-    the schema instruction text as a value (rather than writing a real narrative),
-    that entry is detected and dropped.
+    Enforces three guarantees:
 
-    Detection strategy: check the VALUE for instruction-language markers.
-    This catches schema-echo regardless of which key the model used.
+    1. Schema-echo detection — if the model copied the prompt's example
+       instruction text into a value, drop that entry.
+    2. Whitelist enforcement — every key must be one of the 11 industry
+       verticals from `ingest.INDUSTRY_VERTICALS`. Compound labels that
+       start with a whitelist value ("Technology AI Infrastructure" →
+       "Technology") are remapped. Anything else is dropped with a warning.
+    3. Merge collisions — if two remapped keys land on the same whitelist
+       value, narratives are concatenated with a single space so no signal
+       is silently lost.
 
-    Returns a clean dict of {sector_name: narrative} or {} if nothing valid.
+    Returns a clean dict of {sector_name: narrative} whose keys are all
+    whitelist-compliant, or {} if nothing valid remained.
     """
     if not isinstance(sb, dict):
         return {}
@@ -282,23 +315,57 @@ def _validate_sector_breakdown(sb):
         'concrete signal from the articles',
     )
 
-    clean = {}
-    skipped = []
+    # Pre-sort whitelist by length desc so longest-prefix match wins
+    # (e.g. "Energy & Oil/Gas" matches before any hypothetical "Energy" prefix).
+    whitelist_sorted = sorted(INDUSTRY_VERTICALS, key=len, reverse=True)
+
+    clean: dict[str, str] = {}
+    skipped: list[str] = []
+    remapped: list[tuple[str, str]] = []
+
     for k, v in sb.items():
         if not isinstance(k, str) or not isinstance(v, str):
-            skipped.append(k)
+            skipped.append(str(k))
             continue
-        v_lower = v.lower()
+
+        v_stripped = v.strip()
+        v_lower = v_stripped.lower()
         if any(marker in v_lower for marker in INSTRUCTION_MARKERS):
             skipped.append(k)  # schema-echo value — model copied the instruction
             continue
-        if len(v.strip()) < 20:
+        if len(v_stripped) < 20:
             skipped.append(k)  # too short to be a real narrative
             continue
-        clean[k] = v
+
+        # Resolve the key to a whitelist value.
+        target_key = None
+        if k in INDUSTRY_VERTICALS:
+            target_key = k
+        else:
+            for wl in whitelist_sorted:
+                # Match "<whitelist> <more text>" or exact match with
+                # trailing whitespace — never a substring in the middle.
+                if k == wl or k.startswith(wl + " "):
+                    target_key = wl
+                    if k != wl:
+                        remapped.append((k, wl))
+                    break
+
+        if target_key is None:
+            skipped.append(k)
+            continue
+
+        # Merge narratives if two source keys remap to the same whitelist value.
+        if target_key in clean:
+            clean[target_key] = (clean[target_key].rstrip() + " " + v_stripped).strip()
+        else:
+            clean[target_key] = v_stripped
 
     if skipped:
         print(f"  ⚠ sector_breakdown: dropped {len(skipped)} invalid key(s): {skipped}")
+    if remapped:
+        pairs = ", ".join(f"{orig!r}→{wl!r}" for orig, wl in remapped)
+        print(f"  ↳ sector_breakdown: remapped {len(remapped)} compound key(s): {pairs}")
 
     return clean
 
@@ -874,11 +941,25 @@ def run(brief_type="morning"):
     sector_breakdown = _validate_sector_breakdown(data.get("sector_breakdown", {}))
     print(f"  📊 sector_breakdown: {len(sector_breakdown)} sector(s) — {list(sector_breakdown.keys())}")
 
+    # Structured body (new schema): if all three fields are present, synthesize
+    # the legacy `summary` as their concatenation for backward compatibility
+    # with older consumers. If any field is missing, keep the model's `summary`
+    # unchanged.
+    lead_paragraph = (data.get("lead_paragraph") or "").strip()
+    supporting_context = (data.get("supporting_context") or "").strip()
+    what_to_watch_body = (data.get("what_to_watch") or "").strip()
+    has_structured_body = bool(lead_paragraph and supporting_context and what_to_watch_body)
+
+    if has_structured_body:
+        derived_summary = f"{lead_paragraph}\n\n{supporting_context}\n\n{what_to_watch_body}"
+    else:
+        derived_summary = data.get("summary", "") or ""
+
     now = datetime.now(timezone.utc).isoformat()
     row = {
         "briefing_type":    brief_type,
         "headline":         data.get("headline", ""),
-        "summary":          data.get("summary", ""),
+        "summary":          derived_summary,
         "market_tone":      data.get("market_tone", "NEUTRAL"),
         "sections":         json.dumps(data.get("sections", {})),
         "top_deals":        json.dumps(data.get("top_deals", [])),
@@ -886,24 +967,36 @@ def run(brief_type="morning"):
         "created_at":       now,
     }
 
-    # Insert with optional market_pulse (column may not exist yet on older DBs —
-    # fall back to base row if DB rejects the extra field). Capture the
-    # generated id so downstream steps can attach (claims extraction on morning,
-    # morning_review on evening).
+    # Insert with optional market_pulse + structured body fields. The new
+    # lead_paragraph / supporting_context / what_to_watch columns may not
+    # exist yet on older DBs, so we try with them first and fall back to the
+    # base row on schema errors — same pattern as market_pulse.
     mp_raw = data.get("market_pulse")
     has_pulse = (
         isinstance(mp_raw, dict)
         and mp_raw.get("sentiment_word")
         and mp_raw.get("narrative")
     )
-    insert_resp = None
+
+    extras: dict = {}
     if has_pulse:
-        row_with_pulse = {**row, "market_pulse": json.dumps(mp_raw)}
+        extras["market_pulse"] = json.dumps(mp_raw)
+    if has_structured_body:
+        extras["lead_paragraph"] = lead_paragraph
+        extras["supporting_context"] = supporting_context
+        extras["what_to_watch"] = what_to_watch_body
+
+    insert_resp = None
+    if extras:
+        row_with_extras = {**row, **extras}
         try:
-            insert_resp = supabase.table("briefings").insert(row_with_pulse).execute()
-            print(f"  ✨ market_pulse saved: {mp_raw.get('sentiment_word', '')[:30]}")
-        except Exception as mp_err:
-            print(f"  ⚠ market_pulse insert failed ({mp_err}) — falling back to base row")
+            insert_resp = supabase.table("briefings").insert(row_with_extras).execute()
+            if has_pulse:
+                print(f"  ✨ market_pulse saved: {mp_raw.get('sentiment_word', '')[:30]}")
+            if has_structured_body:
+                print(f"  ✨ structured body saved (lead/context/watch)")
+        except Exception as ext_err:
+            print(f"  ⚠ structured-body insert failed ({ext_err}) — falling back to base row")
             insert_resp = supabase.table("briefings").insert(row).execute()
     else:
         insert_resp = supabase.table("briefings").insert(row).execute()

@@ -9,6 +9,15 @@ export interface LeadHeroProps {
   type: "morning" | "evening";
   headline?: string;
   summary?: string;
+  /**
+   * Structured body fields from the new synthesis schema. When all three are
+   * populated they replace `summary` for rendering. If any are missing the
+   * component falls back to `summary` rendered as one or more paragraphs
+   * split on double newlines.
+   */
+  leadParagraph?: string;
+  supportingContext?: string;
+  whatToWatch?: string;
   marketTone?: string;
   storyCount?: number;
   generatedAt?: string;
@@ -31,52 +40,17 @@ function formatGeneratedAt(iso: string): string {
 }
 
 /**
- * Split a summary into a lead pull-quote + body paragraphs.
- *
- * Rules, in order:
- *   1. If the summary contains double newlines, treat the first block as the
- *      pull-quote and the rest as body paragraphs.
- *   2. If there's at least one sentence boundary, the first sentence is the
- *      pull-quote and remaining sentences concatenate into a single body
- *      paragraph.
- *   3. Otherwise the entire summary is the pull-quote with no body.
- *
- * Sentence boundary detection is intentionally simple (ASCII `. ! ?` followed
- * by whitespace). It handles common cases from the Gemini synthesis output
- * which writes 3-4 short sentences. Abbreviations like "U.S." or "vs." may
- * split awkwardly — acceptable rough edge for v1.
- */
-function splitSummary(summary: string): { lead: string; body: string[] } {
-  const trimmed = summary.trim();
-  if (!trimmed) return { lead: "", body: [] };
-
-  if (trimmed.includes("\n\n")) {
-    const parts = trimmed
-      .split(/\n\n+/)
-      .map((p) => p.trim())
-      .filter(Boolean);
-    const [lead, ...body] = parts;
-    return { lead: lead ?? "", body };
-  }
-
-  // Split on sentence boundaries.
-  const sentences = trimmed.match(/[^.!?]+[.!?]+(?:\s+|$)/g);
-  if (!sentences || sentences.length < 2) {
-    return { lead: trimmed, body: [] };
-  }
-  const lead = sentences[0].trim();
-  const rest = sentences.slice(1).join(" ").trim();
-  return { lead, body: rest ? [rest] : [] };
-}
-
-/**
  * LeadHero — editorial replacement for BriefHeader on Morning Brief + Evening Wrap.
  *
- * Treatment (Stratechery-style editorial rhythm):
+ * Layout (clean, no pull-quote treatment):
  *  - "TODAY'S LEAD" / "EVENING WRAP" eyebrow in gold small-caps.
  *  - Serif display headline (28-32px, weight 700).
- *  - Pull-quote: first sentence of summary, serif italic ~22px, 3px gold left border.
- *  - Body: remaining summary as single paragraph with generous line-height.
+ *  - Body (preferred path): structured three-part layout
+ *      lead_paragraph  (serif ~17-18px, tight leading)
+ *      supporting_context (sans ~15px, generous leading)
+ *      what_to_watch  (sans ~14px, subtle gold left accent bar)
+ *  - Body (fallback path): `summary` split on double newlines and rendered
+ *    as a stack of plain paragraphs.
  *  - Subtle inline `marketTone` badge (max ~80px).
  *  - Meta row: mono timestamp · story count · isStale warning · action buttons.
  *
@@ -86,6 +60,9 @@ export function LeadHero({
   type,
   headline,
   summary = "",
+  leadParagraph,
+  supportingContext,
+  whatToWatch,
   marketTone,
   storyCount,
   generatedAt,
@@ -97,7 +74,18 @@ export function LeadHero({
 }: LeadHeroProps) {
   const isMorning = type === "morning";
   const eyebrow = isMorning ? "Today's Lead" : "Evening Wrap";
-  const { lead, body } = splitSummary(summary);
+
+  const lead = (leadParagraph || "").trim();
+  const context = (supportingContext || "").trim();
+  const watch = (whatToWatch || "").trim();
+  const hasStructured = Boolean(lead && context && watch);
+
+  // Fallback: split summary on double newlines into paragraphs.
+  const fallbackParagraphs = summary
+    .trim()
+    .split(/\n\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
 
   const resolvedHeadline =
     headline ||
@@ -182,42 +170,67 @@ export function LeadHero({
         </div>
       ) : null}
 
-      {/* Pull-quote (first sentence) */}
-      {lead && (
-        <blockquote
-          className="font-[family-name:var(--font-playfair-display)] italic mb-4"
-          style={{
-            fontSize: "clamp(19px, 2vw, 22px)",
-            lineHeight: 1.55,
-            color: "var(--foreground)",
-            borderLeft: "3px solid var(--gold)",
-            paddingLeft: "1rem",
-            letterSpacing: "-0.005em",
-          }}
-        >
-          {lead}
-        </blockquote>
-      )}
+      {/* Body — structured three-part layout when all fields present. */}
+      {hasStructured ? (
+        <div className="flex flex-col" style={{ gap: "22px" }}>
+          {/* Lead paragraph — serif, slightly larger body */}
+          <p
+            className="font-[family-name:var(--font-playfair-display)]"
+            style={{
+              fontSize: "clamp(16.5px, 1.6vw, 18px)",
+              lineHeight: 1.65,
+              color: "var(--foreground)",
+              letterSpacing: "-0.005em",
+            }}
+          >
+            {lead}
+          </p>
 
-      {/* Body paragraphs */}
-      {body.length > 0 && (
-        <div className="space-y-3">
-          {body.map((para, i) => (
+          {/* Supporting context — sans, generous leading */}
+          <p
+            className="font-sans"
+            style={{
+              fontSize: "15px",
+              lineHeight: 1.75,
+              color: "var(--text-primary)",
+              opacity: 0.9,
+            }}
+          >
+            {context}
+          </p>
+
+          {/* What to watch — subtle gold left accent bar, smaller forward-looking note */}
+          <p
+            className="font-sans"
+            style={{
+              fontSize: "14px",
+              lineHeight: 1.7,
+              color: "var(--text-secondary)",
+              borderLeft: "2px solid var(--gold)",
+              paddingLeft: "12px",
+            }}
+          >
+            {watch}
+          </p>
+        </div>
+      ) : fallbackParagraphs.length > 0 ? (
+        <div className="flex flex-col" style={{ gap: "20px" }}>
+          {fallbackParagraphs.map((para, i) => (
             <p
               key={i}
               className="font-[family-name:var(--font-playfair-display)]"
               style={{
-                fontSize: "18px",
+                fontSize: "17px",
                 lineHeight: 1.7,
                 color: "var(--text-primary)",
-                opacity: 0.9,
+                opacity: 0.92,
               }}
             >
               {para}
             </p>
           ))}
         </div>
-      )}
+      ) : null}
 
       {/* Meta row */}
       <div className="flex items-center flex-wrap gap-x-4 gap-y-2 mt-5 pt-4" style={{ borderTop: "1px solid var(--gold-border)" }}>
