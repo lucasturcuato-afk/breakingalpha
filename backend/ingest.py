@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from watchlist import boost_watchlist_relevance
 from wikidata import is_valid_company
 from fulltext import fetch_full_text, SCRAPEABLE_SOURCES
+from article_quality import compute_quality_score
 
 load_dotenv()
 
@@ -542,7 +543,7 @@ def store_article(article, analysis):
         # any frontend code still reading the old column keeps working.
         sector_fallback = industry_verticals[0] if industry_verticals else ""
 
-        r = supabase.table("articles").insert({
+        row_data = {
             "title": article["title"],
             "summary": article["summary"] or "",
             "url": article["url"],
@@ -559,7 +560,9 @@ def store_article(article, analysis):
             "deal_type": analysis.get("deal_type"),
             "primary_company": analysis.get("primary_company"),
             "content_type": article.get("content_type", "snippet"),
-        }).execute()
+        }
+        row_data["quality_score"] = compute_quality_score(row_data)
+        r = supabase.table("articles").insert(row_data).execute()
         article_id = r.data[0]["id"]
         for company in clean_companies:
             cid = upsert_company(company, analysis.get("themes", []), analysis.get("sentiment", "neutral"))

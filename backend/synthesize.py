@@ -181,8 +181,17 @@ def _select_articles_for_synthesis(
     since they are breadth signals, not primary stories.
 
     articles must already be sorted by relevance_score descending.
+    quality_score (if present) is used as a tiebreaker within the same
+    relevance_score bucket.
     """
     from collections import defaultdict
+
+    # Sort by (relevance_score DESC, quality_score DESC) — quality as tiebreaker
+    articles = sorted(
+        articles,
+        key=lambda a: (a.get("relevance_score", 0), a.get("quality_score") or 0),
+        reverse=True,
+    )
 
     def _parse_companies(a):
         companies = a.get("companies") or []
@@ -442,7 +451,7 @@ def run(brief_type="morning"):
     # a single deal cluster or company from dominating the briefing.
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     resp = supabase.table("articles")\
-        .select("title, summary, sector, industry_verticals, companies, relevance_score, relevance_reason")\
+        .select("title, summary, sector, industry_verticals, companies, relevance_score, relevance_reason, quality_score")\
         .gte("ingested_at", cutoff)\
         .order("relevance_score", desc=True)\
         .limit(60)\
@@ -451,7 +460,7 @@ def run(brief_type="morning"):
     articles = resp.data or []
     if not articles:
         resp = supabase.table("articles")\
-            .select("title, summary, sector, industry_verticals, companies, relevance_score, relevance_reason")\
+            .select("title, summary, sector, industry_verticals, companies, relevance_score, relevance_reason, quality_score")\
             .order("ingested_at", desc=True)\
             .limit(60)\
             .execute()

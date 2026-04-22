@@ -23,3 +23,16 @@
 - `src/app/api/profile/insights/route.ts` — select and type cast fixed.
 
 **Verification script**: `scripts/verify_user_events.ts` — confirms table schema, identifies column mismatch, documents FK constraint on user_id.
+
+## Phase 1C — Article quality scoring at ingest
+
+**What**: Deterministic (no LLM) quality score [0–1] based on structural signals: title quality, summary richness, entity presence, content availability, metadata completeness.
+
+**Changes**:
+- `backend/article_quality.py` — `compute_quality_score(article)` function, 10 weighted sub-signals normalized to [0, 1].
+- `backend/ingest.py` — Imports article_quality, computes and stores quality_score at ingest time.
+- `backend/synthesize.py` — Fetches quality_score alongside articles, uses it as tiebreaker in `_select_articles_for_synthesis()` (quality_score DESC within same relevance_score bucket).
+- `sql/add_quality_score.sql` — Migration to add `quality_score REAL` column + index.
+- `scripts/backfill_quality_scores.py` — Backfill script for existing articles.
+
+**Migration**: Run `sql/add_quality_score.sql` in Supabase SQL Editor, then run `python3 scripts/backfill_quality_scores.py`.
