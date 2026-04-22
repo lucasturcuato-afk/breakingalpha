@@ -26,6 +26,36 @@ const ACTIVITY_TYPES = [
   "Fundraising", "Crypto & Digital Assets", "Leadership & Operations",
 ] as const;
 
+// Map filter labels → keywords that appear in top_themes / top_sectors
+const ACTIVITY_TO_KEYWORDS: Record<string, string[]> = {
+  "Mergers & Acquisitions": ["m&a", "merger", "acquisition", "takeover", "buyout"],
+  "Private Equity": ["pe", "private equity", "buyout", "lbo"],
+  "Venture Capital": ["vc", "venture", "seed", "series"],
+  "IPO & Capital Markets": ["ipo", "capital markets", "listing", "offering", "spac", "public markets"],
+  "Earnings & Results": ["earnings", "revenue", "profit", "quarterly", "results"],
+  "Macro & Policy": ["macro", "policy", "fed", "rates", "inflation", "gdp"],
+  "Geopolitics": ["geopolitics", "geopolitical", "sanctions", "trade war", "tariff"],
+  "Regulation & Legal": ["regulation", "regulatory", "legal", "compliance", "sec", "antitrust"],
+  "Fundraising": ["fundraising", "fund", "capital raise"],
+  "Crypto & Digital Assets": ["crypto", "bitcoin", "blockchain", "digital asset", "defi", "fintech"],
+  "Leadership & Operations": ["leadership", "ceo", "management", "operations", "restructuring"],
+};
+
+// Map filter labels → keywords for sector matching
+const VERTICAL_TO_KEYWORDS: Record<string, string[]> = {
+  "Technology": ["technology", "tech"],
+  "Healthcare & Biotech": ["healthcare", "biotech", "pharma"],
+  "Energy & Oil/Gas": ["energy", "oil/gas", "oil", "climate"],
+  "Financial Services": ["financial services", "fintech"],
+  "Consumer & Retail": ["consumer", "retail"],
+  "Industrials & Manufacturing": ["industrials", "manufacturing"],
+  "Aerospace & Defense": ["aerospace", "defense"],
+  "Real Estate": ["real estate", "reits"],
+  "Media & Telecom": ["media", "telecom"],
+  "Materials & Mining": ["materials", "mining"],
+  "Agriculture": ["agriculture", "agri"],
+};
+
 type AnomalyFilter = "all" | AnomalyLevel;
 
 // ── Types ──
@@ -347,27 +377,23 @@ export default function TrendsPage() {
     let result = allSignals;
 
     if (selectedVerticals.size > 0) {
-      result = result.filter((s) =>
-        s.top_sectors.some((ts) => {
-          const tsLower = ts.toLowerCase();
-          return Array.from(selectedVerticals).some((v) => {
-            const vLower = v.toLowerCase();
-            return tsLower.includes(vLower) || vLower.includes(tsLower);
-          });
-        }),
-      );
+      result = result.filter((s) => {
+        const sectorText = s.top_sectors.map((t) => t.toLowerCase()).join(" ");
+        return Array.from(selectedVerticals).some((v) => {
+          const keywords = VERTICAL_TO_KEYWORDS[v] ?? [v.toLowerCase()];
+          return keywords.some((kw) => sectorText.includes(kw));
+        });
+      });
     }
 
     if (selectedActivities.size > 0) {
-      result = result.filter((s) =>
-        s.top_themes.some((tt) => {
-          const ttLower = tt.toLowerCase();
-          return Array.from(selectedActivities).some((a) => {
-            const aLower = a.toLowerCase();
-            return ttLower.includes(aLower) || aLower.includes(ttLower);
-          });
-        }),
-      );
+      result = result.filter((s) => {
+        const allText = [...s.top_themes, ...s.top_sectors].map((t) => t.toLowerCase()).join(" ");
+        return Array.from(selectedActivities).some((a) => {
+          const keywords = ACTIVITY_TO_KEYWORDS[a] ?? [a.toLowerCase()];
+          return keywords.some((kw) => allText.includes(kw));
+        });
+      });
     }
 
     if (anomalyFilter !== "all") {
