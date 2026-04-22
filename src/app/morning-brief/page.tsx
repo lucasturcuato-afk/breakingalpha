@@ -9,6 +9,7 @@ import { LeadHero } from "@/components/brief/lead-hero";
 import { BriefSection } from "@/components/brief/brief-section";
 import { DealCard } from "@/components/brief/deal-card";
 import { SectorSignalCard } from "@/components/brief/sector-signal-card";
+import { ExportMenu } from "@/components/brief/export-menu";
 import { LeadStoryCard, CompactStoryCard } from "@/components/dashboard/story-card";
 import { ActiveThesesWidget } from "@/components/dashboard/active-theses-widget";
 import { WatchlistWidget } from "@/components/dashboard/watchlist-widget";
@@ -109,7 +110,7 @@ export default function MorningBriefPage() {
   const [leadMemoOpen, setLeadMemoOpen] = useState(false);
   const [leadMemoContent, setLeadMemoContent] = useState("");
   const [toast, setToast] = useState("");
-  const [user, setUser] = useState<{ id: string } | null | undefined>(undefined);
+  const [user, setUser] = useState<{ id: string; email?: string | null } | null | undefined>(undefined);
   const [showSignIn, setShowSignIn] = useState(false);
   const [formatLabel, setFormatLabel] = useState<string | null>(null);
   const [userAddendum, setUserAddendum] = useState<string | null>(null);
@@ -269,7 +270,11 @@ export default function MorningBriefPage() {
 
   useEffect(() => {
     getSupabase().auth.getUser().then(({ data }) => {
-      setUser(data.user ? { id: data.user.id } : null);
+      setUser(
+        data.user
+          ? { id: data.user.id, email: data.user.email ?? null }
+          : null,
+      );
     }).catch(() => setUser(null));
   }, []);
 
@@ -397,24 +402,21 @@ export default function MorningBriefPage() {
 
             {/* Export & Share */}
             <div className="flex items-center gap-2 mb-4">
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={() => {
-                  if (user === null) {
-                    setShowSignIn(true);
-                    return;
-                  }
-                  const content = document.querySelector("main")?.innerText || "";
-                  const blob = new Blob([content], { type: "text/plain" });
-                  const a = document.createElement("a");
-                  a.href = URL.createObjectURL(blob);
-                  a.download = `signalera-morning-brief-${new Date().toISOString().slice(0, 10)}.txt`;
-                  a.click();
-                }}
-              >
-                &#8595; Export Brief
-              </Button>
+              {user === null ? (
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={() => setShowSignIn(true)}
+                >
+                  &#8595; Export Brief
+                </Button>
+              ) : (
+                <ExportMenu
+                  briefingId={briefing.id ?? null}
+                  type="morning"
+                  userEmail={user?.email ?? null}
+                />
+              )}
               <ShareButton
                 briefingId={briefing?.id}
                 briefTitle={briefing?.headline}
