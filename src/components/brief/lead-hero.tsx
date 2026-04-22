@@ -80,12 +80,27 @@ export function LeadHero({
   const watch = (whatToWatch || "").trim();
   const hasStructured = Boolean(lead && context && watch);
 
-  // Fallback: split summary on double newlines into paragraphs.
-  const fallbackParagraphs = summary
-    .trim()
-    .split(/\n\n+/)
-    .map((p) => p.trim())
-    .filter(Boolean);
+  // Fallback rendering: prefer explicit paragraph breaks; if the summary is a
+  // single block (older briefs pre-structured-body synthesis), split at
+  // sentence boundaries into ~3 roughly-balanced chunks so the wall of text
+  // gets visual pacing. Only kicks in when structured fields aren't present.
+  const fallbackParagraphs = (() => {
+    const trimmed = summary.trim();
+    if (!trimmed) return [] as string[];
+    const byBreaks = trimmed.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
+    if (byBreaks.length > 1) return byBreaks;
+    // Single-block summary under 240 chars: render as-is (one paragraph).
+    if (trimmed.length < 240) return byBreaks;
+    // Sentence-split heuristic — sentences ending in . ! ? followed by whitespace.
+    const sentences = trimmed.match(/[^.!?]+[.!?]+(?:\s+|$)/g) || [trimmed];
+    if (sentences.length <= 2) return byBreaks;
+    const chunkSize = Math.ceil(sentences.length / 3);
+    const chunks: string[] = [];
+    for (let i = 0; i < sentences.length; i += chunkSize) {
+      chunks.push(sentences.slice(i, i + chunkSize).join("").trim());
+    }
+    return chunks.filter(Boolean);
+  })();
 
   const resolvedHeadline =
     headline ||

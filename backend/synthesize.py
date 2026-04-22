@@ -49,13 +49,15 @@ Services Private Equity". If you want to describe a sub-theme, put it in the
 narrative value — never in the key. Copy the sector name character-for-character
 from the list above.
 
+REQUIRED FIELDS — non-negotiable. The following four fields MUST be present in every response, with non-empty string values that meet the specs below. Never omit any of them and never emit empty strings: `headline`, `lead_paragraph`, `supporting_context`, `what_to_watch`. The `summary` field is retained for backward compatibility; if you wish you may also include it but callers will synthesize it from the three structured fields.
+
 Respond ONLY with valid JSON in this exact schema — no preamble, no markdown fences:
 {
   "headline": "Write the headline for the dominant story you identified above — not a category label, not a topic area, the actual named development. Count the words: must be 10–15 words. If under 10 words, rewrite it. Name the specific company, institution, index, or data point involved. State what happened or is happening, not just the subject. Must not be a generic phrase interchangeable with headlines from other days. Never bundle two unrelated themes with 'and'. BANNED patterns: any headline under 8 words; vague labels ('Markets Face Uncertainty', 'Tech Sector Active', 'Volatility Returns'); naming a secondary story when a larger deal or macro story is present in the articles. BAD example: 'SpaceX Files for IPO' (4 words, no market implication). GOOD example: 'Fed Signals June Pause as May CPI Beats, Compressing Near-Term Rate-Cut Expectations'.",
-  "lead_paragraph": "2-3 sentences covering THE single lead story only — the dominant development you identified above. No grab bag, no blended themes. Name the specific companies, figures, institutions, or data points. Every sentence must advance the lead story; do not drift into secondary topics.",
-  "supporting_context": "2-3 sentences of related context — what else happened in the same sector or theme as the lead. Name specific companies or data points. Do not restate the lead; add color that helps a reader understand why the lead matters now.",
-  "what_to_watch": "1-2 sentences, forward-looking — what to watch in today's trading. Name a specific company, data release, or Fed speaker and commit to the binary outcome that matters. BANNED phrases: 'investors should monitor', 'watch for', 'bears watching', 'remain cautious'.",
-  "summary": "3-4 sentences. Each sentence must cover ONE story or ONE data point — never blend two unrelated topics into a single sentence with 'while', 'as', 'amid', or 'even as'. Every sentence must contain at least one specific company name, dollar figure, rate level, or index move. Lead with the most important implication, not a description of what happened. Banned phrases: 'mix of', 'ongoing activity', 'investment landscape', 'markets reacted to', 'could also', 'highlight', 'alongside', 'coupled with'.",
+  "lead_paragraph": "REQUIRED. 2-3 sentences covering THE single lead story only — the dominant development you identified above. No grab bag, no blended themes. Name the specific companies, figures, institutions, or data points. Every sentence must advance the lead story; do not drift into secondary topics. Must NOT be empty.",
+  "supporting_context": "REQUIRED. 2-3 sentences of related context — what else happened in the same sector or theme as the lead. Name specific companies or data points. Do not restate the lead; add color that helps a reader understand why the lead matters now. Must NOT be empty.",
+  "what_to_watch": "REQUIRED. 1-2 sentences, forward-looking — what to watch in today's trading. Name a specific company, data release, or Fed speaker and commit to the binary outcome that matters. BANNED phrases: 'investors should monitor', 'watch for', 'bears watching', 'remain cautious'. Must NOT be empty.",
+  "summary": "Optional but still supported. If provided, 3-4 sentences with the same rules that each sentence covers ONE story or ONE data point. Banned phrases: 'mix of', 'ongoing activity', 'investment landscape', 'markets reacted to', 'could also', 'highlight', 'alongside', 'coupled with'. If omitted, it will be synthesized from the three structured fields above.",
   "market_tone": "One of: RISK-ON | RISK-OFF | MIXED | NEUTRAL",
   "market_pulse": {
     "sentiment_word": "A single evocative adjective that captures the market's psychological state today — e.g., 'anxious', 'complacent', 'exuberant', 'defensive', 'bifurcated', 'numb'. One word. Lower-case. No punctuation.",
@@ -117,12 +119,14 @@ Services Private Equity". If you want to describe a sub-theme, put it in the
 narrative value — never in the key. Copy the sector name character-for-character
 from the list above.
 
+REQUIRED FIELDS — non-negotiable. The following four fields MUST be present in every response, with non-empty string values that meet the specs below. Never omit any of them and never emit empty strings: `headline`, `lead_paragraph`, `supporting_context`, `what_to_watch`. The `summary` field is retained for backward compatibility; if you wish you may also include it but callers will synthesize it from the three structured fields.
+
 Respond ONLY with valid JSON in this exact schema — no preamble, no markdown fences:
 {
   "headline": "Write the headline for the dominant story you identified above — not a category label, not a topic area, the actual named development. Count the words: must be 10–15 words. If under 10 words, rewrite it. Name the specific company, institution, index, or data point involved. State what drove the tape today, not just the subject. Must not be a generic phrase interchangeable with headlines from other days. Never bundle two unrelated themes with 'and'. BANNED patterns: any headline under 8 words; vague labels ('Markets Close Mixed', 'Tech Sells Off', 'Volatility Spikes'); naming a secondary story when a larger deal or macro story is present in the articles. BAD example: 'Stocks Close Lower' (3 words, no named driver). GOOD example: 'S&P 500 Falls 1.4% as Hotter-Than-Expected May CPI Wipes Out June Fed Cut Pricing'.",
-  "lead_paragraph": "2-3 sentences covering THE single lead story only — the dominant development you identified above. No grab bag, no blended themes. Name the specific companies, figures, institutions, or data points. Every sentence must advance the lead story; do not drift into secondary topics.",
-  "supporting_context": "2-3 sentences of related context — what else happened in the same sector or theme as the lead. Name specific companies or data points. Do not restate the lead; add color that helps a reader understand why the lead matters now.",
-  "what_to_watch": "1-2 sentences, forward-looking — what to watch in tomorrow's trading. Name a specific company, data release, or Fed speaker and commit to the binary outcome that matters. BANNED phrases: 'investors should monitor', 'watch for', 'bears watching', 'remain cautious'.",
+  "lead_paragraph": "REQUIRED. 2-3 sentences covering THE single lead story only — the dominant development you identified above. No grab bag, no blended themes. Name the specific companies, figures, institutions, or data points. Every sentence must advance the lead story; do not drift into secondary topics. Must NOT be empty.",
+  "supporting_context": "REQUIRED. 2-3 sentences of related context — what else happened in the same sector or theme as the lead. Name specific companies or data points. Do not restate the lead; add color that helps a reader understand why the lead matters now. Must NOT be empty.",
+  "what_to_watch": "REQUIRED. 1-2 sentences, forward-looking — what to watch in tomorrow's trading. Name a specific company, data release, or Fed speaker and commit to the binary outcome that matters. BANNED phrases: 'investors should monitor', 'watch for', 'bears watching', 'remain cautious'. Must NOT be empty.",
   "summary": "3-4 sentences. Each sentence must cover ONE story or ONE data point — never blend two unrelated topics into a single sentence with 'while', 'as', 'amid', or 'even as'. Every sentence must contain a specific company name, dollar figure, rate level, or index move. State what today's developments signal going into tomorrow. Banned phrases: 'mix of', 'ongoing activity', 'investment landscape', 'markets reacted to', 'could also', 'highlight', 'alongside', 'coupled with'.",
   "market_tone": "One of: RISK-ON | RISK-OFF | MIXED | NEUTRAL",
   "market_pulse": {
@@ -871,6 +875,52 @@ def run(brief_type="morning"):
         article_text += watchlist_text
 
     system = MORNING_SYSTEM if brief_type == "morning" else EVENING_SYSTEM
+
+    # --- Evening: lead-story dedup vs morning brief ----------------------------
+    # Fetch the morning brief's headline so the evening wrap can prefer a
+    # different lead unless the same story is still the dominant market mover
+    # at close. Non-fatal — evening still ships without this context.
+    if brief_type == "evening":
+        try:
+            today_start_utc = (
+                datetime.now(timezone.utc)
+                .replace(hour=0, minute=0, second=0, microsecond=0)
+                .isoformat()
+            )
+            morning_resp = (
+                supabase.table("briefings")
+                .select("headline, lead_paragraph")
+                .eq("briefing_type", "morning")
+                .gte("created_at", today_start_utc)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if morning_resp.data:
+                m = morning_resp.data[0]
+                morning_headline = (m.get("headline") or "").strip()
+                morning_lead = (m.get("lead_paragraph") or "").strip()
+                if morning_headline:
+                    dedup_directive = (
+                        "[LEAD-STORY DEDUP — today's morning brief context]\n"
+                        f"Morning brief led with: \"{morning_headline}\"\n"
+                    )
+                    if morning_lead:
+                        dedup_directive += f"Morning lead paragraph: {morning_lead[:400]}\n"
+                    dedup_directive += (
+                        "\nDEDUP RULE: The evening wrap should cover the day's trading action, "
+                        "not restate the morning. Prefer a DIFFERENT lead story unless the "
+                        "morning's news is genuinely still the dominant market mover at close "
+                        "(e.g., Fed decision, major earnings beat that reshaped the tape, index-"
+                        "moving geopolitical event). If you must re-lead with the same underlying "
+                        "story, reframe the HEADLINE and LEAD_PARAGRAPH to emphasize what "
+                        "developed during the trading day — price action, follow-on reactions, "
+                        "sector impact — NOT what was announced in the morning.\n\n"
+                    )
+                    system = dedup_directive + system
+                    print(f"  🔄 Injected morning-brief dedup directive (morning led: {morning_headline[:60]}...)")
+        except Exception as e:
+            print(f"  ⚠ morning-brief dedup lookup failed (non-fatal): {e}")
 
     # --- Feedback loop: prepend cached brief improvement addendum ----------
     brief_addendum_used = None

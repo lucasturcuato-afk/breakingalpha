@@ -19,6 +19,8 @@ interface BriefSectionProps {
   currentRating?: number;
   /** When true, tightens padding and body font by ~1px for side-quadrant typography tiering. */
   compact?: boolean;
+  /** When true, root stretches to fill its parent's height (dashboard mode lead quadrant). */
+  fillHeight?: boolean;
 }
 
 export function BriefSection({
@@ -35,6 +37,7 @@ export function BriefSection({
   onRate,
   currentRating = 0,
   compact = false,
+  fillHeight = false,
 }: BriefSectionProps) {
   const cleanContent = stripHtml(content);
 
@@ -48,6 +51,7 @@ export function BriefSection({
         "relative rounded-xl border border-border-base bg-white dark:bg-elevated dark:border-border-default group",
         compact ? "p-3 min-h-[140px]" : "p-4 min-h-[160px]",
         fullWidth && "col-span-2",
+        fillHeight && "h-full",
         "cursor-pointer transition-all duration-200 hover:ring-1 hover:ring-gold/40 hover:shadow-sm",
       )}
     >

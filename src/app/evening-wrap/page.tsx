@@ -40,6 +40,7 @@ const SECTION_ICONS: Record<string, string> = {
   macro_and_rates: "🏦",
   deals_and_ma: "💼",
   public_markets: "📊",
+  geopolitics: "🌍",
   sector_spotlight: "🔦",
   what_to_watch: "👁",
   tomorrow_setup: "🌅",
@@ -50,6 +51,7 @@ const SECTION_TITLES: Record<string, string> = {
   macro_and_rates: "Macro & Rates",
   deals_and_ma: "Deals & M&A",
   public_markets: "Public Markets",
+  geopolitics: "Geopolitics",
   sector_spotlight: "Sector Spotlight",
   what_to_watch: "What to Watch",
   tomorrow_setup: "Tomorrow's Setup",
@@ -500,7 +502,7 @@ export default function EveningWrapPage() {
                               : "bg-transparent text-text-secondary border-border-base hover:border-border-hover",
                           )}
                         >
-                          {SECTION_TITLES[section.key] || section.key}
+                          {SECTION_TITLES[section.key] || section.key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
                         </button>
                       ))}
                     </div>
@@ -555,13 +557,14 @@ export default function EveningWrapPage() {
                     const [leadSection, ...restSections] = dashboardSections;
                     if (!leadSection) return null;
 
-                    const renderSection = (section: typeof dashboardSections[number], compact = false) => (
+                    const renderSection = (section: typeof dashboardSections[number], compact = false, fillHeight = false) => (
                       <BriefSection
                         key={section.key}
                         title={section.title}
                         content={section.content}
                         fullWidth
                         compact={compact}
+                        fillHeight={fillHeight}
                         expanded={expandedSection === section.key}
                         onToggle={() => setExpandedSection(expandedSection === section.key ? null : section.key)}
                         onGenerateMemo={() => {
@@ -605,9 +608,11 @@ export default function EveningWrapPage() {
                     }
 
                     return (
-                      <div className="grid gap-3" style={{ gridTemplateColumns: "60fr 40fr" }}>
-                        <div>{renderSection(leadSection, false)}</div>
-                        <div className="flex flex-col gap-3">
+                      <div className="grid gap-3 items-stretch" style={{ gridTemplateColumns: "60fr 40fr" }}>
+                        <div className="h-full flex flex-col">
+                          {renderSection(leadSection, false, true)}
+                        </div>
+                        <div className="flex flex-col gap-3 min-h-0 overflow-y-auto">
                           {restSections.map((section) => renderSection(section, true))}
                         </div>
                       </div>
