@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo } from "react";
 import { AppShell } from "@/components/shell";
 import { PanelWidget } from "@/components/shell/right-panel";
 import { TickerStrip } from "@/components/brief/ticker-strip";
-import { BriefHeader } from "@/components/brief/brief-header";
+import { MarketPulse } from "@/components/brief/market-pulse";
+import { LeadHero } from "@/components/brief/lead-hero";
 import { BriefSection } from "@/components/brief/brief-section";
 import { DealCard } from "@/components/brief/deal-card";
 import { SectorSignalCard } from "@/components/brief/sector-signal-card";
@@ -73,6 +74,11 @@ interface BriefingData {
   deals?: DealData[];
   top_stories?: StoryData[];
   created_at?: string;
+  market_pulse?: {
+    sentiment_word: string;
+    narrative: string;
+    headlines?: Array<{ title: string; href?: string }>;
+  } | null;
 }
 
 function storyToContent(story: StoryData): ContentDescriptor {
@@ -156,6 +162,16 @@ export default function MorningBriefPage() {
 
           const topDeals = typeof b.top_deals === "string" ? JSON.parse(b.top_deals) : b.top_deals;
 
+          // market_pulse may arrive as a parsed object, a JSON string, or null.
+          const marketPulse = (() => {
+            const mp = b.market_pulse;
+            if (!mp) return null;
+            if (typeof mp === "string") {
+              try { return JSON.parse(mp); } catch { return null; }
+            }
+            return mp;
+          })();
+
           setBriefing({
             headline: b.headline,
             summary: b.summary,
@@ -165,6 +181,7 @@ export default function MorningBriefPage() {
             top_deals: Array.isArray(topDeals) ? topDeals : [],
             deals: b.deals || [],
             created_at: b.created_at,
+            market_pulse: marketPulse,
           });
           setIsStale(data.is_stale === true);
           if (data.last_attempt_status) {
@@ -343,7 +360,9 @@ export default function MorningBriefPage() {
           />
         ) : (
           <>
-            <BriefHeader
+            <MarketPulse pulse={briefing.market_pulse ?? null} />
+
+            <LeadHero
               type="morning"
               headline={briefing.headline || formatLabel || "Morning Market Brief"}
               summary={briefing.summary || ""}

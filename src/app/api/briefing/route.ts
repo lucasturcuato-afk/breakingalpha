@@ -376,9 +376,20 @@ export async function GET(request: NextRequest) {
   const sections = (safeParseJSON(raw.sections) || {}) as Record<string, unknown>;
   const sectorBreak = (safeParseJSON(raw.sector_breakdown) || {}) as Record<string, unknown>;
 
+  // Market Pulse passthrough (additive — A-Subagent 1). The briefings row
+  // is selected with `*`, so if the `market_pulse` column exists on the
+  // briefings table it will already be on `raw`. We read it defensively here
+  // and expose it under a stable key on the returned `briefing` object so the
+  // frontend can rely on `briefing.market_pulse` regardless of column presence.
+  const marketPulse = (() => {
+    const mp = (raw as Record<string, unknown>).market_pulse;
+    if (!mp) return null;
+    return safeParseJSON(mp);
+  })();
+
   if (!hasModulePrefs && !hasSectorPrefs) {
     const resp = NextResponse.json({
-      briefing: raw,
+      briefing: { ...raw, market_pulse: marketPulse },
       pref_applied: false,
       personalization: buildBriefPersonalization(userProfile, type),
       user_addendum: userAddendum,
@@ -416,6 +427,7 @@ export async function GET(request: NextRequest) {
     ...raw,
     sections: shapedSections,
     sector_breakdown: shapedSectorBreak,
+    market_pulse: marketPulse,
   };
 
   const resp = NextResponse.json({
