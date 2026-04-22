@@ -39,11 +39,27 @@ interface SourceRow {
 
 interface VerdictRow {
   id: string;
+  thesis_id: string;
   title: string;
   sector: string | null;
-  outcome: string;
-  outcome_notes: string | null;
-  updated_at: string;
+  verdict: string;
+  notes: string | null;
+  graded_at: string;
+  ticker: string | null;
+}
+
+interface RawRecentVerdict {
+  id: string;
+  thesis_id: string;
+  verdict: string;
+  notes: string | null;
+  graded_at: string;
+}
+
+interface RecentThesisMeta {
+  id: string;
+  title: string | null;
+  sector: string | null;
   ticker: string | null;
 }
 
@@ -56,6 +72,16 @@ interface SectorGroup {
   avg_confidence: number;
 }
 
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
 export default function TrackRecordPage() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
@@ -66,17 +92,12 @@ export default function TrackRecordPage() {
   const [patterns, setPatterns] = useState<PatternRow[]>([]);
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [verdicts, setVerdicts] = useState<VerdictRow[]>([]);
-  const [nextCheckAfter, setNextCheckAfter] = useState<string | null>(null);
-  const [overdueCount, setOverdueCount] = useState<number>(0);
 
   useEffect(() => {
     async function load() {
       const supabase = getSupabase();
 
       try {
-        const nowIso = new Date().toISOString();
-        const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
-
         // All queries in parallel
         const [
           totalRes,
@@ -87,9 +108,6 @@ export default function TrackRecordPage() {
           sourcesRes,
           verdictsRes,
           lastUpdatedRes,
-          nextCheckRes,
-          overdueWithCheckRes,
-          overdueNullCheckRes,
         ] = await Promise.all([
           supabase.from("theses").select("id", { count: "exact", head: true }),
           supabase.from("theses").select("id", { count: "exact", head: true }).eq("outcome", "confirmed"),
@@ -97,11 +115,8 @@ export default function TrackRecordPage() {
           supabase.from("theses").select("sector, outcome, adversarial_score").not("outcome", "is", null),
           supabase.from("pattern_library").select("sector, horizon, dominant_signal, win_rate, n_observed, n_confirmed").gte("n_observed", 3).order("win_rate", { ascending: false }).limit(5),
           supabase.from("source_credibility").select("source, win_rate, n_theses").order("win_rate", { ascending: false }).limit(10),
-          supabase.from("theses").select("id, title, sector, outcome, outcome_notes, updated_at, ticker").not("outcome", "is", null).order("updated_at", { ascending: false }).limit(10),
-          supabase.from("theses").select("updated_at").not("outcome", "is", null).order("updated_at", { ascending: false }).limit(1),
-          supabase.from("theses").select("check_after").is("outcome", null).not("check_after", "is", null).order("check_after", { ascending: true }).limit(1),
-          supabase.from("theses").select("id", { count: "exact", head: true }).is("outcome", null).lt("check_after", nowIso),
-          supabase.from("theses").select("id", { count: "exact", head: true }).is("outcome", null).is("check_after", null).lt("generated_at", thirtyDaysAgoIso),
+          supabase.from("thesis_verdicts").select("id, thesis_id, verdict, notes, graded_at").order("graded_at", { ascending: false }).limit(10),
+          supabase.from("thesis_verdicts").select("graded_at").order("graded_at", { ascending: false }).limit(1),
         ]);
 
         setTotalCount(totalRes.count ?? 0);
@@ -110,19 +125,40 @@ export default function TrackRecordPage() {
         setGradedTheses((gradedRes.data as GradedThesis[]) ?? []);
         setPatterns((patternsRes.data as PatternRow[]) ?? []);
         setSources((sourcesRes.data as SourceRow[]) ?? []);
-        setVerdicts((verdictsRes.data as VerdictRow[]) ?? []);
+
+        const rawVerdicts = (verdictsRes.data as RawRecentVerdict[] | null) ?? [];
+        if (rawVerdicts.length === 0) {
+          setVerdicts([]);
+        } else {
+          const thesisIds = Array.from(new Set(rawVerdicts.map((v) => v.thesis_id)));
+          const { data: metaData } = await supabase
+            .from("theses")
+            .select("id, title, sector, ticker")
+            .in("id", thesisIds);
+          const metaMap = new Map<string, RecentThesisMeta>();
+          for (const m of (metaData as RecentThesisMeta[] | null) ?? []) {
+            metaMap.set(m.id, m);
+          }
+          setVerdicts(
+            rawVerdicts.map((v) => {
+              const meta = metaMap.get(v.thesis_id);
+              return {
+                id: v.id,
+                thesis_id: v.thesis_id,
+                title: meta?.title ?? "Untitled thesis",
+                sector: meta?.sector ?? null,
+                ticker: meta?.ticker ?? null,
+                verdict: v.verdict,
+                notes: v.notes,
+                graded_at: v.graded_at,
+              };
+            }),
+          );
+        }
 
         if (lastUpdatedRes.data && lastUpdatedRes.data.length > 0) {
-          setLastUpdated(lastUpdatedRes.data[0].updated_at);
+          setLastUpdated((lastUpdatedRes.data[0] as { graded_at: string }).graded_at);
         }
-
-        if (nextCheckRes.data && nextCheckRes.data.length > 0) {
-          setNextCheckAfter((nextCheckRes.data[0] as { check_after: string | null }).check_after ?? null);
-        } else {
-          setNextCheckAfter(null);
-        }
-
-        setOverdueCount((overdueWithCheckRes.count ?? 0) + (overdueNullCheckRes.count ?? 0));
       } catch (e) {
         console.error("Track record load error:", e);
       } finally {
@@ -165,40 +201,6 @@ export default function TrackRecordPage() {
     return groups;
   }, [gradedTheses]);
 
-  const formattedLastUpdated = useMemo(() => {
-    if (!lastUpdated) return null;
-    try {
-      return new Date(lastUpdated).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return null;
-    }
-  }, [lastUpdated]);
-
-  const formattedNextCheckAfter = useMemo(() => {
-    if (!nextCheckAfter) return null;
-    try {
-      return new Date(nextCheckAfter).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return null;
-    }
-  }, [nextCheckAfter]);
-
-  const showPipelineStatus =
-    !loading && totalCount > 0 && confirmedCount === 0 && invalidatedCount === 0;
-  const awaitingCount = totalCount - confirmedCount - invalidatedCount;
-
   const MIN_ROWS = 3;
 
   return (
@@ -212,23 +214,18 @@ export default function TrackRecordPage() {
           <p className="font-sans text-[13px] text-text-secondary mt-1">
             How Signalera&apos;s thesis intelligence performs over time.
           </p>
-          {formattedLastUpdated && (
+          {!loading && totalCount > 0 && (
             <p className="font-data text-text-faint text-[11px] mt-1">
-              Last updated: {formattedLastUpdated}
+              {totalCount} {totalCount === 1 ? "thesis" : "theses"} tracked
+              {lastUpdated ? ` \u00B7 Last graded ${timeAgo(lastUpdated)}` : ""}
+              {/* Schedule mirrors cron-job.org; update both if cron changes. */}
+              {" \u00B7 Next run 8:10 PM PT daily"}
             </p>
           )}
-          {showPipelineStatus && (
-            <>
-              <p className="font-data text-text-faint text-[11px] mt-1">
-                {awaitingCount} {awaitingCount === 1 ? "thesis" : "theses"} awaiting grading
-                {overdueCount > 0 ? ` \u00B7 ${overdueCount} overdue` : ""}
-              </p>
-              <p className="font-data text-text-faint text-[11px] mt-1">
-                {formattedNextCheckAfter
-                  ? `Next check: ${formattedNextCheckAfter}`
-                  : "No thesis has a scheduled grading date yet"}
-              </p>
-            </>
+          {!loading && totalCount === 0 && (
+            <p className="font-data text-text-faint text-[11px] mt-1">
+              Grading pipeline ready &mdash; no theses yet.
+            </p>
           )}
         </div>
 
@@ -318,7 +315,12 @@ export default function TrackRecordPage() {
 
         {/* PATTERN LIBRARY */}
         <Section title="What&apos;s Been Working">
-          {patterns.length < MIN_ROWS ? (
+          {confirmedCount + invalidatedCount === 0 ? (
+            <PatternPreCalibrationState
+              thesesCount={totalCount}
+              sectorsCount={sectorGroups.length}
+            />
+          ) : patterns.length < MIN_ROWS ? (
             <EmptyBuildingState />
           ) : (
             <div className="grid gap-2">
@@ -350,7 +352,9 @@ export default function TrackRecordPage() {
 
         {/* SOURCE CREDIBILITY */}
         <Section title="Most Reliable Sources">
-          {sources.length < MIN_ROWS ? (
+          {confirmedCount + invalidatedCount === 0 ? (
+            <SourcePreCalibrationState thesesCount={totalCount} />
+          ) : sources.length < MIN_ROWS ? (
             <EmptyBuildingState />
           ) : (
             <div className="space-y-1.5">
@@ -387,14 +391,14 @@ export default function TrackRecordPage() {
 
         {/* RECENT VERDICTS */}
         <Section title="Recent Verdicts">
-          {verdicts.length < MIN_ROWS ? (
-            <EmptyBuildingState />
+          {verdicts.length === 0 ? (
+            <NoVerdictsYet />
           ) : (
             <div className="grid gap-2">
               {verdicts.map((v) => (
                 <Link
                   key={v.id}
-                  href={`/thesis-board?thesis=${v.id}`}
+                  href={`/thesis-board?thesis=${v.thesis_id}`}
                   className="block bg-white rounded-xl border border-border-base p-3 hover:border-gold/40 transition-colors"
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -411,16 +415,23 @@ export default function TrackRecordPage() {
                             {v.sector}
                           </span>
                         )}
-                        <OutcomeBadge outcome={v.outcome} />
+                        <OutcomeBadge outcome={v.verdict} />
                         {v.ticker && (
                           <span className="font-data text-[9px] text-gold-dark bg-gold-muted px-1.5 py-0.5 rounded">
                             {v.ticker}
                           </span>
                         )}
                       </div>
+                      {v.notes && (
+                        <p className="font-sans text-[12px] text-text-secondary leading-snug mt-1.5 line-clamp-2">
+                          {v.notes.length > 150
+                            ? `${v.notes.slice(0, 150)}…`
+                            : v.notes}
+                        </p>
+                      )}
                     </div>
                     <span className="font-data text-[10px] text-text-faint flex-shrink-0 mt-0.5">
-                      {formatDate(v.updated_at)}
+                      {timeAgo(v.graded_at)}
                     </span>
                   </div>
                 </Link>
@@ -504,14 +515,48 @@ function EmptyBuildingState() {
   );
 }
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "";
-  try {
-    return new Date(dateStr).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return "";
-  }
+function NoVerdictsYet() {
+  return (
+    <div className="flex items-center gap-2 bg-white rounded-xl border border-border-base p-4">
+      <span className="w-2 h-2 rounded-full bg-signal-warn animate-pulse flex-shrink-0" />
+      <span className="font-sans text-[12px] text-text-secondary">
+        No verdicts yet. First grading run will produce outcomes.
+      </span>
+    </div>
+  );
+}
+
+function PatternPreCalibrationState({
+  thesesCount,
+  sectorsCount,
+}: {
+  thesesCount: number;
+  sectorsCount: number;
+}) {
+  const sectorText =
+    sectorsCount > 0
+      ? ` across ${sectorsCount} ${sectorsCount === 1 ? "sector" : "sectors"}`
+      : "";
+  return (
+    <div className="flex items-start gap-2 bg-white rounded-xl border border-border-base p-4">
+      <span className="w-2 h-2 rounded-full bg-signal-warn animate-pulse flex-shrink-0 mt-1.5" />
+      <span className="font-sans text-[12px] text-text-secondary leading-relaxed">
+        Pattern library activates when theses begin reaching confirmed or invalidated outcomes.
+        Currently tracking {thesesCount} {thesesCount === 1 ? "thesis" : "theses"}
+        {sectorText}, all pending resolution.
+      </span>
+    </div>
+  );
+}
+
+function SourcePreCalibrationState({ thesesCount }: { thesesCount: number }) {
+  return (
+    <div className="flex items-start gap-2 bg-white rounded-xl border border-border-base p-4">
+      <span className="w-2 h-2 rounded-full bg-signal-warn animate-pulse flex-shrink-0 mt-1.5" />
+      <span className="font-sans text-[12px] text-text-secondary leading-relaxed">
+        Source credibility scores activate when thesis outcomes are confirmed or invalidated.
+        Currently tracking {thesesCount} graded {thesesCount === 1 ? "thesis" : "theses"} (all pending resolution).
+      </span>
+    </div>
+  );
 }

@@ -111,13 +111,14 @@ function OutcomeBadge({ verdict }: { verdict: VerdictLabel }) {
   );
 }
 
-function InlineEmptyBuildingState() {
+function VerdictEvolutionPreCalibrationState() {
   return (
-    <div className="flex items-center gap-2 bg-white rounded-xl border border-border-base p-4">
-      <span className="w-2 h-2 rounded-full bg-signal-warn animate-pulse flex-shrink-0" />
-      <span className="font-sans text-[12px] text-text-secondary">
-        Building track record &mdash; check back after more theses are graded.
-      </span>
+    <div className="space-y-2">
+      <div className="h-20 rounded-xl bg-parchment-mid animate-pulse" />
+      <p className="font-sans text-[12px] text-text-secondary leading-relaxed px-1">
+        Confidence evolution appears once theses are re-graded over time.
+        Next run: 8:10 PM PT daily.
+      </p>
     </div>
   );
 }
@@ -200,7 +201,7 @@ export function VerdictEvolution() {
       {loading ? (
         <div className="h-20 rounded-xl bg-parchment-mid animate-pulse" />
       ) : !hasRows ? (
-        <InlineEmptyBuildingState />
+        <VerdictEvolutionPreCalibrationState />
       ) : (
         <div className="grid gap-2 md:grid-cols-2">
           {rows.map((r) => {
