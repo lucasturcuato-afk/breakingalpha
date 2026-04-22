@@ -201,7 +201,7 @@ const MAX_VISIBLE = 5;
 
 export default function TrendsPage() {
   const { mood, moodHeadline, moodDetails } = useLiveMood();
-  const { profile, refetch: refetchProfile } = useUserProfile();
+  const { profile } = useUserProfile();
 
   // ── State ──
   const [isSignedOut, setIsSignedOut] = useState(false);
@@ -448,31 +448,6 @@ export default function TrendsPage() {
   }
 
   // ── Card click → open modal ──
-  async function addToWatchlist(ticker: string) {
-    try {
-      const supabase = getSupabase();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data: existing } = await supabase
-        .from("watchlist")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("identifier", ticker.toUpperCase())
-        .maybeSingle();
-      if (existing) return;
-      await supabase.from("watchlist").insert({
-        user_id: user.id,
-        identifier: ticker.toUpperCase(),
-        display_name: ticker,
-        added_at: new Date().toISOString(),
-      });
-      trackClientEvent("watchlist_added", { ticker: ticker.toUpperCase(), source: "trends_modal" });
-      refetchProfile();
-    } catch (err) {
-      console.error("[trends] watchlist add failed:", err);
-    }
-  }
-
   function handleCardClick(signal: TrendSignal) {
     console.log("[trends] card clicked, signal:", signal.id, signal.headline || signal.label);
     setModalSignal(signal);
@@ -847,34 +822,21 @@ export default function TrendsPage() {
                   <p className="font-data text-[9px] uppercase tracking-widest text-text-muted mb-2">Companies mentioned</p>
                   <div className="flex flex-wrap gap-1.5">
                     {modalSignal.top_companies.map((c, i) => {
-                      const name = capitalizeCompany(c);
-                      const isWatchlist = watchlistUpper.includes(c.toUpperCase());
+                      const name = c.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+                      const isWatched = watchlistUpper.some(t =>
+                        c.toUpperCase().includes(t) || t.includes(c.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 5))
+                      );
                       return (
                         <span
                           key={i}
                           className={cn(
-                            "inline-flex items-center gap-1 font-data text-[10px] px-2 py-1 rounded",
-                            isWatchlist
+                            "font-data text-[10px] px-2 py-1 rounded",
+                            isWatched
                               ? "bg-gold-muted text-gold-dark border border-gold/30 font-semibold"
                               : "bg-parchment-mid text-text-primary border border-border-base",
                           )}
                         >
-                          {name}
-                          {isWatchlist ? (
-                            <span className="text-gold">{"\u2726"}</span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                addToWatchlist(c);
-                              }}
-                              className="text-text-muted hover:text-gold transition-colors cursor-pointer ml-0.5"
-                              title={`Add ${name} to watchlist`}
-                            >
-                              +
-                            </button>
-                          )}
+                          {name}{isWatched ? " \u2726" : ""}
                         </span>
                       );
                     })}
