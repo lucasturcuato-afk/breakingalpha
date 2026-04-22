@@ -8,6 +8,7 @@ import { Topbar } from "./topbar";
 import { RightPanel } from "./right-panel";
 import { CommandPalette } from "./command-palette";
 import { MobileBottomNav } from "./mobile-bottom-nav";
+import { PageTransition } from "./page-transition";
 
 const PANEL_STORAGE_KEY = "signalera_right_panel_open";
 
@@ -137,7 +138,7 @@ export function AppShell({
         <div className="flex-1 flex overflow-hidden">
           {/* Scrollable content area */}
           <main className="flex-1 overflow-y-auto bg-parchment pb-[56px] md:pb-0">
-            {children}
+            <PageTransition>{children}</PageTransition>
           </main>
 
           {/* Collapsible right panel — hidden on mobile */}

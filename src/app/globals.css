@@ -208,6 +208,105 @@ html.dark .bg-white {
   animation: onboarding-row-pulse 400ms ease-in-out;
 }
 
+/* ── Motion system (subagent 2) ── */
+
+/* Bar chart / sparkline build-in animation */
+@keyframes bar-sweep-in {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+.bar-sweep-in {
+  transform-origin: left center;
+  animation: bar-sweep-in 400ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Card hover lift */
+.card-hover-lift {
+  transition:
+    transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.card-hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(26, 18, 8, 0.08);
+}
+html.dark .card-hover-lift:hover {
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(212, 168, 75, 0.15);
+}
+
+/* Live signal pulse glow for AI signal bar */
+@keyframes ai-signal-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(212, 168, 75, 0.25),
+      0 0 12px rgba(212, 168, 75, 0.15);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(212, 168, 75, 0.55),
+      0 0 18px rgba(212, 168, 75, 0.35);
+  }
+}
+.ai-signal-glow {
+  animation: ai-signal-glow 3s ease-in-out infinite;
+}
+
+/* Skeleton shimmer */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--parchment-mid) 0%,
+    var(--parchment) 50%,
+    var(--parchment-mid) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+}
+html.dark .skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--surface) 0%,
+    var(--elevated) 50%,
+    var(--surface) 100%
+  );
+  background-size: 200% 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar-sweep-in {
+    animation: none;
+  }
+  .card-hover-lift {
+    transition: none;
+  }
+  .card-hover-lift:hover {
+    transform: none;
+  }
+  .ai-signal-glow {
+    animation: none;
+  }
+  .skeleton-shimmer {
+    animation: none;
+  }
+}
+
 /* Conviction ring inner cutout — matches parent surface */
 .conviction-ring-bg {
   background-color: var(--parchment, #faf7f2);
