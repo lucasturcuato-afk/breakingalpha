@@ -56,6 +56,8 @@ interface SourceArticle {
   source: string;
   published_at: string;
   url: string | null;
+  content: string | null;
+  summary: string | null;
 }
 
 interface RelatedThesis {
@@ -112,10 +114,7 @@ function getDisplayTitle(s: TrendSignal): string {
   return s.label.replace(/:\s*/g, " \u2014 ");
 }
 
-function getDisplayTagline(s: TrendSignal): string | null {
-  if (s.tagline) return s.tagline;
-  return null;
-}
+
 
 function deduplicateSignals(signals: TrendSignal[]): TrendSignal[] {
   const seen = new Map<string, TrendSignal>();
@@ -298,7 +297,7 @@ export default function TrendsPage() {
     const supabase = getSupabase();
     const ids = modalSignal.representative_article_ids.slice(0, 10);
     if (ids.length === 0) return;
-    supabase.from("articles").select("id, title, source, published_at, url").in("id", ids)
+    supabase.from("articles").select("id, title, source, published_at, url, content, summary").in("id", ids)
       .then(({ data }) => {
         if (data) setArticleCache((prev) => ({ ...prev, [modalSignal.id]: data }));
       });
@@ -758,9 +757,9 @@ export default function TrendsPage() {
               <h2 className="font-display text-[20px] font-bold text-espresso leading-snug">
                 {getDisplayTitle(modalSignal)}
               </h2>
-              {getDisplayTagline(modalSignal) && (
-                <p className="font-sans text-[13px] text-text-secondary mt-2 leading-relaxed">
-                  {getDisplayTagline(modalSignal)}
+              {modalSignal.tagline && modalSignal.tagline.length > 0 && (
+                <p className="font-sans text-[13px] text-text-secondary mt-2 leading-relaxed italic">
+                  {modalSignal.tagline}
                 </p>
               )}
             </div>
@@ -851,6 +850,21 @@ export default function TrendsPage() {
                         <span className="font-data text-[9px] text-text-muted w-20 flex-shrink-0 truncate">
                           {a.source || "Unknown"}
                         </span>
+                        {(() => {
+                          const hasFullText = a.content && a.content.length > 500;
+                          const hasSummary = a.summary && a.summary.length > 0;
+                          const contentType = hasFullText ? "Full text" : hasSummary ? "Summary" : "Headline only";
+                          const badgeClass = hasFullText
+                            ? "bg-signal-up/10 text-signal-up"
+                            : hasSummary
+                              ? "bg-signal-warn/10 text-signal-warn"
+                              : "bg-parchment-mid text-text-muted";
+                          return (
+                            <span className={cn("font-data text-[8px] uppercase px-1.5 py-0.5 rounded flex-shrink-0", badgeClass)}>
+                              {contentType}
+                            </span>
+                          );
+                        })()}
                         <span className={cn(
                           "font-sans text-[12px] truncate flex-1",
                           a.url ? "text-text-primary hover:text-gold transition-colors" : "text-text-primary",
