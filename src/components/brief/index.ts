@@ -5,3 +5,4 @@ export { DealCard, type DealData } from "./deal-card";
 export { SectorSignalCard } from "./sector-signal-card";
 export { MarketPulse, type MarketPulseData } from "./market-pulse";
 export { LeadHero, type LeadHeroProps } from "./lead-hero";
+export { ShareButton } from "./share-button";
