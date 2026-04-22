@@ -9,6 +9,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { trackClientEvent } from "@/lib/track-event";
 import { SignInModal } from "@/components/auth/sign-in-modal";
+import { MemoModal } from "@/components/memo/MemoModal";
 import { useLiveMood } from "@/hooks/useLiveMood";
 import type { AnomalyLevel } from "@/components/trends/anomaly-badge";
 
@@ -216,6 +217,7 @@ export default function TrendsPage() {
   const [articleCache, setArticleCache] = useState<Record<string, SourceArticle[]>>({});
   const [thesesForMatch, setThesesForMatch] = useState<RelatedThesis[]>([]);
   const [modalSignal, setModalSignal] = useState<TrendSignal | null>(null);
+  const [memoSignal, setMemoSignal] = useState<TrendSignal | null>(null);
 
   // ── Personalization ──
   const profileSectors = useMemo(
@@ -923,9 +925,56 @@ export default function TrendsPage() {
                   </div>
                 );
               })()}
+
+              {/* Actions */}
+              <div className="border-t border-border-base pt-4 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    trackClientEvent("memo_generated", {
+                      signal_id: modalSignal.id,
+                      sector: modalSignal.top_sectors[0] ?? null,
+                    });
+                    setMemoSignal(modalSignal);
+                    setModalSignal(null);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gold text-cream font-sans text-[11px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
+                >
+                  Generate Memo
+                </button>
+                <a
+                  href={`/live-feed?q=${encodeURIComponent(modalSignal.headline || modalSignal.label)}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border-base font-sans text-[11px] font-medium text-text-secondary hover:border-border-hover transition-colors"
+                >
+                  View in Live Feed {"\u2192"}
+                </a>
+              </div>
             </div>
           </div>
         </div>
+      )}
+
+      {memoSignal && (
+        <MemoModal
+          isOpen={true}
+          onClose={() => setMemoSignal(null)}
+          title={memoSignal.headline || memoSignal.label}
+          content={[
+            memoSignal.headline || memoSignal.label,
+            memoSignal.tagline || "",
+            "",
+            `Sector: ${memoSignal.top_sectors.join(", ")}`,
+            `Companies: ${memoSignal.top_companies.join(", ")}`,
+            `Themes: ${memoSignal.top_themes.join(", ")}`,
+            `Evidence: ${memoSignal.article_count} articles from ${memoSignal.source_count} sources`,
+            "",
+            "Source articles:",
+            ...(articleCache[memoSignal.id] ?? []).map((a) => `- ${a.title} (${a.source || "Unknown"})`),
+          ].join("\n")}
+          type="brief"
+        />
       )}
 
       <SignInModal
