@@ -347,6 +347,15 @@ html.dark .skeleton-shimmer {
   background-size: 200% 100%;
 }
 
+/* Track record pending-state pulse — "confidently waiting" */
+@keyframes track-record-pending-dot {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1.0; transform: scale(1.15); }
+}
+.track-record-pending-dot {
+  animation: track-record-pending-dot 2s ease-in-out infinite;
+}
+
 /* Consolidated reduced-motion fallbacks */
 @media (prefers-reduced-motion: reduce) {
   .brand-mark-pulse { animation: none; opacity: 1; }
@@ -355,6 +364,7 @@ html.dark .skeleton-shimmer {
   .card-hover-lift:hover { transform: none; }
   .ai-signal-glow { animation: none; }
   .skeleton-shimmer { animation: none; }
+  .track-record-pending-dot { animation: none; opacity: 0.85; }
 }
 
 /* Conviction ring inner cutout — matches parent surface */

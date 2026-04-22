@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
 import Link from "next/link";
-import { Trophy } from "lucide-react";
+import { Trophy, Clock } from "lucide-react";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { EmptyState } from "@/components/ui/empty-state";
 import AnimatedNumber from "@/components/ui/animated-number";
@@ -219,26 +219,31 @@ export default function TrackRecordPage() {
             </p>
           )}
           {showPipelineStatus && (
-            <>
-              <p className="font-data text-text-faint text-[11px] mt-1">
-                {awaitingCount} {awaitingCount === 1 ? "thesis" : "theses"} awaiting grading
-                {overdueCount > 0 ? ` \u00B7 ${overdueCount} overdue` : ""}
-              </p>
-              <p className="font-data text-text-faint text-[11px] mt-1">
-                {formattedNextCheckAfter
-                  ? `Next check: ${formattedNextCheckAfter}`
-                  : "No thesis has a scheduled grading date yet"}
-              </p>
-            </>
+            <div className="mt-3 inline-flex items-center gap-2.5 bg-gold-muted border border-gold-border rounded-lg px-3 py-2">
+              <span className="track-record-pending-dot w-1.5 h-1.5 rounded-full bg-gold flex-shrink-0" />
+              <div className="flex items-center gap-3">
+                <span className="font-sans text-[11px] text-text-primary">
+                  <span className="font-data font-semibold">{awaitingCount}</span>{" "}
+                  {awaitingCount === 1 ? "thesis" : "theses"} awaiting grading
+                  {overdueCount > 0 ? ` \u00B7 ${overdueCount} overdue` : ""}
+                </span>
+                <span className="text-text-muted">|</span>
+                <span className="font-sans text-[11px] text-text-muted">
+                  {formattedNextCheckAfter
+                    ? `Next check: ${formattedNextCheckAfter}`
+                    : "Scheduled grading date pending"}
+                </span>
+              </div>
+            </div>
           )}
         </div>
 
         {!loading && gradedTheses.length === 0 ? (
-          <div className="py-16">
+          <div className="relative rounded-2xl bg-gradient-to-b from-gold-muted/40 to-transparent border border-gold-border/60">
             <EmptyState
               icon={<Trophy size={32} />}
-              title="Track record building"
-              description="Thesis outcomes will appear here once the grading pipeline has run. Check back after your first theses are graded."
+              title="Track record calibrating"
+              description="Thesis outcomes will appear here once the grading pipeline has run. Grading runs nightly at 8:10 PM PT."
             />
           </div>
         ) : (
@@ -509,9 +514,13 @@ function OutcomeBadge({ outcome }: { outcome: string }) {
 
 function EmptyBuildingState() {
   return (
-    <div className="flex items-center gap-2 bg-white rounded-xl border border-border-base p-4">
-      <span className="w-2 h-2 rounded-full bg-signal-warn animate-pulse flex-shrink-0" />
-      <span className="font-sans text-[12px] text-text-secondary">
+    <div className="relative flex items-center gap-3 bg-white dark:bg-elevated rounded-xl border border-border-base p-5 overflow-hidden">
+      <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gold rounded-l-xl" />
+      <div className="flex items-center gap-2 flex-shrink-0 ml-1">
+        <span className="track-record-pending-dot w-1.5 h-1.5 rounded-full bg-gold" />
+        <Clock size={13} className="text-gold" />
+      </div>
+      <span className="font-sans text-[12.5px] text-text-primary leading-snug">
         Building track record &mdash; check back after more theses are graded.
       </span>
     </div>
