@@ -182,6 +182,34 @@ html.dark .bg-white {
   background-color: var(--elevated);
 }
 
+/* Dark-mode card elevation: subtle 1px border + top-edge inset highlight */
+html.dark .bg-white,
+html.dark .bg-elevated,
+html.dark .bg-surface,
+html.dark [data-card="true"] {
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.04),
+    0 1px 2px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* Dark mode: subtle gold glow on primary buttons */
+html.dark .button-glow-on-hover:hover,
+html.dark button[data-variant="primary"]:hover {
+  box-shadow: 0 0 16px rgba(212, 168, 75, 0.28);
+}
+html.dark a.bg-gold:hover,
+html.dark button.bg-gold:hover {
+  box-shadow: 0 0 16px rgba(212, 168, 75, 0.28);
+}
+@media (prefers-reduced-motion: reduce) {
+  html.dark .button-glow-on-hover:hover,
+  html.dark button[data-variant="primary"]:hover,
+  html.dark a.bg-gold:hover,
+  html.dark button.bg-gold:hover {
+    box-shadow: none;
+  }
+}
+
 /* ── Keyframe animations ── */
 
 @keyframes ticker-scroll {
