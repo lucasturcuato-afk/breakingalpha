@@ -73,6 +73,7 @@ interface TrendSignal {
   novelty_score: number;
   cross_source_flag: boolean;
   underrepresented_flag: boolean;
+  contested_flag: boolean;
   top_companies: string[];
   top_themes: string[];
   top_sectors: string[];
@@ -311,7 +312,7 @@ export default function TrendsPage() {
         const supabase = getSupabase();
         const { data, error } = await supabase
           .from("trend_clusters")
-          .select("id, label, headline, tagline, cluster_type, article_count, source_count, strength_score, novelty_score, cross_source_flag, underrepresented_flag, top_companies, top_themes, top_sectors, representative_article_ids, lookback_run_count, created_at")
+          .select("id, label, headline, tagline, cluster_type, article_count, source_count, strength_score, novelty_score, cross_source_flag, underrepresented_flag, contested_flag, top_companies, top_themes, top_sectors, representative_article_ids, lookback_run_count, created_at")
           .gte("article_count", 3)
           .gte("source_count", 2)
           .order("created_at", { ascending: false })
@@ -332,6 +333,7 @@ export default function TrendsPage() {
             novelty_score: row.novelty_score ?? 0,
             cross_source_flag: row.cross_source_flag ?? false,
             underrepresented_flag: row.underrepresented_flag ?? false,
+            contested_flag: row.contested_flag ?? false,
             top_companies: safeArray(row.top_companies),
             top_themes: safeArray(row.top_themes),
             top_sectors: safeArray(row.top_sectors),
@@ -756,6 +758,11 @@ export default function TrendsPage() {
                                       {"\u2713"} {s.source_count} sources
                                     </span>
                                   )}
+                                  {s.contested_flag && (
+                                    <span className="font-data text-[9px] font-bold text-signal-warn bg-signal-warn/10 px-1.5 py-0.5 rounded">
+                                      CONTESTED
+                                    </span>
+                                  )}
                                 </div>
                                 <span className="font-data text-[9px] text-text-faint">{timeAgo(s.created_at)}</span>
                               </div>
@@ -864,6 +871,11 @@ export default function TrendsPage() {
                   {modalSignal.underrepresented_flag && (
                     <span className="font-data text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-signal-ai/10 text-signal-ai border border-signal-ai/20">
                       {"\u25C7"} Underreported
+                    </span>
+                  )}
+                  {modalSignal.contested_flag && (
+                    <span className="font-data text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-signal-warn/10 text-signal-warn border border-signal-warn/20">
+                      {"\u26A0"} Contested
                     </span>
                   )}
                 </div>

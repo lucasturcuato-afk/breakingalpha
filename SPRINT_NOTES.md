@@ -43,3 +43,14 @@
 
 **Changes**:
 - `backend/synthesize.py` — New `[TEMPORAL CONTEXT]` block injected into system prompt before the Gemini call. Fetches the most recent same-type briefing from the last 48h. Soft-fails if no previous briefing exists or on any error.
+
+## Phase 2B — Contrarian signal detection + CONTESTED pill
+
+**What**: Detect clusters where articles disagree directionally (bullish vs bearish). When a cluster has 3+ articles and the minority sentiment makes up >= 25%, it's flagged as contested.
+
+**Changes**:
+- `backend/trend_mapper.py` — Added `sentiment` to `_normalize_article()` and article fetch. New `detect_contested(cluster)` function. `contested_flag` written to both new cluster rows and dedup updates.
+- `sql/add_contested_flag.sql` — Migration to add `contested_flag BOOLEAN DEFAULT FALSE` to trend_clusters.
+- `src/app/trends/page.tsx` — Added `contested_flag` to TrendSignal interface, select query, and mapped object. CONTESTED pill rendered on signal cards (amber `signal-warn` styling) and in modal detail view.
+
+**Migration**: Run `sql/add_contested_flag.sql` in Supabase SQL Editor.

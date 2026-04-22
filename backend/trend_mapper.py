@@ -379,6 +379,7 @@ def _normalize_article(raw):
         "title":                 raw.get("title") or "",
         "source":                (raw.get("source") or "").strip().lower(),
         "relevance_score":       raw.get("relevance_score"),
+        "sentiment":             (raw.get("sentiment") or "neutral").strip().lower(),
         "companies":             _safe_list(raw.get("companies")),
         "themes":                _safe_list(raw.get("themes")),
         "sector":                ((raw.get("industry_verticals") or [raw.get("sector", "")])[0] or "").strip().lower(),
@@ -713,6 +714,33 @@ def score_cluster_confidence(cluster):
     return round(confidence, 3)
 
 
+def detect_contested(cluster):
+    """
+    Detect whether a cluster is 'contested' — articles within it disagree
+    directionally (bullish vs bearish sentiment).
+
+    A cluster is contested when:
+      - It has 3+ articles
+      - At least 2 articles are bullish AND at least 1 is bearish (or vice versa)
+      - The minority sentiment makes up >= 25% of the cluster
+
+    Returns True if the cluster shows genuine directional disagreement.
+    """
+    n = len(cluster)
+    if n < 3:
+        return False
+
+    sentiments = [art.get("sentiment", "neutral") for art in cluster]
+    bullish = sum(1 for s in sentiments if s == "bullish")
+    bearish = sum(1 for s in sentiments if s == "bearish")
+
+    if bullish == 0 or bearish == 0:
+        return False
+
+    minority = min(bullish, bearish)
+    return minority / n >= 0.25
+
+
 # ---------------------------------------------------------------------------
 # Cross-run cluster classification
 # ---------------------------------------------------------------------------
@@ -937,7 +965,7 @@ def fetch_run_context(run_id, brief_type, started_at_iso):
                 resp = (
                     supabase.table("articles")
                     .select(
-                        "id, title, source, relevance_score, "
+                        "id, title, source, relevance_score, sentiment, "
                         "companies, themes, sector, industry_verticals, deal_type, relevance_reason"
                     )
                     .in_("id", chunk)
@@ -1171,6 +1199,9 @@ def map_trends(brief_type, started_at, run_id=None):
             # Cross-source flag: corroborated by 3+ distinct outlets
             cross_source_flag = len(sources) >= 3
 
+            # Contested flag: directional disagreement within cluster
+            contested_flag = detect_contested(cluster)
+
             # Quality gate — only surface clusters with meaningful evidence
             if len(cluster) < 4 or len(sources) < 2:
                 print(f"  [trend_mapper]   Skipping low-evidence cluster: {label} ({len(cluster)} articles, {len(sources)} sources)")
@@ -1197,6 +1228,7 @@ def map_trends(brief_type, started_at, run_id=None):
                     "confidence_score": confidence,
                     "novelty_score": novelty_score,
                     "cross_source_flag": cross_source_flag,
+                    "contested_flag": contested_flag,
                     "representative_article_ids": json.dumps(representative_ids),
                 }).eq("id", existing.data[0]["id"]).execute()
                 continue
@@ -1231,6 +1263,7 @@ def map_trends(brief_type, started_at, run_id=None):
                 "matched_prior_cluster_keys": json.dumps(matched_prior_keys),
                 "novelty_score":              novelty_score,
                 "cross_source_flag":          cross_source_flag,
+                "contested_flag":             contested_flag,
                 "provenance":                 "reconstructed",
             }
             rows.append(row)
