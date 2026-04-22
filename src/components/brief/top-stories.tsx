@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { getSectorStyle } from "@/lib/sector-colors";
 import type { StoryData } from "@/components/dashboard";
@@ -27,27 +26,20 @@ function storyMatchesWatchlist(story: StoryData, tickers: string[]): boolean {
   return (story.tags ?? []).some((t) => upper.has(t.toUpperCase()));
 }
 
-function formatWinRate(rate: number | null | undefined): string | null {
-  if (rate == null || Number.isNaN(rate)) return null;
-  return `${Math.round(rate * 100)}%`;
-}
-
-function formatSignal(score: number | null | undefined): string | null {
-  if (score == null || Number.isNaN(score)) return null;
-  return `${Math.round(score * 100)}`;
-}
-
 /**
  * Top Stories — editorial numbered list treatment.
  *
  * Per row:
  * - Gold serif numeral (left column).
- * - Headline (serif bold) + single sentiment dot + single sector pill +
- *   source · time.
+ * - Headline (serif bold).
+ * - Meta row: sentiment dot + single sector pill + source · time (all
+ *   muted 10-11px sans).
  * - Right column: "Watching" pill if story tickers intersect user's
  *   watchlist.
- * - Signal score + source win rate are hidden by default and revealed as a
- *   subtle row on `group-hover` below the headline.
+ *
+ * Signal score + source win rate intentionally dropped from the row to
+ * reduce badge soup — users can find signal score in the full article
+ * detail.
  *
  * The gate behavior (showing a blurred peek + sign-in CTA for signed-out
  * users) is handled in-component via `gateLimit` + `onSignInPrompt`.
@@ -59,7 +51,6 @@ export function TopStories({
   onSignInPrompt,
   watchlistTickers = [],
 }: TopStoriesProps) {
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
   if (!stories || stories.length === 0) return null;
 
   const limit = gateLimit ?? stories.length;
@@ -77,17 +68,13 @@ export function TopStories({
         {visible.map((story, i) => {
           const numeral = i + 1;
           const watching = storyMatchesWatchlist(story, watchlistTickers);
-          const signal = formatSignal(story.adjustedScore ?? null);
-          const winRate = formatWinRate(story.sourceWinRate);
           const sectorLabel = story.sector ?? null;
           const isLast = i === visible.length - 1;
 
           const RowInner = (
             <div
-              onMouseEnter={() => setHoveredId(story.id)}
-              onMouseLeave={() => setHoveredId((id) => (id === story.id ? null : id))}
               className={cn(
-                "group grid grid-cols-[32px_1fr_auto] items-start gap-3 py-3 px-3",
+                "grid grid-cols-[32px_1fr_auto] items-start gap-3 py-3.5 px-3.5",
                 !isLast && "border-b border-border-subtle",
                 "transition-colors duration-150 hover:bg-parchment-mid/40 dark:hover:bg-overlay",
               )}
@@ -108,7 +95,7 @@ export function TopStories({
                 </h3>
 
                 {/* Meta row: dot + sector pill + source · time */}
-                <div className="flex items-center flex-wrap gap-2 mt-1.5">
+                <div className="flex items-center flex-wrap gap-2 mt-2">
                   <span
                     className={cn(
                       "inline-block w-[6px] h-[6px] rounded-full flex-shrink-0",
@@ -124,24 +111,9 @@ export function TopStories({
                       {sectorLabel}
                     </span>
                   )}
-                  <span className="font-sans text-[10px] text-text-muted">
+                  <span className="font-sans text-[11px] text-text-muted">
                     {story.source} · {story.timestamp}
                   </span>
-                </div>
-
-                {/* Hover-revealed signal row */}
-                <div
-                  className={cn(
-                    "mt-1.5 overflow-hidden transition-all duration-200",
-                    hoveredId === story.id
-                      ? "max-h-6 opacity-100"
-                      : "max-h-0 opacity-0",
-                  )}
-                >
-                  <div className="flex items-center gap-3 font-data text-[10px] text-text-faint">
-                    {signal && <span>Signal {signal}</span>}
-                    {winRate && <span>Source win {winRate}</span>}
-                  </div>
                 </div>
               </div>
 

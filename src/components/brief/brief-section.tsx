@@ -49,7 +49,7 @@ export function BriefSection({
     >
       <h3
         className={cn(
-          "font-sans text-[10px] uppercase tracking-widest font-bold mb-2",
+          "font-data text-[10px] uppercase tracking-widest font-bold mb-2.5",
           accentColor === "gold" ? "text-gold" : "text-signal-ai",
         )}
       >
@@ -57,7 +57,7 @@ export function BriefSection({
       </h3>
 
       {/* Content — full text always visible */}
-      <p className="font-sans text-[13px] text-text-secondary dark:text-[#e8e8e4] leading-[1.72]">
+      <p className="font-sans text-[13px] text-text-secondary dark:text-[#e8e8e4] leading-relaxed">
         {cleanContent}
       </p>
 
