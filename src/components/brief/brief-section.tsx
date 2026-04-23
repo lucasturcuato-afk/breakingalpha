@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/strip-html";
-import { Sparkles, Plus, Loader2 } from "lucide-react";
+import { Sparkles, Plus, Loader2, ThumbsUp, ThumbsDown } from "lucide-react";
 
 interface BriefSectionProps {
   title: string;
@@ -17,6 +17,10 @@ interface BriefSectionProps {
   sectionKey?: string;
   onRate?: (sectionKey: string, rating: 1 | -1) => void;
   currentRating?: number;
+  /** When true, tightens padding and body font by ~1px for side-quadrant typography tiering. */
+  compact?: boolean;
+  /** When true, root stretches to fill its parent's height (dashboard mode lead quadrant). */
+  fillHeight?: boolean;
 }
 
 export function BriefSection({
@@ -32,21 +36,28 @@ export function BriefSection({
   sectionKey,
   onRate,
   currentRating = 0,
+  compact = false,
+  fillHeight = false,
 }: BriefSectionProps) {
   const cleanContent = stripHtml(content);
+
+  const hasRating = currentRating !== 0;
+  const showRating = Boolean(sectionKey && onRate);
 
   return (
     <div
       onClick={onToggle}
       className={cn(
-        "p-4 rounded-xl border border-border-base bg-white dark:bg-elevated dark:border-border-default group min-h-[160px]",
+        "relative rounded-xl border border-border-base bg-white dark:bg-elevated dark:border-border-default group",
+        compact ? "p-3 min-h-[140px]" : "p-4 min-h-[160px]",
         fullWidth && "col-span-2",
+        fillHeight && "h-full",
         "cursor-pointer transition-all duration-200 hover:ring-1 hover:ring-gold/40 hover:shadow-sm",
       )}
     >
       <h3
         className={cn(
-          "font-sans text-[10px] uppercase tracking-widest font-bold mb-2",
+          "font-data text-[10px] uppercase tracking-widest font-bold mb-2.5",
           accentColor === "gold" ? "text-gold" : "text-signal-ai",
         )}
       >
@@ -54,35 +65,54 @@ export function BriefSection({
       </h3>
 
       {/* Content — full text always visible */}
-      <p className="font-sans text-[13px] text-text-secondary dark:text-[#e8e8e4] leading-[1.72]">
+      <p
+        className={cn(
+          "font-sans text-text-secondary dark:text-[#e8e8e4] leading-relaxed",
+          compact ? "text-[12px]" : "text-[13px]",
+        )}
+      >
         {cleanContent}
       </p>
 
-      {/* Section rating */}
-      {sectionKey && onRate && (
-        <div className="flex items-center gap-2 mt-3 pt-2 border-t border-border-subtle">
-          <span className="font-sans text-[9px] text-text-faint uppercase tracking-wider">Useful?</span>
+      {/* Section rating — fade-in thumbs, top-right, stay visible once rated */}
+      {showRating && (
+        <div
+          className={cn(
+            "absolute top-2 right-2 flex items-center gap-1 transition-opacity duration-200",
+            hasRating ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+          )}
+        >
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); onRate(sectionKey, 1); }}
+            onClick={(e) => { e.stopPropagation(); onRate?.(sectionKey as string, 1); }}
             className={cn(
               "p-1 rounded transition-colors cursor-pointer",
-              currentRating === 1 ? "text-signal-up bg-signal-up/10" : "text-text-faint hover:text-signal-up",
+              currentRating === 1
+                ? "text-gold"
+                : hasRating
+                  ? "text-text-faint/50"
+                  : "text-text-faint hover:text-gold",
             )}
-            title="This section was useful"
+            aria-label="Mark this section useful"
+            title="Useful"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg>
+            <ThumbsUp size={12} />
           </button>
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); onRate(sectionKey, -1); }}
+            onClick={(e) => { e.stopPropagation(); onRate?.(sectionKey as string, -1); }}
             className={cn(
               "p-1 rounded transition-colors cursor-pointer",
-              currentRating === -1 ? "text-signal-dn bg-signal-dn/10" : "text-text-faint hover:text-signal-dn",
+              currentRating === -1
+                ? "text-gold"
+                : hasRating
+                  ? "text-text-faint/50"
+                  : "text-text-faint hover:text-gold",
             )}
-            title="This section wasn't useful"
+            aria-label="Mark this section not useful"
+            title="Not useful"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22h0a3.13 3.13 0 0 1-3-3.88Z"/></svg>
+            <ThumbsDown size={12} />
           </button>
         </div>
       )}

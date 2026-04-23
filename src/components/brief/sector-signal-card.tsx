@@ -28,15 +28,15 @@ export function SectorSignalCard({
   return (
     <div
       className={cn(
-        "p-3.5 rounded-xl border border-border-base bg-white",
+        "p-4 rounded-xl border border-border-base bg-white dark:bg-elevated dark:border-border-default",
         "border-l-[3px]",
         borderClass,
       )}
     >
-      <h4 className="font-sans text-[11px] font-bold uppercase tracking-wide text-text-primary mb-1.5">
+      <h4 className="font-sans text-[11px] font-bold uppercase tracking-wide text-text-primary dark:text-cream mb-2">
         {sector}
       </h4>
-      <p className="font-sans text-[11px] text-text-secondary dark:text-[#e8e8e4] leading-snug">
+      <p className="font-sans text-[12px] text-text-secondary dark:text-[#e8e8e4] leading-relaxed">
         {analysis}
       </p>
     </div>

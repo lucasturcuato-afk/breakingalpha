@@ -4,17 +4,16 @@ import { useState, useEffect, useMemo } from "react";
 import { AppShell } from "@/components/shell";
 import { PanelWidget } from "@/components/shell/right-panel";
 import { TickerStrip } from "@/components/brief/ticker-strip";
-import { BriefHeader } from "@/components/brief/brief-header";
-import { BriefSection } from "@/components/brief/brief-section";
-import { DealCard } from "@/components/brief/deal-card";
-import { SectorSignalCard } from "@/components/brief/sector-signal-card";
-import { LeadStoryCard, CompactStoryCard } from "@/components/dashboard/story-card";
+import { ExportMenu } from "@/components/brief/export-menu";
+import { ShareButton } from "@/components/brief/share-button";
+import { DCStoryRow } from "@/components/brief/dc-story-row";
+import { DCAnalystSection } from "@/components/brief/dc-analyst-section";
+import { DCSectorSignals } from "@/components/brief/dc-sector-signals";
 import { ActiveThesesWidget } from "@/components/dashboard/active-theses-widget";
 import { WatchlistWidget } from "@/components/dashboard/watchlist-widget";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/strip-html";
 import { FileText } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -36,36 +35,49 @@ function getSupabase() {
   );
 }
 
-const SECTION_ICONS: Record<string, string> = {
-  macro_and_rates: "\u{1F3E6}",
-  deals_and_ma: "\u{1F4BC}",
-  public_markets: "\u{1F4CA}",
-  geopolitics: "\u{1F30D}",
-  sector_spotlight: "\u{1F526}",
-  what_to_watch: "\u{1F441}",
-  tomorrow_setup: "\u{1F305}",
-};
-
 const SECTION_TITLES: Record<string, string> = {
-  macro_and_rates: "Macro & Rates",
   deals_and_ma: "Deals & M&A",
   public_markets: "Public Markets",
-  geopolitics: "Geopolitics",
+  macro_and_rates: "Macro & Rates",
   sector_spotlight: "Sector Spotlight",
+  geopolitics: "Geopolitics",
   what_to_watch: "What to Watch",
   tomorrow_setup: "Tomorrow's Setup",
+  closing_thoughts: "Closing Thoughts",
 };
+
+const TAB_ORDER = [
+  "deals_and_ma",
+  "public_markets",
+  "macro_and_rates",
+  "sector_spotlight",
+  "geopolitics",
+];
+
+// Sherwood Direction C palette — every accent that must stay constant
+// across light/dark is pinned to a literal hex. The theme tokens flip
+// --espresso and --cream under html.dark, which would invert the hero
+// cards and desaturate the masthead; these constants bypass that.
+const HERITAGE_GOLD = "#d4a84b";
+const HERITAGE_GOLD_DEEP = "#c9922a";
+const DC_ESPRESSO = "#1a1208";
+const DC_CREAM = "#fffdf9";
 
 interface TopDeal {
   company: string;
   value?: string;
   deal_type?: string;
   one_liner?: string;
+  sentiment?: string | null;
 }
 
 interface BriefingData {
+  id?: string;
   headline?: string;
   summary?: string;
+  lead_paragraph?: string;
+  supporting_context?: string;
+  what_to_watch?: string;
   market_tone?: string;
   sections?: Record<string, string>;
   sector_breakdown?: Record<string, string>;
@@ -73,6 +85,11 @@ interface BriefingData {
   deals?: DealData[];
   top_stories?: StoryData[];
   created_at?: string;
+  market_pulse?: {
+    sentiment_word: string;
+    narrative: string;
+    headlines?: Array<{ title: string; href?: string }>;
+  } | null;
 }
 
 function storyToContent(story: StoryData): ContentDescriptor {
@@ -83,31 +100,77 @@ function storyToContent(story: StoryData): ContentDescriptor {
   };
 }
 
+type Tone = "BULLISH" | "BEARISH" | "NEUTRAL" | "MIXED" | "WATCH";
+
+function normaliseTone(t?: string | null): Tone {
+  if (!t) return "NEUTRAL";
+  const l = t.toLowerCase();
+  if (l.includes("bull") || l === "positive" || l.includes("risk-on")) return "BULLISH";
+  if (l.includes("bear") || l === "negative" || l.includes("risk-off")) return "BEARISH";
+  if (l.includes("mix")) return "MIXED";
+  if (l.includes("watch")) return "WATCH";
+  return "NEUTRAL";
+}
+
+function SentimentPill({ tone, size = "md" }: { tone: Tone; size?: "sm" | "md" }) {
+  const style: Record<Tone, { bg: string; fg: string; bd: string }> = {
+    BULLISH: { bg: "var(--pill-bull-bg)", fg: "var(--pill-bull-text)", bd: "var(--pill-bull-border)" },
+    BEARISH: { bg: "var(--pill-bear-bg)", fg: "var(--pill-bear-text)", bd: "var(--pill-bear-border)" },
+    NEUTRAL: { bg: "var(--pill-neutral-bg)", fg: "var(--pill-neutral-text)", bd: "var(--pill-neutral-border)" },
+    MIXED:   { bg: "var(--pill-mixed-bg)",   fg: "var(--pill-mixed-text)",   bd: "var(--pill-mixed-border)" },
+    WATCH:   { bg: "var(--pill-watch-bg)",   fg: "var(--pill-watch-text)",   bd: "var(--pill-watch-border)" },
+  };
+  const s = style[tone];
+  const font = size === "sm" ? 9 : 10;
+  const pad = size === "sm" ? "3px 7px" : "4px 9px";
+  const tr = size === "sm" ? "0.10em" : "0.12em";
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        fontFamily: "var(--font-inter), Inter, sans-serif",
+        fontSize: font,
+        fontWeight: 700,
+        letterSpacing: tr,
+        padding: pad,
+        borderRadius: 4,
+        background: s.bg,
+        color: s.fg,
+        border: `1px solid ${s.bd}`,
+      }}
+    >
+      {tone}
+    </span>
+  );
+}
+
+function formatDatePretty(d: Date): string {
+  return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+}
+function formatTimePretty(d: Date): string {
+  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) + " ET";
+}
+
 export default function MorningBriefPage() {
   const { profile } = useUserProfile();
   const [briefing, setBriefing] = useState<BriefingData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sectorFilter, setSectorFilter] = useState<string | null>(null);
   const [stories, setStories] = useState<StoryData[]>([]);
-  const [storiesLabel, setStoriesLabel] = useState("Top Stories");
+  const [storiesLabel, setStoriesLabel] = useState("Today's Stories");
   const [isStale, setIsStale] = useState(false);
   const [lastRunStatus, setLastRunStatus] = useState<"success" | "stub" | "error" | null>(null);
-  const [memoOpen, setMemoOpen] = useState(false);
-  const [memoTitle, setMemoTitle] = useState("");
-  const [memoContent, setMemoContent] = useState("");
-  const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [addingThesis, setAddingThesis] = useState(false);
   const [sectionRatings, setSectionRatings] = useState<Record<string, number>>({});
   const [leadMemoOpen, setLeadMemoOpen] = useState(false);
   const [leadMemoContent, setLeadMemoContent] = useState("");
-  const [toast, setToast] = useState("");
-  const [user, setUser] = useState<{ id: string } | null | undefined>(undefined);
+  const [user, setUser] = useState<{ id: string; email?: string | null } | null | undefined>(undefined);
   const [showSignIn, setShowSignIn] = useState(false);
   const [formatLabel, setFormatLabel] = useState<string | null>(null);
   const [userAddendum, setUserAddendum] = useState<string | null>(null);
+  const [thesesCount, setThesesCount] = useState<number | null>(null);
+  const [vixQuote, setVixQuote] = useState<{ price: string; pct: number } | null>(null);
   const router = useRouter();
 
-  // Fetch existing section ratings on mount
   useEffect(() => {
     fetch("/api/brief-rating")
       .then(r => r.json())
@@ -128,8 +191,6 @@ export default function MorningBriefPage() {
   useEffect(() => {
     async function load() {
       try {
-        // Fetch briefing with Bearer token so /api/briefing can personalize
-        // sections + sector_breakdown against user_profiles.
         const supabase = getSupabase();
         const { data: { session } } = await supabase.auth.getSession();
         const headers: HeadersInit = {};
@@ -138,7 +199,6 @@ export default function MorningBriefPage() {
         }
         const res = await fetch("/api/briefing?type=morning", { headers });
 
-        // Fire-and-forget behavioral event — caller is logged in.
         if (session?.user) {
           void fetch("/api/user-events", {
             method: "POST",
@@ -150,37 +210,37 @@ export default function MorningBriefPage() {
         const data = await res.json();
         if (data.briefing) {
           const b = data.briefing;
-          // Parse sections if string
           const sections = typeof b.sections === "string" ? JSON.parse(b.sections) : b.sections;
           const sectorBreakdown = typeof b.sector_breakdown === "string" ? JSON.parse(b.sector_breakdown) : b.sector_breakdown;
-
           const topDeals = typeof b.top_deals === "string" ? JSON.parse(b.top_deals) : b.top_deals;
+          const marketPulse = (() => {
+            const mp = b.market_pulse;
+            if (!mp) return null;
+            if (typeof mp === "string") { try { return JSON.parse(mp); } catch { return null; } }
+            return mp;
+          })();
 
           setBriefing({
+            id: b.id,
             headline: b.headline,
             summary: b.summary,
+            lead_paragraph: b.lead_paragraph,
+            supporting_context: b.supporting_context,
+            what_to_watch: b.what_to_watch,
             market_tone: b.market_tone,
             sections: sections || {},
             sector_breakdown: sectorBreakdown || {},
             top_deals: Array.isArray(topDeals) ? topDeals : [],
             deals: b.deals || [],
             created_at: b.created_at,
+            market_pulse: marketPulse,
           });
           setIsStale(data.is_stale === true);
-          if (data.last_attempt_status) {
-            setLastRunStatus(data.last_attempt_status);
-          }
-          if (data.personalization?.format_label) {
-            setFormatLabel(data.personalization.format_label);
-          }
-          if (typeof data.user_addendum === "string") {
-            setUserAddendum(data.user_addendum);
-          }
+          if (data.last_attempt_status) setLastRunStatus(data.last_attempt_status);
+          if (data.personalization?.format_label) setFormatLabel(data.personalization.format_label);
+          if (typeof data.user_addendum === "string") setUserAddendum(data.user_addendum);
         }
 
-        // Fetch top stories: 24h window primary (Top Stories).
-        // Falls back to 48h if fewer than 3 fresh articles, labelled "Recent Stories".
-        // Uses ingested_at per schema convention (not created_at).
         const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
@@ -191,7 +251,7 @@ export default function MorningBriefPage() {
           .order("relevance_score", { ascending: false })
           .limit(8);
 
-        let label = "Top Stories";
+        let label = "Today's Stories";
         if ((articles?.length ?? 0) < 3) {
           const { data: fallback } = await getSupabase()
             .from("articles")
@@ -205,16 +265,17 @@ export default function MorningBriefPage() {
         setStoriesLabel(label);
 
         if (articles) {
-          // Batch fetch source credibility
           const uniqueSources = [...new Set(articles.map(a => a.source).filter(Boolean) as string[])];
-          let credMap = new Map<string, number>();
+          let credMap = new Map<string, { winRate: number; nTheses: number | null }>();
           if (uniqueSources.length > 0) {
             try {
               const { data: credData } = await getSupabase()
                 .from("source_credibility")
-                .select("source, win_rate")
+                .select("source, win_rate, n_theses")
                 .in("source", uniqueSources);
-              credMap = new Map(credData?.map(r => [r.source, r.win_rate]) ?? []);
+              credMap = new Map(
+                credData?.map(r => [r.source, { winRate: r.win_rate, nTheses: r.n_theses ?? null }]) ?? [],
+              );
             } catch { /* soft-fail */ }
           }
 
@@ -234,10 +295,37 @@ export default function MorningBriefPage() {
               saved: false,
               completeness,
               adjustedScore: getAdjustedScore(a.relevance_score ?? null, completeness),
-              sourceWinRate: credMap.get(a.source) ?? null,
+              sourceWinRate: credMap.get(a.source)?.winRate ?? null,
+              sourceSampleSize: credMap.get(a.source)?.nTheses ?? null,
             };
           }));
         }
+
+        // Active theses count (stats bar).
+        try {
+          const { count } = await getSupabase()
+            .from("theses")
+            .select("id", { count: "exact", head: true });
+          if (typeof count === "number") setThesesCount(count);
+        } catch { /* soft-fail */ }
+
+        // VIX quote for stats bar.
+        // Finnhub doesn't return data for plain "VIX"; "^VIX" is the index
+        // symbol that works. We also include "VIXY" as a fallback proxy
+        // (volatility-tracking ETF) so the bar always shows real numbers.
+        try {
+          const qr = await fetch("/api/watchlist-quotes?symbols=" + encodeURIComponent("^VIX,VIXY"));
+          if (qr.ok) {
+            const qd = await qr.json();
+            const q = qd?.quotes?.["^VIX"] ?? qd?.quotes?.VIXY;
+            if (q) {
+              const price = typeof q.price === "number"
+                ? q.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                : String(q.price ?? "—");
+              setVixQuote({ price, pct: q.pct ?? 0 });
+            }
+          }
+        } catch { /* soft-fail */ }
       } catch (e) {
         console.error("Failed to load briefing:", e);
       } finally {
@@ -249,34 +337,97 @@ export default function MorningBriefPage() {
 
   useEffect(() => {
     getSupabase().auth.getUser().then(({ data }) => {
-      setUser(data.user ? { id: data.user.id } : null);
+      setUser(data.user ? { id: data.user.id, email: data.user.email ?? null } : null);
     }).catch(() => setUser(null));
   }, []);
 
-  const sectorSignals = useMemo(() => {
-    if (!briefing?.sector_breakdown) return [];
-    let entries = Object.entries(briefing.sector_breakdown);
-    if (sectorFilter) {
-      entries = entries.filter(([sector]) => sector === sectorFilter);
+  // Analyst Briefing sections — whitelist + canonical order. Sector Signals
+  // is rendered as its own section below the analyst grid, so it is NOT
+  // folded into this list.
+  const analystSections = useMemo(() => {
+    const s = briefing?.sections || {};
+    const out: { key: string; title: string; content: string }[] = [];
+    for (const key of TAB_ORDER) {
+      const content = s[key];
+      if (content && content.trim()) {
+        out.push({ key, title: SECTION_TITLES[key] || key, content });
+      }
     }
-    return entries.map(([sector, analysis]) => ({ sector, analysis }));
-  }, [briefing, sectorFilter]);
-
-  const sections = useMemo(() => {
-    if (!briefing?.sections) return [];
-    return Object.entries(briefing.sections).map(([key, content]) => ({
-      key,
-      title: `${SECTION_ICONS[key] || "\u{1F4CB}"} ${SECTION_TITLES[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}`,
-      content: (content ?? "") as string,
-      fullWidth: key === "what_to_watch" || key === "tomorrow_setup",
-    }));
+    return out;
   }, [briefing]);
 
-  // Personalized story ordering
   const rankedStories = useMemo(() => {
     if (!profile) return stories;
     return sortByRelevance(stories, profile, storyToContent);
   }, [stories, profile]);
+
+  const tone = normaliseTone(briefing?.market_tone);
+  const now = briefing?.created_at ? new Date(briefing.created_at) : new Date();
+  const dateStr = formatDatePretty(now);
+  const timeStr = formatTimePretty(now);
+
+  const moodWord = briefing?.market_pulse?.sentiment_word || briefing?.market_tone || "—";
+
+  // Market Pulse fallbacks — the hero card must always render. Pull a
+  // sentiment word and narrative body whether or not the backend delivered
+  // the structured market_pulse block.
+  const pulseWord = briefing?.market_pulse?.sentiment_word || briefing?.market_tone || "mixed";
+  const pulseBody =
+    briefing?.market_pulse?.narrative
+    || (briefing?.summary ? stripHtml(briefing.summary) : "")
+    || "Pre-market synthesis is still stitching together. Detailed pulse commentary will appear here shortly.";
+  const pulseDrivers: { label: string; href?: string; tone: Tone }[] = (() => {
+    const h = briefing?.market_pulse?.headlines;
+    if (Array.isArray(h) && h.length > 0) {
+      return h.slice(0, 4).map((x) => ({
+        label: x.title,
+        href: x.href,
+        tone: normaliseTone((x as { tone?: string }).tone ?? null),
+      }));
+    }
+    if (briefing?.top_deals && briefing.top_deals.length > 0) {
+      return briefing.top_deals.slice(0, 3).map((d) => ({
+        label: d.deal_type ? `${d.company} · ${d.deal_type}` : d.company,
+        tone: "NEUTRAL" as Tone,
+      }));
+    }
+    return [];
+  })();
+
+  // Lead body fallback — if a structured field is null, try to fill it
+  // from the corresponding third of the prose summary. If the summary is
+  // also absent, drop the card entirely so the grid collapses to 2 or 1
+  // cols rather than rendering an empty card with just "—".
+  const splitIntoThree = (raw: string): [string, string, string] => {
+    const text = stripHtml(raw).trim();
+    if (!text) return ["", "", ""];
+    const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+    if (sentences.length <= 1) return [text, "", ""];
+    const third = Math.ceil(sentences.length / 3);
+    return [
+      sentences.slice(0, third).join(" "),
+      sentences.slice(third, third * 2).join(" "),
+      sentences.slice(third * 2).join(" "),
+    ];
+  };
+  const summaryThirds = splitIntoThree(briefing?.summary || briefing?.headline || "");
+  const leadCards = ([
+    { label: "The Lead",      body: briefing?.lead_paragraph     || summaryThirds[0] },
+    { label: "The Context",   body: briefing?.supporting_context || summaryThirds[1] },
+    { label: "What to Watch", body: briefing?.what_to_watch      || summaryThirds[2] },
+  ] as { label: string; body: string }[])
+    .filter((c) => c.body && c.body.trim() && c.body.trim() !== "—")
+    .map((c, i) => ({ ...c, n: String(i + 1) }));
+  const leadGridCols =
+    leadCards.length >= 3 ? "md:grid-cols-3"
+    : leadCards.length === 2 ? "md:grid-cols-2"
+    : "md:grid-cols-1";
+
+  const handleAskAI = () => {
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }),
+    );
+  };
 
   const handleLeadAddThesis = async () => {
     setAddingThesis(true);
@@ -301,13 +452,7 @@ export default function MorningBriefPage() {
   return (
     <AppShell
       pageTitle="Morning Brief"
-      mood={
-        briefing?.market_tone?.toLowerCase().includes("bearish") || briefing?.market_tone?.toLowerCase().includes("risk-off")
-          ? "risk-off"
-          : briefing?.market_tone?.toLowerCase().includes("bullish") || briefing?.market_tone?.toLowerCase().includes("risk-on")
-            ? "risk-on"
-            : "neutral"
-      }
+      mood={tone === "BEARISH" ? "risk-off" : tone === "BULLISH" ? "risk-on" : "neutral"}
       moodHeadline={briefing?.market_tone || "Loading..."}
       moodDetails={[]}
       rightPanel={
@@ -323,16 +468,114 @@ export default function MorningBriefPage() {
     >
       <TickerStrip />
 
-      <div className="p-6 max-w-[960px]">
+      {/* Sherwood gold masthead — every colour is a literal so the band
+          keeps its saturated Heritage Gold gradient and the brand lockup
+          reads the same in light + dark. "Signal" is cream, "era" is
+          espresso (inverse of the sidebar Wordmark) — on a gold band
+          those two values give the highest-contrast lockup. */}
+      <header
+        style={{
+          background: `linear-gradient(135deg, ${HERITAGE_GOLD} 0%, ${HERITAGE_GOLD_DEEP} 100%)`,
+          padding: "20px 32px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 16,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", gap: 20 }}>
+          <span
+            className="font-[family-name:var(--font-playfair-display)]"
+            style={{ fontSize: 26, fontWeight: 700, color: DC_CREAM, letterSpacing: "-0.01em", lineHeight: 1 }}
+          >
+            Signal<span style={{ color: DC_ESPRESSO }}>era</span>
+          </span>
+          <span style={{ width: 1, height: 20, background: "rgba(26,18,8,0.25)", alignSelf: "center" }} />
+          <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
+            <span
+              className="font-[family-name:var(--font-playfair-display)]"
+              style={{ fontSize: 20, fontWeight: 700, color: DC_CREAM, letterSpacing: "-0.01em" }}
+            >
+              Morning Brief
+            </span>
+            <span
+              className="font-[family-name:var(--font-playfair-display)] italic"
+              style={{ fontSize: 13, color: "rgba(255,253,249,0.78)", marginTop: 4, fontWeight: 400 }}
+            >
+              A considered reading of overnight markets — in four chapters.
+            </span>
+          </div>
+        </div>
+        <div
+          className="font-sans"
+          style={{ display: "flex", alignItems: "center", gap: 22, fontSize: 11, color: "rgba(255,253,249,0.85)", fontWeight: 600 }}
+        >
+          <span>{dateStr}</span>
+          <span className="font-data">{timeStr}</span>
+          <span style={{ background: "rgba(26,18,8,0.2)", color: "rgba(255,253,249,0.9)", padding: "4px 10px", borderRadius: 20, fontSize: 10, letterSpacing: "0.12em" }}>
+            4 MIN READ
+          </span>
+        </div>
+      </header>
+
+      {/* Stats metadata bar */}
+      <div
+        style={{
+          padding: "14px 32px",
+          borderBottom: "1px solid var(--border-base)",
+          background: "var(--cream)",
+          display: "flex",
+          alignItems: "center",
+          gap: 36,
+          flexWrap: "wrap",
+        }}
+      >
+        {[
+          { k: "MOOD", v: String(moodWord).toUpperCase(), c: tone === "BEARISH" ? "var(--signal-dn)" : tone === "BULLISH" ? "var(--signal-up)" : "var(--signal-warn)" },
+          { k: "STORIES", v: String(stories.length || "—") },
+          { k: "THESES", v: thesesCount !== null ? `${thesesCount} active` : "—" },
+          {
+            k: "VIX",
+            v: vixQuote ? `${vixQuote.price} ${vixQuote.pct >= 0 ? "▲" : "▼"}${Math.abs(vixQuote.pct).toFixed(2)}%` : "—",
+            c: vixQuote ? (vixQuote.pct >= 0 ? "var(--signal-dn)" : "var(--signal-up)") : undefined,
+          },
+        ].map((x, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span
+              className="font-sans"
+              style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.16em", color: "var(--text-muted)" }}
+            >
+              {x.k}
+            </span>
+            <span
+              className="font-data"
+              style={{ fontSize: 12, fontWeight: 700, color: x.c || "var(--espresso)", fontVariantNumeric: "tabular-nums" }}
+            >
+              {x.v}
+            </span>
+          </div>
+        ))}
+        <span style={{ flex: 1 }} />
+        <span
+          className="font-data"
+          style={{ fontSize: 10, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--signal-up)", display: "inline-block" }} />
+          LIVE · Signalera Desk
+        </span>
+      </div>
+
+      <div className="p-8 max-w-[960px]">
         {loading ? (
           <div className="space-y-6">
-            <Skeleton className="h-8 w-3/4" />
+            <Skeleton className="h-10 w-3/4" />
             <SkeletonText lines={3} />
-            <div className="grid grid-cols-3 gap-2.5">
-              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+            <div className="grid grid-cols-3 gap-5">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-40 rounded-2xl" />)}
             </div>
-            <div className="grid grid-cols-2 gap-2.5">
-              {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-32 rounded-xl" />)}
+            <div className="grid grid-cols-1 gap-3">
+              {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
             </div>
           </div>
         ) : !briefing ? (
@@ -343,106 +586,506 @@ export default function MorningBriefPage() {
           />
         ) : (
           <>
-            <BriefHeader
-              type="morning"
-              headline={briefing.headline || formatLabel || "Morning Market Brief"}
-              summary={briefing.summary || ""}
-              marketTone={briefing.market_tone || "MIXED"}
-              storyCount={stories.length}
-              generatedAt={briefing.created_at}
-              isStale={isStale}
-              lastRunStatus={lastRunStatus}
-              onGenerateMemo={() => {
-                setLeadMemoContent(
-                  [briefing.headline, briefing.summary].filter(Boolean).join("\n\n"),
-                );
-                setLeadMemoOpen(true);
-              }}
-              onAddThesis={handleLeadAddThesis}
-            />
-
-            {/* Per-user personalized addendum from user_synthesis pipeline */}
-            {userAddendum && (
-              <div className="mb-4 px-4 py-3 rounded-xl border border-gold/20 bg-gold-muted/30">
-                <p className="font-sans text-[10px] uppercase tracking-widest font-bold text-gold mb-1.5">
-                  Your Personalized Briefing
+            {/* ── Market Pulse — dark espresso hero. All colours pinned to
+                literals so the card stays dark in both light and dark
+                themes (the token --espresso flips to a near-white in dark
+                mode and would otherwise invert this card). Always renders:
+                sentiment word falls back to market_tone → "mixed", body
+                falls back to briefing.summary, driver chips fall back to
+                top_deals when backend-supplied headlines are absent. ── */}
+            <section style={{ marginBottom: 36 }}>
+              <div
+                style={{
+                  background: DC_ESPRESSO,
+                  borderRadius: 18,
+                  padding: "32px 36px",
+                  color: DC_CREAM,
+                  position: "relative",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    right: -60,
+                    top: -60,
+                    width: 260,
+                    height: 260,
+                    background: `radial-gradient(circle, ${HERITAGE_GOLD}60, transparent 70%)`,
+                    pointerEvents: "none",
+                  }}
+                />
+                <p
+                  className="font-sans"
+                  style={{
+                    fontSize: 10,
+                    letterSpacing: "0.20em",
+                    color: HERITAGE_GOLD,
+                    margin: "0 0 14px",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    position: "relative",
+                  }}
+                >
+                  Market Pulse · {timeStr}
                 </p>
-                <p className="font-sans text-[12px] text-text-primary leading-relaxed whitespace-pre-line">
-                  {userAddendum}
+                <h2
+                  className="font-[family-name:var(--font-playfair-display)]"
+                  style={{
+                    fontSize: "clamp(30px, 4vw, 44px)",
+                    fontWeight: 800,
+                    lineHeight: 1.05,
+                    letterSpacing: "-0.025em",
+                    margin: "0 0 20px",
+                    color: DC_CREAM,
+                    position: "relative",
+                  }}
+                >
+                  Today the market is{" "}
+                  <span
+                    style={{
+                      background: HERITAGE_GOLD,
+                      color: DC_ESPRESSO,
+                      padding: "2px 14px",
+                      borderRadius: 8,
+                      display: "inline-block",
+                      transform: "rotate(-1deg)",
+                      boxShadow: "0 4px 0 rgba(0,0,0,0.15)",
+                    }}
+                  >
+                    {pulseWord}
+                  </span>
+                  .
+                </h2>
+                <p
+                  className="font-sans"
+                  style={{
+                    fontSize: 15,
+                    lineHeight: 1.6,
+                    color: "rgba(255,253,249,0.82)",
+                    margin: "0 0 24px",
+                    maxWidth: 620,
+                    whiteSpace: "pre-line",
+                    position: "relative",
+                  }}
+                >
+                  {pulseBody}
                 </p>
+                {pulseDrivers.length > 0 && (
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", position: "relative" }}>
+                    {pulseDrivers.map((d, i) => {
+                      const Chip = (
+                        <div
+                          key={i}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: "8px 14px",
+                            background: "rgba(255,253,249,0.08)",
+                            border: "1px solid rgba(212,168,75,0.25)",
+                            borderRadius: 24,
+                            backdropFilter: "blur(10px)",
+                          }}
+                        >
+                          <span style={{ fontSize: 13, color: DC_CREAM, fontWeight: 500 }}>
+                            {d.label}
+                          </span>
+                          <SentimentPill tone={d.tone} size="sm" />
+                        </div>
+                      );
+                      return d.href ? (
+                        <a
+                          key={i}
+                          href={d.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ textDecoration: "none" }}
+                        >
+                          {Chip}
+                        </a>
+                      ) : (
+                        Chip
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
+            </section>
 
-            {/* Export & Share */}
-            <div className="flex items-center gap-2 mb-4">
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={() => {
-                  if (user === null) {
-                    setShowSignIn(true);
-                    return;
-                  }
-                  const content = document.querySelector("main")?.innerText || "";
-                  const blob = new Blob([content], { type: "text/plain" });
-                  const a = document.createElement("a");
-                  a.href = URL.createObjectURL(blob);
-                  a.download = `signalera-morning-brief-${new Date().toISOString().slice(0, 10)}.txt`;
-                  a.click();
+            {/* ── MORNING REVIEW block — gold eyebrow label, Playfair
+                date headline, muted Inter + mono timestamp subtitle. Sits
+                between the Market Pulse hero and Today's Lead. ── */}
+            <section style={{ marginBottom: 28 }}>
+              <p
+                className="font-sans"
+                style={{
+                  fontSize: 10,
+                  letterSpacing: "0.22em",
+                  textTransform: "uppercase",
+                  color: "var(--gold-dark)",
+                  fontWeight: 800,
+                  margin: "0 0 10px",
                 }}
               >
-                &#8595; Export Brief
-              </Button>
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={() => {
-                  navigator.clipboard.writeText(window.location.href);
-                  setToast("Link copied");
-                  setTimeout(() => setToast(""), 2000);
+                Morning Review
+              </p>
+              <h1
+                className="font-[family-name:var(--font-playfair-display)]"
+                style={{
+                  fontSize: "clamp(30px, 3.8vw, 42px)",
+                  fontWeight: 800,
+                  lineHeight: 1.05,
+                  color: "var(--espresso)",
+                  margin: "0 0 10px",
+                  letterSpacing: "-0.02em",
                 }}
               >
-                &#8599; Share
-              </Button>
-              {toast && (
-                <span className="font-sans text-[11px] text-gold font-semibold animate-pulse">{toast}</span>
-              )}
-            </div>
+                {dateStr}
+              </h1>
+              <p
+                className="font-sans"
+                style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}
+              >
+                {stories.length || "—"} stories worth your attention{" "}
+                <span style={{ color: "var(--text-faint)" }}>·</span>{" "}
+                <span className="font-data" style={{ fontSize: 12 }}>
+                  Generated {timeStr} ·{" "}
+                  {now.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                </span>
+              </p>
+            </section>
 
-            {/* Top Deals to Watch */}
-            {briefing.top_deals && briefing.top_deals.length > 0 && (
-              <section className="mb-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <h2 className="font-sans text-[10px] uppercase tracking-widest font-bold text-text-muted">
-                    Top Deals to Watch
-                  </h2>
-                  <div className="flex-1 h-px bg-gold/15" />
+            {/* ── Today's Lead ── */}
+            <section style={{ marginBottom: 40 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+                <span
+                  className="font-sans"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    background: HERITAGE_GOLD,
+                    color: DC_ESPRESSO,
+                    padding: "5px 12px",
+                    borderRadius: 20,
+                    fontSize: 10,
+                    letterSpacing: "0.14em",
+                    textTransform: "uppercase",
+                    fontWeight: 800,
+                  }}
+                >
+                  ★ Today&rsquo;s Lead
+                </span>
+                <SentimentPill tone={tone} />
+                <span className="font-sans" style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                  Signalera Desk · 4 min
+                </span>
+              </div>
+
+              <h2
+                className="font-[family-name:var(--font-playfair-display)]"
+                style={{
+                  fontSize: "clamp(28px, 3.5vw, 40px)",
+                  fontWeight: 800,
+                  lineHeight: 1.05,
+                  letterSpacing: "-0.025em",
+                  color: "var(--espresso)",
+                  margin: "0 0 24px",
+                }}
+              >
+                {briefing.headline || formatLabel || "Morning Market Brief"}
+              </h2>
+
+              {/* 3-column structured body. Cards use --elevated so they
+                  are white/#fffdf9 in light and #1e1e1e in dark, keeping
+                  proper card contrast against the page in both themes.
+                  Always renders — leadCards falls back to the summary
+                  split into thirds when the backend doesn't deliver the
+                  structured lead/context/watch fields. */}
+              <div className={`grid grid-cols-1 ${leadGridCols} gap-5`}>
+                {leadCards.map((p, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      background: "var(--elevated)",
+                      border: "1px solid var(--border-base)",
+                      borderRadius: 14,
+                      padding: "22px 20px",
+                      transition: "transform 150ms cubic-bezier(0.16,1,0.3,1), box-shadow 150ms",
+                    }}
+                  >
+                    <div
+                      className="font-[family-name:var(--font-playfair-display)]"
+                      style={{
+                        fontSize: 60,
+                        fontWeight: 800,
+                        color: HERITAGE_GOLD,
+                        lineHeight: 0.85,
+                        marginBottom: 8,
+                        letterSpacing: "-0.03em",
+                      }}
+                    >
+                      {p.n}
+                    </div>
+                    <p
+                      className="font-sans"
+                      style={{
+                        fontSize: 10,
+                        letterSpacing: "0.16em",
+                        textTransform: "uppercase",
+                        color: "var(--gold-dark)",
+                        fontWeight: 700,
+                        margin: "0 0 10px",
+                      }}
+                    >
+                      {p.label}
+                    </p>
+                    <p
+                      className="font-sans"
+                      style={{
+                        fontSize: 13.5,
+                        lineHeight: 1.6,
+                        color: "var(--text-primary)",
+                        margin: 0,
+                        whiteSpace: "pre-line",
+                      }}
+                    >
+                      {p.body}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Names to Watch — parchment strip with dashed gold border
+                  and top_deals as pill chips. Omitted when there are no
+                  deals so we never render an empty callout. */}
+              {briefing.top_deals && briefing.top_deals.length > 0 && (
+                <div
+                  style={{
+                    marginTop: 20,
+                    display: "flex",
+                    gap: 12,
+                    flexWrap: "wrap",
+                    padding: "16px 20px",
+                    borderRadius: 14,
+                    background: "var(--parchment-mid)",
+                    border: "1px dashed rgba(212,168,75,0.4)",
+                  }}
+                >
+                  <span
+                    className="font-sans"
+                    style={{
+                      fontSize: 10,
+                      letterSpacing: "0.16em",
+                      textTransform: "uppercase",
+                      color: "var(--gold-dark)",
+                      fontWeight: 800,
+                      alignSelf: "center",
+                    }}
+                  >
+                    ▶ Names to Watch
+                  </span>
+                  {briefing.top_deals.slice(0, 5).map((d, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        background: "var(--elevated)",
+                        border: "1px solid var(--border-base)",
+                        borderRadius: 20,
+                        padding: "6px 12px",
+                      }}
+                    >
+                      <span
+                        className="font-data"
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 800,
+                          color: "var(--espresso)",
+                        }}
+                      >
+                        {d.company}
+                      </span>
+                      {d.deal_type && (
+                        <span
+                          className="font-sans"
+                          style={{ fontSize: 11, color: "var(--text-secondary)" }}
+                        >
+                          {d.deal_type}
+                        </span>
+                      )}
+                      <SentimentPill tone={normaliseTone(d.sentiment)} size="sm" />
+                    </div>
+                  ))}
                 </div>
-                <div className="grid grid-cols-3 gap-2.5">
+              )}
+
+              {/* Personal addendum */}
+              {userAddendum && (
+                <div
+                  className="mt-4 px-4 py-3 rounded-xl"
+                  style={{
+                    border: "1px solid var(--gold-border)",
+                    background: "var(--gold-muted)",
+                  }}
+                >
+                  <p
+                    className="font-sans"
+                    style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--gold-dark)", fontWeight: 700, marginBottom: 6 }}
+                  >
+                    Your Personalized Briefing
+                  </p>
+                  <p className="font-sans" style={{ fontSize: 13, lineHeight: 1.6, color: "var(--text-primary)", whiteSpace: "pre-line", margin: 0 }}>
+                    {userAddendum}
+                  </p>
+                </div>
+              )}
+
+              {/* Export & Share row */}
+              <div className="flex items-center gap-2 mt-5">
+                {user === null ? (
+                  <Button variant="secondary" size="md" onClick={() => setShowSignIn(true)}>
+                    &#8595; Export Brief
+                  </Button>
+                ) : (
+                  <ExportMenu
+                    briefingId={briefing.id ?? null}
+                    type="morning"
+                    userEmail={user?.email ?? null}
+                  />
+                )}
+                <ShareButton
+                  briefingId={briefing?.id}
+                  briefTitle={briefing?.headline}
+                  briefType="morning"
+                />
+                <div className="ml-auto flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    onClick={() => {
+                      setLeadMemoContent(
+                        [briefing.headline, briefing.summary].filter(Boolean).join("\n\n"),
+                      );
+                      setLeadMemoOpen(true);
+                    }}
+                  >
+                    Generate Memo
+                  </Button>
+                  <Button variant="secondary" size="md" onClick={handleLeadAddThesis} disabled={addingThesis}>
+                    Add Thesis
+                  </Button>
+                  <Button variant="secondary" size="md" onClick={handleAskAI}>
+                    Ask AI
+                  </Button>
+                </div>
+              </div>
+
+              {lastRunStatus === "stub" || lastRunStatus === "error" || (lastRunStatus == null && isStale) ? (
+                <div
+                  className="mt-4 px-3 py-2 rounded-lg font-sans text-[11px]"
+                  style={{ borderLeft: `2px solid ${HERITAGE_GOLD}`, background: "var(--gold-muted)", color: "var(--text-primary)" }}
+                >
+                  {lastRunStatus === "stub"
+                    ? "Last run failed — synthesis error during generation. Showing previous brief."
+                    : lastRunStatus === "error"
+                      ? "Last run failed — pipeline did not complete. Showing previous brief."
+                      : "Brief may be from a prior session — today's pipeline run may still be in progress."}
+                </div>
+              ) : null}
+            </section>
+
+            {/* ── Top Deals to Watch — full deal cards. Each card shows
+                company, headline deal value, deal type pill, and a
+                prose one-liner. Cream elevated surface with gold accent
+                stripe — Direction C aesthetic. ── */}
+            {briefing.top_deals && briefing.top_deals.length > 0 && (
+              <section style={{ marginBottom: 40 }}>
+                <h3
+                  className="font-[family-name:var(--font-playfair-display)]"
+                  style={{
+                    fontSize: 26,
+                    fontWeight: 800,
+                    color: "var(--espresso)",
+                    margin: "0 0 18px",
+                    letterSpacing: "-0.015em",
+                  }}
+                >
+                  Top Deals to Watch
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {briefing.top_deals.map((deal, i) => (
                     <div
                       key={i}
-                      className={cn(
-                        "p-3.5 rounded-xl border border-border-base dark:border-border-default border-t-2 border-t-gold/15 bg-white dark:bg-elevated",
-                        "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",
-                        "hover:-translate-y-0.5 hover:border-border-hover dark:hover:bg-overlay hover:shadow-[0_2px_12px_rgba(201,146,42,0.06)]",
-                      )}
+                      style={{
+                        background: "var(--elevated)",
+                        border: "1px solid var(--border-base)",
+                        borderTop: `3px solid ${HERITAGE_GOLD}`,
+                        borderRadius: 12,
+                        padding: "16px 18px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 8,
+                      }}
                     >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <h4 className="font-sans text-[14px] font-semibold text-espresso">
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+                        <h4
+                          className="font-[family-name:var(--font-playfair-display)]"
+                          style={{
+                            fontSize: 15,
+                            fontWeight: 700,
+                            color: "var(--espresso)",
+                            margin: 0,
+                            letterSpacing: "-0.01em",
+                          }}
+                        >
                           {deal.company}
                         </h4>
-                        <span className="font-data text-[11px] font-semibold text-gold flex-shrink-0 ml-2">
+                        <span
+                          className="font-data"
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: "var(--gold-dark)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           {deal.value || "Undisclosed"}
                         </span>
                       </div>
                       {deal.deal_type && (
-                        <span className="inline-block font-data text-[9px] uppercase tracking-wide font-bold text-gold bg-gold-muted px-1.5 py-0.5 rounded mb-1.5">
+                        <span
+                          className="font-data"
+                          style={{
+                            display: "inline-block",
+                            alignSelf: "flex-start",
+                            fontSize: 9,
+                            fontWeight: 800,
+                            letterSpacing: "0.12em",
+                            textTransform: "uppercase",
+                            color: "var(--gold-dark)",
+                            background: "var(--gold-muted)",
+                            border: "1px solid var(--gold-border)",
+                            padding: "3px 8px",
+                            borderRadius: 4,
+                          }}
+                        >
                           {deal.deal_type}
                         </span>
                       )}
                       {deal.one_liner && (
-                        <p className="font-sans text-[11px] text-text-secondary dark:text-[#e8e8e4] leading-snug">
+                        <p
+                          className="font-sans"
+                          style={{
+                            fontSize: 12,
+                            lineHeight: 1.55,
+                            color: "var(--text-secondary)",
+                            margin: 0,
+                          }}
+                        >
                           {stripHtml(deal.one_liner)}
                         </p>
                       )}
@@ -452,195 +1095,114 @@ export default function MorningBriefPage() {
               </section>
             )}
 
-            {/* Analyst briefing sections */}
-            {sections.length > 0 && (
-              <section className="mb-6">
-                <h2 className="font-sans text-[10px] uppercase tracking-widest font-bold text-text-muted mb-3">
+            {/* ── Analyst Briefing — one card per section, each with
+                USEFUL? thumbs for Lucas's feedback-loop signal
+                collection. Sector Signals is rendered separately below. ── */}
+            {analystSections.length > 0 && (
+              <section style={{ marginBottom: 40 }}>
+                <h3
+                  className="font-[family-name:var(--font-playfair-display)]"
+                  style={{
+                    fontSize: 26,
+                    fontWeight: 800,
+                    color: "var(--espresso)",
+                    margin: "0 0 18px",
+                    letterSpacing: "-0.015em",
+                  }}
+                >
                   Analyst Briefing
-                </h2>
-                <div className="grid grid-cols-2 gap-2.5">
-                  {sections.map((section) => (
-                    <BriefSection
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {analystSections.map((section) => (
+                    <DCAnalystSection
                       key={section.key}
+                      sectionKey={section.key}
                       title={section.title}
                       content={section.content}
-                      fullWidth={section.fullWidth}
-                      expanded={expandedSection === section.key}
-                      onToggle={() => setExpandedSection(expandedSection === section.key ? null : section.key)}
-                      onGenerateMemo={() => {
-                        setMemoTitle(section.title);
-                        setMemoContent(stripHtml(section.content));
-                        setMemoOpen(true);
-                      }}
-                      addingThesis={addingThesis}
-                      onAddThesis={async () => {
-                        setAddingThesis(true);
-                        try {
-                          await getSupabase().from("theses").insert({
-                            title: section.title,
-                            conviction: "WATCH",
-                            sector: "General",
-                            rationale: stripHtml(section.content),
-                            source: "Morning Brief",
-                            status: "new-signal",
-                            generated_at: new Date().toISOString(),
-                          });
-                          router.push("/thesis-board");
-                        } catch (err) {
-                          console.error("Failed to add thesis:", err);
-                        } finally {
-                          setAddingThesis(false);
-                        }
-                      }}
-                      sectionKey={section.key}
-                      onRate={handleSectionRate}
+                      briefSource="Morning Brief"
                       currentRating={sectionRatings[section.key] ?? 0}
+                      onRate={handleSectionRate}
                     />
                   ))}
                 </div>
               </section>
             )}
 
-            {/* Sector signals */}
-            {sectorSignals.length > 0 && (
-              <section className="mb-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <h2 className="font-sans text-[10px] uppercase tracking-widest font-bold text-text-muted">
-                    Sector Signals
-                  </h2>
-                  {briefing.sector_breakdown && Object.keys(briefing.sector_breakdown).length > 1 && (
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <button
-                        type="button"
-                        onClick={() => setSectorFilter(null)}
-                        className={cn(
-                          "font-data text-[9px] px-2 py-0.5 rounded-md cursor-pointer transition-colors",
-                          !sectorFilter ? "bg-espresso text-cream" : "bg-parchment-mid text-text-muted hover:text-text-primary",
-                        )}
-                      >
-                        All
-                      </button>
-                      {Object.keys(briefing.sector_breakdown).map((s) => (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => setSectorFilter(sectorFilter === s ? null : s)}
-                          className={cn(
-                            "font-data text-[9px] px-2 py-0.5 rounded-md cursor-pointer transition-colors",
-                            sectorFilter === s ? "bg-espresso text-cream" : "bg-parchment-mid text-text-muted hover:text-text-primary",
-                          )}
-                        >
-                          {s}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-2.5">
-                  {sectorSignals.map((s) => (
-                    <SectorSignalCard key={s.sector} sector={s.sector} analysis={s.analysis} />
-                  ))}
-                </div>
-              </section>
+            {/* ── Sector Signals — standalone section with pill filter. ── */}
+            {briefing.sector_breakdown && Object.keys(briefing.sector_breakdown).length > 0 && (
+              <DCSectorSignals breakdown={briefing.sector_breakdown} />
             )}
 
-            {/* Personalization nudge for signed-out users */}
+            {/* Personalization nudge */}
             {user === null && briefing && (
-              <div className="my-6 px-4 py-4 rounded-xl border text-center" style={{ background: 'rgba(245, 166, 35, 0.08)', borderColor: 'var(--gold-border)' }}>
-                <p className="font-sans text-[13px] text-espresso font-semibold mb-1">
+              <div
+                className="my-6 px-4 py-4 rounded-xl border text-center"
+                style={{ background: "rgba(245, 166, 35, 0.08)", borderColor: "var(--gold-border)" }}
+              >
+                <p className="font-sans text-[13px]" style={{ color: "var(--espresso)", fontWeight: 600, marginBottom: 4 }}>
                   This brief is personalized for signed-in users.
                 </p>
-                <p className="font-sans text-[12px] text-text-secondary mb-3">
+                <p className="font-sans text-[12px]" style={{ color: "var(--text-secondary)", marginBottom: 12 }}>
                   Sign in to get a brief built around your sectors and watchlist.
                 </p>
                 <button
                   type="button"
                   onClick={() => setShowSignIn(true)}
                   className="px-4 py-2 rounded-xl font-sans text-[12px] font-semibold cursor-pointer transition-colors"
-                  style={{ background: 'var(--gold)', color: 'var(--cream)' }}
+                  style={{ background: HERITAGE_GOLD, color: DC_ESPRESSO }}
                 >
                   Sign in with Google — Free
                 </button>
               </div>
             )}
 
-            {/* Stories */}
+            {/* ── Today's Stories — click a row to expand for summary,
+                entity chips, bookmark, and Generate Memo / Thesis / Ask AI
+                actions. Row meta row shows signal score, source win rate,
+                and summary/headline-only pill. ── */}
             {rankedStories.length > 0 && (
               <section>
-                <h2 className="font-sans text-[10px] uppercase tracking-widest font-bold text-text-muted mb-3">
+                <h3
+                  className="font-[family-name:var(--font-playfair-display)]"
+                  style={{ fontSize: 26, fontWeight: 800, color: "var(--espresso)", margin: "0 0 18px", letterSpacing: "-0.015em" }}
+                >
                   {storiesLabel}
-                </h2>
-                {(() => {
-                  const GATE_LIMIT = user === null ? 3 : rankedStories.length;
-                  const visibleStories = rankedStories.slice(0, GATE_LIMIT);
-                  const hasMore = user === null && rankedStories.length > GATE_LIMIT;
-                  return (
-                    <>
-                      {visibleStories[0] && (
-                        <div className="relative">
-                          {(visibleStories[0].tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
-                            <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 mb-1">
-                              Watching
-                            </span>
-                          )}
-                          <LeadStoryCard story={visibleStories[0]} />
-                        </div>
-                      )}
-                      <div className="mt-2">
-                        {visibleStories.slice(1).map((story, i) => (
-                          <div key={story.id}>
-                            {(story.tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
-                              <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 ml-3 mb-0.5">
-                                Watching
-                              </span>
-                            )}
-                            <CompactStoryCard story={story} number={i + 2} />
-                          </div>
-                        ))}
-                      </div>
-                      {hasMore && (
-                        <div className="relative mt-2">
-                          <div style={{ maxHeight: '48px', overflow: 'hidden', pointerEvents: 'none', userSelect: 'none', opacity: 0.7 }}>
-                            {rankedStories[GATE_LIMIT] && (
-                              <div className="bg-white border border-border-base rounded-xl p-3">
-                                <p className="font-data text-[9px] text-text-muted">{rankedStories[GATE_LIMIT].source}</p>
-                                <p className="font-display text-[13px] font-bold text-espresso leading-snug mt-1 line-clamp-1">{rankedStories[GATE_LIMIT].title}</p>
-                              </div>
-                            )}
-                          </div>
-                          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '40px', background: 'linear-gradient(to bottom, transparent, var(--cream))' }} />
-                        </div>
-                      )}
-                      {hasMore && (
-                        <div className="flex items-center justify-between px-3 py-2.5 mt-1 rounded-xl border" style={{ background: 'rgba(245, 166, 35, 0.08)', borderColor: 'var(--gold-border)' }}>
-                          <span className="font-sans text-[12px]" style={{ color: 'var(--gold)' }}>
-                            Sign in to see all {rankedStories.length} stories
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setShowSignIn(true)}
-                            className="font-sans text-[11px] font-semibold cursor-pointer ml-3 flex-shrink-0"
-                            style={{ color: 'var(--gold)', background: 'none', border: 'none', padding: 0 }}
-                          >
-                            Sign in →
-                          </button>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
+                </h3>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+                  {(user === null ? rankedStories.slice(0, 3) : rankedStories).map((s, i) => (
+                    <DCStoryRow
+                      key={s.id}
+                      story={s}
+                      index={i}
+                      watching={(s.tags ?? []).some((t) => isOnWatchlist(t, profile))}
+                    />
+                  ))}
+                </div>
+
+                {user === null && rankedStories.length > 3 && (
+                  <div
+                    className="flex items-center justify-between px-4 py-3 mt-3 rounded-xl border"
+                    style={{ background: "rgba(245, 166, 35, 0.08)", borderColor: "var(--gold-border)" }}
+                  >
+                    <span className="font-sans text-[12px]" style={{ color: HERITAGE_GOLD }}>
+                      Sign in to see all {rankedStories.length} stories
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowSignIn(true)}
+                      className="font-sans text-[11px] font-semibold cursor-pointer"
+                      style={{ color: HERITAGE_GOLD, background: "none", border: "none" }}
+                    >
+                      Sign in &rarr;
+                    </button>
+                  </div>
+                )}
               </section>
             )}
           </>
         )}
       </div>
-      <MemoModal
-        isOpen={memoOpen}
-        onClose={() => setMemoOpen(false)}
-        title={memoTitle}
-        content={memoContent}
-        type="brief"
-      />
+
       <MemoModal
         isOpen={leadMemoOpen}
         onClose={() => setLeadMemoOpen(false)}

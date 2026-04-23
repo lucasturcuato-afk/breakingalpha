@@ -36,7 +36,10 @@ export function RightPanel({ open, onToggle, children }: RightPanelProps) {
         />
       </button>
 
-      {/* Panel body */}
+      {/* Panel body. Inner scroller anchors widgets to the top of the
+          scroll container — the sticky wrapper guarantees the widget stack
+          stays at top-0 even when the panel internally scrolls past its
+          natural position, so the rail never floats mid-viewport. */}
       <div
         className={cn(
           "h-full overflow-hidden border-l border-border-base bg-cream dark:bg-sidebar-bg",
@@ -44,8 +47,10 @@ export function RightPanel({ open, onToggle, children }: RightPanelProps) {
           open ? "w-[var(--right-panel-width)]" : "w-0 border-l-0",
         )}
       >
-        <div className="w-[var(--right-panel-width)] h-full overflow-y-auto px-4 py-4 space-y-5">
-          {children}
+        <div className="w-[var(--right-panel-width)] h-full overflow-y-auto">
+          <div className="sticky top-0 px-4 py-4 space-y-5 self-start">
+            {children}
+          </div>
         </div>
       </div>
     </div>
