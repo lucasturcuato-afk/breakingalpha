@@ -37,6 +37,22 @@ DEAL VALUE vs VALUATION — critical distinction:
 - If only a valuation is mentioned with no transaction, is_deal = false
 - Only populate "valuation" field if a specific deal amount is stated
 
+DEAL VALUE EXTRACTION — read the BODY, not just the title or summary:
+Dollar figures for a transaction typically appear in the opening body
+paragraphs ("SpaceX is in talks to acquire Cursor for around $60 billion"),
+not in the headline. Scan the full article text for phrases like
+"$X billion", "$XB", "A$X billion", "€X million", "£X million", a "round
+worth $X", "values the company at $X in the deal". If a figure is stated
+anywhere in the body, extract it and normalize as:
+ - USD billions → "$XB"   (e.g. "$60 billion"        → "$60B")
+ - USD millions → "$XM"   (e.g. "$500 million round" → "$500M")
+ - AUD         → "A$XB"  (e.g. "A$25 billion"        → "A$25B")
+ - EUR         → "€XB" / "€XM"
+ - GBP         → "£XB" / "£XM"
+Preserve the non-USD currency — NEVER convert to USD. Only leave
+"valuation" as null when NO transaction figure appears anywhere in the
+article body.
+
 If a qualifying deal is present, respond ONLY with valid JSON:
 {
   "is_deal": true,
@@ -47,8 +63,16 @@ If a qualifying deal is present, respond ONLY with valid JSON:
                 | Asset Sale | SPAC | Recap | Minority Stake
                 | Restructuring | Debt Financing",
   "stage": "One of: rumored | announced | under_loi | closed",
-  "valuation": "Specific deal amount only (e.g. '$500M round'),
-                NOT company valuation. null if not stated.",
+  "valuation": "Deal amount from the body, normalized per DEAL VALUE
+                EXTRACTION above. null only if no figure in body.",
+  "sentiment": "One of: BULLISH | BEARISH | NEUTRAL | MIXED — the market
+                read for this deal. BULLISH for a strategic acquirer in
+                a clear consolidation thesis or a hot VC round. BEARISH
+                for a target in a forced/distressed/regulator-driven
+                sale or a deal that signals a sector top. MIXED for
+                material regulatory/antitrust risk or buyer-discipline
+                concerns. NEUTRAL only when genuinely ambiguous. Do NOT
+                default to NEUTRAL.",
   "sector": "One of: Technology | Venture Capital | Private Equity
              | Public Markets | Fintech | Healthcare | Energy
              | Consumer & Retail | Real Estate | Geopolitics",
@@ -81,8 +105,15 @@ def gemini_extract(system_prompt, user_content):
         return None
 
 
-def extract_deal(title, summary, url):
-    content = f"Title: {title}\nSummary: {summary or ''}"
+def extract_deal(title, summary, body, url):
+    # Include the scraped body when available — dollar figures for the
+    # transaction usually live in the opening paragraphs, not the headline.
+    # Capped at 2500 chars to stay under a token budget while still capturing
+    # the "for $X billion" clause in the lead paragraphs.
+    body_block = ""
+    if body and len(body.strip()) > 80:
+        body_block = f"\nBody: {body.strip()[:2500]}"
+    content = f"Title: {title}\nSummary: {summary or ''}{body_block}"
     try:
         raw = gemini_extract(SYSTEM_PROMPT, content)
         if not raw:
@@ -115,7 +146,7 @@ def run():
 
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
     resp = supabase.table("articles")\
-        .select("id, title, summary, url, sector")\
+        .select("id, title, summary, content, url, sector")\
         .gte("ingested_at", cutoff)\
         .order("ingested_at", desc=True)\
         .limit(150)\
@@ -130,6 +161,7 @@ def run():
     for article in articles:
         title   = article.get("title", "")
         summary = article.get("summary", "")
+        body    = article.get("content", "")
         url     = article.get("url", "")
 
         deal_keywords = [
@@ -142,7 +174,7 @@ def run():
         if not any(kw in combined for kw in deal_keywords):
             continue
 
-        deal = extract_deal(title, summary, url)
+        deal = extract_deal(title, summary, body, url)
 
         if not deal:
             continue

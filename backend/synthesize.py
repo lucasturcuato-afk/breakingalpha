@@ -37,7 +37,18 @@ You will receive a list of recent news articles, each tagged with a Signal line 
 
 SECTION RULES — read before writing anything: Only include a section if you have specific, non-generic content from the provided articles. If a section has no real signal — no named company, concrete rate figure, specific country, or actionable catalyst — OMIT that key from the JSON output entirely. Fewer sections with strong signal beats a complete schema with filler. BANNED phrases in every field: "does not directly impact", "no geopolitical developments", "no direct geopolitical", "investors should monitor", "broadly supportive", "ongoing uncertainty", "markets reacted to", "could also affect", "this is consistent with", "highlight", "broadly positive", "limited direct impact", "while not directly". If you cannot write a sentence without a banned phrase, omit the section.
 
-HEADLINE SELECTION — complete this step before writing any JSON: Scan every article and Signal line. Rank stories by market significance in this order: (1) largest named dollar figure or confirmed transaction; (2) broadest macro or rates signal (Fed statement, inflation print, credit spread move); (3) widest sector or market-moving development. The dominant story is the one a capital markets desk would open their morning call with. Identify it explicitly, then write the headline around it. Do not let a narrower or merely interesting item displace a larger macro or deal story.
+PRIMARY STORY SELECTION — complete this step BEFORE writing any JSON:
+1. Scan every article and Signal line. Rank stories by market significance: (1) largest named dollar figure or confirmed transaction; (2) broadest macro or rates signal (Fed statement, inflation print, credit spread move); (3) widest sector or market-moving development.
+2. Identify the SINGLE highest-ranking story. This is the primary_story. Commit to one. Ties go to the largest confirmed dollar figure.
+3. The entire lead block — `headline`, `lead_paragraph`, `supporting_context`, `what_to_watch` — MUST be about this one primary_story and nothing else. Never stack two stories into the lead with 'and', commas, 'while', 'as', or 'amid'. Other important stories of the day go into `sections`, `top_deals`, or `sector_breakdown`, NEVER into the lead block.
+4. Output the primary_story's identifier (its headline or the acquirer + target) in the `primary_story_id` field. This is a self-check — the `headline` field must name the same subject.
+
+CROSS-SECTION ANTI-REDUNDANCY (read before writing any section):
+The primary_story is narrated in depth in the lead block. Do NOT re-narrate it in `sections.deals_and_ma`, `sector_breakdown`, or `top_deals.one_liner`.
+- `sections.deals_and_ma` must cover patterns or themes across MULTIPLE deals (consolidation pace, valuation compression, buyer vs. target count), or OTHER deals entirely — not a retelling of the primary deal.
+- `sector_breakdown` discusses sector-level dynamics (multiples, capital flows, regulatory posture) — not individual deals already covered in the lead or top_deals.
+- `top_deals` MAY include the primary-story deal, but its `one_liner` must begin with "See lead." and add at most one clause of new color. Every OTHER top_deals entry must be a distinct transaction.
+If any of these sections would only restate the primary story, OMIT that section/key entirely rather than pad.
 
 SECTOR KEY RULE (CRITICAL): sector_breakdown keys MUST be exactly one of:
 "Technology", "Healthcare & Biotech", "Energy & Oil/Gas", "Financial Services",
@@ -53,34 +64,36 @@ REQUIRED FIELDS — non-negotiable. The following four fields MUST be present in
 
 Respond ONLY with valid JSON in this exact schema — no preamble, no markdown fences:
 {
-  "headline": "Write the headline for the dominant story you identified above — not a category label, not a topic area, the actual named development. Count the words: must be 10–15 words. If under 10 words, rewrite it. Name the specific company, institution, index, or data point involved. State what happened or is happening, not just the subject. Must not be a generic phrase interchangeable with headlines from other days. Never bundle two unrelated themes with 'and'. BANNED patterns: any headline under 8 words; vague labels ('Markets Face Uncertainty', 'Tech Sector Active', 'Volatility Returns'); naming a secondary story when a larger deal or macro story is present in the articles. BAD example: 'SpaceX Files for IPO' (4 words, no market implication). GOOD example: 'Fed Signals June Pause as May CPI Beats, Compressing Near-Term Rate-Cut Expectations'.",
-  "lead_paragraph": "REQUIRED. 2-3 sentences covering THE single lead story only — the dominant development you identified above. No grab bag, no blended themes. Name the specific companies, figures, institutions, or data points. Every sentence must advance the lead story; do not drift into secondary topics. Must NOT be empty.",
-  "supporting_context": "REQUIRED. 2-3 sentences of related context — what else happened in the same sector or theme as the lead. Name specific companies or data points. Do not restate the lead; add color that helps a reader understand why the lead matters now. Must NOT be empty.",
-  "what_to_watch": "REQUIRED. 1-2 sentences, forward-looking — what to watch in today's trading. Name a specific company, data release, or Fed speaker and commit to the binary outcome that matters. BANNED phrases: 'investors should monitor', 'watch for', 'bears watching', 'remain cautious'. Must NOT be empty.",
-  "summary": "Optional but still supported. If provided, 3-4 sentences with the same rules that each sentence covers ONE story or ONE data point. Banned phrases: 'mix of', 'ongoing activity', 'investment landscape', 'markets reacted to', 'could also', 'highlight', 'alongside', 'coupled with'. If omitted, it will be synthesized from the three structured fields above.",
+  "primary_story_id": "Short identifier for the SINGLE primary_story you chose in PRIMARY STORY SELECTION — either its original headline (first ~80 chars) or 'acquirer + target' or 'event + instrument'. The `headline` field below MUST name this same story. If these two fields diverge, rewrite `headline` until they match.",
+  "headline": "Headline for the primary_story ONLY — not a category, not a topic area, the actual named development. 10–15 words. Name the specific company, institution, index, or data point. State what happened. Must not be a generic phrase interchangeable with headlines from other days. BANNED patterns: any headline under 8 words; vague labels ('Markets Face Uncertainty', 'Tech Sector Active'); comma-stacking two unrelated stories ('X Buys Y, Z Commits W'); any 'and' that joins two different transactions, companies, or themes; naming a secondary story when a larger deal or macro story is present. BAD example: 'SpaceX Eyes $60B Cursor Acquisition, Microsoft Commits A$25B to Australia' (stacks two unrelated stories). GOOD example: 'SpaceX Closes $60B Bid for Cursor, Reshaping AI Coding Tools Valuations'.",
+  "lead_paragraph": "REQUIRED. 2-3 sentences on the primary_story ONLY. Who, what, deal size or figure, timing. Name specific companies and dollar figures. Every sentence must advance this one story — do not drift into secondary topics. Must NOT be empty and must NOT mention an unrelated secondary story.",
+  "supporting_context": "REQUIRED. 2-3 sentences of REAL CONTEXT for the primary_story specifically: industry backdrop, comparable recent deals, why this matters NOW, regulatory or competitive setup. Readers must leave these sentences understanding why the primary_story matters — not a list of tangential news. DO NOT cram two other unrelated stories here; that is not context, that is padding. If the corpus truly does not support meaningful context, write one honest sentence acknowledging the primary_story stands alone today rather than fabricating context. Must NOT be empty.",
+  "what_to_watch": "REQUIRED. 1-3 forward-looking sentences on the primary_story specifically: earnings response, regulatory review timeline, competitive bidding, IPO implications, follow-on reactions, expected commentary from adjacent names. Name a specific company, data release, or speaker and commit to the binary outcome that matters. BANNED phrases: 'investors should monitor', 'watch for', 'bears watching', 'remain cautious'. Must NOT be empty. If the corpus cannot support a meaningful forward-looking call, give the single most concrete next-step question a reader should carry into the day rather than pad.",
+  "summary": "Optional. If provided, 3-4 sentences with the same rules that each sentence covers ONE story or ONE data point. Banned phrases: 'mix of', 'ongoing activity', 'investment landscape', 'markets reacted to', 'could also', 'highlight', 'alongside', 'coupled with'. If omitted, it will be synthesized from the three structured fields above.",
   "market_tone": "One of: RISK-ON | RISK-OFF | MIXED | NEUTRAL",
   "market_pulse": {
-    "sentiment_word": "A single evocative adjective that captures the market's psychological state today — e.g., 'anxious', 'complacent', 'exuberant', 'defensive', 'bifurcated', 'numb'. One word. Lower-case. No punctuation.",
+    "sentiment_word": "One plain-English word describing the market's psychological posture today. MUST come from this list (or a close plain-English synonym that an analyst would actually say aloud): mixed, divided, split, conflicted, cautious, defensive, risk-on, risk-off, jittery, steady, buoyant, heavy, choppy, crosscurrents, nervous, anxious, relieved, rattled, complacent. BANNED — do NOT use any of: bifurcated, dichotomous, schizophrenic, paradoxical, asymmetric, nonlinear, multifaceted, numb, or any word a non-analyst reader would need a glossary to understand. One word. Lower-case. No punctuation.",
     "narrative": "2-3 short paragraphs (separated by \\n\\n) written in an editorial voice. State the dominant emotional posture of capital markets today, then the two or three concrete catalysts driving that posture. Name specific companies, prints, or policy actions — no vague prose. Read it like a Stratechery opener, not a bank research note."
   },
   "sections": {
-    "deals_and_ma": "2-3 sentences. For each deal, state the acquirer, target, price or multiple, and what the transaction signals about the buyer's strategy or sector consolidation pressure — not just that the deal happened. OMIT if no named transactions in the articles.",
+    "deals_and_ma": "2-3 sentences on PATTERNS across multiple deals — consolidation pace, buyer archetypes, valuation compression, sector concentration. Do NOT re-narrate the primary_story here; cite it only as one data point among several. If the only transaction in the corpus is the primary_story, OMIT this section entirely rather than restate the lead.",
     "public_markets": "2-3 sentences on equity market moves, earnings beats/misses, and IPO pipeline. State the directional implication for deal valuations or risk appetite, not just the move. OMIT if no specific market moves or earnings in the articles.",
     "macro_and_rates": "2-3 sentences on rates, Fed signals, or FX moves. State the concrete effect on LBO spreads, deal multiples, or cost of capital — not just that rates moved. OMIT if no concrete rates or macro signal in the articles.",
     "geopolitics": "2-3 sentences naming the specific countries and sectors in the blast radius and the mechanism of impact on capital flows or deal activity. OMIT THIS KEY ENTIRELY if no geopolitical event materially affected markets today — do not write a placeholder, a 'no developments' statement, or a vague monitoring sentence.",
-    "sector_spotlight": "2-3 sentences on the single sector with the most concentrated deal or news activity today. Explain why the cluster is happening now — regulatory, cycle, or competitive pressure. Write the sector name explicitly. OMIT if no clear sector cluster exists.",
+    "sector_spotlight": "2-3 sentences on the single sector with the most concentrated deal or news activity today. Explain why the cluster is happening now — regulatory, cycle, or competitive pressure. Write the sector name explicitly. OMIT if no clear sector cluster exists OR if the only cluster is the primary_story's sector (which is already covered in the lead).",
     "what_to_watch": "Write 3-4 sentences of continuous prose — no bullets, no numbered list. Each sentence must name a specific company, ticker, Fed speaker, or scheduled data release, state the exact expected catalyst, and commit to the binary outcome that matters (e.g., 'A miss from X would signal demand destruction in Y, pressuring comps Z and W'). Write it as a paragraph a senior analyst would read aloud. BANNED phrases: 'investors should monitor', 'watch for', 'could be impacted', 'may be affected', 'bears watching', 'remain cautious'."
   },
   "top_deals": [
     {
       "company": "Target company name",
       "deal_type": "M&A | LBO | IPO | VC Round | Strategic Investment | Debt Financing",
-      "valuation": "$Xb or null",
-      "one_liner": "State acquirer, target, price or multiple, and why investors in adjacent names should reprice — one sentence, no filler."
+      "value": "Deal size EXTRACTED FROM THE ARTICLE BODY (not just the headline). Normalize to one of: '$XB' (USD billions), '$XM' (USD millions), 'A$XB' (Australian dollars), '€XB' / '€XM' (euros), '£XB' / '£XM' (pounds). Preserve the actual currency — A$25 billion stays 'A$25B', never converted to USD. Dollar figures like '$60 billion', '$17B', 'A$25 billion', '€500 million' often appear only in the body paragraphs, so search the full article text. Only output null (or the literal string 'Undisclosed') when NO dollar figure for the transaction itself appears anywhere in the article.",
+      "sentiment": "One of: BULLISH | BEARISH | NEUTRAL | MIXED — the market read for this specific deal. Rules: BULLISH for a strategic acquirer executing a clear consolidation thesis or for a VC-backed company closing a hot round; BEARISH for a target in a forced/distressed/regulator-driven sale or for a deal that signals a sector top; MIXED when there is material regulatory/antitrust risk, buyer-discipline concerns, or conflicting reads between acquirer and target implications; NEUTRAL only when the deal is genuinely ambiguous. Do NOT default to NEUTRAL as a lazy choice — pick the most honest read.",
+      "one_liner": "One sentence. If this deal IS the primary_story, begin with 'See lead.' and add at most one short clause of new color not already in the lead. Otherwise, state acquirer, target, price or multiple, and why investors in adjacent names should reprice — no filler, no re-narration of the primary_story."
     }
   ],
   "sector_breakdown": {
-    "Technology M&A": "2-3 sentence narrative on deal activity, named companies, multiples, and strategic signals in this sector. Replace this key with the actual sector name — use as many sector keys as you have real data for. Only include a sector if you can name at least one specific company and state a concrete signal from the articles. Omit sectors with no real data."
+    "Technology M&A": "2-3 sentence narrative on sector-level dynamics (multiples, capital flows, regulatory posture), named companies, and strategic signals. Replace this key with the actual sector name from the whitelist — use as many sector keys as you have real data for. Only include a sector if you can name at least one specific company AND state a concrete signal from the articles. Do NOT use this field to re-narrate the primary_story's deal — if the sector discussion would only restate the lead, OMIT that sector key. Omit sectors with no real data."
   }
 }
 
@@ -107,7 +120,18 @@ You will receive today's news articles, each tagged with a Signal line written b
 
 SECTION RULES — read before writing anything: Only include a section if you have specific, non-generic content from the provided articles. If a section has no real signal — no named company, concrete rate figure, specific country, or actionable catalyst — OMIT that key from the JSON output entirely. Fewer sections with strong signal beats a complete schema with filler. BANNED phrases in every field: "does not directly impact", "no geopolitical developments", "no direct geopolitical", "investors should monitor", "broadly supportive", "ongoing uncertainty", "markets reacted to", "could also affect", "this is consistent with", "highlight", "broadly positive", "limited direct impact", "while not directly". If you cannot write a sentence without a banned phrase, omit the section.
 
-HEADLINE SELECTION — complete this step before writing any JSON: Scan every article and Signal line. Rank stories by market significance in this order: (1) largest named dollar figure or confirmed transaction; (2) broadest macro or rates signal (Fed statement, inflation print, credit spread move); (3) widest sector or market-moving development. The dominant story is the one a capital markets desk would close their evening call with. Identify it explicitly, then write the headline around it. Do not let a narrower or merely interesting item displace a larger macro or deal story.
+PRIMARY STORY SELECTION — complete this step BEFORE writing any JSON:
+1. Scan every article and Signal line. Rank stories by market significance: (1) largest named dollar figure or confirmed transaction; (2) broadest macro or rates signal (Fed statement, inflation print, credit spread move); (3) widest sector or market-moving development.
+2. Identify the SINGLE highest-ranking story that drove the tape today. This is the primary_story. Commit to one. Ties go to the largest confirmed dollar figure.
+3. The entire lead block — `headline`, `lead_paragraph`, `supporting_context`, `what_to_watch` — MUST be about this one primary_story and nothing else. Never stack two stories into the lead with 'and', commas, 'while', 'as', or 'amid'. Other important stories of the day go into `sections`, `top_deals`, or `sector_breakdown`, NEVER into the lead block.
+4. Output the primary_story's identifier in the `primary_story_id` field. This is a self-check — the `headline` field must name the same subject.
+
+CROSS-SECTION ANTI-REDUNDANCY (read before writing any section):
+The primary_story is narrated in depth in the lead block. Do NOT re-narrate it in `sections.deals_and_ma`, `sector_breakdown`, or `top_deals.one_liner`.
+- `sections.deals_and_ma` must cover patterns across MULTIPLE deals (consolidation pace, valuation compression) or OTHER deals entirely — not a retelling of the primary deal.
+- `sector_breakdown` discusses sector-level dynamics — not individual deals already covered in the lead or top_deals.
+- `top_deals` MAY include the primary-story deal, but its `one_liner` must begin with "See lead." and add at most one clause of new color. Every OTHER top_deals entry must be a distinct transaction.
+If any of these sections would only restate the primary story, OMIT that section/key entirely rather than pad.
 
 SECTOR KEY RULE (CRITICAL): sector_breakdown keys MUST be exactly one of:
 "Technology", "Healthcare & Biotech", "Energy & Oil/Gas", "Financial Services",
@@ -123,18 +147,19 @@ REQUIRED FIELDS — non-negotiable. The following four fields MUST be present in
 
 Respond ONLY with valid JSON in this exact schema — no preamble, no markdown fences:
 {
-  "headline": "Write the headline for the dominant story you identified above — not a category label, not a topic area, the actual named development. Count the words: must be 10–15 words. If under 10 words, rewrite it. Name the specific company, institution, index, or data point involved. State what drove the tape today, not just the subject. Must not be a generic phrase interchangeable with headlines from other days. Never bundle two unrelated themes with 'and'. BANNED patterns: any headline under 8 words; vague labels ('Markets Close Mixed', 'Tech Sells Off', 'Volatility Spikes'); naming a secondary story when a larger deal or macro story is present in the articles. BAD example: 'Stocks Close Lower' (3 words, no named driver). GOOD example: 'S&P 500 Falls 1.4% as Hotter-Than-Expected May CPI Wipes Out June Fed Cut Pricing'.",
-  "lead_paragraph": "REQUIRED. 2-3 sentences covering THE single lead story only — the dominant development you identified above. No grab bag, no blended themes. Name the specific companies, figures, institutions, or data points. Every sentence must advance the lead story; do not drift into secondary topics. Must NOT be empty.",
-  "supporting_context": "REQUIRED. 2-3 sentences of related context — what else happened in the same sector or theme as the lead. Name specific companies or data points. Do not restate the lead; add color that helps a reader understand why the lead matters now. Must NOT be empty.",
-  "what_to_watch": "REQUIRED. 1-2 sentences, forward-looking — what to watch in tomorrow's trading. Name a specific company, data release, or Fed speaker and commit to the binary outcome that matters. BANNED phrases: 'investors should monitor', 'watch for', 'bears watching', 'remain cautious'. Must NOT be empty.",
-  "summary": "3-4 sentences. Each sentence must cover ONE story or ONE data point — never blend two unrelated topics into a single sentence with 'while', 'as', 'amid', or 'even as'. Every sentence must contain a specific company name, dollar figure, rate level, or index move. State what today's developments signal going into tomorrow. Banned phrases: 'mix of', 'ongoing activity', 'investment landscape', 'markets reacted to', 'could also', 'highlight', 'alongside', 'coupled with'.",
+  "primary_story_id": "Short identifier for the SINGLE primary_story you chose in PRIMARY STORY SELECTION — either its original headline (first ~80 chars) or 'acquirer + target' or 'event + instrument'. The `headline` field below MUST name this same story. If these two fields diverge, rewrite `headline` until they match.",
+  "headline": "Headline for the primary_story ONLY — not a category, not a topic area, the actual named development that drove the tape today. 10–15 words. Name the specific company, institution, index, or data point. Must not be generic. BANNED patterns: any headline under 8 words; vague labels ('Markets Close Mixed', 'Tech Sells Off'); comma-stacking two unrelated stories ('X Buys Y, Z Commits W'); any 'and' that joins two different transactions, companies, or themes; naming a secondary story when a larger deal or macro story is present. BAD example: 'SpaceX Eyes $60B Cursor Acquisition, Microsoft Commits A$25B to Australia' (stacks two stories). GOOD example: 'S&P 500 Falls 1.4% as Hotter-Than-Expected May CPI Wipes Out June Fed Cut Pricing'.",
+  "lead_paragraph": "REQUIRED. 2-3 sentences on the primary_story ONLY. Who, what, deal size or figure, timing, today's move. Name specific companies and dollar figures. Every sentence must advance this one story — do not drift into secondary topics. Must NOT be empty and must NOT mention an unrelated secondary story.",
+  "supporting_context": "REQUIRED. 2-3 sentences of REAL CONTEXT for the primary_story specifically: industry backdrop, comparable recent deals or moves, why this matters NOW, regulatory or competitive setup. Readers must leave these sentences understanding why the primary_story drove today's tape — not a list of tangential news. DO NOT cram two other unrelated stories here; that is padding, not context. If the corpus truly does not support meaningful context, write one honest sentence rather than fabricate. Must NOT be empty.",
+  "what_to_watch": "REQUIRED. 1-3 forward-looking sentences on the primary_story specifically: earnings response, regulatory review timeline, follow-on reactions, expected tomorrow price action in adjacent names. Name a specific company, data release, or speaker and commit to the binary outcome that matters. BANNED phrases: 'investors should monitor', 'watch for', 'bears watching', 'remain cautious'. Must NOT be empty.",
+  "summary": "Optional. If provided, 3-4 sentences. Each sentence must cover ONE story or ONE data point — never blend two unrelated topics into a single sentence with 'while', 'as', 'amid', or 'even as'. Every sentence must contain a specific company name, dollar figure, rate level, or index move. Banned phrases: 'mix of', 'ongoing activity', 'investment landscape', 'markets reacted to', 'could also', 'highlight', 'alongside', 'coupled with'. If omitted, it will be synthesized from the three structured fields above.",
   "market_tone": "One of: RISK-ON | RISK-OFF | MIXED | NEUTRAL",
   "market_pulse": {
-    "sentiment_word": "A single evocative adjective capturing how today's session closed psychologically — e.g., 'relieved', 'rattled', 'bifurcated', 'defensive', 'numb', 'exuberant'. One word. Lower-case. No punctuation.",
+    "sentiment_word": "One plain-English word describing the closing psychological posture of the tape. MUST come from this list (or a close plain-English synonym an analyst would actually say aloud): mixed, divided, split, conflicted, cautious, defensive, risk-on, risk-off, jittery, steady, buoyant, heavy, choppy, crosscurrents, nervous, anxious, relieved, rattled, complacent. BANNED — do NOT use any of: bifurcated, dichotomous, schizophrenic, paradoxical, asymmetric, nonlinear, multifaceted, numb, or any word a non-analyst reader would need a glossary to understand. One word. Lower-case. No punctuation.",
     "narrative": "2-3 short paragraphs (separated by \\n\\n) written in an editorial voice. Lead with the dominant emotional posture of the tape at the close, then the two or three concrete drivers — named earnings prints, Fed signal, sector moves. No hedging prose. Read it like a Stratechery close-of-day column, not a bank wrap."
   },
   "sections": {
-    "deals_and_ma": "2-3 sentences. For each deal, name acquirer and target, state the price or multiple, and explain what the transaction signals about buyer strategy or sector consolidation pressure. OMIT if no named transactions in the articles.",
+    "deals_and_ma": "2-3 sentences on PATTERNS across multiple deals — consolidation pace, buyer archetypes, valuation compression, sector concentration. Do NOT re-narrate the primary_story here; cite it only as one data point among several. If the only transaction in the corpus is the primary_story, OMIT this section entirely.",
     "public_markets": "2-3 sentences on how markets closed. Name the key movers and state what the tape is pricing in for tomorrow — not just that stocks went up or down. OMIT if no specific market close data or named movers in the articles.",
     "macro_and_rates": "2-3 sentences on macro and rates. State the concrete implication for deal multiples, credit spreads, or risk appetite into tomorrow. OMIT if no concrete rates or macro signal in the articles.",
     "geopolitics": "2-3 sentences naming the specific countries and sectors in the blast radius and the mechanism of impact on capital flows or deal activity. OMIT THIS KEY ENTIRELY if nothing geopolitical materially affected markets today — do not write a placeholder, a 'no developments' statement, or a vague monitoring sentence.",
@@ -144,12 +169,13 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
     {
       "company": "Target company name",
       "deal_type": "M&A | LBO | IPO | VC Round | Strategic Investment | Debt Financing",
-      "valuation": "$Xb or null",
-      "one_liner": "State acquirer, target, price or multiple, and why investors in adjacent names should reprice — one sentence, no filler."
+      "value": "Deal size EXTRACTED FROM THE ARTICLE BODY (not just the headline). Normalize to one of: '$XB' (USD billions), '$XM' (USD millions), 'A$XB' (Australian dollars), '€XB' / '€XM' (euros), '£XB' / '£XM' (pounds). Preserve the actual currency — A$25 billion stays 'A$25B', never converted to USD. Dollar figures like '$60 billion', '$17B', 'A$25 billion', '€500 million' often appear only in the body paragraphs, so search the full article text. Only output null (or the literal string 'Undisclosed') when NO dollar figure for the transaction itself appears anywhere in the article.",
+      "sentiment": "One of: BULLISH | BEARISH | NEUTRAL | MIXED — the market read for this specific deal. Rules: BULLISH for a strategic acquirer executing a clear consolidation thesis or a VC-backed company closing a hot round; BEARISH for a target in a forced/distressed/regulator-driven sale or a deal that signals a sector top; MIXED for material regulatory/antitrust risk, buyer-discipline concerns, or conflicting reads; NEUTRAL only when the deal is genuinely ambiguous. Do NOT default to NEUTRAL as a lazy choice.",
+      "one_liner": "One sentence. If this deal IS the primary_story, begin with 'See lead.' and add at most one short clause of new color not already in the lead. Otherwise, state acquirer, target, price or multiple, and why investors in adjacent names should reprice — no filler, no re-narration of the primary_story."
     }
   ],
   "sector_breakdown": {
-    "Technology M&A": "2-3 sentence narrative on deal activity, named companies, multiples, and strategic signals in this sector. Replace this key with the actual sector name — use as many sector keys as you have real data for. Only include a sector if you can name at least one specific company and state a concrete signal from the articles. Omit sectors with no real data."
+    "Technology M&A": "2-3 sentence narrative on sector-level dynamics (multiples, capital flows, regulatory posture), named companies, and strategic signals. Replace this key with the actual sector name from the whitelist — use as many sector keys as you have real data for. Only include a sector if you can name at least one specific company AND state a concrete signal from the articles. Do NOT use this field to re-narrate the primary_story's deal — if the sector discussion would only restate the lead, OMIT that sector key."
   }
 }
 
@@ -201,6 +227,43 @@ def _diversify_articles(articles, sector_cap=4, company_cap=2, total=20):
 # are borderline — their summaries are often weak. Score 7+ means the article
 # has a genuine market implication worth surfacing as sector context.
 FLOOR_MIN_SCORE = 7
+
+
+def _freshness_rerank(articles):
+    """
+    Re-rank articles so freshness competes with relevance_score. Without
+    this, a score-9 story from 22h ago wins the spine over a score-8 story
+    from 3h ago, and the 6am brief reads as 20h-stale news.
+
+    Effective score = relevance_score - hours_since_published / 8
+    (each 8h of age costs one point of relevance).
+
+    Falls back to ingested_at when published_at is missing; falls back to
+    the existing order when neither is parseable. Never drops an article —
+    only reorders.
+    """
+    now = datetime.now(timezone.utc)
+
+    def _age_hours(a):
+        for key in ("published_at", "ingested_at"):
+            ts = a.get(key)
+            if not ts:
+                continue
+            try:
+                dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                delta = (now - dt).total_seconds() / 3600.0
+                return max(0.0, delta)
+            except Exception:
+                continue
+        return 0.0  # no timestamp — treat as fresh rather than demote
+
+    def _effective(a):
+        rel = float(a.get("relevance_score") or 0)
+        return rel - (_age_hours(a) / 8.0)
+
+    return sorted(articles, key=_effective, reverse=True)
 
 
 def _select_articles_for_synthesis(
@@ -798,9 +861,13 @@ def run(brief_type="morning"):
 
     # Pull a larger pool from last 24 hours, then diversify to prevent
     # a single deal cluster or company from dominating the briefing.
+    # `content` (full body, when scraped by ingest) is now selected so the
+    # prompt can pull out deal values like "$60 billion" that only appear in
+    # body paragraphs. `published_at` / `ingested_at` are selected so the
+    # selector can apply a freshness re-rank on top of relevance_score.
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     resp = supabase.table("articles")\
-        .select("title, summary, sector, industry_verticals, companies, relevance_score, relevance_reason")\
+        .select("title, summary, content, sector, industry_verticals, companies, relevance_score, relevance_reason, published_at, ingested_at")\
         .gte("ingested_at", cutoff)\
         .order("relevance_score", desc=True)\
         .limit(60)\
@@ -809,11 +876,17 @@ def run(brief_type="morning"):
     articles = resp.data or []
     if not articles:
         resp = supabase.table("articles")\
-            .select("title, summary, sector, industry_verticals, companies, relevance_score, relevance_reason")\
+            .select("title, summary, content, sector, industry_verticals, companies, relevance_score, relevance_reason, published_at, ingested_at")\
             .order("ingested_at", desc=True)\
             .limit(60)\
             .execute()
         articles = resp.data or []
+
+    # Freshness-aware re-rank: an older story only wins the spine if its
+    # relevance edge is big enough to overcome its age. Without this, a
+    # score-9 story from 22h ago beats a score-8 story from 3h ago even when
+    # the brief ships at 6am ET.
+    articles = _freshness_rerank(articles)
 
     spine, floor = _select_articles_for_synthesis(articles)
     print(f"  📰 Synthesis input: {len(spine)} spine + {len(floor)} floor articles "
@@ -855,9 +928,20 @@ def run(brief_type="morning"):
         print(f"  📌 No fresh watchlist articles, but noting {len(watchlist_identifiers)} tracked identifiers")
     # ── End watchlist injection ──────────────────────────────────────────────
 
-    # Spine: full summary context (300 chars) — these are the dominant stories
+    # Spine: prefer scraped full body (content) when available so the model
+    # can read dollar figures like "$60 billion" that live only in body
+    # paragraphs. Fall back to summary if no body was scraped for that source.
+    # Cap at 1200 chars to keep the prompt under token budget while still
+    # giving enough room to reach the first 2-3 paragraphs where deal values
+    # typically appear.
+    def _spine_body(a):
+        body = (a.get("content") or "").strip()
+        if body and len(body) > 80:
+            return body[:1200]
+        return (a.get("summary", "") or "")[:300]
+
     spine_texts = [
-        f"[{a.get('sector','')}] {a.get('title','')}\n{(a.get('summary','') or '')[:300]}"
+        f"[{a.get('sector','')}] {a.get('title','')}\n{_spine_body(a)}"
         + (f"\nSignal: {a['relevance_reason']}" if a.get('relevance_reason') else "")
         for a in spine
     ]
