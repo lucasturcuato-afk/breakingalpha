@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { AppShell } from "@/components/shell";
 import { PanelWidget } from "@/components/shell/right-panel";
-import { Wordmark } from "@/components/ui/wordmark";
 import { TickerStrip } from "@/components/brief/ticker-strip";
 import { ExportMenu } from "@/components/brief/export-menu";
 import { ShareButton } from "@/components/brief/share-button";
@@ -53,13 +52,14 @@ const TAB_ORDER = [
   "geopolitics",
 ];
 
-// Sherwood Heritage Gold — pinned hex so accents stay saturated in BOTH
-// light and dark mode. The project's --gold token resolves to the deeper
-// editorial gold in light and a paler tan in dark; using either drifts
-// away from #d4a84b. Gold-deep stays at the literal too so the masthead
-// gradient reads as a distinct brand band regardless of theme.
+// Sherwood Direction C palette — every accent that must stay constant
+// across light/dark is pinned to a literal hex. The theme tokens flip
+// --espresso and --cream under html.dark, which would invert the hero
+// cards and desaturate the masthead; these constants bypass that.
 const HERITAGE_GOLD = "#d4a84b";
 const HERITAGE_GOLD_DEEP = "#c9922a";
+const DC_ESPRESSO = "#1a1208";
+const DC_CREAM = "#fffdf9";
 
 interface TopDeal {
   company: string;
@@ -442,9 +442,11 @@ export default function MorningBriefPage() {
     >
       <TickerStrip />
 
-      {/* Sherwood gold masthead — Heritage Gold pinned in both modes; text
-          uses var(--foreground) so Signal flips espresso↔cream just like
-          the sidebar Wordmark does, era stays gold via the shared component. */}
+      {/* Sherwood gold masthead — every colour is a literal so the band
+          keeps its saturated Heritage Gold gradient and the brand lockup
+          reads the same in light + dark. "Signal" is cream, "era" is
+          espresso (inverse of the sidebar Wordmark) — on a gold band
+          those two values give the highest-contrast lockup. */}
       <header
         style={{
           background: `linear-gradient(135deg, ${HERITAGE_GOLD} 0%, ${HERITAGE_GOLD_DEEP} 100%)`,
@@ -457,18 +459,23 @@ export default function MorningBriefPage() {
         }}
       >
         <div style={{ display: "flex", alignItems: "baseline", gap: 20 }}>
-          <Wordmark size="lg" />
-          <span style={{ width: 1, height: 20, background: "var(--foreground)", opacity: 0.25, alignSelf: "center" }} />
+          <span
+            className="font-[family-name:var(--font-playfair-display)]"
+            style={{ fontSize: 26, fontWeight: 700, color: DC_CREAM, letterSpacing: "-0.01em", lineHeight: 1 }}
+          >
+            Signal<span style={{ color: DC_ESPRESSO }}>era</span>
+          </span>
+          <span style={{ width: 1, height: 20, background: "rgba(26,18,8,0.25)", alignSelf: "center" }} />
           <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
             <span
               className="font-[family-name:var(--font-playfair-display)]"
-              style={{ fontSize: 20, fontWeight: 700, color: "var(--foreground)", letterSpacing: "-0.01em" }}
+              style={{ fontSize: 20, fontWeight: 700, color: DC_CREAM, letterSpacing: "-0.01em" }}
             >
               Morning Brief
             </span>
             <span
               className="font-[family-name:var(--font-playfair-display)] italic"
-              style={{ fontSize: 13, color: "var(--foreground)", opacity: 0.78, marginTop: 4, fontWeight: 400 }}
+              style={{ fontSize: 13, color: "rgba(255,253,249,0.78)", marginTop: 4, fontWeight: 400 }}
             >
               A considered reading of overnight markets — in four chapters.
             </span>
@@ -476,11 +483,11 @@ export default function MorningBriefPage() {
         </div>
         <div
           className="font-sans"
-          style={{ display: "flex", alignItems: "center", gap: 22, fontSize: 11, color: "var(--foreground)", opacity: 0.85, fontWeight: 600 }}
+          style={{ display: "flex", alignItems: "center", gap: 22, fontSize: 11, color: "rgba(255,253,249,0.85)", fontWeight: 600 }}
         >
           <span>{dateStr}</span>
           <span className="font-data">{timeStr}</span>
-          <span style={{ background: "var(--foreground)", color: "var(--cream)", padding: "4px 10px", borderRadius: 20, fontSize: 10, letterSpacing: "0.12em", opacity: 0.85 }}>
+          <span style={{ background: "rgba(26,18,8,0.2)", color: "rgba(255,253,249,0.9)", padding: "4px 10px", borderRadius: 20, fontSize: 10, letterSpacing: "0.12em" }}>
             4 MIN READ
           </span>
         </div>
@@ -553,15 +560,18 @@ export default function MorningBriefPage() {
           />
         ) : (
           <>
-            {/* ── Market Pulse — dark espresso hero ── */}
+            {/* ── Market Pulse — dark espresso hero. All colours pinned to
+                literals so the card stays dark in both light and dark
+                themes (the token --espresso flips to a near-white in dark
+                mode and would otherwise invert this card). ── */}
             {briefing?.market_pulse?.sentiment_word && briefing?.market_pulse?.narrative && (
               <section style={{ marginBottom: 36 }}>
                 <div
                   style={{
-                    background: "var(--espresso)",
+                    background: DC_ESPRESSO,
                     borderRadius: 18,
                     padding: "32px 36px",
-                    color: "var(--cream)",
+                    color: DC_CREAM,
                     position: "relative",
                     overflow: "hidden",
                   }}
@@ -573,7 +583,7 @@ export default function MorningBriefPage() {
                       top: -60,
                       width: 260,
                       height: 260,
-                      background: "radial-gradient(circle, rgba(212,168,75,0.38), transparent 70%)",
+                      background: `radial-gradient(circle, ${HERITAGE_GOLD}60, transparent 70%)`,
                       pointerEvents: "none",
                     }}
                   />
@@ -586,6 +596,7 @@ export default function MorningBriefPage() {
                       margin: "0 0 14px",
                       fontWeight: 700,
                       textTransform: "uppercase",
+                      position: "relative",
                     }}
                   >
                     Market Pulse · {timeStr}
@@ -598,13 +609,15 @@ export default function MorningBriefPage() {
                       lineHeight: 1.05,
                       letterSpacing: "-0.025em",
                       margin: "0 0 20px",
+                      color: DC_CREAM,
+                      position: "relative",
                     }}
                   >
                     Today the market is{" "}
                     <span
                       style={{
                         background: HERITAGE_GOLD,
-                        color: "var(--espresso)",
+                        color: DC_ESPRESSO,
                         padding: "2px 14px",
                         borderRadius: 8,
                         display: "inline-block",
@@ -625,12 +638,13 @@ export default function MorningBriefPage() {
                       margin: "0 0 24px",
                       maxWidth: 620,
                       whiteSpace: "pre-line",
+                      position: "relative",
                     }}
                   >
                     {briefing.market_pulse.narrative}
                   </p>
                   {(briefing.market_pulse.headlines ?? []).length > 0 && (
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", position: "relative" }}>
                       {(briefing.market_pulse.headlines ?? []).slice(0, 4).map((h, i) => {
                         const hTone = normaliseTone((h as { tone?: string }).tone ?? null);
                         const Chip = (
@@ -646,7 +660,7 @@ export default function MorningBriefPage() {
                               borderRadius: 24,
                             }}
                           >
-                            <span style={{ fontSize: 13, color: "var(--cream)", fontWeight: 500 }}>
+                            <span style={{ fontSize: 13, color: DC_CREAM, fontWeight: 500 }}>
                               {h.title}
                             </span>
                             <SentimentPill tone={hTone} size="sm" />
@@ -682,7 +696,7 @@ export default function MorningBriefPage() {
                     alignItems: "center",
                     gap: 8,
                     background: HERITAGE_GOLD,
-                    color: "var(--espresso)",
+                    color: DC_ESPRESSO,
                     padding: "5px 12px",
                     borderRadius: 20,
                     fontSize: 10,
@@ -713,7 +727,9 @@ export default function MorningBriefPage() {
                 {briefing.headline || formatLabel || "Morning Market Brief"}
               </h2>
 
-              {/* 3-column structured body */}
+              {/* 3-column structured body. Cards use --elevated so they
+                  are white/#fffdf9 in light and #1e1e1e in dark, keeping
+                  proper card contrast against the page in both themes. */}
               {(briefing.lead_paragraph || briefing.supporting_context || briefing.what_to_watch) && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                   {[
@@ -724,7 +740,7 @@ export default function MorningBriefPage() {
                     <div
                       key={i}
                       style={{
-                        background: "var(--cream)",
+                        background: "var(--elevated)",
                         border: "1px solid var(--border-base)",
                         borderRadius: 14,
                         padding: "22px 20px",
@@ -808,7 +824,7 @@ export default function MorningBriefPage() {
                         display: "inline-flex",
                         alignItems: "center",
                         gap: 8,
-                        background: "var(--cream)",
+                        background: "var(--elevated)",
                         border: "1px solid var(--border-base)",
                         borderRadius: 20,
                         padding: "6px 12px",
@@ -816,7 +832,7 @@ export default function MorningBriefPage() {
                     >
                       <span
                         className="font-data"
-                        style={{ fontSize: 12, fontWeight: 800, color: "var(--espresso)" }}
+                        style={{ fontSize: 12, fontWeight: 800, color: "var(--text-primary)" }}
                       >
                         {d.company}
                       </span>
@@ -829,7 +845,7 @@ export default function MorningBriefPage() {
                           style={{
                             fontSize: 10,
                             fontWeight: 700,
-                            color: "var(--espresso)",
+                            color: "var(--gold-dark)",
                             background: "var(--gold-muted)",
                             padding: "2px 8px",
                             borderRadius: 4,
@@ -937,7 +953,7 @@ export default function MorningBriefPage() {
                           borderRadius: 17,
                           border: "none",
                           background: briefView === m ? HERITAGE_GOLD : "transparent",
-                          color: briefView === m ? "var(--espresso)" : "var(--text-secondary)",
+                          color: briefView === m ? DC_ESPRESSO : "var(--text-secondary)",
                           fontSize: 11,
                           fontWeight: 700,
                           letterSpacing: "0.10em",
@@ -964,8 +980,8 @@ export default function MorningBriefPage() {
                           padding: "8px 14px",
                           borderRadius: 22,
                           border: `1.5px solid ${active ? HERITAGE_GOLD : "var(--border-base)"}`,
-                          background: active ? HERITAGE_GOLD : "var(--cream)",
-                          color: active ? "var(--espresso)" : "var(--text-secondary)",
+                          background: active ? HERITAGE_GOLD : "var(--elevated)",
+                          color: active ? DC_ESPRESSO : "var(--text-secondary)",
                           fontSize: 12,
                           fontWeight: active ? 700 : 500,
                           display: "inline-flex",
@@ -978,7 +994,7 @@ export default function MorningBriefPage() {
                           <span
                             className="font-data"
                             style={{
-                              background: active ? "var(--espresso)" : "var(--parchment-mid)",
+                              background: active ? DC_ESPRESSO : "var(--parchment-mid)",
                               color: active ? HERITAGE_GOLD : "var(--text-muted)",
                               padding: "1px 7px",
                               borderRadius: 10,
@@ -1006,7 +1022,7 @@ export default function MorningBriefPage() {
                             gap: 18,
                             alignItems: "center",
                             padding: "18px 20px",
-                            background: "var(--cream)",
+                            background: "var(--elevated)",
                             border: "1px solid var(--border-base)",
                             borderRadius: 12,
                             borderLeft: `4px solid ${HERITAGE_GOLD}`,
@@ -1087,7 +1103,7 @@ export default function MorningBriefPage() {
                               gap: 18,
                               alignItems: "center",
                               padding: "18px 20px",
-                              background: "var(--cream)",
+                              background: "var(--elevated)",
                               border: "1px solid var(--border-base)",
                               borderRadius: 12,
                               borderLeft: `4px solid ${HERITAGE_GOLD}`,
@@ -1115,7 +1131,7 @@ export default function MorningBriefPage() {
                             <div
                               key={t.key}
                               style={{
-                                background: "var(--cream)",
+                                background: "var(--elevated)",
                                 border: "1px solid var(--border-base)",
                                 borderRadius: 12,
                                 borderLeft: `4px solid ${HERITAGE_GOLD}`,
@@ -1161,7 +1177,7 @@ export default function MorningBriefPage() {
                   type="button"
                   onClick={() => setShowSignIn(true)}
                   className="px-4 py-2 rounded-xl font-sans text-[12px] font-semibold cursor-pointer transition-colors"
-                  style={{ background: HERITAGE_GOLD, color: "var(--cream)" }}
+                  style={{ background: HERITAGE_GOLD, color: DC_ESPRESSO }}
                 >
                   Sign in with Google — Free
                 </button>
@@ -1188,7 +1204,7 @@ export default function MorningBriefPage() {
                           gap: 18,
                           alignItems: "center",
                           padding: "16px 20px",
-                          background: "var(--cream)",
+                          background: "var(--elevated)",
                           border: "1px solid var(--border-base)",
                           borderRadius: 12,
                         }}
@@ -1202,7 +1218,7 @@ export default function MorningBriefPage() {
                         <div>
                           <h4
                             className="font-[family-name:var(--font-playfair-display)]"
-                            style={{ fontSize: 17, fontWeight: 700, color: "var(--espresso)", margin: "0 0 6px", lineHeight: 1.25, letterSpacing: "-0.01em" }}
+                            style={{ fontSize: 17, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px", lineHeight: 1.25, letterSpacing: "-0.01em" }}
                           >
                             {s.title}
                           </h4>

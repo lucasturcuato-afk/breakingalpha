@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { AppShell } from "@/components/shell";
 import { PanelWidget } from "@/components/shell/right-panel";
-import { Wordmark } from "@/components/ui/wordmark";
 import { TickerStrip } from "@/components/brief/ticker-strip";
 import { MorningReview } from "@/components/brief/morning-review";
 import { ExportMenu } from "@/components/brief/export-menu";
@@ -62,11 +61,14 @@ const SCORECARD_SYMBOLS = [
   { sym: "USO",  label: "WTI" },
 ] as const;
 
-// Sherwood Heritage Gold — pinned hex so accents stay saturated in BOTH
-// light and dark mode. The project's --gold token resolves to a paler tan
-// in dark mode; keeping the literal here matches the design spec exactly.
+// Sherwood Direction C palette — pinned literals for the values that
+// must remain constant across light + dark. The theme flips --espresso
+// to a near-white and --cream to near-black under html.dark, which
+// would invert the dark hero card and desaturate the gold masthead.
 const HERITAGE_GOLD = "#d4a84b";
 const HERITAGE_GOLD_DEEP = "#c9922a";
+const DC_ESPRESSO = "#1a1208";
+const DC_CREAM = "#fffdf9";
 
 interface SectorReflection { sector: string; verdict: "correct" | "wrong" | "partial"; paragraph: string; }
 interface TickerReflection { symbol: string; verdict: "correct" | "wrong" | "partial"; paragraph: string; }
@@ -469,9 +471,9 @@ export default function EveningWrapPage() {
     >
       <TickerStrip />
 
-      {/* Sherwood gold masthead — Heritage Gold pinned in both modes; text
-          uses var(--foreground) so Signal flips espresso↔cream just like
-          the sidebar Wordmark does, era stays gold via the shared component. */}
+      {/* Sherwood gold masthead — literal hexes for the brand lockup so
+          the band stays saturated and the "Signal cream / era espresso"
+          contrast holds in both themes. */}
       <header
         style={{
           background: `linear-gradient(135deg, ${HERITAGE_GOLD} 0%, ${HERITAGE_GOLD_DEEP} 100%)`,
@@ -484,18 +486,23 @@ export default function EveningWrapPage() {
         }}
       >
         <div style={{ display: "flex", alignItems: "baseline", gap: 20 }}>
-          <Wordmark size="lg" />
-          <span style={{ width: 1, height: 20, background: "var(--foreground)", opacity: 0.25, alignSelf: "center" }} />
+          <span
+            className="font-[family-name:var(--font-playfair-display)]"
+            style={{ fontSize: 26, fontWeight: 700, color: DC_CREAM, letterSpacing: "-0.01em", lineHeight: 1 }}
+          >
+            Signal<span style={{ color: DC_ESPRESSO }}>era</span>
+          </span>
+          <span style={{ width: 1, height: 20, background: "rgba(26,18,8,0.25)", alignSelf: "center" }} />
           <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
             <span
               className="font-[family-name:var(--font-playfair-display)]"
-              style={{ fontSize: 20, fontWeight: 700, color: "var(--foreground)", letterSpacing: "-0.01em" }}
+              style={{ fontSize: 20, fontWeight: 700, color: DC_CREAM, letterSpacing: "-0.01em" }}
             >
               Evening Wrap
             </span>
             <span
               className="font-[family-name:var(--font-playfair-display)] italic"
-              style={{ fontSize: 13, color: "var(--foreground)", opacity: 0.78, marginTop: 4, fontWeight: 400 }}
+              style={{ fontSize: 13, color: "rgba(255,253,249,0.78)", marginTop: 4, fontWeight: 400 }}
             >
               How the session played out — and what it meant.
             </span>
@@ -503,11 +510,11 @@ export default function EveningWrapPage() {
         </div>
         <div
           className="font-sans"
-          style={{ display: "flex", alignItems: "center", gap: 22, fontSize: 11, color: "var(--foreground)", opacity: 0.85, fontWeight: 600 }}
+          style={{ display: "flex", alignItems: "center", gap: 22, fontSize: 11, color: "rgba(255,253,249,0.85)", fontWeight: 600 }}
         >
           <span>{dateStr}</span>
           <span className="font-data">{timeStr}</span>
-          <span style={{ background: "var(--foreground)", color: "var(--cream)", padding: "4px 10px", borderRadius: 20, fontSize: 10, letterSpacing: "0.12em", opacity: 0.85 }}>
+          <span style={{ background: "rgba(26,18,8,0.2)", color: "rgba(255,253,249,0.9)", padding: "4px 10px", borderRadius: 20, fontSize: 10, letterSpacing: "0.12em" }}>
             5 MIN READ
           </span>
         </div>
@@ -577,149 +584,153 @@ export default function EveningWrapPage() {
           />
         ) : (
           <>
-            {/* ── The Close — dark espresso hero with scorecard. Always
-                renders for the evening wrap; sentiment word + narrative
-                fall back to market_tone / summary so the card never
-                disappears just because market_pulse is absent. ── */}
-            {(
-              <section style={{ marginBottom: 36 }}>
+            {/* ── The Close — dark espresso hero with 6-cell scorecard.
+                All colours pinned to literals so the card stays dark in
+                both themes. Always renders; verdict + body fall back to
+                market_tone / summary so the card never disappears. ── */}
+            <section style={{ marginBottom: 36 }}>
+              <div
+                style={{
+                  background: DC_ESPRESSO,
+                  borderRadius: 18,
+                  padding: "32px 36px",
+                  color: DC_CREAM,
+                  position: "relative",
+                  overflow: "hidden",
+                }}
+              >
                 <div
                   style={{
-                    background: "var(--espresso)",
-                    borderRadius: 18,
-                    padding: "32px 36px",
-                    color: "var(--cream)",
+                    position: "absolute",
+                    right: -60,
+                    top: -60,
+                    width: 260,
+                    height: 260,
+                    background: `radial-gradient(circle, ${HERITAGE_GOLD}60, transparent 70%)`,
+                    pointerEvents: "none",
+                  }}
+                />
+                <p
+                  className="font-sans"
+                  style={{
+                    fontSize: 10,
+                    letterSpacing: "0.20em",
+                    color: HERITAGE_GOLD,
+                    margin: "0 0 14px",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
                     position: "relative",
-                    overflow: "hidden",
                   }}
                 >
-                  <div
+                  The Close · {timeStr}
+                </p>
+                <h2
+                  className="font-[family-name:var(--font-playfair-display)]"
+                  style={{
+                    fontSize: "clamp(30px, 4vw, 44px)",
+                    fontWeight: 800,
+                    lineHeight: 1.05,
+                    letterSpacing: "-0.025em",
+                    margin: "0 0 20px",
+                    color: DC_CREAM,
+                    position: "relative",
+                  }}
+                >
+                  The market closed{" "}
+                  <span
                     style={{
-                      position: "absolute",
-                      right: -60,
-                      top: -60,
-                      width: 260,
-                      height: 260,
-                      background: "radial-gradient(circle, rgba(212,168,75,0.38), transparent 70%)",
-                      pointerEvents: "none",
-                    }}
-                  />
-                  <p
-                    className="font-sans"
-                    style={{
-                      fontSize: 10,
-                      letterSpacing: "0.20em",
-                      color: HERITAGE_GOLD,
-                      margin: "0 0 14px",
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    The Close · {timeStr}
-                  </p>
-                  <h2
-                    className="font-[family-name:var(--font-playfair-display)]"
-                    style={{
-                      fontSize: "clamp(30px, 4vw, 44px)",
-                      fontWeight: 800,
-                      lineHeight: 1.05,
-                      letterSpacing: "-0.025em",
-                      margin: "0 0 20px",
+                      background: HERITAGE_GOLD,
+                      color: DC_ESPRESSO,
+                      padding: "2px 14px",
+                      borderRadius: 8,
+                      display: "inline-block",
+                      transform: "rotate(-1deg)",
+                      boxShadow: "0 4px 0 rgba(0,0,0,0.15)",
                     }}
                   >
-                    The market closed{" "}
-                    <span
-                      style={{
-                        background: HERITAGE_GOLD,
-                        color: "var(--espresso)",
-                        padding: "2px 14px",
-                        borderRadius: 8,
-                        display: "inline-block",
-                        transform: "rotate(-1deg)",
-                        boxShadow: "0 4px 0 rgba(0,0,0,0.15)",
-                      }}
-                    >
-                      {closeWord}
-                    </span>
-                    .
-                  </h2>
-                  <p
-                    className="font-sans"
-                    style={{
-                      fontSize: 15,
-                      lineHeight: 1.6,
-                      color: "rgba(255,253,249,0.82)",
-                      margin: "0 0 24px",
-                      maxWidth: 640,
-                      whiteSpace: "pre-line",
-                    }}
-                  >
-                    {closeBody}
-                  </p>
+                    {closeWord}
+                  </span>
+                  .
+                </h2>
+                <p
+                  className="font-sans"
+                  style={{
+                    fontSize: 15,
+                    lineHeight: 1.6,
+                    color: "rgba(255,253,249,0.82)",
+                    margin: "0 0 24px",
+                    maxWidth: 640,
+                    whiteSpace: "pre-line",
+                    position: "relative",
+                  }}
+                >
+                  {closeBody}
+                </p>
 
-                  {/* Scorecard grid */}
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(6, 1fr)",
-                      gap: 0,
-                      background: "rgba(255,253,249,0.05)",
-                      border: "1px solid rgba(212,168,75,0.2)",
-                      borderRadius: 10,
-                      overflow: "hidden",
-                    }}
-                  >
-                    {SCORECARD_SYMBOLS.map((s, i) => {
-                      const q = scorecard[s.sym];
-                      const pct = q?.pct ?? 0;
-                      const isLast = i === SCORECARD_SYMBOLS.length - 1;
-                      const positive = "invert" in s && s.invert ? pct < 0 : pct >= 0;
-                      return (
-                        <div
-                          key={s.sym}
+                {/* Scorecard grid — sits inside the dark hero, so all
+                    values are literal. */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(6, 1fr)",
+                    gap: 0,
+                    background: "rgba(255,253,249,0.05)",
+                    border: "1px solid rgba(212,168,75,0.2)",
+                    borderRadius: 10,
+                    overflow: "hidden",
+                    position: "relative",
+                  }}
+                >
+                  {SCORECARD_SYMBOLS.map((s, i) => {
+                    const q = scorecard[s.sym];
+                    const pct = q?.pct ?? 0;
+                    const isLast = i === SCORECARD_SYMBOLS.length - 1;
+                    const positive = "invert" in s && s.invert ? pct < 0 : pct >= 0;
+                    return (
+                      <div
+                        key={s.sym}
+                        style={{
+                          padding: "14px 16px",
+                          borderRight: isLast ? "none" : "1px solid rgba(212,168,75,0.15)",
+                        }}
+                      >
+                        <p
+                          className="font-sans"
                           style={{
-                            padding: "14px 16px",
-                            borderRight: isLast ? "none" : "1px solid rgba(212,168,75,0.15)",
+                            fontSize: 9,
+                            color: "rgba(255,253,249,0.55)",
+                            letterSpacing: "0.12em",
+                            textTransform: "uppercase",
+                            margin: "0 0 6px",
+                            fontWeight: 600,
                           }}
                         >
-                          <p
-                            className="font-sans"
-                            style={{
-                              fontSize: 9,
-                              color: "rgba(255,253,249,0.55)",
-                              letterSpacing: "0.12em",
-                              textTransform: "uppercase",
-                              margin: "0 0 6px",
-                              fontWeight: 600,
-                            }}
-                          >
-                            {s.label}
-                          </p>
-                          <p
-                            className="font-data"
-                            style={{ fontSize: 14, fontWeight: 700, color: "var(--cream)", margin: "0 0 4px", fontVariantNumeric: "tabular-nums" }}
-                          >
-                            {q?.price ?? "—"}
-                          </p>
-                          <p
-                            className="font-data"
-                            style={{
-                              fontSize: 10,
-                              fontWeight: 600,
-                              color: q ? (positive ? "#4ade80" : "#f87171") : "rgba(255,253,249,0.35)",
-                              margin: 0,
-                              fontVariantNumeric: "tabular-nums",
-                            }}
-                          >
-                            {q ? `${positive ? "▲" : "▼"} ${Math.abs(pct).toFixed(2)}%` : "—"}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
+                          {s.label}
+                        </p>
+                        <p
+                          className="font-data"
+                          style={{ fontSize: 14, fontWeight: 700, color: DC_CREAM, margin: "0 0 4px", fontVariantNumeric: "tabular-nums" }}
+                        >
+                          {q?.price ?? "—"}
+                        </p>
+                        <p
+                          className="font-data"
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 600,
+                            color: q ? (positive ? "#4ade80" : "#f87171") : "rgba(255,253,249,0.35)",
+                            margin: 0,
+                            fontVariantNumeric: "tabular-nums",
+                          }}
+                        >
+                          {q ? `${positive ? "▲" : "▼"} ${Math.abs(pct).toFixed(2)}%` : "—"}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
-              </section>
-            )}
+              </div>
+            </section>
 
             {/* Morning-brief reflection — full card only renders when graded
                 outcomes have actually landed. Otherwise we collapse to a
@@ -764,7 +775,7 @@ export default function EveningWrapPage() {
                     alignItems: "center",
                     gap: 8,
                     background: HERITAGE_GOLD,
-                    color: "var(--espresso)",
+                    color: DC_ESPRESSO,
                     padding: "5px 12px",
                     borderRadius: 20,
                     fontSize: 10,
@@ -805,7 +816,7 @@ export default function EveningWrapPage() {
                     <div
                       key={i}
                       style={{
-                        background: "var(--cream)",
+                        background: "var(--elevated)",
                         border: "1px solid var(--border-base)",
                         borderRadius: 14,
                         padding: "22px 20px",
@@ -915,7 +926,7 @@ export default function EveningWrapPage() {
                           borderRadius: 17,
                           border: "none",
                           background: briefView === m ? HERITAGE_GOLD : "transparent",
-                          color: briefView === m ? "var(--espresso)" : "var(--text-secondary)",
+                          color: briefView === m ? DC_ESPRESSO : "var(--text-secondary)",
                           fontSize: 11,
                           fontWeight: 700,
                           letterSpacing: "0.10em",
@@ -941,8 +952,8 @@ export default function EveningWrapPage() {
                           padding: "8px 14px",
                           borderRadius: 22,
                           border: `1.5px solid ${active ? HERITAGE_GOLD : "var(--border-base)"}`,
-                          background: active ? HERITAGE_GOLD : "var(--cream)",
-                          color: active ? "var(--espresso)" : "var(--text-secondary)",
+                          background: active ? HERITAGE_GOLD : "var(--elevated)",
+                          color: active ? DC_ESPRESSO : "var(--text-secondary)",
                           fontSize: 12,
                           fontWeight: active ? 700 : 500,
                           display: "inline-flex",
@@ -955,7 +966,7 @@ export default function EveningWrapPage() {
                           <span
                             className="font-data"
                             style={{
-                              background: active ? "var(--espresso)" : "var(--parchment-mid)",
+                              background: active ? DC_ESPRESSO : "var(--parchment-mid)",
                               color: active ? HERITAGE_GOLD : "var(--text-muted)",
                               padding: "1px 7px",
                               borderRadius: 10,
@@ -982,7 +993,7 @@ export default function EveningWrapPage() {
                             gap: 18,
                             alignItems: "center",
                             padding: "18px 20px",
-                            background: "var(--cream)",
+                            background: "var(--elevated)",
                             border: "1px solid var(--border-base)",
                             borderRadius: 12,
                             borderLeft: `4px solid ${HERITAGE_GOLD}`,
@@ -1059,7 +1070,7 @@ export default function EveningWrapPage() {
                               gap: 18,
                               alignItems: "center",
                               padding: "18px 20px",
-                              background: "var(--cream)",
+                              background: "var(--elevated)",
                               border: "1px solid var(--border-base)",
                               borderRadius: 12,
                               borderLeft: `4px solid ${HERITAGE_GOLD}`,
@@ -1087,7 +1098,7 @@ export default function EveningWrapPage() {
                             <div
                               key={t.key}
                               style={{
-                                background: "var(--cream)",
+                                background: "var(--elevated)",
                                 border: "1px solid var(--border-base)",
                                 borderRadius: 12,
                                 borderLeft: `4px solid ${HERITAGE_GOLD}`,
@@ -1138,7 +1149,7 @@ export default function EveningWrapPage() {
                   style={{
                     border: "1px solid var(--border-base)",
                     borderRadius: 12,
-                    background: "var(--cream)",
+                    background: "var(--elevated)",
                     overflow: "hidden",
                   }}
                 >
@@ -1242,7 +1253,7 @@ export default function EveningWrapPage() {
                           gap: 18,
                           alignItems: "center",
                           padding: "16px 20px",
-                          background: "var(--cream)",
+                          background: "var(--elevated)",
                           border: "1px solid var(--border-base)",
                           borderRadius: 12,
                         }}
@@ -1256,7 +1267,7 @@ export default function EveningWrapPage() {
                         <div>
                           <h4
                             className="font-[family-name:var(--font-playfair-display)]"
-                            style={{ fontSize: 17, fontWeight: 700, color: "var(--espresso)", margin: "0 0 6px", lineHeight: 1.25, letterSpacing: "-0.01em" }}
+                            style={{ fontSize: 17, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px", lineHeight: 1.25, letterSpacing: "-0.01em" }}
                           >
                             {s.title}
                           </h4>
