@@ -7,12 +7,14 @@ import { TickerStrip } from "@/components/brief/ticker-strip";
 import { MorningReview } from "@/components/brief/morning-review";
 import { ExportMenu } from "@/components/brief/export-menu";
 import { ShareButton } from "@/components/brief/share-button";
+import { DCStoryRow } from "@/components/brief/dc-story-row";
+import { DCAnalystSection } from "@/components/brief/dc-analyst-section";
+import { DCSectorSignals } from "@/components/brief/dc-sector-signals";
 import { ActiveThesesWidget } from "@/components/dashboard/active-theses-widget";
 import { WatchlistWidget } from "@/components/dashboard/watchlist-widget";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/strip-html";
 import { Moon } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -21,7 +23,7 @@ import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
 import type { StoryData } from "@/components/dashboard";
 import { createBrowserClient } from "@supabase/ssr";
 import { useUserProfile } from "@/hooks/useUserProfile";
-import { sortByRelevance } from "@/lib/personalization";
+import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
 import { trackClientEvent } from "@/lib/track-event";
 import type { ContentDescriptor } from "@/lib/personalization";
 
@@ -161,12 +163,9 @@ export default function EveningWrapPage() {
   const [briefing, setBriefing] = useState<BriefingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [stories, setStories] = useState<StoryData[]>([]);
-  const [storiesLabel, setStoriesLabel] = useState("After-Hours Stories");
+  const [storiesLabel, setStoriesLabel] = useState("Today's Top Stories");
   const [isStale, setIsStale] = useState(false);
   const [lastRunStatus, setLastRunStatus] = useState<"success" | "stub" | "error" | null>(null);
-  const [memoOpen, setMemoOpen] = useState(false);
-  const [memoTitle, setMemoTitle] = useState("");
-  const [memoContent, setMemoContent] = useState("");
   const [addingThesis, setAddingThesis] = useState(false);
   const [sectionRatings, setSectionRatings] = useState<Record<string, number>>({});
   const [leadMemoOpen, setLeadMemoOpen] = useState(false);
@@ -174,8 +173,6 @@ export default function EveningWrapPage() {
   const [formatLabel, setFormatLabel] = useState<string | null>(null);
   const [userAddendum, setUserAddendum] = useState<string | null>(null);
   const [user, setUser] = useState<{ id: string; email?: string | null } | null>(null);
-  const [briefView, setBriefView] = useState<"editorial" | "dashboard">("editorial");
-  const [activeTabKey, setActiveTabKey] = useState<string | null>(null);
   const [thesesCount, setThesesCount] = useState<number | null>(null);
   const [vixQuote, setVixQuote] = useState<{ price: string; pct: number } | null>(null);
   const [scorecard, setScorecard] = useState<Record<string, { price: string; pct: number } | null>>({});
@@ -189,14 +186,6 @@ export default function EveningWrapPage() {
       })
       .catch(() => setUser(null));
   }, []);
-
-  useEffect(() => {
-    const stored = localStorage.getItem("signalera_brief_view");
-    if (stored === "editorial" || stored === "dashboard") setBriefView(stored);
-  }, []);
-  useEffect(() => {
-    localStorage.setItem("signalera_brief_view", briefView);
-  }, [briefView]);
 
   useEffect(() => {
     fetch("/api/brief-rating")
@@ -279,7 +268,7 @@ export default function EveningWrapPage() {
           .order("relevance_score", { ascending: false })
           .limit(8);
 
-        let label = "After-Hours Stories";
+        let label = "Today's Top Stories";
         if ((articles?.length ?? 0) < 3) {
           const { data: fallback } = await getSupabase()
             .from("articles")
@@ -374,10 +363,13 @@ export default function EveningWrapPage() {
     load();
   }, []);
 
-  const tabs = useMemo(() => {
+  // Evening Analysis sections — whitelist + canonical order. Sector
+  // Signals is rendered as its own section below, so it is NOT folded
+  // into this list. tomorrow_setup is handled by its own Tomorrow's
+  // Setup section further down.
+  const analystSections = useMemo(() => {
     const s = briefing?.sections || {};
-    const sector = briefing?.sector_breakdown || {};
-    const out: { key: string; title: string; content: string; count?: number }[] = [];
+    const out: { key: string; title: string; content: string }[] = [];
     for (const key of MOVERS_TAB_ORDER) {
       if (key === "tomorrow_setup") continue;
       const content = s[key];
@@ -385,20 +377,8 @@ export default function EveningWrapPage() {
         out.push({ key, title: SECTION_TITLES[key] || key, content });
       }
     }
-    if (sector && Object.keys(sector).length > 0) {
-      const joined = Object.entries(sector)
-        .map(([sec, text]) => `<p><strong>${sec}:</strong> ${text}</p>`)
-        .join("");
-      out.push({ key: "sector_signals", title: "Sector Signals", content: joined, count: Object.keys(sector).length });
-    }
     return out;
   }, [briefing]);
-
-  useEffect(() => {
-    if (tabs.length === 0) return;
-    const stillValid = activeTabKey && tabs.some((s) => s.key === activeTabKey);
-    if (!stillValid) setActiveTabKey(tabs[0].key);
-  }, [tabs, activeTabKey]);
 
   const rankedStories = useMemo(() => {
     if (!profile) return stories;
@@ -418,8 +398,11 @@ export default function EveningWrapPage() {
     || "Today's session has closed. Detailed close commentary will appear here once the post-market synthesis lands.";
   const tomorrowSetupContent = briefing?.sections?.tomorrow_setup;
 
-  const activeTab = tabs.find((t) => t.key === activeTabKey) ?? tabs[0];
-  const splitCards = (html: string): { lead: string; rest: string }[] => {
+  // Tomorrow's Setup dual-mode detection: if the backend delivers a
+  // single prose paragraph, render narrative. If it delivers multiple
+  // structured paragraphs (<p>…</p><p>…</p> or blank-line separated),
+  // render a structured row list.
+  const tomorrowSetupEvents = (html: string): { lead: string; rest: string }[] => {
     if (!html) return [];
     const paragraphs = html
       .split(/<\/p>\s*<p[^>]*>|\n\n+/)
@@ -431,6 +414,8 @@ export default function EveningWrapPage() {
       return { lead: p, rest: "" };
     });
   };
+  const tomorrowEvents = tomorrowSetupContent ? tomorrowSetupEvents(tomorrowSetupContent) : [];
+  const tomorrowIsNarrative = tomorrowEvents.length <= 1;
 
   const handleLeadAddThesis = async () => {
     setAddingThesis(true);
@@ -584,6 +569,49 @@ export default function EveningWrapPage() {
           />
         ) : (
           <>
+            {/* ── EVENING WRAP top block — gold eyebrow label, Playfair
+                date headline, muted Inter + mono timestamp subtitle. Sits
+                between the stats bar and the Close hero. ── */}
+            <section style={{ marginBottom: 28 }}>
+              <p
+                className="font-sans"
+                style={{
+                  fontSize: 10,
+                  letterSpacing: "0.22em",
+                  textTransform: "uppercase",
+                  color: "var(--gold-dark)",
+                  fontWeight: 800,
+                  margin: "0 0 10px",
+                }}
+              >
+                Evening Wrap
+              </p>
+              <h1
+                className="font-[family-name:var(--font-playfair-display)]"
+                style={{
+                  fontSize: "clamp(30px, 3.8vw, 42px)",
+                  fontWeight: 800,
+                  lineHeight: 1.05,
+                  color: "var(--espresso)",
+                  margin: "0 0 10px",
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                {dateStr}
+              </h1>
+              <p
+                className="font-sans"
+                style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}
+              >
+                {stories.length || "—"} stories worth your attention{" "}
+                <span style={{ color: "var(--text-faint)" }}>·</span>{" "}
+                <span className="font-data" style={{ fontSize: 12 }}>
+                  Generated {timeStr} ·{" "}
+                  {now.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                </span>
+              </p>
+            </section>
+
             {/* ── The Close — dark espresso hero with 6-cell scorecard.
                 All colours pinned to literals so the card stays dark in
                 both themes. Always renders; verdict + body fall back to
@@ -904,231 +932,47 @@ export default function EveningWrapPage() {
               ) : null}
             </section>
 
-            {/* ── Movers & Flows ── */}
-            {tabs.length > 0 && (
+            {/* ── Evening Analysis — one card per section, each with
+                USEFUL? thumbs for feedback-loop signal collection. Sector
+                Signals is rendered separately below. ── */}
+            {analystSections.length > 0 && (
               <section style={{ marginBottom: 40 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-                  <h3
-                    className="font-[family-name:var(--font-playfair-display)]"
-                    style={{ fontSize: 26, fontWeight: 800, color: "var(--espresso)", margin: 0, letterSpacing: "-0.015em" }}
-                  >
-                    Movers &amp; Flows
-                  </h3>
-                  <div style={{ display: "flex", background: "var(--parchment-mid)", borderRadius: 20, padding: 3 }}>
-                    {(["editorial", "dashboard"] as const).map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => setBriefView(m)}
-                        className="font-sans cursor-pointer"
-                        style={{
-                          padding: "6px 14px",
-                          borderRadius: 17,
-                          border: "none",
-                          background: briefView === m ? HERITAGE_GOLD : "transparent",
-                          color: briefView === m ? DC_ESPRESSO : "var(--text-secondary)",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          letterSpacing: "0.10em",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </div>
+                <h3
+                  className="font-[family-name:var(--font-playfair-display)]"
+                  style={{
+                    fontSize: 26,
+                    fontWeight: 800,
+                    color: "var(--espresso)",
+                    margin: "0 0 18px",
+                    letterSpacing: "-0.015em",
+                  }}
+                >
+                  Evening Analysis
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {analystSections.map((section) => (
+                    <DCAnalystSection
+                      key={section.key}
+                      sectionKey={section.key}
+                      title={section.title}
+                      content={section.content}
+                      briefSource="Evening Wrap"
+                      currentRating={sectionRatings[section.key] ?? 0}
+                      onRate={handleSectionRate}
+                    />
+                  ))}
                 </div>
-
-                <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
-                  {tabs.map((t) => {
-                    const active = activeTabKey === t.key;
-                    return (
-                      <button
-                        key={t.key}
-                        type="button"
-                        onClick={() => setActiveTabKey(t.key)}
-                        className="font-sans cursor-pointer"
-                        style={{
-                          padding: "8px 14px",
-                          borderRadius: 22,
-                          border: `1.5px solid ${active ? HERITAGE_GOLD : "var(--border-base)"}`,
-                          background: active ? HERITAGE_GOLD : "var(--elevated)",
-                          color: active ? DC_ESPRESSO : "var(--text-secondary)",
-                          fontSize: 12,
-                          fontWeight: active ? 700 : 500,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        {t.title}
-                        {typeof t.count === "number" && (
-                          <span
-                            className="font-data"
-                            style={{
-                              background: active ? DC_ESPRESSO : "var(--parchment-mid)",
-                              color: active ? HERITAGE_GOLD : "var(--text-muted)",
-                              padding: "1px 7px",
-                              borderRadius: 10,
-                              fontSize: 10,
-                            }}
-                          >
-                            {t.count}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {activeTab && (
-                  briefView === "editorial" ? (
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
-                      {splitCards(activeTab.content).map((b, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "56px 1fr 120px",
-                            gap: 18,
-                            alignItems: "center",
-                            padding: "18px 20px",
-                            background: "var(--elevated)",
-                            border: "1px solid var(--border-base)",
-                            borderRadius: 12,
-                            borderLeft: `4px solid ${HERITAGE_GOLD}`,
-                          }}
-                        >
-                          <div
-                            className="font-[family-name:var(--font-playfair-display)]"
-                            style={{ fontSize: 36, fontWeight: 800, color: HERITAGE_GOLD, lineHeight: 1, letterSpacing: "-0.02em" }}
-                          >
-                            {String(i + 1).padStart(2, "0")}
-                          </div>
-                          <p
-                            className="font-sans"
-                            style={{ fontSize: 14, lineHeight: 1.55, color: "var(--text-primary)", margin: 0 }}
-                          >
-                            <strong style={{ fontWeight: 700, color: "var(--espresso)" }}>{b.lead}</strong>
-                            {b.rest}
-                          </p>
-                          <div style={{ textAlign: "right" }}>
-                            <SentimentPill tone={tone} size="sm" />
-                          </div>
-                        </div>
-                      ))}
-                      <div className="flex items-center gap-2 mt-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMemoTitle(activeTab.title);
-                            setMemoContent(stripHtml(activeTab.content));
-                            setMemoOpen(true);
-                          }}
-                          className="font-sans text-[11px] font-semibold cursor-pointer"
-                          style={{ color: "var(--gold-dark)" }}
-                        >
-                          Generate memo →
-                        </button>
-                        <span style={{ flex: 1 }} />
-                        <button
-                          type="button"
-                          onClick={() => handleSectionRate(activeTab.key, 1)}
-                          className={cn("font-sans text-[11px] px-2 py-1 rounded cursor-pointer")}
-                          style={{
-                            color: sectionRatings[activeTab.key] === 1 ? HERITAGE_GOLD : "var(--text-muted)",
-                          }}
-                          aria-label="Useful"
-                        >
-                          ▲
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSectionRate(activeTab.key, -1)}
-                          className="font-sans text-[11px] px-2 py-1 rounded cursor-pointer"
-                          style={{
-                            color: sectionRatings[activeTab.key] === -1 ? HERITAGE_GOLD : "var(--text-muted)",
-                          }}
-                          aria-label="Not useful"
-                        >
-                          ▼
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div
-                      className="grid gap-3"
-                      style={{ gridTemplateColumns: tabs.length <= 2 ? "1fr" : "60fr 40fr" }}
-                    >
-                      <div className="flex flex-col gap-3">
-                        {splitCards(tabs[0].content).map((b, i) => (
-                          <div
-                            key={i}
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "56px 1fr 100px",
-                              gap: 18,
-                              alignItems: "center",
-                              padding: "18px 20px",
-                              background: "var(--elevated)",
-                              border: "1px solid var(--border-base)",
-                              borderRadius: 12,
-                              borderLeft: `4px solid ${HERITAGE_GOLD}`,
-                            }}
-                          >
-                            <div
-                              className="font-[family-name:var(--font-playfair-display)]"
-                              style={{ fontSize: 36, fontWeight: 800, color: HERITAGE_GOLD, lineHeight: 1 }}
-                            >
-                              {String(i + 1).padStart(2, "0")}
-                            </div>
-                            <p className="font-sans" style={{ fontSize: 14, lineHeight: 1.55, color: "var(--text-primary)", margin: 0 }}>
-                              <strong style={{ fontWeight: 700, color: "var(--espresso)" }}>{b.lead}</strong>
-                              {b.rest}
-                            </p>
-                            <div style={{ textAlign: "right" }}>
-                              <SentimentPill tone={tone} size="sm" />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      {tabs.length > 1 && (
-                        <div className="flex flex-col gap-3">
-                          {tabs.slice(1).map((t) => (
-                            <div
-                              key={t.key}
-                              style={{
-                                background: "var(--elevated)",
-                                border: "1px solid var(--border-base)",
-                                borderRadius: 12,
-                                borderLeft: `4px solid ${HERITAGE_GOLD}`,
-                                padding: "14px 16px",
-                              }}
-                            >
-                              <p
-                                className="font-sans"
-                                style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--gold-dark)", fontWeight: 700, margin: "0 0 6px" }}
-                              >
-                                {t.title}
-                              </p>
-                              <p
-                                className="font-sans"
-                                style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--text-primary)", margin: 0 }}
-                              >
-                                {stripHtml(t.content).slice(0, 260)}
-                                {stripHtml(t.content).length > 260 ? "…" : ""}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )
-                )}
               </section>
             )}
 
-            {/* ── Tomorrow's Setup ── */}
+            {/* ── Sector Signals — standalone section with pill filter. ── */}
+            {briefing.sector_breakdown && Object.keys(briefing.sector_breakdown).length > 0 && (
+              <DCSectorSignals breakdown={briefing.sector_breakdown} />
+            )}
+
+            {/* ── Tomorrow's Setup — dual mode. Narrative prose card when
+                the backend delivers a single paragraph; structured row
+                list when it delivers multiple <p>-separated events. ── */}
             {tomorrowSetupContent && tomorrowSetupContent.trim() && (
               <section style={{ marginBottom: 40 }}>
                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 8 }}>
@@ -1145,70 +989,46 @@ export default function EveningWrapPage() {
                     {formatDatePretty(new Date(now.getTime() + 24 * 60 * 60 * 1000))}
                   </span>
                 </div>
-                <div
-                  style={{
-                    border: "1px solid var(--border-base)",
-                    borderRadius: 12,
-                    background: "var(--elevated)",
-                    overflow: "hidden",
-                  }}
-                >
-                  {splitCards(tomorrowSetupContent).map((item, i) => (
-                    <div
-                      key={i}
+
+                {tomorrowIsNarrative ? (
+                  <div
+                    style={{
+                      border: "1px solid var(--border-base)",
+                      borderLeft: `4px solid ${HERITAGE_GOLD}`,
+                      borderRadius: 12,
+                      background: "var(--elevated)",
+                      padding: "20px 22px",
+                    }}
+                  >
+                    <p
+                      className="font-sans"
                       style={{
-                        display: "grid",
-                        gridTemplateColumns: "100px 1fr 120px",
-                        gap: 20,
-                        alignItems: "center",
-                        padding: "14px 20px",
-                        borderTop: i === 0 ? "none" : "1px solid var(--border-subtle)",
+                        fontSize: 14,
+                        lineHeight: 1.65,
+                        color: "var(--text-primary)",
+                        margin: 0,
+                        whiteSpace: "pre-line",
                       }}
                     >
-                      <span
-                        className="font-sans"
-                        style={{
-                          fontSize: 9,
-                          fontWeight: 700,
-                          letterSpacing: "0.12em",
-                          color: "var(--gold-dark)",
-                          background: "var(--gold-muted)",
-                          padding: "3px 8px",
-                          borderRadius: 3,
-                          textAlign: "center",
-                          textTransform: "uppercase",
-                          justifySelf: "start",
-                        }}
-                      >
-                        Event {i + 1}
-                      </span>
-                      <div>
-                        <p
-                          className="font-[family-name:var(--font-playfair-display)]"
-                          style={{ fontSize: 16, fontWeight: 700, color: "var(--espresso)", margin: "0 0 3px", letterSpacing: "-0.01em" }}
-                        >
-                          {item.lead}
-                        </p>
-                        {item.rest && (
-                          <p className="font-sans" style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0 }}>
-                            {item.rest.trim()}
-                          </p>
-                        )}
-                      </div>
+                      {stripHtml(tomorrowSetupContent)}
+                    </p>
+                    <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
                       <button
                         type="button"
+                        disabled={addingThesis}
                         onClick={async () => {
                           setAddingThesis(true);
                           try {
                             await getSupabase().from("theses").insert({
-                              title: item.lead.slice(0, 80),
+                              title: "Tomorrow's Setup",
                               conviction: "WATCH",
                               sector: "General",
-                              rationale: `${item.lead} ${item.rest}`.trim(),
+                              rationale: stripHtml(tomorrowSetupContent),
                               source: "Evening Wrap · Tomorrow's Setup",
                               status: "new-signal",
                               generated_at: new Date().toISOString(),
                             });
+                            router.push("/thesis-board");
                           } catch (err) {
                             console.error("Failed to add thesis:", err);
                           } finally {
@@ -1218,22 +1038,113 @@ export default function EveningWrapPage() {
                         className="font-sans cursor-pointer"
                         style={{
                           fontSize: 11,
+                          fontWeight: 700,
                           color: "var(--gold-dark)",
-                          fontWeight: 600,
-                          textAlign: "right",
                           background: "none",
                           border: "none",
+                          padding: 0,
+                          opacity: addingThesis ? 0.5 : 1,
+                          cursor: addingThesis ? "not-allowed" : "pointer",
                         }}
                       >
-                        Add to brief →
+                        Add to thesis board →
                       </button>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      border: "1px solid var(--border-base)",
+                      borderRadius: 12,
+                      background: "var(--elevated)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {tomorrowEvents.map((item, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "100px 1fr 120px",
+                          gap: 20,
+                          alignItems: "center",
+                          padding: "14px 20px",
+                          borderTop: i === 0 ? "none" : "1px solid var(--border-subtle)",
+                        }}
+                      >
+                        <span
+                          className="font-sans"
+                          style={{
+                            fontSize: 9,
+                            fontWeight: 700,
+                            letterSpacing: "0.12em",
+                            color: "var(--gold-dark)",
+                            background: "var(--gold-muted)",
+                            padding: "3px 8px",
+                            borderRadius: 3,
+                            textAlign: "center",
+                            textTransform: "uppercase",
+                            justifySelf: "start",
+                          }}
+                        >
+                          Event {i + 1}
+                        </span>
+                        <div>
+                          <p
+                            className="font-[family-name:var(--font-playfair-display)]"
+                            style={{ fontSize: 16, fontWeight: 700, color: "var(--espresso)", margin: "0 0 3px", letterSpacing: "-0.01em" }}
+                          >
+                            {item.lead}
+                          </p>
+                          {item.rest && (
+                            <p className="font-sans" style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0 }}>
+                              {item.rest.trim()}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setAddingThesis(true);
+                            try {
+                              await getSupabase().from("theses").insert({
+                                title: item.lead.slice(0, 80),
+                                conviction: "WATCH",
+                                sector: "General",
+                                rationale: `${item.lead} ${item.rest}`.trim(),
+                                source: "Evening Wrap · Tomorrow's Setup",
+                                status: "new-signal",
+                                generated_at: new Date().toISOString(),
+                              });
+                            } catch (err) {
+                              console.error("Failed to add thesis:", err);
+                            } finally {
+                              setAddingThesis(false);
+                            }
+                          }}
+                          className="font-sans cursor-pointer"
+                          style={{
+                            fontSize: 11,
+                            color: "var(--gold-dark)",
+                            fontWeight: 600,
+                            textAlign: "right",
+                            background: "none",
+                            border: "none",
+                          }}
+                        >
+                          Add to brief →
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </section>
             )}
 
-            {/* ── After-Hours Stories ── */}
+            {/* ── Today's Top Stories — click a row to expand for summary,
+                entity chips, bookmark, and Generate Memo / Thesis / Ask AI
+                actions. Row meta row shows signal score, source win rate,
+                and summary/headline-only pill. ── */}
             {rankedStories.length > 0 && (
               <section>
                 <h3
@@ -1243,78 +1154,14 @@ export default function EveningWrapPage() {
                   {storiesLabel}
                 </h3>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
-                  {rankedStories.map((s, i) => {
-                    const storyTone = normaliseTone(s.sentiment);
-                    const row = (
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "44px 1fr auto",
-                          gap: 18,
-                          alignItems: "center",
-                          padding: "16px 20px",
-                          background: "var(--elevated)",
-                          border: "1px solid var(--border-base)",
-                          borderRadius: 12,
-                        }}
-                      >
-                        <span
-                          className="font-[family-name:var(--font-playfair-display)]"
-                          style={{ fontSize: 30, fontWeight: 800, color: HERITAGE_GOLD, lineHeight: 1 }}
-                        >
-                          {String(i + 1).padStart(2, "0")}
-                        </span>
-                        <div>
-                          <h4
-                            className="font-[family-name:var(--font-playfair-display)]"
-                            style={{ fontSize: 17, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px", lineHeight: 1.25, letterSpacing: "-0.01em" }}
-                          >
-                            {s.title}
-                          </h4>
-                          <div
-                            className="font-sans"
-                            style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 11, color: "var(--text-secondary)" }}
-                          >
-                            {s.sector && (
-                              <span
-                                style={{
-                                  padding: "2px 8px",
-                                  background: "var(--gold-muted)",
-                                  color: "var(--gold-dark)",
-                                  borderRadius: 4,
-                                  fontWeight: 700,
-                                  letterSpacing: "0.06em",
-                                  fontSize: 10,
-                                  textTransform: "uppercase",
-                                }}
-                              >
-                                {s.sector}
-                              </span>
-                            )}
-                            <span>{s.source}</span>
-                            <span style={{ color: "var(--text-faint)" }}>·</span>
-                            <span className="font-data" style={{ fontSize: 10 }}>
-                              {s.timestamp}
-                            </span>
-                          </div>
-                        </div>
-                        <SentimentPill tone={storyTone} size="sm" />
-                      </div>
-                    );
-                    return s.url ? (
-                      <a
-                        key={s.id}
-                        href={s.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ textDecoration: "none", color: "inherit" }}
-                      >
-                        {row}
-                      </a>
-                    ) : (
-                      <div key={s.id}>{row}</div>
-                    );
-                  })}
+                  {rankedStories.map((s, i) => (
+                    <DCStoryRow
+                      key={s.id}
+                      story={s}
+                      index={i}
+                      watching={(s.tags ?? []).some((t) => isOnWatchlist(t, profile))}
+                    />
+                  ))}
                 </div>
               </section>
             )}
@@ -1322,13 +1169,6 @@ export default function EveningWrapPage() {
         )}
       </div>
 
-      <MemoModal
-        isOpen={memoOpen}
-        onClose={() => setMemoOpen(false)}
-        title={memoTitle}
-        content={memoContent}
-        type="brief"
-      />
       <MemoModal
         isOpen={leadMemoOpen}
         onClose={() => setLeadMemoOpen(false)}
