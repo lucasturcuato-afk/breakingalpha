@@ -210,7 +210,7 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
                 <SignalScore score={story.adjustedScore} />
               </>
             )}
-            {story.sourceWinRate != null && <SourceCredibilityBadge winRate={story.sourceWinRate} />}
+            <SourceCredibilityBadge winRate={story.sourceWinRate} sampleSize={story.sourceSampleSize} />
             {completenessLabel && <CompletenessBadge completeness={story.completeness} />}
           </div>
         </div>

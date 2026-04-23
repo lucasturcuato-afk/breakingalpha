@@ -65,6 +65,7 @@ export interface StoryData {
   completeness?: Completeness;
   adjustedScore?: number | null;
   sourceWinRate?: number | null;
+  sourceSampleSize?: number | null;
 }
 
 function sentimentToVariant(sentiment: string): BadgeVariant {
@@ -169,7 +170,7 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
           </span>
           <CompletenessBadge completeness={story.completeness} />
           <SignalScore score={story.adjustedScore} />
-          <SourceCredibilityBadge winRate={story.sourceWinRate} />
+          <SourceCredibilityBadge winRate={story.sourceWinRate} sampleSize={story.sourceSampleSize} />
         </div>
 
         {/* Headline */}
@@ -397,7 +398,7 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
             </span>
             <CompletenessBadge completeness={story.completeness} />
             <SignalScore score={story.adjustedScore} />
-            <SourceCredibilityBadge winRate={story.sourceWinRate} />
+            <SourceCredibilityBadge winRate={story.sourceWinRate} sampleSize={story.sourceSampleSize} />
           </div>
           <h4 className="font-[family-name:var(--font-playfair-display)] text-[13px] font-bold text-espresso leading-snug hover:text-gold-dark transition-colors">
             {story.title}

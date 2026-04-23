@@ -24,6 +24,32 @@ const SECTOR_ACCENTS: Record<string, string> = {
   "Industrials & Manufacturing": "#94a3b8",
 };
 
+// The new taxonomy concatenates industry vertical + activity type into one
+// key ("Technology M&A", "Financial Services Private Equity"), which reads
+// as a single awkward phrase. When we detect one of these known activity
+// suffixes, insert a thin-space middle-dot between the two halves so the
+// label reads "Technology · M&A". Ordered longest-first so "Private Equity"
+// matches before "Equity".
+const ACTIVITY_SUFFIXES = [
+  "Leveraged Buyout",
+  "Private Equity",
+  "Venture Capital",
+  "Capital Raise",
+  "IPO",
+  "M&A",
+];
+
+function formatSectorLabel(raw: string): string {
+  for (const suffix of ACTIVITY_SUFFIXES) {
+    if (raw === suffix) return raw;
+    if (raw.endsWith(` ${suffix}`)) {
+      const head = raw.slice(0, -suffix.length - 1).trim();
+      if (head.length > 0) return `${head} · ${suffix}`;
+    }
+  }
+  return raw;
+}
+
 export interface DCSectorSignalsProps {
   breakdown: Record<string, string>;
 }
@@ -68,7 +94,7 @@ export function DCSectorSignals({ breakdown }: DCSectorSignalsProps) {
             {sectors.map((s) => (
               <SectorPill
                 key={s}
-                label={s}
+                label={formatSectorLabel(s)}
                 active={filter === s}
                 onClick={() => setFilter(filter === s ? null : s)}
               />
@@ -101,7 +127,7 @@ export function DCSectorSignals({ breakdown }: DCSectorSignalsProps) {
                   margin: "0 0 8px",
                 }}
               >
-                {sector}
+                {formatSectorLabel(sector)}
               </p>
               <p
                 className="font-sans"

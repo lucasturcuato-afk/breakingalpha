@@ -43,14 +43,26 @@ export function CompletenessBadge({ completeness }: { completeness?: Completenes
 export function SignalScore({ score }: { score?: number | null }) {
   if (score == null) return null;
   return (
-    <span className="font-data text-[11px] text-gold font-semibold">
+    <span className="font-data text-[10px] text-gold font-semibold tracking-tight">
       Signal: {score.toFixed(1)}
     </span>
   );
 }
 
-export function SourceCredibilityBadge({ winRate }: { winRate?: number | null }) {
-  if (winRate == null) return null;
+// Minimum graded-outcome sample before a source's win rate is meaningful.
+// Below this we hide the pill entirely — a 0% or 1-of-1 win rate on every
+// story looks like broken data, not a signal.
+const MIN_SAMPLE = 5;
+
+export function SourceCredibilityBadge({
+  winRate,
+  sampleSize,
+}: {
+  winRate?: number | null;
+  sampleSize?: number | null;
+}) {
+  if (winRate == null || winRate === 0) return null;
+  if (sampleSize != null && sampleSize < MIN_SAMPLE) return null;
   return (
     <span className="font-data text-[9px] text-gold-dark bg-gold/10 px-1.5 py-0.5 rounded">
       Source: {Math.round(winRate)}% win rate

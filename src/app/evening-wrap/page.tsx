@@ -54,13 +54,17 @@ const MOVERS_TAB_ORDER = [
   "closing_thoughts",
 ];
 
+// Scorecard uses actual index + front-month futures tickers so the label
+// and the number agree (ETFs like SPY trade at ~$580 — five-digit indices
+// they are not). Finnhub's free tier doesn't return caret/futures symbols,
+// so /api/watchlist-quotes falls back to Yahoo for these.
 const SCORECARD_SYMBOLS = [
-  { sym: "SPY",  label: "S&P 500" },
-  { sym: "QQQ",  label: "NASDAQ" },
-  { sym: "DIA",  label: "DOW" },
-  { sym: "IWM",  label: "RUSSELL" },
-  { sym: "^TNX", label: "10Y YIELD", invert: true },
-  { sym: "USO",  label: "WTI" },
+  { sym: "^GSPC", label: "S&P 500" },
+  { sym: "^IXIC", label: "NASDAQ" },
+  { sym: "^DJI",  label: "DOW" },
+  { sym: "^RUT",  label: "RUSSELL" },
+  { sym: "^TNX",  label: "10Y YIELD", invert: true },
+  { sym: "CL=F",  label: "WTI" },
 ] as const;
 
 // Sherwood Direction C palette — pinned literals for the values that
@@ -283,14 +287,16 @@ export default function EveningWrapPage() {
 
         if (articles) {
           const uniqueSources = [...new Set(articles.map(a => a.source).filter(Boolean) as string[])];
-          let credMap = new Map<string, number>();
+          let credMap = new Map<string, { winRate: number; nTheses: number | null }>();
           if (uniqueSources.length > 0) {
             try {
               const { data: credData } = await getSupabase()
                 .from("source_credibility")
-                .select("source, win_rate")
+                .select("source, win_rate, n_theses")
                 .in("source", uniqueSources);
-              credMap = new Map(credData?.map(r => [r.source, r.win_rate]) ?? []);
+              credMap = new Map(
+                credData?.map(r => [r.source, { winRate: r.win_rate, nTheses: r.n_theses ?? null }]) ?? [],
+              );
             } catch { /* soft-fail */ }
           }
 
@@ -310,7 +316,8 @@ export default function EveningWrapPage() {
               saved: false,
               completeness,
               adjustedScore: getAdjustedScore(a.relevance_score ?? null, completeness),
-              sourceWinRate: credMap.get(a.source) ?? null,
+              sourceWinRate: credMap.get(a.source)?.winRate ?? null,
+              sourceSampleSize: credMap.get(a.source)?.nTheses ?? null,
             };
           }));
         }
@@ -417,32 +424,34 @@ export default function EveningWrapPage() {
   const tomorrowEvents = tomorrowSetupContent ? tomorrowSetupEvents(tomorrowSetupContent) : [];
   const tomorrowIsNarrative = tomorrowEvents.length <= 1;
 
-  // 3-column Today's Story fallback — never render empty cards. When the
-  // backend doesn't deliver lead_paragraph / supporting_context /
-  // what_to_watch, split the prose summary into three roughly-equal parts.
+  // Lead body fallback — if a structured field is null, try to fill it
+  // from the corresponding third of the prose summary. If the summary is
+  // also absent, drop the card entirely so the grid collapses to 2 or 1
+  // cols rather than rendering an empty card with just "—".
   const splitIntoThree = (raw: string): [string, string, string] => {
     const text = stripHtml(raw).trim();
-    if (!text) return ["—", "—", "—"];
+    if (!text) return ["", "", ""];
     const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
-    if (sentences.length <= 1) return [text, "—", "—"];
+    if (sentences.length <= 1) return [text, "", ""];
     const third = Math.ceil(sentences.length / 3);
     return [
-      sentences.slice(0, third).join(" ") || "—",
-      sentences.slice(third, third * 2).join(" ") || "—",
-      sentences.slice(third * 2).join(" ") || "—",
+      sentences.slice(0, third).join(" "),
+      sentences.slice(third, third * 2).join(" "),
+      sentences.slice(third * 2).join(" "),
     ];
   };
-  const hasStructuredLead = !!(
-    briefing?.lead_paragraph || briefing?.supporting_context || briefing?.what_to_watch
-  );
-  const [fbLead, fbContext, fbWatch] = hasStructuredLead
-    ? ["", "", ""]
-    : splitIntoThree(briefing?.summary || briefing?.headline || "");
-  const leadCards = [
-    { n: "1", label: "The Story",     body: briefing?.lead_paragraph     || fbLead },
-    { n: "2", label: "The Context",   body: briefing?.supporting_context || fbContext },
-    { n: "3", label: "What to Watch", body: briefing?.what_to_watch      || fbWatch },
-  ];
+  const summaryThirds = splitIntoThree(briefing?.summary || briefing?.headline || "");
+  const leadCards = ([
+    { label: "The Story",     body: briefing?.lead_paragraph     || summaryThirds[0] },
+    { label: "The Context",   body: briefing?.supporting_context || summaryThirds[1] },
+    { label: "What to Watch", body: briefing?.what_to_watch      || summaryThirds[2] },
+  ] as { label: string; body: string }[])
+    .filter((c) => c.body && c.body.trim() && c.body.trim() !== "—")
+    .map((c, i) => ({ ...c, n: String(i + 1) }));
+  const leadGridCols =
+    leadCards.length >= 3 ? "md:grid-cols-3"
+    : leadCards.length === 2 ? "md:grid-cols-2"
+    : "md:grid-cols-1";
 
   const handleAskAI = () => {
     document.dispatchEvent(
@@ -747,6 +756,18 @@ export default function EveningWrapPage() {
                     const pct = q?.pct ?? 0;
                     const isLast = i === SCORECARD_SYMBOLS.length - 1;
                     const positive = "invert" in s && s.invert ? pct < 0 : pct >= 0;
+                    // ^TNX on Yahoo's chart API has historically been quoted
+                    // as the yield × 10 (42.50 = 4.25%). The API currently
+                    // returns the yield directly, but the guard defends
+                    // against format regressions either way.
+                    const displayPrice = (() => {
+                      if (!q?.price) return "—";
+                      if (s.sym !== "^TNX") return q.price;
+                      const n = parseFloat(String(q.price).replace(/,/g, ""));
+                      if (isNaN(n)) return q.price;
+                      const normalized = n > 20 ? n / 10 : n;
+                      return `${normalized.toFixed(2)}%`;
+                    })();
                     return (
                       <div
                         key={s.sym}
@@ -772,7 +793,7 @@ export default function EveningWrapPage() {
                           className="font-data"
                           style={{ fontSize: 14, fontWeight: 700, color: DC_CREAM, margin: "0 0 4px", fontVariantNumeric: "tabular-nums" }}
                         >
-                          {q?.price ?? "—"}
+                          {displayPrice}
                         </p>
                         <p
                           className="font-data"
@@ -867,10 +888,10 @@ export default function EveningWrapPage() {
                 {briefing.headline || formatLabel || "Evening Market Wrap"}
               </h2>
 
-              {/* Always renders — leadCards falls back to the prose
-                  summary split into thirds when the backend doesn't
-                  deliver the structured fields. */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {/* leadCards fills missing structured slots from thirds of
+                  the prose summary and drops cards with nothing to show,
+                  so we never render a card containing only "—". */}
+              <div className={`grid grid-cols-1 ${leadGridCols} gap-5`}>
                 {leadCards.map((p, i) => (
                   <div
                     key={i}
@@ -897,7 +918,7 @@ export default function EveningWrapPage() {
                       className="font-sans"
                       style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--text-primary)", margin: 0, whiteSpace: "pre-line" }}
                     >
-                      {p.body || "—"}
+                      {p.body}
                     </p>
                   </div>
                 ))}

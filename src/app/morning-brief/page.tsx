@@ -68,6 +68,7 @@ interface TopDeal {
   value?: string;
   deal_type?: string;
   one_liner?: string;
+  sentiment?: string | null;
 }
 
 interface BriefingData {
@@ -265,14 +266,16 @@ export default function MorningBriefPage() {
 
         if (articles) {
           const uniqueSources = [...new Set(articles.map(a => a.source).filter(Boolean) as string[])];
-          let credMap = new Map<string, number>();
+          let credMap = new Map<string, { winRate: number; nTheses: number | null }>();
           if (uniqueSources.length > 0) {
             try {
               const { data: credData } = await getSupabase()
                 .from("source_credibility")
-                .select("source, win_rate")
+                .select("source, win_rate, n_theses")
                 .in("source", uniqueSources);
-              credMap = new Map(credData?.map(r => [r.source, r.win_rate]) ?? []);
+              credMap = new Map(
+                credData?.map(r => [r.source, { winRate: r.win_rate, nTheses: r.n_theses ?? null }]) ?? [],
+              );
             } catch { /* soft-fail */ }
           }
 
@@ -292,7 +295,8 @@ export default function MorningBriefPage() {
               saved: false,
               completeness,
               adjustedScore: getAdjustedScore(a.relevance_score ?? null, completeness),
-              sourceWinRate: credMap.get(a.source) ?? null,
+              sourceWinRate: credMap.get(a.source)?.winRate ?? null,
+              sourceSampleSize: credMap.get(a.source)?.nTheses ?? null,
             };
           }));
         }
@@ -390,32 +394,34 @@ export default function MorningBriefPage() {
     return [];
   })();
 
-  // 3-column lead body fallback — if the backend didn't deliver the
-  // structured lead/context/watch fields, split the prose summary so we
-  // never render empty cards.
+  // Lead body fallback — if a structured field is null, try to fill it
+  // from the corresponding third of the prose summary. If the summary is
+  // also absent, drop the card entirely so the grid collapses to 2 or 1
+  // cols rather than rendering an empty card with just "—".
   const splitIntoThree = (raw: string): [string, string, string] => {
     const text = stripHtml(raw).trim();
-    if (!text) return ["—", "—", "—"];
+    if (!text) return ["", "", ""];
     const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
-    if (sentences.length <= 1) return [text, "—", "—"];
+    if (sentences.length <= 1) return [text, "", ""];
     const third = Math.ceil(sentences.length / 3);
     return [
-      sentences.slice(0, third).join(" ") || "—",
-      sentences.slice(third, third * 2).join(" ") || "—",
-      sentences.slice(third * 2).join(" ") || "—",
+      sentences.slice(0, third).join(" "),
+      sentences.slice(third, third * 2).join(" "),
+      sentences.slice(third * 2).join(" "),
     ];
   };
-  const hasStructuredLead = !!(
-    briefing?.lead_paragraph || briefing?.supporting_context || briefing?.what_to_watch
-  );
-  const [fbLead, fbContext, fbWatch] = hasStructuredLead
-    ? ["", "", ""]
-    : splitIntoThree(briefing?.summary || briefing?.headline || "");
-  const leadCards = [
-    { n: "1", label: "The Lead",       body: briefing?.lead_paragraph    || fbLead },
-    { n: "2", label: "The Context",    body: briefing?.supporting_context || fbContext },
-    { n: "3", label: "What to Watch",  body: briefing?.what_to_watch      || fbWatch },
-  ];
+  const summaryThirds = splitIntoThree(briefing?.summary || briefing?.headline || "");
+  const leadCards = ([
+    { label: "The Lead",      body: briefing?.lead_paragraph     || summaryThirds[0] },
+    { label: "The Context",   body: briefing?.supporting_context || summaryThirds[1] },
+    { label: "What to Watch", body: briefing?.what_to_watch      || summaryThirds[2] },
+  ] as { label: string; body: string }[])
+    .filter((c) => c.body && c.body.trim() && c.body.trim() !== "—")
+    .map((c, i) => ({ ...c, n: String(i + 1) }));
+  const leadGridCols =
+    leadCards.length >= 3 ? "md:grid-cols-3"
+    : leadCards.length === 2 ? "md:grid-cols-2"
+    : "md:grid-cols-1";
 
   const handleAskAI = () => {
     document.dispatchEvent(
@@ -797,7 +803,7 @@ export default function MorningBriefPage() {
                   Always renders — leadCards falls back to the summary
                   split into thirds when the backend doesn't deliver the
                   structured lead/context/watch fields. */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className={`grid grid-cols-1 ${leadGridCols} gap-5`}>
                 {leadCards.map((p, i) => (
                   <div
                     key={i}
@@ -845,7 +851,7 @@ export default function MorningBriefPage() {
                         whiteSpace: "pre-line",
                       }}
                     >
-                      {p.body || "—"}
+                      {p.body}
                     </p>
                   </div>
                 ))}
@@ -911,7 +917,7 @@ export default function MorningBriefPage() {
                           {d.deal_type}
                         </span>
                       )}
-                      <SentimentPill tone="NEUTRAL" size="sm" />
+                      <SentimentPill tone={normaliseTone(d.sentiment)} size="sm" />
                     </div>
                   ))}
                 </div>
