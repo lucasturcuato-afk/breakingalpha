@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { AppShell } from "@/components/shell";
 import { PanelWidget } from "@/components/shell/right-panel";
+import { Wordmark } from "@/components/ui/wordmark";
 import { TickerStrip } from "@/components/brief/ticker-strip";
 import { MorningReview } from "@/components/brief/morning-review";
 import { ExportMenu } from "@/components/brief/export-menu";
@@ -57,9 +58,15 @@ const SCORECARD_SYMBOLS = [
   { sym: "QQQ",  label: "NASDAQ" },
   { sym: "DIA",  label: "DOW" },
   { sym: "IWM",  label: "RUSSELL" },
-  { sym: "TNX",  label: "10Y YIELD", invert: true },
+  { sym: "^TNX", label: "10Y YIELD", invert: true },
   { sym: "USO",  label: "WTI" },
 ] as const;
+
+// Sherwood Heritage Gold — pinned hex so accents stay saturated in BOTH
+// light and dark mode. The project's --gold token resolves to a paler tan
+// in dark mode; keeping the literal here matches the design spec exactly.
+const HERITAGE_GOLD = "#d4a84b";
+const HERITAGE_GOLD_DEEP = "#c9922a";
 
 interface SectorReflection { sector: string; verdict: "correct" | "wrong" | "partial"; paragraph: string; }
 interface TickerReflection { symbol: string; verdict: "correct" | "wrong" | "partial"; paragraph: string; }
@@ -324,9 +331,12 @@ export default function EveningWrapPage() {
           if (typeof count === "number") setThesesCount(count);
         } catch { /* soft-fail */ }
 
+        // Scorecard + VIX. Index symbols (^VIX, ^TNX) are url-encoded —
+        // Finnhub returns nothing for plain "VIX". VIXY is included as a
+        // proxy fallback so the stats-bar VIX cell always shows a value.
         try {
-          const symbols = [...SCORECARD_SYMBOLS.map((s) => s.sym), "VIX"].join(",");
-          const qr = await fetch(`/api/watchlist-quotes?symbols=${symbols}`);
+          const requested = [...SCORECARD_SYMBOLS.map((s) => s.sym), "^VIX", "VIXY"];
+          const qr = await fetch(`/api/watchlist-quotes?symbols=${encodeURIComponent(requested.join(","))}`);
           if (qr.ok) {
             const qd = await qr.json();
             const next: Record<string, { price: string; pct: number } | null> = {};
@@ -342,7 +352,7 @@ export default function EveningWrapPage() {
                 : null;
             }
             setScorecard(next);
-            const vx = qd?.quotes?.VIX;
+            const vx = qd?.quotes?.["^VIX"] ?? qd?.quotes?.VIXY;
             if (vx) {
               setVixQuote({
                 price: typeof vx.price === "number"
@@ -398,7 +408,12 @@ export default function EveningWrapPage() {
   const dateStr = formatDatePretty(now);
   const timeStr = formatTimePretty(now);
 
-  const closeWord = briefing?.market_pulse?.sentiment_word || briefing?.market_tone || "—";
+  const closeWord = briefing?.market_pulse?.sentiment_word || briefing?.market_tone || "mixed";
+  const closeBody =
+    briefing?.market_pulse?.narrative
+    || briefing?.summary
+    || briefing?.lead_paragraph
+    || "Today's session has closed. Detailed close commentary will appear here once the post-market synthesis lands.";
   const tomorrowSetupContent = briefing?.sections?.tomorrow_setup;
 
   const activeTab = tabs.find((t) => t.key === activeTabKey) ?? tabs[0];
@@ -454,10 +469,12 @@ export default function EveningWrapPage() {
     >
       <TickerStrip />
 
-      {/* Sherwood gold masthead */}
+      {/* Sherwood gold masthead — Heritage Gold pinned in both modes; text
+          uses var(--foreground) so Signal flips espresso↔cream just like
+          the sidebar Wordmark does, era stays gold via the shared component. */}
       <header
         style={{
-          background: "linear-gradient(135deg, var(--gold) 0%, var(--gold-deep) 100%)",
+          background: `linear-gradient(135deg, ${HERITAGE_GOLD} 0%, ${HERITAGE_GOLD_DEEP} 100%)`,
           padding: "20px 32px",
           display: "flex",
           alignItems: "center",
@@ -467,23 +484,18 @@ export default function EveningWrapPage() {
         }}
       >
         <div style={{ display: "flex", alignItems: "baseline", gap: 20 }}>
-          <span
-            className="font-[family-name:var(--font-playfair-display)]"
-            style={{ fontSize: 26, fontWeight: 700, color: "var(--cream)", letterSpacing: "-0.01em", lineHeight: 1 }}
-          >
-            Signal<span style={{ color: "var(--espresso)" }}>era</span>
-          </span>
-          <span style={{ width: 1, height: 20, background: "rgba(26,18,8,0.25)", alignSelf: "center" }} />
+          <Wordmark size="lg" />
+          <span style={{ width: 1, height: 20, background: "var(--foreground)", opacity: 0.25, alignSelf: "center" }} />
           <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
             <span
               className="font-[family-name:var(--font-playfair-display)]"
-              style={{ fontSize: 20, fontWeight: 700, color: "var(--cream)", letterSpacing: "-0.01em" }}
+              style={{ fontSize: 20, fontWeight: 700, color: "var(--foreground)", letterSpacing: "-0.01em" }}
             >
               Evening Wrap
             </span>
             <span
               className="font-[family-name:var(--font-playfair-display)] italic"
-              style={{ fontSize: 13, color: "rgba(255,253,249,0.78)", marginTop: 4, fontWeight: 400 }}
+              style={{ fontSize: 13, color: "var(--foreground)", opacity: 0.78, marginTop: 4, fontWeight: 400 }}
             >
               How the session played out — and what it meant.
             </span>
@@ -491,11 +503,11 @@ export default function EveningWrapPage() {
         </div>
         <div
           className="font-sans"
-          style={{ display: "flex", alignItems: "center", gap: 22, fontSize: 11, color: "rgba(255,253,249,0.85)", fontWeight: 600 }}
+          style={{ display: "flex", alignItems: "center", gap: 22, fontSize: 11, color: "var(--foreground)", opacity: 0.85, fontWeight: 600 }}
         >
           <span>{dateStr}</span>
           <span className="font-data">{timeStr}</span>
-          <span style={{ background: "rgba(26,18,8,0.2)", padding: "4px 10px", borderRadius: 20, fontSize: 10, letterSpacing: "0.12em" }}>
+          <span style={{ background: "var(--foreground)", color: "var(--cream)", padding: "4px 10px", borderRadius: 20, fontSize: 10, letterSpacing: "0.12em", opacity: 0.85 }}>
             5 MIN READ
           </span>
         </div>
@@ -565,8 +577,11 @@ export default function EveningWrapPage() {
           />
         ) : (
           <>
-            {/* ── The Close — dark espresso hero with scorecard ── */}
-            {briefing?.market_pulse?.sentiment_word && briefing?.market_pulse?.narrative && (
+            {/* ── The Close — dark espresso hero with scorecard. Always
+                renders for the evening wrap; sentiment word + narrative
+                fall back to market_tone / summary so the card never
+                disappears just because market_pulse is absent. ── */}
+            {(
               <section style={{ marginBottom: 36 }}>
                 <div
                   style={{
@@ -594,7 +609,7 @@ export default function EveningWrapPage() {
                     style={{
                       fontSize: 10,
                       letterSpacing: "0.20em",
-                      color: "var(--gold)",
+                      color: HERITAGE_GOLD,
                       margin: "0 0 14px",
                       fontWeight: 700,
                       textTransform: "uppercase",
@@ -615,7 +630,7 @@ export default function EveningWrapPage() {
                     The market closed{" "}
                     <span
                       style={{
-                        background: "var(--gold)",
+                        background: HERITAGE_GOLD,
                         color: "var(--espresso)",
                         padding: "2px 14px",
                         borderRadius: 8,
@@ -624,7 +639,7 @@ export default function EveningWrapPage() {
                         boxShadow: "0 4px 0 rgba(0,0,0,0.15)",
                       }}
                     >
-                      {briefing.market_pulse.sentiment_word}
+                      {closeWord}
                     </span>
                     .
                   </h2>
@@ -639,7 +654,7 @@ export default function EveningWrapPage() {
                       whiteSpace: "pre-line",
                     }}
                   >
-                    {briefing.market_pulse.narrative}
+                    {closeBody}
                   </p>
 
                   {/* Scorecard grid */}
@@ -706,8 +721,38 @@ export default function EveningWrapPage() {
               </section>
             )}
 
-            {/* Morning-brief reflection (business logic kept above the lead). */}
-            <MorningReview review={briefing?.morning_review} />
+            {/* Morning-brief reflection — full card only renders when graded
+                outcomes have actually landed. Otherwise we collapse to a
+                single muted banner so the placeholder doesn't dominate the
+                viewport on every brief that hasn't yet been graded. */}
+            {briefing?.morning_review?.aggregate_sentence ? (
+              <MorningReview review={briefing.morning_review} />
+            ) : (
+              <div
+                className="mb-6 px-4 py-2 rounded-lg flex items-center gap-2"
+                style={{
+                  border: "1px solid var(--border-subtle)",
+                  background: "var(--gold-muted)",
+                }}
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: HERITAGE_GOLD,
+                    flexShrink: 0,
+                  }}
+                />
+                <span
+                  className="font-sans"
+                  style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.02em" }}
+                >
+                  Morning Brief Review appears after market close (5:00 PM PT) once outcomes are graded.
+                </span>
+              </div>
+            )}
 
             {/* ── Today's Story ── */}
             <section style={{ marginBottom: 40 }}>
@@ -718,7 +763,7 @@ export default function EveningWrapPage() {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 8,
-                    background: "var(--gold)",
+                    background: HERITAGE_GOLD,
                     color: "var(--espresso)",
                     padding: "5px 12px",
                     borderRadius: 20,
@@ -768,7 +813,7 @@ export default function EveningWrapPage() {
                     >
                       <div
                         className="font-[family-name:var(--font-playfair-display)]"
-                        style={{ fontSize: 60, fontWeight: 800, color: "var(--gold)", lineHeight: 0.85, marginBottom: 8, letterSpacing: "-0.03em" }}
+                        style={{ fontSize: 60, fontWeight: 800, color: HERITAGE_GOLD, lineHeight: 0.85, marginBottom: 8, letterSpacing: "-0.03em" }}
                       >
                         {p.n}
                       </div>
@@ -837,7 +882,7 @@ export default function EveningWrapPage() {
               {lastRunStatus === "stub" || lastRunStatus === "error" || (lastRunStatus == null && isStale) ? (
                 <div
                   className="mt-4 px-3 py-2 rounded-lg font-sans text-[11px]"
-                  style={{ borderLeft: "2px solid var(--gold)", background: "var(--gold-muted)", color: "var(--text-primary)" }}
+                  style={{ borderLeft: `2px solid ${HERITAGE_GOLD}`, background: "var(--gold-muted)", color: "var(--text-primary)" }}
                 >
                   {lastRunStatus === "stub"
                     ? "Last run failed — synthesis error during generation. Showing previous brief."
@@ -869,7 +914,7 @@ export default function EveningWrapPage() {
                           padding: "6px 14px",
                           borderRadius: 17,
                           border: "none",
-                          background: briefView === m ? "var(--gold)" : "transparent",
+                          background: briefView === m ? HERITAGE_GOLD : "transparent",
                           color: briefView === m ? "var(--espresso)" : "var(--text-secondary)",
                           fontSize: 11,
                           fontWeight: 700,
@@ -895,8 +940,8 @@ export default function EveningWrapPage() {
                         style={{
                           padding: "8px 14px",
                           borderRadius: 22,
-                          border: `1.5px solid ${active ? "var(--gold)" : "var(--border-base)"}`,
-                          background: active ? "var(--gold)" : "var(--cream)",
+                          border: `1.5px solid ${active ? HERITAGE_GOLD : "var(--border-base)"}`,
+                          background: active ? HERITAGE_GOLD : "var(--cream)",
                           color: active ? "var(--espresso)" : "var(--text-secondary)",
                           fontSize: 12,
                           fontWeight: active ? 700 : 500,
@@ -911,7 +956,7 @@ export default function EveningWrapPage() {
                             className="font-data"
                             style={{
                               background: active ? "var(--espresso)" : "var(--parchment-mid)",
-                              color: active ? "var(--gold)" : "var(--text-muted)",
+                              color: active ? HERITAGE_GOLD : "var(--text-muted)",
                               padding: "1px 7px",
                               borderRadius: 10,
                               fontSize: 10,
@@ -940,12 +985,12 @@ export default function EveningWrapPage() {
                             background: "var(--cream)",
                             border: "1px solid var(--border-base)",
                             borderRadius: 12,
-                            borderLeft: "4px solid var(--gold)",
+                            borderLeft: `4px solid ${HERITAGE_GOLD}`,
                           }}
                         >
                           <div
                             className="font-[family-name:var(--font-playfair-display)]"
-                            style={{ fontSize: 36, fontWeight: 800, color: "var(--gold)", lineHeight: 1, letterSpacing: "-0.02em" }}
+                            style={{ fontSize: 36, fontWeight: 800, color: HERITAGE_GOLD, lineHeight: 1, letterSpacing: "-0.02em" }}
                           >
                             {String(i + 1).padStart(2, "0")}
                           </div>
@@ -980,7 +1025,7 @@ export default function EveningWrapPage() {
                           onClick={() => handleSectionRate(activeTab.key, 1)}
                           className={cn("font-sans text-[11px] px-2 py-1 rounded cursor-pointer")}
                           style={{
-                            color: sectionRatings[activeTab.key] === 1 ? "var(--gold)" : "var(--text-muted)",
+                            color: sectionRatings[activeTab.key] === 1 ? HERITAGE_GOLD : "var(--text-muted)",
                           }}
                           aria-label="Useful"
                         >
@@ -991,7 +1036,7 @@ export default function EveningWrapPage() {
                           onClick={() => handleSectionRate(activeTab.key, -1)}
                           className="font-sans text-[11px] px-2 py-1 rounded cursor-pointer"
                           style={{
-                            color: sectionRatings[activeTab.key] === -1 ? "var(--gold)" : "var(--text-muted)",
+                            color: sectionRatings[activeTab.key] === -1 ? HERITAGE_GOLD : "var(--text-muted)",
                           }}
                           aria-label="Not useful"
                         >
@@ -1017,12 +1062,12 @@ export default function EveningWrapPage() {
                               background: "var(--cream)",
                               border: "1px solid var(--border-base)",
                               borderRadius: 12,
-                              borderLeft: "4px solid var(--gold)",
+                              borderLeft: `4px solid ${HERITAGE_GOLD}`,
                             }}
                           >
                             <div
                               className="font-[family-name:var(--font-playfair-display)]"
-                              style={{ fontSize: 36, fontWeight: 800, color: "var(--gold)", lineHeight: 1 }}
+                              style={{ fontSize: 36, fontWeight: 800, color: HERITAGE_GOLD, lineHeight: 1 }}
                             >
                               {String(i + 1).padStart(2, "0")}
                             </div>
@@ -1045,7 +1090,7 @@ export default function EveningWrapPage() {
                                 background: "var(--cream)",
                                 border: "1px solid var(--border-base)",
                                 borderRadius: 12,
-                                borderLeft: "4px solid var(--gold)",
+                                borderLeft: `4px solid ${HERITAGE_GOLD}`,
                                 padding: "14px 16px",
                               }}
                             >
@@ -1204,7 +1249,7 @@ export default function EveningWrapPage() {
                       >
                         <span
                           className="font-[family-name:var(--font-playfair-display)]"
-                          style={{ fontSize: 30, fontWeight: 800, color: "var(--gold)", lineHeight: 1 }}
+                          style={{ fontSize: 30, fontWeight: 800, color: HERITAGE_GOLD, lineHeight: 1 }}
                         >
                           {String(i + 1).padStart(2, "0")}
                         </span>

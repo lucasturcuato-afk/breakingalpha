@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { AppShell } from "@/components/shell";
 import { PanelWidget } from "@/components/shell/right-panel";
+import { Wordmark } from "@/components/ui/wordmark";
 import { TickerStrip } from "@/components/brief/ticker-strip";
 import { ExportMenu } from "@/components/brief/export-menu";
 import { ShareButton } from "@/components/brief/share-button";
@@ -51,6 +52,14 @@ const TAB_ORDER = [
   "sector_spotlight",
   "geopolitics",
 ];
+
+// Sherwood Heritage Gold — pinned hex so accents stay saturated in BOTH
+// light and dark mode. The project's --gold token resolves to the deeper
+// editorial gold in light and a paler tan in dark; using either drifts
+// away from #d4a84b. Gold-deep stays at the literal too so the masthead
+// gradient reads as a distinct brand band regardless of theme.
+const HERITAGE_GOLD = "#d4a84b";
+const HERITAGE_GOLD_DEEP = "#c9922a";
 
 interface TopDeal {
   company: string;
@@ -308,11 +317,14 @@ export default function MorningBriefPage() {
         } catch { /* soft-fail */ }
 
         // VIX quote for stats bar.
+        // Finnhub doesn't return data for plain "VIX"; "^VIX" is the index
+        // symbol that works. We also include "VIXY" as a fallback proxy
+        // (volatility-tracking ETF) so the bar always shows real numbers.
         try {
-          const qr = await fetch("/api/watchlist-quotes?symbols=VIX");
+          const qr = await fetch("/api/watchlist-quotes?symbols=" + encodeURIComponent("^VIX,VIXY"));
           if (qr.ok) {
             const qd = await qr.json();
-            const q = qd?.quotes?.VIX;
+            const q = qd?.quotes?.["^VIX"] ?? qd?.quotes?.VIXY;
             if (q) {
               const price = typeof q.price === "number"
                 ? q.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -430,10 +442,12 @@ export default function MorningBriefPage() {
     >
       <TickerStrip />
 
-      {/* Sherwood gold masthead */}
+      {/* Sherwood gold masthead — Heritage Gold pinned in both modes; text
+          uses var(--foreground) so Signal flips espresso↔cream just like
+          the sidebar Wordmark does, era stays gold via the shared component. */}
       <header
         style={{
-          background: "linear-gradient(135deg, var(--gold) 0%, var(--gold-deep) 100%)",
+          background: `linear-gradient(135deg, ${HERITAGE_GOLD} 0%, ${HERITAGE_GOLD_DEEP} 100%)`,
           padding: "20px 32px",
           display: "flex",
           alignItems: "center",
@@ -443,23 +457,18 @@ export default function MorningBriefPage() {
         }}
       >
         <div style={{ display: "flex", alignItems: "baseline", gap: 20 }}>
-          <span
-            className="font-[family-name:var(--font-playfair-display)]"
-            style={{ fontSize: 26, fontWeight: 700, color: "var(--cream)", letterSpacing: "-0.01em", lineHeight: 1 }}
-          >
-            Signal<span style={{ color: "var(--espresso)" }}>era</span>
-          </span>
-          <span style={{ width: 1, height: 20, background: "rgba(26,18,8,0.25)", alignSelf: "center" }} />
+          <Wordmark size="lg" />
+          <span style={{ width: 1, height: 20, background: "var(--foreground)", opacity: 0.25, alignSelf: "center" }} />
           <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
             <span
               className="font-[family-name:var(--font-playfair-display)]"
-              style={{ fontSize: 20, fontWeight: 700, color: "var(--cream)", letterSpacing: "-0.01em" }}
+              style={{ fontSize: 20, fontWeight: 700, color: "var(--foreground)", letterSpacing: "-0.01em" }}
             >
               Morning Brief
             </span>
             <span
               className="font-[family-name:var(--font-playfair-display)] italic"
-              style={{ fontSize: 13, color: "rgba(255,253,249,0.78)", marginTop: 4, fontWeight: 400 }}
+              style={{ fontSize: 13, color: "var(--foreground)", opacity: 0.78, marginTop: 4, fontWeight: 400 }}
             >
               A considered reading of overnight markets — in four chapters.
             </span>
@@ -467,11 +476,11 @@ export default function MorningBriefPage() {
         </div>
         <div
           className="font-sans"
-          style={{ display: "flex", alignItems: "center", gap: 22, fontSize: 11, color: "rgba(255,253,249,0.85)", fontWeight: 600 }}
+          style={{ display: "flex", alignItems: "center", gap: 22, fontSize: 11, color: "var(--foreground)", opacity: 0.85, fontWeight: 600 }}
         >
           <span>{dateStr}</span>
           <span className="font-data">{timeStr}</span>
-          <span style={{ background: "rgba(26,18,8,0.2)", padding: "4px 10px", borderRadius: 20, fontSize: 10, letterSpacing: "0.12em" }}>
+          <span style={{ background: "var(--foreground)", color: "var(--cream)", padding: "4px 10px", borderRadius: 20, fontSize: 10, letterSpacing: "0.12em", opacity: 0.85 }}>
             4 MIN READ
           </span>
         </div>
@@ -573,7 +582,7 @@ export default function MorningBriefPage() {
                     style={{
                       fontSize: 10,
                       letterSpacing: "0.20em",
-                      color: "var(--gold)",
+                      color: HERITAGE_GOLD,
                       margin: "0 0 14px",
                       fontWeight: 700,
                       textTransform: "uppercase",
@@ -594,7 +603,7 @@ export default function MorningBriefPage() {
                     Today the market is{" "}
                     <span
                       style={{
-                        background: "var(--gold)",
+                        background: HERITAGE_GOLD,
                         color: "var(--espresso)",
                         padding: "2px 14px",
                         borderRadius: 8,
@@ -672,7 +681,7 @@ export default function MorningBriefPage() {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 8,
-                    background: "var(--gold)",
+                    background: HERITAGE_GOLD,
                     color: "var(--espresso)",
                     padding: "5px 12px",
                     borderRadius: 20,
@@ -727,7 +736,7 @@ export default function MorningBriefPage() {
                         style={{
                           fontSize: 60,
                           fontWeight: 800,
-                          color: "var(--gold)",
+                          color: HERITAGE_GOLD,
                           lineHeight: 0.85,
                           marginBottom: 8,
                           letterSpacing: "-0.03em",
@@ -895,7 +904,7 @@ export default function MorningBriefPage() {
               {lastRunStatus === "stub" || lastRunStatus === "error" || (lastRunStatus == null && isStale) ? (
                 <div
                   className="mt-4 px-3 py-2 rounded-lg font-sans text-[11px]"
-                  style={{ borderLeft: "2px solid var(--gold)", background: "var(--gold-muted)", color: "var(--text-primary)" }}
+                  style={{ borderLeft: `2px solid ${HERITAGE_GOLD}`, background: "var(--gold-muted)", color: "var(--text-primary)" }}
                 >
                   {lastRunStatus === "stub"
                     ? "Last run failed — synthesis error during generation. Showing previous brief."
@@ -927,7 +936,7 @@ export default function MorningBriefPage() {
                           padding: "6px 14px",
                           borderRadius: 17,
                           border: "none",
-                          background: briefView === m ? "var(--gold)" : "transparent",
+                          background: briefView === m ? HERITAGE_GOLD : "transparent",
                           color: briefView === m ? "var(--espresso)" : "var(--text-secondary)",
                           fontSize: 11,
                           fontWeight: 700,
@@ -954,8 +963,8 @@ export default function MorningBriefPage() {
                         style={{
                           padding: "8px 14px",
                           borderRadius: 22,
-                          border: `1.5px solid ${active ? "var(--gold)" : "var(--border-base)"}`,
-                          background: active ? "var(--gold)" : "var(--cream)",
+                          border: `1.5px solid ${active ? HERITAGE_GOLD : "var(--border-base)"}`,
+                          background: active ? HERITAGE_GOLD : "var(--cream)",
                           color: active ? "var(--espresso)" : "var(--text-secondary)",
                           fontSize: 12,
                           fontWeight: active ? 700 : 500,
@@ -970,7 +979,7 @@ export default function MorningBriefPage() {
                             className="font-data"
                             style={{
                               background: active ? "var(--espresso)" : "var(--parchment-mid)",
-                              color: active ? "var(--gold)" : "var(--text-muted)",
+                              color: active ? HERITAGE_GOLD : "var(--text-muted)",
                               padding: "1px 7px",
                               borderRadius: 10,
                               fontSize: 10,
@@ -1000,12 +1009,12 @@ export default function MorningBriefPage() {
                             background: "var(--cream)",
                             border: "1px solid var(--border-base)",
                             borderRadius: 12,
-                            borderLeft: "4px solid var(--gold)",
+                            borderLeft: `4px solid ${HERITAGE_GOLD}`,
                           }}
                         >
                           <div
                             className="font-[family-name:var(--font-playfair-display)]"
-                            style={{ fontSize: 36, fontWeight: 800, color: "var(--gold)", lineHeight: 1, letterSpacing: "-0.02em" }}
+                            style={{ fontSize: 36, fontWeight: 800, color: HERITAGE_GOLD, lineHeight: 1, letterSpacing: "-0.02em" }}
                           >
                             {String(i + 1).padStart(2, "0")}
                           </div>
@@ -1043,7 +1052,7 @@ export default function MorningBriefPage() {
                             "font-sans text-[11px] px-2 py-1 rounded cursor-pointer",
                           )}
                           style={{
-                            color: sectionRatings[activeTab.key] === 1 ? "var(--gold)" : "var(--text-muted)",
+                            color: sectionRatings[activeTab.key] === 1 ? HERITAGE_GOLD : "var(--text-muted)",
                           }}
                           aria-label="Useful"
                         >
@@ -1054,7 +1063,7 @@ export default function MorningBriefPage() {
                           onClick={() => handleSectionRate(activeTab.key, -1)}
                           className="font-sans text-[11px] px-2 py-1 rounded cursor-pointer"
                           style={{
-                            color: sectionRatings[activeTab.key] === -1 ? "var(--gold)" : "var(--text-muted)",
+                            color: sectionRatings[activeTab.key] === -1 ? HERITAGE_GOLD : "var(--text-muted)",
                           }}
                           aria-label="Not useful"
                         >
@@ -1081,12 +1090,12 @@ export default function MorningBriefPage() {
                               background: "var(--cream)",
                               border: "1px solid var(--border-base)",
                               borderRadius: 12,
-                              borderLeft: "4px solid var(--gold)",
+                              borderLeft: `4px solid ${HERITAGE_GOLD}`,
                             }}
                           >
                             <div
                               className="font-[family-name:var(--font-playfair-display)]"
-                              style={{ fontSize: 36, fontWeight: 800, color: "var(--gold)", lineHeight: 1 }}
+                              style={{ fontSize: 36, fontWeight: 800, color: HERITAGE_GOLD, lineHeight: 1 }}
                             >
                               {String(i + 1).padStart(2, "0")}
                             </div>
@@ -1109,7 +1118,7 @@ export default function MorningBriefPage() {
                                 background: "var(--cream)",
                                 border: "1px solid var(--border-base)",
                                 borderRadius: 12,
-                                borderLeft: "4px solid var(--gold)",
+                                borderLeft: `4px solid ${HERITAGE_GOLD}`,
                                 padding: "14px 16px",
                               }}
                             >
@@ -1152,7 +1161,7 @@ export default function MorningBriefPage() {
                   type="button"
                   onClick={() => setShowSignIn(true)}
                   className="px-4 py-2 rounded-xl font-sans text-[12px] font-semibold cursor-pointer transition-colors"
-                  style={{ background: "var(--gold)", color: "var(--cream)" }}
+                  style={{ background: HERITAGE_GOLD, color: "var(--cream)" }}
                 >
                   Sign in with Google — Free
                 </button>
@@ -1186,7 +1195,7 @@ export default function MorningBriefPage() {
                       >
                         <span
                           className="font-[family-name:var(--font-playfair-display)]"
-                          style={{ fontSize: 30, fontWeight: 800, color: "var(--gold)", lineHeight: 1 }}
+                          style={{ fontSize: 30, fontWeight: 800, color: HERITAGE_GOLD, lineHeight: 1 }}
                         >
                           {String(i + 1).padStart(2, "0")}
                         </span>
@@ -1248,14 +1257,14 @@ export default function MorningBriefPage() {
                     className="flex items-center justify-between px-4 py-3 mt-3 rounded-xl border"
                     style={{ background: "rgba(245, 166, 35, 0.08)", borderColor: "var(--gold-border)" }}
                   >
-                    <span className="font-sans text-[12px]" style={{ color: "var(--gold)" }}>
+                    <span className="font-sans text-[12px]" style={{ color: HERITAGE_GOLD }}>
                       Sign in to see all {rankedStories.length} stories
                     </span>
                     <button
                       type="button"
                       onClick={() => setShowSignIn(true)}
                       className="font-sans text-[11px] font-semibold cursor-pointer"
-                      style={{ color: "var(--gold)", background: "none", border: "none" }}
+                      style={{ color: HERITAGE_GOLD, background: "none", border: "none" }}
                     >
                       Sign in &rarr;
                     </button>
