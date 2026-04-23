@@ -417,6 +417,39 @@ export default function EveningWrapPage() {
   const tomorrowEvents = tomorrowSetupContent ? tomorrowSetupEvents(tomorrowSetupContent) : [];
   const tomorrowIsNarrative = tomorrowEvents.length <= 1;
 
+  // 3-column Today's Story fallback — never render empty cards. When the
+  // backend doesn't deliver lead_paragraph / supporting_context /
+  // what_to_watch, split the prose summary into three roughly-equal parts.
+  const splitIntoThree = (raw: string): [string, string, string] => {
+    const text = stripHtml(raw).trim();
+    if (!text) return ["—", "—", "—"];
+    const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+    if (sentences.length <= 1) return [text, "—", "—"];
+    const third = Math.ceil(sentences.length / 3);
+    return [
+      sentences.slice(0, third).join(" ") || "—",
+      sentences.slice(third, third * 2).join(" ") || "—",
+      sentences.slice(third * 2).join(" ") || "—",
+    ];
+  };
+  const hasStructuredLead = !!(
+    briefing?.lead_paragraph || briefing?.supporting_context || briefing?.what_to_watch
+  );
+  const [fbLead, fbContext, fbWatch] = hasStructuredLead
+    ? ["", "", ""]
+    : splitIntoThree(briefing?.summary || briefing?.headline || "");
+  const leadCards = [
+    { n: "1", label: "The Story",     body: briefing?.lead_paragraph     || fbLead },
+    { n: "2", label: "The Context",   body: briefing?.supporting_context || fbContext },
+    { n: "3", label: "What to Watch", body: briefing?.what_to_watch      || fbWatch },
+  ];
+
+  const handleAskAI = () => {
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }),
+    );
+  };
+
   const handleLeadAddThesis = async () => {
     setAddingThesis(true);
     try {
@@ -834,44 +867,41 @@ export default function EveningWrapPage() {
                 {briefing.headline || formatLabel || "Evening Market Wrap"}
               </h2>
 
-              {(briefing.lead_paragraph || briefing.supporting_context || briefing.what_to_watch) && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  {[
-                    { n: "1", label: "The Story", body: briefing.lead_paragraph },
-                    { n: "2", label: "The Context", body: briefing.supporting_context },
-                    { n: "3", label: "What to Watch", body: briefing.what_to_watch },
-                  ].map((p, i) => (
+              {/* Always renders — leadCards falls back to the prose
+                  summary split into thirds when the backend doesn't
+                  deliver the structured fields. */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                {leadCards.map((p, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      background: "var(--elevated)",
+                      border: "1px solid var(--border-base)",
+                      borderRadius: 14,
+                      padding: "22px 20px",
+                    }}
+                  >
                     <div
-                      key={i}
-                      style={{
-                        background: "var(--elevated)",
-                        border: "1px solid var(--border-base)",
-                        borderRadius: 14,
-                        padding: "22px 20px",
-                      }}
+                      className="font-[family-name:var(--font-playfair-display)]"
+                      style={{ fontSize: 60, fontWeight: 800, color: HERITAGE_GOLD, lineHeight: 0.85, marginBottom: 8, letterSpacing: "-0.03em" }}
                     >
-                      <div
-                        className="font-[family-name:var(--font-playfair-display)]"
-                        style={{ fontSize: 60, fontWeight: 800, color: HERITAGE_GOLD, lineHeight: 0.85, marginBottom: 8, letterSpacing: "-0.03em" }}
-                      >
-                        {p.n}
-                      </div>
-                      <p
-                        className="font-sans"
-                        style={{ fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--gold-dark)", fontWeight: 700, margin: "0 0 10px" }}
-                      >
-                        {p.label}
-                      </p>
-                      <p
-                        className="font-sans"
-                        style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--text-primary)", margin: 0, whiteSpace: "pre-line" }}
-                      >
-                        {p.body || "—"}
-                      </p>
+                      {p.n}
                     </div>
-                  ))}
-                </div>
-              )}
+                    <p
+                      className="font-sans"
+                      style={{ fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--gold-dark)", fontWeight: 700, margin: "0 0 10px" }}
+                    >
+                      {p.label}
+                    </p>
+                    <p
+                      className="font-sans"
+                      style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--text-primary)", margin: 0, whiteSpace: "pre-line" }}
+                    >
+                      {p.body || "—"}
+                    </p>
+                  </div>
+                ))}
+              </div>
 
               {userAddendum && (
                 <div
@@ -914,6 +944,9 @@ export default function EveningWrapPage() {
                   </Button>
                   <Button variant="secondary" size="md" onClick={handleLeadAddThesis} disabled={addingThesis}>
                     Add Thesis
+                  </Button>
+                  <Button variant="secondary" size="md" onClick={handleAskAI}>
+                    Ask AI
                   </Button>
                 </div>
               </div>

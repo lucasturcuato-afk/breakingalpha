@@ -364,6 +364,65 @@ export default function MorningBriefPage() {
 
   const moodWord = briefing?.market_pulse?.sentiment_word || briefing?.market_tone || "—";
 
+  // Market Pulse fallbacks — the hero card must always render. Pull a
+  // sentiment word and narrative body whether or not the backend delivered
+  // the structured market_pulse block.
+  const pulseWord = briefing?.market_pulse?.sentiment_word || briefing?.market_tone || "mixed";
+  const pulseBody =
+    briefing?.market_pulse?.narrative
+    || (briefing?.summary ? stripHtml(briefing.summary) : "")
+    || "Pre-market synthesis is still stitching together. Detailed pulse commentary will appear here shortly.";
+  const pulseDrivers: { label: string; href?: string; tone: Tone }[] = (() => {
+    const h = briefing?.market_pulse?.headlines;
+    if (Array.isArray(h) && h.length > 0) {
+      return h.slice(0, 4).map((x) => ({
+        label: x.title,
+        href: x.href,
+        tone: normaliseTone((x as { tone?: string }).tone ?? null),
+      }));
+    }
+    if (briefing?.top_deals && briefing.top_deals.length > 0) {
+      return briefing.top_deals.slice(0, 3).map((d) => ({
+        label: d.deal_type ? `${d.company} · ${d.deal_type}` : d.company,
+        tone: "NEUTRAL" as Tone,
+      }));
+    }
+    return [];
+  })();
+
+  // 3-column lead body fallback — if the backend didn't deliver the
+  // structured lead/context/watch fields, split the prose summary so we
+  // never render empty cards.
+  const splitIntoThree = (raw: string): [string, string, string] => {
+    const text = stripHtml(raw).trim();
+    if (!text) return ["—", "—", "—"];
+    const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+    if (sentences.length <= 1) return [text, "—", "—"];
+    const third = Math.ceil(sentences.length / 3);
+    return [
+      sentences.slice(0, third).join(" ") || "—",
+      sentences.slice(third, third * 2).join(" ") || "—",
+      sentences.slice(third * 2).join(" ") || "—",
+    ];
+  };
+  const hasStructuredLead = !!(
+    briefing?.lead_paragraph || briefing?.supporting_context || briefing?.what_to_watch
+  );
+  const [fbLead, fbContext, fbWatch] = hasStructuredLead
+    ? ["", "", ""]
+    : splitIntoThree(briefing?.summary || briefing?.headline || "");
+  const leadCards = [
+    { n: "1", label: "The Lead",       body: briefing?.lead_paragraph    || fbLead },
+    { n: "2", label: "The Context",    body: briefing?.supporting_context || fbContext },
+    { n: "3", label: "What to Watch",  body: briefing?.what_to_watch      || fbWatch },
+  ];
+
+  const handleAskAI = () => {
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }),
+    );
+  };
+
   const handleLeadAddThesis = async () => {
     setAddingThesis(true);
     try {
@@ -521,9 +580,136 @@ export default function MorningBriefPage() {
           />
         ) : (
           <>
-            {/* ── MORNING REVIEW top block — gold eyebrow label, Playfair
+            {/* ── Market Pulse — dark espresso hero. All colours pinned to
+                literals so the card stays dark in both light and dark
+                themes (the token --espresso flips to a near-white in dark
+                mode and would otherwise invert this card). Always renders:
+                sentiment word falls back to market_tone → "mixed", body
+                falls back to briefing.summary, driver chips fall back to
+                top_deals when backend-supplied headlines are absent. ── */}
+            <section style={{ marginBottom: 36 }}>
+              <div
+                style={{
+                  background: DC_ESPRESSO,
+                  borderRadius: 18,
+                  padding: "32px 36px",
+                  color: DC_CREAM,
+                  position: "relative",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    right: -60,
+                    top: -60,
+                    width: 260,
+                    height: 260,
+                    background: `radial-gradient(circle, ${HERITAGE_GOLD}60, transparent 70%)`,
+                    pointerEvents: "none",
+                  }}
+                />
+                <p
+                  className="font-sans"
+                  style={{
+                    fontSize: 10,
+                    letterSpacing: "0.20em",
+                    color: HERITAGE_GOLD,
+                    margin: "0 0 14px",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    position: "relative",
+                  }}
+                >
+                  Market Pulse · {timeStr}
+                </p>
+                <h2
+                  className="font-[family-name:var(--font-playfair-display)]"
+                  style={{
+                    fontSize: "clamp(30px, 4vw, 44px)",
+                    fontWeight: 800,
+                    lineHeight: 1.05,
+                    letterSpacing: "-0.025em",
+                    margin: "0 0 20px",
+                    color: DC_CREAM,
+                    position: "relative",
+                  }}
+                >
+                  Today the market is{" "}
+                  <span
+                    style={{
+                      background: HERITAGE_GOLD,
+                      color: DC_ESPRESSO,
+                      padding: "2px 14px",
+                      borderRadius: 8,
+                      display: "inline-block",
+                      transform: "rotate(-1deg)",
+                      boxShadow: "0 4px 0 rgba(0,0,0,0.15)",
+                    }}
+                  >
+                    {pulseWord}
+                  </span>
+                  .
+                </h2>
+                <p
+                  className="font-sans"
+                  style={{
+                    fontSize: 15,
+                    lineHeight: 1.6,
+                    color: "rgba(255,253,249,0.82)",
+                    margin: "0 0 24px",
+                    maxWidth: 620,
+                    whiteSpace: "pre-line",
+                    position: "relative",
+                  }}
+                >
+                  {pulseBody}
+                </p>
+                {pulseDrivers.length > 0 && (
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", position: "relative" }}>
+                    {pulseDrivers.map((d, i) => {
+                      const Chip = (
+                        <div
+                          key={i}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: "8px 14px",
+                            background: "rgba(255,253,249,0.08)",
+                            border: "1px solid rgba(212,168,75,0.25)",
+                            borderRadius: 24,
+                            backdropFilter: "blur(10px)",
+                          }}
+                        >
+                          <span style={{ fontSize: 13, color: DC_CREAM, fontWeight: 500 }}>
+                            {d.label}
+                          </span>
+                          <SentimentPill tone={d.tone} size="sm" />
+                        </div>
+                      );
+                      return d.href ? (
+                        <a
+                          key={i}
+                          href={d.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ textDecoration: "none" }}
+                        >
+                          {Chip}
+                        </a>
+                      ) : (
+                        Chip
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* ── MORNING REVIEW block — gold eyebrow label, Playfair
                 date headline, muted Inter + mono timestamp subtitle. Sits
-                between the stats bar and the Market Pulse hero. ── */}
+                between the Market Pulse hero and Today's Lead. ── */}
             <section style={{ marginBottom: 28 }}>
               <p
                 className="font-sans"
@@ -563,132 +749,6 @@ export default function MorningBriefPage() {
                 </span>
               </p>
             </section>
-
-            {/* ── Market Pulse — dark espresso hero. All colours pinned to
-                literals so the card stays dark in both light and dark
-                themes (the token --espresso flips to a near-white in dark
-                mode and would otherwise invert this card). ── */}
-            {briefing?.market_pulse?.sentiment_word && briefing?.market_pulse?.narrative && (
-              <section style={{ marginBottom: 36 }}>
-                <div
-                  style={{
-                    background: DC_ESPRESSO,
-                    borderRadius: 18,
-                    padding: "32px 36px",
-                    color: DC_CREAM,
-                    position: "relative",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      position: "absolute",
-                      right: -60,
-                      top: -60,
-                      width: 260,
-                      height: 260,
-                      background: `radial-gradient(circle, ${HERITAGE_GOLD}60, transparent 70%)`,
-                      pointerEvents: "none",
-                    }}
-                  />
-                  <p
-                    className="font-sans"
-                    style={{
-                      fontSize: 10,
-                      letterSpacing: "0.20em",
-                      color: HERITAGE_GOLD,
-                      margin: "0 0 14px",
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      position: "relative",
-                    }}
-                  >
-                    Market Pulse · {timeStr}
-                  </p>
-                  <h2
-                    className="font-[family-name:var(--font-playfair-display)]"
-                    style={{
-                      fontSize: "clamp(30px, 4vw, 44px)",
-                      fontWeight: 800,
-                      lineHeight: 1.05,
-                      letterSpacing: "-0.025em",
-                      margin: "0 0 20px",
-                      color: DC_CREAM,
-                      position: "relative",
-                    }}
-                  >
-                    Today the market is{" "}
-                    <span
-                      style={{
-                        background: HERITAGE_GOLD,
-                        color: DC_ESPRESSO,
-                        padding: "2px 14px",
-                        borderRadius: 8,
-                        display: "inline-block",
-                        transform: "rotate(-1deg)",
-                        boxShadow: "0 4px 0 rgba(0,0,0,0.15)",
-                      }}
-                    >
-                      {briefing.market_pulse.sentiment_word}
-                    </span>
-                    .
-                  </h2>
-                  <p
-                    className="font-sans"
-                    style={{
-                      fontSize: 15,
-                      lineHeight: 1.6,
-                      color: "rgba(255,253,249,0.82)",
-                      margin: "0 0 24px",
-                      maxWidth: 620,
-                      whiteSpace: "pre-line",
-                      position: "relative",
-                    }}
-                  >
-                    {briefing.market_pulse.narrative}
-                  </p>
-                  {(briefing.market_pulse.headlines ?? []).length > 0 && (
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", position: "relative" }}>
-                      {(briefing.market_pulse.headlines ?? []).slice(0, 4).map((h, i) => {
-                        const hTone = normaliseTone((h as { tone?: string }).tone ?? null);
-                        const Chip = (
-                          <div
-                            key={i}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 10,
-                              padding: "8px 14px",
-                              background: "rgba(255,253,249,0.08)",
-                              border: "1px solid rgba(212,168,75,0.25)",
-                              borderRadius: 24,
-                            }}
-                          >
-                            <span style={{ fontSize: 13, color: DC_CREAM, fontWeight: 500 }}>
-                              {h.title}
-                            </span>
-                            <SentimentPill tone={hTone} size="sm" />
-                          </div>
-                        );
-                        return h.href ? (
-                          <a
-                            key={i}
-                            href={h.href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ textDecoration: "none" }}
-                          >
-                            {Chip}
-                          </a>
-                        ) : (
-                          Chip
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </section>
-            )}
 
             {/* ── Today's Lead ── */}
             <section style={{ marginBottom: 40 }}>
@@ -733,62 +793,125 @@ export default function MorningBriefPage() {
 
               {/* 3-column structured body. Cards use --elevated so they
                   are white/#fffdf9 in light and #1e1e1e in dark, keeping
-                  proper card contrast against the page in both themes. */}
-              {(briefing.lead_paragraph || briefing.supporting_context || briefing.what_to_watch) && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  {[
-                    { n: "1", label: "The Lead", body: briefing.lead_paragraph },
-                    { n: "2", label: "The Context", body: briefing.supporting_context },
-                    { n: "3", label: "What to Watch", body: briefing.what_to_watch },
-                  ].map((p, i) => (
+                  proper card contrast against the page in both themes.
+                  Always renders — leadCards falls back to the summary
+                  split into thirds when the backend doesn't deliver the
+                  structured lead/context/watch fields. */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                {leadCards.map((p, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      background: "var(--elevated)",
+                      border: "1px solid var(--border-base)",
+                      borderRadius: 14,
+                      padding: "22px 20px",
+                      transition: "transform 150ms cubic-bezier(0.16,1,0.3,1), box-shadow 150ms",
+                    }}
+                  >
+                    <div
+                      className="font-[family-name:var(--font-playfair-display)]"
+                      style={{
+                        fontSize: 60,
+                        fontWeight: 800,
+                        color: HERITAGE_GOLD,
+                        lineHeight: 0.85,
+                        marginBottom: 8,
+                        letterSpacing: "-0.03em",
+                      }}
+                    >
+                      {p.n}
+                    </div>
+                    <p
+                      className="font-sans"
+                      style={{
+                        fontSize: 10,
+                        letterSpacing: "0.16em",
+                        textTransform: "uppercase",
+                        color: "var(--gold-dark)",
+                        fontWeight: 700,
+                        margin: "0 0 10px",
+                      }}
+                    >
+                      {p.label}
+                    </p>
+                    <p
+                      className="font-sans"
+                      style={{
+                        fontSize: 13.5,
+                        lineHeight: 1.6,
+                        color: "var(--text-primary)",
+                        margin: 0,
+                        whiteSpace: "pre-line",
+                      }}
+                    >
+                      {p.body || "—"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Names to Watch — parchment strip with dashed gold border
+                  and top_deals as pill chips. Omitted when there are no
+                  deals so we never render an empty callout. */}
+              {briefing.top_deals && briefing.top_deals.length > 0 && (
+                <div
+                  style={{
+                    marginTop: 20,
+                    display: "flex",
+                    gap: 12,
+                    flexWrap: "wrap",
+                    padding: "16px 20px",
+                    borderRadius: 14,
+                    background: "var(--parchment-mid)",
+                    border: "1px dashed rgba(212,168,75,0.4)",
+                  }}
+                >
+                  <span
+                    className="font-sans"
+                    style={{
+                      fontSize: 10,
+                      letterSpacing: "0.16em",
+                      textTransform: "uppercase",
+                      color: "var(--gold-dark)",
+                      fontWeight: 800,
+                      alignSelf: "center",
+                    }}
+                  >
+                    ▶ Names to Watch
+                  </span>
+                  {briefing.top_deals.slice(0, 5).map((d, i) => (
                     <div
                       key={i}
                       style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
                         background: "var(--elevated)",
                         border: "1px solid var(--border-base)",
-                        borderRadius: 14,
-                        padding: "22px 20px",
-                        transition: "transform 150ms cubic-bezier(0.16,1,0.3,1), box-shadow 150ms",
+                        borderRadius: 20,
+                        padding: "6px 12px",
                       }}
                     >
-                      <div
-                        className="font-[family-name:var(--font-playfair-display)]"
+                      <span
+                        className="font-data"
                         style={{
-                          fontSize: 60,
+                          fontSize: 12,
                           fontWeight: 800,
-                          color: HERITAGE_GOLD,
-                          lineHeight: 0.85,
-                          marginBottom: 8,
-                          letterSpacing: "-0.03em",
+                          color: "var(--espresso)",
                         }}
                       >
-                        {p.n}
-                      </div>
-                      <p
-                        className="font-sans"
-                        style={{
-                          fontSize: 10,
-                          letterSpacing: "0.16em",
-                          textTransform: "uppercase",
-                          color: "var(--gold-dark)",
-                          fontWeight: 700,
-                          margin: "0 0 10px",
-                        }}
-                      >
-                        {p.label}
-                      </p>
-                      <p
-                        className="font-sans"
-                        style={{
-                          fontSize: 13.5,
-                          lineHeight: 1.6,
-                          color: "var(--text-primary)",
-                          margin: 0,
-                          whiteSpace: "pre-line",
-                        }}
-                      >
-                        {p.body || "—"}
-                      </p>
+                        {d.company}
+                      </span>
+                      {d.deal_type && (
+                        <span
+                          className="font-sans"
+                          style={{ fontSize: 11, color: "var(--text-secondary)" }}
+                        >
+                          {d.deal_type}
+                        </span>
+                      )}
+                      <SentimentPill tone="NEUTRAL" size="sm" />
                     </div>
                   ))}
                 </div>
@@ -848,6 +971,9 @@ export default function MorningBriefPage() {
                   </Button>
                   <Button variant="secondary" size="md" onClick={handleLeadAddThesis} disabled={addingThesis}>
                     Add Thesis
+                  </Button>
+                  <Button variant="secondary" size="md" onClick={handleAskAI}>
+                    Ask AI
                   </Button>
                 </div>
               </div>
