@@ -452,7 +452,13 @@ export default function MorningBriefPage() {
   return (
     <AppShell
       pageTitle="Morning Brief"
-      mood={tone === "BEARISH" ? "risk-off" : tone === "BULLISH" ? "risk-on" : "neutral"}
+      mood={
+        tone === "BEARISH" ? "risk-off"
+        : tone === "BULLISH" ? "risk-on"
+        : tone === "MIXED" ? "mixed"
+        : tone === "WATCH" ? "watch"
+        : "neutral"
+      }
       moodHeadline={briefing?.market_tone || "Loading..."}
       moodDetails={[]}
       rightPanel={
@@ -468,15 +474,15 @@ export default function MorningBriefPage() {
     >
       <TickerStrip />
 
-      {/* Sherwood gold masthead — every colour is a literal so the band
-          keeps its saturated Heritage Gold gradient and the brand lockup
-          reads the same in light + dark. "Signal" is cream, "era" is
-          espresso (inverse of the sidebar Wordmark) — on a gold band
-          those two values give the highest-contrast lockup. */}
+      {/* Sherwood Direction C masthead — gold anchors the left and fades
+          into the page's espresso body on the right. Reversible: restore
+          the 135deg two-stop gold gradient in the `background` string to
+          return to the Direction A treatment. All colour values stay
+          literal so the band reads identically in light + dark. */}
       <header
         style={{
-          background: `linear-gradient(135deg, ${HERITAGE_GOLD} 0%, ${HERITAGE_GOLD_DEEP} 100%)`,
-          padding: "20px 32px",
+          background: `linear-gradient(90deg, ${HERITAGE_GOLD} 0%, ${HERITAGE_GOLD} 30%, ${DC_ESPRESSO} 75%, ${DC_ESPRESSO} 100%)`,
+          padding: "14px 32px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -513,7 +519,7 @@ export default function MorningBriefPage() {
         >
           <span>{dateStr}</span>
           <span className="font-data">{timeStr}</span>
-          <span style={{ background: "rgba(26,18,8,0.2)", color: "rgba(255,253,249,0.9)", padding: "4px 10px", borderRadius: 20, fontSize: 10, letterSpacing: "0.12em" }}>
+          <span style={{ background: "rgba(255,253,249,0.15)", color: "rgba(255,253,249,0.9)", padding: "4px 10px", borderRadius: 20, fontSize: 10, letterSpacing: "0.12em" }}>
             4 MIN READ
           </span>
         </div>
@@ -765,7 +771,7 @@ export default function MorningBriefPage() {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 8,
-                    background: HERITAGE_GOLD,
+                    background: "#a88340",
                     color: DC_ESPRESSO,
                     padding: "5px 12px",
                     borderRadius: 20,
@@ -1016,7 +1022,15 @@ export default function MorningBriefPage() {
                 >
                   Top Deals to Watch
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div
+                  className={
+                    briefing.top_deals.length >= 3
+                      ? "grid grid-cols-1 md:grid-cols-3 gap-3"
+                      : briefing.top_deals.length === 2
+                        ? "grid grid-cols-1 md:grid-cols-2 gap-3 max-w-[66%] mx-auto"
+                        : "grid grid-cols-1 gap-3 max-w-[33%] mx-auto"
+                  }
+                >
                   {briefing.top_deals.map((deal, i) => (
                     <div
                       key={i}

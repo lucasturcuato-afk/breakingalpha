@@ -148,6 +148,26 @@
   --pill-activity-crypto-bg: rgba(139,92,246,0.08);
   --pill-activity-crypto-text: #5b21b6;
   --pill-activity-crypto-border: rgba(139,92,246,0.22);
+
+  /* ── Sentiment pill palette (light) ──
+     Used by SentimentPill across body stories, masthead tone tag, and
+     Active Theses rail. WATCH binds to the heritage-gold "Watching"
+     treatment used elsewhere in the brief. */
+  --pill-bull-bg: rgba(22,163,74,0.08);
+  --pill-bull-text: #166534;
+  --pill-bull-border: rgba(22,163,74,0.22);
+  --pill-bear-bg: rgba(220,38,38,0.08);
+  --pill-bear-text: #991b1b;
+  --pill-bear-border: rgba(220,38,38,0.22);
+  --pill-neutral-bg: rgba(100,116,139,0.10);
+  --pill-neutral-text: #334155;
+  --pill-neutral-border: rgba(100,116,139,0.26);
+  --pill-mixed-bg: rgba(245,158,11,0.10);
+  --pill-mixed-text: #b45309;
+  --pill-mixed-border: rgba(245,158,11,0.26);
+  --pill-watch-bg: var(--gold-muted);
+  --pill-watch-text: var(--gold-dark);
+  --pill-watch-border: var(--gold-border);
 }
 
 /* ── Dark mode overrides ── */
@@ -259,4 +279,23 @@ html.dark {
   --pill-activity-crypto-bg: rgba(139,92,246,0.10);
   --pill-activity-crypto-text: #c4b5fd;
   --pill-activity-crypto-border: rgba(139,92,246,0.20);
+
+  /* ── Sentiment pill palette (dark) ──
+     Lighter text tones for legibility on dark surfaces; bg/border bumped
+     a touch to keep the pill readable against the elevated card. */
+  --pill-bull-bg: rgba(22,163,74,0.12);
+  --pill-bull-text: #6ee7b7;
+  --pill-bull-border: rgba(22,163,74,0.28);
+  --pill-bear-bg: rgba(220,38,38,0.12);
+  --pill-bear-text: #fda4af;
+  --pill-bear-border: rgba(220,38,38,0.28);
+  --pill-neutral-bg: rgba(100,116,139,0.18);
+  --pill-neutral-text: #e2e8f0;
+  --pill-neutral-border: rgba(100,116,139,0.32);
+  --pill-mixed-bg: rgba(245,158,11,0.12);
+  --pill-mixed-text: #fcd34d;
+  --pill-mixed-border: rgba(245,158,11,0.28);
+  --pill-watch-bg: var(--gold-muted);
+  --pill-watch-text: var(--gold-light);
+  --pill-watch-border: var(--gold-border);
 }
