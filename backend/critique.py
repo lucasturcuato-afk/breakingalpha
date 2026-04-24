@@ -75,6 +75,25 @@ BANNED_PHRASES = [
 ]
 
 # ---------------------------------------------------------------------------
+# Empty-calorie constructions introduced by PR #127's LANGUAGE CONSTRAINT.
+#
+# These are a superset of the 10 banned-construction categories enumerated
+# in the synthesize.py / deal_extractor.py system prompts. Counted via the
+# regex detector so the substring style of BANNED_PHRASES above is not
+# sufficient — we reuse the compiled patterns from cliche_detector.
+#
+# Kept as an observational metric alongside banned_phrase_hits. Post-
+# Approach-B, the pre-persist filter strips most of these before they are
+# written, so healthy steady-state value is 0. A non-zero count signals
+# either (a) the filter missed a variant worth extending, or (b) the
+# pre-persist path was bypassed.
+# ---------------------------------------------------------------------------
+try:
+    from cliche_detector import detect_cliches as _detect_cliches  # type: ignore
+except Exception:  # pragma: no cover — critique must never hard-fail
+    _detect_cliches = None
+
+# ---------------------------------------------------------------------------
 # Hard heuristics — what_to_watch / tomorrow_setup banned phrases
 #
 # Applied only to the watch section, not the full body scan.
@@ -228,6 +247,17 @@ def score_run(brief_type, started_at, run_id=None):
     combined_text = summary_text + " " + sections_text
     banned_phrase_hits = _count_phrase_hits(combined_text, BANNED_PHRASES)
 
+    # --- Empty-calorie (PR #127 constructions) observational count --------
+    # Mirror metric to banned_phrase_hits using the regex detector. Not
+    # persisted to the DB — logged only, per spec §8 Q1 default. Column
+    # add deferred to follow-up PR.
+    empty_calorie_hits = 0
+    if _detect_cliches is not None:
+        try:
+            empty_calorie_hits = len(_detect_cliches(combined_text))
+        except Exception as e:
+            print(f"  [critique] empty-calorie scan failed (non-fatal): {e}")
+
     # --- what_to_watch / tomorrow_setup banned phrases --------------------
     watch_key = "what_to_watch" if brief_type == "morning" else "tomorrow_setup"
     watch_text = ""
@@ -276,6 +306,7 @@ def score_run(brief_type, started_at, run_id=None):
             f"  [critique] brief scored — "
             f"headline_pass={headline_pass} ({headline_word_count}w), "
             f"banned_hits={banned_phrase_hits}, "
+            f"empty_calorie_hits={empty_calorie_hits}, "
             f"watch_hits={what_to_watch_banned_hits}, "
             f"present={sections_present}, "
             f"omitted={sections_omitted}, "

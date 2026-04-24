@@ -10,6 +10,8 @@ from supabase import create_client
 from google import genai
 from google.genai import types
 
+from cliche_detector import filter_deal_thesis
+
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 GEMINI_MODEL = "gemini-2.0-flash"
@@ -132,6 +134,13 @@ def extract_deal(title, summary, body, url):
         data = json.loads(raw)
         if data.get("is_deal"):
             data["source_url"] = url
+            # STRIP-only cliche filter on the thesis field (spec §5.3).
+            # Regen is intentionally not wired here — deal_extractor runs
+            # per-article and cost/latency matter more than prose polish.
+            try:
+                data["thesis"] = filter_deal_thesis(data.get("thesis"))
+            except Exception as e:
+                print(f"  ⚠ deal thesis cliche filter failed (non-fatal): {e}")
             return data
         return None
     except Exception as e:

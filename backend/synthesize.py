@@ -10,6 +10,7 @@ from google import genai
 from google.genai import types
 
 from ingest import INDUSTRY_VERTICALS
+from cliche_detector import apply_cliche_filter
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 # Admin client for writes that must bypass RLS (e.g. morning_brief_calls).
@@ -1288,6 +1289,30 @@ def run(brief_type="morning"):
     # a See-lead exception (lead-reference deals stay regardless of value)
     # and falls back to the original list if it would empty the section.
     data["top_deals"] = filter_undisclosed_deals(data.get("top_deals") or [])
+
+    # --- Cliche filter: REJECT-or-STRIP per-field policy ----------------------
+    # Deterministic regex pass over the 10 banned constructions from PR #127's
+    # LANGUAGE CONSTRAINT. Runs pre-persist so any strips automatically
+    # propagate into the derived summary below and into claims extraction
+    # (which reads post-insert from headline/summary). Spec: see
+    # SPEC_approach_b_cliche_detector.md §5.1. Wrapped in try/except so a
+    # regex engine failure never blocks brief persistence.
+    try:
+        cliche_stats = apply_cliche_filter(
+            data,
+            brief_type=brief_type,
+            system=system,
+            user_content=article_text,
+            gemini_generate_fn=gemini_generate,
+        )
+        if cliche_stats.get("retries_used") or cliche_stats.get("fields_stripped") or cliche_stats.get("fields_dropped"):
+            print(
+                f"  🎯 cliche filter: retries={cliche_stats['retries_used']}, "
+                f"stripped={cliche_stats['fields_stripped']}, "
+                f"dropped={cliche_stats['fields_dropped']}"
+            )
+    except Exception as e:
+        print(f"  ⚠ cliche filter failed (non-fatal): {e}")
 
     # Structured body (new schema): if all three fields are present, synthesize
     # the legacy `summary` as their concatenation for backward compatibility
