@@ -47,7 +47,7 @@ CROSS-SECTION ANTI-REDUNDANCY (read before writing any section):
 The primary_story is narrated in depth in the lead block. Do NOT re-narrate it in `sections.deals_and_ma`, `sector_breakdown`, or `top_deals.one_liner`.
 - `sections.deals_and_ma` must cover patterns or themes across MULTIPLE deals (consolidation pace, valuation compression, buyer vs. target count), or OTHER deals entirely — not a retelling of the primary deal.
 - `sector_breakdown` discusses sector-level dynamics (multiples, capital flows, regulatory posture) — not individual deals already covered in the lead or top_deals.
-- `top_deals` MAY include the primary-story deal, but its `one_liner` must begin with "See lead." and add at most one clause of new color. Every OTHER top_deals entry must be a distinct transaction.
+- `top_deals` MAY include the primary-story deal, but its `one_liner` must be exactly the string "See lead." with NO further text, clauses, or color appended. Every OTHER top_deals entry must be a distinct transaction.
 If any of these sections would only restate the primary story, OMIT that section/key entirely rather than pad.
 
 SECTOR KEY RULE (CRITICAL): sector_breakdown keys MUST be exactly one of:
@@ -90,7 +90,7 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
       "deal_type": "M&A | LBO | IPO | VC Round | Strategic Investment | Debt Financing",
       "value": "Deal size EXTRACTED FROM THE ARTICLE BODY (not just the headline). Normalize to one of: '$XB' (USD billions), '$XM' (USD millions), 'A$XB' (Australian dollars), '€XB' / '€XM' (euros), '£XB' / '£XM' (pounds). Preserve the actual currency — A$25 billion stays 'A$25B', never converted to USD. Dollar figures like '$60 billion', '$17B', 'A$25 billion', '€500 million' often appear only in the body paragraphs, so search the full article text. Only output null (or the literal string 'Undisclosed') when NO dollar figure for the transaction itself appears anywhere in the article.",
       "sentiment": "One of: BULLISH | BEARISH | NEUTRAL | MIXED — the market read for this specific deal. Rules: BULLISH for a strategic acquirer executing a clear consolidation thesis or for a VC-backed company closing a hot round; BEARISH for a target in a forced/distressed/regulator-driven sale or for a deal that signals a sector top; MIXED when there is material regulatory/antitrust risk, buyer-discipline concerns, or conflicting reads between acquirer and target implications; NEUTRAL only when the deal is genuinely ambiguous. Do NOT default to NEUTRAL as a lazy choice — pick the most honest read.",
-      "one_liner": "One sentence. If this deal IS the primary_story, begin with 'See lead.' and add at most one short clause of new color not already in the lead. Otherwise, state acquirer, target, price or multiple, and why investors in adjacent names should reprice — no filler, no re-narration of the primary_story."
+      "one_liner": "One sentence. If this deal IS the primary_story, output exactly the string 'See lead.' as the one_liner with no further text, clauses, or color. Otherwise, state acquirer, target, price or multiple, and why investors in adjacent names should reprice — no filler, no re-narration of the primary_story."
     }
   ],
   "sector_breakdown": {
@@ -131,7 +131,7 @@ CROSS-SECTION ANTI-REDUNDANCY (read before writing any section):
 The primary_story is narrated in depth in the lead block. Do NOT re-narrate it in `sections.deals_and_ma`, `sector_breakdown`, or `top_deals.one_liner`.
 - `sections.deals_and_ma` must cover patterns across MULTIPLE deals (consolidation pace, valuation compression) or OTHER deals entirely — not a retelling of the primary deal.
 - `sector_breakdown` discusses sector-level dynamics — not individual deals already covered in the lead or top_deals.
-- `top_deals` MAY include the primary-story deal, but its `one_liner` must begin with "See lead." and add at most one clause of new color. Every OTHER top_deals entry must be a distinct transaction.
+- `top_deals` MAY include the primary-story deal, but its `one_liner` must be exactly the string "See lead." with NO further text, clauses, or color appended. Every OTHER top_deals entry must be a distinct transaction.
 If any of these sections would only restate the primary story, OMIT that section/key entirely rather than pad.
 
 SECTOR KEY RULE (CRITICAL): sector_breakdown keys MUST be exactly one of:
@@ -173,7 +173,7 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
       "deal_type": "M&A | LBO | IPO | VC Round | Strategic Investment | Debt Financing",
       "value": "Deal size EXTRACTED FROM THE ARTICLE BODY (not just the headline). Normalize to one of: '$XB' (USD billions), '$XM' (USD millions), 'A$XB' (Australian dollars), '€XB' / '€XM' (euros), '£XB' / '£XM' (pounds). Preserve the actual currency — A$25 billion stays 'A$25B', never converted to USD. Dollar figures like '$60 billion', '$17B', 'A$25 billion', '€500 million' often appear only in the body paragraphs, so search the full article text. Only output null (or the literal string 'Undisclosed') when NO dollar figure for the transaction itself appears anywhere in the article.",
       "sentiment": "One of: BULLISH | BEARISH | NEUTRAL | MIXED — the market read for this specific deal. Rules: BULLISH for a strategic acquirer executing a clear consolidation thesis or a VC-backed company closing a hot round; BEARISH for a target in a forced/distressed/regulator-driven sale or a deal that signals a sector top; MIXED for material regulatory/antitrust risk, buyer-discipline concerns, or conflicting reads; NEUTRAL only when the deal is genuinely ambiguous. Do NOT default to NEUTRAL as a lazy choice.",
-      "one_liner": "One sentence. If this deal IS the primary_story, begin with 'See lead.' and add at most one short clause of new color not already in the lead. Otherwise, state acquirer, target, price or multiple, and why investors in adjacent names should reprice — no filler, no re-narration of the primary_story."
+      "one_liner": "One sentence. If this deal IS the primary_story, output exactly the string 'See lead.' as the one_liner with no further text, clauses, or color. Otherwise, state acquirer, target, price or multiple, and why investors in adjacent names should reprice — no filler, no re-narration of the primary_story."
     }
   ],
   "sector_breakdown": {
@@ -1076,6 +1076,20 @@ def run(brief_type="morning"):
 
     sector_breakdown = _validate_sector_breakdown(data.get("sector_breakdown", {}))
     print(f"  📊 sector_breakdown: {len(sector_breakdown)} sector(s) — {list(sector_breakdown.keys())}")
+
+    # Defensive clamp: when a top_deals entry IS the primary_story, the prompt
+    # instructs Gemini to emit exactly "See lead." Some model outputs still
+    # append a trailing clause ("See lead. This carve-out signals ..."). Hard-
+    # rewrite any one_liner that starts with "see lead" to the literal string
+    # so the UI never shows a duplicate retelling of the lead.
+    top_deals_list = data.get("top_deals") or []
+    if isinstance(top_deals_list, list):
+        for deal in top_deals_list:
+            if isinstance(deal, dict):
+                ol = deal.get("one_liner")
+                if isinstance(ol, str) and ol.strip().lower().startswith("see lead"):
+                    deal["one_liner"] = "See lead."
+        data["top_deals"] = top_deals_list
 
     # Structured body (new schema): if all three fields are present, synthesize
     # the legacy `summary` as their concatenation for backward compatibility
