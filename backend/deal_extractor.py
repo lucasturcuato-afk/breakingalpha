@@ -53,6 +53,16 @@ Preserve the non-USD currency — NEVER convert to USD. Only leave
 "valuation" as null when NO transaction figure appears anywhere in the
 article body.
 
+LANGUAGE CONSTRAINT — NO EMPTY-CALORIE PHRASES (applies to thesis field):
+
+The following constructions are banned in the thesis field:
+- 'signals [vague trend]', 'underscores [vague importance]', 'highlights [vague trend]', 'reflects [vague continuation]', 'demonstrates [vague positive]', 'indicates [vague positive]'
+- '[X]'s strong/continued appetite for [Y]' without a named deal or data point
+- Abstract sector-trend language when specifics are in source material
+- Impact filler ('significant', 'substantial', 'major') without a specific number
+
+REQUIRED: the thesis must either name a specific strategic rationale (comparable transaction, concrete financial metric, named peer company) OR be a single bare-fact sentence. A shorter thesis with one real fact beats a longer thesis with wire-copy padding.
+
 If a qualifying deal is present, respond ONLY with valid JSON:
 {
   "is_deal": true,
