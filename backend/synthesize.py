@@ -189,6 +189,74 @@ A qualifying top_deals entry MUST satisfy ALL FOUR of the following — if any o
 
 Exclude without exception: earnings reports, revenue or profit results, stock price moves, analyst upgrades or downgrades, product launches, index inclusions, executive appointments, general company performance news, and fundraising stories without a named lead investor and confirmed amount — even if the article features a well-known company. If no qualifying deal exists in the provided articles, return an empty top_deals array rather than filling it with non-deal stories. Never use bracket placeholders — always write the actual name. When stating implications, use hedged language ('may signal', 'suggests') unless multiple articles confirm the same direction — never imply sector-wide repricing, macro conclusions, or broader competitive dynamics from a single story. Banned phrases unless strongly evidenced by multiple articles: 'ongoing consolidation', 'sector rotation', 'broader trend', 'continued pressure'."""
 
+def filter_undisclosed_deals(deals: list[dict]) -> list[dict]:
+    """
+    Drop top_deals entries with no real dollar figure — Gemini still emits
+    "Undisclosed" / null values for transactions whose amount never surfaces
+    in the article body. Two exceptions keep the section honest:
+
+      1. A deal whose one_liner is "See lead." is preserved regardless of its
+         value field. The whole point of that entry is that it cross-references
+         the primary_story; the lack of a disclosed figure is incidental, not
+         a reason to drop a meaningful pointer.
+
+      2. If the filter would leave zero deals, the original list is returned
+         unchanged. An empty Top Deals section reads worse than one full of
+         "Undisclosed" cards — the cards at least signal that the desk saw
+         transactions, just without disclosed terms.
+    """
+    if not deals:
+        return deals
+    filtered = [
+        d for d in deals
+        if (
+            (d.get("one_liner", "") or "").strip().lower().startswith("see lead")
+            or (
+                d.get("value")
+                and isinstance(d.get("value"), str)
+                and d["value"].strip().lower() not in ("undisclosed", "n/a", "none", "null", "")
+            )
+        )
+    ]
+    return filtered if filtered else deals
+
+
+def _test_filter_undisclosed_deals():
+    """
+    Inline sanity check — not invoked on every run. Documents expected
+    behavior of filter_undisclosed_deals(). Run manually with:
+
+        python -c "from backend.synthesize import _test_filter_undisclosed_deals; _test_filter_undisclosed_deals()"
+    """
+    # Case 1: every deal is Undisclosed → fallback returns the original list
+    all_undisclosed = [
+        {"company": "A", "value": "Undisclosed", "one_liner": "Carve-out closes."},
+        {"company": "B", "value": None,          "one_liner": "Round announced."},
+        {"company": "C", "value": "n/a",         "one_liner": "Take-private signed."},
+    ]
+    out = filter_undisclosed_deals(all_undisclosed)
+    assert out is all_undisclosed or out == all_undisclosed, "fallback should keep original list when all filtered"
+
+    # Case 2: mix → only the disclosed-value deal survives
+    mixed = [
+        {"company": "A", "value": "Undisclosed", "one_liner": "Foo."},
+        {"company": "B", "value": "$3.4B",       "one_liner": "Bar."},
+        {"company": "C", "value": "",            "one_liner": "Baz."},
+    ]
+    out = filter_undisclosed_deals(mixed)
+    assert len(out) == 1 and out[0]["company"] == "B", f"expected only B, got {out}"
+
+    # Case 3: "See lead." deal with Undisclosed value is preserved
+    with_see_lead = [
+        {"company": "A", "value": "Undisclosed", "one_liner": "See lead."},
+        {"company": "B", "value": "Undisclosed", "one_liner": "Some color."},
+    ]
+    out = filter_undisclosed_deals(with_see_lead)
+    assert len(out) == 1 and out[0]["one_liner"] == "See lead.", f"See-lead exception failed: {out}"
+
+    print("filter_undisclosed_deals: all 3 cases pass")
+
+
 def _diversify_articles(articles, sector_cap=4, company_cap=2, total=20):
     """
     Prevent any single deal cluster or company from dominating synthesis input.
@@ -1090,6 +1158,12 @@ def run(brief_type="morning"):
                 if isinstance(ol, str) and ol.strip().lower().startswith("see lead"):
                     deal["one_liner"] = "See lead."
         data["top_deals"] = top_deals_list
+
+    # Drop "Undisclosed" / null-value deals before write so the Top Deals
+    # section doesn't ship 2-3 placeholder cards per brief. The filter has
+    # a See-lead exception (lead-reference deals stay regardless of value)
+    # and falls back to the original list if it would empty the section.
+    data["top_deals"] = filter_undisclosed_deals(data.get("top_deals") or [])
 
     # Structured body (new schema): if all three fields are present, synthesize
     # the legacy `summary` as their concatenation for backward compatibility
