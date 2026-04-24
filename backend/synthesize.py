@@ -78,10 +78,32 @@ GOOD: 'EU's $106B Ukraine loan lifts European A&D backlogs to multi-decade highs
 GOOD: 'EU approved a $106B Ukraine military loan.' (bare fact fallback)
 
 PRIMARY STORY SELECTION — complete this step BEFORE writing any JSON:
-1. Scan every article and Signal line. Rank stories by market significance: (1) largest named dollar figure or confirmed transaction; (2) broadest macro or rates signal (Fed statement, inflation print, credit spread move); (3) widest sector or market-moving development.
-2. Identify the SINGLE highest-ranking story. This is the primary_story. Commit to one. Ties go to the largest confirmed dollar figure.
-3. The entire lead block — `headline`, `lead_paragraph`, `supporting_context`, `what_to_watch` — MUST be about this one primary_story and nothing else. Never stack two stories into the lead with 'and', commas, 'while', 'as', or 'amid'. Other important stories of the day go into `sections`, `top_deals`, or `sector_breakdown`, NEVER into the lead block.
-4. Output the primary_story's identifier (its headline or the acquirer + target) in the `primary_story_id` field. This is a self-check — the `headline` field must name the same subject.
+
+1. Scan every article and Signal line. Identify articles with a CONFIRMED DOLLAR FIGURE in the headline or body — a specific transaction value like "$60 billion", "$17B", "$25 billion", or "$11.57 billion". A "confirmed dollar figure" means a number attached to a specific transaction, not a company's overall valuation, annual revenue, or unrelated amount.
+
+2. ABSOLUTE RULE — PRICED OVER UNPRICED: If ANY article in the pool has a confirmed dollar figure of $1 billion or more attached to a specific transaction, the primary_story MUST be drawn from among those priced-transaction articles. An article with no confirmed dollar figure CANNOT be the primary_story while a priced-transaction article of $1B+ is available in the pool, regardless of freshness, sector, or narrative interest.
+
+3. Among priced-transaction articles ($1B+): pick the one with the LARGEST confirmed dollar figure. This is the primary_story. If multiple articles describe the same transaction, pick the one with the most reputable source (FT, Bloomberg, Reuters, WSJ, NYT, Economist) and most recent timestamp.
+
+4. FALLBACK when NO article in the pool has a confirmed dollar figure of $1B+: Apply this hierarchy:
+   (a) Largest macro or rates event (Fed decision, CPI print, significant credit spread move, major central bank action)
+   (b) Major geopolitical event with direct market consequence (war escalation, sanctions announcement, energy disruption)
+   (c) Widest sector-moving development (single company earnings beat is NOT sufficient — needs to be a sector-wide signal)
+
+5. Commitment: The entire lead block — `headline`, `lead_paragraph`, `supporting_context`, `what_to_watch` — MUST be about the ONE primary_story you selected. Never stack two stories with 'and', commas, 'while', 'as', or 'amid'. Other important stories go into `sections`, `top_deals`, or `sector_breakdown` — NEVER into the lead block.
+
+6. SELF-CHECK before writing any JSON:
+   - Does my primary_story have a confirmed dollar figure of $1B+? If yes, proceed.
+   - If no, does the pool have ANY article with a $1B+ confirmed transaction? If yes, STOP — reselect primary_story from that subset. My current choice is invalid.
+   - If the pool has no $1B+ priced transaction at all, did I correctly apply the fallback hierarchy? Confirm the pick is a macro/geopolitical/sector event, not an unpriced M&A.
+
+7. Output `primary_story_id` as a short identifier (original headline ~80 chars, or "acquirer + target", or "event + instrument"). The `headline` field below MUST name the same story. If they diverge, rewrite `headline` to match.
+
+FAILURE EXAMPLES you must NOT reproduce:
+
+- BAD: Picking "AIP Acquires Honeywell's Warehouse Business" (no disclosed price) when the pool contains "SpaceX acquires Cursor for $60 billion" (confirmed price).
+- BAD: Picking the freshest M&A in the pool when an older M&A with a larger confirmed price is also in the pool.
+- BAD: Picking an earnings beat as the lead when a $10B+ M&A transaction is available in the pool.
 
 CROSS-SECTION ANTI-REDUNDANCY (read before writing any section):
 The primary_story is narrated in depth in the lead block. Do NOT re-narrate it in `sections.deals_and_ma`, `sector_breakdown`, or `top_deals.one_liner`.
@@ -202,10 +224,32 @@ GOOD: 'EU's $106B Ukraine loan lifts European A&D backlogs to multi-decade highs
 GOOD: 'EU approved a $106B Ukraine military loan.' (bare fact fallback)
 
 PRIMARY STORY SELECTION — complete this step BEFORE writing any JSON:
-1. Scan every article and Signal line. Rank stories by market significance: (1) largest named dollar figure or confirmed transaction; (2) broadest macro or rates signal (Fed statement, inflation print, credit spread move); (3) widest sector or market-moving development.
-2. Identify the SINGLE highest-ranking story that drove the tape today. This is the primary_story. Commit to one. Ties go to the largest confirmed dollar figure.
-3. The entire lead block — `headline`, `lead_paragraph`, `supporting_context`, `what_to_watch` — MUST be about this one primary_story and nothing else. Never stack two stories into the lead with 'and', commas, 'while', 'as', or 'amid'. Other important stories of the day go into `sections`, `top_deals`, or `sector_breakdown`, NEVER into the lead block.
-4. Output the primary_story's identifier in the `primary_story_id` field. This is a self-check — the `headline` field must name the same subject.
+
+1. Scan every article and Signal line. Identify articles with a CONFIRMED DOLLAR FIGURE in the headline or body — a specific transaction value like "$60 billion", "$17B", "$25 billion", or "$11.57 billion". A "confirmed dollar figure" means a number attached to a specific transaction, not a company's overall valuation, annual revenue, or unrelated amount.
+
+2. ABSOLUTE RULE — PRICED OVER UNPRICED: If ANY article in the pool has a confirmed dollar figure of $1 billion or more attached to a specific transaction, the primary_story MUST be drawn from among those priced-transaction articles. An article with no confirmed dollar figure CANNOT be the primary_story while a priced-transaction article of $1B+ is available in the pool, regardless of freshness, sector, or narrative interest.
+
+3. Among priced-transaction articles ($1B+): pick the one with the LARGEST confirmed dollar figure. This is the primary_story. If multiple articles describe the same transaction, pick the one with the most reputable source (FT, Bloomberg, Reuters, WSJ, NYT, Economist) and most recent timestamp.
+
+4. FALLBACK when NO article in the pool has a confirmed dollar figure of $1B+: Apply this hierarchy:
+   (a) Largest macro or rates event (Fed decision, CPI print, significant credit spread move, major central bank action)
+   (b) Major geopolitical event with direct market consequence (war escalation, sanctions announcement, energy disruption)
+   (c) Widest sector-moving development (single company earnings beat is NOT sufficient — needs to be a sector-wide signal)
+
+5. Commitment: The entire lead block — `headline`, `lead_paragraph`, `supporting_context`, `what_to_watch` — MUST be about the ONE primary_story you selected. Never stack two stories with 'and', commas, 'while', 'as', or 'amid'. Other important stories go into `sections`, `top_deals`, or `sector_breakdown` — NEVER into the lead block.
+
+6. SELF-CHECK before writing any JSON:
+   - Does my primary_story have a confirmed dollar figure of $1B+? If yes, proceed.
+   - If no, does the pool have ANY article with a $1B+ confirmed transaction? If yes, STOP — reselect primary_story from that subset. My current choice is invalid.
+   - If the pool has no $1B+ priced transaction at all, did I correctly apply the fallback hierarchy? Confirm the pick is a macro/geopolitical/sector event, not an unpriced M&A.
+
+7. Output `primary_story_id` as a short identifier (original headline ~80 chars, or "acquirer + target", or "event + instrument"). The `headline` field below MUST name the same story. If they diverge, rewrite `headline` to match.
+
+FAILURE EXAMPLES you must NOT reproduce:
+
+- BAD: Picking "AIP Acquires Honeywell's Warehouse Business" (no disclosed price) when the pool contains "SpaceX acquires Cursor for $60 billion" (confirmed price).
+- BAD: Picking the freshest M&A in the pool when an older M&A with a larger confirmed price is also in the pool.
+- BAD: Picking an earnings beat as the lead when a $10B+ M&A transaction is available in the pool.
 
 CROSS-SECTION ANTI-REDUNDANCY (read before writing any section):
 The primary_story is narrated in depth in the lead block. Do NOT re-narrate it in `sections.deals_and_ma`, `sector_breakdown`, or `top_deals.one_liner`.
@@ -1289,6 +1333,9 @@ def run(brief_type="morning"):
         extras["lead_paragraph"] = lead_paragraph
         extras["supporting_context"] = supporting_context
         extras["what_to_watch"] = what_to_watch_body
+    psid = (data.get("primary_story_id") or "").strip()
+    if psid:
+        extras["primary_story_id"] = psid[:200]
 
     insert_resp = None
     if extras:
