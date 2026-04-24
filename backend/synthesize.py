@@ -1060,8 +1060,11 @@ def run(brief_type="morning"):
     # body paragraphs. `published_at` / `ingested_at` are selected so the
     # selector can apply a freshness re-rank on top of relevance_score.
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    # `url`, `source`, and `deal_type` are required by lead_preselect.py —
+    # url joins to deal_flow.source_url, source feeds the tier tiebreaker,
+    # and deal_type drives the macro/geopolitical fallback hierarchy.
     resp = supabase.table("articles")\
-        .select("title, summary, content, sector, industry_verticals, companies, relevance_score, relevance_reason, published_at, ingested_at")\
+        .select("title, summary, content, url, source, sector, industry_verticals, companies, deal_type, relevance_score, relevance_reason, published_at, ingested_at")\
         .gte("ingested_at", cutoff)\
         .order("relevance_score", desc=True)\
         .limit(60)\
@@ -1070,7 +1073,7 @@ def run(brief_type="morning"):
     articles = resp.data or []
     if not articles:
         resp = supabase.table("articles")\
-            .select("title, summary, content, sector, industry_verticals, companies, relevance_score, relevance_reason, published_at, ingested_at")\
+            .select("title, summary, content, url, source, sector, industry_verticals, companies, deal_type, relevance_score, relevance_reason, published_at, ingested_at")\
             .order("ingested_at", desc=True)\
             .limit(60)\
             .execute()
@@ -1081,6 +1084,37 @@ def run(brief_type="morning"):
     # score-9 story from 22h ago beats a score-8 story from 3h ago even when
     # the brief ships at 6am ET.
     articles = _freshness_rerank(articles)
+
+    # --- Path B: deterministic primary_story pre-pick (lead_preselect) ---
+    # Filters the corpus to confirmed $1B+ deals via deal_flow, ranks by
+    # size/freshness/source, and falls back through macro → geopolitical
+    # → sector when no qualifying priced transaction exists. If this
+    # returns an article, we hoist it into spine slot 0 and inject a
+    # directive telling Gemini "narrate this, do not re-rank". If it
+    # returns None, Gemini's in-prompt PRIMARY STORY SELECTION block
+    # (PR #128) runs as fallback — behavior matches pre-Path-B exactly.
+    preselected = None
+    preselect_directive = None
+    try:
+        from lead_preselect import preselect_primary_story, build_preselect_directive
+        preselected = preselect_primary_story(articles, brief_type)
+        if preselected:
+            # Hoist into slot 0 so the selector/prompt see it first.
+            _url = (preselected.get("url") or "").strip()
+            articles = [preselected] + [
+                a for a in articles if (a.get("url") or "").strip() != _url
+            ]
+            preselect_directive = build_preselect_directive(preselected)
+            print(
+                f"  🎯 Pre-selected primary story ({preselected.get('_preselect_reason')}): "
+                f"{(preselected.get('title') or '')[:80]}"
+            )
+        else:
+            print("  🎯 Pre-selector found no deterministic pick — Gemini will select")
+    except Exception as e:
+        print(f"  ⚠ Pre-selector failed (falling back to Gemini selection): {e}")
+        preselected = None
+        preselect_directive = None
 
     spine, floor = _select_articles_for_synthesis(articles)
     print(f"  📰 Synthesis input: {len(spine)} spine + {len(floor)} floor articles "
@@ -1153,6 +1187,14 @@ def run(brief_type="morning"):
         article_text += watchlist_text
 
     system = MORNING_SYSTEM if brief_type == "morning" else EVENING_SYSTEM
+
+    # Path B: if the deterministic pre-selector picked a lead, prepend its
+    # directive so Gemini narrates (doesn't re-rank). The in-prompt PRIMARY
+    # STORY SELECTION block inside MORNING_SYSTEM/EVENING_SYSTEM remains
+    # intact as defense-in-depth for days when the pre-selector returns
+    # None (see lead_preselect.py docstring and SPEC_path_b §6).
+    if preselect_directive:
+        system = preselect_directive + "\n\n" + system
 
     # --- Evening: lead-story dedup vs morning brief ----------------------------
     # Fetch the morning brief's headline so the evening wrap can prefer a
