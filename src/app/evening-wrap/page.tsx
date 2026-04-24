@@ -72,7 +72,6 @@ const SCORECARD_SYMBOLS = [
 // to a near-white and --cream to near-black under html.dark, which
 // would invert the dark hero card and desaturate the gold masthead.
 const HERITAGE_GOLD = "#d4a84b";
-const HERITAGE_GOLD_DEEP = "#c9922a";
 const DC_ESPRESSO = "#1a1208";
 const DC_CREAM = "#fffdf9";
 
@@ -482,7 +481,13 @@ export default function EveningWrapPage() {
   return (
     <AppShell
       pageTitle="Evening Wrap"
-      mood={tone === "BEARISH" ? "risk-off" : tone === "BULLISH" ? "risk-on" : "neutral"}
+      mood={
+        tone === "BEARISH" ? "risk-off"
+        : tone === "BULLISH" ? "risk-on"
+        : tone === "MIXED" ? "mixed"
+        : tone === "WATCH" ? "watch"
+        : "neutral"
+      }
       moodHeadline={briefing?.market_tone || "Session closed"}
       moodDetails={[]}
       rightPanel={
@@ -498,13 +503,16 @@ export default function EveningWrapPage() {
     >
       <TickerStrip />
 
-      {/* Sherwood gold masthead — literal hexes for the brand lockup so
-          the band stays saturated and the "Signal cream / era espresso"
-          contrast holds in both themes. */}
+      {/* Sherwood Direction C masthead — gold anchors the left and fades
+          into the page's espresso body on the right (mirrors Morning
+          Brief). Reversible: restore the 135deg two-stop gold gradient in
+          the `background` string to return to the Direction A treatment.
+          All colour values stay literal so the band reads identically in
+          light + dark. */}
       <header
         style={{
-          background: `linear-gradient(135deg, ${HERITAGE_GOLD} 0%, ${HERITAGE_GOLD_DEEP} 100%)`,
-          padding: "20px 32px",
+          background: `linear-gradient(90deg, ${HERITAGE_GOLD} 0%, ${HERITAGE_GOLD} 30%, ${DC_ESPRESSO} 75%, ${DC_ESPRESSO} 100%)`,
+          padding: "14px 32px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -541,7 +549,7 @@ export default function EveningWrapPage() {
         >
           <span>{dateStr}</span>
           <span className="font-data">{timeStr}</span>
-          <span style={{ background: "rgba(26,18,8,0.2)", color: "rgba(255,253,249,0.9)", padding: "4px 10px", borderRadius: 20, fontSize: 10, letterSpacing: "0.12em" }}>
+          <span style={{ background: "rgba(255,253,249,0.15)", color: "rgba(255,253,249,0.9)", padding: "4px 10px", borderRadius: 20, fontSize: 10, letterSpacing: "0.12em" }}>
             5 MIN READ
           </span>
         </div>
