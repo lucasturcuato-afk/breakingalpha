@@ -1022,7 +1022,15 @@ export default function MorningBriefPage() {
                 >
                   Top Deals to Watch
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div
+                  className={
+                    briefing.top_deals.length >= 3
+                      ? "grid grid-cols-1 md:grid-cols-3 gap-3"
+                      : briefing.top_deals.length === 2
+                        ? "grid grid-cols-1 md:grid-cols-2 gap-3 max-w-[66%] mx-auto"
+                        : "grid grid-cols-1 gap-3 max-w-[33%] mx-auto"
+                  }
+                >
                   {briefing.top_deals.map((deal, i) => (
                     <div
                       key={i}
