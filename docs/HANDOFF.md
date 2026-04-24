@@ -158,6 +158,9 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 4. Are there active paying users? (determines urgency of fixes)
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
 
+## Recently Completed (2026-04-23)
+**Four-PR morning-brief stabilization sprint (PRs #124–#127 shipped to prod):** sentiment persistence in deal_extractor/deal_flow (recovered silent failures since PR #123); masthead Direction C gradient + mood bar type extensions ('mixed', 'watch'); Top Deals grid collapse (3→2→1 cols) + TODAY'S LEAD pill muted + Active Theses pill harmonization via shared SentimentPill; filter_undisclosed_deals() post-process in synthesize.py; no-cliché LANGUAGE CONSTRAINT block in MORNING_SYSTEM, EVENING_SYSTEM, deal_extractor SYSTEM_PROMPT. Validated sentiment persistence at WTI $97 vs CNBC. Pipeline A/B confirmed independent. HANDOFF.md should distinguish verified facts from spec claims from bug hypotheses — conflating led to plan corrections this session.
+
 ## Recently Completed (2026-04-21)
 **Track record & trends polish (PRs #116–#117 merged to main):** Hybrid thesis grader (confidence scores, history, adversarial evidence), manual trigger endpoint + daily cron. Trends page signal radar redesign (tiered cards, integrated header, compact filters, two-line labels, hover preview with source articles). Track record empty state fix (gate on zero graded theses, not zero confirmed+invalidated). Schema reconciliation: discovered 20260416_add_theses_user_id.sql unapplied to production — per-user DB scoping missing (app-layer only); `sql/theses_current.sql` captures actual 26-column live schema. *Follow-ups pending for Noah:* After #118 merges, run `sql/0001_cleanup_zero_signal_calibration_rows.sql` in Supabase to wipe ~10 zero-signal rows; decide whether to ship user_id migration.
 
@@ -166,6 +169,16 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 
 ## Recently Completed (2026-04-19)
 **Deal Flow personalization and saved deals (PRs #104–#107 merged to main):** Two-column layout with analytics sidebar (268px: Pipeline Velocity, By Deal Type, Top Sectors, Largest Deals); company deduplication via `normalizeCompany()`. User profile integration: sector tracking/other split, watchlist highlighting, sector filter nudge. Saved deals table + RLS + `/api/saved-deals` server route; `/saved` page with sort controls, fade-out unsave, CSV export. Relevance scoring: `dealRelevanceScore()` + gold dot/border system (≥1.5 threshold); high-relevance row in sidebar. Fire-and-forget event tracking (`thesis_viewed`, `memo_generated`, `sector_filter_applied`) → `inferred_sector_weights`. **Manual Supabase steps:** Run `GRANT SELECT, INSERT, DELETE ON user_saved_deals TO authenticated` on any new environment. Gold dots won't appear until 4+ behavioral events compound past 1.5 threshold.
+
+## Tomorrow Morning Validation Checkpoint (2026-04-24 after 6am PST)
+
+After the first morning cron run (6am PST Friday 2026-04-24), validate all four PRs:
+
+1. **Sentiment persistence:** `SELECT count(*) FROM deal_flow WHERE sentiment IS NOT NULL AND created_at > now() - interval '24 hours';` (expect > 0)
+2. **Brief generation:** `SELECT count(*), max(created_at) FROM morning_brief_calls;` (expect > 0)
+3. **Top Deals lead entries:** Visit `/morning-brief` — "See lead." entries should have NO filler appended
+4. **Undisclosed filter:** Visit `/morning-brief` — Top Deals should have fewer or zero "Undisclosed" cards (grid should collapse if filter removed deals)
+5. **No-cliché constraint validation:** Lead card, Analyst Briefing, Market Pulse narrative — count banned constructions. If materially lower than tonight's 6-per-brief, constraint is working. If not, escalate to **Approach B** (post-generation regex detector), NOT more prompt tuning.
 
 ## In Progress (2026-04-21)
 **PR #118 track-record-polish (branch: noah/track-record-polish):**
@@ -252,7 +265,38 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 9. **Weekly cross-run operator summary (PR #55)** — `backend/weekly_summary.py` aggregates observation metrics across the last 5 pipeline runs; surfaces selection quality trends, brief quality patterns, cluster momentum. Merged and production-validated.
 10. **Phase 1 hardening — observe.py reconstruction fix (PR #56)** — `_reconstruct_selected()` rewritten to mirror current `synthesize._select_articles_for_synthesis()` (spine=12, floor=6, sector_cap=3, floor_min=7). `audit.py` `_TARGET_COUNT` corrected 20→18. Stale `_diversify_articles` reconstruction logic replaced. No schema changes.
 
+## Outstanding Work Tiers
+
+**TIER A** (Blocking, ship immediately)
+- None — all shipped or validated not-a-bug.
+
+**TIER B** (High priority, real product sprint)
+- **Lead selection scoring rework** — Switch top_deals selection from first-match order to AIP/Honeywell-over-Tesla/SpaceX scoring. Biggest open product question. Real product sprint, 2–4 hours.
+
+**TIER C** (Medium priority, shipped with validation)
+- **No-cliché LANGUAGE CONSTRAINT** — SHIPPED as PR #127 (2026-04-23). Validate tomorrow morning via checkpoint #5. Iterate to **Approach B** (post-generation regex detector) if needed, NOT more prompt tuning.
+
+**TIER D** (Ops/conversation)
+- **Ingestion cadence decision** — Ops conversation with Lucas; affects cron timing and brief freshness.
+
+**TIER E** (Multi-day, deferred)
+- **Sentiment subject tagging** — Extend sentiment field with subject markers (macro/sector/company). Multi-day work, deferred.
+
+**TIER F** (Data layer, deferred)
+- **Real comp data integration** — Polygon/FMP API integration + Lucas budget conversation. Deferred.
+
 ## Pending / Known Issues
+
+**Post-sprint follow-ups (new, 2026-04-23)**
+- **React #418 hydration warning on `/evening-wrap`** — Soft issue; page renders correctly. Investigation needed: likely date formatting or browser-only API read at SSR time. ~30-min follow-up.
+- **Three migration directories with two naming conventions** — `supabase/migrations/`, `backend/migrations/`, `sql/` — need canonical-dir decision with Lucas.
+- **Pill consolidation debt** — 9 non-Active-Theses pill usages still on `Badge` or duplicate SentimentPill copies. Follow-up PR to consolidate fully.
+- **Evening Wrap TODAY'S STORY pill** — `evening-wrap/page.tsx:869` needs same mute treatment as morning-brief TODAY'S LEAD (PR #125 did morning only).
+- **Three duplicate SentimentPill implementations** — `dc-story-row`, `morning-brief` page-local, `evening-wrap` page-local should consolidate to shared `src/components/ui/sentiment-pill.tsx`.
+- **`stash@{0}` WIP preserved** — `feat/brief-polish-pass` (sentiment wording + panoramic pulse + `inspect_pulse` helper) still stashed. Decide next session: redundant with #123? incremental? discard?
+- **Vercel preview protection bypass token** — `backend/.env` contains `VERCEL_PROTECTION_BYPASS` for automation access to preview URLs without SSO wall.
+
+**Existing (deferred or blocked)**
 - **Unapplied 20260416_add_theses_user_id.sql migration** — Phase 1 personalization per-user DB-level scoping + dedup unique index (`idx_theses_user_title_sector_unique`) only enforced at application layer (`/api/theses` POST). Neither `user_id` column, nor indices exist in live schema. Decide: ship migration retroactively or accept app-layer enforcement indefinitely. Ground-truth schema snapshot at `sql/theses_current.sql` (26 columns, generated 2026-04-21).
 - **PR #118 post-merge cleanup** — After #118 merges, manually run `sql/0001_cleanup_zero_signal_calibration_rows.sql` in Supabase SQL editor to wipe ~10 zero-signal rows from `pattern_library` and `source_credibility` tables.
 - **Tier 2 saved deals RLS grant** — must run `GRANT SELECT, INSERT, DELETE ON user_saved_deals TO authenticated` manually in Supabase SQL editor for new environments (migration file incomplete).
