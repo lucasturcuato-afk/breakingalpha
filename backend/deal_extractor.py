@@ -192,6 +192,7 @@ def run():
             "deal_type":      deal["deal_type"],
             "stage":          stage_label(deal["stage"]),
             "valuation":      deal.get("valuation"),
+            "sentiment":      deal.get("sentiment"),
             "sector":         deal.get("sector") or article.get("sector"),
             "thesis":         deal.get("thesis"),
             "source_url":     deal.get("source_url") or url,
@@ -212,6 +213,7 @@ def run():
                     "stage":      row["stage"],
                     "thesis":     row["thesis"],
                     "valuation":  row["valuation"],
+                    "sentiment":  row["sentiment"],
                     "source_url": row["source_url"],
                     "updated_at": row["updated_at"],
                 }).eq("id", deal_id).execute()
