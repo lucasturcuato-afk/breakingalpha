@@ -452,7 +452,13 @@ export default function MorningBriefPage() {
   return (
     <AppShell
       pageTitle="Morning Brief"
-      mood={tone === "BEARISH" ? "risk-off" : tone === "BULLISH" ? "risk-on" : "neutral"}
+      mood={
+        tone === "BEARISH" ? "risk-off"
+        : tone === "BULLISH" ? "risk-on"
+        : tone === "MIXED" ? "mixed"
+        : tone === "WATCH" ? "watch"
+        : "neutral"
+      }
       moodHeadline={briefing?.market_tone || "Loading..."}
       moodDetails={[]}
       rightPanel={

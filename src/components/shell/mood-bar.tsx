@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 
-export type MoodType = "risk-off" | "risk-on" | "neutral";
+export type MoodType = "risk-off" | "risk-on" | "neutral" | "mixed" | "watch";
 
 interface MoodBarProps {
   mood?: MoodType;
@@ -25,6 +25,16 @@ const moodConfig: Record<MoodType, { dotColor: string; badgeClass: string; badge
     dotColor: "bg-signal-warn",
     badgeClass: "bg-signal-warn/20 text-signal-warn",
     badgeLabel: "Neutral",
+  },
+  mixed: {
+    dotColor: "bg-gold",
+    badgeClass: "bg-gold-muted text-gold-dark border border-gold-border dark:bg-[rgba(212,168,75,0.15)] dark:text-gold dark:border-[rgba(212,168,75,0.35)]",
+    badgeLabel: "Mixed",
+  },
+  watch: {
+    dotColor: "bg-text-muted",
+    badgeClass: "bg-parchment-mid text-text-secondary border border-border-base dark:bg-[rgba(100,116,139,0.18)] dark:text-text-secondary dark:border-[rgba(100,116,139,0.35)]",
+    badgeLabel: "Watch",
   },
 };
 
