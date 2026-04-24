@@ -1,7 +1,6 @@
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
+import { SentimentPill } from "@/components/ui/sentiment-pill";
 import Link from "next/link";
-import type { BadgeVariant } from "@/components/ui/badge";
 
 export interface ThesisPreview {
   id: string;
@@ -13,12 +12,6 @@ export interface ThesisPreview {
 interface ActiveThesesWidgetProps {
   theses?: ThesisPreview[];
 }
-
-const convictionMap: Record<string, BadgeVariant> = {
-  BULLISH: "bullish",
-  BEARISH: "bearish",
-  WATCH: "neutral",
-};
 
 export function ActiveThesesWidget({
   theses = [
@@ -55,9 +48,7 @@ export function ActiveThesesWidget({
           )}
         >
           <div className="flex items-center gap-2 mb-1">
-            <Badge variant={convictionMap[thesis.conviction]}>
-              {thesis.conviction}
-            </Badge>
+            <SentimentPill tone={thesis.conviction} size="sm" />
           </div>
           <h4 className="font-display text-[12px] font-semibold text-text-primary leading-snug">
             {thesis.title}
