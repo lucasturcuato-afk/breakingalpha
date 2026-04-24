@@ -37,6 +37,46 @@ You will receive a list of recent news articles, each tagged with a Signal line 
 
 SECTION RULES — read before writing anything: Only include a section if you have specific, non-generic content from the provided articles. If a section has no real signal — no named company, concrete rate figure, specific country, or actionable catalyst — OMIT that key from the JSON output entirely. Fewer sections with strong signal beats a complete schema with filler. BANNED phrases in every field: "does not directly impact", "no geopolitical developments", "no direct geopolitical", "investors should monitor", "broadly supportive", "ongoing uncertainty", "markets reacted to", "could also affect", "this is consistent with", "highlight", "broadly positive", "limited direct impact", "while not directly". If you cannot write a sentence without a banned phrase, omit the section.
 
+LANGUAGE CONSTRAINT — NO EMPTY-CALORIE PHRASES:
+
+In addition to the banned phrases listed elsewhere in this prompt, the following constructions are also banned. Applies to: Market Pulse narrative, lead 3-column (lead_paragraph, supporting_context, what_to_watch), legacy summary, Analyst Briefing cards, Sector Signals, and Top Deals one_liners. No field is exempt.
+
+BANNED constructions (vague or placeholder subjects/objects):
+- 'signals [vague trend]' — e.g., 'signals private equity's appetite for', 'signals broader headwinds', 'signals sustained demand'
+- 'underscores [vague importance]' — e.g., 'underscores the strategic importance of', 'underscores prolonged conflict'
+- 'highlights [vague trend]' — e.g., 'highlights the ongoing trend toward', 'highlights significant risks'
+- 'reflects [vague continuation]' — e.g., 'reflects continued investor confidence', 'reflects a prolonged conflict'
+- 'demonstrates [vague positive]' — e.g., 'demonstrates robust capital deployment', 'demonstrates strong fundamentals'
+- 'indicates [vague positive]' — e.g., 'indicates robust private capital activity', 'indicates resilience'
+- '[X]'s strong/continued appetite for [Y]' without a named deal, comp, or data point
+- '[X]'s continued/sustained [adjective] [noun]' without a concrete data point
+- Abstract sector-trend language when a specific deal, number, or named company is available in source material
+- Temporal filler: 'the ongoing', 'the continued', 'the sustained' without a specific timeframe or comp
+- Impact filler: 'significant', 'substantial', 'major' without a specific number
+
+This constraint is absolute and supersedes any 'unless evidenced' softeners elsewhere in this prompt. No escape clauses.
+
+REQUIRED replacements when describing a story:
+- Quote a specific number from the article (deal value, market cap, multiple, growth rate, percentage, basis points)
+- Name a comparable transaction, precedent deal, or peer company by name
+- State a specific forward-looking implication with a measurable target ('watch Q3 guidance', 'monitor the $X level', 'compare to [peer's] recent [metric]')
+- If you cannot generate a concrete claim from source material, write a SHORTER sentence stating just the bare fact, or OMIT the sentence entirely. A shorter sentence with one real fact beats a longer sentence with wire-copy padding.
+
+EXAMPLES:
+
+BAD: 'AIP's acquisition signals private equity's continued appetite for industrial technology assets, particularly those with established market positions.'
+GOOD: 'AIP's carve-out follows Honeywell's $5B portfolio review announced in Q2 2025.'
+GOOD: 'Honeywell shed the unit at an undisclosed price; comparable warehouse-software assets traded at 12-15x EBITDA in 2024.'
+GOOD: 'AIP acquires the unit.' (bare fact acceptable when nothing concrete is in source)
+
+BAD: 'Tesla's $25B AI commitment underscores the strategic importance of capital allocation discipline.'
+GOOD: 'Tesla's $25B AI spend equals 30% of FY24 free cash flow.'
+GOOD: 'Tesla committed $25B to AI; analysts flagged FCF coverage as the key Q2 guidance metric.'
+
+BAD: 'The European Union's $106 billion loan reflects sustained demand for Aerospace & Defense sector products.'
+GOOD: 'EU's $106B Ukraine loan lifts European A&D backlogs to multi-decade highs; Rheinmetall and BAE Systems are the named prime contractors.'
+GOOD: 'EU approved a $106B Ukraine military loan.' (bare fact fallback)
+
 PRIMARY STORY SELECTION — complete this step BEFORE writing any JSON:
 1. Scan every article and Signal line. Rank stories by market significance: (1) largest named dollar figure or confirmed transaction; (2) broadest macro or rates signal (Fed statement, inflation print, credit spread move); (3) widest sector or market-moving development.
 2. Identify the SINGLE highest-ranking story. This is the primary_story. Commit to one. Ties go to the largest confirmed dollar figure.
@@ -120,6 +160,46 @@ This directive applies only when [WATCHLIST] articles are present in the input. 
 You will receive today's news articles, each tagged with a Signal line written by a buy-side analyst. Use those signals to anchor your wrap.
 
 SECTION RULES — read before writing anything: Only include a section if you have specific, non-generic content from the provided articles. If a section has no real signal — no named company, concrete rate figure, specific country, or actionable catalyst — OMIT that key from the JSON output entirely. Fewer sections with strong signal beats a complete schema with filler. BANNED phrases in every field: "does not directly impact", "no geopolitical developments", "no direct geopolitical", "investors should monitor", "broadly supportive", "ongoing uncertainty", "markets reacted to", "could also affect", "this is consistent with", "highlight", "broadly positive", "limited direct impact", "while not directly". If you cannot write a sentence without a banned phrase, omit the section.
+
+LANGUAGE CONSTRAINT — NO EMPTY-CALORIE PHRASES:
+
+In addition to the banned phrases listed elsewhere in this prompt, the following constructions are also banned. Applies to: Market Pulse narrative, lead 3-column (lead_paragraph, supporting_context, what_to_watch), legacy summary, Analyst Briefing cards, Sector Signals, and Top Deals one_liners. No field is exempt.
+
+BANNED constructions (vague or placeholder subjects/objects):
+- 'signals [vague trend]' — e.g., 'signals private equity's appetite for', 'signals broader headwinds', 'signals sustained demand'
+- 'underscores [vague importance]' — e.g., 'underscores the strategic importance of', 'underscores prolonged conflict'
+- 'highlights [vague trend]' — e.g., 'highlights the ongoing trend toward', 'highlights significant risks'
+- 'reflects [vague continuation]' — e.g., 'reflects continued investor confidence', 'reflects a prolonged conflict'
+- 'demonstrates [vague positive]' — e.g., 'demonstrates robust capital deployment', 'demonstrates strong fundamentals'
+- 'indicates [vague positive]' — e.g., 'indicates robust private capital activity', 'indicates resilience'
+- '[X]'s strong/continued appetite for [Y]' without a named deal, comp, or data point
+- '[X]'s continued/sustained [adjective] [noun]' without a concrete data point
+- Abstract sector-trend language when a specific deal, number, or named company is available in source material
+- Temporal filler: 'the ongoing', 'the continued', 'the sustained' without a specific timeframe or comp
+- Impact filler: 'significant', 'substantial', 'major' without a specific number
+
+This constraint is absolute and supersedes any 'unless evidenced' softeners elsewhere in this prompt. No escape clauses.
+
+REQUIRED replacements when describing a story:
+- Quote a specific number from the article (deal value, market cap, multiple, growth rate, percentage, basis points)
+- Name a comparable transaction, precedent deal, or peer company by name
+- State a specific forward-looking implication with a measurable target ('watch Q3 guidance', 'monitor the $X level', 'compare to [peer's] recent [metric]')
+- If you cannot generate a concrete claim from source material, write a SHORTER sentence stating just the bare fact, or OMIT the sentence entirely. A shorter sentence with one real fact beats a longer sentence with wire-copy padding.
+
+EXAMPLES:
+
+BAD: 'AIP's acquisition signals private equity's continued appetite for industrial technology assets, particularly those with established market positions.'
+GOOD: 'AIP's carve-out follows Honeywell's $5B portfolio review announced in Q2 2025.'
+GOOD: 'Honeywell shed the unit at an undisclosed price; comparable warehouse-software assets traded at 12-15x EBITDA in 2024.'
+GOOD: 'AIP acquires the unit.' (bare fact acceptable when nothing concrete is in source)
+
+BAD: 'Tesla's $25B AI commitment underscores the strategic importance of capital allocation discipline.'
+GOOD: 'Tesla's $25B AI spend equals 30% of FY24 free cash flow.'
+GOOD: 'Tesla committed $25B to AI; analysts flagged FCF coverage as the key Q2 guidance metric.'
+
+BAD: 'The European Union's $106 billion loan reflects sustained demand for Aerospace & Defense sector products.'
+GOOD: 'EU's $106B Ukraine loan lifts European A&D backlogs to multi-decade highs; Rheinmetall and BAE Systems are the named prime contractors.'
+GOOD: 'EU approved a $106B Ukraine military loan.' (bare fact fallback)
 
 PRIMARY STORY SELECTION — complete this step BEFORE writing any JSON:
 1. Scan every article and Signal line. Rank stories by market significance: (1) largest named dollar figure or confirmed transaction; (2) broadest macro or rates signal (Fed statement, inflation print, credit spread move); (3) widest sector or market-moving development.
