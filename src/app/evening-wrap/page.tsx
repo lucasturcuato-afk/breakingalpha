@@ -867,7 +867,7 @@ export default function EveningWrapPage() {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 8,
-                    background: HERITAGE_GOLD,
+                    background: "#a88340",
                     color: DC_ESPRESSO,
                     padding: "5px 12px",
                     borderRadius: 20,
