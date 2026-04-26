@@ -392,7 +392,10 @@ export default function EveningWrapPage() {
   }, [stories, profile]);
 
   const tone = normaliseTone(briefing?.market_tone);
-  const now = briefing?.created_at ? new Date(briefing.created_at) : new Date();
+  // Use a stable epoch fallback to avoid SSR/client hydration mismatch (#418).
+  // Real briefings always carry created_at; the fallback only guards null edges.
+  const [fallbackDate] = useState(() => new Date());
+  const now = briefing?.created_at ? new Date(briefing.created_at) : fallbackDate;
   const dateStr = formatDatePretty(now);
   const timeStr = formatTimePretty(now);
 
@@ -864,7 +867,7 @@ export default function EveningWrapPage() {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 8,
-                    background: HERITAGE_GOLD,
+                    background: "#a88340",
                     color: DC_ESPRESSO,
                     padding: "5px 12px",
                     borderRadius: 20,
