@@ -158,6 +158,9 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 4. Are there active paying users? (determines urgency of fixes)
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
 
+## Recently Completed (2026-04-25)
+**PR #132 — Bugfix pass (5 commits):** React hydration mismatch on `/evening-wrap` and `/morning-brief` fixed via `useState` lazy initializer; Evening Wrap TODAY'S STORY pill muted to match morning-brief (PR #125); migration catalog audited (19 items: 7 REQUIRED, 7 OPTIONAL, 3 branch-only, 1 post-merge, 1 informational). All 14 pages smoke-tested via dev server. Noah has 3 open draft PRs (#129–#131, DO NOT MERGE); `lucas/intelligence-sprint` branch ready to merge (expect conflicts in synthesize.py, morning-brief, evening-wrap, trends, settings). `next build` fails (missing PR #131 packages); dev server works fine.
+
 ## Recently Completed (2026-04-23)
 **Four-PR morning-brief stabilization sprint (PRs #124–#127 shipped to prod):** sentiment persistence in deal_extractor/deal_flow (recovered silent failures since PR #123); masthead Direction C gradient + mood bar type extensions ('mixed', 'watch'); Top Deals grid collapse (3→2→1 cols) + TODAY'S LEAD pill muted + Active Theses pill harmonization via shared SentimentPill; filter_undisclosed_deals() post-process in synthesize.py; no-cliché LANGUAGE CONSTRAINT block in MORNING_SYSTEM, EVENING_SYSTEM, deal_extractor SYSTEM_PROMPT. Validated sentiment persistence at WTI $97 vs CNBC. Pipeline A/B confirmed independent. HANDOFF.md should distinguish verified facts from spec claims from bug hypotheses — conflating led to plan corrections this session.
 
@@ -287,14 +290,18 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 
 ## Pending / Known Issues
 
-**Post-sprint follow-ups (new, 2026-04-23)**
-- **React #418 hydration warning on `/evening-wrap`** — Soft issue; page renders correctly. Investigation needed: likely date formatting or browser-only API read at SSR time. ~30-min follow-up.
+**Post-sprint follow-ups (new, 2026-04-23) — PARTIALLY RESOLVED**
 - **Three migration directories with two naming conventions** — `supabase/migrations/`, `backend/migrations/`, `sql/` — need canonical-dir decision with Lucas.
 - **Pill consolidation debt** — 9 non-Active-Theses pill usages still on `Badge` or duplicate SentimentPill copies. Follow-up PR to consolidate fully.
-- **Evening Wrap TODAY'S STORY pill** — `evening-wrap/page.tsx:869` needs same mute treatment as morning-brief TODAY'S LEAD (PR #125 did morning only).
 - **Three duplicate SentimentPill implementations** — `dc-story-row`, `morning-brief` page-local, `evening-wrap` page-local should consolidate to shared `src/components/ui/sentiment-pill.tsx`.
 - **`stash@{0}` WIP preserved** — `feat/brief-polish-pass` (sentiment wording + panoramic pulse + `inspect_pulse` helper) still stashed. Decide next session: redundant with #123? incremental? discard?
 - **Vercel preview protection bypass token** — `backend/.env` contains `VERCEL_PROTECTION_BYPASS` for automation access to preview URLs without SSO wall.
+
+**Blocked or awaiting decision (2026-04-25)**
+- **`lucas/intelligence-sprint` branch ready for merge** — 8 commits, 20+ files. Conflicts expected in synthesize.py, morning-brief, evening-wrap, trends, settings/preferences. Needs merge coordination.
+- **PR #131 missing packages blocking `next build`** — `@react-pdf/renderer`, `resend`, `@react-email/*` not in dependencies. Dev server works (Turbopack). Need decision: install packages or defer PR #131?
+- **7 pre-existing TypeScript errors from PR #131 files** — flagged during smoke test. Should be resolved before merge.
+- **Missing `framer-motion` package** — flagged during smoke test; not critical (no import errors), but should be added if motion features are in-scope.
 
 **Existing (deferred or blocked)**
 - **Unapplied 20260416_add_theses_user_id.sql migration** — Phase 1 personalization per-user DB-level scoping + dedup unique index (`idx_theses_user_title_sector_unique`) only enforced at application layer (`/api/theses` POST). Neither `user_id` column, nor indices exist in live schema. Decide: ship migration retroactively or accept app-layer enforcement indefinitely. Ground-truth schema snapshot at `sql/theses_current.sql` (26 columns, generated 2026-04-21).
