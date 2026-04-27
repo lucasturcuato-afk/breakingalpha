@@ -3,21 +3,32 @@
  *
  * Body: { briefing_id?: string; briefing_type?: "morning" | "evening" }
  *
- * Puppeteer-driven PDF export (spec Section 4). Previously this route
- * rendered `<BriefPdf />` via `@react-pdf/renderer`; it now drives a
- * headless Chromium against the internal `/print/[briefing_id]` route
- * so the PDF matches the live web UI 1:1.
+ * Puppeteer-driven PDF export. The route:
+ *   1. Authenticates the incoming Next.js request (cookie-based).
+ *   2. Forwards the user's Supabase auth cookies into the Puppeteer
+ *      browser context via `page.setCookie()` so the headless render
+ *      sees the user's session — same auth the live web view uses.
+ *   3. Drives Chromium against `/print/[briefing_id]`, which calls
+ *      `/api/briefing` with a Bearer token derived from the session,
+ *      reproducing the exact personalized payload the web UI renders
+ *      (PR #103 watchlist baking, Lucas's section/sector_breakdown
+ *      reshaping, V4B per-user addendum when present).
+ *   4. Validates the render before returning. If the page redirected
+ *      to /auth, or the title contains "Sign In" / "404" / "Error",
+ *      or the expected DOM marker is missing, we return HTTP 500 with
+ *      a descriptive body. We never return HTTP 200 with a PDF of an
+ *      error or sign-in page — that silent-success-on-broken-auth was
+ *      the failure mode that prompted this rewrite.
  *
  * Why Puppeteer: react-pdf can't render the gold→espresso masthead
  * gradient, CSS grid lead cards, the mood bar, or the Morning Review
- * reflection block without a parallel rewrite that drifts from the web
- * UI. Chromium-driven HTML → PDF gives free fidelity. See spec §3.
+ * reflection block without a parallel rewrite that drifts from the
+ * web UI. Chromium-driven HTML → PDF gives free fidelity. See spec §3.
  *
- * Size note: puppeteer-core + @sparticuz/chromium adds ~46–52 MB zipped.
- * Vercel Pro (50 MB) is the target. If Hobby, fall back to react-pdf
- * per spec §5. `next.config` externalises @sparticuz/chromium so its
- * Brotli-packed binary ships alongside the function rather than being
- * inlined into the bundle.
+ * Size note: puppeteer-core + @sparticuz/chromium-min adds ~46–52 MB
+ * zipped. Vercel Pro (50 MB) is the target. `next.config` externalises
+ * @sparticuz/chromium so its Brotli-packed binary ships alongside the
+ * function rather than being inlined into the bundle.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -52,9 +63,9 @@ function deriveOrigin(request: NextRequest): string {
 }
 
 async function launchBrowser() {
-  // Prod: @sparticuz/chromium ships a Linux Chromium binary that
-  // Vercel's Lambda base image can exec. Dev on macOS: @sparticuz
-  // Chromium is Linux-only, so fall back to system Chrome.
+  // Prod: @sparticuz/chromium-min ships a Linux Chromium binary that
+  // Vercel's Lambda base image can exec. Dev on macOS: chromium-min is
+  // Linux-only, so fall back to system Chrome.
   const isLocal =
     process.env.NODE_ENV === "development" || process.platform === "darwin";
 
@@ -74,18 +85,10 @@ async function launchBrowser() {
     });
   }
 
-  // We use @sparticuz/chromium-min (not @sparticuz/chromium) because
-  // the full package ships a 61 MB Brotli-packed Chromium binary that
-  // blows past Vercel's 50 MB-zipped function limit. chromium-min is
-  // 84 KB and pulls the binary from a CDN URL at cold-start time.
-  //
-  // The URL points at the matching chromium pack tarball on GitHub
-  // releases. Pin to the same MAJOR version as the installed
-  // chromium-min to avoid protocol drift vs puppeteer-core.
-  //
-  // Override with PUPPETEER_CHROMIUM_PACK_URL if you need to serve
-  // the tarball from your own CDN (recommended for cold-start perf:
-  // GitHub releases can be slow from Lambda regions).
+  // chromium-min (vs full @sparticuz/chromium) keeps the function under
+  // Vercel's 50 MB-zipped limit by pulling the 61 MB Brotli pack from a
+  // CDN at cold start. PUPPETEER_CHROMIUM_PACK_URL overrides the URL
+  // (recommended for cold-start perf — GitHub releases can be slow).
   const chromiumMod = await import("@sparticuz/chromium-min");
   const chromium = chromiumMod.default ?? chromiumMod;
   const packUrl =
@@ -130,6 +133,34 @@ function footerTemplate(label: string): string {
   `;
 }
 
+/**
+ * Forward the user's Supabase auth cookies into the Puppeteer browser
+ * context. We carry every `sb-*` cookie verbatim (chunked auth tokens
+ * arrive as `sb-<ref>-auth-token.0`, `.1`, etc — forwarding all of them
+ * keeps the chunked-payload reassembly intact). The URL-anchored form
+ * lets Puppeteer derive `domain` / `secure` from the print URL, which
+ * matches the cookie scope set by `@supabase/ssr` for both localhost
+ * and `*.vercel.app`.
+ */
+type ForwardableCookie = { name: string; value: string };
+function extractAuthCookies(request: NextRequest): ForwardableCookie[] {
+  return request.cookies
+    .getAll()
+    .filter((c) => c.name.startsWith("sb-"))
+    .map((c) => ({ name: c.name, value: c.value }));
+}
+
+function isBadTitle(title: string): boolean {
+  if (!title) return true;
+  const t = title.toLowerCase();
+  return (
+    t.includes("sign in") ||
+    t.includes("404") ||
+    t.includes("not found") ||
+    t.includes("error")
+  );
+}
+
 export async function POST(request: NextRequest) {
   const { supabase, user } = await getSupabaseWithUser();
   if (!user) {
@@ -170,6 +201,10 @@ export async function POST(request: NextRequest) {
   }
 
   const origin = deriveOrigin(request);
+
+  // HMAC token is now belt-and-suspenders: cookies are the primary auth
+  // path, the token still validates on the /print side as a defense
+  // against leaked URLs reaching the route without a session.
   let token: string;
   try {
     token = mintPrintToken(row.id);
@@ -191,41 +226,108 @@ export async function POST(request: NextRequest) {
   printUrl.searchParams.set("type", row.briefing_type ?? type);
   printUrl.searchParams.set("origin", origin);
 
+  const authCookies = extractAuthCookies(request);
+  if (authCookies.length === 0) {
+    // Cookies should always be present here — getSupabaseWithUser()
+    // succeeded above, which means the request carried a valid session.
+    // Failing closed protects against any future code path that calls
+    // this without a real user request.
+    console.error("[export-pdf] authenticated user has no sb-* cookies to forward");
+    return NextResponse.json(
+      { error: "Auth cookie forwarding failed — cannot personalize PDF" },
+      { status: 500 },
+    );
+  }
+
   let buffer: Buffer;
   let browser: Awaited<ReturnType<typeof launchBrowser>> | null = null;
+  let renderError: { status: number; reason: string } | null = null;
   try {
     browser = await launchBrowser();
     const page = await browser.newPage();
     await page.emulateMediaType("print");
     await page.setViewport({ width: 1000, height: 1294, deviceScaleFactor: 1 });
 
-    // Ask Chromium to wait for DOM + network quiet. 20s ceiling covers
-    // slow VIX / Supabase latency without ever hanging a 60s function.
-    await page.goto(printUrl.toString(), {
+    // Forward auth cookies BEFORE navigation so the print page sees
+    // the user's session on first request.
+    await page.setCookie(
+      ...authCookies.map((c) => ({
+        name: c.name,
+        value: c.value,
+        url: origin,
+      })),
+    );
+
+    // Wait for DOM + network quiet. 20s ceiling covers slow VIX /
+    // Supabase latency without ever hanging a 60s function.
+    const response = await page.goto(printUrl.toString(), {
       waitUntil: "networkidle0",
       timeout: 20000,
     });
 
+    // ── Real validation: never silently return a PDF of the wrong page ──
+    const finalUrl = page.url();
+    if (finalUrl.includes("/auth")) {
+      renderError = {
+        status: 500,
+        reason: `Puppeteer redirected to ${finalUrl} — cookie forwarding likely failed`,
+      };
+    } else if (response && !response.ok()) {
+      renderError = {
+        status: 500,
+        reason: `Print page returned HTTP ${response.status()}`,
+      };
+    } else {
+      const title = await page.title();
+      if (isBadTitle(title)) {
+        renderError = {
+          status: 500,
+          reason: `Rendered page title looks like an error/auth page: "${title}"`,
+        };
+      } else {
+        const briefRoot = await page.$("[data-print-brief-root]");
+        if (!briefRoot) {
+          renderError = {
+            status: 500,
+            reason:
+              "Rendered page is missing the [data-print-brief-root] marker — brief content did not render",
+          };
+        }
+      }
+    }
+
+    if (renderError) {
+      // Log enough to debug from server logs without leaking session info.
+      console.error(
+        `[export-pdf] render validation failed: ${renderError.reason} (url=${finalUrl})`,
+      );
+    }
+
     // Block until webfonts actually render — otherwise the first few
     // pages ship with Helvetica fallback glyphs.
-    await page.evaluate(() => document.fonts?.ready ?? Promise.resolve());
+    if (!renderError) {
+      await page.evaluate(() => document.fonts?.ready ?? Promise.resolve());
+    }
 
-    const pdf = await page.pdf({
-      format: "Letter",
-      printBackground: true,
-      preferCSSPageSize: true,
-      margin: {
-        top: "0.6in",
-        right: "0.55in",
-        bottom: "0.55in",
-        left: "0.55in",
-      },
-      displayHeaderFooter: true,
-      headerTemplate: headerTemplate(kindLabel, dateSlug),
-      footerTemplate: footerTemplate(kindLabel),
-    });
-
-    buffer = Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
+    if (!renderError) {
+      const pdf = await page.pdf({
+        format: "Letter",
+        printBackground: true,
+        preferCSSPageSize: true,
+        margin: {
+          top: "0.6in",
+          right: "0.55in",
+          bottom: "0.55in",
+          left: "0.55in",
+        },
+        displayHeaderFooter: true,
+        headerTemplate: headerTemplate(kindLabel, dateSlug),
+        footerTemplate: footerTemplate(kindLabel),
+      });
+      buffer = Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
+    } else {
+      buffer = Buffer.from([]); // unused, but TS needs the assignment
+    }
   } catch (e) {
     console.error("[export-pdf] render error:", e);
     return NextResponse.json(
@@ -238,6 +340,13 @@ export async function POST(request: NextRequest) {
     } catch {
       /* ignore close errors */
     }
+  }
+
+  if (renderError) {
+    return NextResponse.json(
+      { error: renderError.reason },
+      { status: renderError.status },
+    );
   }
 
   return new NextResponse(new Uint8Array(buffer), {

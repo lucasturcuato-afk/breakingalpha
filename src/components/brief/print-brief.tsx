@@ -104,6 +104,13 @@ export interface PrintBriefProps {
   stories: PrintStory[];
   thesesCount: number | null;
   vix: { price: string; pct: number } | null;
+  /** Optional user-specific format label from /api/briefing personalization
+   * (e.g. "5 Bullets", "Client Morning Note"). Used as headline fallback to
+   * match `morning-brief/page.tsx:803`. */
+  formatLabel?: string | null;
+  /** Optional V4B per-user addendum from `user_briefings.addendum`. Mirrors
+   * the "Your Personalized Briefing" block at `morning-brief/page.tsx:933`. */
+  userAddendum?: string | null;
 }
 
 /* ── Helpers ───────────────────────────────────────────────────────── */
@@ -1028,6 +1035,8 @@ export function PrintBrief({
   stories,
   thesesCount,
   vix,
+  formatLabel,
+  userAddendum,
 }: PrintBriefProps) {
   const kind = briefing.briefing_type;
   const tone = normaliseTone(briefing.market_tone);
@@ -1079,7 +1088,7 @@ export function PrintBrief({
   const tabOrder = kind === "evening" ? EVENING_TAB_ORDER : MORNING_TAB_ORDER;
 
   return (
-    <>
+    <div data-print-brief-root data-briefing-id={briefing.id} data-briefing-type={kind}>
       <PrintMasthead
         kind={kind}
         generatedAtIso={briefing.created_at}
@@ -1145,11 +1154,50 @@ export function PrintBrief({
         </section>
 
         <LeadSection
-          headline={briefing.headline || "Morning Market Brief"}
+          headline={briefing.headline || formatLabel || "Morning Market Brief"}
           leadCards={leadCards}
           topDeals={briefing.top_deals ?? []}
           tone={tone}
         />
+
+        {userAddendum && (
+          <section
+            className="print-section print-card"
+            style={{
+              marginBottom: 36,
+              padding: "16px 20px",
+              borderRadius: 14,
+              border: "1px solid var(--gold-border)",
+              background: "var(--gold-muted)",
+            }}
+          >
+            <p
+              className="font-sans"
+              style={{
+                fontSize: 10,
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
+                color: "var(--gold-dark)",
+                fontWeight: 700,
+                margin: "0 0 8px",
+              }}
+            >
+              Your Personalized Briefing
+            </p>
+            <p
+              className="font-sans"
+              style={{
+                fontSize: 13,
+                lineHeight: 1.6,
+                color: "var(--text-primary)",
+                whiteSpace: "pre-line",
+                margin: 0,
+              }}
+            >
+              {userAddendum}
+            </p>
+          </section>
+        )}
 
         {/* Evening Wrap: Morning Brief Review block (spec confirms
             include-by-default for parity with the live page). */}
@@ -1172,7 +1220,7 @@ export function PrintBrief({
           label={kind === "evening" ? "Today's Top Stories" : "Today's Stories"}
         />
       </div>
-    </>
+    </div>
   );
 }
 

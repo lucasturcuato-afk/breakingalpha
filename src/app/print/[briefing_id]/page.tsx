@@ -1,34 +1,96 @@
 /**
  * /print/[briefing_id] — server-rendered print view of a brief.
  *
- * Access model (spec Section 4.1 / Open Question 3):
- *   - HMAC-gated via `?t=<token>` minted by `/api/brief/export-pdf`.
- *   - Not intended for end-user linking. Puppeteer navigates here with
- *     a 15-min signed token, renders, and closes.
- *   - Returns `notFound()` on missing/invalid token so leaked URLs 404
- *     rather than exposing briefing content.
+ * Auth model (post-fix):
+ *   - Authenticates via the user's Supabase session cookies. Puppeteer
+ *     receives those cookies via `page.setCookie()` from the export-pdf
+ *     route, so its render context is identical to the user's browser.
+ *   - For each render, derive `session.access_token` and relay it to
+ *     `/api/briefing?type=...` as `Authorization: Bearer ...` — the same
+ *     call the live `/morning-brief` page makes. This gives the print
+ *     route exact parity with the web view: PR #103 watchlist-baked
+ *     content, Lucas's section / sector_breakdown reshaping, and the
+ *     V4B per-user addendum (when the migration is applied) all flow
+ *     through automatically.
  *
- * Data flow:
- *   - Uses the service-role Supabase client (no user session needed —
- *     Puppeteer does not ship cookies). Briefing lookup is read-only.
- *   - Articles for the Top Stories block come from the same 24h/48h
- *     fallback query the live Morning Brief + Evening Wrap pages use.
- *   - VIX + theses count: reads from /api/watchlist-quotes and from
- *     the theses table directly. Server-side so the PDF doesn't depend
- *     on client JS hydration.
+ *   - HMAC-token validation (legacy from PR #131) is preserved as an
+ *     optional defense-in-depth check: if a request arrives with a
+ *     valid `?t=` token, that's enough to render even without cookies
+ *     (the resulting brief is un-personalized — graceful fallback).
+ *     If neither cookies nor a valid token are present, return 404 so
+ *     leaked URLs can't surface briefing content.
  *
- * Runtime: nodejs (Supabase service-role import is not edge-compatible).
+ *   - VIX / theses count / stories use the anon key (matches the web
+ *     UI's RLS-permitted reads). Service role is no longer required.
+ *
+ * Runtime: nodejs (Supabase SSR client is not edge-compatible).
  */
 
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { cookies, headers } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { verifyPrintToken } from "@/lib/print-token";
 import { PrintBrief, type PrintStory } from "@/components/brief/print-brief";
 import { stripHtml } from "@/lib/strip-html";
+import { formatPTDateLong } from "@/lib/format-pt";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+/**
+ * Per-render metadata: the PDF Title field (set by Puppeteer from the
+ * rendered <title>) is the user-visible artefact in macOS Finder /
+ * Acrobat. We inject the briefing date and headline so the title looks
+ * like "Morning Brief — April 27, 2026 · <headline>" rather than the
+ * static layout fallback.
+ *
+ * Soft-fails: if the briefing fetch fails here, we fall back to the
+ * layout-level "Signalera — Print View" title. The validator in
+ * /api/brief/export-pdf still catches missing brief content via the
+ * data-print-brief-root marker.
+ */
+export async function generateMetadata({
+  params,
+  searchParams,
+}: PageProps): Promise<Metadata> {
+  const { briefing_id } = await params;
+  const sp = await searchParams;
+  const type: "morning" | "evening" =
+    sp.type === "evening" ? "evening" : "morning";
+  const label = type === "evening" ? "Evening Wrap" : "Morning Brief";
+
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) throw new Error("missing supabase env");
+    const sb = createClient(url, key, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data } = await sb
+      .from("briefings")
+      .select("headline, created_at")
+      .eq("id", briefing_id)
+      .limit(1)
+      .single();
+    if (data) {
+      const date = formatPTDateLong(data.created_at ?? null);
+      const headline =
+        typeof data.headline === "string" && data.headline.trim()
+          ? data.headline.replace(/\s+/g, " ").trim().slice(0, 80)
+          : null;
+      const title = headline
+        ? `${label} — ${date} · ${headline}`
+        : `${label} — ${date}`;
+      return { title };
+    }
+  } catch {
+    /* fall through to default */
+  }
+  return { title: `Signalera ${label}` };
+}
 
 function safeParse<T>(v: unknown): T | null {
   if (v == null) return null;
@@ -59,13 +121,11 @@ function sentimentFromDb(s: string | null): string {
   return "neutral";
 }
 
-function serviceClient() {
+function anonClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) {
-    throw new Error("Supabase env vars missing — NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY");
+    throw new Error("Supabase env vars missing — NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY");
   }
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -96,6 +156,13 @@ async function loadVix(origin: string | null): Promise<{ price: string; pct: num
   }
 }
 
+interface BriefingApiResponse {
+  briefing: Record<string, unknown> | null;
+  pref_applied?: boolean;
+  personalization?: { format_label?: string } | null;
+  user_addendum?: string | null;
+}
+
 interface PageProps {
   params: Promise<{ briefing_id: string }>;
   searchParams: Promise<{ t?: string; type?: string; origin?: string }>;
@@ -107,32 +174,112 @@ export default async function PrintBriefPage({
 }: PageProps) {
   const { briefing_id } = await params;
   const sp = await searchParams;
+  const type: "morning" | "evening" =
+    sp.type === "evening" ? "evening" : "morning";
 
-  // HMAC gate. Invalid / missing / expired → 404.
-  const verified = verifyPrintToken(sp.t ?? null, briefing_id);
-  if (!verified) {
+  // ── Auth: cookie session OR HMAC token (defense-in-depth) ──
+  const cookieStore = await cookies();
+  const supabaseSSR = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options),
+          );
+        },
+      },
+    },
+  );
+
+  const {
+    data: { session },
+  } = await supabaseSSR.auth.getSession();
+
+  const tokenValid = verifyPrintToken(sp.t ?? null, briefing_id);
+  if (!session && !tokenValid) {
+    console.error(
+      `[print] auth failed briefing_id=${briefing_id} (no session, no valid token) — returning 404`,
+    );
+    notFound();
+  }
+  console.log(
+    `[print] render briefing_id=${briefing_id} type=${type} authPath=${session ? "session" : "token"}`,
+  );
+
+  // ── Origin for internal /api fetches ──
+  // Prefer the explicit ?origin= passed by the export-pdf route (Puppeteer
+  // gets called with the same origin as the user's request). Fall back to
+  // x-forwarded headers, then NEXT_PUBLIC_SITE_URL, then localhost.
+  const reqHeaders = await headers();
+  const origin =
+    (typeof sp.origin === "string" && sp.origin) ||
+    (() => {
+      const proto = reqHeaders.get("x-forwarded-proto") || "https";
+      const host = reqHeaders.get("x-forwarded-host") || reqHeaders.get("host");
+      return host ? `${proto}://${host}` : null;
+    })() ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    "http://localhost:3000";
+
+  // ── Fetch personalized briefing payload via /api/briefing (mirrors web) ──
+  const briefingHeaders: HeadersInit = {};
+  if (session?.access_token) {
+    briefingHeaders.Authorization = `Bearer ${session.access_token}`;
+  }
+  let payload: BriefingApiResponse | null = null;
+  try {
+    const res = await fetch(`${origin}/api/briefing?type=${type}`, {
+      headers: briefingHeaders,
+      cache: "no-store",
+    });
+    if (res.ok) {
+      payload = (await res.json()) as BriefingApiResponse;
+    } else {
+      console.error(
+        `[print] /api/briefing returned ${res.status} (hasAuth=${!!session})`,
+      );
+    }
+  } catch (e) {
+    console.error("[print] briefing fetch failed:", e);
+  }
+
+  const row = payload?.briefing;
+  if (!row) {
+    console.error(
+      `[print] no briefing row from /api/briefing (hasAuth=${!!session}) — returning 404`,
+    );
+    // No briefing available — let the export-pdf validator catch this
+    // via the missing data-print-brief-root marker.
     notFound();
   }
 
-  const supabase = serviceClient();
-
-  const { data: row, error } = await supabase
-    .from("briefings")
-    .select("*")
-    .eq("id", briefing_id)
-    .limit(1)
-    .single();
-
-  if (error || !row) {
-    notFound();
+  if (typeof row.id === "string" && row.id !== briefing_id) {
+    console.warn(
+      `[print] URL briefing_id=${briefing_id} differs from latest ` +
+        `id=${row.id}; rendering the user's actual current view (latest).`,
+    );
   }
 
-  // Normalise row into the print payload shape.
+  // Normalise row into the print payload shape. /api/briefing returns
+  // shaped objects already, but be defensive in case anything is a string.
   const sections = safeParse<Record<string, string>>(row.sections) ?? {};
-  const sectorBreakdown = safeParse<Record<string, string>>(row.sector_breakdown) ?? {};
-  const topDeals = safeParse<
-    Array<{ company: string; value?: string; deal_type?: string; one_liner?: string; sentiment?: string | null }>
-  >(row.top_deals) ?? [];
+  const sectorBreakdown =
+    safeParse<Record<string, string>>(row.sector_breakdown) ?? {};
+  const topDeals =
+    safeParse<
+      Array<{
+        company: string;
+        value?: string;
+        deal_type?: string;
+        one_liner?: string;
+        sentiment?: string | null;
+      }>
+    >(row.top_deals) ?? [];
   const marketPulse = safeParse<{
     sentiment_word?: string;
     narrative?: string;
@@ -140,16 +287,23 @@ export default async function PrintBriefPage({
   }>(row.market_pulse);
   const morningReview = safeParse<{
     aggregate_sentence?: string;
-    sector_reflections?: Array<{ sector: string; verdict: "correct" | "wrong" | "partial"; paragraph: string }>;
-    ticker_reflection?: { symbol: string; verdict: "correct" | "wrong" | "partial"; paragraph: string } | null;
+    sector_reflections?: Array<{
+      sector: string;
+      verdict: "correct" | "wrong" | "partial";
+      paragraph: string;
+    }>;
+    ticker_reflection?: {
+      symbol: string;
+      verdict: "correct" | "wrong" | "partial";
+      paragraph: string;
+    } | null;
   }>(row.morning_review);
 
   const kind: "morning" | "evening" =
     row.briefing_type === "evening" ? "evening" : "morning";
 
-  // Top Stories — mirror live page 24h → 48h fallback query. Server
-  // components run once per request so Date.now() is stable within a
-  // render; the purity lint rule is a React-client-component concern.
+  // ── Top stories (anon-permitted reads) ──
+  const supabase = anonClient();
   // eslint-disable-next-line react-hooks/purity
   const nowMs = Date.now();
   const cutoff24h = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
@@ -182,7 +336,7 @@ export default async function PrintBriefPage({
     summary: a.summary ? stripHtml(a.summary) : undefined,
     url: a.url || undefined,
   }));
-  // Thesis count.
+
   let thesesCount: number | null = null;
   try {
     const { count } = await supabase
@@ -193,36 +347,41 @@ export default async function PrintBriefPage({
     /* soft-fail */
   }
 
-  // VIX snapshot. Uses origin from `?origin=` (passed by Puppeteer
-  // driver) so the fetch hits the same deployment the print page is
-  // rendering from. Falls back to NEXT_PUBLIC_SITE_URL.
-  const originCandidate =
-    (typeof sp.origin === "string" && sp.origin) ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    null;
-  const vix = await loadVix(originCandidate);
+  const vix = await loadVix(origin);
 
   return (
     <PrintBrief
       briefing={{
-        id: row.id,
+        id: typeof row.id === "string" ? row.id : briefing_id,
         briefing_type: kind,
-        headline: row.headline ?? undefined,
-        summary: row.summary ?? undefined,
-        lead_paragraph: row.lead_paragraph ?? undefined,
-        supporting_context: row.supporting_context ?? undefined,
-        what_to_watch: row.what_to_watch ?? undefined,
-        market_tone: row.market_tone ?? undefined,
+        headline: typeof row.headline === "string" ? row.headline : undefined,
+        summary: typeof row.summary === "string" ? row.summary : undefined,
+        lead_paragraph:
+          typeof row.lead_paragraph === "string" ? row.lead_paragraph : undefined,
+        supporting_context:
+          typeof row.supporting_context === "string"
+            ? row.supporting_context
+            : undefined,
+        what_to_watch:
+          typeof row.what_to_watch === "string" ? row.what_to_watch : undefined,
+        market_tone:
+          typeof row.market_tone === "string" ? row.market_tone : undefined,
         sections,
         sector_breakdown: sectorBreakdown,
         top_deals: topDeals,
-        created_at: row.created_at ?? null,
+        created_at: typeof row.created_at === "string" ? row.created_at : null,
         market_pulse: marketPulse,
         morning_review: morningReview,
       }}
       stories={stories}
       thesesCount={thesesCount}
       vix={vix}
+      formatLabel={payload?.personalization?.format_label ?? null}
+      userAddendum={
+        typeof payload?.user_addendum === "string" && payload.user_addendum
+          ? payload.user_addendum
+          : null
+      }
     />
   );
 }
