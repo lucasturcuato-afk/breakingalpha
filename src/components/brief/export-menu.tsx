@@ -91,8 +91,11 @@ export function ExportMenu({
       URL.revokeObjectURL(url);
       setToast({ kind: "success", text: "PDF downloaded" });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to download PDF";
-      setToast({ kind: "error", text: msg });
+      // Log the verbose reason for ops triage; show a normalized message
+      // to the user. The server-side log retains the full error.
+      const verbose = e instanceof Error ? e.message : String(e);
+      console.error("[export-pdf] failed:", verbose);
+      setToast({ kind: "error", text: "PDF export failed. Try again." });
     } finally {
       setBusy(null);
     }

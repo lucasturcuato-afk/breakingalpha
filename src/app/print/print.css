@@ -1,0 +1,91 @@
+/*
+ * Print route CSS — applied only under /print/*.
+ *
+ * Puppeteer loads this page at a 1000×1294 viewport and invokes
+ * `page.pdf({ format: "Letter", printBackground: true })`. Two goals:
+ *
+ *   1. Give Chromium print-media hints so cards / headings don't break
+ *      awkwardly across pages.
+ *   2. Never hide content we want in the PDF — the /print route does
+ *      NOT mount AppShell, so there's no nav/sidebar to clip. `.no-print`
+ *      is kept as defense-in-depth for anything interactive that might
+ *      sneak into a component we reuse.
+ */
+
+@page {
+  size: Letter;
+  margin: 0.55in 0.55in;
+}
+
+/* The first page absorbs the full-width masthead, so skip the Puppeteer
+ * header margin on it. Subsequent pages get a thin repeating rule via
+ * Puppeteer's headerTemplate. */
+@page :first {
+  margin-top: 0.45in;
+}
+
+@media print {
+  html,
+  body {
+    background: #fffdf9 !important;
+    color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  /* Avoid orphan section titles (heading on one page, body on the next). */
+  h1,
+  h2,
+  h3,
+  h4 {
+    break-after: avoid-page;
+    page-break-after: avoid;
+  }
+
+  /* Cards and major blocks should stay whole when they can fit a page. */
+  .print-keep,
+  .print-card,
+  .print-deal-row,
+  .print-story-row,
+  .print-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Tables: repeat header rows (future-proofing — none currently). */
+  thead {
+    display: table-header-group;
+  }
+
+  /* Drop shadows shed ink cost without adding print information. */
+  .print-card,
+  .print-deal-row,
+  .print-story-row {
+    box-shadow: none !important;
+  }
+
+  /* Anchor colour: keep the espresso text so links look native in print. */
+  a,
+  a:visited {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+
+/* Non-print (screen preview) styling — the /print route is also viewable
+ * in a desktop browser for debugging; clamp the content width so reviewers
+ * aren't staring at 1600px-wide prose. */
+@media screen {
+  body {
+    background: #fffdf9;
+  }
+  .print-root {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 0;
+  }
+}
