@@ -158,6 +158,9 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 4. Are there active paying users? (determines urgency of fixes)
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
 
+## Recently Completed (2026-04-27)
+**Bugfix & decision handoff for Noah:** PR #132 ready (5 fixes: React hydration, evening-wrap styling, migration audit with 19 items cataloged). Intelligence sprint branch preserved, 8 commits pending merge with expected conflicts. Identified blockers for Noah: PR #131 missing dependencies (@react-pdf/renderer, resend, @react-email/*), 7 TS errors from PR #131 files, framer-motion missing, 14 Supabase migrations STATUS UNKNOWN vs production. Full decision matrix in BUGFIX_NOTES.md and Pending Issues.
+
 ## Recently Completed (2026-04-25)
 **PR #132 — Bugfix pass (5 commits):** React hydration mismatch on `/evening-wrap` and `/morning-brief` fixed via `useState` lazy initializer; Evening Wrap TODAY'S STORY pill muted to match morning-brief (PR #125); migration catalog audited (19 items: 7 REQUIRED, 7 OPTIONAL, 3 branch-only, 1 post-merge, 1 informational). All 14 pages smoke-tested via dev server. Noah has 3 open draft PRs (#129–#131, DO NOT MERGE); `lucas/intelligence-sprint` branch ready to merge (expect conflicts in synthesize.py, morning-brief, evening-wrap, trends, settings). `next build` fails (missing PR #131 packages); dev server works fine.
 
@@ -297,11 +300,12 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 - **`stash@{0}` WIP preserved** — `feat/brief-polish-pass` (sentiment wording + panoramic pulse + `inspect_pulse` helper) still stashed. Decide next session: redundant with #123? incremental? discard?
 - **Vercel preview protection bypass token** — `backend/.env` contains `VERCEL_PROTECTION_BYPASS` for automation access to preview URLs without SSO wall.
 
-**Blocked or awaiting decision (2026-04-25)**
-- **`lucas/intelligence-sprint` branch ready for merge** — 8 commits, 20+ files. Conflicts expected in synthesize.py, morning-brief, evening-wrap, trends, settings/preferences. Needs merge coordination.
-- **PR #131 missing packages blocking `next build`** — `@react-pdf/renderer`, `resend`, `@react-email/*` not in dependencies. Dev server works (Turbopack). Need decision: install packages or defer PR #131?
-- **7 pre-existing TypeScript errors from PR #131 files** — flagged during smoke test. Should be resolved before merge.
-- **Missing `framer-motion` package** — flagged during smoke test; not critical (no import errors), but should be added if motion features are in-scope.
+**Blocked or awaiting decision (2026-04-27) — FOR NOAH**
+- **PR #131 (`noah/pdf-rebuild`) uninstalled dependencies blocking `next build`** — missing `@react-pdf/renderer`, `resend`, `@react-email/*`. Dev server works via Turbopack. Noah: decide whether to npm install or defer PR #131 merge.
+- **7 TypeScript errors from PR #131 files** — flagged during smoke test on main. Resolve before merging #131.
+- **`lucas/intelligence-sprint` branch (8 commits) ready for merge** — conflicts expected in synthesize.py, morning-brief, evening-wrap, trends, settings/preferences. Needs merge coordination with Noah.
+- **14 Supabase migrations with STATUS UNKNOWN** — Full catalog in BUGFIX_NOTES.md (7 REQUIRED, 7 OPTIONAL, 3 intelligence-sprint branch-only, 1 post-merge, 1 informational). Must manually verify against production Supabase and run REQUIRED set.
+- **Missing `framer-motion` package** — flagged during smoke test; not imported anywhere currently, but should be added if page transition features come in-scope.
 
 **Existing (deferred or blocked)**
 - **Unapplied 20260416_add_theses_user_id.sql migration** — Phase 1 personalization per-user DB-level scoping + dedup unique index (`idx_theses_user_title_sector_unique`) only enforced at application layer (`/api/theses` POST). Neither `user_id` column, nor indices exist in live schema. Decide: ship migration retroactively or accept app-layer enforcement indefinitely. Ground-truth schema snapshot at `sql/theses_current.sql` (26 columns, generated 2026-04-21).
