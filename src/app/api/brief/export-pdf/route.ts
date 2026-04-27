@@ -242,6 +242,28 @@ export async function POST(request: NextRequest) {
       })),
     );
 
+    // On Vercel preview deployments, Deployment Protection (SSO) blocks
+    // Puppeteer's same-origin fetch to /print/[id] before our auth check
+    // ever runs. Vercel auto-injects VERCEL_AUTOMATION_BYPASS_SECRET as a
+    // System Env Var when "Protection Bypass for Automation" is enabled
+    // in project settings. Sending it as x-vercel-protection-bypass lets
+    // the headless render through; x-vercel-set-bypass-cookie: "true"
+    // persists the bypass on the same browser context so subsequent
+    // navigations (assets, /api/briefing fetch) don't re-trigger SSO.
+    if (process.env.VERCEL_ENV === "preview") {
+      const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+      if (bypassSecret) {
+        await page.setExtraHTTPHeaders({
+          "x-vercel-protection-bypass": bypassSecret,
+          "x-vercel-set-bypass-cookie": "true",
+        });
+      } else {
+        console.warn(
+          "[export-pdf] VERCEL_AUTOMATION_BYPASS_SECRET missing on preview deployment. This is unexpected — Vercel should auto-inject it as a System Env Var when Protection Bypass for Automation is enabled. SSO will block Puppeteer.",
+        );
+      }
+    }
+
     // Wait for DOM + network quiet. 20s ceiling covers slow VIX /
     // Supabase latency without ever hanging a 60s function.
     const response = await page.goto(printUrl.toString(), {
