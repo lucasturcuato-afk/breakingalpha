@@ -8,11 +8,11 @@
  *   2. Forwards the user's Supabase auth cookies into the Puppeteer
  *      browser context via `page.setCookie()` so the headless render
  *      sees the user's session — same auth the live web view uses.
- *   3. Drives Chromium against `/print/[briefing_id]`, which calls
- *      `/api/briefing` with a Bearer token derived from the session,
- *      reproducing the exact personalized payload the web UI renders
- *      (PR #103 watchlist baking, Lucas's section/sector_breakdown
- *      reshaping, V4B per-user addendum when present).
+ *   3. Drives Chromium against `/print/[briefing_id]`, which forwards
+ *      those same cookies to `/api/briefing`, reproducing the exact
+ *      personalized payload the web UI renders (PR #103 watchlist
+ *      baking, Lucas's section/sector_breakdown reshaping, V4B
+ *      per-user addendum when present).
  *   4. Validates the render before returning. If the page redirected
  *      to /auth, or the title contains "Sign In" / "404" / "Error",
  *      or the expected DOM marker is missing, we return HTTP 500 with
@@ -33,7 +33,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
-import { mintPrintToken } from "@/lib/print-token";
 import { ptDateSlug } from "@/lib/format-pt";
 
 export const runtime = "nodejs";
@@ -202,27 +201,12 @@ export async function POST(request: NextRequest) {
 
   const origin = deriveOrigin(request);
 
-  // HMAC token is now belt-and-suspenders: cookies are the primary auth
-  // path, the token still validates on the /print side as a defense
-  // against leaked URLs reaching the route without a session.
-  let token: string;
-  try {
-    token = mintPrintToken(row.id);
-  } catch (e) {
-    console.error("[export-pdf] token mint failed:", e);
-    return NextResponse.json(
-      { error: "PDF service misconfigured" },
-      { status: 500 },
-    );
-  }
-
   const kindLabel =
     row.briefing_type === "evening" ? "Evening Wrap" : "Morning Brief";
   const dateSlug = ptDateSlug(row.created_at);
   const filename = `signalera-${row.briefing_type === "evening" ? "evening-wrap" : "morning-brief"}-${dateSlug}.pdf`;
 
   const printUrl = new URL(`/print/${row.id}`, origin);
-  printUrl.searchParams.set("t", token);
   printUrl.searchParams.set("type", row.briefing_type ?? type);
   printUrl.searchParams.set("origin", origin);
 
@@ -257,6 +241,28 @@ export async function POST(request: NextRequest) {
         url: origin,
       })),
     );
+
+    // On Vercel preview deployments, Deployment Protection (SSO) blocks
+    // Puppeteer's same-origin fetch to /print/[id] before our auth check
+    // ever runs. Vercel auto-injects VERCEL_AUTOMATION_BYPASS_SECRET as a
+    // System Env Var when "Protection Bypass for Automation" is enabled
+    // in project settings. Sending it as x-vercel-protection-bypass lets
+    // the headless render through; x-vercel-set-bypass-cookie: "true"
+    // persists the bypass on the same browser context so subsequent
+    // navigations (assets, /api/briefing fetch) don't re-trigger SSO.
+    if (process.env.VERCEL_ENV === "preview") {
+      const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+      if (bypassSecret) {
+        await page.setExtraHTTPHeaders({
+          "x-vercel-protection-bypass": bypassSecret,
+          "x-vercel-set-bypass-cookie": "true",
+        });
+      } else {
+        console.warn(
+          "[export-pdf] VERCEL_AUTOMATION_BYPASS_SECRET missing on preview deployment. This is unexpected — Vercel should auto-inject it as a System Env Var when Protection Bypass for Automation is enabled. SSO will block Puppeteer.",
+        );
+      }
+    }
 
     // Wait for DOM + network quiet. 20s ceiling covers slow VIX /
     // Supabase latency without ever hanging a 60s function.

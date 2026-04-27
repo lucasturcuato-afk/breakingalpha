@@ -1,27 +1,14 @@
 /**
- * /print/[briefing_id] — server-rendered print view of a brief.
+ * /print/[briefing_id] server-rendered print view of a brief.
  *
- * Auth model (post-fix):
- *   - Authenticates via the user's Supabase session cookies. Puppeteer
- *     receives those cookies via `page.setCookie()` from the export-pdf
- *     route, so its render context is identical to the user's browser.
- *   - For each render, derive `session.access_token` and relay it to
- *     `/api/briefing?type=...` as `Authorization: Bearer ...` — the same
- *     call the live `/morning-brief` page makes. This gives the print
- *     route exact parity with the web view: PR #103 watchlist-baked
- *     content, Lucas's section / sector_breakdown reshaping, and the
- *     V4B per-user addendum (when the migration is applied) all flow
- *     through automatically.
+ * Auth: Supabase session cookies only. Puppeteer receives those cookies
+ * via page.setCookie() from the export-pdf route, so its render context
+ * is identical to the user's browser. The page forwards the same
+ * cookies to /api/briefing, which reads them via @supabase/ssr. If
+ * cookies are missing or invalid, the page returns 404.
  *
- *   - HMAC-token validation (legacy from PR #131) is preserved as an
- *     optional defense-in-depth check: if a request arrives with a
- *     valid `?t=` token, that's enough to render even without cookies
- *     (the resulting brief is un-personalized — graceful fallback).
- *     If neither cookies nor a valid token are present, return 404 so
- *     leaked URLs can't surface briefing content.
- *
- *   - VIX / theses count / stories use the anon key (matches the web
- *     UI's RLS-permitted reads). Service role is no longer required.
+ * VIX / theses count / stories use the anon key (matches the web UI's
+ * RLS-permitted reads). Service role is no longer required.
  *
  * Runtime: nodejs (Supabase SSR client is not edge-compatible).
  */
@@ -31,7 +18,6 @@ import { notFound } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { verifyPrintToken } from "@/lib/print-token";
 import { PrintBrief, type PrintStory } from "@/components/brief/print-brief";
 import { stripHtml } from "@/lib/strip-html";
 import { formatPTDateLong } from "@/lib/format-pt";
@@ -165,7 +151,7 @@ interface BriefingApiResponse {
 
 interface PageProps {
   params: Promise<{ briefing_id: string }>;
-  searchParams: Promise<{ t?: string; type?: string; origin?: string }>;
+  searchParams: Promise<{ type?: string; origin?: string }>;
 }
 
 export default async function PrintBriefPage({
@@ -177,7 +163,8 @@ export default async function PrintBriefPage({
   const type: "morning" | "evening" =
     sp.type === "evening" ? "evening" : "morning";
 
-  // ── Auth: cookie session OR HMAC token (defense-in-depth) ──
+  // Auth: cookie session only. /api/briefing reads the same cookies, so
+  // unauthenticated requests cannot mint a personalized brief here.
   const cookieStore = await cookies();
   const supabaseSSR = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -200,15 +187,14 @@ export default async function PrintBriefPage({
     data: { session },
   } = await supabaseSSR.auth.getSession();
 
-  const tokenValid = verifyPrintToken(sp.t ?? null, briefing_id);
-  if (!session && !tokenValid) {
+  if (!session) {
     console.error(
-      `[print] auth failed briefing_id=${briefing_id} (no session, no valid token) — returning 404`,
+      `[print] auth failed briefing_id=${briefing_id} (no session), returning 404`,
     );
     notFound();
   }
   console.log(
-    `[print] render briefing_id=${briefing_id} type=${type} authPath=${session ? "session" : "token"}`,
+    `[print] render briefing_id=${briefing_id} type=${type} authPath=session`,
   );
 
   // ── Origin for internal /api fetches ──
@@ -226,11 +212,18 @@ export default async function PrintBriefPage({
     process.env.NEXT_PUBLIC_SITE_URL ||
     "http://localhost:3000";
 
-  // ── Fetch personalized briefing payload via /api/briefing (mirrors web) ──
-  const briefingHeaders: HeadersInit = {};
-  if (session?.access_token) {
-    briefingHeaders.Authorization = `Bearer ${session.access_token}`;
-  }
+  // Forward the user's session cookies to /api/briefing. /api/briefing
+  // validates auth via @supabase/ssr cookie reads, not Authorization
+  // headers. Sending Bearer alone returned 401 because /api/briefing
+  // never inspected the header. This makes the server-to-server fetch
+  // auth-shape identical to what the browser sends from /morning-brief.
+  const cookieHeader = cookieStore
+    .getAll()
+    .map((c) => `${c.name}=${c.value}`)
+    .join("; ");
+  const briefingHeaders: HeadersInit = cookieHeader
+    ? { Cookie: cookieHeader }
+    : {};
   let payload: BriefingApiResponse | null = null;
   try {
     const res = await fetch(`${origin}/api/briefing?type=${type}`, {
