@@ -16,6 +16,46 @@ import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 
+// =============================================================================
+// PRODUCTION SAFETY GUARDS
+// This script creates and deletes real Supabase users via service_role.
+// Triple-guard against accidental production execution.
+// =============================================================================
+
+if (process.env.NODE_ENV === "production") {
+  console.error(
+    "ERROR: _test_export_pdf.mjs cannot run with NODE_ENV=production. " +
+    "This script creates and deletes real users via service_role.",
+  );
+  process.exit(1);
+}
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const PROD_PROJECT_REF = "pnfjelfvtypkpnwpflmv";
+if (supabaseUrl.includes(PROD_PROJECT_REF)) {
+  console.error(
+    `ERROR: _test_export_pdf.mjs detected production Supabase project ` +
+    `(${PROD_PROJECT_REF}) in NEXT_PUBLIC_SUPABASE_URL. ` +
+    `Refusing to run. Use a dev/staging Supabase project instead.`,
+  );
+  process.exit(1);
+}
+
+if (process.env.ALLOW_TEST_USER_MUTATION !== "1") {
+  console.error(
+    "ERROR: _test_export_pdf.mjs requires ALLOW_TEST_USER_MUTATION=1 " +
+    "to confirm you understand this script creates and deletes real " +
+    "Supabase users via service_role. Re-run as: " +
+    "ALLOW_TEST_USER_MUTATION=1 node scripts/_test_export_pdf.mjs",
+  );
+  process.exit(1);
+}
+
+console.log(
+  `[_test_export_pdf] Guards passed. Supabase URL: ${supabaseUrl}. ` +
+  `NODE_ENV: ${process.env.NODE_ENV || "(unset)"}.`,
+);
+
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY;
