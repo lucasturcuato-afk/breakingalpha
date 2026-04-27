@@ -226,11 +226,18 @@ export default async function PrintBriefPage({
     process.env.NEXT_PUBLIC_SITE_URL ||
     "http://localhost:3000";
 
-  // ── Fetch personalized briefing payload via /api/briefing (mirrors web) ──
-  const briefingHeaders: HeadersInit = {};
-  if (session?.access_token) {
-    briefingHeaders.Authorization = `Bearer ${session.access_token}`;
-  }
+  // Forward the user's session cookies to /api/briefing. /api/briefing
+  // validates auth via @supabase/ssr cookie reads, not Authorization
+  // headers. Sending Bearer alone returned 401 because /api/briefing
+  // never inspected the header. This makes the server-to-server fetch
+  // auth-shape identical to what the browser sends from /morning-brief.
+  const cookieHeader = cookieStore
+    .getAll()
+    .map((c) => `${c.name}=${c.value}`)
+    .join("; ");
+  const briefingHeaders: HeadersInit = cookieHeader
+    ? { Cookie: cookieHeader }
+    : {};
   let payload: BriefingApiResponse | null = null;
   try {
     const res = await fetch(`${origin}/api/briefing?type=${type}`, {
