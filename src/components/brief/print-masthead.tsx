@@ -32,11 +32,15 @@ export function PrintMasthead({ kind, dateStr }: PrintMastheadProps) {
     <header className="px-10 pt-8 pb-3 bg-white">
       <div className="flex items-baseline justify-between gap-6">
         <span
-          className="font-serif font-bold tracking-tight text-black"
+          className="text-black"
           style={{
+            // Plain-text serif wordmark per spec. Weight 600 (not 700),
+            // letter-spacing ~0.04em, ~20pt. NOT split into Signal[era]
+            // two-tone — that's the website treatment, not the PDF.
             fontFamily: "'Times New Roman', Times, serif",
-            fontSize: 30,
-            letterSpacing: "0.06em",
+            fontSize: "20pt",
+            fontWeight: 600,
+            letterSpacing: "0.04em",
           }}
         >
           SIGNALERA
@@ -56,6 +60,11 @@ export function PrintMasthead({ kind, dateStr }: PrintMastheadProps) {
               width: 5,
               height: 5,
               background: HERITAGE_GOLD,
+              // Belt-and-suspenders against Puppeteer color stripping.
+              // print.css sets print-color-adjust: exact globally; this
+              // local repeat is defensive on the few gold elements.
+              printColorAdjust: "exact",
+              WebkitPrintColorAdjust: "exact",
             }}
           />
           {editionLabel} · {dateStr}
@@ -63,7 +72,12 @@ export function PrintMasthead({ kind, dateStr }: PrintMastheadProps) {
       </div>
       <hr
         className="mt-4 border-0"
-        style={{ height: 1, background: HERITAGE_GOLD }}
+        style={{
+          height: 1,
+          background: HERITAGE_GOLD,
+          printColorAdjust: "exact",
+          WebkitPrintColorAdjust: "exact",
+        }}
       />
     </header>
   );

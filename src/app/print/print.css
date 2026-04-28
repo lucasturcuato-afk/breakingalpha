@@ -27,7 +27,10 @@
 @media print {
   html,
   body {
-    background: #fffdf9 !important;
+    /* Q8 — pure white background. The previous #fffdf9 cream tint was
+       a holdover from the dashboard-mirror PrintBrief; the newsletter
+       rebuild specifies #ffffff with no tints. */
+    background: #ffffff !important;
     color-adjust: exact;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
@@ -81,7 +84,7 @@
  * aren't staring at 1600px-wide prose. */
 @media screen {
   body {
-    background: #fffdf9;
+    background: #ffffff;
   }
   .print-root {
     max-width: 860px;

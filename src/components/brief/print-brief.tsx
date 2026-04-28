@@ -220,6 +220,8 @@ function SectionDivider({ label }: { label: string }) {
           height: 4,
           background: HERITAGE_GOLD,
           display: "inline-block",
+          printColorAdjust: "exact",
+          WebkitPrintColorAdjust: "exact",
         }}
       />
       <span
@@ -775,6 +777,8 @@ function TopDealsSection({ deals }: { deals: TopDeal[] }) {
                   color: HERITAGE_GOLD,
                   fontVariantNumeric: "tabular-nums",
                   whiteSpace: "nowrap",
+                  printColorAdjust: "exact",
+                  WebkitPrintColorAdjust: "exact",
                 }}
               >
                 {d.value || "Undisclosed"}
