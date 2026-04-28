@@ -18,7 +18,13 @@ import { notFound } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { PrintBrief, type PrintStory } from "@/components/brief/print-brief";
+import {
+  PrintBrief,
+  isAllowedDealType,
+  type ActiveThesis,
+  type PrintStory,
+  type ThesisMentionSurface,
+} from "@/components/brief/print-brief";
 import { stripHtml } from "@/lib/strip-html";
 import { formatPTDateLong } from "@/lib/format-pt";
 
@@ -147,6 +153,277 @@ interface BriefingApiResponse {
   pref_applied?: boolean;
   personalization?: { format_label?: string } | null;
   user_addendum?: string | null;
+}
+
+/* ── Active Theses selection helpers ──────────────────────────────── */
+
+const THESIS_STOPWORDS: ReadonlySet<string> = new Set([
+  "the",
+  "this",
+  "that",
+  "these",
+  "those",
+  "with",
+  "from",
+  "into",
+  "their",
+  "what",
+  "when",
+  "where",
+  "while",
+  "would",
+  "could",
+  "should",
+  "after",
+  "before",
+  "today",
+  "tomorrow",
+]);
+
+/** Conviction priority used by the selection algorithm.
+ *  HIGH > BULLISH > BEARISH > MEDIUM > WATCH > anything else. */
+const CONVICTION_PRIORITY: Record<string, number> = {
+  HIGH: 0,
+  BULLISH: 1,
+  BEARISH: 2,
+  MEDIUM: 3,
+  WATCH: 4,
+};
+
+function convictionRank(c?: string | null): number {
+  const v = (c || "").toUpperCase().trim();
+  return CONVICTION_PRIORITY[v] ?? 99;
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Extract proper-noun candidates from a thesis title:
+ *  capitalized 4+ char tokens, minus a small stopword list. */
+function tokenizeProperNouns(s: string): string[] {
+  const matches = s.match(/\b[A-Z][a-zA-Z]{3,}\b/g) ?? [];
+  return matches.filter((m) => !THESIS_STOPWORDS.has(m.toLowerCase()));
+}
+
+interface CorpusInputs {
+  topDeals: Array<{ company?: string }>;
+  leadParagraph: string;
+  supportingContext: string;
+  whatToWatch: string;
+  pulseNarrative: string;
+  sections: Record<string, string>;
+}
+
+/** A single brief surface that the matcher can scan. Either a
+ *  structured array of company anchors (top_deals) or freeform prose
+ *  whose original casing is preserved so the matched anchor can be
+ *  extracted verbatim. */
+type Surface =
+  | { key: ThesisMentionSurface; companies: string[] }
+  | { key: ThesisMentionSurface; text: string };
+
+/** Build the ordered surface list. Order matters: the FIRST surface
+ *  to contain a match wins, and the rendered mention line names that
+ *  surface. Ordered by how the reader perceives weight: top_deals →
+ *  lead → what_to_watch → market_pulse → analyst-briefing sections.
+ *  supporting_context is folded into the "lead" surface per the
+ *  spec's grouping (Today's Lead covers both the lead paragraph and
+ *  its supporting context). */
+function buildSurfaces(inputs: CorpusInputs): Surface[] {
+  const surfaces: Surface[] = [];
+  const companies = inputs.topDeals
+    .map((d) => (d.company || "").trim())
+    .filter((c) => c.length > 0);
+  if (companies.length > 0) {
+    surfaces.push({ key: "top_deals", companies });
+  }
+  const leadCombined = [inputs.leadParagraph, inputs.supportingContext]
+    .filter((s) => s && s.trim())
+    .join(" ");
+  if (leadCombined) surfaces.push({ key: "lead", text: leadCombined });
+  if (inputs.whatToWatch && inputs.whatToWatch.trim()) {
+    surfaces.push({ key: "what_to_watch", text: inputs.whatToWatch });
+  }
+  if (inputs.pulseNarrative && inputs.pulseNarrative.trim()) {
+    surfaces.push({ key: "market_pulse", text: inputs.pulseNarrative });
+  }
+  // Analyst Briefing sections in the same order as MORNING_TAB_ORDER /
+  // EVENING_TAB_ORDER (minus sector_spotlight which was cut in C13).
+  const sectionKeys: ThesisMentionSurface[] = [
+    "deals_and_ma",
+    "public_markets",
+    "macro_and_rates",
+    "geopolitics",
+  ];
+  for (const k of sectionKeys) {
+    const v = inputs.sections[k];
+    if (v && v.trim()) surfaces.push({ key: k, text: v });
+  }
+  return surfaces;
+}
+
+interface SurfaceMatch {
+  surface: ThesisMentionSurface;
+  anchor: string;
+}
+
+/** Try to match `tok` (whole-word, case-insensitive) inside a single
+ *  surface. Returns the anchor in original-source casing on hit. */
+function matchInSurface(
+  surface: Surface,
+  tok: string,
+): SurfaceMatch | null {
+  if (!tok) return null;
+  const re = new RegExp(`\\b${escapeRegex(tok)}\\b`, "i");
+  if ("companies" in surface) {
+    for (const c of surface.companies) {
+      if (re.test(c)) return { surface: surface.key, anchor: c };
+    }
+    return null;
+  }
+  const m = surface.text.match(re);
+  if (!m) return null;
+  // m[0] is the matched substring in its original source casing.
+  return { surface: surface.key, anchor: m[0] };
+}
+
+/** Walk surfaces in priority order. Try ticker first (when present),
+ *  then proper-noun title tokens. First hit anywhere wins. */
+function findFirstMatch(
+  surfaces: Surface[],
+  ticker: string,
+  titleTokens: string[],
+): SurfaceMatch | null {
+  for (const s of surfaces) {
+    if (ticker) {
+      const m = matchInSurface(s, ticker);
+      if (m) return m;
+    }
+    for (const tok of titleTokens) {
+      const m = matchInSurface(s, tok);
+      if (m) return m;
+    }
+  }
+  return null;
+}
+
+/** Selection algorithm — see C14 commit message and PR #136 spec.
+ *  1. fetch up to 50 non-expired theses, newest first
+ *  2. compute matched_today + mention_surface + mention_anchor by
+ *     scanning brief surfaces in priority order, preserving the
+ *     anchor's original source casing for downstream rendering
+ *  3. greedy pick: matched first (sorted by conviction), then non-
+ *     matched (also by conviction), filling to 3 with sector diversity
+ *  Soft-fails: any error returns []. */
+type ThesesClient = Pick<ReturnType<typeof createClient>, "from">;
+
+async function selectActiveTheses(
+  supabase: ThesesClient,
+  inputs: CorpusInputs,
+): Promise<ActiveThesis[]> {
+  let rows: Array<{
+    id: string;
+    title: string | null;
+    conviction: string | null;
+    rationale: string | null;
+    sector: string | null;
+    catalyst: string | null;
+    ticker: string | null;
+    generated_at: string | null;
+  }> = [];
+  try {
+    const res = await supabase
+      .from("theses")
+      .select(
+        "id, title, conviction, rationale, sector, catalyst, ticker, generated_at",
+      )
+      .or("expired.is.null,expired.eq.false")
+      .order("generated_at", { ascending: false })
+      .limit(50);
+    rows = res.data ?? [];
+  } catch (e) {
+    console.warn("[print] active-theses fetch failed:", e);
+    return [];
+  }
+
+  if (rows.length === 0) return [];
+
+  const surfaces = buildSurfaces(inputs);
+
+  const enriched: ActiveThesis[] = rows.map((t) => {
+    const ticker = (t.ticker || "").trim();
+    const title = (t.title || "").trim();
+    const titleTokens = title ? tokenizeProperNouns(title) : [];
+    const hit = findFirstMatch(surfaces, ticker, titleTokens);
+
+    return {
+      id: t.id,
+      title: title || "Untitled thesis",
+      conviction: t.conviction,
+      rationale: t.rationale,
+      sector: t.sector,
+      catalyst: t.catalyst,
+      ticker: ticker || null,
+      matched_today: !!hit,
+      mention_surface: hit ? hit.surface : null,
+      mention_anchor: hit ? hit.anchor : null,
+    };
+  });
+
+  // Sort by conviction, then generated_at desc for ties.
+  const byPriority = (
+    a: ActiveThesis & { generated_at?: string | null },
+    b: ActiveThesis & { generated_at?: string | null },
+  ): number => {
+    const ra = convictionRank(a.conviction);
+    const rb = convictionRank(b.conviction);
+    if (ra !== rb) return ra - rb;
+    const ga = a.generated_at || "";
+    const gb = b.generated_at || "";
+    return gb.localeCompare(ga);
+  };
+
+  // Attach generated_at for stable tiebreaker without leaking it into
+  // the ActiveThesis surface that the component consumes.
+  const enrichedWithGen = enriched.map((t, i) => ({
+    ...t,
+    generated_at: rows[i]?.generated_at ?? null,
+  }));
+
+  const matched = enrichedWithGen
+    .filter((t) => t.matched_today)
+    .sort(byPriority);
+  const nonMatched = enrichedWithGen
+    .filter((t) => !t.matched_today)
+    .sort(byPriority);
+
+  // Greedy pick with sector diversity. A thesis with no sector can't
+  // collide, so it always passes the diversity gate.
+  const picked: ActiveThesis[] = [];
+  const usedSectors = new Set<string>();
+  const tryPick = (t: ActiveThesis): void => {
+    if (picked.length >= 3) return;
+    const s = (t.sector || "").trim().toLowerCase();
+    if (s && usedSectors.has(s)) return;
+    picked.push({
+      id: t.id,
+      title: t.title,
+      conviction: t.conviction,
+      rationale: t.rationale,
+      sector: t.sector,
+      catalyst: t.catalyst,
+      ticker: t.ticker,
+      matched_today: t.matched_today,
+      mention_surface: t.mention_surface,
+      mention_anchor: t.mention_anchor,
+    });
+    if (s) usedSectors.add(s);
+  };
+  for (const t of matched) tryPick(t);
+  for (const t of nonMatched) tryPick(t);
+
+  return picked;
 }
 
 interface PageProps {
@@ -297,6 +574,58 @@ export default async function PrintBriefPage({
 
   // ── Top stories (anon-permitted reads) ──
   const supabase = anonClient();
+
+  // Q4 — deal_type fallback via deal_flow (Bug #1 inverted priority).
+  //
+  // Synthesis is generally accurate — it sees the article body and
+  // labels deals correctly more often than the structured extractor
+  // does (e.g. Rheinmetall: synthesis "Strategic Investment" right;
+  // deal_flow "Asset Sale" wrong). The original C11 implementation
+  // unconditionally let deal_flow win, which corrupted correct
+  // synthesis values. Inverted here: trust synthesis when its value
+  // passes the display allowlist; only fall back to deal_flow when
+  // synthesis emits something outside the allowlist (the actual
+  // hallucination case). PrintBrief's allowlist gate then drops the
+  // pill silently if neither source produces a valid value.
+  //
+  // Soft-fails — if deal_flow is unavailable we keep synthesis values
+  // and let the allowlist gate the pill.
+  let topDealsCorrected = topDeals;
+  const dealCompanies = topDeals
+    .map((d) => (d.company || "").trim())
+    .filter((c) => c.length > 0);
+  if (dealCompanies.length > 0) {
+    try {
+      const flowRes = await supabase
+        .from("deal_flow")
+        .select("company, deal_type, created_at")
+        .in("company", dealCompanies)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      const flowMap = new Map<string, string>();
+      for (const r of flowRes.data ?? []) {
+        const key = (r.company || "").trim().toLowerCase();
+        if (key && r.deal_type && !flowMap.has(key)) {
+          flowMap.set(key, r.deal_type as string);
+        }
+      }
+      topDealsCorrected = topDeals.map((d) => {
+        // Synthesis-first: keep its value when allowlist-valid.
+        if (isAllowedDealType(d.deal_type)) return d;
+        // Otherwise consult deal_flow as fallback. If the fallback is
+        // also outside the allowlist, leave the original value — the
+        // PrintBrief allowlist gate will silently drop the pill.
+        const key = (d.company || "").trim().toLowerCase();
+        const override = flowMap.get(key);
+        return override ? { ...d, deal_type: override } : d;
+      });
+    } catch (e) {
+      console.warn(
+        "[print] deal_flow deal_type fallback lookup failed (using synthesis values only):",
+        e,
+      );
+    }
+  }
   // eslint-disable-next-line react-hooks/purity
   const nowMs = Date.now();
   const cutoff24h = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
@@ -340,6 +669,27 @@ export default async function PrintBriefPage({
     /* soft-fail */
   }
 
+  // ── Active Theses selection (C14) ─────────────────────────────────
+  // Page 3 of the PDF renders up to 3 non-expired theses, prioritising
+  // ones whose ticker or proper-noun title token surfaces in today's
+  // brief content. Sector diversity is enforced. evidence_chain /
+  // supporting_articles / bear_case / verifiable_signal are
+  // intentionally ignored — the schema has them but population is
+  // sparse and depending on them produces empty rows.
+  const activeTheses: ActiveThesis[] = await selectActiveTheses(
+    supabase,
+    {
+      topDeals: topDealsCorrected,
+      leadParagraph: typeof row.lead_paragraph === "string" ? row.lead_paragraph : "",
+      supportingContext:
+        typeof row.supporting_context === "string" ? row.supporting_context : "",
+      whatToWatch:
+        typeof row.what_to_watch === "string" ? row.what_to_watch : "",
+      pulseNarrative: marketPulse?.narrative ?? "",
+      sections,
+    },
+  );
+
   const vix = await loadVix(origin);
 
   return (
@@ -361,7 +711,7 @@ export default async function PrintBriefPage({
           typeof row.market_tone === "string" ? row.market_tone : undefined,
         sections,
         sector_breakdown: sectorBreakdown,
-        top_deals: topDeals,
+        top_deals: topDealsCorrected,
         created_at: typeof row.created_at === "string" ? row.created_at : null,
         market_pulse: marketPulse,
         morning_review: morningReview,
@@ -375,6 +725,7 @@ export default async function PrintBriefPage({
           ? payload.user_addendum
           : null
       }
+      activeTheses={activeTheses}
     />
   );
 }
