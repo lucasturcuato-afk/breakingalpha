@@ -9,6 +9,7 @@ import { RightPanel } from "./right-panel";
 import { CommandPalette } from "./command-palette";
 import { MobileBottomNav } from "./mobile-bottom-nav";
 import { PageTransition } from "./page-transition";
+import { Footer } from "./footer";
 
 const PANEL_STORAGE_KEY = "signalera_right_panel_open";
 
@@ -150,6 +151,8 @@ export function AppShell({
             </div>
           )}
         </div>
+
+        <Footer />
       </div>
 
       {/* Mobile bottom navigation — only visible <md */}
