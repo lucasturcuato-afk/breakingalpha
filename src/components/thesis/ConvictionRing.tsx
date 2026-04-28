@@ -70,10 +70,11 @@ export function ConvictionRing({
           }}
         >
           <span
-            className="text-[9px] font-medium"
+            className="font-medium"
             style={{
               fontFamily: 'Inter, sans-serif',
-              letterSpacing: '0.04em',
+              fontSize: label.length >= 5 ? '7px' : '9px',
+              letterSpacing: label.length >= 5 ? '0.02em' : '0.04em',
               lineHeight: '1',
               color,
               userSelect: 'none',
