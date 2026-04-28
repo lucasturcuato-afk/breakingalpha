@@ -110,11 +110,12 @@ function headerTemplate(label: string, dateStr: string): string {
   // Tiny repeating strip on pages 2+. Page 1 is skipped via the
   // `@page :first` rule in /print/print.css which reduces the first-page
   // top margin. The full masthead renders inside the document body so
-  // this repeating header is intentionally minimal.
+  // this repeating header is intentionally minimal. Heritage Gold
+  // updated to #c9922a (newsletter rebuild Q8).
   return `
     <style>
-      .ph { font-family: Inter, sans-serif; font-size: 8px; color: #6b5d4a; width: 100%; padding: 4px 32px 0; display: flex; justify-content: space-between; border-bottom: 1px solid #d4a84b; }
-      .ph .g { color: #d4a84b; font-weight: 700; letter-spacing: 0.1em; }
+      .ph { font-family: Helvetica, Arial, sans-serif; font-size: 8px; color: #6b5d4a; width: 100%; padding: 4px 32px 0; display: flex; justify-content: space-between; border-bottom: 1px solid #c9922a; }
+      .ph .g { color: #c9922a; font-weight: 700; letter-spacing: 0.14em; }
     </style>
     <div class="ph">
       <span><span class="g">SIGNALERA</span> · ${label}</span>
@@ -124,10 +125,16 @@ function headerTemplate(label: string, dateStr: string): string {
 }
 
 function footerTemplate(label: string): string {
+  // Q6: the AI disclaimer must appear on every page, small and gray.
+  // Two-row footer: top row = disclaimer (centered), bottom row =
+  // brand · page count (split). The top row is the new addition.
   return `
-    <div style="font-family: Inter, sans-serif; font-size: 8px; color: #6b5d4a; width: 100%; padding: 0 32px 4px; display: flex; justify-content: space-between;">
-      <span>Signalera · ${label}</span>
-      <span>Page <span class="pageNumber"></span> / <span class="totalPages"></span></span>
+    <div style="font-family: Helvetica, Arial, sans-serif; font-size: 7.5px; color: #888888; width: 100%; padding: 0 32px 4px; line-height: 1.4;">
+      <div style="text-align: center; margin-bottom: 2px;">AI-generated. Not investment advice. Verify before acting.</div>
+      <div style="display: flex; justify-content: space-between; color: #6b5d4a;">
+        <span>Signalera · ${label}</span>
+        <span>Page <span class="pageNumber"></span> / <span class="totalPages"></span></span>
+      </div>
     </div>
   `;
 }
