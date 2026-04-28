@@ -297,6 +297,54 @@ export default async function PrintBriefPage({
 
   // ── Top stories (anon-permitted reads) ──
   const supabase = anonClient();
+
+  // Q4 — deal_type override from deal_flow.
+  //
+  // Synthesize occasionally emits hallucinated deal_type values (most
+  // commonly "Strategic Investment", which isn't a real category in
+  // the deal_flow enum). When a top_deal company also has a recent
+  // deal_flow row, we replace the synthesize-generated deal_type with
+  // the structured one. PrintBrief's display allowlist (Q4 fallback)
+  // catches anything that survives this override.
+  //
+  // The spec asked for this in route.ts; in this codebase the
+  // briefing payload is shaped here in the print page (route.ts only
+  // knows the briefing id + filename), so the lookup naturally lives
+  // here. Soft-fails — if deal_flow is unavailable we use the
+  // synthesize values and the allowlist still gates the pill.
+  let topDealsCorrected = topDeals;
+  const dealCompanies = topDeals
+    .map((d) => (d.company || "").trim())
+    .filter((c) => c.length > 0);
+  if (dealCompanies.length > 0) {
+    try {
+      const flowRes = await supabase
+        .from("deal_flow")
+        .select("company, deal_type, created_at")
+        .in("company", dealCompanies)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      const flowMap = new Map<string, string>();
+      for (const r of flowRes.data ?? []) {
+        const key = (r.company || "").trim().toLowerCase();
+        if (key && r.deal_type && !flowMap.has(key)) {
+          flowMap.set(key, r.deal_type as string);
+        }
+      }
+      if (flowMap.size > 0) {
+        topDealsCorrected = topDeals.map((d) => {
+          const key = (d.company || "").trim().toLowerCase();
+          const override = flowMap.get(key);
+          return override ? { ...d, deal_type: override } : d;
+        });
+      }
+    } catch (e) {
+      console.warn(
+        "[print] deal_flow deal_type override failed (using synthesize values):",
+        e,
+      );
+    }
+  }
   // eslint-disable-next-line react-hooks/purity
   const nowMs = Date.now();
   const cutoff24h = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
@@ -361,7 +409,7 @@ export default async function PrintBriefPage({
           typeof row.market_tone === "string" ? row.market_tone : undefined,
         sections,
         sector_breakdown: sectorBreakdown,
-        top_deals: topDeals,
+        top_deals: topDealsCorrected,
         created_at: typeof row.created_at === "string" ? row.created_at : null,
         market_pulse: marketPulse,
         morning_review: morningReview,
