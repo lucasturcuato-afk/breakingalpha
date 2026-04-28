@@ -113,7 +113,8 @@ def _reconstruct_selected(pool):
     return spine + floor
 
 
-def record_run(brief_type, started_at, ingest_count=None, deal_extractor_status=None):
+def record_run(brief_type, started_at, ingest_count=None, deal_extractor_status=None,
+               preselect_decision=None):
     """
     Records one pipeline_runs row and associated run_articles rows.
 
@@ -128,6 +129,11 @@ def record_run(brief_type, started_at, ingest_count=None, deal_extractor_status=
                    appended to pipeline_runs.error_notes so downstream
                    operators see deal-step failures alongside synthesis
                    failures.
+    preselect_decision : dict | None — lead_preselect._LAST_DECISION_LOG
+                   snapshot. Persisted to pipeline_runs.preselect_decision
+                   (jsonb) for v2 calibration. If winner_reason is None
+                   (anomalous: every filter missed) the fact is also
+                   surfaced into error_notes.
 
     Errors are caught and printed locally. This function never raises so
     the caller (run.py) is unaffected by observation failures.
@@ -181,6 +187,17 @@ def record_run(brief_type, started_at, ingest_count=None, deal_extractor_status=
         if status == "success":
             status = "degraded"
 
+    # Surface anomalous preselect outcomes (every filter missed → Gemini
+    # had to fall back to in-prompt selection). Normal misses are not
+    # surfaced — only the all-filters-empty case, which is rare enough
+    # to want a flag for.
+    if (
+        preselect_decision
+        and preselect_decision.get("winner_reason") is None
+    ):
+        msg = "preselect: no filter matched (Gemini in-prompt fallback ran)"
+        error_notes = f"{error_notes} | {msg}" if error_notes else msg
+
     # --- Fetch the 24h article pool (mirrors synthesize.py query) --------
     cutoff = (completed_at - timedelta(hours=24)).isoformat()
     pool   = []
@@ -216,6 +233,8 @@ def record_run(brief_type, started_at, ingest_count=None, deal_extractor_status=
         "model_synth":     MODEL_SYNTH,
         "error_notes":     error_notes,
     }
+    if preselect_decision:
+        run_row["preselect_decision"] = preselect_decision
 
     run_id = None
     try:

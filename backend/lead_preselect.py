@@ -53,6 +53,14 @@ except Exception:  # pragma: no cover
     supabase = None
 
 
+# Module-level snapshot of the most recent preselect_primary_story
+# decision. run.py reads this after run_synthesize() returns and threads
+# it into observe.record_run as `preselect_decision`. v2 calibration
+# data: candidate counts per filter, which fallback fired, what
+# metadata the winner had. See SPEC_path_b §observability.
+_LAST_DECISION_LOG: dict = {}
+
+
 # --- Constants ----------------------------------------------------------
 
 # "Confirmed $1B+" deal threshold, in USD billions. Non-USD currencies are
@@ -156,6 +164,110 @@ UNCONFIRMED_KEYWORDS: tuple[str, ...] = (
 )
 
 
+# --- Filter A2: priced non-M&A events ---------------------------
+# Spec §3.2.5 (added 2026-04-28). Audit basis:
+# .session-artifacts/2026-04-28/audit/AUDIT_REPORT.md
+#
+# Why a separate filter: 30-day audit found 20 non-M&A $1B+ rows vs
+# only 3 M&A $1B+ rows. M&A Filter A excludes non-M&A by construction
+# (acquirer != null gate) because IPOs/funding/debt have no acquirer
+# structurally. Filter A2 mirrors M&A Filter A's structure but with
+# non-M&A-appropriate gates.
+#
+# v1 is deliberately conservative: keyword lists are observed-only
+# from the 30-day audit corpus. Defense-in-depth keywords for failure
+# modes not yet observed (SPAC mergers, PIPEs, convertibles, down
+# rounds) are intentionally OMITTED. They get added in v2 when
+# production picks reveal which failures actually happen.
+
+MIN_DEAL_VALUE_NON_MA_USD_B = 1.0
+
+NON_MA_DEAL_TYPES: tuple[str, ...] = (
+    "VC Round",
+    "IPO",
+    "Debt Financing",
+    "Series A",
+    "Series B",
+    "Series C",
+    "Series D",
+    "Series E",
+    "Series F",
+)
+
+CONFIRMED_STAGES_NON_MA: set[str] = {"closed", "announced"}
+
+# Confirmed-keyword vocabulary for non-M&A. Only categories with
+# corpus support are included. "led_by" and "valuation_anchor" were
+# dropped from the audit's proposed list because they trigger on
+# both confirmed and unconfirmed contexts.
+CONFIRMED_KEYWORDS_NON_MA: dict[str, tuple[str, ...]] = {
+    "priced": (
+        "priced at",
+        "priced its",
+        "pricing of",
+        "ipo prices",
+        "prices ipo",
+    ),
+    "trading_started": (
+        "began trading",
+        "started trading",
+        "shares began",
+        "first day of trading",
+    ),
+    "completed": (
+        "completed offering",
+        "completed pricing",
+        "completed initial public offering",
+        "completed funding round",
+        "successfully completed",
+        "completed the issuance",
+    ),
+    "closed_round": (
+        "closed series",
+        "closed its series",
+    ),
+    "raised": (
+        "raised $",
+        "raises $",
+        "secures $",
+        "secured $",
+    ),
+    "issuance": (
+        "issuance",
+    ),
+}
+
+# Unconfirmed-keyword blocklist for non-M&A. v1 keeps only the
+# observed phrases from the 30-day corpus PLUS three high-signal
+# defense-in-depth phrases for the Cognition-style "in talks to
+# raise at $X" failure mode (1 example confirmed in audit).
+UNCONFIRMED_KEYWORDS_NON_MA: tuple[str, ...] = (
+    # Observed in 30-day corpus:
+    "files for ipo",
+    "filed confidentially",
+    "could raise",
+    "to raise up to",
+    # Defense against the audit's one observed failure mode
+    # (Upscale AI in talks to raise at $2B valuation):
+    "in talks to raise",
+    "reportedly seeking",
+    "plans to file",
+)
+
+# Source-tier additions for non-M&A. Issuer wires (PR Newswire,
+# Business Wire) and tech/VC trade press (TechCrunch, Crunchbase)
+# dominate non-M&A pricing news. Don't promote globally — they're
+# weaker than the existing TIER_1 list for M&A coverage.
+TIER_1_SOURCES_NON_MA: tuple[str, ...] = TIER_1_SOURCES + (
+    "pr newswire",
+    "prnewswire",
+    "business wire",
+    "businesswire",
+    "techcrunch",
+    "crunchbase news",
+)
+
+
 # --- Valuation parsing --------------------------------------------------
 
 # Matches normalized valuation strings emitted by deal_extractor:
@@ -242,6 +354,28 @@ def _has_confirmed_keyword(text: str) -> bool:
         if any(p in text for p in phrases):
             return True
     return False
+
+
+def _has_unconfirmed_keyword_non_ma(text: str) -> bool:
+    """True if any UNCONFIRMED_KEYWORDS_NON_MA phrase appears in text."""
+    return any(kw in text for kw in UNCONFIRMED_KEYWORDS_NON_MA)
+
+
+def _has_confirmed_keyword_non_ma(text: str) -> bool:
+    """True if any phrase from any CONFIRMED_KEYWORDS_NON_MA category
+    appears in text."""
+    for phrases in CONFIRMED_KEYWORDS_NON_MA.values():
+        if any(kw in text for kw in phrases):
+            return True
+    return False
+
+
+def _source_tier_non_ma(article: dict) -> int:
+    """Source tier for non-M&A pathway. TIER_1_SOURCES_NON_MA includes
+    issuer wires and tech/VC trade press alongside the M&A tier-1
+    list. Returns 1 for tier-1, 2 otherwise."""
+    src = (article.get("source") or "").lower()
+    return 1 if any(t in src for t in TIER_1_SOURCES_NON_MA) else 2
 
 
 def _source_tier(article: dict) -> int:
@@ -384,6 +518,76 @@ def _rank_filter_a(
         tier = _source_tier(article)
         url_hash = hash(article.get("url") or article.get("title") or "")
         # Negate values we want DESC; keep ASC values positive.
+        return (-deal_val, age, tier, url_hash)
+
+    candidates.sort(key=_key)
+    return candidates[0][0]
+
+
+# --- Filter A2: priced non-M&A events ---------------------------
+
+def _qualifies_filter_a2(article: dict, deal_row: Optional[dict]) -> Optional[float]:
+    """
+    Return the article's deal_value_usd_b if it qualifies for Filter A2,
+    else None.
+
+    Rules (mirrors _qualifies_filter_a structure):
+      - Must have a deal_flow row joined by source_url
+      - deal_flow.deal_type must be in NON_MA_DEAL_TYPES
+      - Parsed valuation must be >= $1B USD-equivalent
+      - Negative keyword in title/summary → BLOCK
+      - stage in {closed} → PASS
+      - stage == announced AND positive keyword present → PASS
+      - otherwise → FAIL
+
+    Note: unlike M&A Filter A, no acquirer requirement. The audit
+    confirmed 90%+ of qualifying non-M&A rows have NULL acquirer
+    because IPOs and funding rounds have no structural acquirer
+    counterparty.
+    """
+    if not deal_row:
+        return None
+
+    deal_type = (deal_row.get("deal_type") or "").strip()
+    if deal_type not in NON_MA_DEAL_TYPES:
+        return None
+
+    val = parse_valuation_to_usd_b(deal_row.get("valuation"))
+    if val is None or val < MIN_DEAL_VALUE_NON_MA_USD_B:
+        return None
+
+    text = _article_text(article)
+
+    # Hard block on unconfirmed keywords. Same defensive layer as
+    # M&A Filter A — even if deal_flow.stage says "closed", a headline
+    # containing "in talks to raise" indicates an unconfirmed event.
+    if _has_unconfirmed_keyword_non_ma(text):
+        return None
+
+    stage = (deal_row.get("stage") or "").lower()
+    if stage == "closed":
+        return val
+
+    if stage == "announced" and _has_confirmed_keyword_non_ma(text):
+        return val
+
+    return None
+
+
+def _rank_filter_a2(
+    candidates: list[tuple[dict, float]],
+    now: datetime,
+) -> dict:
+    """
+    Rank Filter A2 hits by (deal_value DESC, freshness DESC,
+    source_tier ASC, url_hash). Mirrors _rank_filter_a but uses
+    _source_tier_non_ma for the source-tier breaker.
+    """
+    def _key(item: tuple[dict, float]):
+        article, deal_val = item
+        age = _article_age_hours(article, now)
+        tier = _source_tier_non_ma(article)
+        url_hash = hash(article.get("url") or article.get("title") or "")
         return (-deal_val, age, tier, url_hash)
 
     candidates.sort(key=_key)
@@ -542,8 +746,24 @@ def preselect_primary_story(
     internal error the function returns None so the briefing still
     ships via the legacy path.
     """
+    global _LAST_DECISION_LOG
+
+    decision_log: dict = {
+        "filter_a_candidates": 0,
+        "filter_a2_candidates": 0,
+        "filter_b_macro_hit": False,
+        "filter_b_geo_hit": False,
+        "filter_b_sector_hit": False,
+        "winner_reason": None,
+        "winner_deal_value": None,
+        "winner_stage": None,
+        "winner_deal_type": None,
+        "winner_url": None,
+    }
+
     try:
         if not articles:
+            _LAST_DECISION_LOG = dict(decision_log)
             return None
 
         sb = supabase_client if supabase_client is not None else supabase
@@ -562,6 +782,7 @@ def preselect_primary_story(
             val = _qualifies_filter_a(a, deal_row)
             if val is not None:
                 filter_a.append((a, val))
+        decision_log["filter_a_candidates"] = len(filter_a)
 
         if filter_a:
             winner = _rank_filter_a(filter_a, now)
@@ -572,6 +793,41 @@ def preselect_primary_story(
             winner["_preselect_deal_value"] = deal_row.get("valuation")
             winner["_preselect_stage"] = deal_row.get("stage")
             winner["_preselect_acquirer"] = deal_row.get("acquirer")
+            winner["_preselect_deal_type"] = deal_row.get("deal_type")
+            decision_log["winner_reason"] = "filter_a_priced_1b"
+            decision_log["winner_deal_value"] = deal_row.get("valuation")
+            decision_log["winner_stage"] = deal_row.get("stage")
+            decision_log["winner_deal_type"] = deal_row.get("deal_type")
+            decision_log["winner_url"] = (winner.get("url") or "").strip()
+            _LAST_DECISION_LOG = dict(decision_log)
+            return winner
+
+        # --- Filter A2: priced non-M&A $1B+ events --------------------
+        filter_a2: list[tuple[dict, float]] = []
+        for a in articles:
+            url = (a.get("url") or "").strip()
+            if not url:
+                continue
+            deal_row = deal_idx.get(url)
+            val = _qualifies_filter_a2(a, deal_row)
+            if val is not None:
+                filter_a2.append((a, val))
+        decision_log["filter_a2_candidates"] = len(filter_a2)
+
+        if filter_a2:
+            winner = _rank_filter_a2(filter_a2, now)
+            winner = dict(winner)
+            deal_row = deal_idx.get((winner.get("url") or "").strip()) or {}
+            winner["_preselect_reason"] = "filter_a2_priced_non_ma_1b"
+            winner["_preselect_deal_value"] = deal_row.get("valuation")
+            winner["_preselect_stage"] = deal_row.get("stage")
+            winner["_preselect_deal_type"] = deal_row.get("deal_type")
+            decision_log["winner_reason"] = "filter_a2_priced_non_ma_1b"
+            decision_log["winner_deal_value"] = deal_row.get("valuation")
+            decision_log["winner_stage"] = deal_row.get("stage")
+            decision_log["winner_deal_type"] = deal_row.get("deal_type")
+            decision_log["winner_url"] = (winner.get("url") or "").strip()
+            _LAST_DECISION_LOG = dict(decision_log)
             return winner
 
         # --- Filter B: fallback hierarchy (macro > geo > sector) --------
@@ -579,25 +835,39 @@ def preselect_primary_story(
         if macro:
             macro = dict(macro)
             macro["_preselect_reason"] = "filter_b_macro"
+            decision_log["filter_b_macro_hit"] = True
+            decision_log["winner_reason"] = "filter_b_macro"
+            decision_log["winner_url"] = (macro.get("url") or "").strip()
+            _LAST_DECISION_LOG = dict(decision_log)
             return macro
 
         geo = _pick_geopolitical(articles, now)
         if geo:
             geo = dict(geo)
             geo["_preselect_reason"] = "filter_b_geopolitical"
+            decision_log["filter_b_geo_hit"] = True
+            decision_log["winner_reason"] = "filter_b_geopolitical"
+            decision_log["winner_url"] = (geo.get("url") or "").strip()
+            _LAST_DECISION_LOG = dict(decision_log)
             return geo
 
         sector = _pick_sector_cluster(articles, now)
         if sector:
             sector = dict(sector)
             sector["_preselect_reason"] = "filter_b_sector_cluster"
+            decision_log["filter_b_sector_hit"] = True
+            decision_log["winner_reason"] = "filter_b_sector_cluster"
+            decision_log["winner_url"] = (sector.get("url") or "").strip()
+            _LAST_DECISION_LOG = dict(decision_log)
             return sector
 
         # No deterministic pick → Gemini falls back to PR #128 prompt rule.
+        _LAST_DECISION_LOG = dict(decision_log)
         return None
 
     except Exception as e:  # pragma: no cover
         print(f"[lead_preselect] preselect_primary_story error (fallback to Gemini): {e}")
+        _LAST_DECISION_LOG = dict(decision_log)
         return None
 
 
@@ -615,6 +885,8 @@ def build_preselect_directive(preselected: dict) -> str:
     source = (preselected.get("source") or "").strip()
     deal_value = preselected.get("_preselect_deal_value")
     stage = preselected.get("_preselect_stage")
+    deal_type = preselected.get("_preselect_deal_type")
+    acquirer = preselected.get("_preselect_acquirer")
     reason = preselected.get("_preselect_reason") or "fallback"
     # Spec §3 — primary_story_id should be the first ~80 chars of the
     # headline. Strip newlines so Gemini doesn't render a broken ID.
@@ -632,6 +904,10 @@ def build_preselect_directive(preselected: dict) -> str:
         lines.append(f"  deal_value: {deal_value}")
     if stage:
         lines.append(f"  confirmation_status: {stage}")
+    if deal_type:
+        lines.append(f"  deal_type: {deal_type}")
+    if acquirer:
+        lines.append(f"  acquirer: {acquirer}")
     lines.append(f"  selection_reason: {reason}")
     lines.append(f'  primary_story_id: "{psid}"')
     lines.append("")
