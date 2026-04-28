@@ -73,12 +73,27 @@ if __name__ == "__main__":
     synth_result = run_synthesize(brief_type) or {}
 
     print("\n[3/15] DEAL EXTRACTION")
-    run_deal_extractor()
+    deal_extractor_status = {"ok": True, "error": None, "upserted": 0}
+    try:
+        result = run_deal_extractor() or {}
+        deal_extractor_status["upserted"] = result.get("upserted", 0)
+        if deal_extractor_status["upserted"] == 0:
+            deal_extractor_status["ok"] = False
+            deal_extractor_status["error"] = "deal_extractor wrote 0 rows"
+    except Exception as e:
+        deal_extractor_status["ok"] = False
+        deal_extractor_status["error"] = f"deal_extractor raised: {e}"
+        print(f"  ⚠ Deal Extractor failed (pipeline unaffected): {e}")
 
     print("\n[4/15] OBSERVE")
     run_id = None
     try:
-        run_id = observe.record_run(brief_type, started_at, ingest_count=ingest_count)
+        run_id = observe.record_run(
+            brief_type,
+            started_at,
+            ingest_count=ingest_count,
+            deal_extractor_status=deal_extractor_status,
+        )
     except Exception as e:
         print(f"  ⚠ Observer failed (pipeline unaffected): {e}")
 

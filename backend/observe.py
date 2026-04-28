@@ -113,7 +113,7 @@ def _reconstruct_selected(pool):
     return spine + floor
 
 
-def record_run(brief_type, started_at, ingest_count=None):
+def record_run(brief_type, started_at, ingest_count=None, deal_extractor_status=None):
     """
     Records one pipeline_runs row and associated run_articles rows.
 
@@ -123,6 +123,11 @@ def record_run(brief_type, started_at, ingest_count=None):
     started_at   : datetime (timezone-aware UTC) — when run.py started
     ingest_count : int | None — new articles stored by the ingest step;
                    the return value of run_ingestion() in ingest.py.
+    deal_extractor_status : dict | None — {"ok": bool, "error": str | None,
+                   "upserted": int}. When ok=False, the error string is
+                   appended to pipeline_runs.error_notes so downstream
+                   operators see deal-step failures alongside synthesis
+                   failures.
 
     Errors are caught and printed locally. This function never raises so
     the caller (run.py) is unaffected by observation failures.
@@ -160,6 +165,21 @@ def record_run(brief_type, started_at, ingest_count=None):
     except Exception as e:
         print(f"  [observe] briefing lookup failed: {e}")
         error_notes = f"briefing_lookup_error: {str(e)[:200]}"
+
+    # Surface deal-extractor status into error_notes so a silent deal-step
+    # failure (e.g. Gemini 404, zero rows written) is visible in
+    # pipeline_runs.error_notes alongside synthesis failures.
+    if deal_extractor_status and not deal_extractor_status.get("ok"):
+        deal_msg = deal_extractor_status.get("error") or "deal_extractor failed"
+        if error_notes:
+            error_notes = f"{error_notes} | {deal_msg}"
+        else:
+            error_notes = deal_msg
+        # If status was 'success' purely because synth wrote a non-stub
+        # briefing, downgrade to 'degraded' so dashboards can flag partial
+        # pipeline health (synth ok, deal step broken).
+        if status == "success":
+            status = "degraded"
 
     # --- Fetch the 24h article pool (mirrors synthesize.py query) --------
     cutoff = (completed_at - timedelta(hours=24)).isoformat()
