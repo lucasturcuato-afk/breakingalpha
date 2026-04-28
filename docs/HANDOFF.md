@@ -327,6 +327,25 @@ Complete codebase audit covering: all 10 backend pipeline files, all 10 frontend
 4. Are there active paying users? (determines urgency of fixes)
 5. Status of middleware.ts → proxy.ts rename (Next.js 16 deprecation)
 
+## Recently Completed (2026-04-28 evening — three-PR session)
+
+**PR #134 — deal extractor restore (merged):** Diagnosed 8-day deal_flow staleness. Root cause: PR #101 (Apr 19) migrated deal_extractor to Gemini with model `gemini-2.0-flash`, deprecated by Google. Calls returned 404 silently. Fixed via three changes: (1) bumped GEMINI_MODEL to "gemini-2.5-flash" matching synthesize.py, (2) deal_extractor.run() returns {extracted, upserted} dict, (3) run.py wraps deal step in try/except and threads status through observe.record_run, downgrading status to "degraded" when synth succeeds but deal step fails. Validated: 22 fresh deal_flow rows in tonight's 8pm cron, including Hut 8 $3.25B Debt Financing and Ineffable Intelligence $1.1B VC Round.
+
+**PR #129 — lead-preselect v1, M&A Filter A + Filter B (merged):** Path B from SPEC_path_b_lead_preselect.md. Deterministic Python pre-picker chooses primary_story from deal_flow before Gemini synthesis. M&A Filter A (priced $1B+ M&A with named acquirer) → Filter B macro/geo/sector fallback → Gemini in-prompt fallback. Originally an "overnight draft" PR; cleaned up tonight: title rewrite, description rewrite (narrow scope explicit), rebase against main with PR #134 conflict resolved, in-code rename to "M&A Filter A" in docstrings (function names unchanged). Branch was in agent worktree at .claude/worktrees/agent-a53475761303c7358; cleanup queued.
+
+**PR #135 — Filter A2 priced non-M&A (merged):** Audit-driven follow-up. 30-day audit (.session-artifacts/2026-04-28/audit/AUDIT_REPORT.md) showed 20 non-M&A $1B+ events vs 3 M&A — Filter A's named-acquirer gate excluded the larger pool by construction. Filter A2 mirrors Filter A's structure but with deal_type allowlist (VC Round, IPO, Debt Financing, Series A-F), no acquirer requirement, $1B threshold, observed-corpus keyword vocabulary anchored on "raised $" / "raises $" / "priced at" / "pricing of". Conservative v1: zero-corpus-hit defense-in-depth keywords for SPAC/PIPE/convertible/down-round failures intentionally omitted; will add in v2 when production data shows real failures. Observability hook: pipeline_runs.preselect_decision JSONB column persists per-run filter decision log for v2 calibration. Migration applied to prod Supabase (column added, verified). Smoke tests passed 4/4. V2 replay against tonight's pool picked X-Energy IPO ($1.02B, closed) — exactly the failure mode Filter A excluded.
+
+**Pending follow-ups from tonight:**
+- Harness env loading: .session-artifacts/2026-04-28/run_synth.py doesn't auto-load backend/.env. Add `load_dotenv("backend/.env")` for future replays.
+- Tomorrow morning validation: confirm pipeline_runs.preselect_decision populates with decision log on next cron.
+- 7-14 days of preselect_decision data → review for Filter A2 v2 calibration (real failure modes vs hypothesized).
+- observe.py MODEL_INGEST/MODEL_SYNTH stale strings still say llama; 3-line cleanup queued for separate PR.
+- Locked agent worktree at .claude/worktrees/agent-a53475761303c7358 ready for `git worktree remove --force`.
+
+**Open Questions resolved tonight:**
+- "Is deal_extractor.py staying on Groq intentionally?" → No, migrated to Gemini in PR #101 (Apr 19), restored to working state in PR #134.
+- "Are non-M&A priced events covered by Filter A?" → No (by construction). Filter A2 added in PR #135.
+
 ## Recently Completed (2026-04-27)
 **Bugfix & decision handoff for Noah:** PR #132 ready (5 fixes: React hydration, evening-wrap styling, migration audit with 19 items cataloged). Intelligence sprint branch preserved, 8 commits pending merge with expected conflicts. Identified blockers for Noah: PR #131 missing dependencies (@react-pdf/renderer, resend, @react-email/*), 7 TS errors from PR #131 files, framer-motion missing, 14 Supabase migrations STATUS UNKNOWN vs production. Full decision matrix in BUGFIX_NOTES.md and Pending Issues.
 
@@ -461,6 +480,13 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 - **Real comp data integration** — Polygon/FMP API integration + Lucas budget conversation. Deferred.
 
 ## Pending / Known Issues
+
+**From tonight's three-PR session (2026-04-28) — FOR NEXT SESSION**
+- **ENV loading in replay scripts** — .session-artifacts/2026-04-28/run_synth.py doesn't auto-load backend/.env. Add `load_dotenv("backend/.env")` for future replays.
+- **Locked agent worktree cleanup** — .claude/worktrees/agent-a53475761303c7358 ready for `git worktree remove --force`.
+- **observe.py stale model strings** — MODEL_INGEST/MODEL_SYNTH still say llama; 3-line cleanup queued for separate PR.
+- **preselect_decision validation timing** — Tomorrow morning confirm pipeline_runs.preselect_decision column populates on next cron (started 2026-04-28).
+- **Filter A2 v2 calibration window** — 7-14 days of preselect_decision data needed to review real failure modes vs hypothesized (earliest viable: 2026-05-05).
 
 **Post-sprint follow-ups (new, 2026-04-23) — PARTIALLY RESOLVED**
 - **Three migration directories with two naming conventions** — `supabase/migrations/`, `backend/migrations/`, `sql/` — need canonical-dir decision with Lucas.
