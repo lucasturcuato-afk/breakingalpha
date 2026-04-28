@@ -253,6 +253,38 @@ function normaliseCompany(s?: string | null): string {
   return (s || "").trim().toLowerCase();
 }
 
+/** Q4 — display allowlist for the deal_type pill. Anything else
+ *  (including the synthesize hallucination "Strategic Investment") is
+ *  silently omitted. The print page route also runs a deal_flow lookup
+ *  and overrides deal_type with the structured value when company
+ *  matches; the allowlist is the second line of defense. */
+const DEAL_TYPE_ALLOWLIST: ReadonlySet<string> = new Set([
+  "M&A",
+  "VC Round",
+  "IPO",
+  "Funding",
+  "PE Investment",
+  "Debt Financing",
+  "Acquisition",
+  "Series A",
+  "Series B",
+  "Series C",
+  "Series D",
+  "Series E",
+  "Series F",
+  "LBO",
+  "Asset Sale",
+  "Minority Stake",
+  "Recap",
+  "Restructuring",
+  "SPAC",
+]);
+
+function isAllowedDealType(t?: string | null): boolean {
+  if (!t) return false;
+  return DEAL_TYPE_ALLOWLIST.has(t.trim());
+}
+
 /* ── Section: Market Pulse hero (C4) ──────────────────────────────── */
 
 function MarketPulseSection({
@@ -355,6 +387,93 @@ function MarketPulseSection({
           </ul>
         </>
       ) : null}
+    </section>
+  );
+}
+
+/* ── Section: Top Deals to Watch (C6) ─────────────────────────────── */
+
+function TopDealsSection({ deals }: { deals: TopDeal[] }) {
+  if (deals.length === 0) return null;
+
+  return (
+    <section data-section="top-deals">
+      <div
+        className="grid grid-cols-2 gap-x-8 gap-y-6"
+        style={{
+          borderTop: `1px solid ${HAIRLINE_GRAY}`,
+          paddingTop: 18,
+        }}
+      >
+        {deals.map((d, i) => (
+          <div
+            key={`${i}-${d.company}`}
+            className="break-inside-avoid"
+            style={{
+              // Right column gets a left hairline rule. Bottom rule on
+              // first row when 4+ deals would force a wrap.
+              borderLeft:
+                i % 2 === 1 ? `1px solid ${HAIRLINE_GRAY}` : undefined,
+              paddingLeft: i % 2 === 1 ? 24 : 0,
+            }}
+          >
+            <div className="flex items-baseline justify-between gap-3 mb-1">
+              <h4
+                className="font-serif font-bold text-black"
+                style={{
+                  fontFamily: "'Times New Roman', Times, serif",
+                  fontSize: 13,
+                  lineHeight: 1.25,
+                  margin: 0,
+                  letterSpacing: "-0.005em",
+                }}
+              >
+                {d.company}
+              </h4>
+              <span
+                className="font-sans shrink-0"
+                style={{
+                  fontFamily: "Helvetica, Arial, sans-serif",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: HERITAGE_GOLD,
+                  fontVariantNumeric: "tabular-nums",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {d.value || "Undisclosed"}
+              </span>
+            </div>
+            {isAllowedDealType(d.deal_type) ? (
+              <p
+                className="font-sans uppercase text-neutral-600"
+                style={{
+                  fontFamily: "Helvetica, Arial, sans-serif",
+                  fontSize: 8.5,
+                  letterSpacing: "0.18em",
+                  fontWeight: 700,
+                  margin: "0 0 6px",
+                }}
+              >
+                {d.deal_type}
+              </p>
+            ) : null}
+            {d.one_liner ? (
+              <p
+                className="text-neutral-800"
+                style={{
+                  fontFamily: "'Times New Roman', Times, serif",
+                  fontSize: 10.5,
+                  lineHeight: 1.55,
+                  margin: 0,
+                }}
+              >
+                {stripHtml(d.one_liner)}
+              </p>
+            ) : null}
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -553,6 +672,22 @@ export function PrintBrief({
     .filter((d) => !isSeeLeadOneLiner(d.one_liner))
     .slice(0, 5);
 
+  // Q3 — Top Deals dedup. Drop:
+  //   1. any deal whose one_liner === "See lead." (we never render that
+  //      string as a card body — it's a sentinel, not content)
+  //   2. any deal whose company name matches the Today's Lead deal
+  //      (the lead already covers it; rendering twice reads as filler)
+  const topDealsForCards = allDeals.filter((d) => {
+    if (isSeeLeadOneLiner(d.one_liner)) return false;
+    if (
+      leadCompany &&
+      normaliseCompany(d.company) === normaliseCompany(leadCompany)
+    ) {
+      return false;
+    }
+    return true;
+  });
+
   // Q2 / Q9: stories[] (Today's Stories) is intentionally not rendered —
   // it reads as raw aggregation in the PDF. thesesCount and vix were
   // masthead stats in the old design; the new newsletter masthead omits
@@ -591,11 +726,15 @@ export function PrintBrief({
           namesToWatch={namesToWatch}
         />
 
-        {/* Section 3 — Top Deals (page 2–3). Implemented in C6. */}
-        <SectionDivider label="Top Deals to Watch" />
-        <section data-section="top-deals" className="break-inside-avoid">
-          <SectionStub name="top deals + Q3 dedup (C6)" />
-        </section>
+        {/* Section 3 — Top Deals (page 2–3). Q3 dedup applied. If 0
+            deals remain after dedup, the entire section is dropped
+            (TopDealsSection returns null). */}
+        {topDealsForCards.length > 0 ? (
+          <>
+            <SectionDivider label="Top Deals to Watch" />
+            <TopDealsSection deals={topDealsForCards} />
+          </>
+        ) : null}
 
         {/* Section 4 — Analyst / Evening Briefing (page 3–4). Q5: rename
             Evening Analysis → Evening Briefing. Implemented in C7. */}
