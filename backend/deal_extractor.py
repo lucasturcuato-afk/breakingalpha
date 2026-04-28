@@ -12,7 +12,7 @@ from google.genai import types
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 
 SYSTEM_PROMPT = """You are a senior investment banking analyst
 extracting deal intelligence from financial news articles.
@@ -238,6 +238,7 @@ def run():
             print(f"  ⚠ Supabase error: {e}")
 
     print(f"\n✅ Done — {extracted} deals extracted, {upserted} new deals added to pipeline")
+    return {"extracted": extracted, "upserted": upserted}
 
 
 def cleanup_bad_deals():
