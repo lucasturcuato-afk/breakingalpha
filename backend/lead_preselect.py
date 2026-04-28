@@ -61,8 +61,8 @@ except Exception:  # pragma: no cover
 MIN_DEAL_VALUE_USD_B = 1.0
 
 # Spec §3 — confirmation_status tiers that qualify a deal_flow row for
-# Filter A. deal_extractor's enum does not emit shareholder_approved or
-# regulatory_approved today (Spec §5); those states are bridged via
+# M&A Filter A. deal_extractor's enum does not emit shareholder_approved
+# or regulatory_approved today (Spec §5); those states are bridged via
 # keyword augment on the article title/summary.
 CONFIRMED_STAGES = {"signed", "closed"}
 
@@ -83,7 +83,7 @@ SECTOR_CLUSTER_MIN_SCORE = 7
 # already baked in.
 MACRO_GEO_MIN_SCORE = 8
 
-# Source-tier tiebreaker for Filter A ranking (Spec §3.3). Tier 1 is
+# Source-tier tiebreaker for M&A Filter A ranking (Spec §3.3). Tier 1 is
 # publications with known editorial verification for M&A; tier 2 is
 # everything else. Matched against article.source via case-insensitive
 # substring to catch "FT.com" / "Financial Times" / "Reuters UK" etc.
@@ -135,9 +135,9 @@ CONFIRMED_KEYWORDS: dict[str, tuple[str, ...]] = {
 }
 
 # Spec §5 — negative keywords. If ANY of these appear in the article
-# title+summary, the row is blocked from Filter A even if deal_flow.stage
-# says "signed". This is the Cognition / "potential $25B round"
-# defensive layer.
+# title+summary, the row is blocked from M&A Filter A even if
+# deal_flow.stage says "signed". This is the Cognition / "potential
+# $25B round" defensive layer.
 UNCONFIRMED_KEYWORDS: tuple[str, ...] = (
     "early discussions",
     "exploring",
@@ -317,14 +317,16 @@ def _index_deal_flow_by_url(deal_rows: list[dict]) -> dict[str, dict]:
     return idx
 
 
-# --- Filter A: priced + confirmed $1B+ deals ---------------------------
+# --- M&A Filter A: priced + confirmed M&A deals $1B+ ---
 
 def _qualifies_filter_a(article: dict, deal_row: Optional[dict]) -> Optional[float]:
     """
-    Return the article's deal_value_usd_b if it qualifies for Filter A,
-    else None.
+    Return the article's deal_value_usd_b if it qualifies for M&A Filter
+    A, else None.
 
     Rules (Spec §3.2, §5):
+      - Scope: M&A and PE-flavored deals only. Non-M&A priced events
+        (IPO, funding rounds, debt) are handled by Filter A2.
       - Must have a deal_flow row joined by source_url
       - deal_flow.acquirer must be non-null (Spec §9.6 Cognition defense)
       - Parsed valuation must be >= $1B USD-equivalent
@@ -371,7 +373,7 @@ def _rank_filter_a(
     now: datetime,
 ) -> dict:
     """
-    Rank Filter A hits by (deal_value DESC, published_at DESC,
+    Rank M&A Filter A hits by (deal_value DESC, published_at DESC,
     source_tier ASC, article_id/url_hash). Spec §9.1 — stable tiebreaker
     by url hash prevents asymmetric picks when two $25B deals land the
     same day.
@@ -547,7 +549,7 @@ def preselect_primary_story(
         sb = supabase_client if supabase_client is not None else supabase
         now = now or datetime.now(timezone.utc)
 
-        # --- Filter A: priced + confirmed $1B+ deals --------------------
+        # --- M&A Filter A: priced M&A $1B+ ---
         deal_rows = fetch_recent_deal_flow(sb, hours=48)
         deal_idx = _index_deal_flow_by_url(deal_rows)
 
