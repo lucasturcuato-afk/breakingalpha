@@ -171,10 +171,75 @@ export interface PrintBriefProps {
    data-print-brief-root marker is kept so the export-pdf validator
    doesn't false-positive while the rebuild is in progress. */
 
-export function PrintBrief({ briefing }: PrintBriefProps) {
+/* ── Layout primitives ─────────────────────────────────────────────── */
+
+const HERITAGE_GOLD = "#c9922a";
+const HAIRLINE_GRAY = "#e5e5e5";
+
+/** Small-caps section divider, sans-serif, gold accent dot.
+ *  Used between major sections per Q8 ("small caps section dividers"). */
+function SectionDivider({ label }: { label: string }) {
+  return (
+    <div className="mt-10 mb-4 flex items-center gap-3 break-inside-avoid">
+      <span
+        aria-hidden
+        style={{
+          width: 4,
+          height: 4,
+          background: HERITAGE_GOLD,
+          display: "inline-block",
+        }}
+      />
+      <span
+        className="font-sans uppercase text-neutral-700"
+        style={{
+          fontFamily: "Helvetica, Arial, sans-serif",
+          fontSize: 9.5,
+          letterSpacing: "0.22em",
+          fontWeight: 600,
+        }}
+      >
+        {label}
+      </span>
+      <span
+        aria-hidden
+        className="flex-1"
+        style={{ height: 1, background: HAIRLINE_GRAY }}
+      />
+    </div>
+  );
+}
+
+/** Stub used in commit 3 — replaced section-by-section in commits 4–9. */
+function SectionStub({ name }: { name: string }) {
+  return (
+    <div className="my-2 text-[10px] uppercase tracking-widest text-neutral-400">
+      [todo: {name}]
+    </div>
+  );
+}
+
+/* ── Main component ────────────────────────────────────────────────── */
+
+export function PrintBrief({
+  briefing,
+  stories: _stories,
+  thesesCount: _thesesCount,
+  vix: _vix,
+  formatLabel,
+  userAddendum,
+}: PrintBriefProps) {
   const dateStr = formatPTDateLong(briefing.created_at ?? null);
   const kind = briefing.briefing_type;
-  const editionLabel = kind === "evening" ? "Evening Wrap" : "Morning Brief";
+  const headline =
+    (briefing.headline && stripHtml(briefing.headline).trim()) ||
+    formatLabel ||
+    (kind === "evening" ? "Evening Wrap" : "Morning Market Brief");
+
+  // Q2 / Q9: stories[] (Today's Stories) is intentionally not rendered —
+  // it reads as raw aggregation in the PDF. thesesCount and vix were
+  // masthead stats in the old design; the new newsletter masthead omits
+  // them. Prefixed with _ above to signal intentional non-render.
 
   return (
     <div
@@ -182,17 +247,84 @@ export function PrintBrief({ briefing }: PrintBriefProps) {
       data-briefing-id={briefing.id}
       data-briefing-type={kind}
       className="bg-white text-black"
+      style={{
+        fontFamily: "'Times New Roman', Times, serif",
+        fontSize: 10.5,
+        lineHeight: 1.55,
+      }}
     >
       <PrintMasthead kind={kind} dateStr={dateStr} />
-      <main className="px-10 py-8 text-sm leading-relaxed">
-        <p className="font-serif italic text-neutral-600">
-          Newsletter rebuild in progress — sections will be filled in by
-          subsequent commits.
-        </p>
-        <p className="mt-2 text-xs text-neutral-500">
-          {editionLabel} · {dateStr} ·{" "}
-          {briefing.headline ? stripHtml(briefing.headline) : "—"}
-        </p>
+
+      <main className="px-10 pt-6 pb-12">
+        {/* Section 1 — Market Pulse hero (page 1). Implemented in C4. */}
+        <section
+          aria-label="Market Pulse"
+          className="break-inside-avoid"
+          data-section="pulse"
+        >
+          <SectionStub name="market pulse + stories in brief (C4)" />
+          <h1
+            className="font-serif font-bold text-black"
+            style={{
+              fontSize: 26,
+              lineHeight: 1.15,
+              letterSpacing: "-0.01em",
+              margin: "0 0 8px",
+            }}
+          >
+            {headline}
+          </h1>
+        </section>
+
+        {/* Section 2 — Today's Lead (page 1–2). Implemented in C5. */}
+        <SectionDivider label="Today's Lead" />
+        <section data-section="lead">
+          <SectionStub name="today's lead (C5)" />
+        </section>
+
+        {/* Section 3 — Top Deals (page 2–3). Implemented in C6. */}
+        <SectionDivider label="Top Deals to Watch" />
+        <section data-section="top-deals" className="break-inside-avoid">
+          <SectionStub name="top deals + Q3 dedup (C6)" />
+        </section>
+
+        {/* Section 4 — Analyst / Evening Briefing (page 3–4). Q5: rename
+            Evening Analysis → Evening Briefing. Implemented in C7. */}
+        <SectionDivider
+          label={kind === "evening" ? "Evening Briefing" : "Analyst Briefing"}
+        />
+        <section data-section="briefing">
+          <SectionStub name="analyst / evening briefing (C7)" />
+        </section>
+
+        {/* Section 5 — Sector Signals (page 4). Forced new page per spec.
+            Implemented in C8. */}
+        <section
+          data-section="sector"
+          className="break-before-page"
+        >
+          <SectionDivider label="Sector Signals" />
+          <SectionStub name="sector signals (C8)" />
+        </section>
+
+        {/* Section 6 — For Your Watchlist. Conditional: only rendered
+            when userAddendum is present. Implemented in C9. */}
+        {userAddendum ? (
+          <section data-section="watchlist" className="break-inside-avoid">
+            <SectionDivider label="For Your Watchlist" />
+            <SectionStub name="for your watchlist (C9)" />
+          </section>
+        ) : null}
+
+        {/* Section 7 — Disclaimer (last page). Implemented in C10.
+            The per-page short disclaimer footer is injected by
+            Puppeteer's footerTemplate in route.ts. */}
+        <section
+          data-section="disclaimer"
+          className="break-before-page break-inside-avoid"
+        >
+          <SectionStub name="disclaimer (C10)" />
+        </section>
       </main>
     </div>
   );
