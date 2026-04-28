@@ -160,8 +160,22 @@ export interface PrintBriefingData {
 
 /** Active thesis row passed from the print page route. The route runs
  *  the selection algorithm (matched-today + sector-diversity) and
- *  hands us up to 3 picks. matched_token is set when ticker or
- *  proper-noun match against today's brief corpus succeeded. */
+ *  hands us up to 3 picks. When matched_today is true,
+ *  mention_surface identifies which brief surface produced the first
+ *  match and mention_anchor is the matched token / company name in
+ *  its original source casing — used by buildMentionLine() to render
+ *  a meaningful italic last-line ("Reflected in today's lead — Hut 8")
+ *  rather than a bare token. */
+export type ThesisMentionSurface =
+  | "top_deals"
+  | "lead"
+  | "what_to_watch"
+  | "market_pulse"
+  | "deals_and_ma"
+  | "public_markets"
+  | "macro_and_rates"
+  | "geopolitics";
+
 export interface ActiveThesis {
   id: string;
   title: string;
@@ -171,7 +185,8 @@ export interface ActiveThesis {
   catalyst?: string | null;
   ticker?: string | null;
   matched_today: boolean;
-  matched_token: string | null;
+  mention_surface: ThesisMentionSurface | null;
+  mention_anchor: string | null;
 }
 
 export interface PrintBriefProps {
@@ -574,23 +589,116 @@ function trimToFirstClause(s: string, maxLen = 80): string {
   return (lastSpace > 0 ? slice.slice(0, lastSpace) : slice) + "…";
 }
 
-/** First-sentence trim for rationale / catalyst. */
-function firstSentence(s: string, maxLen = 180): string {
-  const trimmed = s.trim();
-  const m = trimmed.match(/^(.+?[.!?])(\s|$)/);
-  let first = m ? m[1] : trimmed;
-  if (first.length > maxLen) {
-    const slice = first.slice(0, maxLen);
-    const lastSpace = slice.lastIndexOf(" ");
-    first = (lastSpace > 0 ? slice.slice(0, lastSpace) : slice) + "…";
-  }
-  return first;
+/** Trim rationale / catalyst to the first sentence, with a max-char
+ *  cap. Uses a lookahead `(?=\s+[A-Z]|\s*$)` to avoid breaking on common
+ *  abbreviations (U.S., Inc., Corp.) — a naive `.split('.')[0]` here
+ *  produced "...impending U.S." truncated mid-clause in C14 (Bug #6). */
+function trimToFirstSentence(
+  text: string | null | undefined,
+  maxChars = 180,
+): string | null {
+  if (!text) return null;
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  // First sentence boundary = [.!?] followed by whitespace+capital
+  // letter OR end-of-string. Common abbreviations (U.S., Inc., Corp.)
+  // are followed by whitespace+lowercase or by punctuation/dash, so
+  // they don't trigger the lookahead.
+  const sentenceMatch = trimmed.match(/^.+?[.!?](?=\s+[A-Z]|\s*$)/);
+  const firstSentence = sentenceMatch ? sentenceMatch[0] : trimmed;
+
+  if (firstSentence.length <= maxChars) return firstSentence;
+
+  // First sentence too long — trim at last word boundary before
+  // maxChars and append ellipsis. Floor at 50 chars for the cut so we
+  // don't ellipse a near-empty fragment if no whitespace exists in
+  // the head.
+  const cutAt = firstSentence.lastIndexOf(" ", maxChars);
+  if (cutAt < 50) return firstSentence.slice(0, maxChars).trim() + "…";
+  return firstSentence.slice(0, cutAt).trim() + "…";
 }
 
-/** "Surfaced today: <token>." — italic last-line for matched theses.
- *  No prefix label; position alone signals the news connection. */
-function buildMentionLine(token: string): string {
-  return `Surfaced today: ${token.trim()}.`;
+/** Build the italic mention line for a matched thesis. Surface-aware:
+ *  the line tells the reader which brief section the thesis surfaced
+ *  in, with the anchor (company / proper noun in source casing) so
+ *  the connection is concrete. Returns null when surface or anchor is
+ *  missing — caller should omit the italic line entirely.
+ *
+ *  Replaces C14's bare-token rendering ("Surfaced today: Prices.")
+ *  which read as a stray fragment instead of a meaningful sentence
+ *  (Bug #5). */
+/** No-anchor variant of the mention line, returned when the surface
+ *  matched but the captured anchor is too generic to read well as
+ *  prose ("Reflected in today's lead — prices." reads worse than
+ *  "Reflected in today's lead."). top_deals never falls into this
+ *  branch — its anchors are always concrete company names. */
+function buildMentionLineNoAnchor(
+  surface: ThesisMentionSurface,
+): string | null {
+  switch (surface) {
+    case "top_deals":
+      return `Surfaces in today's Top Deals.`;
+    case "lead":
+      return `Reflected in today's lead.`;
+    case "what_to_watch":
+      return `Flagged in today's What to Watch.`;
+    case "market_pulse":
+      return `Echoed in today's Market Pulse.`;
+    case "deals_and_ma":
+      return `Connects to today's Deals & M&A coverage.`;
+    case "public_markets":
+      return `Reflected in today's Public Markets coverage.`;
+    case "macro_and_rates":
+      return `Connects to today's Macro & Rates section.`;
+    case "geopolitics":
+      return `Echoed in today's Geopolitics section.`;
+    default:
+      return null;
+  }
+}
+
+function buildMentionLine(
+  surface: ThesisMentionSurface | null,
+  anchor: string | null,
+): string | null {
+  if (!surface) return null;
+  const trimmedAnchor = anchor ? anchor.trim() : "";
+  if (!trimmedAnchor) return buildMentionLineNoAnchor(surface);
+
+  // top_deals anchors are company names — always concrete, always
+  // include. For prose surfaces, only include the anchor if it reads
+  // as a proper noun reference (starts with a capital letter, OR is
+  // multi-word). Lowercase single-word matches like "prices" or
+  // "investment" fall back to the no-anchor variant — better than
+  // "Reflected in today's lead — prices." (Bug #5 spec note).
+  if (surface !== "top_deals") {
+    const startsUpper = /^[A-Z]/.test(trimmedAnchor);
+    const isMultiWord = /\s/.test(trimmedAnchor);
+    const isConcrete = startsUpper || isMultiWord;
+    if (!isConcrete) return buildMentionLineNoAnchor(surface);
+  }
+
+  switch (surface) {
+    case "top_deals":
+      return `Surfaces in today's Top Deals via ${trimmedAnchor}.`;
+    case "lead":
+      return `Reflected in today's lead — ${trimmedAnchor}.`;
+    case "what_to_watch":
+      return `Flagged in today's What to Watch — ${trimmedAnchor}.`;
+    case "market_pulse":
+      return `Echoed in today's Market Pulse via ${trimmedAnchor}.`;
+    case "deals_and_ma":
+      return `Surfaces in today's Deals & M&A coverage — ${trimmedAnchor}.`;
+    case "public_markets":
+      return `Reflected in today's Public Markets coverage — ${trimmedAnchor}.`;
+    case "macro_and_rates":
+      return `Connects to today's Macro & Rates section — ${trimmedAnchor}.`;
+    case "geopolitics":
+      return `Echoed in today's Geopolitics section — ${trimmedAnchor}.`;
+    default:
+      return null;
+  }
 }
 
 function ActiveThesesSection({ theses }: { theses: ActiveThesis[] }) {
@@ -601,6 +709,11 @@ function ActiveThesesSection({ theses }: { theses: ActiveThesis[] }) {
       {theses.map((t, i) => {
         const isLast = i === theses.length - 1;
         const tagColor = convictionColor(t.conviction);
+        const rationaleText = trimToFirstSentence(t.rationale, 180);
+        const catalystText = trimToFirstSentence(t.catalyst, 180);
+        const mentionLine = t.matched_today
+          ? buildMentionLine(t.mention_surface, t.mention_anchor)
+          : null;
         return (
           <div
             key={t.id}
@@ -655,7 +768,7 @@ function ActiveThesesSection({ theses }: { theses: ActiveThesis[] }) {
             >
               {trimToFirstClause(t.title || "Untitled thesis", 80)}
             </h4>
-            {t.rationale && t.rationale.trim() ? (
+            {rationaleText ? (
               <p
                 className="text-neutral-900"
                 style={{
@@ -665,10 +778,10 @@ function ActiveThesesSection({ theses }: { theses: ActiveThesis[] }) {
                   margin: "0 0 4px",
                 }}
               >
-                {firstSentence(t.rationale, 180)}
+                {rationaleText}
               </p>
             ) : null}
-            {t.catalyst && t.catalyst.trim() ? (
+            {catalystText ? (
               <p
                 className="text-neutral-900"
                 style={{
@@ -678,10 +791,10 @@ function ActiveThesesSection({ theses }: { theses: ActiveThesis[] }) {
                   margin: "0 0 4px",
                 }}
               >
-                {firstSentence(t.catalyst, 180)}
+                {catalystText}
               </p>
             ) : null}
-            {t.matched_today && t.matched_token ? (
+            {mentionLine ? (
               <p
                 className="text-neutral-700"
                 style={{
@@ -692,7 +805,7 @@ function ActiveThesesSection({ theses }: { theses: ActiveThesis[] }) {
                   margin: "4px 0 0",
                 }}
               >
-                {buildMentionLine(t.matched_token)}
+                {mentionLine}
               </p>
             ) : null}
           </div>

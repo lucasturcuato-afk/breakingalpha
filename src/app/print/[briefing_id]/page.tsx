@@ -23,6 +23,7 @@ import {
   isAllowedDealType,
   type ActiveThesis,
   type PrintStory,
+  type ThesisMentionSurface,
 } from "@/components/brief/print-brief";
 import { stripHtml } from "@/lib/strip-html";
 import { formatPTDateLong } from "@/lib/format-pt";
@@ -205,26 +206,113 @@ function tokenizeProperNouns(s: string): string[] {
   return matches.filter((m) => !THESIS_STOPWORDS.has(m.toLowerCase()));
 }
 
-/** Whole-word, case-insensitive search for `tok` inside `corpus`. */
-function corpusContainsToken(corpus: string, tok: string): boolean {
-  if (!tok) return false;
-  const re = new RegExp(`\\b${escapeRegex(tok)}\\b`, "i");
-  return re.test(corpus);
-}
-
 interface CorpusInputs {
   topDeals: Array<{ company?: string }>;
   leadParagraph: string;
   supportingContext: string;
   whatToWatch: string;
   pulseNarrative: string;
-  sectionsText: string;
+  sections: Record<string, string>;
+}
+
+/** A single brief surface that the matcher can scan. Either a
+ *  structured array of company anchors (top_deals) or freeform prose
+ *  whose original casing is preserved so the matched anchor can be
+ *  extracted verbatim. */
+type Surface =
+  | { key: ThesisMentionSurface; companies: string[] }
+  | { key: ThesisMentionSurface; text: string };
+
+/** Build the ordered surface list. Order matters: the FIRST surface
+ *  to contain a match wins, and the rendered mention line names that
+ *  surface. Ordered by how the reader perceives weight: top_deals →
+ *  lead → what_to_watch → market_pulse → analyst-briefing sections.
+ *  supporting_context is folded into the "lead" surface per the
+ *  spec's grouping (Today's Lead covers both the lead paragraph and
+ *  its supporting context). */
+function buildSurfaces(inputs: CorpusInputs): Surface[] {
+  const surfaces: Surface[] = [];
+  const companies = inputs.topDeals
+    .map((d) => (d.company || "").trim())
+    .filter((c) => c.length > 0);
+  if (companies.length > 0) {
+    surfaces.push({ key: "top_deals", companies });
+  }
+  const leadCombined = [inputs.leadParagraph, inputs.supportingContext]
+    .filter((s) => s && s.trim())
+    .join(" ");
+  if (leadCombined) surfaces.push({ key: "lead", text: leadCombined });
+  if (inputs.whatToWatch && inputs.whatToWatch.trim()) {
+    surfaces.push({ key: "what_to_watch", text: inputs.whatToWatch });
+  }
+  if (inputs.pulseNarrative && inputs.pulseNarrative.trim()) {
+    surfaces.push({ key: "market_pulse", text: inputs.pulseNarrative });
+  }
+  // Analyst Briefing sections in the same order as MORNING_TAB_ORDER /
+  // EVENING_TAB_ORDER (minus sector_spotlight which was cut in C13).
+  const sectionKeys: ThesisMentionSurface[] = [
+    "deals_and_ma",
+    "public_markets",
+    "macro_and_rates",
+    "geopolitics",
+  ];
+  for (const k of sectionKeys) {
+    const v = inputs.sections[k];
+    if (v && v.trim()) surfaces.push({ key: k, text: v });
+  }
+  return surfaces;
+}
+
+interface SurfaceMatch {
+  surface: ThesisMentionSurface;
+  anchor: string;
+}
+
+/** Try to match `tok` (whole-word, case-insensitive) inside a single
+ *  surface. Returns the anchor in original-source casing on hit. */
+function matchInSurface(
+  surface: Surface,
+  tok: string,
+): SurfaceMatch | null {
+  if (!tok) return null;
+  const re = new RegExp(`\\b${escapeRegex(tok)}\\b`, "i");
+  if ("companies" in surface) {
+    for (const c of surface.companies) {
+      if (re.test(c)) return { surface: surface.key, anchor: c };
+    }
+    return null;
+  }
+  const m = surface.text.match(re);
+  if (!m) return null;
+  // m[0] is the matched substring in its original source casing.
+  return { surface: surface.key, anchor: m[0] };
+}
+
+/** Walk surfaces in priority order. Try ticker first (when present),
+ *  then proper-noun title tokens. First hit anywhere wins. */
+function findFirstMatch(
+  surfaces: Surface[],
+  ticker: string,
+  titleTokens: string[],
+): SurfaceMatch | null {
+  for (const s of surfaces) {
+    if (ticker) {
+      const m = matchInSurface(s, ticker);
+      if (m) return m;
+    }
+    for (const tok of titleTokens) {
+      const m = matchInSurface(s, tok);
+      if (m) return m;
+    }
+  }
+  return null;
 }
 
 /** Selection algorithm — see C14 commit message and PR #136 spec.
  *  1. fetch up to 50 non-expired theses, newest first
- *  2. compute matched_today via ticker / proper-noun match against
- *     today's brief corpus
+ *  2. compute matched_today + mention_surface + mention_anchor by
+ *     scanning brief surfaces in priority order, preserving the
+ *     anchor's original source casing for downstream rendering
  *  3. greedy pick: matched first (sorted by conviction), then non-
  *     matched (also by conviction), filling to 3 with sector diversity
  *  Soft-fails: any error returns []. */
@@ -261,39 +349,13 @@ async function selectActiveTheses(
 
   if (rows.length === 0) return [];
 
-  // Today's corpus for token matching. All lower-cased; the regex
-  // search is case-insensitive anyway, but lowercasing once avoids
-  // recomputing for every token.
-  const corpus = [
-    ...inputs.topDeals.map((d) => d.company || ""),
-    inputs.leadParagraph,
-    inputs.supportingContext,
-    inputs.whatToWatch,
-    inputs.pulseNarrative,
-    inputs.sectionsText,
-  ]
-    .join(" ")
-    .toLowerCase();
+  const surfaces = buildSurfaces(inputs);
 
   const enriched: ActiveThesis[] = rows.map((t) => {
     const ticker = (t.ticker || "").trim();
     const title = (t.title || "").trim();
-    let matched_today = false;
-    let matched_token: string | null = null;
-
-    if (ticker && corpusContainsToken(corpus, ticker)) {
-      matched_today = true;
-      matched_token = ticker.toUpperCase();
-    }
-    if (!matched_today && title) {
-      for (const tok of tokenizeProperNouns(title)) {
-        if (corpusContainsToken(corpus, tok)) {
-          matched_today = true;
-          matched_token = tok;
-          break;
-        }
-      }
-    }
+    const titleTokens = title ? tokenizeProperNouns(title) : [];
+    const hit = findFirstMatch(surfaces, ticker, titleTokens);
 
     return {
       id: t.id,
@@ -303,8 +365,9 @@ async function selectActiveTheses(
       sector: t.sector,
       catalyst: t.catalyst,
       ticker: ticker || null,
-      matched_today,
-      matched_token,
+      matched_today: !!hit,
+      mention_surface: hit ? hit.surface : null,
+      mention_anchor: hit ? hit.anchor : null,
     };
   });
 
@@ -352,7 +415,8 @@ async function selectActiveTheses(
       catalyst: t.catalyst,
       ticker: t.ticker,
       matched_today: t.matched_today,
-      matched_token: t.matched_token,
+      mention_surface: t.mention_surface,
+      mention_anchor: t.mention_anchor,
     });
     if (s) usedSectors.add(s);
   };
@@ -622,7 +686,7 @@ export default async function PrintBriefPage({
       whatToWatch:
         typeof row.what_to_watch === "string" ? row.what_to_watch : "",
       pulseNarrative: marketPulse?.narrative ?? "",
-      sectionsText: Object.values(sections).join(" "),
+      sections,
     },
   );
 
