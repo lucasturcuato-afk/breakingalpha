@@ -485,6 +485,66 @@ function BriefingSection({
   );
 }
 
+/* ── Section: Sector Signals (C8) ─────────────────────────────────── */
+
+function SectorSignalsSection({
+  breakdown,
+}: {
+  breakdown: Record<string, string>;
+}) {
+  const entries = Object.keys(breakdown)
+    .map((sector) => ({ sector, content: breakdown[sector] }))
+    .filter(
+      (s): s is { sector: string; content: string } =>
+        !!s.content && s.content.trim() !== "",
+    );
+
+  if (entries.length === 0) return null;
+
+  return (
+    <section
+      data-section="sector"
+      style={{
+        columnCount: 2,
+        columnGap: 28,
+      }}
+    >
+      {entries.map((s) => (
+        <div
+          key={s.sector}
+          className="break-inside-avoid"
+          style={{ marginBottom: 16 }}
+        >
+          <p
+            className="font-sans uppercase text-neutral-700"
+            style={{
+              fontFamily: "Helvetica, Arial, sans-serif",
+              fontSize: 9,
+              letterSpacing: "0.18em",
+              fontWeight: 700,
+              margin: "0 0 6px",
+            }}
+          >
+            {s.sector}
+          </p>
+          <p
+            className="text-neutral-900"
+            style={{
+              fontFamily: "'Times New Roman', Times, serif",
+              fontSize: 10.5,
+              lineHeight: 1.6,
+              margin: 0,
+              whiteSpace: "pre-line",
+            }}
+          >
+            {stripHtml(s.content)}
+          </p>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 /* ── Section: Top Deals to Watch (C6) ─────────────────────────────── */
 
 function TopDealsSection({ deals }: { deals: TopDeal[] }) {
@@ -840,15 +900,11 @@ export function PrintBrief({
           order={kind === "evening" ? EVENING_TAB_ORDER : MORNING_TAB_ORDER}
         />
 
-        {/* Section 5 — Sector Signals (page 4). Forced new page per spec.
-            Implemented in C8. */}
-        <section
-          data-section="sector"
-          className="break-before-page"
-        >
+        {/* Section 5 — Sector Signals (page 4). Forced new page per spec. */}
+        <div className="break-before-page">
           <SectionDivider label="Sector Signals" />
-          <SectionStub name="sector signals (C8)" />
-        </section>
+          <SectorSignalsSection breakdown={briefing.sector_breakdown ?? {}} />
+        </div>
 
         {/* Section 6 — For Your Watchlist. Conditional: only rendered
             when userAddendum is present. Implemented in C9. */}
