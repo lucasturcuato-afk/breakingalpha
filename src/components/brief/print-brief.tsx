@@ -485,6 +485,33 @@ function BriefingSection({
   );
 }
 
+/* ── Section: For Your Watchlist (C9) ─────────────────────────────── */
+
+/** Renders the V4B per-user addendum block. Conditional in caller —
+ *  only shown when addendum is non-empty. Newsletter treatment: plain
+ *  flowing serif prose, no card chrome. */
+function WatchlistSection({ addendum }: { addendum: string }) {
+  const text = stripHtml(addendum).trim();
+  if (!text) return null;
+  return (
+    <section data-section="watchlist" className="break-inside-avoid">
+      <p
+        className="text-neutral-900"
+        style={{
+          fontFamily: "'Times New Roman', Times, serif",
+          fontSize: 10.5,
+          lineHeight: 1.65,
+          margin: 0,
+          whiteSpace: "pre-line",
+          maxWidth: 580,
+        }}
+      >
+        {text}
+      </p>
+    </section>
+  );
+}
+
 /* ── Section: Sector Signals (C8) ─────────────────────────────────── */
 
 function SectorSignalsSection({
@@ -907,12 +934,13 @@ export function PrintBrief({
         </div>
 
         {/* Section 6 — For Your Watchlist. Conditional: only rendered
-            when userAddendum is present. Implemented in C9. */}
-        {userAddendum ? (
-          <section data-section="watchlist" className="break-inside-avoid">
+            when the V4B per-user addendum is present and non-empty.
+            Otherwise the section is omitted entirely (Q2). */}
+        {userAddendum && userAddendum.trim() ? (
+          <>
             <SectionDivider label="For Your Watchlist" />
-            <SectionStub name="for your watchlist (C9)" />
-          </section>
+            <WatchlistSection addendum={userAddendum} />
+          </>
         ) : null}
 
         {/* Section 7 — Disclaimer (last page). Implemented in C10.
