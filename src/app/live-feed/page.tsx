@@ -64,6 +64,65 @@ function getTimeBucket(dateStr: string): string {
   return "EARLIER";
 }
 
+function normalizeTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 60);
+}
+
+interface DuplicateArticleSummary {
+  id: string;
+  title: string;
+  source: string;
+  url?: string;
+  publishedAt?: string;
+}
+
+interface DedupedStory extends LiveStory {
+  duplicateArticles: DuplicateArticleSummary[];
+}
+
+function dedupeStories(stories: LiveStory[]): DedupedStory[] {
+  const groups = new Map<string, LiveStory[]>();
+  for (const s of stories) {
+    const key = normalizeTitle(s.title);
+    if (!key) {
+      groups.set(`__standalone__${s.id}`, [s]);
+      continue;
+    }
+    const arr = groups.get(key) ?? [];
+    arr.push(s);
+    groups.set(key, arr);
+  }
+
+  const result: DedupedStory[] = [];
+  for (const arr of groups.values()) {
+    arr.sort((a, b) => {
+      const aTime = new Date(a._publishedAt || 0).getTime();
+      const bTime = new Date(b._publishedAt || 0).getTime();
+      if (bTime !== aTime) return bTime - aTime;
+      return (a.source || "").localeCompare(b.source || "");
+    });
+    const primary = arr[0];
+    const others = arr.slice(1);
+    result.push({
+      ...primary,
+      duplicateArticles: others.map((o) => ({
+        id: o.id,
+        title: o.title,
+        source: o.source,
+        url: o.url,
+        publishedAt: o._publishedAt,
+      })),
+    });
+  }
+
+  return result;
+}
+
 export default function LiveFeedPage() {
   const { mood, moodHeadline, moodDetails } = useLiveMood();
   const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
@@ -241,9 +300,20 @@ export default function LiveFeedPage() {
     deferredShowAlerts !== showAlertsOnly ||
     deferredShowSaved !== showSavedOnly;
 
+  const [expandedDuplicates, setExpandedDuplicates] = useState<Set<string>>(new Set());
+
+  function toggleDuplicates(id: string) {
+    setExpandedDuplicates((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   // Filter
-  const filtered: LiveStory[] = useMemo(() => {
-    return sortedArticles.filter((story) => {
+  const filtered: DedupedStory[] = useMemo(() => {
+    const matched = sortedArticles.filter((story) => {
       if (deferredShowSaved && !savedIds.has(story.id)) return false;
       if (deferredShowAlerts && !story.isAlert) return false;
 
@@ -255,6 +325,7 @@ export default function LiveFeedPage() {
 
       return verticalMatch && activityMatch;
     });
+    return dedupeStories(matched);
   }, [sortedArticles, savedIds, deferredShowSaved, deferredShowAlerts, deferredVerticals, deferredActivityTypes]);
 
   // Alert count used to be computed inline as `articles.filter(...).length` on
@@ -291,7 +362,7 @@ export default function LiveFeedPage() {
 
   // Group by time bucket
   const grouped = useMemo(() => {
-    const buckets: Record<string, LiveStory[]> = {};
+    const buckets: Record<string, DedupedStory[]> = {};
     const bucketOrder = ["LAST HOUR", "TODAY", "YESTERDAY", "EARLIER"];
     filtered.forEach((story) => {
       const bucket = getTimeBucket(story._publishedAt || "");
@@ -451,18 +522,62 @@ export default function LiveFeedPage() {
                   </div>
 
                   {/* Articles in bucket */}
-                  {visibleStories.map((story) => (
-                    <div key={story.id} className="relative">
-                      {newArticleIds.has(story.id) && (
-                        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-signal-up" />
-                      )}
-                      <FeedRow
-                        story={story}
-                        saved={savedIds.has(story.id)}
-                        onBookmark={handleBookmark}
-                      />
-                    </div>
-                  ))}
+                  {visibleStories.map((story) => {
+                    const isExpanded = expandedDuplicates.has(story.id);
+                    return (
+                      <div key={story.id} className="relative">
+                        {newArticleIds.has(story.id) && (
+                          <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-signal-up" />
+                        )}
+                        <FeedRow
+                          story={story}
+                          saved={savedIds.has(story.id)}
+                          onBookmark={handleBookmark}
+                        />
+                        {story.duplicateArticles.length > 0 && (
+                          <div className="px-6 -mt-1 pb-2">
+                            <button
+                              type="button"
+                              onClick={() => toggleDuplicates(story.id)}
+                              className="font-data text-[9px] font-semibold text-text-muted bg-parchment-mid border border-border-base rounded px-1.5 py-0.5 cursor-pointer hover:text-text-primary hover:border-border-hover transition-colors"
+                            >
+                              {isExpanded ? "▴" : "▾"} +{story.duplicateArticles.length} {story.duplicateArticles.length === 1 ? "source" : "sources"}
+                              {!isExpanded && story.duplicateArticles.length > 0 && `: ${story.duplicateArticles.slice(0, 3).map((d) => d.source).join(", ")}`}
+                            </button>
+                            {isExpanded && (
+                              <div className="mt-2 ml-2 pl-3 border-l-2 border-border-base space-y-1.5">
+                                {story.duplicateArticles.map((dup) => (
+                                  <div key={dup.id} className="flex items-start justify-between gap-3">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-sans text-[12px] text-text-primary leading-snug truncate">
+                                        {dup.title}
+                                      </p>
+                                      <p className="font-data text-[9px] text-text-muted mt-0.5">
+                                        {dup.source}
+                                        {dup.publishedAt && ` · ${timeAgo(dup.publishedAt)}`}
+                                      </p>
+                                    </div>
+                                    {dup.url ? (
+                                      <a
+                                        href={dup.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex-shrink-0 font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors"
+                                      >
+                                        Read source →
+                                      </a>
+                                    ) : (
+                                      <span className="flex-shrink-0 font-sans text-[10px] text-text-faint">No link</span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             }

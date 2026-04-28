@@ -147,15 +147,36 @@ function getDisplayTitle(s: TrendSignal): string {
 
 
 
+function dedupKey(s: TrendSignal): string {
+  const company = (s.top_companies[0] || "").toLowerCase().trim();
+  const theme = (s.top_themes[0] || "").toLowerCase().trim();
+  const sector = (s.top_sectors[0] || "").toLowerCase().trim();
+  if (company && theme) return `${company}::${theme}`;
+  if (theme && sector) return `${theme}::${sector}`;
+  return s.label.toLowerCase().trim();
+}
+
 function deduplicateSignals(signals: TrendSignal[]): TrendSignal[] {
   const seen = new Map<string, TrendSignal>();
   for (const s of signals) {
-    const key = s.label.toLowerCase().trim();
-    if (!seen.has(key) || new Date(s.created_at) > new Date(seen.get(key)!.created_at)) {
+    const key = dedupKey(s);
+    const existing = seen.get(key);
+    if (!existing) {
+      seen.set(key, s);
+      continue;
+    }
+    if (s.strength_score > existing.strength_score) {
+      seen.set(key, s);
+    } else if (
+      s.strength_score === existing.strength_score &&
+      new Date(s.created_at) > new Date(existing.created_at)
+    ) {
       seen.set(key, s);
     }
   }
-  return [...seen.values()].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  return [...seen.values()].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
 }
 
 function capitalizeCompany(c: string): string {

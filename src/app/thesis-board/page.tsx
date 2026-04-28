@@ -36,6 +36,7 @@ interface RelatedArticle {
   summary?: string;
   sentiment?: string;
   sector?: string;
+  url?: string;
 }
 
 type ConvictionFilter = "HIGH" | "MEDIUM" | "WATCH" | "all" | "archived" | "pending_review" | "recommended";
@@ -280,7 +281,7 @@ function ThesisBoardContent() {
       if (ids && ids.length > 0) {
         const { data } = await supabase
           .from("articles")
-          .select("id, title, source, ingested_at, published_at, summary, sentiment, sector")
+          .select("id, title, source, ingested_at, published_at, summary, sentiment, sector, url")
           .in("id", ids);
         if (data && data.length > 0) {
           setRelatedArticles((prev) => ({ ...prev, [thesis.id]: data }));
@@ -290,7 +291,7 @@ function ThesisBoardContent() {
       // Fallback: sector-matched
       const { data } = await supabase
         .from("articles")
-        .select("id, title, source, ingested_at, published_at, summary, sentiment, sector")
+        .select("id, title, source, ingested_at, published_at, summary, sentiment, sector, url")
         .eq("sector", thesis.sector)
         .order("ingested_at", { ascending: false })
         .limit(8);
