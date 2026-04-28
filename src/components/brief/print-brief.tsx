@@ -158,6 +158,22 @@ export interface PrintBriefingData {
   morning_review?: MorningReviewShape | null;
 }
 
+/** Active thesis row passed from the print page route. The route runs
+ *  the selection algorithm (matched-today + sector-diversity) and
+ *  hands us up to 3 picks. matched_token is set when ticker or
+ *  proper-noun match against today's brief corpus succeeded. */
+export interface ActiveThesis {
+  id: string;
+  title: string;
+  conviction?: string | null;
+  rationale?: string | null;
+  sector?: string | null;
+  catalyst?: string | null;
+  ticker?: string | null;
+  matched_today: boolean;
+  matched_token: string | null;
+}
+
 export interface PrintBriefProps {
   briefing: PrintBriefingData;
   stories: PrintStory[];
@@ -165,6 +181,9 @@ export interface PrintBriefProps {
   vix: { price: string; pct: number } | null;
   formatLabel?: string | null;
   userAddendum?: string | null;
+  /** Up to 3 selected active theses for the page-3 Active Theses
+   *  section. Empty array → section omits entirely. */
+  activeTheses?: ActiveThesis[];
 }
 
 /* ── Stub component (commit 1) ─────────────────────────────────────── */
@@ -519,6 +538,168 @@ function DisclaimerSection() {
   );
 }
 
+/* ── Section: Active Theses (C14, replaces Sector Signals) ────────── */
+
+const HIGH_GOLD = HERITAGE_GOLD;
+
+function convictionLabel(c?: string | null): string {
+  const v = (c || "").toUpperCase().trim();
+  if (!v) return "WATCH";
+  return v;
+}
+
+/** Conviction tag color — monochrome + gold per spec. */
+function convictionColor(c?: string | null): string {
+  const v = (c || "").toUpperCase().trim();
+  if (v === "HIGH") return HIGH_GOLD;
+  if (v === "BULLISH") return "#000000";
+  if (v === "BEARISH") return "#000000";
+  if (v === "WATCH") return "#a3a3a3";
+  // MEDIUM and anything else
+  return "#525252";
+}
+
+/** Trim a thesis title to a first-clause length cap. Splits on period
+ *  or comma when over the limit; falls back to last whole word + ellipsis
+ *  if no separator lands in the back half. Never truncates mid-word. */
+function trimToFirstClause(s: string, maxLen = 80): string {
+  const trimmed = s.trim();
+  if (trimmed.length <= maxLen) return trimmed;
+  const slice = trimmed.slice(0, maxLen);
+  const lastSep = Math.max(slice.lastIndexOf("."), slice.lastIndexOf(","));
+  if (lastSep > maxLen * 0.5) return slice.slice(0, lastSep);
+  const lastSpace = slice.lastIndexOf(" ");
+  return (lastSpace > 0 ? slice.slice(0, lastSpace) : slice) + "…";
+}
+
+/** First-sentence trim for rationale / catalyst. */
+function firstSentence(s: string, maxLen = 180): string {
+  const trimmed = s.trim();
+  const m = trimmed.match(/^(.+?[.!?])(\s|$)/);
+  let first = m ? m[1] : trimmed;
+  if (first.length > maxLen) {
+    const slice = first.slice(0, maxLen);
+    const lastSpace = slice.lastIndexOf(" ");
+    first = (lastSpace > 0 ? slice.slice(0, lastSpace) : slice) + "…";
+  }
+  return first;
+}
+
+/** "Surfaced today: <token>." — italic last-line for matched theses.
+ *  No prefix label; position alone signals the news connection. */
+function buildMentionLine(token: string): string {
+  return `Surfaced today: ${token.trim()}.`;
+}
+
+function ActiveThesesSection({ theses }: { theses: ActiveThesis[] }) {
+  if (theses.length === 0) return null;
+
+  return (
+    <section data-section="active-theses">
+      {theses.map((t, i) => {
+        const isLast = i === theses.length - 1;
+        const tagColor = convictionColor(t.conviction);
+        return (
+          <div
+            key={t.id}
+            className="break-inside-avoid"
+            style={{
+              paddingTop: i === 0 ? 0 : 14,
+              paddingBottom: isLast ? 0 : 14,
+              borderBottom: isLast ? undefined : `1px solid ${HAIRLINE_GRAY}`,
+            }}
+          >
+            <div className="flex items-baseline justify-between gap-4">
+              <span
+                className="font-sans uppercase shrink-0"
+                style={{
+                  fontFamily: "Helvetica, Arial, sans-serif",
+                  fontSize: 9,
+                  letterSpacing: "0.18em",
+                  fontWeight: 700,
+                  color: tagColor,
+                  // print-color-adjust ensures Puppeteer doesn't strip
+                  // the Heritage Gold on HIGH or the explicit black on
+                  // BULLISH/BEARISH when rasterizing the PDF.
+                  printColorAdjust: "exact",
+                  WebkitPrintColorAdjust: "exact",
+                }}
+              >
+                {convictionLabel(t.conviction)}
+              </span>
+              {t.ticker ? (
+                <span
+                  className="font-sans uppercase text-neutral-500 shrink-0"
+                  style={{
+                    fontFamily: "Helvetica, Arial, sans-serif",
+                    fontSize: 9,
+                    letterSpacing: "0.18em",
+                    fontWeight: 700,
+                  }}
+                >
+                  {t.ticker.trim()}
+                </span>
+              ) : null}
+            </div>
+            <h4
+              className="font-serif font-bold text-black"
+              style={{
+                fontFamily: "'Times New Roman', Times, serif",
+                fontSize: 13,
+                lineHeight: 1.25,
+                letterSpacing: "-0.005em",
+                margin: "6px 0 6px",
+              }}
+            >
+              {trimToFirstClause(t.title || "Untitled thesis", 80)}
+            </h4>
+            {t.rationale && t.rationale.trim() ? (
+              <p
+                className="text-neutral-900"
+                style={{
+                  fontFamily: "'Times New Roman', Times, serif",
+                  fontSize: 10.5,
+                  lineHeight: 1.55,
+                  margin: "0 0 4px",
+                }}
+              >
+                {firstSentence(t.rationale, 180)}
+              </p>
+            ) : null}
+            {t.catalyst && t.catalyst.trim() ? (
+              <p
+                className="text-neutral-900"
+                style={{
+                  fontFamily: "'Times New Roman', Times, serif",
+                  fontSize: 10.5,
+                  lineHeight: 1.55,
+                  margin: "0 0 4px",
+                }}
+              >
+                {firstSentence(t.catalyst, 180)}
+              </p>
+            ) : null}
+            {t.matched_today && t.matched_token ? (
+              <p
+                className="text-neutral-700"
+                style={{
+                  fontFamily: "'Times New Roman', Times, serif",
+                  fontSize: 10.5,
+                  fontStyle: "italic",
+                  lineHeight: 1.55,
+                  margin: "4px 0 0",
+                }}
+              >
+                {buildMentionLine(t.matched_token)}
+              </p>
+            ) : null}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
 /* ── Section: For Your Watchlist (C9) ─────────────────────────────── */
 
 /** Renders the V4B per-user addendum block. Conditional in caller —
@@ -734,44 +915,49 @@ function TodaysLeadSection({
               fontSize: 9,
               letterSpacing: "0.18em",
               fontWeight: 700,
-              margin: "0 0 6px",
+              margin: "0 0 8px",
             }}
           >
             Names to Watch
           </p>
-          <p
-            className="text-neutral-800"
-            style={{
-              fontFamily: "'Times New Roman', Times, serif",
-              fontSize: 11,
-              lineHeight: 1.6,
-              margin: 0,
-            }}
-          >
+          <ul className="m-0 p-0 list-none">
             {namesToWatch.map((d, i) => {
               const tone = normaliseTone(d.sentiment);
               return (
-                <span key={`${i}-${d.company}`}>
-                  <span className="text-black">{d.company}</span>
+                <li
+                  key={`${i}-${d.company}`}
+                  className="flex items-baseline justify-between gap-6 py-1.5"
+                  style={
+                    i < namesToWatch.length - 1
+                      ? { borderBottom: `1px solid ${HAIRLINE_GRAY}` }
+                      : undefined
+                  }
+                >
                   <span
-                    className="font-sans uppercase text-neutral-500"
+                    className="text-black"
+                    style={{
+                      fontFamily: "'Times New Roman', Times, serif",
+                      fontSize: 11,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {d.company}
+                  </span>
+                  <span
+                    className="font-sans uppercase text-neutral-500 shrink-0"
                     style={{
                       fontFamily: "Helvetica, Arial, sans-serif",
-                      fontSize: 8,
-                      letterSpacing: "0.16em",
+                      fontSize: 8.5,
+                      letterSpacing: "0.18em",
                       fontWeight: 700,
-                      marginLeft: 6,
                     }}
                   >
                     {tone}
                   </span>
-                  {i < namesToWatch.length - 1 ? (
-                    <span className="text-neutral-400">{"  ·  "}</span>
-                  ) : null}
-                </span>
+                </li>
               );
             })}
-          </p>
+          </ul>
         </div>
       ) : null}
     </section>
@@ -784,6 +970,7 @@ export function PrintBrief({
   briefing,
   formatLabel,
   userAddendum,
+  activeTheses,
 }: PrintBriefProps) {
   const dateStr = formatPTDateLong(briefing.created_at ?? null);
   const kind = briefing.briefing_type;
@@ -818,11 +1005,11 @@ export function PrintBrief({
     (briefing.what_to_watch && stripHtml(briefing.what_to_watch).trim()) || "";
   const allDeals = briefing.top_deals ?? [];
   const leadCompany = leadDealCompany(allDeals); // for Q3 dedup
-  const namesToWatch = allDeals
-    // skip the "See lead." entry from Names to Watch — Today's Lead
-    // already covers that company in its prose.
-    .filter((d) => !isSeeLeadOneLiner(d.one_liner))
-    .slice(0, 5);
+  // Names to Watch keeps the lead-deal company on purpose. Top Deals
+  // dedup (below) excludes it because its body would just say "See
+  // lead."; Names to Watch is a roll-call surface and gains nothing
+  // from omitting the deal everyone is talking about today.
+  const namesToWatch = allDeals.slice(0, 5);
 
   // Q3 — Top Deals dedup. Drop:
   //   1. any deal whose one_liner === "See lead." (we never render that
@@ -898,9 +1085,16 @@ export function PrintBrief({
           order={kind === "evening" ? EVENING_TAB_ORDER : MORNING_TAB_ORDER}
         />
 
-        {/* Section 5 — Active Theses (page 3). Replaces the previous
-            Sector Signals (Bug #4 — duplicated sector_breakdown).
-            Implemented in C14. */}
+        {/* Section 5 — Active Theses (page 3). Forced new page so the
+            theses always lead page 3. Replaces the previous Sector
+            Signals section (Bug #4). Whole section omits when 0 active
+            theses are picked. */}
+        {activeTheses && activeTheses.length > 0 ? (
+          <div className="break-before-page">
+            <SectionDivider label="Active Theses" />
+            <ActiveThesesSection theses={activeTheses} />
+          </div>
+        ) : null}
 
         {/* Section 6 — For Your Watchlist. Conditional: only rendered
             when the V4B per-user addendum is present and non-empty.

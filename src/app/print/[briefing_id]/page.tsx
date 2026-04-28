@@ -21,6 +21,7 @@ import { createClient } from "@supabase/supabase-js";
 import {
   PrintBrief,
   isAllowedDealType,
+  type ActiveThesis,
   type PrintStory,
 } from "@/components/brief/print-brief";
 import { stripHtml } from "@/lib/strip-html";
@@ -151,6 +152,214 @@ interface BriefingApiResponse {
   pref_applied?: boolean;
   personalization?: { format_label?: string } | null;
   user_addendum?: string | null;
+}
+
+/* ── Active Theses selection helpers ──────────────────────────────── */
+
+const THESIS_STOPWORDS: ReadonlySet<string> = new Set([
+  "the",
+  "this",
+  "that",
+  "these",
+  "those",
+  "with",
+  "from",
+  "into",
+  "their",
+  "what",
+  "when",
+  "where",
+  "while",
+  "would",
+  "could",
+  "should",
+  "after",
+  "before",
+  "today",
+  "tomorrow",
+]);
+
+/** Conviction priority used by the selection algorithm.
+ *  HIGH > BULLISH > BEARISH > MEDIUM > WATCH > anything else. */
+const CONVICTION_PRIORITY: Record<string, number> = {
+  HIGH: 0,
+  BULLISH: 1,
+  BEARISH: 2,
+  MEDIUM: 3,
+  WATCH: 4,
+};
+
+function convictionRank(c?: string | null): number {
+  const v = (c || "").toUpperCase().trim();
+  return CONVICTION_PRIORITY[v] ?? 99;
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Extract proper-noun candidates from a thesis title:
+ *  capitalized 4+ char tokens, minus a small stopword list. */
+function tokenizeProperNouns(s: string): string[] {
+  const matches = s.match(/\b[A-Z][a-zA-Z]{3,}\b/g) ?? [];
+  return matches.filter((m) => !THESIS_STOPWORDS.has(m.toLowerCase()));
+}
+
+/** Whole-word, case-insensitive search for `tok` inside `corpus`. */
+function corpusContainsToken(corpus: string, tok: string): boolean {
+  if (!tok) return false;
+  const re = new RegExp(`\\b${escapeRegex(tok)}\\b`, "i");
+  return re.test(corpus);
+}
+
+interface CorpusInputs {
+  topDeals: Array<{ company?: string }>;
+  leadParagraph: string;
+  supportingContext: string;
+  whatToWatch: string;
+  pulseNarrative: string;
+  sectionsText: string;
+}
+
+/** Selection algorithm — see C14 commit message and PR #136 spec.
+ *  1. fetch up to 50 non-expired theses, newest first
+ *  2. compute matched_today via ticker / proper-noun match against
+ *     today's brief corpus
+ *  3. greedy pick: matched first (sorted by conviction), then non-
+ *     matched (also by conviction), filling to 3 with sector diversity
+ *  Soft-fails: any error returns []. */
+type ThesesClient = Pick<ReturnType<typeof createClient>, "from">;
+
+async function selectActiveTheses(
+  supabase: ThesesClient,
+  inputs: CorpusInputs,
+): Promise<ActiveThesis[]> {
+  let rows: Array<{
+    id: string;
+    title: string | null;
+    conviction: string | null;
+    rationale: string | null;
+    sector: string | null;
+    catalyst: string | null;
+    ticker: string | null;
+    generated_at: string | null;
+  }> = [];
+  try {
+    const res = await supabase
+      .from("theses")
+      .select(
+        "id, title, conviction, rationale, sector, catalyst, ticker, generated_at",
+      )
+      .or("expired.is.null,expired.eq.false")
+      .order("generated_at", { ascending: false })
+      .limit(50);
+    rows = res.data ?? [];
+  } catch (e) {
+    console.warn("[print] active-theses fetch failed:", e);
+    return [];
+  }
+
+  if (rows.length === 0) return [];
+
+  // Today's corpus for token matching. All lower-cased; the regex
+  // search is case-insensitive anyway, but lowercasing once avoids
+  // recomputing for every token.
+  const corpus = [
+    ...inputs.topDeals.map((d) => d.company || ""),
+    inputs.leadParagraph,
+    inputs.supportingContext,
+    inputs.whatToWatch,
+    inputs.pulseNarrative,
+    inputs.sectionsText,
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const enriched: ActiveThesis[] = rows.map((t) => {
+    const ticker = (t.ticker || "").trim();
+    const title = (t.title || "").trim();
+    let matched_today = false;
+    let matched_token: string | null = null;
+
+    if (ticker && corpusContainsToken(corpus, ticker)) {
+      matched_today = true;
+      matched_token = ticker.toUpperCase();
+    }
+    if (!matched_today && title) {
+      for (const tok of tokenizeProperNouns(title)) {
+        if (corpusContainsToken(corpus, tok)) {
+          matched_today = true;
+          matched_token = tok;
+          break;
+        }
+      }
+    }
+
+    return {
+      id: t.id,
+      title: title || "Untitled thesis",
+      conviction: t.conviction,
+      rationale: t.rationale,
+      sector: t.sector,
+      catalyst: t.catalyst,
+      ticker: ticker || null,
+      matched_today,
+      matched_token,
+    };
+  });
+
+  // Sort by conviction, then generated_at desc for ties.
+  const byPriority = (
+    a: ActiveThesis & { generated_at?: string | null },
+    b: ActiveThesis & { generated_at?: string | null },
+  ): number => {
+    const ra = convictionRank(a.conviction);
+    const rb = convictionRank(b.conviction);
+    if (ra !== rb) return ra - rb;
+    const ga = a.generated_at || "";
+    const gb = b.generated_at || "";
+    return gb.localeCompare(ga);
+  };
+
+  // Attach generated_at for stable tiebreaker without leaking it into
+  // the ActiveThesis surface that the component consumes.
+  const enrichedWithGen = enriched.map((t, i) => ({
+    ...t,
+    generated_at: rows[i]?.generated_at ?? null,
+  }));
+
+  const matched = enrichedWithGen
+    .filter((t) => t.matched_today)
+    .sort(byPriority);
+  const nonMatched = enrichedWithGen
+    .filter((t) => !t.matched_today)
+    .sort(byPriority);
+
+  // Greedy pick with sector diversity. A thesis with no sector can't
+  // collide, so it always passes the diversity gate.
+  const picked: ActiveThesis[] = [];
+  const usedSectors = new Set<string>();
+  const tryPick = (t: ActiveThesis): void => {
+    if (picked.length >= 3) return;
+    const s = (t.sector || "").trim().toLowerCase();
+    if (s && usedSectors.has(s)) return;
+    picked.push({
+      id: t.id,
+      title: t.title,
+      conviction: t.conviction,
+      rationale: t.rationale,
+      sector: t.sector,
+      catalyst: t.catalyst,
+      ticker: t.ticker,
+      matched_today: t.matched_today,
+      matched_token: t.matched_token,
+    });
+    if (s) usedSectors.add(s);
+  };
+  for (const t of matched) tryPick(t);
+  for (const t of nonMatched) tryPick(t);
+
+  return picked;
 }
 
 interface PageProps {
@@ -396,6 +605,27 @@ export default async function PrintBriefPage({
     /* soft-fail */
   }
 
+  // ── Active Theses selection (C14) ─────────────────────────────────
+  // Page 3 of the PDF renders up to 3 non-expired theses, prioritising
+  // ones whose ticker or proper-noun title token surfaces in today's
+  // brief content. Sector diversity is enforced. evidence_chain /
+  // supporting_articles / bear_case / verifiable_signal are
+  // intentionally ignored — the schema has them but population is
+  // sparse and depending on them produces empty rows.
+  const activeTheses: ActiveThesis[] = await selectActiveTheses(
+    supabase,
+    {
+      topDeals: topDealsCorrected,
+      leadParagraph: typeof row.lead_paragraph === "string" ? row.lead_paragraph : "",
+      supportingContext:
+        typeof row.supporting_context === "string" ? row.supporting_context : "",
+      whatToWatch:
+        typeof row.what_to_watch === "string" ? row.what_to_watch : "",
+      pulseNarrative: marketPulse?.narrative ?? "",
+      sectionsText: Object.values(sections).join(" "),
+    },
+  );
+
   const vix = await loadVix(origin);
 
   return (
@@ -431,6 +661,7 @@ export default async function PrintBriefPage({
           ? payload.user_addendum
           : null
       }
+      activeTheses={activeTheses}
     />
   );
 }
