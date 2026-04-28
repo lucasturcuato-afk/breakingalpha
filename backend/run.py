@@ -1,8 +1,15 @@
 """
 run.py  —  BreakingAlpha pipeline orchestrator
-Order: ingest → synthesize → extract deals → observe → critique → audit →
+Order: ingest → extract deals → synthesize → observe → critique → audit →
        trend_map → summarize → thesis_grader → pattern_memory →
        source_credibility → adversarial → watchlist_sync
+
+Ordering note (Path B):
+  deal_extractor is intentionally run BEFORE synthesize so the Python
+  pre-picker in lead_preselect.py can see today's fresh deal_flow rows
+  when choosing the primary_story. Prior to Path B the order was
+  ingest → synthesize → deal_extractor; deals were extracted after the
+  brief had already been written.
 
 Gating:
   - thesis_grader / pattern_memory / source_credibility → morning runs only
@@ -69,10 +76,10 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"  ⚠ User signal aggregation failed (pipeline unaffected): {e}")
 
-    print("\n[2/15] SYNTHESIZE")
-    synth_result = run_synthesize(brief_type) or {}
-
-    print("\n[3/15] DEAL EXTRACTION")
+    # Path B: deal_extractor runs BEFORE synthesize so the Python pre-picker
+    # in lead_preselect.py sees fresh deal_flow rows for the $1B+ primary-story
+    # filter. See SPEC_path_b_lead_preselect.md §2 and §8.
+    print("\n[2/15] DEAL EXTRACTION")
     deal_extractor_status = {"ok": True, "error": None, "upserted": 0}
     try:
         result = run_deal_extractor() or {}
@@ -83,7 +90,10 @@ if __name__ == "__main__":
     except Exception as e:
         deal_extractor_status["ok"] = False
         deal_extractor_status["error"] = f"deal_extractor raised: {e}"
-        print(f"  ⚠ Deal Extractor failed (pipeline unaffected): {e}")
+        print(f"  ⚠ Deal Extractor failed (pipeline continues, lead_preselect may fall back): {e}")
+
+    print("\n[3/15] SYNTHESIZE")
+    synth_result = run_synthesize(brief_type) or {}
 
     print("\n[4/15] OBSERVE")
     run_id = None
@@ -227,8 +237,10 @@ if __name__ == "__main__":
 # ---------------------------------------------------------------------------
 # 1:    ingest
 # 1c:   user_signal_aggregator  (aggregate user behavioral events → digest)
-# 2:    synthesize              (consumes user_signal_digest for engagement context)
-# 3:    deal_extractor
+# 2:    deal_extractor          (MUST run before synthesize — Path B pre-picker
+#                                reads deal_flow for confirmed $1B+ leads)
+# 3:    synthesize              (consumes user_signal_digest for engagement context
+#                                and deal_flow for lead_preselect)
 # 4:    observe
 # 5:    critique
 # 6:    audit
