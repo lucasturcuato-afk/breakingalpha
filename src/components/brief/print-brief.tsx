@@ -97,10 +97,7 @@
 
 import { stripHtml } from "@/lib/strip-html";
 import { PrintMasthead } from "./print-masthead";
-import {
-  formatPTDateLong,
-  formatPTTimeShort,
-} from "@/lib/format-pt";
+import { formatPTDateLong } from "@/lib/format-pt";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 
@@ -174,19 +171,11 @@ export interface PrintBriefProps {
    data-print-brief-root marker is kept so the export-pdf validator
    doesn't false-positive while the rebuild is in progress. */
 
-export function PrintBrief({
-  briefing,
-  stories,
-  thesesCount,
-  vix,
-}: PrintBriefProps) {
+export function PrintBrief({ briefing }: PrintBriefProps) {
   const dateStr = formatPTDateLong(briefing.created_at ?? null);
   const kind = briefing.briefing_type;
   const editionLabel = kind === "evening" ? "Evening Wrap" : "Morning Brief";
 
-  // Commit 2 will rewrite PrintMasthead with a slim interface. While the
-  // rebuild is in progress, pass through the existing legacy props so
-  // the build stays green commit-by-commit.
   return (
     <div
       data-print-brief-root
@@ -194,20 +183,8 @@ export function PrintBrief({
       data-briefing-type={kind}
       className="bg-white text-black"
     >
-      <PrintMasthead
-        kind={kind}
-        generatedAtIso={briefing.created_at}
-        dateStr={dateStr}
-        timeStr={formatPTTimeShort(briefing.created_at ?? null)}
-        moodWord={
-          briefing.market_pulse?.sentiment_word || briefing.market_tone || "—"
-        }
-        tone="NEUTRAL"
-        storyCount={stories.length}
-        thesesCount={thesesCount}
-        vix={vix}
-      />
-      <main className="px-8 py-8 text-sm leading-relaxed">
+      <PrintMasthead kind={kind} dateStr={dateStr} />
+      <main className="px-10 py-8 text-sm leading-relaxed">
         <p className="font-serif italic text-neutral-600">
           Newsletter rebuild in progress — sections will be filled in by
           subsequent commits.
