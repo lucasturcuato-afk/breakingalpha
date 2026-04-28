@@ -1,3 +1,172 @@
+# Signalera/Breaking Alpha — Claude Chat Handoff
+**Date:** 2026-04-27 (evening PT)
+**Last session focus:** Smoke-test PR #131 on prod → triage PR #129 / #130 → close #130 → reply to Lucas
+**Status:** PR #131 prod-validated. PR #130 closed. PR #129 stays draft pending re-test.
+
+---
+
+## 1. What happened this session
+
+### PR #131 production validation — PASSED
+- Morning Brief PDF export: POST `/api/brief/export-pdf` → 200, "PDF downloaded" confirmation visible in UI, no error toast
+- Evening Wrap PDF export: POST → 200 (verified via Chrome MCP network log)
+- Cookie-forwarded auth flow works end-to-end on prod. Vercel SSO bypass code path is correctly a no-op on prod (preview-only)
+
+### PR #130 (cliche-detector-v1) — CLOSED
+Closed via Chrome MCP. Branch `feat/cliche-detector-v1` preserved; only the PR is closed.
+
+**Why closed:** Ran 3-way runtime comparison via Claude Code (main vs #129 vs #130) against today's article pool with Supabase writes intercepted in-memory. PR #130 produced a measurably worse brief:
+- Orphaned "However," in market_pulse with no contrasting clause to oppose (sentence 1's content was stripped, sentence 2's "However" left dangling)
+- Two of three `top_deals[].one_liner` fields emptied to "" — renders as blank cards in production UI
+- Inconsistent regex enforcement: same banned word ("indicates", "signaling") stripped in some fields, retained in others within the same brief
+- Retry budget didn't help: `lead_paragraph` and `supporting_context` triggered retries, retries didn't clear the cliche, fields got stripped anyway
+- Detector flagged legitimate financial usage (e.g. "signaling sustained interest") and nuked entire sentences containing real news (€8B Vinted valuation lost from market_pulse)
+- Runtime jumped 11s → 29s (2.6×) for retries that didn't succeed
+
+**What's salvageable for v2:** The detector observability (hit counts per pattern, fields that triggered) is genuinely useful. Right v2 is observability-only first — log clichés to a `brief_quality_scores.cliche_actions` jsonb column, ship for a week, see which clichés actually appear most often and where, then add stripping only to fields where empty output is non-fatal, with a sentence-coherence post-pass that catches orphan conjunctions.
+
+### PR #129 (lead-preselect-v1) — STAYS DRAFT
+**Verdict:** promising but unvalidated. Don't merge yet.
+
+**What we learned:**
+- ✅ Mergeable: GitHub compare view confirms "Able to merge" against current main, no conflicts (handoff's prediction of synthesize.py conflict surface was wrong)
+- ✅ All CI checks pass (3/3), Vercel preview deployed cleanly Apr 24
+- ✅ No migration prerequisite. Claude Code confirmed reading PR #129's actual diff: it does NOT add a `briefings.preselect_reason` column write. The reason code lives only on an in-memory `_preselect_reason` field on the article dict. The `primary_story_id` column it writes to already exists in prod (verified via Supabase SQL editor)
+- ✅ Code didn't crash. Branch produced a complete brief JSON with a different headline than main ("Global Military Spending Reaches Record $2.9 Trillion" vs main's "EBay Rival Vinted Valued at €8 Billion")
+- ✅ Top Deals same as main (Vinted, Kashable, vVardis) — deal extraction undisturbed
+
+**What we don't yet know:**
+- Today's afternoon test only exercised the **macro fallback path** (Filter B → military spending). `deal_flow` had 0 rows in the last 24h (latest is 2026-04-17, 10 days stale). The **priced-deal primary path** — which is the actual justification for the PR — was never tested.
+- Whether the headline the macro-fallback chose ("Global Military Spending") is consistently better than what Gemini chooses unaided. One data point isn't enough; arguably main's Vinted headline is the better lede today.
+- One yellow flag: lead-preselect's market_pulse had 2 cliché hits vs main's 1. Adding the pre-selector might make Gemini's narration slightly worse because it's narrating around an externally-imposed lead rather than its own choice. Worth watching.
+
+**Action for next session:** Re-run the 3-way comparison on a day with priced $1B+ deals in `deal_flow`. If the priced-deal path picks a sensible lead, mark Ready for Review and merge. If it picks something clearly worse than what Gemini would've picked, fix scoring before merging.
+
+### Lucas reply — SENT (verify in your channel of choice)
+Used "more context on closures" variant. Covers PR #131 status, PR #130 closure rationale, PR #129 staying draft, unblocks `lucas/intelligence-sprint` rebase, gives him narrow caution about lead-selection block in synthesize.py.
+
+---
+
+## 2. Findings to track (logged, not blocking)
+
+### React #418 hydration error on /morning-brief and /evening-wrap
+- Caught in console during prod smoke test
+- PR #132 supposedly fixed hydration on these routes via `useState` lazy initializer (per handoff "Recently Completed 2026-04-25")
+- Either regressed or new instance. Not blocking PDF export. Worth a 10-min look next session.
+- Stack trace points into minified Next.js chunks — needs source map or a dev-mode reproduction to identify the actual component
+
+### deal_flow staleness (10 days)
+- `deal_flow` last 24h: 0 rows. Latest entry 2026-04-17.
+- Cron-job.org Morning Pipeline fired clean at 6am ET 4/27 (returned 204), so the trigger works.
+- Means deal_extractor is either not extracting, not writing, or extracting things that don't meet insert criteria.
+- Independent of PR #129 but **blocks the PR #129 priced-deal path test** until resolved.
+- Diagnostic for next session: check `pipeline_runs` table for last 7 days, look at deal_extractor step output. deal_extractor still uses Groq llama-3.1-8b-instant per prior handoff — could be Groq API issue.
+
+---
+
+## 3. THREE OPEN THREADS for next session (priority order)
+
+### Thread A: PR #129 re-test
+**Trigger:** wait until `deal_flow` has rows from the last 24h with at least one $1B+ priced deal.
+**Blocker:** the deal_flow staleness above. Until that's resolved, PR #129's primary path can't be tested.
+**Action:** Re-run the same 3-way comparison Claude Code did this session (artifacts at `/tmp/pr-comparison/`). Same prompt, same wrapper, same Supabase-write interception — just on a day with priced deals.
+**Maybe-tonight option:** Evening wrap cron at 8pm PT could populate deal_flow if deal_extractor isn't broken. Watch that run.
+
+### Thread B: deal_flow staleness diagnosis
+**Why it matters:** Blocks Thread A. Also means production briefs are missing a signal source for 10 days running.
+**Diagnostic queries:**
+```sql
+SELECT created_at::date, COUNT(*) FROM deal_flow GROUP BY created_at::date ORDER BY created_at::date DESC LIMIT 14;
+SELECT id, run_started_at, status, error_message FROM pipeline_runs ORDER BY run_started_at DESC LIMIT 14;
+```
+Then look at `deal_extractor.py` step output in the most recent runs. May be a Groq API issue (deal_extractor still uses Groq llama-3.1-8b-instant per handoff).
+
+### Thread C: React #418 hydration regression
+**Why it matters:** User-facing console error on every brief page load.
+**Diagnostic:** reproduce locally on dev server, compare with PR #132's `useState` lazy initializer fix, find the new component that's hydrating with mismatched text.
+
+---
+
+## 4. Other items deferred (carried forward)
+
+### Personalization addendum investigation
+Neither smoke-test PDF showed visible "For You" addendum content. Three possible reasons (unchanged from previous handoff):
+1. `user_briefings.addendum` is empty for noahhanning's user_id today
+2. print-brief.tsx doesn't render the addendum even when present
+3. Cookie forwarding works but API drops the addendum field
+
+Diagnostic: `SELECT user_id, briefing_date, length(addendum) FROM user_briefings WHERE briefing_date = CURRENT_DATE;` then trace render path if data exists.
+
+### PDF design overhaul (proposed PR #134)
+Unchanged. Newsletter-style redesign of `src/components/brief/print-brief.tsx`. Not blocking.
+
+### Three locked agent worktrees from 4/24
+Still in `.claude/worktrees/`. From this session we know they were used to host the PR branches when Claude Code couldn't `git checkout` them in main tree. Cleanup chore.
+
+### HANDOFF.md / BUGFIX_NOTES.md cleanup (now overdue)
+- Retire "STATUS UNKNOWN" labels on migration audit (this session confirmed `primary_story_id` present, `preselect_reason` not present and not needed by PR #129)
+- Fix BUGFIX_NOTES typo: `morning_brief_outcomes` should be `morning_brief_call_outcomes`
+- Add Vercel SSO bypass mechanism note for future devs
+
+---
+
+## 5. State on disk for next session
+
+### Local repo (`~/breakingalpha`)
+- main is current, working tree clean
+- Active feature branches preserved: `feat/lead-preselect-v1`, `feat/cliche-detector-v1` (PR closed but branch alive)
+- Locked agent worktrees: `.claude/worktrees/agent-a534…` (#129) and `.claude/worktrees/agent-acf6…` (#130) — Claude Code couldn't checkout these branches in main tree, ran from worktree backend/ via BACKEND_PATH
+
+### Comparison artifacts (`/tmp/pr-comparison/`)
+**Important: `/tmp` wipes on macOS reboot.** If you reboot before next session, these are gone. To preserve, copy to `~/breakingalpha/.session-artifacts/2026-04-27/` or similar.
+- `REPORT.md` — full 3-way comparison
+- `main.json` / `lead-preselect-v1.json` / `cliche-detector-v1.json` — actual brief outputs
+- `*.log` — full stdout/stderr from each run
+- `*.capture.json` — intercepted Supabase write payloads
+- `branches.txt` — head SHA for each branch tested
+- `command.txt` — exact synthesize invocation Claude Code documented
+- `run_synth.py` / `build_report.py` / `check_dealflow.py` / `check_supabase.py` — wrapper and helper scripts (reusable for next test)
+
+### Supabase prod state (`pnfjelfvtypkpnwpflmv`)
+- `briefings.primary_story_id` exists (text, nullable). Last 7 days: 9 morning briefs, 2 with primary_story_id; 6 evening briefs, 1 with primary_story_id. Gemini elective-write rate is ~20%, which is the problem PR #129 solves.
+- `briefings.preselect_reason` does NOT exist. Confirmed not needed.
+- `deal_flow` last 24h: 0 rows. Latest entry 2026-04-17 (10 days stale).
+
+---
+
+## 6. User preferences for the new Claude session
+
+Same as before, no changes:
+
+- Blunt, founder-grade tone
+- No em-dashes
+- Recon-first (separate diagnostic and fix prompts; don't combine them)
+- Copy-paste-ready prompts when handing off to Claude Code
+- One highest-leverage next step at a time, not brainstorming
+- Sanity-check destructive/irreversible actions before clicking
+- Drive Chrome MCP, GitHub, Supabase, Vercel directly — don't ask Noah to click
+- Prefer single-message structured deliverables over multi-turn chatter
+- Push back when Noah's logic seems off (don't capitulate)
+
+---
+
+## 7. The exact thing the new Claude session should do FIRST
+
+Read this handoff section + the prior 2026-04-27 (afternoon) section for the prior context.
+
+Then ask Noah what he wants to brainstorm/tackle. He's flagged he's NOT done for the night and wants to brainstorm rather than execute a specific task.
+
+Candidate threads in priority order (use these to anchor brainstorming, not to push):
+1. **deal_flow staleness diagnosis** (Thread B) — blocks PR #129 re-test, possibly blocks production brief quality
+2. **Evening cron observation at 8pm PT** — opportunity to diagnose Thread B in real-time and potentially unlock PR #129 re-test
+3. **React #418 hydration regression** (Thread C) — user-visible console error
+4. **Personalization addendum investigation** — neither smoke-test PDF showed the addendum
+5. **HANDOFF.md / BUGFIX_NOTES.md cleanup** — overdue, not urgent
+
+Don't preempt Noah's choice. Let him steer.
+
+---
+
 # Signalera Handoff
 
 ## Current Status (2026-04-20)
