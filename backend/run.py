@@ -95,6 +95,16 @@ if __name__ == "__main__":
     print("\n[3/15] SYNTHESIZE")
     synth_result = run_synthesize(brief_type) or {}
 
+    # Snapshot lead_preselect's per-run decision log for observability.
+    # Populated inside synthesize.run() via preselect_primary_story();
+    # threaded into pipeline_runs so v2 calibration has empirical data.
+    preselect_decision = {}
+    try:
+        import lead_preselect
+        preselect_decision = dict(getattr(lead_preselect, "_LAST_DECISION_LOG", {}) or {})
+    except Exception as e:
+        print(f"  ⚠ preselect decision log read failed (pipeline unaffected): {e}")
+
     print("\n[4/15] OBSERVE")
     run_id = None
     try:
@@ -103,6 +113,7 @@ if __name__ == "__main__":
             started_at,
             ingest_count=ingest_count,
             deal_extractor_status=deal_extractor_status,
+            preselect_decision=preselect_decision,
         )
     except Exception as e:
         print(f"  ⚠ Observer failed (pipeline unaffected): {e}")
