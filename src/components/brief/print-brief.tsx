@@ -176,6 +176,18 @@ export interface PrintBriefProps {
 const HERITAGE_GOLD = "#c9922a";
 const HAIRLINE_GRAY = "#e5e5e5";
 
+type Tone = "BULLISH" | "BEARISH" | "NEUTRAL" | "MIXED" | "WATCH";
+
+function normaliseTone(t?: string | null): Tone {
+  if (!t) return "NEUTRAL";
+  const l = t.toLowerCase();
+  if (l.includes("bull") || l === "positive" || l.includes("risk-on")) return "BULLISH";
+  if (l.includes("bear") || l === "negative" || l.includes("risk-off")) return "BEARISH";
+  if (l.includes("mix")) return "MIXED";
+  if (l.includes("watch")) return "WATCH";
+  return "NEUTRAL";
+}
+
 /** Small-caps section divider, sans-serif, gold accent dot.
  *  Used between major sections per Q8 ("small caps section dividers"). */
 function SectionDivider({ label }: { label: string }) {
@@ -219,6 +231,112 @@ function SectionStub({ name }: { name: string }) {
   );
 }
 
+/* ── Section: Market Pulse hero (C4) ──────────────────────────────── */
+
+function MarketPulseSection({
+  kind,
+  moodWord,
+  narrative,
+  headlines,
+}: {
+  kind: "morning" | "evening";
+  moodWord: string;
+  narrative: string;
+  headlines: Array<{ title: string; tone?: string }>;
+}) {
+  const heroPrefix =
+    kind === "evening" ? "The session closed" : "Today the market is";
+  const cleanWord = (moodWord || "mixed").toString().trim().toLowerCase();
+
+  return (
+    <section
+      aria-label="Market Pulse"
+      className="break-inside-avoid"
+      data-section="pulse"
+    >
+      <p
+        className="font-sans uppercase text-neutral-500"
+        style={{
+          fontFamily: "Helvetica, Arial, sans-serif",
+          fontSize: 9,
+          letterSpacing: "0.22em",
+          fontWeight: 600,
+          marginBottom: 12,
+        }}
+      >
+        Market Pulse
+      </p>
+      <h2
+        className="font-serif italic text-black"
+        style={{
+          fontFamily: "'Times New Roman', Times, serif",
+          fontSize: 28,
+          lineHeight: 1.18,
+          letterSpacing: "-0.005em",
+          fontWeight: 500,
+          margin: 0,
+        }}
+      >
+        {heroPrefix} {cleanWord}.
+      </h2>
+      {narrative ? (
+        <p
+          className="text-neutral-800"
+          style={{
+            fontFamily: "'Times New Roman', Times, serif",
+            fontSize: 11,
+            lineHeight: 1.65,
+            marginTop: 16,
+            maxWidth: 560,
+            whiteSpace: "pre-line",
+          }}
+        >
+          {narrative}
+        </p>
+      ) : null}
+      {headlines.length > 0 ? (
+        <>
+          <SectionDivider label="Stories in Brief" />
+          <ul className="m-0 p-0 list-none">
+            {headlines.slice(0, 5).map((h, i) => {
+              const tone = normaliseTone(h.tone);
+              return (
+                <li
+                  key={`${i}-${h.title}`}
+                  className="flex items-baseline justify-between gap-6 py-2"
+                  style={{ borderBottom: `1px solid ${HAIRLINE_GRAY}` }}
+                >
+                  <span
+                    className="text-black"
+                    style={{
+                      fontFamily: "'Times New Roman', Times, serif",
+                      fontSize: 11,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {stripHtml(h.title)}
+                  </span>
+                  <span
+                    className="font-sans uppercase shrink-0 text-neutral-500"
+                    style={{
+                      fontFamily: "Helvetica, Arial, sans-serif",
+                      fontSize: 8.5,
+                      letterSpacing: "0.18em",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {tone}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 /* ── Main component ────────────────────────────────────────────────── */
 
 export function PrintBrief({
@@ -235,6 +353,20 @@ export function PrintBrief({
     (briefing.headline && stripHtml(briefing.headline).trim()) ||
     formatLabel ||
     (kind === "evening" ? "Evening Wrap" : "Morning Market Brief");
+
+  // Pulse hero data prep
+  const moodWord =
+    briefing.market_pulse?.sentiment_word ||
+    briefing.market_tone ||
+    "mixed";
+  const narrative =
+    (briefing.market_pulse?.narrative &&
+      stripHtml(briefing.market_pulse.narrative).trim()) ||
+    (briefing.summary && stripHtml(briefing.summary).trim()) ||
+    "";
+  const pulseHeadlines = (briefing.market_pulse?.headlines ?? []).filter(
+    (h) => h && typeof h.title === "string" && h.title.trim(),
+  );
 
   // Q2 / Q9: stories[] (Today's Stories) is intentionally not rendered —
   // it reads as raw aggregation in the PDF. thesesCount and vix were
@@ -256,25 +388,13 @@ export function PrintBrief({
       <PrintMasthead kind={kind} dateStr={dateStr} />
 
       <main className="px-10 pt-6 pb-12">
-        {/* Section 1 — Market Pulse hero (page 1). Implemented in C4. */}
-        <section
-          aria-label="Market Pulse"
-          className="break-inside-avoid"
-          data-section="pulse"
-        >
-          <SectionStub name="market pulse + stories in brief (C4)" />
-          <h1
-            className="font-serif font-bold text-black"
-            style={{
-              fontSize: 26,
-              lineHeight: 1.15,
-              letterSpacing: "-0.01em",
-              margin: "0 0 8px",
-            }}
-          >
-            {headline}
-          </h1>
-        </section>
+        {/* Section 1 — Market Pulse hero (page 1). */}
+        <MarketPulseSection
+          kind={kind}
+          moodWord={moodWord}
+          narrative={narrative}
+          headlines={pulseHeadlines}
+        />
 
         {/* Section 2 — Today's Lead (page 1–2). Implemented in C5. */}
         <SectionDivider label="Today's Lead" />
