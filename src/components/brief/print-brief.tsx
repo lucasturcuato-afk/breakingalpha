@@ -391,6 +391,100 @@ function MarketPulseSection({
   );
 }
 
+/* ── Section: Analyst / Evening Briefing (C7) ─────────────────────── */
+
+const SECTION_TITLES: Record<string, string> = {
+  deals_and_ma: "Deals & M&A",
+  public_markets: "Public Markets",
+  macro_and_rates: "Macro & Rates",
+  sector_spotlight: "Sector Spotlight",
+  geopolitics: "Geopolitics",
+  what_to_watch: "What to Watch",
+  tomorrow_setup: "Tomorrow's Setup",
+  closing_thoughts: "Closing Thoughts",
+};
+
+const MORNING_TAB_ORDER = [
+  "deals_and_ma",
+  "public_markets",
+  "macro_and_rates",
+  "sector_spotlight",
+  "geopolitics",
+];
+
+const EVENING_TAB_ORDER = [
+  "public_markets",
+  "deals_and_ma",
+  "sector_spotlight",
+  "macro_and_rates",
+  "geopolitics",
+  "closing_thoughts",
+];
+
+function BriefingSection({
+  sections,
+  order,
+}: {
+  sections: Record<string, string>;
+  order: string[];
+}) {
+  const entries = order
+    .map((key) => ({
+      key,
+      title: SECTION_TITLES[key] || key,
+      content: sections[key],
+    }))
+    .filter(
+      (s): s is { key: string; title: string; content: string } =>
+        !!s.content && s.content.trim() !== "",
+    );
+
+  if (entries.length === 0) return null;
+
+  return (
+    <section
+      data-section="briefing"
+      style={{
+        columnCount: 2,
+        columnGap: 28,
+      }}
+    >
+      {entries.map((s) => (
+        <div
+          key={s.key}
+          className="break-inside-avoid"
+          style={{ marginBottom: 18 }}
+        >
+          <p
+            className="font-sans uppercase text-neutral-700"
+            style={{
+              fontFamily: "Helvetica, Arial, sans-serif",
+              fontSize: 9,
+              letterSpacing: "0.18em",
+              fontWeight: 700,
+              margin: "0 0 6px",
+            }}
+          >
+            {s.title}
+          </p>
+          <p
+            className="text-neutral-900"
+            style={{
+              fontFamily: "'Times New Roman', Times, serif",
+              fontSize: 10.5,
+              lineHeight: 1.6,
+              margin: 0,
+              whiteSpace: "pre-line",
+            }}
+          >
+            {stripHtml(s.content)}
+          </p>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 /* ── Section: Top Deals to Watch (C6) ─────────────────────────────── */
 
 function TopDealsSection({ deals }: { deals: TopDeal[] }) {
@@ -736,14 +830,15 @@ export function PrintBrief({
           </>
         ) : null}
 
-        {/* Section 4 — Analyst / Evening Briefing (page 3–4). Q5: rename
-            Evening Analysis → Evening Briefing. Implemented in C7. */}
+        {/* Section 4 — Analyst / Evening Briefing (page 3–4). Q5:
+            "Evening Analysis" → "Evening Briefing" parallel to Morning. */}
         <SectionDivider
           label={kind === "evening" ? "Evening Briefing" : "Analyst Briefing"}
         />
-        <section data-section="briefing">
-          <SectionStub name="analyst / evening briefing (C7)" />
-        </section>
+        <BriefingSection
+          sections={briefing.sections ?? {}}
+          order={kind === "evening" ? EVENING_TAB_ORDER : MORNING_TAB_ORDER}
+        />
 
         {/* Section 5 — Sector Signals (page 4). Forced new page per spec.
             Implemented in C8. */}
