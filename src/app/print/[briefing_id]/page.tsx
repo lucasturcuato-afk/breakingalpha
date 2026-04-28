@@ -18,7 +18,11 @@ import { notFound } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { PrintBrief, type PrintStory } from "@/components/brief/print-brief";
+import {
+  PrintBrief,
+  isAllowedDealType,
+  type PrintStory,
+} from "@/components/brief/print-brief";
 import { stripHtml } from "@/lib/strip-html";
 import { formatPTDateLong } from "@/lib/format-pt";
 
@@ -298,20 +302,21 @@ export default async function PrintBriefPage({
   // ── Top stories (anon-permitted reads) ──
   const supabase = anonClient();
 
-  // Q4 — deal_type override from deal_flow.
+  // Q4 — deal_type fallback via deal_flow (Bug #1 inverted priority).
   //
-  // Synthesize occasionally emits hallucinated deal_type values (most
-  // commonly "Strategic Investment", which isn't a real category in
-  // the deal_flow enum). When a top_deal company also has a recent
-  // deal_flow row, we replace the synthesize-generated deal_type with
-  // the structured one. PrintBrief's display allowlist (Q4 fallback)
-  // catches anything that survives this override.
+  // Synthesis is generally accurate — it sees the article body and
+  // labels deals correctly more often than the structured extractor
+  // does (e.g. Rheinmetall: synthesis "Strategic Investment" right;
+  // deal_flow "Asset Sale" wrong). The original C11 implementation
+  // unconditionally let deal_flow win, which corrupted correct
+  // synthesis values. Inverted here: trust synthesis when its value
+  // passes the display allowlist; only fall back to deal_flow when
+  // synthesis emits something outside the allowlist (the actual
+  // hallucination case). PrintBrief's allowlist gate then drops the
+  // pill silently if neither source produces a valid value.
   //
-  // The spec asked for this in route.ts; in this codebase the
-  // briefing payload is shaped here in the print page (route.ts only
-  // knows the briefing id + filename), so the lookup naturally lives
-  // here. Soft-fails — if deal_flow is unavailable we use the
-  // synthesize values and the allowlist still gates the pill.
+  // Soft-fails — if deal_flow is unavailable we keep synthesis values
+  // and let the allowlist gate the pill.
   let topDealsCorrected = topDeals;
   const dealCompanies = topDeals
     .map((d) => (d.company || "").trim())
@@ -331,16 +336,19 @@ export default async function PrintBriefPage({
           flowMap.set(key, r.deal_type as string);
         }
       }
-      if (flowMap.size > 0) {
-        topDealsCorrected = topDeals.map((d) => {
-          const key = (d.company || "").trim().toLowerCase();
-          const override = flowMap.get(key);
-          return override ? { ...d, deal_type: override } : d;
-        });
-      }
+      topDealsCorrected = topDeals.map((d) => {
+        // Synthesis-first: keep its value when allowlist-valid.
+        if (isAllowedDealType(d.deal_type)) return d;
+        // Otherwise consult deal_flow as fallback. If the fallback is
+        // also outside the allowlist, leave the original value — the
+        // PrintBrief allowlist gate will silently drop the pill.
+        const key = (d.company || "").trim().toLowerCase();
+        const override = flowMap.get(key);
+        return override ? { ...d, deal_type: override } : d;
+      });
     } catch (e) {
       console.warn(
-        "[print] deal_flow deal_type override failed (using synthesize values):",
+        "[print] deal_flow deal_type fallback lookup failed (using synthesis values only):",
         e,
       );
     }

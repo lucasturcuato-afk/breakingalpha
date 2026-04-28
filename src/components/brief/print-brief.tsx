@@ -19,10 +19,11 @@
  *   Q1  Cover identity: simple SIGNALERA wordmark masthead, no gold
  *       gradient, no marketing tagline. Heritage Gold (#c9922a) thin
  *       horizontal rule below masthead. Edition label top-right.
- *   Q2  Section order: Masthead → Pulse → Today's Lead → Top Deals →
- *       Analyst/Evening Briefing → Sector Signals → For Your Watchlist
- *       (conditional) → Disclaimer. Today's Stories is CUT from the
- *       PDF entirely.
+ *   Q2  Section order (post-C13/C14): Masthead → Pulse → Today's Lead
+ *       → Top Deals → Analyst/Evening Briefing → Active Theses → For
+ *       Your Watchlist (conditional) → Disclaimer. Today's Stories is
+ *       CUT entirely. Sector Signals replaced by Active Theses (Bug #4
+ *       — sector_breakdown was duplicated by sector_spotlight).
  *   Q3  Top Deals dedup: omit any top_deal whose company matches the
  *       Today's Lead deal (case-insensitive, whitespace-trimmed).
  *       Never render "See lead." as a card body.
@@ -270,9 +271,10 @@ const DEAL_TYPE_ALLOWLIST: ReadonlySet<string> = new Set([
   "Recap",
   "Restructuring",
   "SPAC",
+  "Strategic Investment",
 ]);
 
-function isAllowedDealType(t?: string | null): boolean {
+export function isAllowedDealType(t?: string | null): boolean {
   if (!t) return false;
   return DEAL_TYPE_ALLOWLIST.has(t.trim());
 }
@@ -396,18 +398,20 @@ const SECTION_TITLES: Record<string, string> = {
   closing_thoughts: "Closing Thoughts",
 };
 
+// sector_spotlight removed (Bug #4): synthesize already populates
+// sector_breakdown from the same model, so showing both produced
+// duplicate Energy/Tech/etc. paragraphs in the PDF. The web view still
+// renders sector_spotlight in its own tab; this only affects print.
 const MORNING_TAB_ORDER = [
   "deals_and_ma",
   "public_markets",
   "macro_and_rates",
-  "sector_spotlight",
   "geopolitics",
 ];
 
 const EVENING_TAB_ORDER = [
   "public_markets",
   "deals_and_ma",
-  "sector_spotlight",
   "macro_and_rates",
   "geopolitics",
   "closing_thoughts",
@@ -482,14 +486,14 @@ function BriefingSection({
 /** Last-page disclaimer paragraph (Q6). The short per-page disclaimer
  *  ("AI-generated. Not investment advice. Verify before acting.") is
  *  injected by Puppeteer's footerTemplate in route.ts so it appears on
- *  every page. This block is the long-form version that lands once at
- *  the end of the document. break-before-page keeps it on its own last
- *  page per spec. */
+ *  every page. This block is the long-form version that flows inline
+ *  at the end of the last content page (Bug #3 — break-before-page
+ *  removed; the disclaimer should not earn its own near-empty page). */
 function DisclaimerSection() {
   return (
     <section
       data-section="disclaimer"
-      className="break-before-page break-inside-avoid"
+      className="break-inside-avoid"
       style={{
         marginTop: 16,
         paddingTop: 14,
@@ -538,66 +542,6 @@ function WatchlistSection({ addendum }: { addendum: string }) {
       >
         {text}
       </p>
-    </section>
-  );
-}
-
-/* ── Section: Sector Signals (C8) ─────────────────────────────────── */
-
-function SectorSignalsSection({
-  breakdown,
-}: {
-  breakdown: Record<string, string>;
-}) {
-  const entries = Object.keys(breakdown)
-    .map((sector) => ({ sector, content: breakdown[sector] }))
-    .filter(
-      (s): s is { sector: string; content: string } =>
-        !!s.content && s.content.trim() !== "",
-    );
-
-  if (entries.length === 0) return null;
-
-  return (
-    <section
-      data-section="sector"
-      style={{
-        columnCount: 2,
-        columnGap: 28,
-      }}
-    >
-      {entries.map((s) => (
-        <div
-          key={s.sector}
-          className="break-inside-avoid"
-          style={{ marginBottom: 16 }}
-        >
-          <p
-            className="font-sans uppercase text-neutral-700"
-            style={{
-              fontFamily: "Helvetica, Arial, sans-serif",
-              fontSize: 9,
-              letterSpacing: "0.18em",
-              fontWeight: 700,
-              margin: "0 0 6px",
-            }}
-          >
-            {s.sector}
-          </p>
-          <p
-            className="text-neutral-900"
-            style={{
-              fontFamily: "'Times New Roman', Times, serif",
-              fontSize: 10.5,
-              lineHeight: 1.6,
-              margin: 0,
-              whiteSpace: "pre-line",
-            }}
-          >
-            {stripHtml(s.content)}
-          </p>
-        </div>
-      ))}
     </section>
   );
 }
@@ -954,11 +898,9 @@ export function PrintBrief({
           order={kind === "evening" ? EVENING_TAB_ORDER : MORNING_TAB_ORDER}
         />
 
-        {/* Section 5 — Sector Signals (page 4). Forced new page per spec. */}
-        <div className="break-before-page">
-          <SectionDivider label="Sector Signals" />
-          <SectorSignalsSection breakdown={briefing.sector_breakdown ?? {}} />
-        </div>
+        {/* Section 5 — Active Theses (page 3). Replaces the previous
+            Sector Signals (Bug #4 — duplicated sector_breakdown).
+            Implemented in C14. */}
 
         {/* Section 6 — For Your Watchlist. Conditional: only rendered
             when the V4B per-user addendum is present and non-empty.
