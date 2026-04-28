@@ -231,6 +231,28 @@ function SectionStub({ name }: { name: string }) {
   );
 }
 
+/* ── Helpers ──────────────────────────────────────────────────────── */
+
+/** A top_deal with one_liner === "See lead." (or "see lead", case- /
+ *  punctuation-insensitive) is the company already covered by Today's
+ *  Lead. Used for Q3 dedup ("never render 'See lead.' as a card body")
+ *  and for Names-to-Watch list trimming. */
+function isSeeLeadOneLiner(s?: string | null): boolean {
+  if (!s) return false;
+  return s.trim().toLowerCase().replace(/[.!?]+$/, "") === "see lead";
+}
+
+function leadDealCompany(deals: TopDeal[] | null | undefined): string | null {
+  if (!Array.isArray(deals)) return null;
+  const m = deals.find((d) => isSeeLeadOneLiner(d.one_liner));
+  if (m && m.company) return m.company.trim();
+  return null;
+}
+
+function normaliseCompany(s?: string | null): string {
+  return (s || "").trim().toLowerCase();
+}
+
 /* ── Section: Market Pulse hero (C4) ──────────────────────────────── */
 
 function MarketPulseSection({
@@ -337,6 +359,151 @@ function MarketPulseSection({
   );
 }
 
+/* ── Section: Today's Lead (C5) ────────────────────────────────────── */
+
+function TodaysLeadSection({
+  headline,
+  leadParagraph,
+  supportingContext,
+  whatToWatch,
+  namesToWatch,
+}: {
+  headline: string;
+  leadParagraph: string;
+  supportingContext: string;
+  whatToWatch: string;
+  namesToWatch: TopDeal[];
+}) {
+  return (
+    <section data-section="lead">
+      <h3
+        className="font-serif font-bold text-black"
+        style={{
+          fontFamily: "'Times New Roman', Times, serif",
+          fontSize: 22,
+          lineHeight: 1.18,
+          letterSpacing: "-0.005em",
+          margin: "0 0 12px",
+        }}
+      >
+        {headline}
+      </h3>
+
+      {leadParagraph ? (
+        <p
+          className="text-neutral-900"
+          style={{
+            fontFamily: "'Times New Roman', Times, serif",
+            fontSize: 11,
+            lineHeight: 1.65,
+            margin: "0 0 12px",
+            whiteSpace: "pre-line",
+          }}
+        >
+          {leadParagraph}
+        </p>
+      ) : null}
+
+      {supportingContext ? (
+        <p
+          className="text-neutral-900"
+          style={{
+            fontFamily: "'Times New Roman', Times, serif",
+            fontSize: 11,
+            lineHeight: 1.65,
+            margin: "0 0 12px",
+            whiteSpace: "pre-line",
+          }}
+        >
+          {supportingContext}
+        </p>
+      ) : null}
+
+      {whatToWatch ? (
+        <div
+          className="break-inside-avoid"
+          style={{ marginTop: 14, marginBottom: 4 }}
+        >
+          <p
+            className="font-sans uppercase text-neutral-700"
+            style={{
+              fontFamily: "Helvetica, Arial, sans-serif",
+              fontSize: 9,
+              letterSpacing: "0.18em",
+              fontWeight: 700,
+              margin: "0 0 6px",
+            }}
+          >
+            What to Watch
+          </p>
+          <p
+            className="text-neutral-900"
+            style={{
+              fontFamily: "'Times New Roman', Times, serif",
+              fontSize: 11,
+              lineHeight: 1.65,
+              margin: 0,
+              whiteSpace: "pre-line",
+            }}
+          >
+            {whatToWatch}
+          </p>
+        </div>
+      ) : null}
+
+      {namesToWatch.length > 0 ? (
+        <div className="break-inside-avoid" style={{ marginTop: 16 }}>
+          <p
+            className="font-sans uppercase text-neutral-700"
+            style={{
+              fontFamily: "Helvetica, Arial, sans-serif",
+              fontSize: 9,
+              letterSpacing: "0.18em",
+              fontWeight: 700,
+              margin: "0 0 6px",
+            }}
+          >
+            Names to Watch
+          </p>
+          <p
+            className="text-neutral-800"
+            style={{
+              fontFamily: "'Times New Roman', Times, serif",
+              fontSize: 11,
+              lineHeight: 1.6,
+              margin: 0,
+            }}
+          >
+            {namesToWatch.map((d, i) => {
+              const tone = normaliseTone(d.sentiment);
+              return (
+                <span key={`${i}-${d.company}`}>
+                  <span className="text-black">{d.company}</span>
+                  <span
+                    className="font-sans uppercase text-neutral-500"
+                    style={{
+                      fontFamily: "Helvetica, Arial, sans-serif",
+                      fontSize: 8,
+                      letterSpacing: "0.16em",
+                      fontWeight: 700,
+                      marginLeft: 6,
+                    }}
+                  >
+                    {tone}
+                  </span>
+                  {i < namesToWatch.length - 1 ? (
+                    <span className="text-neutral-400">{"  ·  "}</span>
+                  ) : null}
+                </span>
+              );
+            })}
+          </p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 /* ── Main component ────────────────────────────────────────────────── */
 
 export function PrintBrief({
@@ -368,6 +535,24 @@ export function PrintBrief({
     (h) => h && typeof h.title === "string" && h.title.trim(),
   );
 
+  // Today's Lead data prep
+  const leadParagraph =
+    (briefing.lead_paragraph && stripHtml(briefing.lead_paragraph).trim()) ||
+    "";
+  const supportingContext =
+    (briefing.supporting_context &&
+      stripHtml(briefing.supporting_context).trim()) ||
+    "";
+  const whatToWatch =
+    (briefing.what_to_watch && stripHtml(briefing.what_to_watch).trim()) || "";
+  const allDeals = briefing.top_deals ?? [];
+  const leadCompany = leadDealCompany(allDeals); // for Q3 dedup
+  const namesToWatch = allDeals
+    // skip the "See lead." entry from Names to Watch — Today's Lead
+    // already covers that company in its prose.
+    .filter((d) => !isSeeLeadOneLiner(d.one_liner))
+    .slice(0, 5);
+
   // Q2 / Q9: stories[] (Today's Stories) is intentionally not rendered —
   // it reads as raw aggregation in the PDF. thesesCount and vix were
   // masthead stats in the old design; the new newsletter masthead omits
@@ -396,11 +581,15 @@ export function PrintBrief({
           headlines={pulseHeadlines}
         />
 
-        {/* Section 2 — Today's Lead (page 1–2). Implemented in C5. */}
+        {/* Section 2 — Today's Lead (page 1–2). */}
         <SectionDivider label="Today's Lead" />
-        <section data-section="lead">
-          <SectionStub name="today's lead (C5)" />
-        </section>
+        <TodaysLeadSection
+          headline={headline}
+          leadParagraph={leadParagraph}
+          supportingContext={supportingContext}
+          whatToWatch={whatToWatch}
+          namesToWatch={namesToWatch}
+        />
 
         {/* Section 3 — Top Deals (page 2–3). Implemented in C6. */}
         <SectionDivider label="Top Deals to Watch" />
