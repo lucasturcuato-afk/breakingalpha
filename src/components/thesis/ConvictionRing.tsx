@@ -27,7 +27,7 @@ export function ConvictionRing({
     label = 'MED'
   } else if (normalized === 'WATCH') {
     color = 'var(--text-muted)'
-    label = 'WATCH'
+    label = 'WTC'
   } else if (normalized === 'BEARISH') {
     color = 'var(--signal-dn)'
     label = 'BEAR'
