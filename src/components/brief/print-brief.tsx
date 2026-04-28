@@ -222,14 +222,6 @@ function SectionDivider({ label }: { label: string }) {
   );
 }
 
-/** Stub used in commit 3 — replaced section-by-section in commits 4–9. */
-function SectionStub({ name }: { name: string }) {
-  return (
-    <div className="my-2 text-[10px] uppercase tracking-widest text-neutral-400">
-      [todo: {name}]
-    </div>
-  );
-}
 
 /* ── Helpers ──────────────────────────────────────────────────────── */
 
@@ -846,9 +838,6 @@ function TodaysLeadSection({
 
 export function PrintBrief({
   briefing,
-  stories: _stories,
-  thesesCount: _thesesCount,
-  vix: _vix,
   formatLabel,
   userAddendum,
 }: PrintBriefProps) {
