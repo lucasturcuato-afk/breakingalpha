@@ -3,6 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { createClient } from "@supabase/supabase-js";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { isAdmin } from "@/lib/admin-emails";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -230,7 +231,10 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   /* ── Rate limit ── */
-  const rl = checkRateLimit(user.id, "memo", RATE_LIMIT_MEMO);
+  // Admins bypass rate limits
+  const rl = isAdmin(user.email)
+    ? { allowed: true, remaining: Infinity, limit: Infinity, resetAt: 0 }
+    : checkRateLimit(user.id, "memo", RATE_LIMIT_MEMO);
   if (!rl.allowed) {
     return NextResponse.json(
       {
