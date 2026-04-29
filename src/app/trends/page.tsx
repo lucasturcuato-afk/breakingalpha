@@ -147,34 +147,112 @@ function getDisplayTitle(s: TrendSignal): string {
 
 
 
-function dedupKey(s: TrendSignal): string {
-  const company = (s.top_companies[0] || "").toLowerCase().trim();
-  const theme = (s.top_themes[0] || "").toLowerCase().trim();
-  const sector = (s.top_sectors[0] || "").toLowerCase().trim();
-  if (company && theme) return `${company}::${theme}`;
-  if (theme && sector) return `${theme}::${sector}`;
-  return s.label.toLowerCase().trim();
+// Normalize a string token: lowercase, trim, strip punctuation, collapse whitespace
+function normToken(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, "")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+// Generate a set of identity signatures for a trend signal.
+// A signal's "fingerprint" is: top 2 companies + top 2 themes + top sector.
+// Two signals are duplicates if they share enough fingerprint tokens.
+function signalFingerprint(s: TrendSignal): {
+  companies: Set<string>;
+  themes: Set<string>;
+  sector: string;
+} {
+  const companies = new Set(
+    s.top_companies.slice(0, 3).map(normToken).filter(Boolean)
+  );
+  const themes = new Set(
+    s.top_themes.slice(0, 3).map(normToken).filter(Boolean)
+  );
+  const sector = normToken(s.top_sectors[0] || "");
+  return { companies, themes, sector };
+}
+
+// Decide whether two signals are duplicates.
+// Rule: same sector AND (≥1 shared company OR ≥1 shared theme).
+// If a signal has no companies, fall back to: same sector + ≥1 shared theme.
+// If neither has a sector, fall back to label match.
+function areSignalsDuplicates(a: TrendSignal, b: TrendSignal): boolean {
+  const fa = signalFingerprint(a);
+  const fb = signalFingerprint(b);
+
+  // Sector mismatch → different signals (e.g., AI in tech vs AI in biotech)
+  if (fa.sector && fb.sector && fa.sector !== fb.sector) {
+    // Allow partial sector match for trends like "Technology" vs "Technology M&A"
+    const aShort = fa.sector.split(" ")[0];
+    const bShort = fb.sector.split(" ")[0];
+    if (aShort !== bShort) return false;
+  }
+
+  // Count overlap in companies
+  let companyOverlap = 0;
+  for (const c of fa.companies) {
+    if (fb.companies.has(c)) companyOverlap++;
+  }
+
+  // Count overlap in themes
+  let themeOverlap = 0;
+  for (const t of fa.themes) {
+    if (fb.themes.has(t)) themeOverlap++;
+  }
+
+  // Rule 1: shared company AND shared theme = strong duplicate signal
+  if (companyOverlap >= 1 && themeOverlap >= 1) return true;
+
+  // Rule 2: 2+ shared companies (very same set of players) = duplicate
+  if (companyOverlap >= 2) return true;
+
+  // Rule 3: no companies on either side, but 2+ shared themes = thematic duplicate
+  if (fa.companies.size === 0 && fb.companies.size === 0 && themeOverlap >= 2) {
+    return true;
+  }
+
+  // Rule 4: identical labels (catches edge cases the above miss)
+  if (a.label.toLowerCase().trim() === b.label.toLowerCase().trim()) return true;
+
+  return false;
+}
+
+// Pick the "winner" between two duplicate signals.
+// Priority: higher strength_score → more sources → more recent.
+function pickStrongerSignal(a: TrendSignal, b: TrendSignal): TrendSignal {
+  if (a.strength_score !== b.strength_score) {
+    return a.strength_score > b.strength_score ? a : b;
+  }
+  if (a.source_count !== b.source_count) {
+    return a.source_count > b.source_count ? a : b;
+  }
+  return new Date(a.created_at) > new Date(b.created_at) ? a : b;
 }
 
 function deduplicateSignals(signals: TrendSignal[]): TrendSignal[] {
-  const seen = new Map<string, TrendSignal>();
-  for (const s of signals) {
-    const key = dedupKey(s);
-    const existing = seen.get(key);
-    if (!existing) {
-      seen.set(key, s);
-      continue;
+  // Sort by strength descending so winners get processed first
+  const sorted = [...signals].sort((a, b) => b.strength_score - a.strength_score);
+  const kept: TrendSignal[] = [];
+
+  for (const candidate of sorted) {
+    let merged = false;
+    for (let i = 0; i < kept.length; i++) {
+      if (areSignalsDuplicates(candidate, kept[i])) {
+        // Found a duplicate — replace with whichever is stronger
+        kept[i] = pickStrongerSignal(kept[i], candidate);
+        merged = true;
+        break;
+      }
     }
-    if (s.strength_score > existing.strength_score) {
-      seen.set(key, s);
-    } else if (
-      s.strength_score === existing.strength_score &&
-      new Date(s.created_at) > new Date(existing.created_at)
-    ) {
-      seen.set(key, s);
+    if (!merged) {
+      kept.push(candidate);
     }
   }
-  return [...seen.values()].sort(
+
+  // Final sort by creation date, newest first (matches existing behavior)
+  return kept.sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 }
