@@ -28,15 +28,18 @@ export async function GET(request: NextRequest) {
   const { supabase } = await getSupabaseWithUser();
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") ?? "").trim();
-  const limitRaw = parseInt(searchParams.get("limit") ?? "100", 10);
-  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 100;
+  const limitRaw = parseInt(searchParams.get("limit") ?? "500", 10);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 1000) : 500;
 
   try {
     let query = supabase
       .from("companies")
       .select("id, name, ticker, sector, mention_count, last_updated, key_themes")
       .not("name", "is", null)
-      .gt("mention_count", 0)
+      // Loosened from `> 0` to `IS NOT NULL` after Vercel preview showed too few rows
+      // (~25-30 vs. pre-rewrite hundreds). Singletons are still real companies a user
+      // might search for. SQL noise protection moved to the JS post-fetch filter below.
+      .not("mention_count", "is", null)
       .order("mention_count", { ascending: false, nullsFirst: false })
       .order("last_updated", { ascending: false, nullsFirst: false })
       .order("name", { ascending: true })
@@ -64,10 +67,12 @@ export async function GET(request: NextRequest) {
       return true;
     });
 
-    if (rows.length >= 100 && filtered.length < 20) {
+    // Diagnostic: warn when the JS noise filter drops > 30% of rows. Percentage-based
+    // so the threshold scales with the larger default limit (500 → could be 1000).
+    if (rows.length > 0 && (rows.length - filtered.length) / rows.length > 0.30) {
       const dropped = rows.filter((c) => !filtered.includes(c)).slice(0, 5).map((c) => c.name);
       console.warn(
-        `[api/companies] post-fetch quality filter reduced ${rows.length} → ${filtered.length} rows. First 5 filtered names:`,
+        `[api/companies] post-fetch quality filter reduced ${rows.length} → ${filtered.length} rows (>30% dropped). First 5 filtered names:`,
         dropped,
       );
     }
