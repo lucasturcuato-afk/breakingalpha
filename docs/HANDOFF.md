@@ -5,6 +5,11 @@
 
 ---
 
+## Recently Completed (2026-04-29)
+**PR #147 pinned watchlist merged:** Dashboard pinned-watchlist widget with real Finnhub prices, pin/unpin UI on `/watchlist`, supabase migration for `pinned_position` column, right-rail scroll fix. Two open PRs in flight: #148 (watchlist-driven Finnhub fetch v1) and #149 (Company Intel fix plan). Local branch `noah/pinned-watchlist` is now stale (superseded by #147 merge at `b733626`); mark for deletion.
+
+---
+
 ## 1. What happened this session
 
 ### PR #131 production validation — PASSED
@@ -480,6 +485,11 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 - **Real comp data integration** — Polygon/FMP API integration + Lucas budget conversation. Deferred.
 
 ## Pending / Known Issues
+
+**Open PRs in flight (2026-04-29)**
+- **PR #148 — feat(ingest): watchlist-driven Finnhub fetch (v1)** — Branch `noah/watchlist-ingestion-v1` @ `787496d`. Adds `fetch_watchlist_finnhub_articles()` + single integration point in `fetch_all_articles`. Articles route through existing `articles` table path (NOT `watchlist_articles`). Untested in production; PR uses "needs verification" wording. Artifacts in WATCHLIST_INGESTION_DIAGNOSIS.md.
+- **PR #149 — docs: Company Intel fix plan** — Branch `noah/company-intel-investigation` @ `a79cc47`. Markdown-only: `COMPANY_INTEL_FIX_PLAN.md` covering 4 symptoms (duplicate company rows, search broken, Robinhood missing, ExaAI integration gap) plus investigation summary. No source code changes. Artifacts in COMPANY_INTEL_DIAGNOSIS.md.
+- **Local branch `noah/pinned-watchlist` (stale)** — Contains local commits up to `73143fc` that duplicate work merged as PR #147 (`b733626`). Mark for deletion; no action needed.
 
 **From tonight's three-PR session (2026-04-28) — FOR NEXT SESSION**
 - **ENV loading in replay scripts** — .session-artifacts/2026-04-28/run_synth.py doesn't auto-load backend/.env. Add `load_dotenv("backend/.env")` for future replays.
