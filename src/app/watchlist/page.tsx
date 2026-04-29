@@ -1557,6 +1557,7 @@ function SortableEntryRow(props: {
             <Pin
               size={14}
               fill={entry.pinned_position != null ? "currentColor" : "none"}
+              className="pointer-events-none"
             />
             {entry.pinned_position != null && (
               <span className="font-data text-[9px] font-bold leading-none">
