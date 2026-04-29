@@ -29,12 +29,61 @@ export async function GET(request: NextRequest) {
         },
       }
     )
-    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
-    if (!exchangeError) {
+
+    const { error: exchangeError, data } = await supabase.auth.exchangeCodeForSession(code)
+
+    if (exchangeError) {
+      console.error('Exchange error:', exchangeError.message)
+      return NextResponse.redirect(`${origin}/auth?error=exchange_failed`)
+    }
+
+    // ============================================================
+    // BETA ALLOWLIST GATE
+    // ============================================================
+    const userEmail = data.user?.email?.toLowerCase()
+    const userName = data.user?.user_metadata?.full_name || data.user?.user_metadata?.name || null
+
+    if (!userEmail) {
+      console.error('No email in session after exchange')
+      await supabase.auth.signOut()
+      return NextResponse.redirect(`${origin}/auth?error=no_email`)
+    }
+
+    // Check beta_allowlist
+    const { data: allowed, error: allowlistError } = await supabase
+      .from('beta_allowlist')
+      .select('email')
+      .eq('email', userEmail)
+      .maybeSingle()
+
+    if (allowlistError) {
+      console.error('Allowlist check error:', allowlistError.message)
+      // Fail-closed: if we can't verify, don't let them in
+      await supabase.auth.signOut()
+      return NextResponse.redirect(`${origin}/auth?error=allowlist_check_failed`)
+    }
+
+    if (allowed) {
+      // User is allowlisted — proceed to dashboard
       return NextResponse.redirect(`${origin}/dashboard`)
     }
-    console.error('Exchange error:', exchangeError.message)
-    return NextResponse.redirect(`${origin}/auth?error=exchange_failed`)
+
+    // User is NOT allowlisted — add to waitlist, sign out, redirect
+    const { error: waitlistError } = await supabase
+      .from('waitlist')
+      .insert({
+        email: userEmail,
+        name: userName,
+        source: 'oauth_callback',
+      })
+
+    if (waitlistError && !waitlistError.message.includes('duplicate')) {
+      console.error('Waitlist insert error:', waitlistError.message)
+      // Continue anyway — don't block the redirect
+    }
+
+    await supabase.auth.signOut()
+    return NextResponse.redirect(`${origin}/waitlist`)
   }
 
   return NextResponse.redirect(`${origin}/auth?error=no_code`)
