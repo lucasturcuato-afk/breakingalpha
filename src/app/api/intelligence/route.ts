@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { isAdmin } from "@/lib/admin-emails";
 import { cacheGet, cacheSet, buildCacheKey } from "@/lib/response-cache";
 import { getUserProfile, buildPersonalizationContext } from "@/lib/user-profile";
 
@@ -32,7 +33,7 @@ const SYSTEM_PROMPT =
   "Answer questions using ONLY the provided context. If the context doesn't contain relevant information, say so honestly. " +
   "Be specific, cite sources by title, and maintain an analyst's tone. Never invent facts.";
 
-const RATE_LIMIT_CHAT = 20; // messages per 24h
+const RATE_LIMIT_CHAT = 15; // messages per 24h
 
 const EMPTY_KB_RESPONSE =
   "I don't have enough research data yet. The knowledge base will populate after the next pipeline run.";
@@ -87,7 +88,10 @@ export async function POST(request: NextRequest) {
   }
 
   /* ── Rate limit ── */
-  const rl = checkRateLimit(user.id, "chat", RATE_LIMIT_CHAT);
+  // Admins bypass rate limits
+  const rl = isAdmin(user.email)
+    ? { allowed: true, remaining: Infinity, limit: Infinity, resetAt: 0 }
+    : checkRateLimit(user.id, "chat", RATE_LIMIT_CHAT);
   if (!rl.allowed) {
     return NextResponse.json(
       {
