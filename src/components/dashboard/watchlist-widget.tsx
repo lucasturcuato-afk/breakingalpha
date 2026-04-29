@@ -80,9 +80,11 @@ export function WatchlistWidget() {
                 <span className="font-data text-[12px] font-bold text-text-primary">
                   {item.ticker}
                 </span>
-                <span className="font-sans text-[10px] text-text-muted ml-1.5">
-                  {item.name}
-                </span>
+                {item.name !== item.ticker && (
+                  <span className="font-sans text-[10px] text-text-muted ml-1.5">
+                    {item.name}
+                  </span>
+                )}
               </div>
               <span
                 className={cn(
