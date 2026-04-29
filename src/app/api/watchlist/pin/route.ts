@@ -62,8 +62,12 @@ export async function POST(request: NextRequest) {
     .eq("user_id", user.id)
     .eq("type", "ticker")
     .eq("identifier", ticker)
-    .order("created_at", { ascending: true })
-    .order("id", { ascending: true })
+    // Pick the row the client's dedup keeps: refreshWatchlist in
+    // src/app/watchlist/page.tsx retains the newest-by-created_at duplicate.
+    // Matching that ordering here ensures the UPDATE target is the row the
+    // user actually sees, so the UI reflects the change after a refetch.
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (findError) {
