@@ -348,6 +348,124 @@ def strip_html(text: str) -> str:
     return text.strip()
 
 
+def fetch_watchlist_finnhub_articles() -> list[dict]:
+    """Watchlist-driven Finnhub fetch (v1).
+
+    Pulls DISTINCT ticker identifiers from the `watchlist` table, fetches
+    Finnhub company-news for the last 7 days (cap 8 per ticker), dedupes
+    candidates against the last 30 days of existing rows in the `articles`
+    table by URL, and returns article dicts in the same shape that
+    fetch_all_articles produces. The returned articles flow through the
+    existing Gemini filter + articles-table insert path — no separate
+    storage path, no watchlist_articles writes.
+
+    Emits a structured log line:
+      watchlist-finnhub: N tickers, M articles fetched, K inserted, J duplicates
+    where K is candidates passed back to the caller (post-DB-dedup) and
+    J is the count rejected as URL-duplicates of existing rows. Final
+    insert success is determined downstream by store_article.
+    """
+    finnhub_key = os.environ.get("FINNHUB_API_KEY", "")
+    if not finnhub_key:
+        print("  watchlist-finnhub: FINNHUB_API_KEY not set, skipping")
+        return []
+
+    # Pull DISTINCT ticker identifiers from watchlist (same client pattern as
+    # watchlist_sync.run_sync). Uppercased + de-duplicated in Python because
+    # supabase-py does not expose a DISTINCT primitive.
+    try:
+        resp = supabase.table("watchlist").select("identifier").eq("type", "ticker").execute()
+        rows = resp.data or []
+    except Exception as ex:
+        print(f"  watchlist-finnhub: watchlist read failed: {ex}")
+        return []
+
+    tickers: list[str] = []
+    seen_t: set[str] = set()
+    for row in rows:
+        ident = (row.get("identifier") or "").strip().upper()
+        if ident and ident not in seen_t:
+            seen_t.add(ident)
+            tickers.append(ident)
+
+    if not tickers:
+        print("  watchlist-finnhub: 0 tickers, 0 articles fetched, 0 inserted, 0 duplicates")
+        return []
+
+    # Pre-load existing article URLs from the last 30 days so we can dedupe
+    # candidates BEFORE handing them to the Gemini filter (saves tokens and
+    # gives an accurate duplicate count in the structured log line).
+    existing_urls: set[str] = set()
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        ex_resp = supabase.table("articles").select("url").gte("ingested_at", cutoff).execute()
+        for r in (ex_resp.data or []):
+            u = r.get("url")
+            if u:
+                existing_urls.add(u)
+    except Exception as ex:
+        print(f"  watchlist-finnhub: existing-url preload failed (continuing without DB dedupe): {ex}")
+
+    now = datetime.now(timezone.utc)
+    from_dt = now - timedelta(days=7)
+    fetched = 0
+    duplicates = 0
+    out: list[dict] = []
+    out_urls: set[str] = set()
+
+    for ticker in tickers:
+        try:
+            r = requests.get(
+                "https://finnhub.io/api/v1/company-news",
+                params={
+                    "symbol": ticker,
+                    "from": from_dt.strftime("%Y-%m-%d"),
+                    "to": now.strftime("%Y-%m-%d"),
+                    "token": finnhub_key,
+                },
+                timeout=8,
+            )
+            r.raise_for_status()
+            items = r.json() or []
+        except Exception as ex:
+            print(f"  watchlist-finnhub: fetch failed for {ticker}: {ex}")
+            time.sleep(1.0)
+            continue
+
+        for item in items[:8]:
+            url = item.get("url", "")
+            title = item.get("headline", "")
+            if not url or not title:
+                continue
+            fetched += 1
+            if url in existing_urls or url in out_urls:
+                duplicates += 1
+                continue
+            ts = item.get("datetime")
+            published_at = now.isoformat()
+            if ts:
+                try:
+                    published_at = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+                except Exception:
+                    pass
+            out.append({
+                "title": title,
+                "summary": strip_html(item.get("summary", ""))[:500],
+                "url": url,
+                "source": item.get("source") or "Finnhub",
+                "published_at": published_at,
+                "content_type": "snippet",
+            })
+            out_urls.add(url)
+        time.sleep(1.0)  # polite pacing — mirrors watchlist_sync.fetch_finnhub_articles
+
+    print(
+        f"  watchlist-finnhub: {len(tickers)} tickers, {fetched} articles fetched, "
+        f"{len(out)} inserted, {duplicates} duplicates"
+    )
+    return out
+
+
 def fetch_all_articles():
     articles = []
     for source, url in RSS_FEEDS.items():
@@ -385,6 +503,15 @@ def fetch_all_articles():
             time.sleep(0.3)
     except Exception as ex:
         print(f"  NewsAPI error: {ex}")
+
+    # Watchlist-driven Finnhub fetch (v1) — single integration point.
+    # Articles route through the same articles-table insert path as RSS/NewsAPI
+    # (Gemini filter, entity validation, company_mentions linkage). This does
+    # NOT touch watchlist_articles. See fetch_watchlist_finnhub_articles().
+    try:
+        articles.extend(fetch_watchlist_finnhub_articles())
+    except Exception as ex:
+        print(f"  watchlist-finnhub error: {ex}")
 
     # Deduplicate
     seen, unique = set(), []
