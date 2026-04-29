@@ -45,9 +45,23 @@ export function Topbar({
   return (
     <div className="h-[var(--topbar-height)] bg-sidebar-bg border-b border-border-base flex items-center px-5 gap-4">
       {/* Page title */}
-      <h1 className="font-display text-[15px] font-bold text-espresso whitespace-nowrap">
-        {pageTitle}
-      </h1>
+      <div className="flex items-baseline gap-2 whitespace-nowrap">
+        <h1 className="font-display text-[15px] font-bold text-espresso">
+          {pageTitle}
+        </h1>
+        <span
+          className="font-sans font-medium uppercase leading-none select-none"
+          style={{
+            color: "var(--gold)",
+            fontSize: "9px",
+            letterSpacing: "0.15em",
+            opacity: 0.75,
+          }}
+          aria-label="Beta release"
+        >
+          Beta
+        </span>
+      </div>
 
       {/* Search bar */}
       <div className="flex-1 flex justify-center">
