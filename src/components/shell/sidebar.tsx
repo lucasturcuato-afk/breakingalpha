@@ -366,7 +366,21 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
       <aside className="fixed left-0 top-0 bottom-0 w-[var(--sidebar-width)] bg-sidebar-bg border-r border-border-base flex flex-col z-40">
         {/* Logo area */}
         <div className="border-b border-border-base px-4 py-4 flex items-center justify-center">
-          <Wordmark size="lg" />
+          <div className="flex items-center gap-2">
+            <Wordmark size="lg" />
+            <span
+              className="font-sans text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded leading-none"
+              style={{
+                backgroundColor: "var(--gold-muted)",
+                color: "var(--gold-dark)",
+                border: "1px solid var(--gold-border)",
+                letterSpacing: "0.08em",
+              }}
+              aria-label="Beta release"
+            >
+              BETA
+            </span>
+          </div>
         </div>
 
         {/* Nav body */}
