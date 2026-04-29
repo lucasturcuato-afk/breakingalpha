@@ -1528,7 +1528,7 @@ function SortableEntryRow(props: {
       </button>
 
       {/* PIN slot — fixed width so ticker and non-ticker rows align */}
-      <div className="w-7 flex-shrink-0 self-center flex items-center justify-center">
+      <div className="w-5 flex-shrink-0 self-center flex items-center justify-center">
         {entry.type === "ticker" && (
           <button
             type="button"
