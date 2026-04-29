@@ -5,10 +5,12 @@ import { CompanyDetailClient } from "@/components/company/company-detail-client"
 import {
   CANONICAL,
   COMPANY_IDENTITY,
+  canonicalize,
   filterAndClassifyArticles,
   buildMemoContent,
   buildMemoSystemPrompt,
 } from "@/lib/company-intel";
+import { fetchCompanyArticles } from "@/app/api/companies/[id]/articles/route";
 import type { CredibilityMap } from "@/components/company/company-detail-client";
 
 // Convert a URL slug to a canonical company name.
@@ -46,19 +48,11 @@ export default async function CompanyDetailPage({
 
   const { supabase } = await getSupabaseWithUser();
 
-  const { data: articles, error } = await supabase
-    .from("articles")
-    .select(
-      "id, title, source, sector, sentiment, summary, content, published_at, ingested_at, url, companies, primary_company, relevance_score, deal_type",
-    )
-    .order("ingested_at", { ascending: false })
-    .limit(1500);
+  // Cache-first read via the new /api/companies/[id]/articles helper.
+  // Replaces the prior 1500-article scan that scaled with feed depth.
+  const { articles } = await fetchCompanyArticles(supabase, canonicalize(companyName));
 
-  if (error) {
-    console.error("Company detail query error:", error.message);
-  }
-
-  const classified = filterAndClassifyArticles(articles ?? [], companyName);
+  const classified = filterAndClassifyArticles(articles, companyName);
   const developmentArticles = classified.filter((a) => a._isDevelopment);
   const contextArticles = classified.filter((a) => !a._isDevelopment);
 

@@ -324,7 +324,10 @@ export default function CompanyIntelPage() {
     return buildMemoContent(selectedCompany.name, developmentArticles, contextArticles);
   }, [selectedCompany, developmentArticles, contextArticles]);
 
-  // Load articles when a company is selected
+  // Load articles when a company is selected.
+  // Uses /api/companies/[id]/articles (cache-first) instead of the prior
+  // 1500-article scan, which silently dropped sparse-coverage companies whose
+  // latest mention fell outside the most recent 1500 ingested articles.
   useEffect(() => {
     if (!selectedCompany) return;
     setArticlesLoading(true);
@@ -333,35 +336,50 @@ export default function CompanyIntelPage() {
     async function loadArticles() {
       try {
         const name = selectedCompany!.name;
-        // Fetch without sector scoping. The previous sector-scoped optimization silently
-        // dropped valid articles: if a popular sector (e.g. Geopolitics & Macro) had > 500
-        // articles total, the .limit(500) would return only the newest 500 in that sector,
-        // missing older-but-still-valid articles for sparse companies like Lockheed Martin.
-        // Correctness > performance here — filter client-side instead.
-        const { data: articles, error: detailErr } = await getSupabase()
-          .from("articles")
-          .select("id, title, source, sector, sentiment, summary, content, published_at, ingested_at, url, companies, primary_company, relevance_score, deal_type")
-          .order("ingested_at", { ascending: false })
-          .limit(1500);
-
-        if (detailErr) {
-          console.error("Company articles query error:", detailErr.message);
+        const res = await fetch(`/api/companies/${encodeURIComponent(name)}/articles`);
+        if (!res.ok) {
+          console.error("Company articles fetch failed:", res.status);
+          setCompanyArticles([]);
           return;
         }
-        if (articles) {
-          setCompanyArticles(filterAndClassifyArticles(articles, name));
+        const json = (await res.json()) as {
+          articles?: Array<{
+            id: string;
+            title: string;
+            source?: string | null;
+            sector?: string | null;
+            sentiment?: string | null;
+            summary?: string | null;
+            published_at?: string | null;
+            ingested_at?: string | null;
+            url?: string | null;
+            companies?: unknown;
+            primary_company?: string | null;
+            relevance_score?: number | null;
+            deal_type?: string | null;
+          }>;
+          source?: string;
+          error?: string;
+        };
+        const articles = json.articles ?? [];
+        setCompanyArticles(filterAndClassifyArticles(articles, name));
 
-          // Batch fetch source credibility
-          const uniqueSources = [...new Set(articles.map(a => a.source).filter(Boolean) as string[])];
-          if (uniqueSources.length > 0) {
-            try {
-              const { data: credData } = await getSupabase()
-                .from("source_credibility")
-                .select("source, win_rate")
-                .in("source", uniqueSources);
-              setCredMap(new Map(credData?.map(r => [r.source, r.win_rate]) ?? []));
-            } catch { /* soft-fail */ }
-          }
+        // Batch fetch source credibility (unchanged — separate concern from the article read)
+        const uniqueSources = [
+          ...new Set(
+            articles
+              .map((a) => a.source)
+              .filter((s): s is string => typeof s === "string" && s.length > 0),
+          ),
+        ];
+        if (uniqueSources.length > 0) {
+          try {
+            const { data: credData } = await getSupabase()
+              .from("source_credibility")
+              .select("source, win_rate")
+              .in("source", uniqueSources);
+            setCredMap(new Map(credData?.map((r) => [r.source, r.win_rate]) ?? []));
+          } catch { /* soft-fail */ }
         }
       } catch (e) {
         console.error("Failed to load company articles:", e);
