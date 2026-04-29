@@ -37,7 +37,6 @@ export default function PrivacyPolicyPage() {
         <ul>
           <li>Adding tickers to your watchlist</li>
           <li>Saving research notes on theses</li>
-          <li>Rating brief sections (thumbs up / thumbs down)</li>
           <li>Completing onboarding preferences (sectors, risk appetite, investment horizon, workflow style, role)</li>
         </ul>
 
