@@ -241,7 +241,7 @@ export default function CompanyIntelPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/companies?limit=100");
+        const res = await fetch("/api/companies?limit=500");
         const json = (await res.json()) as { companies?: ApiCompany[]; error?: string };
         if (!cancelled) setCompanies(dedupeAndMapApiCompanies(json.companies ?? []));
       } catch (e) {
