@@ -605,7 +605,7 @@ export default function EveningWrapPage() {
         </span>
       </div>
 
-      <div className="p-8 max-w-[960px]">
+      <div className="p-8">
         {loading ? (
           <div className="space-y-6">
             <Skeleton className="h-10 w-3/4" />

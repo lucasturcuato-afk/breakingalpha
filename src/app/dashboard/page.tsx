@@ -511,7 +511,7 @@ export default function DashboardPage() {
         </>
       }
     >
-      <div className="px-6 py-4 max-w-[960px]">
+      <div className="px-6 py-4">
         {/* Onboarding banner */}
         <OnboardingBanner />
 
