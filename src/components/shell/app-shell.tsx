@@ -137,19 +137,21 @@ export function AppShell({
 
         {/* Content + right panel */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Scrollable content area */}
-          <main className="flex-1 overflow-y-auto bg-parchment pb-[56px] md:pb-0">
-            <PageTransition>{children}</PageTransition>
-          </main>
+          <div className="flex-1 flex overflow-hidden mx-auto w-full max-w-[2400px]">
+            {/* Scrollable content area */}
+            <main className="flex-1 overflow-y-auto bg-parchment pb-[56px] md:pb-0 overflow-x-hidden">
+              <PageTransition>{children}</PageTransition>
+            </main>
 
-          {/* Collapsible right panel — hidden on mobile */}
-          {rightPanel && (
-            <div className="hidden lg:block">
-              <RightPanel open={panelOpen} onToggle={togglePanel}>
-                {rightPanel}
-              </RightPanel>
-            </div>
-          )}
+            {/* Collapsible right panel — hidden on mobile */}
+            {rightPanel && (
+              <div className="hidden lg:block flex-shrink-0">
+                <RightPanel open={panelOpen} onToggle={togglePanel}>
+                  {rightPanel}
+                </RightPanel>
+              </div>
+            )}
+          </div>
         </div>
 
         <Footer />
