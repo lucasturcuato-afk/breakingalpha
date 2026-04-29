@@ -32,6 +32,8 @@ export async function proxy(request: NextRequest) {
     path === '/live-feed' ||
     path === '/trends' ||
     path === '/company' ||
+    path === '/waitlist' || // beta waitlist landing page (non-allowlisted users land here)
+    path.startsWith('/legal/') || // ToS, Privacy, Support — must be publicly accessible
     path.startsWith('/watchlist/') || // identifier detail pages; /watchlist (personal list) stays gated
     path.startsWith('/auth/callback') ||
     path.startsWith('/print/') || // Puppeteer-driven PDF render; the /print page itself enforces auth
