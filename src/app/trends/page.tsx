@@ -179,12 +179,25 @@ function signalFingerprint(s: TrendSignal): {
 // If a signal has no companies, fall back to: same sector + ≥1 shared theme.
 // If neither has a sector, fall back to label match.
 function areSignalsDuplicates(a: TrendSignal, b: TrendSignal): boolean {
+  // PRIORITY RULE: identical normalized labels = always duplicate.
+  // Run this FIRST so it catches the case where two signals have the same
+  // headline but different supporting companies (e.g., "AI M&A Heats Up:
+  // Tech Sector Reshaping" appearing twice with different cap-tables).
+  const labelA = normToken(a.label);
+  const labelB = normToken(b.label);
+  if (labelA && labelB && labelA === labelB) return true;
+
+  // Also: same headline (case-insensitive, stripped of "&" / commas) = duplicate.
+  // Some labels differ only in punctuation rendering.
+  const stripPunct = (s: string) =>
+    s.toLowerCase().replace(/[&,.;:!?\-—–"']/g, "").replace(/\s+/g, " ").trim();
+  if (stripPunct(a.label) === stripPunct(b.label)) return true;
+
   const fa = signalFingerprint(a);
   const fb = signalFingerprint(b);
 
   // Sector mismatch → different signals (e.g., AI in tech vs AI in biotech)
   if (fa.sector && fb.sector && fa.sector !== fb.sector) {
-    // Allow partial sector match for trends like "Technology" vs "Technology M&A"
     const aShort = fa.sector.split(" ")[0];
     const bShort = fb.sector.split(" ")[0];
     if (aShort !== bShort) return false;
@@ -198,9 +211,11 @@ function areSignalsDuplicates(a: TrendSignal, b: TrendSignal): boolean {
 
   // Count overlap in themes
   let themeOverlap = 0;
+  const totalThemes = Math.max(fa.themes.size, fb.themes.size, 1);
   for (const t of fa.themes) {
     if (fb.themes.has(t)) themeOverlap++;
   }
+  const themeRatio = themeOverlap / totalThemes;
 
   // Rule 1: shared company AND shared theme = strong duplicate signal
   if (companyOverlap >= 1 && themeOverlap >= 1) return true;
@@ -213,8 +228,32 @@ function areSignalsDuplicates(a: TrendSignal, b: TrendSignal): boolean {
     return true;
   }
 
-  // Rule 4: identical labels (catches edge cases the above miss)
-  if (a.label.toLowerCase().trim() === b.label.toLowerCase().trim()) return true;
+  // Rule 4 (NEW): same sector AND high theme overlap (≥70%) = thematic duplicate.
+  // Catches cases like "AI Investment & Regulatory Scrutiny Intensifies"
+  // vs "AI Investment Surges Amidst Regulatory Scrutiny" — same sector,
+  // same theme cluster, different framings of the same trend.
+  if (fa.sector && fb.sector && themeRatio >= 0.7 && themeOverlap >= 2) {
+    return true;
+  }
+
+  // Rule 5 (NEW): same sector AND first theme matches AND headline shares
+  // ≥3 significant words = duplicate. Catches near-identical headlines that
+  // wouldn't be caught by stripPunct above (e.g., word-order swaps).
+  if (fa.sector && fb.sector) {
+    const aFirstTheme = [...fa.themes][0];
+    const bFirstTheme = [...fb.themes][0];
+    if (aFirstTheme && bFirstTheme && aFirstTheme === bFirstTheme) {
+      const aWords = new Set(
+        normToken(a.label).split(" ").filter((w) => w.length >= 4)
+      );
+      const bWords = new Set(
+        normToken(b.label).split(" ").filter((w) => w.length >= 4)
+      );
+      let wordOverlap = 0;
+      for (const w of aWords) if (bWords.has(w)) wordOverlap++;
+      if (wordOverlap >= 3) return true;
+    }
+  }
 
   return false;
 }
