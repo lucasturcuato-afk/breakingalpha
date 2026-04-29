@@ -56,12 +56,28 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const { data: targetRow, error: findError } = await supabase
+    .from("watchlist")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("type", "ticker")
+    .eq("identifier", ticker)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (findError) {
+    console.error("[watchlist/pin] find error:", findError.message);
+    return NextResponse.json({ error: "db_error" }, { status: 500 });
+  }
+  if (!targetRow) {
+    return NextResponse.json({ error: "ticker_not_in_watchlist" }, { status: 404 });
+  }
+
   const { error: setError } = await supabase
     .from("watchlist")
     .update({ pinned_position: position })
-    .eq("user_id", user.id)
-    .eq("type", "ticker")
-    .eq("identifier", ticker);
+    .eq("id", targetRow.id);
 
   if (setError) {
     console.error("[watchlist/pin] set error:", setError.message);

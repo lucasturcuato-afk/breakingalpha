@@ -1527,18 +1527,8 @@ function SortableEntryRow(props: {
         <GripVertical size={12} />
       </button>
 
-      {/* LEFT: identifier + optional display_name subtitle */}
-      <div className="flex flex-col min-w-0 flex-1">
-        <span className="font-data text-[13px] font-bold text-text-primary truncate">
-          {entry.identifier}
-        </span>
-        {subtitle && (
-          <span className="font-data text-[9px] text-text-faint">{subtitle}</span>
-        )}
-      </div>
-
-      {/* RIGHT: pin, article count, price, hover actions, chevron */}
-      <div className="flex items-center gap-2 flex-shrink-0 self-center">
+      {/* PIN slot — fixed width so ticker and non-ticker rows align */}
+      <div className="w-7 flex-shrink-0 self-center flex items-center justify-center">
         {entry.type === "ticker" && (
           <button
             type="button"
@@ -1575,6 +1565,20 @@ function SortableEntryRow(props: {
             )}
           </button>
         )}
+      </div>
+
+      {/* LEFT: identifier + optional display_name subtitle */}
+      <div className="flex flex-col min-w-0 flex-1">
+        <span className="font-data text-[13px] font-bold text-text-primary truncate">
+          {entry.identifier}
+        </span>
+        {subtitle && (
+          <span className="font-data text-[9px] text-text-faint">{subtitle}</span>
+        )}
+      </div>
+
+      {/* RIGHT: article count, price, hover actions, chevron */}
+      <div className="flex items-center gap-2 flex-shrink-0 self-center">
         {articleCount > 0 && (
           <span className="font-data text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
             {articleCount >= 20 ? "20+" : articleCount}
