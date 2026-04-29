@@ -18,8 +18,6 @@ import {
   buildMemoSystemPrompt,
   canonicalize,
   filterAndClassifyArticles,
-  isJunkEntityName,
-  parseCompanies,
   timeAgo,
 } from "@/lib/company-intel";
 import { CompletenessBadge, SignalScore, SourceCredibilityBadge, getCompleteness, getAdjustedScore } from "@/lib/article-signal";
@@ -37,6 +35,42 @@ interface CompanyData {
   name: string;
   mentions: number;
   sectors: string[];
+}
+
+// Shape of /api/companies response items. Locally redeclared to avoid importing
+// from a route file across the client boundary.
+interface ApiCompany {
+  id: string;
+  name: string;
+  ticker: string | null;
+  sector: string | null;
+  mention_count: number;
+  last_updated: string | null;
+  key_themes: string[] | null;
+}
+
+// Map API rows to the rendered CompanyData shape, applying canonicalize() for
+// display normalization and collapsing rows that canonicalize to the same
+// display name (e.g. "Robinhood" + "Robinhood Markets Inc" → one card).
+function dedupeAndMapApiCompanies(rows: ApiCompany[]): CompanyData[] {
+  const map = new Map<string, CompanyData>();
+  for (const row of rows) {
+    const display = canonicalize(row.name);
+    const key = display.toLowerCase();
+    const existing = map.get(key);
+    const sector = row.sector ?? null;
+    if (existing) {
+      existing.mentions += row.mention_count;
+      if (sector && !existing.sectors.includes(sector)) existing.sectors.push(sector);
+    } else {
+      map.set(key, {
+        name: display,
+        mentions: row.mention_count,
+        sectors: sector ? [sector] : [],
+      });
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => b.mentions - a.mentions);
 }
 
 const INDUSTRY_VERTICALS = [
@@ -197,107 +231,82 @@ export default function CompanyIntelPage() {
     }).catch(() => setIsSignedOut(true));
   }, []);
 
-  // Build company list from article mentions
+  // Top-100 load: runs on mount and whenever search transitions back to < 2 chars.
+  // Replaces the previous 1500-article aggregation that mis-attributed mention
+  // counts and silently dropped any company whose latest mention fell outside
+  // the most recent 1500 articles. Reads directly from the companies table via
+  // /api/companies, which applies its own quality filters server-side.
   useEffect(() => {
-    async function load() {
+    if (search.trim().length >= 2) return;
+    let cancelled = false;
+    (async () => {
       try {
-        const { data: articles, error: articlesErr } = await getSupabase()
-          .from("articles")
-          .select("companies, sector, primary_company")
-          .order("ingested_at", { ascending: false })
-          .limit(1500);
-
-        if (articlesErr) {
-          console.error("Company intel query error:", articlesErr.message);
-          return;
-        }
-        if (!articles) return;
-
-        // Key by display.toLowerCase() so that case variants of the same name
-        // ("Whoop" and "WHOOP", for example) group into one row. canonicalize()
-        // resolves CANONICAL aliases and strips legal suffixes before this point,
-        // so "Marvell Technology Inc." and "Marvell" both produce display
-        // "Marvell Technology" and key "marvell technology".
-        //
-        // When the same key is seen with different casings (neither form in CANONICAL),
-        // prefer a mixed-case display form over an ALL-CAPS form.
-        const compMap: Record<string, { display: string; mentions: number; sectors: Set<string> }> = {};
-        articles.forEach((a) => {
-          const cos = parseCompanies(a.companies);
-          cos.forEach((raw) => {
-            if (!raw || raw.length < 2) return;
-            // Reject extraction artifacts: parenthetical lists, "e.g." patterns,
-            // generic group labels, and implausibly long strings.
-            if (isJunkEntityName(raw)) return;
-            const display = canonicalize(raw);
-            const key = display.toLowerCase();
-            if (!compMap[key]) {
-              compMap[key] = { display, mentions: 0, sectors: new Set() };
-            } else if (/[a-z]/.test(display) && !/[a-z]/.test(compMap[key].display)) {
-              // Upgrade from ALL-CAPS to mixed-case display form when available
-              compMap[key].display = display;
-            }
-            compMap[key].mentions++;
-            // Only attribute a sector to a company when it is the primary subject of the article.
-            // Without this guard, PE firms like Blackstone accumulate "Healthcare & Biotech" from
-            // articles where Hologic (primary_company) is the subject and Blackstone is the acquirer.
-            // Fall back to adding the sector when primary_company is unset (older articles).
-            if (a.sector) {
-              const pc = typeof a.primary_company === "string" ? canonicalize(a.primary_company).toLowerCase() : "";
-              if (!pc || pc === key || pc.includes(key) || key.includes(pc)) {
-                compMap[key].sectors.add(a.sector);
-              }
-            }
-          });
-        });
-
-        const list = Object.entries(compMap)
-          .map(([, data]) => ({
-            name: data.display,
-            mentions: data.mentions,
-            sectors: Array.from(data.sectors),
-          }))
-          .sort((a, b) => b.mentions - a.mentions);
-
-        setCompanies(list);
+        const res = await fetch("/api/companies?limit=500");
+        const json = (await res.json()) as { companies?: ApiCompany[]; error?: string };
+        if (!cancelled) setCompanies(dedupeAndMapApiCompanies(json.companies ?? []));
       } catch (e) {
-        console.error("Failed to build company list:", e);
+        if (!cancelled) {
+          console.error("Failed to load companies:", e);
+          setCompanies([]);
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
-    }
-    load();
-  }, []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [search]);
 
-  // Filter companies by search and industry vertical.
+  // Debounced server-side search (250ms). Fires only when query >= 2 chars.
+  // Replaces the prior client-side Array.filter pass that could only see whatever
+  // companies the 1500-article aggregation had surfaced.
+  useEffect(() => {
+    const trimmed = search.trim();
+    if (trimmed.length < 2) return;
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/companies?q=${encodeURIComponent(trimmed)}&limit=50`);
+        const json = (await res.json()) as { companies?: ApiCompany[]; error?: string };
+        if (!cancelled) setCompanies(dedupeAndMapApiCompanies(json.companies ?? []));
+      } catch (e) {
+        if (!cancelled) {
+          console.error("Failed to search companies:", e);
+          setCompanies([]);
+        }
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [search]);
+
+  // Filter companies by industry vertical only — search is handled server-side
+  // by /api/companies?q=... so we no longer Array.filter the displayed list by
+  // search query. Sector filter chip behavior is preserved client-side.
   // Two-layer approach:
   //   Layer 1: COMPANY_VERTICAL_OVERRIDES — ground-truth for well-known companies. When a
-  //            company has an override, its article-derived sectors[] are ignored entirely.
+  //            company has an override, its derived sectors[] are ignored entirely.
   //            This prevents Anthropic (primary in "Fintech & Crypto" articles) from appearing
   //            under Financial Services, and Blackstone from appearing under Technology.
   //   Layer 2: SECTOR_TO_VERTICAL — deterministic sector string → vertical mapping as fallback
   //            for long-tail companies not in the override map.
   const filtered = useMemo(() => {
-    let result = companies;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter((c) => c.name.toLowerCase().includes(q));
-    }
-    if (selectedVerticals.length > 0) {
-      result = result.filter((c) => {
-        const nameLower = c.name.toLowerCase();
-        const override = COMPANY_VERTICAL_OVERRIDES[nameLower];
-        // Layer 1: if we have ground-truth, use it exclusively
-        const effectiveVerticals: Set<string> = override
-          ? new Set([override])
-          : new Set(c.sectors.map((s) => SECTOR_TO_VERTICAL[s]).filter((v): v is string => Boolean(v)));
-        return verticalMatchMode === "all"
-          ? selectedVerticals.every((v) => effectiveVerticals.has(v))
-          : selectedVerticals.some((v) => effectiveVerticals.has(v));
-      });
-    }
-    return result;
-  }, [companies, search, selectedVerticals, verticalMatchMode]);
+    if (selectedVerticals.length === 0) return companies;
+    return companies.filter((c) => {
+      const nameLower = c.name.toLowerCase();
+      const override = COMPANY_VERTICAL_OVERRIDES[nameLower];
+      // Layer 1: if we have ground-truth, use it exclusively
+      const effectiveVerticals: Set<string> = override
+        ? new Set([override])
+        : new Set(c.sectors.map((s) => SECTOR_TO_VERTICAL[s]).filter((v): v is string => Boolean(v)));
+      return verticalMatchMode === "all"
+        ? selectedVerticals.every((v) => effectiveVerticals.has(v))
+        : selectedVerticals.some((v) => effectiveVerticals.has(v));
+    });
+  }, [companies, selectedVerticals, verticalMatchMode]);
 
   // Development articles: company-specific events (earnings, funding, M&A, IPO, named announcements).
   // Context articles: everything else — macro, geopolitical, sector analysis, competitive mentions.
@@ -315,7 +324,10 @@ export default function CompanyIntelPage() {
     return buildMemoContent(selectedCompany.name, developmentArticles, contextArticles);
   }, [selectedCompany, developmentArticles, contextArticles]);
 
-  // Load articles when a company is selected
+  // Load articles when a company is selected.
+  // Uses /api/companies/[id]/articles (cache-first) instead of the prior
+  // 1500-article scan, which silently dropped sparse-coverage companies whose
+  // latest mention fell outside the most recent 1500 ingested articles.
   useEffect(() => {
     if (!selectedCompany) return;
     setArticlesLoading(true);
@@ -324,35 +336,50 @@ export default function CompanyIntelPage() {
     async function loadArticles() {
       try {
         const name = selectedCompany!.name;
-        // Fetch without sector scoping. The previous sector-scoped optimization silently
-        // dropped valid articles: if a popular sector (e.g. Geopolitics & Macro) had > 500
-        // articles total, the .limit(500) would return only the newest 500 in that sector,
-        // missing older-but-still-valid articles for sparse companies like Lockheed Martin.
-        // Correctness > performance here — filter client-side instead.
-        const { data: articles, error: detailErr } = await getSupabase()
-          .from("articles")
-          .select("id, title, source, sector, sentiment, summary, content, published_at, ingested_at, url, companies, primary_company, relevance_score, deal_type")
-          .order("ingested_at", { ascending: false })
-          .limit(1500);
-
-        if (detailErr) {
-          console.error("Company articles query error:", detailErr.message);
+        const res = await fetch(`/api/companies/${encodeURIComponent(name)}/articles`);
+        if (!res.ok) {
+          console.error("Company articles fetch failed:", res.status);
+          setCompanyArticles([]);
           return;
         }
-        if (articles) {
-          setCompanyArticles(filterAndClassifyArticles(articles, name));
+        const json = (await res.json()) as {
+          articles?: Array<{
+            id: string;
+            title: string;
+            source?: string | null;
+            sector?: string | null;
+            sentiment?: string | null;
+            summary?: string | null;
+            published_at?: string | null;
+            ingested_at?: string | null;
+            url?: string | null;
+            companies?: unknown;
+            primary_company?: string | null;
+            relevance_score?: number | null;
+            deal_type?: string | null;
+          }>;
+          source?: string;
+          error?: string;
+        };
+        const articles = json.articles ?? [];
+        setCompanyArticles(filterAndClassifyArticles(articles, name));
 
-          // Batch fetch source credibility
-          const uniqueSources = [...new Set(articles.map(a => a.source).filter(Boolean) as string[])];
-          if (uniqueSources.length > 0) {
-            try {
-              const { data: credData } = await getSupabase()
-                .from("source_credibility")
-                .select("source, win_rate")
-                .in("source", uniqueSources);
-              setCredMap(new Map(credData?.map(r => [r.source, r.win_rate]) ?? []));
-            } catch { /* soft-fail */ }
-          }
+        // Batch fetch source credibility (unchanged — separate concern from the article read)
+        const uniqueSources = [
+          ...new Set(
+            articles
+              .map((a) => a.source)
+              .filter((s): s is string => typeof s === "string" && s.length > 0),
+          ),
+        ];
+        if (uniqueSources.length > 0) {
+          try {
+            const { data: credData } = await getSupabase()
+              .from("source_credibility")
+              .select("source, win_rate")
+              .in("source", uniqueSources);
+            setCredMap(new Map(credData?.map((r) => [r.source, r.win_rate]) ?? []));
+          } catch { /* soft-fail */ }
         }
       } catch (e) {
         console.error("Failed to load company articles:", e);
@@ -384,7 +411,7 @@ export default function CompanyIntelPage() {
             Company Intel
           </h2>
           <p className="font-sans text-[13px] text-text-secondary mb-5">
-            Companies extracted from {companies.length > 0 ? `${companies.length} article mentions` : "your news feed"}. Click any company to see related coverage.
+            Companies in your news feed. Click any company to see related coverage.
           </p>
 
           {/* Preview nudge banner */}
@@ -497,8 +524,8 @@ export default function CompanyIntelPage() {
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={<Building2 size={32} />}
-              title={search ? "No companies match" : "No companies found"}
-              description={search ? "Try a different search term" : "Companies will appear once articles are ingested"}
+              title={search ? "No companies match" : "No companies indexed yet"}
+              description={search ? "Try a different search term." : "Check back after the next update."}
             />
           ) : (
             <div>
