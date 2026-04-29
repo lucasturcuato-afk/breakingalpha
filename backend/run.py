@@ -37,6 +37,7 @@ import watchlist_sync
 import user_synthesis
 import user_signal_aggregator
 import embedding_job
+import thesis_generator
 
 logger = logging.getLogger("run")
 if not logger.handlers:
@@ -196,6 +197,15 @@ if __name__ == "__main__":
     except Exception as e:
         logger.warning("user_synthesis step failed (pipeline unaffected): %s", e)
 
+    print("\n[16/16] THESIS GENERATION (system, semantic dedup)")
+    if brief_type == "morning":
+        try:
+            thesis_generator.main()
+        except Exception as e:
+            logger.warning("thesis_generator step failed (pipeline unaffected): %s", e)
+    else:
+        logger.info("thesis_generator: skipped (morning only)")
+
     # --- Brief feedback loop: score the just-generated brief (soft-fail) ---
     print("\n[POST] BRIEF SCORING")
     try:
@@ -264,5 +274,6 @@ if __name__ == "__main__":
 # 13:   watchlist_sync       (V3A — Noah)
 # 14:   embedding_job        (RAG content embeddings for Intelligence chat)
 # 15:   user_synthesis       (Lucas personalization sprint — per-user addendum)
+# 16:   thesis_generator     (morning only — system theses, semantic dedup)
 # [POST] brief scoring, brief improvement addendum
 # ---------------------------------------------------------------------------
