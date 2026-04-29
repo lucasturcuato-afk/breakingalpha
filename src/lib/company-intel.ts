@@ -140,6 +140,93 @@ export const CANONICAL: Record<string, string> = {
   techcrunch: "TechCrunch",
   exxonmobil: "ExxonMobil",
   "anthropic pbc": "Anthropic",
+  // Watchlist tickers — explicit list per fix plan Phase 1C
+  hood: "Robinhood",
+  robinhood: "Robinhood",
+  "robinhood markets": "Robinhood",
+  "robinhood markets inc": "Robinhood",
+  sofi: "SoFi",
+  "sofi technologies": "SoFi",
+  "sofi technologies inc": "SoFi",
+  coin: "Coinbase",
+  coinbase: "Coinbase",
+  "coinbase global": "Coinbase",
+  "coinbase global inc": "Coinbase",
+  shop: "Shopify",
+  shopify: "Shopify",
+  "shopify inc": "Shopify",
+  // Boeing ticker BA intentionally NOT added as canonical — too generic, high false-positive risk
+  boeing: "Boeing",
+  "the boeing company": "Boeing",
+  "boeing co": "Boeing",
+  crwd: "CrowdStrike",
+  crowdstrike: "CrowdStrike",
+  "crowdstrike holdings": "CrowdStrike",
+  "crowdstrike holdings inc": "CrowdStrike",
+  uber: "Uber",
+  "uber technologies": "Uber",
+  "uber technologies inc": "Uber",
+  ionq: "IonQ",
+  "ionq inc": "IonQ",
+  asts: "AST SpaceMobile",
+  "ast spacemobile": "AST SpaceMobile",
+  "ast spacemobile inc": "AST SpaceMobile",
+  rklb: "Rocket Lab",
+  "rocket lab": "Rocket Lab",
+  "rocket lab usa": "Rocket Lab",
+  "rocket lab usa inc": "Rocket Lab",
+  ndaq: "Nasdaq",
+  // "nasdaq" key intentionally NOT added — collides with INDEX_BLOCKLIST and the
+  // exchange-as-index meaning is more common than the company in articles.
+  "nasdaq inc": "Nasdaq",
+  crdo: "Credo Technology",
+  credo: "Credo Technology",
+  "credo technology": "Credo Technology",
+  "credo technology group": "Credo Technology",
+  cls: "Celestica",
+  celestica: "Celestica",
+  "celestica inc": "Celestica",
+  // Planet Labs ticker PL intentionally NOT added — too short, high false-positive risk
+  "planet labs": "Planet Labs",
+  "planet labs pbc": "Planet Labs",
+  suig: "SUI Group",
+  "sui group": "SUI Group",
+  "sui group holdings": "SUI Group",
+  // Other watchlist tickers not yet covered above — major well-known names with
+  // common variants. Tickers are added only when distinctive enough to avoid
+  // collisions with common English words.
+  tsla: "Tesla",
+  tesla: "Tesla",
+  "tesla inc": "Tesla",
+  "tesla motors": "Tesla",
+  intc: "Intel",
+  intel: "Intel",
+  "intel corporation": "Intel",
+  "intel corp": "Intel",
+  orcl: "Oracle",
+  oracle: "Oracle",
+  "oracle corporation": "Oracle",
+  "oracle corp": "Oracle",
+  visa: "Visa",
+  "visa inc": "Visa",
+  bx: "Blackstone",
+  blackstone: "Blackstone",
+  "blackstone inc": "Blackstone",
+  "blackstone group": "Blackstone",
+  tsm: "Taiwan Semiconductor",
+  "taiwan semiconductor": "Taiwan Semiconductor",
+  "taiwan semiconductor manufacturing": "Taiwan Semiconductor",
+  tsmc: "Taiwan Semiconductor",
+  spgi: "S&P Global",
+  "s&p global": "S&P Global",
+  "s&p global inc": "S&P Global",
+  glw: "Corning",
+  corning: "Corning",
+  "corning inc": "Corning",
+  "corning incorporated": "Corning",
+  fcx: "Freeport-McMoRan",
+  "freeport-mcmoran": "Freeport-McMoRan",
+  "freeport mcmoran": "Freeport-McMoRan",
 };
 
 // ---------------------------------------------------------------------------
@@ -147,9 +234,16 @@ export const CANONICAL: Record<string, string> = {
 // ---------------------------------------------------------------------------
 // Stripped from the end before a second CANONICAL lookup. Requires a comma or
 // whitespace before the suffix to avoid false matches on brand words.
+// Two alternations:
+//   1. Optional [Markets|Holdings|Group|International] followed by a legal entity
+//      suffix (Inc, Corp, etc.). Strips e.g. "Robinhood Markets Inc" → "Robinhood",
+//      "CrowdStrike Holdings Inc" → "CrowdStrike", and standalone "Apple Inc".
+//   2. Trailing [Markets|Holdings|Group|International] without a legal suffix.
+//      Strips "CrowdStrike Holdings" → "CrowdStrike", "Goldman Sachs Group" →
+//      "Goldman Sachs".
 
 export const LEGAL_SUFFIX_RE =
-  /[,\s]+(inc\.?|corp\.?|corporation|llc|ltd\.?|limited|plc|l\.p\.?|llp|s\.a\.?|n\.v\.?|ag|gmbh)$/i;
+  /(?:[,\s]+(?:markets|holdings|group|international))?[,\s]+(?:inc\.?|corp\.?|corporation|llc|ltd\.?|limited|plc|l\.p\.?|llp|s\.a\.?|n\.v\.?|ag|gmbh)$|[,\s]+(?:markets|holdings|group|international)$/i;
 
 // ---------------------------------------------------------------------------
 // Company identity map (~30 curated companies)
