@@ -5,8 +5,11 @@
 
 ---
 
-## Recently Completed (2026-04-29)
-**PR #147 pinned watchlist merged:** Dashboard pinned-watchlist widget with real Finnhub prices, pin/unpin UI on `/watchlist`, supabase migration for `pinned_position` column, right-rail scroll fix. Two open PRs in flight: #148 (watchlist-driven Finnhub fetch v1) and #149 (Company Intel fix plan). Local branch `noah/pinned-watchlist` is now stale (superseded by #147 merge at `b733626`); mark for deletion.
+## Recently Completed (2026-04-29, evening)
+**Major launch prep merged:** PRs #148–#156 now merged (watchlist-driven Finnhub fetch, company-intel structural fix with /api/companies endpoints, watchlist pin persistence fix, pin icon click target fix). Lucas shipped beta allowlist + waitlist infrastructure (#153, #154) for 8 PM ET soft launch tonight. Pre-existing duplicate watchlist rows persist (IONQ, NVDA, BRK.B, AAPL) — PR #156 makes pin/unpin work despite duplicates; manual SQL cleanup and stale pinned_position cache-heal post-launch.
+
+**Earlier (2026-04-29, morning):**
+**PR #147 pinned watchlist merged:** Dashboard pinned-watchlist widget with real Finnhub prices, pin/unpin UI on `/watchlist`, supabase migration for `pinned_position` column, right-rail scroll fix. Local branch `noah/pinned-watchlist` now stale (superseded by #147 merge at `b733626`); mark for deletion.
 
 ---
 
@@ -486,10 +489,17 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 
 ## Pending / Known Issues
 
-**Open PRs in flight (2026-04-29)**
-- **PR #148 — feat(ingest): watchlist-driven Finnhub fetch (v1)** — Branch `noah/watchlist-ingestion-v1` @ `787496d`. Adds `fetch_watchlist_finnhub_articles()` + single integration point in `fetch_all_articles`. Articles route through existing `articles` table path (NOT `watchlist_articles`). Untested in production; PR uses "needs verification" wording. Artifacts in WATCHLIST_INGESTION_DIAGNOSIS.md.
-- **PR #149 — docs: Company Intel fix plan** — Branch `noah/company-intel-investigation` @ `a79cc47`. Markdown-only: `COMPANY_INTEL_FIX_PLAN.md` covering 4 symptoms (duplicate company rows, search broken, Robinhood missing, ExaAI integration gap) plus investigation summary. No source code changes. Artifacts in COMPANY_INTEL_DIAGNOSIS.md.
-- **Local branch `noah/pinned-watchlist` (stale)** — Contains local commits up to `73143fc` that duplicate work merged as PR #147 (`b733626`). Mark for deletion; no action needed.
+**Just merged (2026-04-29, evening)**
+- **PR #148 — feat(ingest): watchlist-driven Finnhub fetch (v1)** — `9204ab2`. Adds `fetch_watchlist_finnhub_articles()` helper pulling DISTINCT tickers from watchlist, fetches Finnhub company-news for last 7 days (8/ticker cap), dedupes by URL, routes through articles table.
+- **PR #149 — docs: Company Intel fix plan** — `cf9ddf9`. Markdown-only: `COMPANY_INTEL_FIX_PLAN.md` covering 4 symptoms + investigation summary. No code changes. Artifacts in COMPANY_INTEL_INVESTIGATION_SUMMARY.md.
+- **PR #150 — feat(company-intel): structural fix** — `d6c7657`. Phase 4A complete: new `/api/companies` endpoint with quality filters (limit 500), new `/api/companies/[id]/articles` with cache-first Supabase read. Phases 1C + 3A + 3B also included: CANONICAL map expansion, debounced server-side search, list page refresh.
+- **PR #151 (Lucas) — Remove 960px content width cap** — `9501d7b`. Dashboard, morning brief, evening wrap now fill available width.
+- **PR #152 (Lucas) — Add MarketWatch RSS feeds** — `9f98b83`. Dow Jones substitute (WSJ feeds stale since Jan 2025).
+- **PR #153 (Lucas) — Beta allowlist + waitlist infrastructure** — `b22d9ad`. Hard allowlist for TIS launch with waitlist fallback. Touches proxy.ts, auth/callback/route.ts, waitlist/page.tsx, plus 3 SQL migrations. **Launch-critical for 8 PM ET soft launch.**
+- **PR #154 (Lucas) — Public paths for /waitlist and /legal** — `22b4311`. Proxy middleware update.
+- **PR #155 — Fix pin icon click target** — `9d8a33a`. Added `pointer-events-none` on Lucide Pin icon in watchlist/page.tsx, fixes intermittent pin-click failures.
+- **PR #156 — Fix pin/unpin persistence** — `abcec78`. Flipped route.ts find-target from `created_at ASC` to `created_at DESC`, ensures server picks same physical row client's dedup keeps. Resolves "pin returns 200 but database row stays null" for users with duplicate rows.
+- **Local branch `noah/pin-persistence-fix` (current)** — Branch for PR #156; now stale post-merge. Preserved per instructions.
 
 **From tonight's three-PR session (2026-04-28) — FOR NEXT SESSION**
 - **ENV loading in replay scripts** — .session-artifacts/2026-04-28/run_synth.py doesn't auto-load backend/.env. Add `load_dotenv("backend/.env")` for future replays.
@@ -513,6 +523,7 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 - **Missing `framer-motion` package** — flagged during smoke test; not imported anywhere currently, but should be added if page transition features come in-scope.
 
 **Existing (deferred or blocked)**
+- **Duplicate watchlist rows (IONQ, NVDA, BRK.B, AAPL)** — Pre-existing issue. PR #156 makes pin/unpin work despite duplicates by ordering by `created_at DESC` instead of ASC. Manual SQL cleanup recommended. Also: orphan-pinned `_old` duplicate rows still hold stale `pinned_position` values from before PR #156 — invisible to UI (deduped) and self-heal on next pin to each affected slot. Worth post-launch check.
 - **Unapplied 20260416_add_theses_user_id.sql migration** — Phase 1 personalization per-user DB-level scoping + dedup unique index (`idx_theses_user_title_sector_unique`) only enforced at application layer (`/api/theses` POST). Neither `user_id` column, nor indices exist in live schema. Decide: ship migration retroactively or accept app-layer enforcement indefinitely. Ground-truth schema snapshot at `sql/theses_current.sql` (26 columns, generated 2026-04-21).
 - **PR #118 post-merge cleanup** — After #118 merges, manually run `sql/0001_cleanup_zero_signal_calibration_rows.sql` in Supabase SQL editor to wipe ~10 zero-signal rows from `pattern_library` and `source_credibility` tables.
 - **Tier 2 saved deals RLS grant** — must run `GRANT SELECT, INSERT, DELETE ON user_saved_deals TO authenticated` manually in Supabase SQL editor for new environments (migration file incomplete).
