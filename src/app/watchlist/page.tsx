@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Globe,
   GripVertical,
+  Pin,
 } from "lucide-react";
 import {
   DndContext,
@@ -127,6 +128,7 @@ interface WatchlistEntry {
   display_name?: string;
   created_at?: string;
   sort_order?: number | null;
+  pinned_position?: number | null;
 }
 
 interface WatchlistPrice {
@@ -584,6 +586,53 @@ export default function WatchlistPage() {
     await handleAdd(sectorName);
   };
 
+  const pinnedCount = useMemo(
+    () => watchlist.filter((e) => e.type === "ticker" && e.pinned_position != null).length,
+    [watchlist],
+  );
+
+  const lowestOpenSlot = useCallback((): number | null => {
+    const taken = new Set(
+      watchlist
+        .filter((e) => e.type === "ticker" && e.pinned_position != null)
+        .map((e) => e.pinned_position as number),
+    );
+    for (let i = 1; i <= 5; i++) {
+      if (!taken.has(i)) return i;
+    }
+    return null;
+  }, [watchlist]);
+
+  const handlePinToggle = useCallback(
+    async (entry: WatchlistEntry) => {
+      try {
+        let position: number | null;
+        if (entry.pinned_position != null) {
+          position = null;
+        } else if (pinnedCount < 5) {
+          const slot = lowestOpenSlot();
+          if (slot == null) return;
+          position = slot;
+        } else {
+          return;
+        }
+        const res = await fetch("/api/watchlist/pin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ticker: entry.identifier, position }),
+        });
+        if (!res.ok) {
+          console.error("[watchlist] pin toggle failed:", res.status);
+          return;
+        }
+        await refreshWatchlist();
+      } catch (e) {
+        console.error("[watchlist] pin toggle error:", e);
+      }
+    },
+    [pinnedCount, lowestOpenSlot, refreshWatchlist],
+  );
+
   const tickers = watchlist.filter((e) => e.type === "ticker");
   const gainers = tickers.filter((e) => prices[e.identifier]?.pct > 0).length;
   const losers = tickers.filter((e) => prices[e.identifier]?.pct < 0).length;
@@ -983,6 +1032,8 @@ export default function WatchlistPage() {
                                 onGenerateMemo={() => setMemoEntry(entry)}
                                 onOpenBrief={() => router.push(`/watchlist/${encodeURIComponent(entry.identifier)}`)}
                                 onRemove={() => handleRemove(entry.id)}
+                                onPinToggle={() => handlePinToggle(entry)}
+                                pinnedCount={pinnedCount}
                               />
                             );
                           })}
@@ -1023,6 +1074,8 @@ export default function WatchlistPage() {
                                 onGenerateMemo={() => setMemoEntry(entry)}
                                 onOpenBrief={() => router.push(`/watchlist/${encodeURIComponent(entry.identifier)}`)}
                                 onRemove={() => handleRemove(entry.id)}
+                                onPinToggle={() => handlePinToggle(entry)}
+                                pinnedCount={pinnedCount}
                               />
                             );
                           })}
@@ -1413,6 +1466,8 @@ function SortableEntryRow(props: {
   onGenerateMemo: () => void;
   onOpenBrief: () => void;
   onRemove: () => void;
+  onPinToggle?: () => void;
+  pinnedCount: number;
 }): ReactNode {
   const {
     entry,
@@ -1425,6 +1480,8 @@ function SortableEntryRow(props: {
     onGenerateMemo,
     onOpenBrief,
     onRemove,
+    onPinToggle,
+    pinnedCount,
   } = props;
 
   const {
@@ -1469,6 +1526,46 @@ function SortableEntryRow(props: {
       >
         <GripVertical size={12} />
       </button>
+
+      {/* PIN slot — fixed width so ticker and non-ticker rows align */}
+      <div className="w-5 flex-shrink-0 self-center flex items-center justify-center">
+        {entry.type === "ticker" && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (entry.pinned_position == null && pinnedCount >= 5) return;
+              onPinToggle?.();
+            }}
+            disabled={entry.pinned_position == null && pinnedCount >= 5}
+            title={
+              entry.pinned_position != null
+                ? `Pinned to slot ${entry.pinned_position}`
+                : pinnedCount >= 5
+                  ? "Max 5 pinned tickers"
+                  : "Pin to dashboard widget"
+            }
+            className={cn(
+              "flex items-center gap-1 p-1 rounded-md transition-colors",
+              entry.pinned_position != null
+                ? "text-gold hover:bg-parchment-mid cursor-pointer"
+                : pinnedCount >= 5
+                  ? "text-text-faint cursor-not-allowed opacity-40"
+                  : "text-text-muted hover:bg-parchment-mid hover:text-text-primary cursor-pointer",
+            )}
+          >
+            <Pin
+              size={14}
+              fill={entry.pinned_position != null ? "currentColor" : "none"}
+            />
+            {entry.pinned_position != null && (
+              <span className="font-data text-[9px] font-bold leading-none">
+                {entry.pinned_position}
+              </span>
+            )}
+          </button>
+        )}
+      </div>
 
       {/* LEFT: identifier + optional display_name subtitle */}
       <div className="flex flex-col min-w-0 flex-1">

@@ -48,7 +48,7 @@ export function RightPanel({ open, onToggle, children }: RightPanelProps) {
         )}
       >
         <div className="w-[var(--right-panel-width)] h-full overflow-y-auto">
-          <div className="sticky top-0 px-4 py-4 space-y-5 self-start">
+          <div className="px-4 py-4 space-y-5 max-h-screen overflow-y-auto">
             {children}
           </div>
         </div>
