@@ -73,6 +73,47 @@ const sourceTypeBadges: Record<string, string> = {
   News: "bg-parchment-mid text-text-muted",
 };
 
+function normalizeArticleTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 60);
+}
+
+interface DedupedRelatedArticle extends RelatedArticle {
+  duplicates: RelatedArticle[];
+}
+
+function dedupeRelatedArticles(articles: RelatedArticle[]): DedupedRelatedArticle[] {
+  const groups = new Map<string, RelatedArticle[]>();
+  for (const a of articles) {
+    const key = normalizeArticleTitle(a.title);
+    if (!key) {
+      groups.set(`__standalone__${a.id}`, [a]);
+      continue;
+    }
+    const arr = groups.get(key) ?? [];
+    arr.push(a);
+    groups.set(key, arr);
+  }
+
+  const result: DedupedRelatedArticle[] = [];
+  for (const arr of groups.values()) {
+    arr.sort((a, b) => {
+      const aTime = new Date(a.published_at || a.ingested_at || 0).getTime();
+      const bTime = new Date(b.published_at || b.ingested_at || 0).getTime();
+      if (bTime !== aTime) return bTime - aTime;
+      return (a.source || "").localeCompare(b.source || "");
+    });
+    const [primary, ...rest] = arr;
+    result.push({ ...primary, duplicates: rest });
+  }
+
+  return result;
+}
+
 interface RelatedArticle {
   id: string;
   title: string;
@@ -114,7 +155,17 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
   const [memoOpen, setMemoOpen] = useState(false);
   const [memoContent, setMemoContent] = useState("");
   const [bearOpen, setBearOpen] = useState(false);
+  const [expandedEvidenceDuplicates, setExpandedEvidenceDuplicates] = useState<Set<string>>(new Set());
   const notesRef = useRef<HTMLTextAreaElement>(null);
+
+  function toggleEvidenceDuplicates(articleId: string) {
+    setExpandedEvidenceDuplicates((prev) => {
+      const next = new Set(prev);
+      if (next.has(articleId)) next.delete(articleId);
+      else next.add(articleId);
+      return next;
+    });
+  }
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load note from API
@@ -376,32 +427,83 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
             </div>
           ) : (
             <div className="flex flex-col divide-y divide-border-base">
-              {articles.map((article) => {
+              {dedupeRelatedArticles(articles).map((article) => {
                 const cls = classifyEvidenceSentiment(sentiment, article.sentiment);
                 const pill = sentimentPills[cls];
                 const sourceType = inferSourceType(article.source, article.url);
+                const isExpanded = expandedEvidenceDuplicates.has(article.id);
                 return (
-                  <div key={article.id} className="flex items-start gap-2 py-2">
-                    <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${pill.dot}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-sans text-[11px] font-medium text-text-primary leading-snug mb-0.5">{article.title}</div>
-                      {article.summary && (
-                        <div className="font-sans text-[10px] text-text-secondary leading-snug mb-1">
-                          {article.summary.length > 160 ? article.summary.slice(0, 160) + "..." : article.summary}
+                  <div key={article.id} className="py-2">
+                    <div className="flex items-start gap-2">
+                      <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${pill.dot}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-sans text-[11px] font-medium text-text-primary leading-snug mb-0.5">{article.title}</div>
+                        {article.summary && (
+                          <div className="font-sans text-[10px] text-text-secondary leading-snug mb-1">
+                            {article.summary.length > 160 ? article.summary.slice(0, 160) + "..." : article.summary}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`font-sans text-[8px] font-bold px-1.5 py-0.5 rounded ${sourceTypeBadges[sourceType]}`}>
+                            {sourceType}
+                          </span>
+                          <span className="font-sans text-[9px] text-text-muted">
+                            {article.source}{(() => { const d = article.published_at || article.ingested_at; return d ? ` · ${relativeTime(d)}` : ""; })()}
+                          </span>
+                          <span className={`font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded ${pill.pill}`}>
+                            {pill.label}
+                          </span>
+                          {article.url && (
+                            <a
+                              href={article.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-sans text-[9px] font-semibold text-gold hover:text-gold-dark transition-colors"
+                            >
+                              Read source →
+                            </a>
+                          )}
+                          {article.duplicates.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => toggleEvidenceDuplicates(article.id)}
+                              className="font-data text-[9px] font-semibold text-text-muted bg-parchment-mid border border-border-base rounded px-1.5 py-0.5 cursor-pointer hover:text-text-primary hover:border-border-hover transition-colors"
+                            >
+                              {isExpanded ? "▴" : "▾"} +{article.duplicates.length} {article.duplicates.length === 1 ? "source" : "sources"}
+                            </button>
+                          )}
                         </div>
-                      )}
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className={`font-sans text-[8px] font-bold px-1.5 py-0.5 rounded ${sourceTypeBadges[sourceType]}`}>
-                          {sourceType}
-                        </span>
-                        <span className="font-sans text-[9px] text-text-muted">
-                          {article.source}{(() => { const d = article.published_at || article.ingested_at; return d ? ` · ${relativeTime(d)}` : ""; })()}
-                        </span>
-                        <span className={`font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded ${pill.pill}`}>
-                          {pill.label}
-                        </span>
                       </div>
                     </div>
+                    {isExpanded && article.duplicates.length > 0 && (
+                      <div className="mt-2 ml-4 pl-3 border-l-2 border-border-base space-y-1.5">
+                        {article.duplicates.map((dup) => (
+                          <div key={dup.id} className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-sans text-[11px] text-text-primary leading-snug truncate">
+                                {dup.title}
+                              </p>
+                              <p className="font-data text-[9px] text-text-muted mt-0.5">
+                                {dup.source}
+                                {(() => { const d = dup.published_at || dup.ingested_at; return d ? ` · ${relativeTime(d)}` : ""; })()}
+                              </p>
+                            </div>
+                            {dup.url ? (
+                              <a
+                                href={dup.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex-shrink-0 font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors"
+                              >
+                                Read source →
+                              </a>
+                            ) : (
+                              <span className="flex-shrink-0 font-sans text-[10px] text-text-faint">No link</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
