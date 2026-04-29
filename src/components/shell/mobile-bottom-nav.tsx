@@ -12,6 +12,8 @@ import {
   Search,
   FileText,
   Trophy,
+  Clock,
+  Globe,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -33,6 +35,8 @@ const MOBILE_NAV: MobileNavItem[] = [
 ];
 
 const MORE_NAV: MobileNavItem[] = [
+  { label: "Morning Brief", href: "/morning-brief", icon: <Clock size={16} /> },
+  { label: "Evening Wrap", href: "/evening-wrap", icon: <Globe size={16} /> },
   { label: "Company Intel", href: "/company", icon: <Search size={16} /> },
   { label: "Thesis Board", href: "/thesis-board", icon: <FileText size={16} /> },
   { label: "Track Record", href: "/track-record", icon: <Trophy size={16} /> },

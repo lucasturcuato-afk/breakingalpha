@@ -387,7 +387,7 @@ function DealFlowContent() {
 
   return (
     <AppShell pageTitle="Deal Flow" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
       <div className="flex-1 min-w-0 overflow-y-auto p-6">
         {/* Header */}
         <div className="flex items-start justify-between mb-1">

@@ -221,7 +221,7 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
   }, [deals, hasUserSectors, userSectors, userProfile]);
 
   return (
-    <aside className="w-[268px] shrink-0 border-l border-border-base overflow-y-auto [scrollbar-gutter:stable] bg-cream dark:bg-sidebar-bg">
+    <aside className="w-full lg:w-[268px] shrink-0 border-t lg:border-t-0 lg:border-l border-border-base overflow-y-auto [scrollbar-gutter:stable] bg-cream dark:bg-sidebar-bg">
       {/* Section 0 — Saved deals (only shown when there are saves) */}
       {enrichedSavedDeals.length > 0 && (
         <div className="px-5 py-4 border-b border-border-base">

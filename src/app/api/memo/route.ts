@@ -6,6 +6,12 @@ import { checkRateLimit } from "@/lib/rate-limit";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+// Allow up to 60 seconds for Gemini generation. Vercel Pro tier allows up to 60s.
+// Default is 10s which is too short for memo generation (typically 8-15s) and causes
+// "Failed to generate memo" errors, especially on mobile networks with extra latency.
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+
 /* ── User profile helpers for personalization ── */
 interface UserProfile {
   first_name?: string | null;
@@ -301,10 +307,22 @@ export async function POST(request: NextRequest) {
       }
       return NextResponse.json({ memo });
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       console.error("[memo] Gemini content-path error:", err);
-      console.error("[memo] error detail:", err instanceof Error ? err.message : String(err));
+      console.error("[memo] error detail:", errMsg);
+      // Surface a more helpful error message based on the underlying failure
+      let userMsg = "Failed to generate memo";
+      if (errMsg.includes("API key") || errMsg.includes("authentication")) {
+        userMsg = "Memo service misconfigured. Please contact support.";
+      } else if (errMsg.includes("quota") || errMsg.includes("limit") || errMsg.includes("rate")) {
+        userMsg = "Memo service temporarily over capacity. Try again in a minute.";
+      } else if (errMsg.includes("timeout") || errMsg.includes("aborted")) {
+        userMsg = "Memo generation took too long. Try again — this is usually transient.";
+      } else if (errMsg.includes("safety") || errMsg.includes("blocked")) {
+        userMsg = "Memo content was filtered. Try a different signal.";
+      }
       return NextResponse.json(
-        { error: "Failed to generate memo" },
+        { error: userMsg, detail: errMsg.slice(0, 200) },
         { status: 500 }
       );
     }
@@ -346,10 +364,22 @@ Sections: TRANSACTION OVERVIEW, STRATEGIC RATIONALE, KEY RISKS, ANALYST TAKE. Un
     }
     return NextResponse.json({ memo });
   } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     console.error("[memo] Gemini legacy-path error:", err);
-    console.error("[memo] error detail:", err instanceof Error ? err.message : String(err));
+    console.error("[memo] error detail:", errMsg);
+    // Surface a more helpful error message based on the underlying failure
+    let userMsg = "Failed to generate memo";
+    if (errMsg.includes("API key") || errMsg.includes("authentication")) {
+      userMsg = "Memo service misconfigured. Please contact support.";
+    } else if (errMsg.includes("quota") || errMsg.includes("limit") || errMsg.includes("rate")) {
+      userMsg = "Memo service temporarily over capacity. Try again in a minute.";
+    } else if (errMsg.includes("timeout") || errMsg.includes("aborted")) {
+      userMsg = "Memo generation took too long. Try again — this is usually transient.";
+    } else if (errMsg.includes("safety") || errMsg.includes("blocked")) {
+      userMsg = "Memo content was filtered. Try a different signal.";
+    }
     return NextResponse.json(
-      { error: "Failed to generate memo" },
+      { error: userMsg, detail: errMsg.slice(0, 200) },
       { status: 500 }
     );
   }
