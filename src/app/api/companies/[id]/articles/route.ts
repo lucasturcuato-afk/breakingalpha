@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies, headers } from "next/headers";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { canonicalize, type RawArticleRow } from "@/lib/company-intel";
@@ -14,95 +13,47 @@ export interface CompanyArticlesResult {
   error?: string;
 }
 
-// Display-name (lowercase) → ticker. watchlist_articles.identifier is the ticker.
-const NAME_TO_TICKER: Record<string, string> = {
-  robinhood: "HOOD", sofi: "SOFI", coinbase: "COIN", shopify: "SHOP",
-  boeing: "BA", crowdstrike: "CRWD", uber: "UBER", ionq: "IONQ",
-  "ast spacemobile": "ASTS", "rocket lab": "RKLB", nasdaq: "NDAQ",
-  "credo technology": "CRDO", celestica: "CLS", "planet labs": "PL",
-  "sui group": "SUIG", apple: "AAPL", amazon: "AMZN", alphabet: "GOOGL",
-  microsoft: "MSFT", meta: "META", nvidia: "NVDA", tesla: "TSLA",
-  intel: "INTC", oracle: "ORCL", visa: "V", blackstone: "BX",
-  "goldman sachs": "GS",
-};
-
+// Selected columns for full classifiable article shape (matches RawArticleRow).
 const ARTICLE_COLUMNS =
   "id, title, source, sector, sentiment, summary, content, published_at, ingested_at, url, companies, primary_company, relevance_score, deal_type";
 
-interface WatchlistArticleRow {
-  article_id: string;
-  identifier: string;
-  title: string;
-  url: string | null;
-  source: string | null;
-  source_type: string | null;
-  summary: string | null;
-  published_at: string | null;
-  relevance_score: number | null;
-  fetched_at: string | null;
-}
-
-// Synthesizes `companies` so the consumer's containment filter accepts the row.
-// Cached rows lack deal_type / primary_company / sector / sentiment / content,
-// so they always classify as context (never developments) — degraded but better
-// than the previous zero-row outcome.
-function adaptWatchlistRow(row: WatchlistArticleRow, canonicalName: string): RawArticleRow {
-  return {
-    id: row.article_id,
-    title: row.title,
-    source: row.source,
-    sector: null,
-    sentiment: null,
-    summary: row.summary,
-    published_at: row.published_at,
-    ingested_at: row.fetched_at,
-    url: row.url,
-    companies: [canonicalName],
-    primary_company: null,
-    relevance_score: row.relevance_score,
-    deal_type: null,
-  };
-}
-
-// Cookie + origin via next/headers — keeps fetchCompanyArticles' signature stable.
-async function readRequestContext(): Promise<{ cookie: string | null; origin: string | null }> {
-  try {
-    const cookieStore = await cookies();
-    const cookieHeader = cookieStore.getAll().map((c) => `${c.name}=${c.value}`).join("; ");
-    const hdrs = await headers();
-    const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host");
-    const proto = hdrs.get("x-forwarded-proto") ?? "https";
-    return { cookie: cookieHeader || null, origin: host ? `${proto}://${host}` : null };
-  } catch {
-    return { cookie: null, origin: null };
-  }
-}
-
+// Cache-first reader exported for direct use by the detail server component
+// (which can't fetch its own API route without an absolute URL during SSR).
+// Read 1 hops watchlist_articles → articles by id so the response keeps the
+// full RawArticleRow shape that filterAndClassifyArticles expects. Read 2
+// falls back to a direct articles query by companies array containment.
 export async function fetchCompanyArticles(
   supabase: SupabaseClient,
   canonicalName: string,
 ): Promise<CompanyArticlesResult> {
-  const { cookie, origin } = await readRequestContext();
-
-  if (origin) {
-    try {
-      const lookupId = NAME_TO_TICKER[canonicalName.toLowerCase()] ?? canonicalName;
-      const url = `${origin}/api/watchlist-articles?identifier=${encodeURIComponent(lookupId)}`;
-      const fetchHeaders: Record<string, string> = {};
-      if (cookie) fetchHeaders["cookie"] = cookie;
-      const res = await fetch(url, { headers: fetchHeaders, cache: "no-store" });
-      if (res.ok) {
-        const json = (await res.json()) as { articles?: WatchlistArticleRow[]; count?: number };
-        const rows = Array.isArray(json.articles) ? json.articles : [];
-        if (rows.length > 0) {
-          return { articles: rows.map((r) => adaptWatchlistRow(r, canonicalName)), source: "cache" };
+  try {
+    const { data: cacheRows, error: cacheErr } = await supabase
+      .from("watchlist_articles")
+      .select("article_id")
+      .ilike("identifier", canonicalName)
+      .order("published_at", { ascending: false })
+      .limit(50);
+    if (cacheErr) {
+      console.error("[api/companies/articles] cache read failed:", cacheErr.message);
+    } else if (cacheRows && cacheRows.length > 0) {
+      const ids = cacheRows
+        .map((r) => r.article_id as unknown)
+        .filter((v): v is string => typeof v === "string" && v.length > 0);
+      if (ids.length > 0) {
+        const { data: articles, error: artErr } = await supabase
+          .from("articles")
+          .select(ARTICLE_COLUMNS)
+          .in("id", ids)
+          .order("ingested_at", { ascending: false });
+        if (artErr) {
+          console.error("[api/companies/articles] cache→articles join failed:", artErr.message);
+        } else if (articles && articles.length > 0) {
+          return { articles: articles as RawArticleRow[], source: "cache" };
         }
-      } else {
-        console.error("[api/companies/articles] watchlist-articles non-OK status:", res.status);
       }
-    } catch (e) {
-      console.error("[api/companies/articles] watchlist-articles proxy threw:", e);
     }
+  } catch (e) {
+    console.error("[api/companies/articles] cache path threw:", e);
   }
 
   try {
