@@ -462,11 +462,11 @@ function ThesisBoardContent() {
       <div className="p-6">
         {loading ? (
           <div className="space-y-3">
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
             </div>
             <Skeleton className="h-10 w-full rounded-xl" />
-            <div className="grid grid-cols-[1fr_1.6fr] gap-3">
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.6fr] gap-3">
               <Skeleton className="h-96 rounded-xl" />
               <Skeleton className="h-96 rounded-xl" />
             </div>
@@ -488,7 +488,7 @@ function ThesisBoardContent() {
         ) : (
           <>
             {/* Stats row */}
-            <div className="grid grid-cols-4 gap-3 mb-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
               {[
                 { label: "Total signals", value: theses.filter((t) => !userArchivedIds.has(t.id)).length, color: "" },
                 { label: "HIGH", value: convictionCounts.HIGH, color: "text-gold" },
@@ -631,7 +631,7 @@ function ThesisBoardContent() {
                 }}
               />
             ) : (
-              <div className="grid grid-cols-[1fr_1.6fr] gap-3" style={{ height: "calc(100vh - 320px)" }}>
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.6fr] gap-3 lg:h-[calc(100vh-320px)]">
                 <div className="overflow-y-auto">
                   <ThesisList
                     theses={displayTheses}

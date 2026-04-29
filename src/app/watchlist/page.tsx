@@ -1220,7 +1220,7 @@ export default function WatchlistPage() {
       {/* Mobile bottom bar */}
       {isMobile && (
         <div style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0,
+          position: 'fixed', bottom: 'calc(56px + env(safe-area-inset-bottom))', left: 0, right: 0,
           background: '#fff', borderTop: '1px solid var(--border-base)',
           padding: '12px 16px', zIndex: 200,
           display: 'flex', gap: '8px',
@@ -1253,7 +1253,7 @@ export default function WatchlistPage() {
       {/* Mobile bottom sheet */}
       {isMobile && (
         <div style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0,
+          position: 'fixed', bottom: 'calc(56px + env(safe-area-inset-bottom))', left: 0, right: 0,
           height: '60vh', zIndex: 301,
           background: '#fff', borderRadius: '16px 16px 0 0',
           borderTop: '1px solid var(--border-base)',
