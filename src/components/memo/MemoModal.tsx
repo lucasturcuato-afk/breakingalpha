@@ -225,7 +225,7 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-parchment border border-border-base rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl"
+        className="bg-parchment border border-border-base rounded-none sm:rounded-2xl w-full max-w-2xl h-full sm:h-auto sm:max-h-[85vh] flex flex-col overflow-hidden shadow-2xl"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border-base flex-shrink-0">

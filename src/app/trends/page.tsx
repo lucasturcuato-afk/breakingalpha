@@ -781,7 +781,7 @@ export default function TrendsPage() {
       )}
 
       {/* Content */}
-      <div className="px-6 py-5">
+      <div className="px-4 sm:px-6 py-5">
         {loading ? (
           <div className="space-y-4">
             {[1, 2, 3, 4, 5].map((i) => (
@@ -898,13 +898,13 @@ export default function TrendsPage() {
                                 <span className="font-data text-[9px] text-text-faint">{timeAgo(s.created_at)}</span>
                               </div>
 
-                              {/* Row 2: Headline left, Companies right */}
-                              <div className="flex items-start justify-between gap-4">
+                              {/* Row 2: Headline left, Companies right — stacks on mobile */}
+                              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4">
                                 <h4 className="font-display text-[14px] font-bold text-espresso leading-snug flex-1">
                                   {title}
                                 </h4>
                                 {companies.length > 0 && (
-                                  <div className="flex flex-wrap gap-1 justify-end flex-shrink-0 max-w-[200px]">
+                                  <div className="flex flex-wrap gap-1 sm:justify-end flex-shrink-0 sm:max-w-[200px]">
                                     {companies.map((c, i) => {
                                       const name = capitalizeCompany(c);
                                       const isWatchlist = watchlistUpper.includes(c.toUpperCase());
@@ -982,11 +982,11 @@ export default function TrendsPage() {
           onClick={() => setModalSignal(null)}
         >
           <div
-            className="bg-cream rounded-2xl border border-border-base shadow-lg max-w-2xl w-full mx-4 max-h-[85vh] overflow-y-auto"
+            className="bg-cream rounded-none sm:rounded-2xl border border-border-base shadow-lg max-w-2xl w-full sm:mx-4 h-full sm:h-auto sm:max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal header */}
-            <div className="px-6 pt-6 pb-4 border-b border-border-base">
+            <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-4 border-b border-border-base">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   {modalSignal.cluster_type === "emerging" && (
@@ -1025,9 +1025,9 @@ export default function TrendsPage() {
             </div>
 
             {/* Modal body */}
-            <div className="px-6 py-4 space-y-5">
+            <div className="px-4 sm:px-6 py-4 space-y-5">
               {/* Evidence stats */}
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="bg-parchment rounded-lg p-3">
                   <p className="font-data text-[9px] uppercase tracking-widest text-text-muted">Articles</p>
                   <p className="font-data text-[18px] font-semibold text-espresso mt-1">{modalSignal.article_count}</p>

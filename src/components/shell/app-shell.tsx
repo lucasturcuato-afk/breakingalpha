@@ -139,7 +139,9 @@ export function AppShell({
         <div className="flex-1 flex overflow-hidden">
           {/* Scrollable content area */}
           <main className="flex-1 overflow-y-auto bg-parchment pb-[56px] md:pb-0">
-            <PageTransition>{children}</PageTransition>
+            <div className="mx-auto max-w-[1440px]">
+              <PageTransition>{children}</PageTransition>
+            </div>
           </main>
 
           {/* Collapsible right panel — hidden on mobile */}

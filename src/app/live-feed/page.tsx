@@ -392,7 +392,7 @@ export default function LiveFeedPage() {
           activityCounts={activityCounts}
         />
         {/* Sort + refresh row */}
-        <div className="flex items-center justify-end gap-3 px-6 py-1.5 border-t border-border-subtle">
+        <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-1.5 border-t border-border-subtle">
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as SortOption)}
@@ -502,7 +502,7 @@ export default function LiveFeedPage() {
               gatedGroups.push(
                 <div key={group.label}>
                   {/* Time bucket header */}
-                  <div className="sticky top-[108px] z-[5] bg-parchment/95 backdrop-blur-sm px-6 py-1.5 border-b border-border-subtle">
+                  <div className="sticky top-[88px] sm:top-[108px] z-[5] bg-parchment/95 backdrop-blur-sm px-4 sm:px-6 py-1.5 border-b border-border-subtle">
                     <div className="flex items-center gap-2">
                       <span className="font-data text-[9px] font-bold uppercase tracking-widest text-text-muted">
                         {group.label}
@@ -535,7 +535,7 @@ export default function LiveFeedPage() {
                           onBookmark={handleBookmark}
                         />
                         {story.duplicateArticles.length > 0 && (
-                          <div className="px-6 -mt-1 pb-2">
+                          <div className="px-4 sm:px-6 -mt-1 pb-2">
                             <button
                               type="button"
                               onClick={() => toggleDuplicates(story.id)}

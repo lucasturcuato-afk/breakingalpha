@@ -45,8 +45,8 @@ export function Topbar({
   return (
     <div className="h-[var(--topbar-height)] bg-sidebar-bg border-b border-border-base flex items-center px-5 gap-4">
       {/* Page title */}
-      <div className="flex items-baseline gap-2 whitespace-nowrap">
-        <h1 className="font-display text-[15px] font-bold text-espresso">
+      <div className="flex items-baseline gap-2 whitespace-nowrap min-w-0">
+        <h1 className="font-display text-[15px] font-bold text-espresso truncate">
           {pageTitle}
         </h1>
         <span
@@ -63,13 +63,30 @@ export function Topbar({
         </span>
       </div>
 
-      {/* Search bar */}
+      {/* Search bar — full on md+, icon-only on mobile */}
       <div className="flex-1 flex justify-center">
+        {/* Mobile: icon-only search button */}
         <button
           type="button"
           onClick={onCommandOpen}
           className={cn(
-            "flex items-center gap-2 w-full max-w-[280px]",
+            "md:hidden flex items-center justify-center",
+            "w-8 h-8 rounded-lg",
+            "bg-parchment-mid border border-border-base",
+            "transition-colors duration-[var(--duration-base)]",
+            "hover:border-gold-border",
+            "cursor-pointer",
+          )}
+          aria-label="Search"
+        >
+          <Search size={14} className="text-text-faint" />
+        </button>
+        {/* Desktop: full search bar */}
+        <button
+          type="button"
+          onClick={onCommandOpen}
+          className={cn(
+            "hidden md:flex items-center gap-2 w-full max-w-[280px]",
             "bg-parchment-mid border border-border-base rounded-lg",
             "dark:bg-elevated dark:border-border-default",
             "px-3 h-8",
@@ -82,7 +99,7 @@ export function Topbar({
           <span className="flex-1 text-left font-sans text-[12px] text-text-faint">
             Ask Signalera anything...
           </span>
-          <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-cream border border-border-base text-[10px] font-mono text-text-faint">
+          <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-cream border border-border-base text-[10px] font-mono text-text-faint">
             ⌘K
           </kbd>
         </button>

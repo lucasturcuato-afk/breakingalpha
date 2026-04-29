@@ -574,12 +574,12 @@ export default function MorningBriefPage() {
         </span>
       </div>
 
-      <div className="p-8 max-w-[960px]">
+      <div className="p-4 sm:p-8 max-w-[960px]">
         {loading ? (
           <div className="space-y-6">
             <Skeleton className="h-10 w-3/4" />
             <SkeletonText lines={3} />
-            <div className="grid grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
               {[1, 2, 3].map((i) => <Skeleton key={i} className="h-40 rounded-2xl" />)}
             </div>
             <div className="grid grid-cols-1 gap-3">

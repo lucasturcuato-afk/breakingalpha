@@ -32,7 +32,7 @@ export function SignInModal({
         aria-hidden={true}
       />
       {/* Card */}
-      <div className="relative z-10 w-full max-w-[440px] bg-cream border border-border-base rounded-2xl shadow-[0_24px_48px_rgba(26,18,8,0.16)] overflow-hidden">
+      <div className="relative z-10 w-full max-w-[440px] sm:mx-4 bg-cream border border-border-base rounded-none sm:rounded-2xl shadow-[0_24px_48px_rgba(26,18,8,0.16)] overflow-hidden h-full sm:h-auto">
         <button
           type="button"
           onClick={onClose}

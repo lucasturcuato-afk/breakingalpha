@@ -89,11 +89,11 @@ function gridColsForCount(n: number): string {
     case 2:
       return "grid-cols-2";
     case 3:
-      return "grid-cols-3";
+      return "grid-cols-2 sm:grid-cols-3";
     case 4:
-      return "grid-cols-4";
+      return "grid-cols-2 sm:grid-cols-4";
     default:
-      return "grid-cols-4";
+      return "grid-cols-2 sm:grid-cols-4";
   }
 }
 
@@ -511,7 +511,7 @@ export default function DashboardPage() {
         </>
       }
     >
-      <div className="px-6 py-4 max-w-[960px]">
+      <div className="px-4 sm:px-6 py-4 max-w-[960px]">
         {/* Onboarding banner */}
         <OnboardingBanner />
 
