@@ -559,6 +559,43 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Failed to save profile (${res.status})`);
       }
+
+      // Sync selected tickers to the watchlist table.
+      // The user_profiles.watchlist_tickers column is the user's preference list,
+      // but the dashboard sidebar and /watchlist tab read from the `watchlist` table.
+      // Without this, onboarding selections never appear in the UI.
+      if (watchlist.length > 0) {
+        const results = await Promise.allSettled(
+          watchlist.map((ticker) =>
+            fetch("/api/watchlist", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                identifier: ticker.toUpperCase(),
+                type: "ticker",
+                display_name: ticker.toUpperCase(),
+              }),
+            }).then(async (wRes) => {
+              if (!wRes.ok) {
+                const text = await wRes.text().catch(() => "");
+                throw new Error(`Watchlist insert failed for ${ticker}: ${wRes.status} ${text}`);
+              }
+              return wRes.json();
+            })
+          )
+        );
+
+        const failures = results.filter((r) => r.status === "rejected");
+        if (failures.length > 0) {
+          console.error(
+            `[onboarding] ${failures.length}/${watchlist.length} watchlist inserts failed:`,
+            failures.map((f) => (f as PromiseRejectedResult).reason)
+          );
+          // Don't throw — let onboarding complete even if some inserts fail.
+          // The user_profiles.watchlist_tickers array is still saved as a backup.
+        }
+      }
+
       trackClientEvent("onboarding_completed", {
         role,
         risk_appetite: riskAppetite,
