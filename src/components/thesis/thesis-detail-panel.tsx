@@ -375,6 +375,19 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
         </div>
       </div>
 
+      {/* ── AI DISCLAIMER STRIP ── */}
+      <div
+        className="flex-shrink-0 px-4 py-1.5 border-b border-border-base"
+        style={{ backgroundColor: "var(--gold-muted)" }}
+      >
+        <p
+          className="font-sans text-[10px] italic leading-tight"
+          style={{ color: "var(--gold-dark)" }}
+        >
+          AI-generated thesis. Not investment advice. Verify before acting.
+        </p>
+      </div>
+
       {/* ── BODY ── */}
       <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-4">
 
