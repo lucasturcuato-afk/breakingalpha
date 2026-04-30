@@ -96,17 +96,14 @@ export function CitationsPanel({ citations = defaultCitations, hasMemo = false }
                 <button
                   key={action}
                   type="button"
-                  onClick={() => {
-                    document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
-                  }}
+                  disabled
                   className={cn(
                     "w-full flex items-center gap-2 px-3 py-2 rounded-lg",
                     "bg-parchment border border-border-base",
-                    "font-sans text-[11px] text-text-secondary",
-                    "transition-colors duration-[var(--duration-base)]",
-                    "hover:border-border-hover hover:text-text-primary",
-                    "cursor-pointer text-left",
+                    "font-sans text-[11px] text-text-faint",
+                    "opacity-60 cursor-not-allowed text-left",
                   )}
+                  title="Coming soon"
                 >
                   <Sparkles size={10} className="text-gold flex-shrink-0" />
                   {action}
