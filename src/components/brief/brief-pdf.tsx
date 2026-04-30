@@ -322,9 +322,21 @@ export function BriefPdf({ briefing }: BriefPdfProps) {
   const generatedAt = formatGeneratedAt(briefing.created_at);
   const pulse = briefing.market_pulse ?? null;
   const sections = briefing.sections ?? {};
-  const sectionEntries = Object.entries(sections).filter(
-    ([, v]) => typeof v === "string" && v.trim().length > 0,
-  );
+  // Observability: log when a section drops due to empty/missing content so
+  // operators can see in Vercel function logs which Analyst Briefing slot was
+  // skipped (e.g. today's Evening Wrap shipped 3/4 because Macro & Rates was
+  // empty). Empty sections are intentionally dropped rather than rendered with
+  // placeholder text — placeholders look worse than the section being absent.
+  const sectionEntries = Object.entries(sections).filter(([key, v]) => {
+    const isNonEmpty = typeof v === "string" && v.trim().length > 0;
+    if (!isNonEmpty) {
+      const sectionName = titleForKey(key);
+      console.warn(
+        `[pdf] Evening Briefing section '${sectionName}' empty, skipping render`,
+      );
+    }
+    return isNonEmpty;
+  });
   const topDeals = (briefing.top_deals ?? []).filter((d) => d && (d.company || d.value || d.one_liner));
 
   return (
