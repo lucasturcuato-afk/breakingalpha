@@ -65,27 +65,24 @@ export function Topbar({
 
       {/* Search bar */}
       <div className="flex-1 flex justify-center">
-        <button
-          type="button"
-          onClick={onCommandOpen}
+        <div
           className={cn(
             "flex items-center gap-2 w-full max-w-[280px]",
             "bg-parchment-mid border border-border-base rounded-lg",
             "dark:bg-elevated dark:border-border-default",
             "px-3 h-8",
-            "transition-colors duration-[var(--duration-base)]",
-            "hover:border-gold-border",
-            "cursor-pointer",
+            "opacity-60 cursor-not-allowed",
           )}
+          title="AI search is coming soon"
         >
           <Search size={13} className="text-text-faint flex-shrink-0" />
           <span className="flex-1 text-left font-sans text-[12px] text-text-faint">
             Ask Signalera anything...
           </span>
-          <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-cream border border-border-base text-[10px] font-mono text-text-faint">
-            ⌘K
-          </kbd>
-        </button>
+          <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded bg-gold-muted text-[9px] font-sans font-semibold text-gold uppercase tracking-wide">
+            Coming soon
+          </span>
+        </div>
       </div>
 
       {/* Right actions */}

@@ -399,12 +399,7 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
               </div>
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  document.dispatchEvent(
-                    new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }),
-                  );
-                }}
+                disabled
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -412,16 +407,31 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
                   padding: "6px 10px",
                   borderRadius: 8,
                   background: "var(--parchment-mid)",
-                  color: "var(--text-secondary)",
+                  color: "var(--text-faint)",
                   border: "1px solid var(--border-base)",
                   fontFamily: "var(--font-inter), Inter, sans-serif",
                   fontSize: 11,
                   fontWeight: 600,
-                  cursor: "pointer",
+                  opacity: 0.6,
+                  cursor: "not-allowed",
                 }}
+                title="Ask AI is coming soon"
               >
                 <MessageSquare size={11} />
                 Ask AI
+                <span style={{
+                  marginLeft: 4,
+                  padding: "2px 4px",
+                  borderRadius: 4,
+                  background: "var(--gold-muted)",
+                  fontSize: 8,
+                  fontWeight: 700,
+                  color: "var(--gold)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}>
+                  Soon
+                </span>
               </button>
               {story.url && (
                 <a

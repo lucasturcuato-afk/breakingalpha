@@ -287,13 +287,15 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
             </div>
             <button
               type="button"
-              onClick={() => {
-                document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
-              }}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment-mid border border-border-base font-sans text-[11px] font-medium text-text-secondary hover:border-border-hover transition-colors cursor-pointer"
+              disabled
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment-mid border border-border-base font-sans text-[11px] font-medium text-text-faint opacity-60 cursor-not-allowed"
+              title="Ask AI is coming soon"
             >
               <MessageSquare size={11} />
               Ask AI
+              <span className="ml-1 px-1 py-0.5 rounded bg-gold-muted text-[8px] font-semibold text-gold uppercase tracking-wide">
+                Soon
+              </span>
             </button>
           </div>
         </div>
@@ -490,14 +492,15 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
               </div>
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
-                }}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment border border-border-base font-sans text-[11px] font-medium text-text-secondary hover:border-border-hover transition-colors cursor-pointer"
+                disabled
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment border border-border-base font-sans text-[11px] font-medium text-text-faint opacity-60 cursor-not-allowed"
+                title="Ask AI is coming soon"
               >
                 <MessageSquare size={11} />
                 Ask AI
+                <span className="ml-1 px-1 py-0.5 rounded bg-gold-muted text-[8px] font-semibold text-gold uppercase tracking-wide">
+                  Soon
+                </span>
               </button>
             </div>
           </div>
