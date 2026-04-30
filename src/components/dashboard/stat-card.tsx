@@ -65,16 +65,27 @@ export function StatCard({
         {/* Value + change */}
         {stale ? (
           <div className="mt-1.5">
-            <span
-              className={cn(
-                "font-data text-[21px] font-bold",
-                accentGold ? "text-gold" : "text-espresso",
-              )}
-            >
-              {value}
-            </span>
+            <div className="flex items-baseline gap-2">
+              <span
+                className={cn(
+                  "font-data text-[21px] font-bold",
+                  accentGold ? "text-gold" : "text-espresso",
+                )}
+              >
+                {value}
+              </span>
+              <span
+                className={cn(
+                  "font-data text-[11px] font-semibold",
+                  changeColor,
+                )}
+              >
+                {changeSign}
+                {change.toFixed(2)}%
+              </span>
+            </div>
             <span className="block font-sans text-[10px] text-text-muted mt-0.5">
-              Markets closed · last
+              Markets closed · last close
             </span>
           </div>
         ) : (
