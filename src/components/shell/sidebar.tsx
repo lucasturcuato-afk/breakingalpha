@@ -102,6 +102,19 @@ interface Notification {
   created_at: string;
 }
 
+// Mirrors the dedupe applied on the /watchlist page (page.tsx) so the
+// sidebar badge matches the page's "TRACKING" count even when the
+// underlying watchlist table contains duplicate rows for the same
+// identifier+type pair (cleanup of those rows is tracked separately).
+function dedupeWatchlistCount(rows: Array<{ identifier: string | null; type: string | null }>): number {
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (!r.identifier || !r.type) continue;
+    seen.add(`${r.identifier.toUpperCase()}::${r.type}`);
+  }
+  return seen.size;
+}
+
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   if (diff < 0) return "";
@@ -164,10 +177,10 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
       });
       supabase
         .from("watchlist")
-        .select("id", { count: "exact", head: true })
+        .select("identifier, type")
         .eq("user_id", authUser.id)
-        .then(({ count }) => {
-          if (count !== null) setWatchlistCount(count);
+        .then(({ data }) => {
+          if (data) setWatchlistCount(dedupeWatchlistCount(data));
         });
     });
   }, [getSupabase]);
@@ -184,10 +197,10 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
         () => {
           supabase
             .from("watchlist")
-            .select("id", { count: "exact", head: true })
+            .select("identifier, type")
             .eq("user_id", user.id)
-            .then(({ count }) => {
-              if (count !== null) setWatchlistCount(count);
+            .then(({ data }) => {
+              if (data) setWatchlistCount(dedupeWatchlistCount(data));
             });
         },
       )
