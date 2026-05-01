@@ -1,15 +1,14 @@
 # Signalera/Breaking Alpha — Claude Chat Handoff
-**Date:** 2026-04-27 (evening PT)
-**Last session focus:** Smoke-test PR #131 on prod → triage PR #129 / #130 → close #130 → reply to Lucas
-**Status:** PR #131 prod-validated. PR #130 closed. PR #129 stays draft pending re-test.
+**Date:** 2026-05-01 (PT)
+**Last session focus:** Orchestrated three Wave 1 PRs (#167, #168, #169) through parallel worktrees; diagnosed Google OAuth domain migration bug; PR #170 open (contact email + legal nav)
+**Status:** PRs #167/#168/#169 merged. OAuth fix requires manual Supabase config. PR #170 ready for merge. DDL (`sql/live_score_columns.sql`) pending manual application to prod.
 
 ---
 
-## Recently Completed (2026-04-29, evening)
-**Major launch prep merged:** PRs #148–#156 now merged (watchlist-driven Finnhub fetch, company-intel structural fix with /api/companies endpoints, watchlist pin persistence fix, pin icon click target fix). Lucas shipped beta allowlist + waitlist infrastructure (#153, #154) for 8 PM ET soft launch tonight. Pre-existing duplicate watchlist rows persist (IONQ, NVDA, BRK.B, AAPL) — PR #156 makes pin/unpin work despite duplicates; manual SQL cleanup and stale pinned_position cache-heal post-launch.
+## Recently Completed (2026-05-01)
+**Wave 1 orchestration complete:** PRs #167 (fix: brief flaky-render via page-transition), #168 (fix: mood-bar SSoT via useLiveMood hook), #169 (feat: track-record live-score grading) merged to main via parallel git worktrees. PR #170 (fix: contact email swap + legal nav + domain string) open, ready for merge. Auth redirect bug diagnosed (`docs/auth-redirect-diagnosis.md`): Supabase Site URL + Redirect URLs allowlist still pinned to old `*.vercel.app` — requires manual Noah action. Track-record DDL (`sql/live_score_columns.sql`) needs manual application to Supabase prod; frontend renders correctly without it via TS fallback.
 
-**Earlier (2026-04-29, morning):**
-**PR #147 pinned watchlist merged:** Dashboard pinned-watchlist widget with real Finnhub prices, pin/unpin UI on `/watchlist`, supabase migration for `pinned_position` column, right-rail scroll fix. Local branch `noah/pinned-watchlist` now stale (superseded by #147 merge at `b733626`); mark for deletion.
+---
 
 ---
 
@@ -489,23 +488,27 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 
 ## Pending / Known Issues
 
-**Just merged (2026-04-29, evening)**
-- **PR #148 — feat(ingest): watchlist-driven Finnhub fetch (v1)** — `9204ab2`. Adds `fetch_watchlist_finnhub_articles()` helper pulling DISTINCT tickers from watchlist, fetches Finnhub company-news for last 7 days (8/ticker cap), dedupes by URL, routes through articles table.
-- **PR #149 — docs: Company Intel fix plan** — `cf9ddf9`. Markdown-only: `COMPANY_INTEL_FIX_PLAN.md` covering 4 symptoms + investigation summary. No code changes. Artifacts in COMPANY_INTEL_INVESTIGATION_SUMMARY.md.
-- **PR #150 — feat(company-intel): structural fix** — `d6c7657`. Phase 4A complete: new `/api/companies` endpoint with quality filters (limit 500), new `/api/companies/[id]/articles` with cache-first Supabase read. Phases 1C + 3A + 3B also included: CANONICAL map expansion, debounced server-side search, list page refresh.
-- **PR #151 (Lucas) — Remove 960px content width cap** — `9501d7b`. Dashboard, morning brief, evening wrap now fill available width.
-- **PR #152 (Lucas) — Add MarketWatch RSS feeds** — `9f98b83`. Dow Jones substitute (WSJ feeds stale since Jan 2025).
-- **PR #153 (Lucas) — Beta allowlist + waitlist infrastructure** — `b22d9ad`. Hard allowlist for TIS launch with waitlist fallback. Touches proxy.ts, auth/callback/route.ts, waitlist/page.tsx, plus 3 SQL migrations. **Launch-critical for 8 PM ET soft launch.**
-- **PR #154 (Lucas) — Public paths for /waitlist and /legal** — `22b4311`. Proxy middleware update.
-- **PR #155 — Fix pin icon click target** — `9d8a33a`. Added `pointer-events-none` on Lucide Pin icon in watchlist/page.tsx, fixes intermittent pin-click failures.
-- **PR #156 — Fix pin/unpin persistence** — `abcec78`. Flipped route.ts find-target from `created_at ASC` to `created_at DESC`, ensures server picks same physical row client's dedup keeps. Resolves "pin returns 200 but database row stays null" for users with duplicate rows.
-- **Local branch `noah/pin-persistence-fix` (current)** — Branch for PR #156; now stale post-merge. Preserved per instructions.
+**Just merged (2026-05-01) — Wave 1 & contact email updates**
+- **PR #167 — fix(brief): resolve flaky-render on morning brief initial nav** — `b916942`. Root cause: `page-transition.tsx` used `AnimatePresence mode="wait"` blocking destination mount. Fix: dropped mode + split morning-brief into 4 independent data fetches with per-cell skeletons. Killed two 503 prefetches.
+- **PR #168 — fix(mood): single source of truth for live mood-bar data** — `e5b563b`. Promoted `useLiveMood` hook with 30s stale-time + in-flight coalescing. New return shape: `banner: { moodTerm, narrative, pill, details }` + `meta`. Morning Brief, Evening Wrap, Track Record now read from hook instead of hard-coded defaults. Notification dropdown: surfaced timestamp + "snapshot at trigger time" footer.
+- **PR #169 — feat(track-record): continuous in-flight grading with live_score** — `c525d6d`. Five-component live_score (-100 to +100) with derived verdicts. Mirror implementations: `backend/grading/live_score.py` (nightly persist) + `src/lib/track-record-live-score.ts` (on-the-fly TS fallback). Track Record page: new stat cards, sector table by live_score, "What's Working" top/bottom 3, 30d sparkline. **IMPORTANT:** `sql/live_score_columns.sql` needs manual apply to prod Supabase (adds three nullable columns + indexes); TS fallback works without it.
+- **PR #170 — fix: contact email + legal nav + stale domain** — open, ready to merge. Email swap: `lucasturcuato@gmail.com` → `admin@signalera.ai` (8 user-facing surfaces; intentionally left alone in `admin-emails.ts`). Legal nav: added `src/app/legal/layout.tsx`. Domain: `breakingalpha.vercel.app` → `signalera.ai` in privacy/terms intros.
+- **Local worktrees — ready for cleanup:** `/Users/noahhanning/ba-w1-mood`, `/Users/noahhanning/ba-w1-trackrec`, `/Users/noahhanning/ba-w1-briefload` (all three branches merged, branches can be deleted).
 
-**From tonight's three-PR session (2026-04-28) — FOR NEXT SESSION**
+**URGENT — OAuth auth redirect broken after domain migration to signalera.ai**
+- **Symptom:** Google OAuth sign-in redirects to landing page (`/`) instead of `/dashboard` after domain switch from `breakingalpha.vercel.app` to `signalera.ai`.
+- **Root cause:** Supabase Auth dashboard Site URL + Redirect URLs allowlist still pinned to old `*.vercel.app` hosts. Full diagnosis in `docs/auth-redirect-diagnosis.md` (just committed, see hypothesis (b) = primary suspect, trace at §Trace of the failing flow).
+- **Manual fix required (Noah — no code changes needed):** (1) Supabase project → Authentication → URL Configuration. Set Site URL to `https://signalera.ai`. Add to Redirect URLs: `https://signalera.ai/**`, `https://www.signalera.ai/**` if applicable, and Vercel preview glob. (2) Vercel prod env: set `NEXT_PUBLIC_SITE_URL=https://signalera.ai` (PDF/print only). Redeploy. (3) No Google Cloud changes needed. See `docs/auth-redirect-diagnosis.md` sections A–E for details + verification steps.
+- **Impact:** Users cannot complete OAuth sign-in on signalera.ai; feature is broken in production. **Do this before next user-facing deployment.**
+
+**Pending DDL and migrations (2026-05-01)**
+- **sql/live_score_columns.sql** — Track-record live-score feature requires manual Supabase DDL apply: adds `live_score`, `live_verdict`, `confidence_score` (nullable) columns + ranking indexes. Frontend renders correctly without it (TS fallback), but backend persistence won't write until applied. Apply at your convenience (not blocking, but enables backend-driven data persistence).
+
+**From prior three-PR session (2026-04-28) — deferred**
 - **ENV loading in replay scripts** — .session-artifacts/2026-04-28/run_synth.py doesn't auto-load backend/.env. Add `load_dotenv("backend/.env")` for future replays.
 - **Locked agent worktree cleanup** — .claude/worktrees/agent-a53475761303c7358 ready for `git worktree remove --force`.
 - **observe.py stale model strings** — MODEL_INGEST/MODEL_SYNTH still say llama; 3-line cleanup queued for separate PR.
-- **preselect_decision validation timing** — Tomorrow morning confirm pipeline_runs.preselect_decision column populates on next cron (started 2026-04-28).
+- **preselect_decision validation timing** — Confirm pipeline_runs.preselect_decision column populates on next cron.
 - **Filter A2 v2 calibration window** — 7-14 days of preselect_decision data needed to review real failure modes vs hypothesized (earliest viable: 2026-05-05).
 
 **Post-sprint follow-ups (new, 2026-04-23) — PARTIALLY RESOLVED**
@@ -515,12 +518,16 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 - **`stash@{0}` WIP preserved** — `feat/brief-polish-pass` (sentiment wording + panoramic pulse + `inspect_pulse` helper) still stashed. Decide next session: redundant with #123? incremental? discard?
 - **Vercel preview protection bypass token** — `backend/.env` contains `VERCEL_PROTECTION_BYPASS` for automation access to preview URLs without SSO wall.
 
-**Blocked or awaiting decision (2026-04-27) — FOR NOAH**
-- **PR #131 (`noah/pdf-rebuild`) uninstalled dependencies blocking `next build`** — missing `@react-pdf/renderer`, `resend`, `@react-email/*`. Dev server works via Turbopack. Noah: decide whether to npm install or defer PR #131 merge.
-- **7 TypeScript errors from PR #131 files** — flagged during smoke test on main. Resolve before merging #131.
-- **`lucas/intelligence-sprint` branch (8 commits) ready for merge** — conflicts expected in synthesize.py, morning-brief, evening-wrap, trends, settings/preferences. Needs merge coordination with Noah.
-- **14 Supabase migrations with STATUS UNKNOWN** — Full catalog in BUGFIX_NOTES.md (7 REQUIRED, 7 OPTIONAL, 3 intelligence-sprint branch-only, 1 post-merge, 1 informational). Must manually verify against production Supabase and run REQUIRED set.
-- **Missing `framer-motion` package** — flagged during smoke test; not imported anywhere currently, but should be added if page transition features come in-scope.
+**Still open — carry forward from prior sessions**
+- **PR #129 (lead-preselect v1) — stays draft pending re-test** — deals with priced-deal primary path need real `deal_flow` rows with $1B+ M&A deals to test; blocked by deal_flow staleness. Triggered macro-fallback path in last test.
+- **deal_flow staleness** — last 24h: 0 rows; latest 2026-04-17. Blocks PR #129 validation. Check `pipeline_runs` table diagnostics on next cron run.
+- **React #418 hydration error** — caught on `/morning-brief` and `/evening-wrap` during prior prod smoke test. PR #167 may have addressed via page-transition removal of `mode="wait"`, but verify on next validation pass.
+- **Personalization addendum investigation** — neither prior smoke-test PDF showed visible "For You" addendum content. Three hypotheses (user_briefings.addendum empty / render path broken / API drops field). Diagnostic query in prior handoff § 4.1.
+- **PDF design overhaul** (proposed PR #134) — Newsletter-style redesign of `src/components/brief/print-brief.tsx`. Not blocking.
+
+## In Progress
+
+(None currently; see Pending section for carry-forward items.)
 
 **Existing (deferred or blocked)**
 - **Duplicate watchlist rows (IONQ, NVDA, BRK.B, AAPL)** — Pre-existing issue. PR #156 makes pin/unpin work despite duplicates by ordering by `created_at DESC` instead of ASC. Manual SQL cleanup recommended. Also: orphan-pinned `_old` duplicate rows still hold stale `pinned_position` values from before PR #156 — invisible to UI (deduped) and self-heal on next pin to each affected slot. Worth post-launch check.
