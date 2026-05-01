@@ -1,12 +1,15 @@
 # Signalera/Breaking Alpha — Claude Chat Handoff
-**Date:** 2026-05-01 (PT)
-**Last session focus:** Orchestrated three Wave 1 PRs (#167, #168, #169) through parallel worktrees; diagnosed Google OAuth domain migration bug; PR #170 open (contact email + legal nav)
-**Status:** PRs #167/#168/#169 merged. OAuth fix requires manual Supabase config. PR #170 ready for merge. DDL (`sql/live_score_columns.sql`) pending manual application to prod.
+**Date:** 2026-05-01 evening (PT)
+**Last session focus:** Wave 2 overnight orchestration (5 parallel agents via git worktrees) — 2 ship PRs (#175, #171), 3 audit PRs (#173, #172, #174). PR #170 merged (contact email fix).
+**Status:** Wave 2 PRs ready-for-review (#175 email + SQL migration, #171 avatar consistency). Audits complete (entity resolution, track-record evidence, company intel). OAuth + SITE_URL config still pending.
 
 ---
 
+## Recently Completed (2026-05-01 evening)
+**Wave 2 overnight orchestration complete (5 parallel agents):** 2 ship-ready PRs (#175 email polish + SQL migration, #171 avatar consistency); 3 audit-only read-only PRs (#173 entity resolution, #172 track-record evidence, #174 company intel). All five confirm "Zero edits to backend/synthesize.py or backend/ingest.py." Email PR flagged schema deviation (no sent_at column, used MAX(issue_number) instead). Avatar bug: topbar discarded computed initials. Audits surface W2-A (entity alias strategy), W2-I (evidence schema choice), and Strategy A/B/C direction decision for company intel. Five git worktrees on disk for cleanup after merge.
+
 ## Recently Completed (2026-05-01)
-**Wave 1 orchestration complete:** PRs #167 (fix: brief flaky-render via page-transition), #168 (fix: mood-bar SSoT via useLiveMood hook), #169 (feat: track-record live-score grading) merged to main via parallel git worktrees. PR #170 (fix: contact email swap + legal nav + domain string) open, ready for merge. Auth redirect bug diagnosed (`docs/auth-redirect-diagnosis.md`): Supabase Site URL + Redirect URLs allowlist still pinned to old `*.vercel.app` — requires manual Noah action. Track-record DDL (`sql/live_score_columns.sql`) needs manual application to Supabase prod; frontend renders correctly without it via TS fallback.
+**Wave 1 orchestration complete:** PRs #167 (fix: brief flaky-render via page-transition), #168 (fix: mood-bar SSoT via useLiveMood hook), #169 (feat: track-record live-score grading) merged to main via parallel git worktrees. PR #170 (fix: contact email swap + legal nav + domain string) merged at e1d19ee (prior handoff claim was stale). Auth redirect bug diagnosed (`docs/auth-redirect-diagnosis.md`): Supabase Site URL + Redirect URLs allowlist still pinned to old `*.vercel.app` — requires manual Noah action. Track-record DDL (`sql/live_score_columns.sql`) needs manual application to Supabase prod; frontend renders correctly without it via TS fallback.
 
 ---
 
@@ -488,12 +491,14 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 
 ## Pending / Known Issues
 
-**Just merged (2026-05-01) — Wave 1 & contact email updates**
-- **PR #167 — fix(brief): resolve flaky-render on morning brief initial nav** — `b916942`. Root cause: `page-transition.tsx` used `AnimatePresence mode="wait"` blocking destination mount. Fix: dropped mode + split morning-brief into 4 independent data fetches with per-cell skeletons. Killed two 503 prefetches.
-- **PR #168 — fix(mood): single source of truth for live mood-bar data** — `e5b563b`. Promoted `useLiveMood` hook with 30s stale-time + in-flight coalescing. New return shape: `banner: { moodTerm, narrative, pill, details }` + `meta`. Morning Brief, Evening Wrap, Track Record now read from hook instead of hard-coded defaults. Notification dropdown: surfaced timestamp + "snapshot at trigger time" footer.
-- **PR #169 — feat(track-record): continuous in-flight grading with live_score** — `c525d6d`. Five-component live_score (-100 to +100) with derived verdicts. Mirror implementations: `backend/grading/live_score.py` (nightly persist) + `src/lib/track-record-live-score.ts` (on-the-fly TS fallback). Track Record page: new stat cards, sector table by live_score, "What's Working" top/bottom 3, 30d sparkline. **IMPORTANT:** `sql/live_score_columns.sql` needs manual apply to prod Supabase (adds three nullable columns + indexes); TS fallback works without it.
-- **PR #170 — fix: contact email + legal nav + stale domain** — open, ready to merge. Email swap: `lucasturcuato@gmail.com` → `admin@signalera.ai` (8 user-facing surfaces; intentionally left alone in `admin-emails.ts`). Legal nav: added `src/app/legal/layout.tsx`. Domain: `breakingalpha.vercel.app` → `signalera.ai` in privacy/terms intros.
-- **Local worktrees — ready for cleanup:** `/Users/noahhanning/ba-w1-mood`, `/Users/noahhanning/ba-w1-trackrec`, `/Users/noahhanning/ba-w1-briefload` (all three branches merged, branches can be deleted).
+**Just merged (2026-05-01 evening) — Wave 2 orchestration complete**
+- **PR #175 — fix(email): morning brief polish + view-in-browser, issue numbering, unsubscribe** — branch w2/email-polish, ready-for-review. New `sql/brief_email_unsubscribe.sql` DDL (adds `briefings.issue_number int`, `user_profiles.brief_email_subscribed bool`; idempotent). Email helpers: site-url resolver, issue-number caching (MAX(issue_number)+1 strategy, soft-fail if column missing), HMAC-sha256 unsubscribe tokens. New `/api/unsubscribe` GET/POST route (RFC 8058 one-click). Updated brief email template (View-in-browser bar, Issue #N line, footer Unsubscribe link). Updated send-email route (per-recipient loop, List-Unsubscribe headers, filterUnsubscribed() opt-out, ensureIssueNumber() caching). Schema deviation noted: spec called for sent_at + COUNT(*) numbering, but `briefings` has no sent_at column; used MAX(issue_number)+1 instead. **MANUAL STEP REQUIRED:** Apply `sql/brief_email_unsubscribe.sql` to prod Supabase before merging.
+- **PR #171 — fix(ui): unify user avatar component across shell** — branch w2/avatar-consistency, ready-for-review. Bug: topbar hardcoded brand "S" glyph, ignored computed `userInitials` prop. Sidebar correctly computed initials. New `src/components/shell/user-avatar.tsx` (single source of truth for avatar rendering; topbar/sidebar variants). Files touched: user-avatar.tsx (new), topbar.tsx, sidebar.tsx, app-shell.tsx, index.ts. tsc clean; lint net -1.
+- **PR #173 — AUDIT: Entity resolution current state** — branch w2/entity-resolution-audit, read-only. Single doc: docs/entity-resolution-audit.md (398 lines). Headline: no canonical entity ID; every table holds free-text names; two parallel canonicalization layers (backend + frontend) don't share state. Alias table + canonical_id FK swap recommended (reversible, unblocks W2-B/C/H, 2-3 eng days + 1-2 weeks observation). **Lucas coordination required** before W2-A starts.
+- **PR #172 — AUDIT: Track record evidence chain** — branch w2/track-record-evidence-audit, read-only. Single doc: docs/track-record-evidence-audit.md (379 lines). KEY: thesis_verdicts already has notes + key_evidence_ids (written nightly by thesis_grader.py). Surfacing the "why" panel needs ZERO new ingestion, ZERO new LLM spend. Five product questions in doc for Noah to answer (voice / schema / LLM / placement / scope).
+- **PR #174 — AUDIT: Company intel current state + improvements** — branch w2/company-intel-current-state, read-only. Single file: docs/company-intel-current-state.md + 5 screenshots. Headline: search gap is structural (441-row table, no fallback path, bars found entries for Anduril/Mistral/Stripe/Perplexity). Memo is strong (9 patterns documented to preserve). No persistence (each click re-spends budget, no company_memos table). Mobile fails (3-col grid doesn't collapse, names truncate). Recommended: Strategy C (memo-led + directory depth), ship Strategy A first (web-search fallback).
+- **PR #170 — fix: contact email + legal nav + stale domain** — merged at e1d19ee. Email swap: `lucasturcuato@gmail.com` → `admin@signalera.ai`. Legal nav: added `src/app/legal/layout.tsx`. Domain: `breakingalpha.vercel.app` → `signalera.ai` in intros.
+- **Local worktrees — ready for cleanup:** `/Users/noahhanning/ba-w2-email` (PR #175), `/Users/noahhanning/ba-w2-avatars` (PR #171), `/Users/noahhanning/ba-w2-entityaudit` (PR #173), `/Users/noahhanning/ba-w2-evidenceaudit` (PR #172), `/Users/noahhanning/ba-w2-cintelaudit` (PR #174). Plus three Wave 1 worktrees: `/Users/noahhanning/ba-w1-mood`, `/Users/noahhanning/ba-w1-trackrec`, `/Users/noahhanning/ba-w1-briefload` (all branches merged).
 
 **URGENT — OAuth auth redirect broken after domain migration to signalera.ai**
 - **Symptom:** Google OAuth sign-in redirects to landing page (`/`) instead of `/dashboard` after domain switch from `breakingalpha.vercel.app` to `signalera.ai`.
@@ -501,8 +506,15 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 - **Manual fix required (Noah — no code changes needed):** (1) Supabase project → Authentication → URL Configuration. Set Site URL to `https://signalera.ai`. Add to Redirect URLs: `https://signalera.ai/**`, `https://www.signalera.ai/**` if applicable, and Vercel preview glob. (2) Vercel prod env: set `NEXT_PUBLIC_SITE_URL=https://signalera.ai` (PDF/print only). Redeploy. (3) No Google Cloud changes needed. See `docs/auth-redirect-diagnosis.md` sections A–E for details + verification steps.
 - **Impact:** Users cannot complete OAuth sign-in on signalera.ai; feature is broken in production. **Do this before next user-facing deployment.**
 
-**Pending DDL and migrations (2026-05-01)**
+**Pending DDL and migrations (2026-05-01 evening)**
+- **sql/brief_email_unsubscribe.sql** — Email feature (PR #175) requires manual Supabase DDL apply before merge: adds `briefings.issue_number int`, `user_profiles.brief_email_subscribed bool default true`. Idempotent. **REQUIRED before merging PR #175.**
 - **sql/live_score_columns.sql** — Track-record live-score feature requires manual Supabase DDL apply: adds `live_score`, `live_verdict`, `confidence_score` (nullable) columns + ranking indexes. Frontend renders correctly without it (TS fallback), but backend persistence won't write until applied. Apply at your convenience (not blocking, but enables backend-driven data persistence).
+
+**Wave 2 Next Steps — Product Decisions Surfaced by Audits**
+- **W2-A: Entity resolution strategy** — Alias table + canonical_id FK swap (PR #173 audit) recommended as reversible path. Unblocks W2-B/C/H. Requires Lucas coordination on synthesize.py, ingest.py, wikidata.py, company-intel.ts before starting. 2-3 eng days + 1-2 weeks observation. Decision: approve strategy or explore alternatives?
+- **W2-I: Track-record evidence "why" panel** — PR #172 audit surfaces five open questions (voice/schema/LLM/placement/scope). thesis_verdicts already has notes + key_evidence_ids written nightly; no new ingestion/LLM spend needed. Answer questions in PR #172 doc before sprint planning.
+- **Company Intel direction: Strategy A/B/C choice** — PR #174 audit. Strategy A (web-search fallback for un-indexed companies, closest to "better than Google"). Strategy B/C deferred (memo persistence + directory depth). Pick A / A+cleanup / or revisit B/C first?
+- **Manual Supabase config still pending** — Supabase Auth Site URL + Redirect URLs allowlist (OAuth broken on signalera.ai until fixed). NEXT_PUBLIC_SITE_URL=https://signalera.ai in Vercel prod env (for email/PDF links).
 
 **From prior three-PR session (2026-04-28) — deferred**
 - **ENV loading in replay scripts** — .session-artifacts/2026-04-28/run_synth.py doesn't auto-load backend/.env. Add `load_dotenv("backend/.env")` for future replays.
@@ -519,11 +531,13 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 - **Vercel preview protection bypass token** — `backend/.env` contains `VERCEL_PROTECTION_BYPASS` for automation access to preview URLs without SSO wall.
 
 **Still open — carry forward from prior sessions**
-- **PR #129 (lead-preselect v1) — stays draft pending re-test** — deals with priced-deal primary path need real `deal_flow` rows with $1B+ M&A deals to test; blocked by deal_flow staleness. Triggered macro-fallback path in last test.
-- **deal_flow staleness** — last 24h: 0 rows; latest 2026-04-17. Blocks PR #129 validation. Check `pipeline_runs` table diagnostics on next cron run.
-- **React #418 hydration error** — caught on `/morning-brief` and `/evening-wrap` during prior prod smoke test. PR #167 may have addressed via page-transition removal of `mode="wait"`, but verify on next validation pass.
-- **Personalization addendum investigation** — neither prior smoke-test PDF showed visible "For You" addendum content. Three hypotheses (user_briefings.addendum empty / render path broken / API drops field). Diagnostic query in prior handoff § 4.1.
+- **PR #129 (lead-preselect v1) — stays draft pending re-test** — priced-deal primary path needs real `deal_flow` rows with $1B+ M&A deals; blocked by deal_flow staleness. Last test triggered macro-fallback path only.
+- **deal_flow staleness** — last reported 2026-04-17 (pre-Wave 2). Blocks PR #129 validation. Verify current state on next cron run.
+- **React #418 hydration error** — caught on `/morning-brief` and `/evening-wrap` during prior prod smoke test. PR #167 may have addressed via page-transition removal of `mode="wait"`, verify on next validation pass.
+- **Personalization addendum investigation** — neither prior smoke-test PDF showed visible "For You" addendum content. Three hypotheses (user_briefings.addendum empty / render path broken / API drops field). Diagnostic query in handoff § 4.1 (old session).
 - **PDF design overhaul** (proposed PR #134) — Newsletter-style redesign of `src/components/brief/print-brief.tsx`. Not blocking.
+- **Three Wave 1 git worktrees — ready for cleanup:** `ba-w1-mood`, `ba-w1-trackrec`, `ba-w1-briefload` (branches merged to main, worktrees can be removed).
+- **Five Wave 2 git worktrees — ready for cleanup (after PRs merge):** `ba-w2-email`, `ba-w2-avatars`, `ba-w2-entityaudit`, `ba-w2-evidenceaudit`, `ba-w2-cintelaudit`.
 
 ## In Progress
 
