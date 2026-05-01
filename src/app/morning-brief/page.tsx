@@ -25,6 +25,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import { trackClientEvent } from "@/lib/track-event";
 import { useUserProfile } from "@/hooks/useUserProfile";
+import { useLiveMood } from "@/hooks/useLiveMood";
 import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
 import type { ContentDescriptor } from "@/lib/personalization";
 
@@ -155,6 +156,9 @@ export default function MorningBriefPage() {
   const { profile } = useUserProfile();
   const [briefing, setBriefing] = useState<BriefingData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [briefError, setBriefError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [storiesLoading, setStoriesLoading] = useState(true);
   const [stories, setStories] = useState<StoryData[]>([]);
   const [storiesLabel, setStoriesLabel] = useState("Today's Stories");
   const [isStale, setIsStale] = useState(false);
@@ -168,8 +172,16 @@ export default function MorningBriefPage() {
   const [formatLabel, setFormatLabel] = useState<string | null>(null);
   const [userAddendum, setUserAddendum] = useState<string | null>(null);
   const [thesesCount, setThesesCount] = useState<number | null>(null);
+  const [thesesLoading, setThesesLoading] = useState(true);
   const [vixQuote, setVixQuote] = useState<{ price: string; pct: number } | null>(null);
+  const [vixLoading, setVixLoading] = useState(true);
   const router = useRouter();
+
+  // Banner mood comes from the global SSOT — same numbers + canonical 5-term
+  // pill as every other route. The brief body still reads
+  // `briefing.market_tone` and `briefing.market_pulse.sentiment_word` for its
+  // own hero card; that prose vocabulary is intentionally separate.
+  const liveMood = useLiveMood();
 
   useEffect(() => {
     fetch("/api/brief-rating")
@@ -188,16 +200,54 @@ export default function MorningBriefPage() {
     }).catch(() => {});
   }
 
+  // ── Data loading ────────────────────────────────────────────────────────
+  // Each network dependency runs in its own effect with its own loading +
+  // error state. Splitting them is the architectural fix for the flaky
+  // first-render bug: the previous single-useEffect implementation awaited
+  // `supabase.auth.getSession()` before kicking off ANY network call, and on
+  // client-side navigation that promise occasionally never resolved, leaving
+  // every downstream `fetch` un-fired and the page stuck on the loading
+  // skeleton. The briefing fetch now does not depend on auth at all (the
+  // server route already accepts cookie auth via @supabase/ssr) and runs
+  // immediately on mount. Auth is added as a header opportunistically.
+  //
+  // `reloadKey` is bumped by the error-state retry button to re-run the
+  // briefing fetch without forcing a full page reload.
   useEffect(() => {
-    async function load() {
-      try {
-        const supabase = getSupabase();
-        const { data: { session } } = await supabase.auth.getSession();
-        const headers: HeadersInit = {};
-        if (session?.access_token) {
-          headers.Authorization = `Bearer ${session.access_token}`;
+    let cancelled = false;
+    setLoading(true);
+    setBriefError(null);
+
+    (async () => {
+      // Resolve auth in the background — never block the briefing fetch on
+      // it. If a token arrives before the fetch fires, attach it; if not,
+      // the cookie-based session on the server still applies.
+      const sessionPromise = (async () => {
+        try {
+          const { data: { session } } = await getSupabase().auth.getSession();
+          return session ?? null;
+        } catch {
+          return null;
         }
-        const res = await fetch("/api/briefing?type=morning", { headers });
+      })();
+
+      // Race auth resolution against a short cap so a hung getSession() never
+      // stalls the brief render. 250ms is enough on warm caches; if it loses
+      // the race we still hit the API (which reads cookies server-side).
+      const session = await Promise.race([
+        sessionPromise,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
+      ]);
+
+      const headers: HeadersInit = { Accept: "application/json" };
+      if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+
+      try {
+        const res = await fetch("/api/briefing?type=morning", {
+          headers,
+          credentials: "include",
+          cache: "no-store",
+        });
 
         if (session?.user) {
           void fetch("/api/user-events", {
@@ -207,7 +257,13 @@ export default function MorningBriefPage() {
             body: JSON.stringify({ event_type: "morning_brief_opened" }),
           }).catch(() => {});
         }
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
         const data = await res.json();
+        if (cancelled) return;
+
         if (data.briefing) {
           const b = data.briefing;
           const sections = typeof b.sections === "string" ? JSON.parse(b.sections) : b.sections;
@@ -239,8 +295,32 @@ export default function MorningBriefPage() {
           if (data.last_attempt_status) setLastRunStatus(data.last_attempt_status);
           if (data.personalization?.format_label) setFormatLabel(data.personalization.format_label);
           if (typeof data.user_addendum === "string") setUserAddendum(data.user_addendum);
+        } else {
+          setBriefing(null);
         }
+      } catch (e) {
+        if (!cancelled) {
+          console.error("Failed to load briefing:", e);
+          setBriefError(e instanceof Error ? e.message : "Unknown error");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
 
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
+
+  // Today's Stories — independent fetch so a Supabase blip on this query
+  // never blocks the brief itself.
+  useEffect(() => {
+    let cancelled = false;
+    setStoriesLoading(true);
+
+    (async () => {
+      try {
         const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
@@ -262,6 +342,7 @@ export default function MorningBriefPage() {
           articles = fallback;
           label = "Recent Stories";
         }
+        if (cancelled) return;
         setStoriesLabel(label);
 
         if (articles) {
@@ -279,6 +360,7 @@ export default function MorningBriefPage() {
             } catch { /* soft-fail */ }
           }
 
+          if (cancelled) return;
           setStories(articles.map((a) => {
             const completeness = getCompleteness(a.content, a.summary);
             return {
@@ -300,40 +382,64 @@ export default function MorningBriefPage() {
             };
           }));
         }
-
-        // Active theses count (stats bar).
-        try {
-          const { count } = await getSupabase()
-            .from("theses")
-            .select("id", { count: "exact", head: true });
-          if (typeof count === "number") setThesesCount(count);
-        } catch { /* soft-fail */ }
-
-        // VIX quote for stats bar.
-        // Finnhub doesn't return data for plain "VIX"; "^VIX" is the index
-        // symbol that works. We also include "VIXY" as a fallback proxy
-        // (volatility-tracking ETF) so the bar always shows real numbers.
-        try {
-          const qr = await fetch("/api/watchlist-quotes?symbols=" + encodeURIComponent("^VIX,VIXY"));
-          if (qr.ok) {
-            const qd = await qr.json();
-            const q = qd?.quotes?.["^VIX"] ?? qd?.quotes?.VIXY;
-            if (q) {
-              const price = typeof q.price === "number"
-                ? q.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                : String(q.price ?? "—");
-              setVixQuote({ price, pct: q.pct ?? 0 });
-            }
-          }
-        } catch { /* soft-fail */ }
       } catch (e) {
-        console.error("Failed to load briefing:", e);
+        console.warn("Failed to load stories:", e);
       } finally {
-        setLoading(false);
+        if (!cancelled) setStoriesLoading(false);
       }
-    }
-    load();
-  }, []);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
+
+  // Active theses count (stats bar). Independent fetch — if it 503s
+  // (Supabase blip) the rest of the brief renders normally.
+  useEffect(() => {
+    let cancelled = false;
+    setThesesLoading(true);
+    (async () => {
+      try {
+        const { count } = await getSupabase()
+          .from("theses")
+          .select("id", { count: "exact", head: true });
+        if (!cancelled && typeof count === "number") setThesesCount(count);
+      } catch { /* soft-fail */ }
+      finally {
+        if (!cancelled) setThesesLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [reloadKey]);
+
+  // VIX quote for the stats bar. Independent fetch.
+  // Finnhub doesn't return data for plain "VIX"; "^VIX" is the index
+  // symbol that works. We also include "VIXY" as a fallback proxy
+  // (volatility-tracking ETF) so the bar always shows real numbers.
+  useEffect(() => {
+    let cancelled = false;
+    setVixLoading(true);
+    (async () => {
+      try {
+        const qr = await fetch("/api/watchlist-quotes?symbols=" + encodeURIComponent("^VIX,VIXY"));
+        if (qr.ok) {
+          const qd = await qr.json();
+          const q = qd?.quotes?.["^VIX"] ?? qd?.quotes?.VIXY;
+          if (q && !cancelled) {
+            const price = typeof q.price === "number"
+              ? q.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+              : String(q.price ?? "—");
+            setVixQuote({ price, pct: q.pct ?? 0 });
+          }
+        }
+      } catch { /* soft-fail */ }
+      finally {
+        if (!cancelled) setVixLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [reloadKey]);
 
   useEffect(() => {
     getSupabase().auth.getUser().then(({ data }) => {
@@ -454,15 +560,9 @@ export default function MorningBriefPage() {
   return (
     <AppShell
       pageTitle="Morning Brief"
-      mood={
-        tone === "BEARISH" ? "risk-off"
-        : tone === "BULLISH" ? "risk-on"
-        : tone === "MIXED" ? "mixed"
-        : tone === "WATCH" ? "watch"
-        : "neutral"
-      }
-      moodHeadline={briefing?.market_tone || "Loading..."}
-      moodDetails={[]}
+      mood={liveMood.mood}
+      moodHeadline={liveMood.moodHeadline}
+      moodDetails={liveMood.moodDetails}
       rightPanel={
         <>
           <PanelWidget title="Active Theses">
@@ -527,7 +627,11 @@ export default function MorningBriefPage() {
         </div>
       </header>
 
-      {/* Stats metadata bar */}
+      {/* Stats metadata bar — each cell renders a small skeleton pulse
+          while its data is loading, instead of an em-dash placeholder.
+          The dashes were the visual signature of the flaky-render bug:
+          the stats bar would render with all dashes and then never refresh
+          if the brief fetch silently failed. */}
       <div
         style={{
           padding: "14px 32px",
@@ -539,16 +643,34 @@ export default function MorningBriefPage() {
           flexWrap: "wrap",
         }}
       >
-        {[
-          { k: "MOOD", v: String(moodWord).toUpperCase(), c: tone === "BEARISH" ? "var(--signal-dn)" : tone === "BULLISH" ? "var(--signal-up)" : "var(--signal-warn)" },
-          { k: "STORIES", v: String(stories.length || "—") },
-          { k: "THESES", v: thesesCount !== null ? `${thesesCount} active` : "—" },
+        {([
+          {
+            k: "MOOD",
+            loading,
+            v: String(moodWord).toUpperCase(),
+            c: tone === "BEARISH" ? "var(--signal-dn)" : tone === "BULLISH" ? "var(--signal-up)" : "var(--signal-warn)",
+            skeletonW: 60,
+          },
+          {
+            k: "STORIES",
+            loading: storiesLoading,
+            v: String(stories.length),
+            skeletonW: 28,
+          },
+          {
+            k: "THESES",
+            loading: thesesLoading,
+            v: thesesCount !== null ? `${thesesCount} active` : "0 active",
+            skeletonW: 56,
+          },
           {
             k: "VIX",
+            loading: vixLoading,
             v: vixQuote ? `${vixQuote.price} ${vixQuote.pct >= 0 ? "▲" : "▼"}${Math.abs(vixQuote.pct).toFixed(2)}%` : "—",
             c: vixQuote ? (vixQuote.pct >= 0 ? "var(--signal-dn)" : "var(--signal-up)") : undefined,
+            skeletonW: 72,
           },
-        ].map((x, i) => (
+        ] as Array<{ k: string; v: string; loading: boolean; c?: string; skeletonW: number }>).map((x, i) => (
           <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
             <span
               className="font-sans"
@@ -556,12 +678,19 @@ export default function MorningBriefPage() {
             >
               {x.k}
             </span>
-            <span
-              className="font-data"
-              style={{ fontSize: 12, fontWeight: 700, color: x.c || "var(--espresso)", fontVariantNumeric: "tabular-nums" }}
-            >
-              {x.v}
-            </span>
+            {x.loading ? (
+              <Skeleton
+                aria-label={`${x.k} loading`}
+                style={{ width: x.skeletonW, height: 12, borderRadius: 4 }}
+              />
+            ) : (
+              <span
+                className="font-data"
+                style={{ fontSize: 12, fontWeight: 700, color: x.c || "var(--espresso)", fontVariantNumeric: "tabular-nums" }}
+              >
+                {x.v}
+              </span>
+            )}
           </div>
         ))}
         <span style={{ flex: 1 }} />
@@ -586,6 +715,21 @@ export default function MorningBriefPage() {
               {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
             </div>
           </div>
+        ) : briefError ? (
+          <EmptyState
+            icon={<FileText size={32} />}
+            title="We couldn't load the morning brief"
+            description={`The brief data fetch failed (${briefError}). This is usually a transient network blip.`}
+            action={
+              <Button
+                variant="primary"
+                size="md"
+                onClick={() => setReloadKey((k) => k + 1)}
+              >
+                Retry
+              </Button>
+            }
+          />
         ) : !briefing ? (
           <EmptyState
             icon={<FileText size={32} />}

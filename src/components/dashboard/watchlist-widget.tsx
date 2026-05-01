@@ -70,6 +70,7 @@ export function WatchlistWidget() {
             <Link
               key={item.ticker}
               href={`/company/${item.ticker}`}
+              prefetch={false}
               className={cn(
                 "flex items-center gap-2 py-2 px-2 rounded-lg",
                 "transition-colors duration-[var(--duration-fast)]",

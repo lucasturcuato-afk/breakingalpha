@@ -21,14 +21,10 @@ gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 GEMINI_MODEL = "gemini-2.5-flash"
 
 RSS_FEEDS = {
-    "WSJ Markets":      "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
-    "WSJ Tech":         "https://feeds.a.dj.com/rss/RSSWSJD.xml",
     "NYT Technology":   "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml",
     "NYT Business":     "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml",
     "NYT World":        "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
     "MarketWatch Top":  "https://feeds.content.dowjones.io/public/rss/mw_topstories",
-    "MarketWatch Markets": "https://feeds.content.dowjones.io/public/rss/mw_marketpulse",
-    "MarketWatch Real-time": "https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines",
     "TechCrunch":       "https://techcrunch.com/feed/",
     "Reuters Tech":     "https://feeds.reuters.com/reuters/technologyNews",
     "Reuters Business": "https://feeds.reuters.com/reuters/businessNews",
@@ -469,22 +465,42 @@ def fetch_watchlist_finnhub_articles() -> list[dict]:
     return out
 
 
+INGEST_FRESHNESS_DAYS = 7
+
 def fetch_all_articles():
     articles = []
+    now = datetime.now(timezone.utc)
+    freshness_cutoff = now - timedelta(days=INGEST_FRESHNESS_DAYS)
+    total_skipped_stale = 0
     for source, url in RSS_FEEDS.items():
+        skipped_stale = 0
         try:
             feed = feedparser.parse(url)
             for e in feed.entries[:8]:
+                published_at = e.get("published", now.isoformat())
+                # Skip articles older than INGEST_FRESHNESS_DAYS
+                try:
+                    pub_dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+                    if pub_dt < freshness_cutoff:
+                        skipped_stale += 1
+                        continue
+                except Exception:
+                    pass  # if parsing fails, let the entry through
                 articles.append({
                     "title": e.get("title", ""),
                     "summary": strip_html(e.get("summary", e.get("description", "")))[:500],
                     "url": e.get("link", ""),
                     "source": source,
-                    "published_at": e.get("published", datetime.now(timezone.utc).isoformat()),
+                    "published_at": published_at,
                     "content_type": "full_text" if source in FULL_TEXT_SOURCES else "snippet"
                 })
         except Exception as ex:
             print(f"  RSS error {source}: {ex}")
+        if skipped_stale:
+            print(f"  RSS {source}: skipped {skipped_stale} stale articles (>{INGEST_FRESHNESS_DAYS}d old)")
+            total_skipped_stale += skipped_stale
+    if total_skipped_stale:
+        print(f"  RSS total: skipped {total_skipped_stale} stale articles across all feeds")
 
     # NewsAPI
     try:

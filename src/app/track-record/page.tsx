@@ -15,6 +15,7 @@ import {
   type LiveScoreResult,
   type TerminalVerdict,
 } from "@/lib/track-record-live-score";
+import { useLiveMood } from "@/hooks/useLiveMood";
 
 function getSupabase() {
   return createBrowserClient(
@@ -95,6 +96,11 @@ export default function TrackRecordPage() {
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [overdueCount, setOverdueCount] = useState<number>(0);
   const [awaitingCount, setAwaitingCount] = useState<number>(0);
+
+  // Banner mood comes from the shared SSOT hook so this page agrees with
+  // the dashboard / live feed / etc. Without this, AppShell falls back to
+  // MoodBar's hard-coded "VIX 14.2 / Markets steady / Neutral" defaults.
+  const { mood, moodHeadline, moodDetails } = useLiveMood();
 
   useEffect(() => {
     async function load() {
@@ -313,7 +319,12 @@ export default function TrackRecordPage() {
   const isFirstPaintEmpty = !loading && totalCount === 0;
 
   return (
-    <AppShell pageTitle="Track Record">
+    <AppShell
+      pageTitle="Track Record"
+      mood={mood}
+      moodHeadline={moodHeadline}
+      moodDetails={moodDetails}
+    >
       <div className="p-6 space-y-6 max-w-[960px]">
         {/* HEADER */}
         <div>

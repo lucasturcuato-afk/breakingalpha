@@ -23,6 +23,7 @@ import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
 import type { StoryData } from "@/components/dashboard";
 import { createBrowserClient } from "@supabase/ssr";
 import { useUserProfile } from "@/hooks/useUserProfile";
+import { useLiveMood } from "@/hooks/useLiveMood";
 import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
 import { trackClientEvent } from "@/lib/track-event";
 import type { ContentDescriptor } from "@/lib/personalization";
@@ -180,6 +181,12 @@ export default function EveningWrapPage() {
   const [vixQuote, setVixQuote] = useState<{ price: string; pct: number } | null>(null);
   const [scorecard, setScorecard] = useState<Record<string, { price: string; pct: number } | null>>({});
   const router = useRouter();
+
+  // Banner mood comes from the global SSOT — same numbers + canonical 5-term
+  // pill as every other route. The wrap body still reads
+  // `briefing.market_tone` and `briefing.market_pulse.sentiment_word` for its
+  // own hero card; that prose vocabulary is intentionally separate.
+  const liveMood = useLiveMood();
 
   useEffect(() => {
     getSupabase()
@@ -484,15 +491,9 @@ export default function EveningWrapPage() {
   return (
     <AppShell
       pageTitle="Evening Wrap"
-      mood={
-        tone === "BEARISH" ? "risk-off"
-        : tone === "BULLISH" ? "risk-on"
-        : tone === "MIXED" ? "mixed"
-        : tone === "WATCH" ? "watch"
-        : "neutral"
-      }
-      moodHeadline={briefing?.market_tone || "Session closed"}
-      moodDetails={[]}
+      mood={liveMood.mood}
+      moodHeadline={liveMood.moodHeadline}
+      moodDetails={liveMood.moodDetails}
       rightPanel={
         <>
           <PanelWidget title="Active Theses">

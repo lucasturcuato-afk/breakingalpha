@@ -85,23 +85,34 @@ export function NotificationDropdown({
                 <span className="mt-1 w-1.5 h-1.5 rounded-full bg-gold flex-shrink-0" />
               )}
               <div className="flex-1 min-w-0">
-                <p
-                  className={cn(
-                    "font-sans text-[12px] leading-snug",
-                    n.read
-                      ? "text-text-secondary"
-                      : "text-text-primary font-semibold",
-                  )}
-                >
-                  {n.title}
-                </p>
+                <div className="flex items-baseline justify-between gap-2">
+                  <p
+                    className={cn(
+                      "font-sans text-[12px] leading-snug truncate",
+                      n.read
+                        ? "text-text-secondary"
+                        : "text-text-primary font-semibold",
+                    )}
+                  >
+                    {n.title}
+                  </p>
+                  {/* Timestamp pulled forward + bolded so a stale price
+                      snapshot (e.g. "META +9.9%" written hours ago by
+                      watchlist_sync) is obviously not a live quote. */}
+                  <span
+                    className="font-mono text-[10px] font-semibold text-text-secondary flex-shrink-0"
+                    title={new Date(n.created_at).toLocaleString()}
+                  >
+                    {timeAgo(n.created_at)}
+                  </span>
+                </div>
                 {n.body && (
                   <p className="font-sans text-[11px] text-text-secondary mt-0.5 leading-snug">
                     {n.body}
                   </p>
                 )}
-                <p className="font-mono text-[10px] text-text-faint mt-1">
-                  {timeAgo(n.created_at)}
+                <p className="font-mono text-[9px] text-text-faint mt-1 uppercase tracking-wide">
+                  Snapshot at trigger time — quote may have moved since
                 </p>
               </div>
             </button>
