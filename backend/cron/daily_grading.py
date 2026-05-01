@@ -59,6 +59,7 @@ except Exception:
 import thesis_grader  # noqa: E402
 import pattern_memory  # noqa: E402
 import source_credibility  # noqa: E402
+from grading import live_score as live_score_mod  # noqa: E402
 
 
 logger = logging.getLogger(__name__)
@@ -105,23 +106,38 @@ def main(force: bool = False) -> dict:
     patterns_summary = _run_step("pattern_memory", pattern_memory.main)
     sources_summary = _run_step("source_credibility", source_credibility.main)
 
+    # Continuous in-flight grading. Refreshes live_score / live_verdict /
+    # live_score_updated_at on every non-locked thesis, regardless of whether
+    # the grader produced a terminal verdict this cycle. See
+    # docs/track-record-investigation.md §5–§6 for the formula and cadence
+    # rationale, and sql/live_score_columns.sql for the required DDL (the
+    # update is soft-fail: if the columns are missing, each persist warns and
+    # the loop keeps going).
+    live_score_summary = _run_step(
+        "live_score", live_score_mod.update_all_live_scores
+    )
+
     summary = {
         "grader": grader_summary,
         "patterns": patterns_summary,
         "sources": sources_summary,
+        "live_score": live_score_summary,
     }
     print(
-        "daily_grading: grader={grader} patterns={patterns} sources={sources}".format(
+        "daily_grading: grader={grader} patterns={patterns} sources={sources} "
+        "live_score={live_score}".format(
             grader=grader_summary,
             patterns=patterns_summary,
             sources=sources_summary,
+            live_score=live_score_summary,
         )
     )
     logger.info(
-        "daily_grading: grader=%s patterns=%s sources=%s",
+        "daily_grading: grader=%s patterns=%s sources=%s live_score=%s",
         grader_summary,
         patterns_summary,
         sources_summary,
+        live_score_summary,
     )
     return summary
 
