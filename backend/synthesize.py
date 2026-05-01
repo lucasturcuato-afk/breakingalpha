@@ -1060,20 +1060,31 @@ def run(brief_type="morning"):
     # body paragraphs. `published_at` / `ingested_at` are selected so the
     # selector can apply a freshness re-rank on top of relevance_score.
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    # Use a 48-hour window for published_at to allow late-breaking
+    # articles that were genuinely published within ~2 days. RSS feeds
+    # sometimes republish older content with new ingest timestamps —
+    # filtering on both published_at AND ingested_at prevents stale items
+    # (sometimes 100+ days old) from being chosen as "Top Stories".
+    publish_cutoff = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
     # `url`, `source`, and `deal_type` are required by lead_preselect.py —
     # url joins to deal_flow.source_url, source feeds the tier tiebreaker,
     # and deal_type drives the macro/geopolitical fallback hierarchy.
     resp = supabase.table("articles")\
         .select("title, summary, content, url, source, sector, industry_verticals, companies, deal_type, relevance_score, relevance_reason, published_at, ingested_at")\
         .gte("ingested_at", cutoff)\
+        .gte("published_at", publish_cutoff)\
         .order("relevance_score", desc=True)\
         .limit(60)\
         .execute()
 
     articles = resp.data or []
     if not articles:
+        # Fallback: if the 48h published_at filter excludes everything (rare),
+        # widen to 7 days but still respect freshness — never go fully unbounded.
+        wide_publish_cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
         resp = supabase.table("articles")\
             .select("title, summary, content, url, source, sector, industry_verticals, companies, deal_type, relevance_score, relevance_reason, published_at, ingested_at")\
+            .gte("published_at", wide_publish_cutoff)\
             .order("ingested_at", desc=True)\
             .limit(60)\
             .execute()
