@@ -17,7 +17,7 @@ export default function TermsOfServicePage() {
         </p>
 
         <p>
-          These Terms of Service (&ldquo;Terms&rdquo;) govern your use of Signalera (the &ldquo;Service&rdquo;), operated at breakingalpha.vercel.app. By accessing or using the Service, you agree to be bound by these Terms. If you do not agree, do not use the Service.
+          These Terms of Service (&ldquo;Terms&rdquo;) govern your use of Signalera (the &ldquo;Service&rdquo;), operated at signalera.ai. By accessing or using the Service, you agree to be bound by these Terms. If you do not agree, do not use the Service.
         </p>
 
         <h2>1. Beta Software</h2>
@@ -128,7 +128,7 @@ export default function TermsOfServicePage() {
 
         <h2>13. Termination</h2>
         <p>
-          We may suspend or terminate your access to the Service at any time, with or without cause, with or without notice. You may stop using the Service and delete your account at any time by emailing lucasturcuato@gmail.com.
+          We may suspend or terminate your access to the Service at any time, with or without cause, with or without notice. You may stop using the Service and delete your account at any time by emailing admin@signalera.ai.
         </p>
         <p>Upon termination, sections 7, 8, 10, 11, 12, 14, and 15 will survive.</p>
 
@@ -156,7 +156,7 @@ export default function TermsOfServicePage() {
         <p>Questions about these Terms? Contact:</p>
         <p>
           Signalera<br />
-          Email: <a href="mailto:lucasturcuato@gmail.com">lucasturcuato@gmail.com</a>
+          Email: <a href="mailto:admin@signalera.ai">admin@signalera.ai</a>
         </p>
       </article>
     </div>

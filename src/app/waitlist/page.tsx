@@ -24,10 +24,10 @@ export default function WaitlistPage() {
           <p className="text-text-muted text-sm mb-8">
             If you believe you should already have access, please email{" "}
             <a
-              href="mailto:lucasturcuato@gmail.com"
+              href="mailto:admin@signalera.ai"
               className="text-gold hover:underline font-medium"
             >
-              lucasturcuato@gmail.com
+              admin@signalera.ai
             </a>
           </p>
 
