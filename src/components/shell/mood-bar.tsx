@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { MoodDebugOverlay } from "./mood-debug-overlay";
 
 export type MoodType = "risk-off" | "risk-on" | "neutral" | "mixed" | "watch";
 
@@ -67,6 +68,9 @@ export function MoodBar({
       >
         {config.badgeLabel}
       </span>
+
+      {/* Dev-only inspector — hidden unless ?debug=mood is in the URL. */}
+      <MoodDebugOverlay />
     </div>
   );
 }

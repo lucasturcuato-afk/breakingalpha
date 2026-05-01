@@ -9,6 +9,7 @@ import { getSectorStyle } from "@/lib/sector-colors";
 import { EmptyState } from "@/components/ui/empty-state";
 import AnimatedNumber from "@/components/ui/animated-number";
 import { VerdictEvolution } from "@/components/track-record/verdict-evolution";
+import { useLiveMood } from "@/hooks/useLiveMood";
 
 function getSupabase() {
   return createBrowserClient(
@@ -86,6 +87,11 @@ export default function TrackRecordPage() {
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [verdicts, setVerdicts] = useState<VerdictRow[]>([]);
   const [overdueCount, setOverdueCount] = useState<number>(0);
+
+  // Banner mood comes from the shared SSOT hook so this page agrees with
+  // the dashboard / live feed / etc. Without this, AppShell falls back to
+  // MoodBar's hard-coded "VIX 14.2 / Markets steady / Neutral" defaults.
+  const { mood, moodHeadline, moodDetails } = useLiveMood();
 
   useEffect(() => {
     async function load() {
@@ -266,7 +272,12 @@ export default function TrackRecordPage() {
   const MIN_ROWS = 3;
 
   return (
-    <AppShell pageTitle="Track Record">
+    <AppShell
+      pageTitle="Track Record"
+      mood={mood}
+      moodHeadline={moodHeadline}
+      moodDetails={moodDetails}
+    >
       <div className="p-6 space-y-6 max-w-[960px]">
         {/* HEADER */}
         <div>
