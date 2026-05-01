@@ -19,7 +19,7 @@ export default function PrivacyPolicyPage() {
         <p>
           This Privacy Policy describes how Signalera (&ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;) collects,
           uses, and shares information when you use our service at
-          breakingalpha.vercel.app (the &ldquo;Service&rdquo;). By using the Service, you agree
+          signalera.ai (the &ldquo;Service&rdquo;). By using the Service, you agree
           to the collection and use of information in accordance with this policy.
         </p>
         <p>Signalera is currently in beta and provided free of charge.</p>
@@ -116,7 +116,7 @@ export default function PrivacyPolicyPage() {
 
         <h2>5. Data Retention</h2>
         <p>
-          We retain your account information for as long as your account is active. You may delete your account at any time by emailing lucasturcuato@gmail.com. Upon deletion, we will remove your personal information from our active databases within 30 days, though copies may persist in encrypted backups for an additional period before being overwritten in the normal course of operations.
+          We retain your account information for as long as your account is active. You may delete your account at any time by emailing admin@signalera.ai. Upon deletion, we will remove your personal information from our active databases within 30 days, though copies may persist in encrypted backups for an additional period before being overwritten in the normal course of operations.
         </p>
         <p>Aggregated, anonymized data that cannot be linked back to you may be retained indefinitely.</p>
 
@@ -131,7 +131,7 @@ export default function PrivacyPolicyPage() {
         <p>
           If you are a California resident, the California Consumer Privacy Act (CCPA) provides you with these rights. We do not sell personal information, so we do not currently offer an opt-out of sale.
         </p>
-        <p>To exercise any of these rights, email lucasturcuato@gmail.com. We will respond within 30 days.</p>
+        <p>To exercise any of these rights, email admin@signalera.ai. We will respond within 30 days.</p>
 
         <h2>7. Security</h2>
         <p>
@@ -158,7 +158,7 @@ export default function PrivacyPolicyPage() {
         <p>If you have questions about this Privacy Policy, contact:</p>
         <p>
           Signalera<br />
-          Email: <a href="mailto:lucasturcuato@gmail.com">lucasturcuato@gmail.com</a>
+          Email: <a href="mailto:admin@signalera.ai">admin@signalera.ai</a>
         </p>
       </article>
     </div>

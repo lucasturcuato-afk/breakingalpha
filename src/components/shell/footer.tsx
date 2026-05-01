@@ -41,7 +41,7 @@ export function Footer() {
             Privacy Policy
           </Link>
           <a
-            href="mailto:lucasturcuato@gmail.com"
+            href="mailto:admin@signalera.ai"
             className="hover:text-gold-dark transition-colors"
             style={{ textDecoration: "none", color: "inherit" }}
           >
