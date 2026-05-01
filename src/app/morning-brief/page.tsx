@@ -25,6 +25,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import { trackClientEvent } from "@/lib/track-event";
 import { useUserProfile } from "@/hooks/useUserProfile";
+import { useLiveMood } from "@/hooks/useLiveMood";
 import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
 import type { ContentDescriptor } from "@/lib/personalization";
 
@@ -170,6 +171,12 @@ export default function MorningBriefPage() {
   const [thesesCount, setThesesCount] = useState<number | null>(null);
   const [vixQuote, setVixQuote] = useState<{ price: string; pct: number } | null>(null);
   const router = useRouter();
+
+  // Banner mood comes from the global SSOT — same numbers + canonical 5-term
+  // pill as every other route. The brief body still reads
+  // `briefing.market_tone` and `briefing.market_pulse.sentiment_word` for its
+  // own hero card; that prose vocabulary is intentionally separate.
+  const liveMood = useLiveMood();
 
   useEffect(() => {
     fetch("/api/brief-rating")
@@ -454,15 +461,9 @@ export default function MorningBriefPage() {
   return (
     <AppShell
       pageTitle="Morning Brief"
-      mood={
-        tone === "BEARISH" ? "risk-off"
-        : tone === "BULLISH" ? "risk-on"
-        : tone === "MIXED" ? "mixed"
-        : tone === "WATCH" ? "watch"
-        : "neutral"
-      }
-      moodHeadline={briefing?.market_tone || "Loading..."}
-      moodDetails={[]}
+      mood={liveMood.mood}
+      moodHeadline={liveMood.moodHeadline}
+      moodDetails={liveMood.moodDetails}
       rightPanel={
         <>
           <PanelWidget title="Active Theses">
