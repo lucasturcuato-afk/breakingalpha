@@ -4,20 +4,19 @@ import { cn } from "@/lib/utils";
 import { useState, useRef, useEffect } from "react";
 import { Bell, Search, Sun, Moon, User } from "lucide-react";
 import { NotificationDropdown } from "./notification-dropdown";
+import { UserAvatar } from "./user-avatar";
 import { useTheme } from "@/components/providers/theme-provider";
 import { useNotifications } from "@/hooks/useNotifications";
 import Link from "next/link";
 
 interface TopbarProps {
   pageTitle: string;
-  userInitials?: string;
   authed?: boolean;
   onCommandOpen?: () => void;
 }
 
 export function Topbar({
   pageTitle,
-  userInitials = "LT",
   authed = false,
   onCommandOpen,
 }: TopbarProps) {
@@ -163,7 +162,7 @@ export function Topbar({
         )}
 
         {/* User avatar with dropdown */}
-        <UserMenu userInitials={userInitials} />
+        <UserMenu />
       </div>
     </div>
   );
@@ -171,7 +170,7 @@ export function Topbar({
 
 /* ── User menu dropdown ── */
 
-function UserMenu({ userInitials: _userInitials }: { userInitials: string }) {
+function UserMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -191,28 +190,10 @@ function UserMenu({ userInitials: _userInitials }: { userInitials: string }) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className={cn(
-          "w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer",
-          "border border-gold-border",
-          "transition-[box-shadow,border-color] duration-[var(--duration-base)]",
-          "brand-mark-pulse",
-        )}
-        style={{ backgroundColor: "var(--gold-muted)" }}
+        className="cursor-pointer"
         aria-label="User menu"
       >
-        <span
-          className="font-display text-[13px] font-bold leading-none"
-          style={{
-            backgroundImage:
-              "linear-gradient(180deg, var(--gold-light) 0%, var(--gold) 55%, var(--gold-dark) 100%)",
-            backgroundClip: "text",
-            WebkitBackgroundClip: "text",
-            color: "transparent",
-            WebkitTextFillColor: "transparent",
-          }}
-        >
-          S
-        </span>
+        <UserAvatar variant="topbar" />
       </button>
 
       {open && (

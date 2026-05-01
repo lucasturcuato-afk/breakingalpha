@@ -48,6 +48,8 @@ import {
   Check,
 } from "lucide-react";
 import { Wordmark } from "@/components/ui/wordmark";
+import { UserAvatar } from "./user-avatar";
+import type { User } from "@supabase/supabase-js";
 
 interface NavItem {
   id: string;
@@ -137,6 +139,10 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
     | null
     | undefined
   >(undefined);
+  // Raw Supabase auth user, threaded into <UserAvatar /> so the sidebar
+  // and the topbar both render from the same auth record (no race between
+  // two independent `getUser()` fetches).
+  const [authUser, setAuthUser] = useState<User | null | undefined>(undefined);
   const [watchlistCount, setWatchlistCount] = useState(0);
   const [notifDrawerOpen, setNotifDrawerOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -167,8 +173,10 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
     supabase.auth.getUser().then(({ data: { user: authUser } }) => {
       if (!authUser) {
         setUser(null);
+        setAuthUser(null);
         return;
       }
+      setAuthUser(authUser);
       setUser({
         id: authUser.id,
         name: authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "User",
@@ -362,12 +370,6 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
   }, []);
 
   const userName = user?.name || "User";
-  const userInitials = userName
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
   const userRole = user?.role || "";
 
   // Render groupings — preserves "Main" / "Research" labels for non-customize mode.
@@ -499,11 +501,7 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
             </button>
           ) : !!user ? (
             <div className="flex items-center gap-2.5 bg-parchment-mid border border-border-base rounded-lg px-3 py-2.5">
-              <div className="w-8 h-8 rounded-lg bg-espresso flex items-center justify-center flex-shrink-0">
-                <span className="font-display text-[11px] font-bold text-gold">
-                  {userInitials}
-                </span>
-              </div>
+              <UserAvatar variant="sidebar" user={authUser ?? null} />
               <div className="flex-1 min-w-0">
                 <p className="font-sans text-[12px] font-bold text-text-primary truncate">
                   {userName}
