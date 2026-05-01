@@ -1,0 +1,71 @@
+.driver-popover {
+  background-color: #FAF7F0 !important;
+  border: 1px solid rgba(201, 168, 76, 0.2) !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15) !important;
+  border-radius: 8px !important;
+  padding: 24px !important;
+  font-family: 'Inter', sans-serif !important;
+  max-width: 420px !important;
+}
+
+.driver-popover-title {
+  font-family: 'Playfair Display', serif !important;
+  font-weight: 600 !important;
+  font-size: 20px !important;
+  color: #1c1917 !important;
+  margin-bottom: 12px !important;
+}
+
+.driver-popover-description {
+  color: #44403c !important;
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+}
+
+.driver-popover-progress-text {
+  color: #78716c !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 11px !important;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.driver-popover-next-btn,
+.driver-popover-done-btn {
+  background-color: #C9A84C !important;
+  color: #1c1917 !important;
+  font-weight: 500 !important;
+  text-shadow: none !important;
+  border: none !important;
+  border-radius: 4px !important;
+  padding: 8px 16px !important;
+  font-size: 13px !important;
+}
+
+.driver-popover-next-btn:hover,
+.driver-popover-done-btn:hover {
+  background-color: #b89740 !important;
+}
+
+.driver-popover-prev-btn {
+  background-color: transparent !important;
+  color: #57534e !important;
+  border: 1px solid #d6d3d1 !important;
+  text-shadow: none !important;
+  border-radius: 4px !important;
+  padding: 8px 16px !important;
+  font-size: 13px !important;
+}
+
+.driver-popover-close-btn {
+  color: #78716c !important;
+}
+
+/* Spotlight overlay */
+.driver-overlay {
+  background-color: rgba(28, 25, 23, 0.6) !important;
+}
+
+.driver-active-element {
+  border-radius: 8px !important;
+}

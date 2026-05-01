@@ -510,7 +510,7 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
                 </p>
                 <p className="font-sans text-[10px] text-text-muted">{userRole}</p>
               </div>
-              <Link href="/settings/profile" aria-label="Settings">
+              <Link href="/settings/profile" aria-label="Settings" data-tour="profile-link">
                 <Settings size={14} className="text-text-faint hover:text-text-muted transition-colors" />
               </Link>
               <button

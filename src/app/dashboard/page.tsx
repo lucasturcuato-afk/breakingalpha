@@ -50,6 +50,8 @@ import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
 import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
 import type { ContentDescriptor } from "@/lib/personalization";
 import { useLiveMood } from "@/hooks/useLiveMood";
+import { ProductTour } from "@/components/tour/ProductTour";
+import { HelpButton } from "@/components/tour/HelpButton";
 
 function getSupabase() {
   return createBrowserClient(
@@ -138,6 +140,7 @@ export default function DashboardPage() {
   const [marketTone, setMarketTone] = useState<string | null>(null);
   const [storyTab, setStoryTab] = useState<"for-you" | "all">("all");
   const [isEditingCards, setIsEditingCards] = useState(false);
+  const [tourCompleted, setTourCompleted] = useState(true); // default true to avoid flash
   // Local override of the user's chosen cards. Used while editing, and as a
   // fallback persist-path when save fails (so UI stays consistent).
   const [marketCardsOverride, setMarketCardsOverride] = useState<string[] | null>(null);
@@ -156,6 +159,22 @@ export default function DashboardPage() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [refetchProfile]);
+
+  // Fetch tour completion status
+  useEffect(() => {
+    async function checkTour() {
+      const supabase = getSupabase();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from("user_profiles")
+        .select("tour_completed_v1")
+        .eq("id", user.id)
+        .maybeSingle();
+      setTourCompleted(data?.tour_completed_v1 ?? false);
+    }
+    checkTour();
+  }, []);
 
   useEffect(() => {
     async function loadStories() {
@@ -486,6 +505,7 @@ export default function DashboardPage() {
   }, [profile, stories, watchlistTickers, marketTone]);
 
   return (
+    <>
     <AppShell
       pageTitle="Dashboard"
       mood={mood}
@@ -493,12 +513,16 @@ export default function DashboardPage() {
       moodDetails={moodDetails}
       rightPanel={
         <>
-          <PanelWidget title="Daily Briefs">
-            <DailyBriefsWidget />
-          </PanelWidget>
-          <PanelWidget title="Active Theses">
-            <ActiveThesesWidget />
-          </PanelWidget>
+          <div data-tour="brief-card">
+            <PanelWidget title="Daily Briefs">
+              <DailyBriefsWidget />
+            </PanelWidget>
+          </div>
+          <div data-tour="contrarian-section">
+            <PanelWidget title="Active Theses">
+              <ActiveThesesWidget />
+            </PanelWidget>
+          </div>
           <PanelWidget title="Watchlist">
             <WatchlistWidget />
           </PanelWidget>
@@ -618,12 +642,12 @@ export default function DashboardPage() {
         </div>
 
         {/* System Intelligence */}
-        <div className="mt-2">
+        <div className="mt-2" data-tour="memo-cta">
           <SystemIntelligenceWidget />
         </div>
 
         {/* AI signal bar */}
-        <div className="mt-3">
+        <div className="mt-3" data-tour="intelligence-chat">
           <AISignalBar
             text={briefingHeadline ?? "Loading intelligence briefing..."}
             boldParts={[]}
@@ -694,7 +718,7 @@ export default function DashboardPage() {
           ) : (
             <>
               {/* Lead story */}
-              <div className="relative">
+              <div className="relative" data-tour="story-card">
                 {storyTab === "for-you" && (displayStories[0].tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
                   <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 mb-1">
                     Watching
@@ -721,5 +745,8 @@ export default function DashboardPage() {
         </div>
       </div>
     </AppShell>
+    <ProductTour shouldAutoStart={!tourCompleted} />
+    <HelpButton />
+    </>
   );
 }
