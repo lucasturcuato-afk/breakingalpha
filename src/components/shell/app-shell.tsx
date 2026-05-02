@@ -34,28 +34,19 @@ export function AppShell({
 }: AppShellProps) {
   const [panelOpen, setPanelOpen] = useState(true);
   const [commandOpen, setCommandOpen] = useState(false);
-  const [userInitials, setUserInitials] = useState("–");
   const [authed, setAuthed] = useState(false);
 
+  // We only need to know whether the user is signed in here (for the
+  // notification bell visibility). The user avatar reads its own auth
+  // state inside <UserAvatar /> so both render sites share one source
+  // of truth without prop threading.
   useEffect(() => {
     const supabase = createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     );
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) {
-        setAuthed(false);
-        return;
-      }
-      setAuthed(true);
-      const name = user.user_metadata?.full_name || user.email?.split("@")[0] || "";
-      const initials = name
-        .split(" ")
-        .map((w: string) => w[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2);
-      setUserInitials(initials || "–");
+      setAuthed(!!user);
     });
 
     const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -130,7 +121,6 @@ export function AppShell({
         {/* Topbar */}
         <Topbar
           pageTitle={pageTitle}
-          userInitials={userInitials}
           authed={authed}
           onCommandOpen={() => setCommandOpen(true)}
         />
