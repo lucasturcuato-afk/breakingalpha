@@ -305,6 +305,13 @@ export async function POST(request: NextRequest) {
     const baseSystem = (memoCtx ? memoCtx + "\n\n" : "") + system;
     const augmentedSystem = buildMemoPrompt(profile, baseSystem);
 
+    // Web-fallback memos need a higher output ceiling than article-grounded.
+    // The web prompt has 5 sections plus per-claim [n] citations plus two
+    // 75-word "What To Do With This" bullets, which routinely lands in the
+    // 700 to 950 output-token range. The article-grounded "company" prompt
+    // is capped at "Under 300 words" and fits comfortably in 750. Splitting
+    // the ceiling here keeps the article-grounded path byte-identical.
+    const maxOutputTokens = type === "company-web" ? 8192 : 750;
     try {
       const completion = await ai.models.generateContent({
         model: "gemini-2.5-flash",
@@ -312,7 +319,7 @@ export async function POST(request: NextRequest) {
         config: {
           systemInstruction: augmentedSystem,
           temperature: 0.35,
-          maxOutputTokens: 750,
+          maxOutputTokens,
           thinkingConfig: { thinkingBudget: 0 },
         },
       });
