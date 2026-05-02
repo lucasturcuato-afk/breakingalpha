@@ -73,7 +73,20 @@ function parseSections(text: string): string[] {
 
 /* ── Types ── */
 
-export type MemoType = "deal" | "thesis" | "brief" | "article" | "company";
+export type MemoType = "deal" | "thesis" | "brief" | "article" | "company" | "company-web";
+
+/**
+ * Optional source list rendered below the memo body. Used by the web-fallback
+ * path so the bracketed [n] citations the model emits can be clicked through
+ * to the originating URL. Order matters: index n in this list maps to [n+1]
+ * in the memo prose.
+ */
+export interface MemoSource {
+  url: string;
+  title: string;
+  source: string;
+  publishedAt: string | null;
+}
 
 interface MemoModalProps {
   isOpen: boolean;
@@ -86,6 +99,8 @@ interface MemoModalProps {
   preloadedMemo?: string;
   /** Called with the full memo text after a successful API generation. */
   onGenerated?: (text: string) => void;
+  /** Optional source list for provenance display (web-fallback path). */
+  sources?: MemoSource[];
 }
 
 const TYPE_LABELS: Record<MemoType, string> = {
@@ -94,9 +109,10 @@ const TYPE_LABELS: Record<MemoType, string> = {
   brief: "Market Brief",
   article: "Article Analysis",
   company: "Company Brief",
+  "company-web": "Company Brief",
 };
 
-export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt, preloadedMemo, onGenerated }: MemoModalProps) {
+export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt, preloadedMemo, onGenerated, sources }: MemoModalProps) {
   const [mounted, setMounted] = useState(false);
   const [memo, setMemo] = useState("");
   const [loading, setLoading] = useState(false);
@@ -233,9 +249,24 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
             <p className="font-data text-[9px] uppercase tracking-widest text-gold font-bold mb-1">
               {TYPE_LABELS[type]}
             </p>
-            <h2 className="font-display text-[20px] font-bold text-espresso">
-              {title}
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="font-display text-[20px] font-bold text-espresso">
+                {title}
+              </h2>
+              {type === "company-web" && (
+                <span
+                  className="font-data text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md border"
+                  style={{
+                    color: "var(--gold)",
+                    backgroundColor: "var(--gold-muted)",
+                    borderColor: "rgba(201,146,42,0.4)",
+                  }}
+                  title="Memo grounded in web search results, not the indexed news pipeline"
+                >
+                  Web-grounded
+                </span>
+              )}
+            </div>
           </div>
           <button
             type="button"
@@ -279,6 +310,35 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
                   </ReactMarkdown>
                 </div>
               ))}
+
+              {/* Provenance: source list rendered when callers supply web-fallback
+                  results. Each source corresponds to a [n] citation in the memo
+                  body (1-indexed). */}
+              {sources && sources.length > 0 && (
+                <div className="mt-6 pt-4 border-t border-border-base">
+                  <p className="font-data text-[10px] uppercase tracking-widest text-gold font-bold mb-2">
+                    Sources
+                  </p>
+                  <ol className="list-decimal pl-5 space-y-1.5">
+                    {sources.map((s) => (
+                      <li key={s.url} className="font-sans text-[12px] text-text-secondary leading-snug">
+                        <a
+                          href={s.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-text-primary hover:text-gold underline-offset-2 hover:underline"
+                        >
+                          {s.title}
+                        </a>
+                        <span className="font-data text-[10px] text-text-faint ml-1.5">
+                          {s.source}
+                          {s.publishedAt ? ` · ${s.publishedAt.slice(0, 10)}` : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
             </div>
           )}
         </div>

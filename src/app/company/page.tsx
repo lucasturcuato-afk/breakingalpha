@@ -6,7 +6,7 @@ import { AppShell } from "@/components/shell";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Search, Building2, Bookmark, Sparkles, ExternalLink, Lock } from "lucide-react";
+import { Search, Building2, Bookmark, Sparkles, ExternalLink, Lock, Globe, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserClient } from "@supabase/ssr";
 import { getSectorStyle } from "@/lib/sector-colors";
@@ -16,6 +16,8 @@ import {
   CompanyArticle,
   buildMemoContent,
   buildMemoSystemPrompt,
+  buildWebFallbackMemoContent,
+  buildWebFallbackMemoSystemPrompt,
   canonicalize,
   filterAndClassifyArticles,
   timeAgo,
@@ -35,6 +37,17 @@ interface CompanyData {
   name: string;
   mentions: number;
   sectors: string[];
+}
+
+// Shape returned by /api/companies/web-fallback. Includes `summary` for the
+// memo prompt; MemoSource (used by the modal's source list) is the visible
+// subset.
+interface WebFallbackResult {
+  url: string;
+  title: string;
+  source: string;
+  publishedAt: string | null;
+  summary: string;
 }
 
 // Shape of /api/companies response items. Locally redeclared to avoid importing
@@ -221,6 +234,20 @@ export default function CompanyIntelPage() {
   const [isSignedOut, setIsSignedOut] = useState(false);
   const [showSignIn, setShowSignIn] = useState(false);
 
+  // Web-fallback state. Only meaningful when NEXT_PUBLIC_WEB_FALLBACK_ENABLED
+  // is "true"; otherwise the CTA never renders and these stay empty.
+  // Flow: empty grid + signed-in + flag on -> CTA visible -> click "Generate"
+  // -> fetch /api/companies/web-fallback -> render webResults list -> click
+  // "Generate Memo" -> open MemoModal with type="company-web".
+  const webFallbackEnabled = process.env.NEXT_PUBLIC_WEB_FALLBACK_ENABLED === "true";
+  const [webFallbackLoading, setWebFallbackLoading] = useState(false);
+  const [webFallbackError, setWebFallbackError] = useState("");
+  // Full result rows (with summary) used to seed the memo content.
+  // The MemoModal `sources` prop only displays the smaller MemoSource shape.
+  const [webResults, setWebResults] = useState<WebFallbackResult[]>([]);
+  const [webCanonical, setWebCanonical] = useState("");
+  const [webMemoOpen, setWebMemoOpen] = useState(false);
+
   useEffect(() => {
     const supabase = createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -282,6 +309,58 @@ export default function CompanyIntelPage() {
       clearTimeout(handle);
     };
   }, [search]);
+
+  // Reset web-fallback state on every new search keystroke. The CTA must only
+  // surface for the *current* query, not a stale one.
+  useEffect(() => {
+    setWebResults([]);
+    setWebCanonical("");
+    setWebFallbackError("");
+    setWebFallbackLoading(false);
+  }, [search]);
+
+  const handleGenerateWebFallback = async () => {
+    const trimmed = search.trim();
+    if (trimmed.length < 2) return;
+    setWebFallbackLoading(true);
+    setWebFallbackError("");
+    try {
+      const res = await fetch("/api/companies/web-fallback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: trimmed }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Search failed (${res.status})`);
+      }
+      const json = (await res.json()) as {
+        results?: WebFallbackResult[];
+        canonicalName?: string;
+        error?: string;
+      };
+      setWebResults(json.results ?? []);
+      setWebCanonical(json.canonicalName ?? trimmed);
+      if ((json.results ?? []).length === 0) {
+        setWebFallbackError("No web results found for that company.");
+      }
+    } catch (e) {
+      setWebFallbackError(e instanceof Error ? e.message : "Web search failed");
+    } finally {
+      setWebFallbackLoading(false);
+    }
+  };
+
+  // Memo content + system prompt for the web-fallback modal. Memoized so we
+  // don't recompute the prompt on every render once results are loaded.
+  const webMemoContent = useMemo(() => {
+    if (!webCanonical || webResults.length === 0) return "";
+    return buildWebFallbackMemoContent(webCanonical, webResults);
+  }, [webCanonical, webResults]);
+  const webMemoSystemPrompt = useMemo(() => {
+    if (!webCanonical) return "";
+    return buildWebFallbackMemoSystemPrompt(webCanonical, webResults.length);
+  }, [webCanonical, webResults.length]);
 
   // Filter companies by industry vertical only — search is handled server-side
   // by /api/companies?q=... so we no longer Array.filter the displayed list by
@@ -522,11 +601,118 @@ export default function CompanyIntelPage() {
               ))}
             </div>
           ) : filtered.length === 0 ? (
-            <EmptyState
-              icon={<Building2 size={32} />}
-              title={search ? "No companies match" : "No companies indexed yet"}
-              description={search ? "Try a different search term." : "Check back after the next update."}
-            />
+            <div>
+              <EmptyState
+                icon={<Building2 size={32} />}
+                title={search ? "No companies match" : "No companies indexed yet"}
+                description={search ? "Try a different search term." : "Check back after the next update."}
+              />
+
+              {/* Web-search fallback CTA. Only renders when:
+                    - feature flag is on
+                    - user is signed in (signed-out users see the lock instead)
+                    - the user has typed >= 2 chars (we have something to search)
+                    - we have not already loaded web results for this query */}
+              {webFallbackEnabled && !isSignedOut && search.trim().length >= 2 && webResults.length === 0 && (
+                <div
+                  className="mt-4 px-4 py-4 rounded-xl border flex items-center justify-between"
+                  style={{ borderColor: "rgba(201,146,42,0.3)", backgroundColor: "var(--gold-muted)" }}
+                >
+                  <div className="flex items-start gap-3">
+                    <Globe size={16} className="mt-0.5" style={{ color: "var(--gold)" }} />
+                    <div>
+                      <p className="font-sans text-[13px] font-semibold text-espresso">
+                        We don&apos;t have {search.trim()} in our index yet.
+                      </p>
+                      <p className="font-sans text-[12px] text-text-secondary mt-0.5">
+                        Generate a memo from web search instead?
+                      </p>
+                      {webFallbackError && (
+                        <p className="font-sans text-[11px] text-signal-dn mt-1">{webFallbackError}</p>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleGenerateWebFallback}
+                    disabled={webFallbackLoading}
+                    className={cn(
+                      "flex-shrink-0 ml-4 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg",
+                      "font-data text-[10px] font-bold uppercase border cursor-pointer transition-colors",
+                      "border-gold/40 bg-white text-gold hover:bg-gold/10",
+                      webFallbackLoading && "opacity-60 cursor-wait",
+                    )}
+                  >
+                    {webFallbackLoading ? (
+                      <>
+                        <Loader2 size={11} className="animate-spin" />
+                        Searching
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={11} />
+                        Generate
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Web-fallback result list. Renders after a successful search;
+                  user can click "Generate Memo" to open MemoModal. */}
+              {webFallbackEnabled && webResults.length > 0 && (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="font-data text-[10px] uppercase tracking-widest text-gold font-bold">
+                      Web results for {webCanonical}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setWebMemoOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-gold/40 bg-gold-muted text-gold font-data text-[10px] font-bold uppercase cursor-pointer hover:bg-gold/10 transition-colors"
+                    >
+                      <Sparkles size={11} />
+                      Generate Memo
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {webResults.map((r, i) => (
+                      <div key={r.url} className="bg-white border border-border-base rounded-xl p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-data text-[9px] text-gold bg-gold-muted border border-gold-border px-1.5 py-0.5 rounded-md">
+                            [{i + 1}]
+                          </span>
+                          <span className="font-data text-[9px] text-text-muted">{r.source}</span>
+                          {r.publishedAt && (
+                            <span className="font-data text-[9px] text-text-faint ml-auto">
+                              {r.publishedAt.slice(0, 10)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
+                            {r.title}
+                          </h4>
+                          <a
+                            href={r.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5"
+                          >
+                            <ExternalLink size={11} />
+                          </a>
+                        </div>
+                        {r.summary && (
+                          <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
+                            {r.summary}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (
             <div>
               <div className="grid grid-cols-3 gap-2">
@@ -796,6 +982,24 @@ export default function CompanyIntelPage() {
           content={memoContent}
           type="company"
           systemPrompt={buildMemoSystemPrompt(selectedCompany.name)}
+        />
+      )}
+      {/* Web-fallback memo modal. Distinct instance from the indexed-company
+          modal so the two paths cannot interfere with each other. */}
+      {webFallbackEnabled && webCanonical && webResults.length > 0 && (
+        <MemoModal
+          isOpen={webMemoOpen}
+          onClose={() => setWebMemoOpen(false)}
+          title={webCanonical}
+          content={webMemoContent}
+          type="company-web"
+          systemPrompt={webMemoSystemPrompt}
+          sources={webResults.map((r) => ({
+            url: r.url,
+            title: r.title,
+            source: r.source,
+            publishedAt: r.publishedAt,
+          }))}
         />
       )}
       <SignInModal

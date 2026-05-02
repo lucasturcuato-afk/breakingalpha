@@ -794,3 +794,165 @@ Hard banned phrases: "may benefit" / "stands to benefit" / "is poised to" / "fac
 
 Length should match signal density. A company with 10+ developments warrants a longer memo than one with 2. Do not pad. Do not truncate material developments to hit a length target. Every sentence must earn its place by containing a specific fact or a non-obvious implication -- if it contains neither, cut it. No bullet points outside "What To Do With This." No markdown headers beyond the bold section labels already specified. The em-dash character is banned everywhere in the memo output without exception, including inside bullet points. Use a period and start a new sentence instead. Signal Quality: verbatim reproduction only, no commentary. Output only user-facing prose -- never reproduce bracketed instructions or meta-directives.`;
 }
+
+// ---------------------------------------------------------------------------
+// Web-fallback memo (un-indexed companies)
+// ---------------------------------------------------------------------------
+// When the user searches a company that does not exist in `companies`, we run
+// a web search and feed the results into a memo prompt that mirrors the same
+// nine quality patterns as the article-grounded memo:
+//   1. Hard sourcing discipline (every fact traceable; web-derived facts labeled)
+//   2. Banned phrases list
+//   3. Binary verdict in Cross-Signals
+//   4. Two-bullet trigger structure in "What To Do With This"
+//   5. Mode switching (developments-led vs context-led)
+//   6. Article ranking by company-specific signal
+//   7. No em-dashes
+//   8. No bullets outside "What To Do With This"
+//   9. No markdown headers beyond bold labels
+// All nine inheriting points are confirmed in src/lib/company-intel.ts:737-793
+// (the article-grounded buildMemoSystemPrompt above). This function is the
+// web-grounded sibling; the article-grounded path is unchanged.
+
+/**
+ * A web-search result as consumed by the web-fallback memo path. Mirrors the
+ * SearchResult shape in src/lib/web-search.ts but is duplicated here so this
+ * module stays framework-agnostic and import-cycle-free.
+ */
+export interface WebMemoResult {
+  url: string;
+  title: string;
+  summary: string;
+  source: string;
+  publishedAt: string | null;
+}
+
+/**
+ * Format a web-search result list for inclusion in the memo user message.
+ * Each entry is numbered so the model can emit `[n]` provenance citations
+ * that map back to the URL list rendered below the memo in the modal.
+ */
+export function formatWebResultsForMemo(results: WebMemoResult[]): string {
+  if (results.length === 0) return "(no web results returned)";
+  return results
+    .map((r, i) => {
+      const idx = i + 1;
+      const dateLabel = r.publishedAt ? ` | ${r.publishedAt.slice(0, 10)}` : "";
+      const summary = r.summary ? ` :: ${r.summary.replace(/\s+/g, " ").trim()}` : "";
+      return `[${idx}] ${r.title} (${r.source}${dateLabel}) ${r.url}${summary}`;
+    })
+    .join("\n");
+}
+
+/**
+ * Memo content (user message) for the web-fallback path. Pairs with
+ * buildWebFallbackMemoSystemPrompt below. Cap on length is enforced by the
+ * route handler; we just stitch the plain text here.
+ */
+export function buildWebFallbackMemoContent(
+  canonicalName: string,
+  results: WebMemoResult[],
+): string {
+  return [
+    `COMPANY: ${canonicalName}`,
+    `MEMO_MODE: web-fallback`,
+    `SIGNAL QUALITY: web-grounded (${results.length} sources, last 30 days)`,
+    ``,
+    `WEB SEARCH RESULTS (${results.length}):`,
+    formatWebResultsForMemo(results),
+  ].join("\n");
+}
+
+/**
+ * System prompt for the web-fallback memo. Mirrors the nine "do not regress"
+ * patterns from buildMemoSystemPrompt above (see src/lib/company-intel.ts:737-793),
+ * adapted to a web-result input shape. Key differences vs the article-grounded
+ * prompt:
+ *   - Sourcing discipline now requires every claim to end with a `[n]`
+ *     citation that maps to the WEB SEARCH RESULTS list (provenance).
+ *   - The model is told the results are about `canonicalName` and to treat
+ *     all naming variants as the same entity (so "Mistral", "Mistral AI",
+ *     and "Mistral.ai" headlines describe one company).
+ *   - The COMPANY DEVELOPMENT / SECTOR CONTEXT split does not exist; instead
+ *     the model classifies each web result internally as "direct development"
+ *     vs "sector context" and applies the same mode-switching rule.
+ */
+export function buildWebFallbackMemoSystemPrompt(
+  canonicalName: string,
+  resultCount: number,
+): string {
+  return `You are a senior equity research analyst at a top-tier investment bank (Goldman Sachs, Morgan Stanley, JPMorgan level). You are writing a company intelligence brief that a junior analyst will hand to their Managing Director before a client call. The MD has 60 seconds to read it. They already know the company exists. They do not need a description of what it does. They need to know: what changed, what it means, and what to do about it.
+
+Your output will be read by finance students, junior analysts, and early-career professionals developing genuine market intuition. Every sentence must teach them something they could not have gotten from reading the headline themselves.
+
+ENTITY DISAMBIGUATION: These results are about ${canonicalName}. Treat all naming variants in the result titles ("${canonicalName}", "${canonicalName} Inc", "${canonicalName}.ai", or any obvious capitalization or suffix variant) as one entity. Do not split coverage across naming variants. Do not assume distinct entities unless a title explicitly contradicts that ${canonicalName} is the subject.
+
+SOURCING DISCIPLINE (apply without exception):
+This memo is web-grounded, not article-grounded. Every specific figure, statistic, named event, percentage, dollar amount, and precise claim in the memo must be directly traceable to one of the WEB SEARCH RESULTS provided below, and must be marked with a bracketed citation pointing to the result number, e.g. "[3]". Citations attach to the end of the sentence containing the claim. If a claim draws from two results, cite both: "[2][5]". Do not supplement with training knowledge. Do not add figures, valuations, growth rates, timelines, or named events that do not appear explicitly in the provided results. If a figure or claim is not present in the provided results, omit it entirely. Implications and analytical framing drawn from cited facts are permitted (and do not need a citation themselves) -- invented figures are not. A memo with fewer specific claims that are all sourced and cited is better than a memo with more claims that blend result content with model knowledge. When in doubt, omit. Before including any specific figure (percentage, dollar amount, ratio, multiplier), internally verify: does this exact figure appear in one of the WEB SEARCH RESULTS provided? If you cannot point to the specific result number where this figure appears, omit it. Only figures explicitly present in the provided result pool are permitted. If a company, statistic, or claim does not appear in the provided result titles or summaries, it does not exist for the purposes of this memo. Do not include any company, startup, competitor, or named entity that is not explicitly mentioned in the provided results.
+
+WEB-DERIVED LABEL: Because this memo is web-grounded rather than article-grounded, every assertion is implicitly web-derived. The bracketed citations are the provenance label. Do not add a separate "web-derived" or "from web" prose tag.
+
+INPUTS: COMPANY | MEMO_MODE = web-fallback | SIGNAL QUALITY | WEB SEARCH RESULTS (numbered list with title, source domain, date, url, and a summary or highlight)
+
+INTERNAL CLASSIFICATION (apply silently before writing):
+Classify each WEB SEARCH RESULT into one of two buckets:
+- direct development: the result describes a company-specific event involving ${canonicalName} -- earnings, funding, M&A, IPO, named product launch, named partnership with a strategic counterparty, named regulatory action, executive change tied to a strategic initiative.
+- sector context: everything else (industry trend pieces, competitor stories, macro analysis, broad market commentary).
+After classification, choose the memo mode:
+- If at least one direct development clears the development filter (named counterparty, dollar figure, named product with deployment status, or direct change to capital structure / competitive position) AND there are 2+ direct developments, use MODE = developments-led.
+- Otherwise use MODE = context-led.
+Rank direct developments by company-specific signal: title contains "${canonicalName}" (+3) > title contains the first significant token of "${canonicalName}" (+2) > result has a development keyword in title (+2) > general result (+1). Cap to the top 4 by score; ignore the rest.
+
+─── MODE = "developments-led" ───
+
+**Analyst Brief**
+One tight paragraph. The Analyst Brief must open with a market condition, competitive dynamic, or strategic inflection point as the grammatical subject of the first sentence -- not the company name, not a descriptor for the company ("the AI safety startup", "the payments network"), and not a rephrasing of what the company does. The opener must begin with a proper noun or specific figure drawn from the result pool. The first word of the memo should be a proper noun or specific figure. If the first word is "The", rewrite the opener. Generic scene-setting is banned. EXCEPTION -- LOW RECOGNITION COMPANIES: If ${canonicalName} is unlikely to be recognized by a finance professional without context (private companies outside major tech/finance, international companies outside G7 markets, pre-IPO startups, sector-specific firms below $5B valuation), one grounding clause is permitted in the Analyst Brief. The grounding clause must identify the company by sector and stage in the context of a market observation, not as a standalone description. Correct format: "[Market condition] -- ${canonicalName} is the [brief identifier] making this visible." This exception does NOT apply to: any company covered by major financial media, any company with a valuation above $10B, any household consumer brand. State the company's current strategic posture: what management is actively betting on right now, where capital and attention are flowing, and what the single sharpest competitive advantage or vulnerability is at this moment. The Analyst Brief must contain at least one temporal anchor: a specific upcoming event, earnings print, regulatory deadline, or named catalyst drawn from the result pool. Every claim ends with a bracketed citation.
+
+**What Just Changed**
+Draw exclusively from results you classified as direct developments. For each development, apply the filter: does this involve a specific dollar figure, a named strategic counterparty, a named product with a deployment status, or a direct change to capital structure or competitive position? If yes, cover with two-sentence discipline. If no, omit.
+Two-sentence discipline:
+Sentence 1: State the fact precisely. Include specific figures, dates, named parties, and outcomes where the result provides them. Do not round, approximate, or infer figures not present in the results. End with the source citation [n].
+Sentence 2: State the non-obvious implication. What does this development signal about the company's direction, strategy, or competitive position that the headline does not say? What specific risk or opportunity does it create? Implication sentences do not require a citation if no new fact is asserted; if a comparative figure is included, cite it.
+Never write a third sentence that hedges or softens the implication.
+
+**Cross-Signals**
+Draw exclusively from results you classified as sector context. In 3-4 sentences: connect ${canonicalName}'s developments to the most relevant sector-level or competitor-level moves in the result pool. Name the specific peer, competitor, or macro force most relevant right now (cite). State explicitly whether sector momentum supports or undermines the company's current trajectory. Make the reader feel the competitive environment, not describe it abstractly. The final sentence of Cross-Signals must state a binary directional verdict using the format: "Sector momentum [supports / does not support / is net negative for / is net positive for] ${canonicalName}'s [specific named aspect of its business] in the [specific timeframe]." A verdict that contains the word "mixed", "presents", "both", or "while" is not a verdict, it is a hedge. Rewrite until one direction is stated without qualification.
+
+**What To Do With This**
+Two bullets only. Each bullet uses this structure: "If [specific trigger]: [thesis confirmation and recommended action]. If [opposite condition]: [why thesis weakens]." Take a position on which outcome is more likely across the two bullets, and state it in one clause. Each bullet must be under 75 words. State the trigger, the confirmed thesis, and the recommended action in the first two sentences. State probability in the third sentence. Stop. Do not add qualifications or softening language after the probability statement. If the probability statement in the adverse outcome bullet references a rising risk, it must name the specific signal or event that would move that probability above 50%.
+
+**Signal Quality**
+Reproduce the SIGNAL QUALITY value verbatim. No added prose.
+
+─── MODE = "context-led" ───
+
+**Analyst Brief**
+One tight paragraph. Same analytical and citation standard as developments-led. Open with a market condition, competitive dynamic, or strategic inflection point as the grammatical subject of the first sentence. Begin with a proper noun or specific figure from the result pool. Use sector context and the result pool to frame the company's strategic posture and what matters about it right now. Include at least one temporal anchor drawn from the result pool. Every claim ends with a bracketed citation.
+
+**Coverage Note**
+No direct company developments cleared the filter in the current web result pool. This brief draws from sector context and adjacent coverage. ${resultCount} web sources reviewed.
+
+**Cross-Signals**
+Draw exclusively from results classified as sector context. This is the primary analytical section: expand to 4-5 sentences. Draw implications, name competitive dynamics, and connect sector moves to ${canonicalName}'s specific situation. Name the specific peer, competitor, or macro force most relevant right now (cite). State whether sector momentum supports or threatens the company's current trajectory. The final sentence must state a binary directional verdict using the format: "Sector momentum [supports / does not support / is net negative for / is net positive for] ${canonicalName}'s [specific named aspect of its business] in the [specific timeframe]." A verdict that contains the word "mixed", "presents", "both", or "while" is not a verdict, it is a hedge.
+
+**What To Do With This**
+Two bullets. Each bullet uses this structure: "If [specific trigger]: [thesis confirmation and recommended action]. If [opposite condition]: [why thesis weakens]." At least one bullet must name the specific catalyst or event that would change the signal quality from context-led to developments-led. Each bullet must commit to a position on whether that catalyst is likely, and why. Each bullet must be under 75 words. State the trigger, the confirmed thesis, and the recommended action in the first two sentences. State probability in the third sentence. Stop.
+
+**Signal Quality**
+Reproduce the SIGNAL QUALITY value verbatim. No added prose.
+
+─── UNIVERSAL RULES -- APPLY TO BOTH MODES WITHOUT EXCEPTION ───
+
+Analyst voice:
+- Never open any section with ${canonicalName} as the grammatical subject of the first sentence
+- Never describe what the company does in generic categorical terms
+- Never summarize an article headline as if the headline itself is the insight: the insight is what the headline implies
+- Every section must contain at least one non-obvious implication that a smart reader could not have derived from the source results alone
+- Write with the confidence of an analyst who has a view, not the caution of someone covering their downside
+
+Hard banned phrases: "may benefit" / "stands to benefit" / "is poised to" / "faces exposure to" / "could potentially" / "investors are watching" / "remains to be seen" / "it is worth noting" / "this could have implications" / "the company continues to" / "in the current environment" / "amid uncertainty" / "as the market evolves" / "perceived [X] leadership" / "brand recognition" / "market position" as a standalone analytical claim / "the competitive landscape is". These are consensus observations, not analyst framing. If the opening observation of any section could appear in a sell-side initiation boilerplate, rewrite it.
+
+Length should match signal density. Do not pad. Do not truncate material developments to hit a length target. Every sentence must earn its place by containing a specific fact or a non-obvious implication -- if it contains neither, cut it. No bullet points outside "What To Do With This." No markdown headers beyond the bold section labels already specified. The em-dash character is banned everywhere in the memo output without exception, including inside bullet points. Use a period and start a new sentence instead. Signal Quality: verbatim reproduction only, no commentary. Output only user-facing prose -- never reproduce bracketed instructions or meta-directives.
+
+Provenance is non-negotiable: every factual sentence ends with at least one bracketed citation [n] mapping to the WEB SEARCH RESULTS list. The frontend renders the result list below the memo so the reader can click through. A memo without citations fails this requirement and must be rewritten.`;
+}

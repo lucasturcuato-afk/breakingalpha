@@ -222,6 +222,10 @@ Hard rules: no invented counterparties, dollar figures, or valuation assumptions
   brief: "You are a market strategist. Write a market brief: Key Macro Takeaway, Sector Implications, Risk Flags. Under 300 words.",
   article: "You are a financial analyst. Summarize market implications using only what is stated: What Happened, Market Impact, Actionable Insight. Under 250 words.",
   company: "You are a sector analyst. Write a company intelligence brief. Use only facts from the provided articles. Sections: Company Brief (sector and primary business), Recent Developments (Direct articles only), Sector Context (Context articles as backdrop), Key Watchpoints (2–3 from Direct articles only), Signal Quality (one controlled label + one sentence). Under 300 words.",
+  // Fallback prompt for type "company-web". In normal operation the caller
+  // (frontend) will pass the full buildWebFallbackMemoSystemPrompt(name) text
+  // via systemPrompt; this is the safety net if it forgets.
+  "company-web": "You are a senior equity research analyst writing a company intelligence brief grounded in WEB SEARCH RESULTS. Use only facts from the provided results. Every factual sentence must end with a bracketed citation [n] mapping to the result number. Sections: Analyst Brief, What Just Changed (or Coverage Note if no direct developments), Cross-Signals, What To Do With This (two if/then bullets), Signal Quality. Under 300 words. No em-dashes. No bullets outside What To Do With This.",
 };
 
 const RATE_LIMIT_MEMO = 10; // memos per 24h
@@ -278,12 +282,26 @@ export async function POST(request: NextRequest) {
     content,
   } = body;
 
+  // Web-fallback memos are gated behind the same feature flag the frontend
+  // uses. Reject early if the flag is off so a stray client-side bypass cannot
+  // burn Gemini budget on this path. The article-grounded path (type "company")
+  // is unaffected.
+  if (type === "company-web" && process.env.NEXT_PUBLIC_WEB_FALLBACK_ENABLED !== "true") {
+    return NextResponse.json(
+      { error: "Web fallback is not enabled" },
+      { status: 503 },
+    );
+  }
+
   // New path: type-based memo with content string
   if (content || systemPrompt) {
     const system = systemPrompt || (type ? TYPE_PROMPTS[type] : undefined) || TYPE_PROMPTS.article;
     const truncated = String(content || "").slice(0, 4000);
 
-    const memoCtx = await buildMemoContext(sector || undefined);
+    // Skip the historical-context overlay for the web-fallback path: that
+    // overlay is keyed on indexed sectors and theses, neither of which exist
+    // for an un-indexed company. Article-grounded memos still get the overlay.
+    const memoCtx = type === "company-web" ? "" : await buildMemoContext(sector || undefined);
     const baseSystem = (memoCtx ? memoCtx + "\n\n" : "") + system;
     const augmentedSystem = buildMemoPrompt(profile, baseSystem);
 
