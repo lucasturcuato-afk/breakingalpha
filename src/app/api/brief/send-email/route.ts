@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const from = process.env.EMAIL_FROM_ADDRESS ?? "briefs@signalera.com";
+  const from = process.env.EMAIL_FROM_ADDRESS ?? "briefs@signalera.ai";
   const defaultSubject =
     payload.briefing_type === "evening"
       ? "Signalera Evening Wrap"
