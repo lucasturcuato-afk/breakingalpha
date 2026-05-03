@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { searchWeb, type SearchResult } from "@/lib/web-search";
+import { normalizeFromResults } from "./normalize";
 
 export const dynamic = "force-dynamic";
 
@@ -88,10 +89,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Query too long" }, { status: 400 });
   }
 
-  const canonicalName = bestGuessCanonical(query);
   // Disambiguate the search; the watchlist Exa call uses the same suffix so we
-  // get news-shaped results rather than homepage / Wikipedia hits.
+  // get news-shaped results rather than homepage / Wikipedia hits. Exa's fuzzy
+  // match handles typos in the query, which is why the user's raw query goes
+  // straight to the search call without normalization first.
   const searchQuery = `${query} company news`;
+
+  // Heuristic fallback. Used by normalizeFromResults when the result pool is
+  // empty, ambiguous, or below the 50% confidence threshold. Computing it up
+  // front keeps the flow readable and the fallback path single-source.
+  const heuristicGuess = bestGuessCanonical(query);
 
   let results: SearchResult[] = [];
   try {
@@ -103,6 +110,12 @@ export async function POST(request: NextRequest) {
       { status: 502 },
     );
   }
+
+  // Derive the canonical name from the result evidence rather than the user's
+  // raw typing. Recovers from typos and casing errors so the value handed to
+  // buildWebFallbackMemoSystemPrompt is what the model is about to read about,
+  // not what the user mistyped.
+  const canonicalName = normalizeFromResults(query, results, heuristicGuess);
 
   const payload: WebFallbackResponse = {
     results,
