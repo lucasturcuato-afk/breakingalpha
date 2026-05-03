@@ -237,6 +237,7 @@ export async function POST(request: NextRequest) {
       const result = await resend.emails.send({
         from,
         to: [recipient],
+        replyTo: process.env.EMAIL_REPLY_TO ?? "admin@signalera.ai",
         subject,
         html,
         // RFC 2369 / RFC 8058 compliance for Gmail bulk-sender rules.
