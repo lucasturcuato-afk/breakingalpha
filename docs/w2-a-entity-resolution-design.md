@@ -108,7 +108,7 @@ After W2-A, ingest calls `register_entity(surface_form, themes, sentiment) -> ca
 4. If multiple rows: pick the row with the highest `mention_count` (the V1 tiebreak rule), increment that row's counts, write a `resolution_log` row with `was_ambiguous = true` and the full candidate list, return the chosen `canonical_id`.
 5. If zero rows: INSERT a new `companies` row with `name = surface_form`, INSERT an `aliases` row pointing to it (`surface_form` raw, `lookup_key` normalized, `mention_count = 1`), write a `resolution_log` row with `was_ambiguous = false`, return the new `canonical_id`.
 
-Steps 3, 4, and 5 each run in a single transaction. The INSERT path in step 5 must handle the existing `UNIQUE (companies.name)` constraint: on conflict (race with another worker), SELECT the existing canonical_id and re-run from step 2.
+Steps 3, 4, and 5 each run in a single transaction. Step 5 uses `INSERT INTO companies (name) VALUES ($1) ON CONFLICT (name) DO NOTHING RETURNING id` to handle the existing `UNIQUE (companies.name)` constraint. If `RETURNING` is empty (another worker won the race), SELECT the existing `canonical_id` by name and re-enter at step 2. No advisory locks; the unique constraint is the synchronization primitive.
 
 Lucas implements this in the follow-up PR. This doc specifies the function-level contract; not the line-by-line edit.
 
@@ -118,6 +118,10 @@ Lucas implements this in the follow-up PR. This doc specifies the function-level
 import unicodedata
 
 def normalize_lookup_key(s: str) -> str:
+    # Strip trademark/registered/copyright symbols before NFKC.
+    # NFKC decomposes ™ to "TM" which would concatenate to the preceding
+    # token (Permag™ -> permagtm), defeating dedup. Strip them first.
+    s = s.replace("™", "").replace("®", "").replace("©", "")
     s = unicodedata.normalize("NFKC", s)
     s = s.replace("’", "'").replace("‘", "'")  # curly single quotes -> straight
     s = s.replace("“", '"').replace("”", '"')  # curly double quotes -> straight
@@ -125,7 +129,7 @@ def normalize_lookup_key(s: str) -> str:
     return s
 ```
 
-NFKC handles the trademark symbol (Permag™ -> Permag™ then -> Permag tm at the lowercase step? no: ™ is a single codepoint, NFKC decomposes it to "TM"), accent equivalences (Société -> Société), and full-width-to-ASCII conversions for any CJK-source text.
+NFKC handles full-width-to-ASCII conversions for any CJK-source text and most ligature decompositions. It does NOT collapse smart quotes to straight quotes (handled by the explicit replace calls above) and it decomposes ™ to "TM" rather than removing it (handled by the explicit symbol strip before NFKC). Accented characters like Société are preserved as-is post-NFKC; we accept that "Société" and "Societe" will not match in V1, on the grounds that the legitimate dedup cases in our prod data all involve the same accent on both sides (curly Estée vs straight Estée being the contamination, not Estée vs Estee).
 
 Apostrophe folding is required in addition to NFKC because NFKC does not collapse U+2019 (right single quotation mark) to U+0027 (apostrophe). Same for U+2018, U+201C, U+201D.
 
@@ -140,7 +144,23 @@ This function is referenced in section 3 (`aliases.lookup_key` generation) and s
 **Backfill scope.** Two cleanup jobs in the same PR:
 
 1. `wikidata_entity_cache`: rows where `is_company IS NULL` get hard-deleted. Next time those names appear in ingest, they re-classify and write the new `is_company = false` (or true) value.
-2. `companies`: hard-delete rows whose `name` matches a `wikidata_entity_cache.name` with `is_company IS NULL` (pre-cleanup, captured before step 1 runs). Cascade deletes existing `company_mentions` for those companies. These rows entered `companies` only because of the ambiguous-keep behavior; they are not legitimate canonical entities.
+2. `companies`: hard-delete rows whose `name` matches a `wikidata_entity_cache.name` with `is_company IS NULL` (pre-cleanup, captured before step 1 runs). These rows entered `companies` only because of the ambiguous-keep behavior; they are not legitimate canonical entities.
+
+   Before running the delete, audit the FK graph pointing AT `companies` to confirm what cascades. Any FK from a user-state table (`user_events`, `watchlist`, beta-user bookmarks) means cascade-delete silently destroys user history.
+
+   ```sql
+   SELECT tc.table_name, kcu.column_name, rc.delete_rule
+   FROM information_schema.table_constraints tc
+   JOIN information_schema.key_column_usage kcu USING (constraint_name)
+   JOIN information_schema.referential_constraints rc USING (constraint_name)
+   WHERE tc.constraint_type = 'FOREIGN KEY'
+     AND rc.unique_constraint_name IN (
+       SELECT constraint_name FROM information_schema.table_constraints
+       WHERE table_name = 'companies' AND constraint_type = 'PRIMARY KEY'
+     );
+   ```
+
+   Decision rule: if any user-data table has `delete_rule = CASCADE` pointing at `companies`, switch that path to soft-delete (add `companies.deleted_at` and filter on it everywhere) instead of hard-delete. Pure system tables like `company_mentions` cascading is fine. Run this audit during implementation, not now.
 
 **Dry-run query (run before deleting).**
 
