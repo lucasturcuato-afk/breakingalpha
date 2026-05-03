@@ -57,3 +57,9 @@ __pycache__/
 .worktrees/
 .playwright-mcp/
 design-reference/
+
+# Session scratch (agent-generated diagnosis files, do not commit)
+.session-artifacts/
+COMPANY_INTEL_*.md
+ORCHESTRATOR_SUMMARY.md
+WATCHLIST_INGESTION_DIAGNOSIS.md
