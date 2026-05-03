@@ -15,9 +15,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { render } from "@react-email/render";
 import { Resend } from "resend";
+import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { BriefEmail, type BriefEmailPayload } from "@/components/brief/brief-email";
 import { createElement } from "react";
+import { getSiteUrl } from "@/lib/email/site-url";
+import { ensureIssueNumber } from "@/lib/email/issue-number";
+import { makeUnsubscribeToken } from "@/lib/email/unsubscribe-token";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -104,7 +108,36 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Briefing not found" }, { status: 404 });
   }
 
+  // Issue number: compute and cache on first send. Soft-fails to null
+  // if the migration hasn't been applied; the email simply omits "Issue #N".
+  const issueNumber = await ensureIssueNumber(
+    supabase,
+    raw.id as string,
+    typeof raw.issue_number === "number" ? raw.issue_number : null,
+  );
+
+  // Filter out recipients who have opted out of brief emails. We use a
+  // service-role client (anon key fallback) because RLS on user_profiles
+  // blocks reads of other users' rows from the requester's session.
+  // Match by lowercased email against auth.users via the user_profiles
+  // join is overkill here: instead we look up profile rows where the
+  // user's auth email matches one of the recipients. If we can't resolve
+  // a recipient (no profile yet), we keep them in the send list.
+  const filteredTo = await filterUnsubscribed(to);
+  if (filteredTo.length === 0) {
+    return NextResponse.json(
+      {
+        ok: true,
+        skipped: to,
+        reason: "All recipients have unsubscribed.",
+        to: [],
+      },
+      { status: 200 },
+    );
+  }
+
   const payload: BriefEmailPayload = {
+    id: raw.id ?? undefined,
     headline: raw.headline ?? undefined,
     summary: raw.summary ?? undefined,
     market_tone: raw.market_tone ?? undefined,
@@ -116,52 +149,230 @@ export async function POST(request: NextRequest) {
     market_pulse:
       (safeParseJSON(raw.market_pulse) as BriefEmailPayload["market_pulse"]) ?? null,
     briefing_type: (raw.briefing_type as "morning" | "evening") ?? briefingType,
+    issue_number: issueNumber,
   };
 
-  let html: string;
+  // Build per-send URLs. View-in-browser is the same for everyone (the
+  // public share view at /share/brief/[id]). Unsubscribe is per-user
+  // and we fall back to the requesting user's id if we cannot resolve
+  // the recipient. That means clicking unsubscribe in a forwarded
+  // email would unsubscribe the original sender, which is the safer
+  // failure mode (no silent send-loop) and only happens for
+  // recipients we have no profile row for.
+  const siteUrl = getSiteUrl();
+  const viewInBrowserUrl = raw.id
+    ? `${siteUrl}/share/brief/${raw.id}`
+    : siteUrl;
+
+  // Resolve a per-recipient unsubscribe token. For multi-recipient sends
+  // we send one Resend call per recipient so each gets their own token
+  // and List-Unsubscribe URL. Resend's bulk send can collapse these into
+  // a single API call later if needed.
+  const sendResults: Array<{ to: string; id: string | null }> = [];
+  const sendErrors: Array<{ to: string; error: string }> = [];
+
+  let resend: Resend;
   try {
-    const element = createElement(BriefEmail, { briefing: payload });
-    html = await render(element as React.ReactElement);
+    resend = new Resend(process.env.RESEND_API_KEY);
   } catch (e) {
-    console.error("[send-email] render error:", e);
+    console.error("[send-email] resend init error:", e);
     return NextResponse.json(
-      { error: "Failed to render email" },
-      { status: 500 },
+      { error: "Email service init failed" },
+      { status: 502 },
     );
   }
 
+  const from = process.env.EMAIL_FROM_ADDRESS ?? "briefs@signalera.ai";
   const defaultSubject =
     payload.briefing_type === "evening"
       ? "Signalera Evening Wrap"
       : "Signalera Morning Brief";
-  const subject = (body.subject && body.subject.trim()) || defaultSubject;
+  const baseSubject = (body.subject && body.subject.trim()) || defaultSubject;
+  const subject =
+    issueNumber && !baseSubject.toLowerCase().includes("issue")
+      ? `${baseSubject} · Issue #${issueNumber}`
+      : baseSubject;
 
-  try {
-    const resend = new Resend(process.env.RESEND_API_KEY);
-    const from = process.env.EMAIL_FROM_ADDRESS ?? "briefs@signalera.com";
-    const result = await resend.emails.send({
-      from,
-      to,
-      subject,
-      html,
-    });
-    if (result.error) {
-      console.error("[send-email] resend error:", result.error);
+  for (const recipient of filteredTo) {
+    const userIdForToken = await resolveUserIdForEmail(recipient, user.id);
+    let unsubscribeUrl: string;
+    try {
+      unsubscribeUrl = `${siteUrl}/api/unsubscribe?token=${makeUnsubscribeToken(
+        userIdForToken,
+      )}`;
+    } catch (e) {
+      console.error(
+        "[send-email] could not mint unsubscribe token (missing JWT secret?):",
+        e,
+      );
+      // Without a token we cannot meet Gmail's bulk-sender requirement.
+      // Refuse the send rather than ship a non-compliant email.
       return NextResponse.json(
         {
+          error:
+            "Unsubscribe signing key missing. Set SUPABASE_JWT_SECRET (or SUPABASE_SERVICE_ROLE_KEY).",
+        },
+        { status: 503 },
+      );
+    }
+
+    let html: string;
+    try {
+      const element = createElement(BriefEmail, {
+        briefing: payload,
+        viewInBrowserUrl,
+        unsubscribeUrl,
+      });
+      html = await render(element as React.ReactElement);
+    } catch (e) {
+      console.error("[send-email] render error:", e);
+      sendErrors.push({
+        to: recipient,
+        error: "Failed to render email",
+      });
+      continue;
+    }
+
+    try {
+      const result = await resend.emails.send({
+        from,
+        to: [recipient],
+        replyTo: process.env.EMAIL_REPLY_TO ?? "admin@signalera.ai",
+        subject,
+        html,
+        // RFC 2369 / RFC 8058 compliance for Gmail bulk-sender rules.
+        // The mailto: address gives mail clients a fallback route that
+        // doesn't depend on the HTTP one-click endpoint working.
+        headers: {
+          "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:admin@signalera.ai?subject=unsubscribe>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
+      });
+      if (result.error) {
+        console.error("[send-email] resend error:", result.error);
+        sendErrors.push({
+          to: recipient,
           error:
             typeof result.error === "object" && "message" in result.error
               ? (result.error as { message: string }).message
               : "Resend failed",
-        },
-        { status: 502 },
-      );
+        });
+        continue;
+      }
+      sendResults.push({ to: recipient, id: result.data?.id ?? null });
+    } catch (e) {
+      console.error("[send-email] dispatch error:", e);
+      const msg = e instanceof Error ? e.message : "Email dispatch failed";
+      sendErrors.push({ to: recipient, error: msg });
     }
-    return NextResponse.json({ ok: true, id: result.data?.id ?? null, to });
+  }
+
+  if (sendResults.length === 0 && sendErrors.length > 0) {
+    return NextResponse.json(
+      { error: sendErrors[0].error, errors: sendErrors },
+      { status: 502 },
+    );
+  }
+
+  return NextResponse.json({
+    ok: true,
+    sent: sendResults,
+    errors: sendErrors,
+    skipped: to.filter((t) => !filteredTo.includes(t)),
+    issue_number: issueNumber,
+  });
+}
+
+/**
+ * Returns the subset of `recipients` that have NOT opted out of brief
+ * emails. Recipients with no user_profiles row are kept (default true).
+ *
+ * Soft-fail: if the brief_email_subscribed column doesn't exist yet
+ * (migration unapplied), we return all recipients to keep email working.
+ */
+async function filterUnsubscribed(recipients: string[]): Promise<string[]> {
+  if (recipients.length === 0) return [];
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) return recipients;
+    const admin = createClient(url, key, { auth: { persistSession: false } });
+
+    // user_profiles doesn't store email directly; auth.users does. We
+    // use admin.auth.admin.listUsers() to map emails -> user ids, then
+    // look up brief_email_subscribed for those ids. Soft-fails on any
+    // error path back to the full recipient list.
+    const lowered = new Set(recipients.map((r) => r.toLowerCase()));
+    const { data: usersList, error: listErr } = await admin.auth.admin.listUsers({
+      perPage: 1000,
+    });
+    if (listErr) {
+      console.warn("[send-email] listUsers failed; sending to all:", listErr.message);
+      return recipients;
+    }
+    const matched = (usersList?.users ?? []).filter(
+      (u) => u.email && lowered.has(u.email.toLowerCase()),
+    );
+    if (matched.length === 0) return recipients;
+    const ids = matched.map((u) => u.id);
+    const { data: profiles, error: profErr } = await admin
+      .from("user_profiles")
+      .select("id, brief_email_subscribed")
+      .in("id", ids);
+    if (profErr) {
+      console.warn(
+        "[send-email] user_profiles lookup failed; sending to all:",
+        profErr.message,
+      );
+      return recipients;
+    }
+    const optedOutIds = new Set(
+      (profiles ?? [])
+        .filter((p) => p.brief_email_subscribed === false)
+        .map((p) => p.id),
+    );
+    if (optedOutIds.size === 0) return recipients;
+    const optedOutEmails = new Set(
+      matched
+        .filter((u) => optedOutIds.has(u.id))
+        .map((u) => (u.email || "").toLowerCase()),
+    );
+    return recipients.filter(
+      (r) => !optedOutEmails.has(r.toLowerCase()),
+    );
   } catch (e) {
-    console.error("[send-email] dispatch error:", e);
-    const msg = e instanceof Error ? e.message : "Email dispatch failed";
-    return NextResponse.json({ error: msg }, { status: 502 });
+    console.warn("[send-email] filterUnsubscribed soft-fail:", e);
+    return recipients;
+  }
+}
+
+/**
+ * Returns the auth user_id whose email matches `email`, or `fallbackUserId`
+ * (the requesting user) if no match is found. Used to mint per-recipient
+ * unsubscribe tokens. Soft-fails to fallback on any error.
+ */
+async function resolveUserIdForEmail(
+  email: string,
+  fallbackUserId: string,
+): Promise<string> {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) return fallbackUserId;
+    const admin = createClient(url, key, { auth: { persistSession: false } });
+    const { data, error } = await admin.auth.admin.listUsers({ perPage: 1000 });
+    if (error) return fallbackUserId;
+    const lower = email.toLowerCase();
+    const hit = (data?.users ?? []).find(
+      (u) => (u.email || "").toLowerCase() === lower,
+    );
+    return hit?.id ?? fallbackUserId;
+  } catch {
+    return fallbackUserId;
   }
 }
 
@@ -198,7 +409,16 @@ export async function GET(request: NextRequest) {
   }
 
   const raw = data[0];
+
+  // Preview reads (but does NOT mint) the cached issue number so the
+  // user-triggered preview doesn't accidentally consume an issue # that
+  // would later collide with the real send. If unset, the preview shows
+  // no Issue # (same soft-fail behavior as the send path).
+  const previewIssueNumber =
+    typeof raw.issue_number === "number" ? raw.issue_number : null;
+
   const payload: BriefEmailPayload = {
+    id: raw.id ?? undefined,
     headline: raw.headline ?? undefined,
     summary: raw.summary ?? undefined,
     market_tone: raw.market_tone ?? undefined,
@@ -210,10 +430,33 @@ export async function GET(request: NextRequest) {
     market_pulse:
       (safeParseJSON(raw.market_pulse) as BriefEmailPayload["market_pulse"]) ?? null,
     briefing_type: (raw.briefing_type as "morning" | "evening") ?? briefingType,
+    issue_number: previewIssueNumber,
   };
 
+  // Build preview-mode URLs. The unsubscribe token is keyed to the
+  // requesting user so they can self-test the unsubscribe flow against
+  // their own profile row.
+  const siteUrl = getSiteUrl();
+  const viewInBrowserUrl = raw.id
+    ? `${siteUrl}/share/brief/${raw.id}`
+    : siteUrl;
+  let unsubscribeUrl: string | undefined;
   try {
-    const element = createElement(BriefEmail, { briefing: payload });
+    unsubscribeUrl = `${siteUrl}/api/unsubscribe?token=${makeUnsubscribeToken(
+      user.id,
+    )}`;
+  } catch {
+    // Preview without an unsubscribe link is acceptable. The warning
+    // surfaces on real sends.
+    unsubscribeUrl = undefined;
+  }
+
+  try {
+    const element = createElement(BriefEmail, {
+      briefing: payload,
+      viewInBrowserUrl,
+      unsubscribeUrl,
+    });
     const html = await render(element as React.ReactElement);
     return NextResponse.json({ html });
   } catch (e) {

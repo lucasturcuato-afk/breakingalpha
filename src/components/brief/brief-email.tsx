@@ -35,6 +35,7 @@ export interface EmailMarketPulse {
 }
 
 export interface BriefEmailPayload {
+  id?: string;
   headline?: string;
   summary?: string;
   market_tone?: string;
@@ -44,11 +45,16 @@ export interface BriefEmailPayload {
   created_at?: string;
   market_pulse?: EmailMarketPulse | null;
   briefing_type?: "morning" | "evening";
+  issue_number?: number | null;
 }
 
 interface BriefEmailProps {
   briefing: BriefEmailPayload;
   recipientName?: string;
+  /** Absolute URL that opens this brief in a browser (signalera.ai/share/brief/...). */
+  viewInBrowserUrl?: string;
+  /** Absolute URL that one-click unsubscribes the recipient. */
+  unsubscribeUrl?: string;
 }
 
 /* ── Tokens ────────────────────────────────────────────────────────────── */
@@ -106,14 +112,45 @@ function formatGeneratedAt(iso?: string): string {
   }
 }
 
+/**
+ * Format the issue header date as "Friday, May 1, 2026".
+ *
+ * Always en-US, always long weekday + month, no timezone conversion
+ * surprises in mail clients (Date is parsed once, then formatted).
+ */
+function formatIssueDate(iso?: string): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return "";
+  }
+}
+
 /* ── Main component ────────────────────────────────────────────────────── */
 
-export function BriefEmail({ briefing, recipientName }: BriefEmailProps) {
+export function BriefEmail({
+  briefing,
+  recipientName,
+  viewInBrowserUrl,
+  unsubscribeUrl,
+}: BriefEmailProps) {
   const label =
     (briefing.briefing_type ?? "morning") === "evening"
       ? "EVENING WRAP"
       : "MORNING BRIEF";
   const generatedAt = formatGeneratedAt(briefing.created_at);
+  const issueDate = formatIssueDate(briefing.created_at);
+  const issueNumber =
+    typeof briefing.issue_number === "number" && briefing.issue_number > 0
+      ? briefing.issue_number
+      : null;
   const pulse = briefing.market_pulse ?? null;
   const sections = briefing.sections ?? {};
   const sectionEntries = Object.entries(sections).filter(
@@ -150,6 +187,31 @@ export function BriefEmail({ briefing, recipientName }: BriefEmailProps) {
             backgroundColor: "#ffffff",
           }}
         >
+          {/* View-in-browser bar (small/secondary, sits above masthead) */}
+          {viewInBrowserUrl ? (
+            <Section style={{ marginBottom: "16px" }}>
+              <Text
+                style={{
+                  fontSize: "11px",
+                  color: MUTED,
+                  margin: 0,
+                  textAlign: "right",
+                }}
+              >
+                Trouble viewing this email?{" "}
+                <Link
+                  href={viewInBrowserUrl}
+                  style={{
+                    color: MUTED,
+                    textDecoration: "underline",
+                  }}
+                >
+                  View in browser
+                </Link>
+              </Text>
+            </Section>
+          ) : null}
+
           {/* Header */}
           <Section style={{ marginBottom: "12px" }}>
             <Heading
@@ -176,7 +238,21 @@ export function BriefEmail({ briefing, recipientName }: BriefEmailProps) {
             >
               {label}
             </Text>
-            {generatedAt ? (
+            {issueNumber || issueDate ? (
+              <Text
+                style={{
+                  fontSize: "12px",
+                  color: INK,
+                  margin: "4px 0 0 0",
+                  fontWeight: 600,
+                }}
+              >
+                {issueNumber ? `Issue #${issueNumber}` : ""}
+                {issueNumber && issueDate ? " · " : ""}
+                {issueDate}
+              </Text>
+            ) : null}
+            {generatedAt && !issueDate ? (
               <Text
                 style={{
                   fontSize: "11px",
@@ -186,6 +262,16 @@ export function BriefEmail({ briefing, recipientName }: BriefEmailProps) {
               >
                 {generatedAt}
                 {briefing.market_tone ? ` · Tone: ${briefing.market_tone}` : ""}
+              </Text>
+            ) : briefing.market_tone ? (
+              <Text
+                style={{
+                  fontSize: "11px",
+                  color: MUTED,
+                  margin: "4px 0 0 0",
+                }}
+              >
+                {`Tone: ${briefing.market_tone}`}
               </Text>
             ) : null}
           </Section>
@@ -356,18 +442,35 @@ export function BriefEmail({ briefing, recipientName }: BriefEmailProps) {
               fontSize: "11px",
               color: MUTED,
               textAlign: "center",
-              margin: 0,
+              margin: "0 0 8px 0",
             }}
           >
             Sent by{" "}
             <Link
-              href="https://signalera.app"
+              href="https://signalera.ai"
               style={{ color: GOLD, textDecoration: "none", fontWeight: 700 }}
             >
               Signalera
             </Link>
             {" · Premium market intelligence."}
           </Text>
+          {unsubscribeUrl ? (
+            <Text
+              style={{
+                fontSize: "11px",
+                color: MUTED,
+                textAlign: "center",
+                margin: 0,
+              }}
+            >
+              <Link
+                href={unsubscribeUrl}
+                style={{ color: MUTED, textDecoration: "underline" }}
+              >
+                Unsubscribe from Morning Brief
+              </Link>
+            </Text>
+          ) : null}
         </Container>
       </Body>
     </Html>
