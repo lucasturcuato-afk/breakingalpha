@@ -155,6 +155,6 @@ def is_valid_company(name: str, supabase) -> bool:
     elif is_co is True:
         print(f"  ✓ Wikidata keep [{desc_display}]: {name}")
     else:
-        print(f"  ~ Wikidata ambiguous (keep) [{desc_display}]: {name}")
+        print(f"  ⊘ Wikidata ambiguous (drop) [{desc_display}]: {name}")
 
     return is_co is True
