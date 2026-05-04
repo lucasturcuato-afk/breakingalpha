@@ -13,7 +13,7 @@
    - `GITHUB_DISPATCH_TOKEN` (fine-grained PAT with `contents: read & write` on `lucasturcuato-afk/breakingalpha`)
    - `GITHUB_REPO` (optional override; defaults to `lucasturcuato-afk/breakingalpha`)
 4. cron-job.org: add an entry
-   - URL: `https://signalera.app/api/grading/grade-brief`
+   - URL: `https://signalera.ai/api/grading/grade-brief`
    - Method: `POST`
    - Headers: `x-internal-key: ${INTERNAL_API_KEY}`
    - Schedule: `0 0 * * 1-5` (midnight UTC Tue–Sat = 5pm PT Mon–Fri preceding day — confirm exact time against US market close + DST)

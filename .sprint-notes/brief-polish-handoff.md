@@ -59,7 +59,7 @@ See `.sprint-notes/resend-dns-setup.md` in the PR.
 
 ### cron-job.org
 
-- URL: `https://signalera.app/api/grading/grade-brief`
+- URL: `https://signalera.ai/api/grading/grade-brief`
 - Method: POST
 - Header: `x-internal-key: ${INTERNAL_API_KEY}`
 - Schedule: `0 0 * * 1-5` (midnight UTC Tue-Sat)
