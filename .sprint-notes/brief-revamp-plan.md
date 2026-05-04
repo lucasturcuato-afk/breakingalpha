@@ -306,7 +306,7 @@ Branched from `main` (`63cce09`). All 3 subagents work in worktrees and merge in
    - Set timeout 10 min.
 
 4. Document in handoff:
-   - Cron-job.org entry: `POST https://signalera.app/api/grading/grade-brief` with header `x-internal-key: ${INTERNAL_API_KEY}`. Schedule: 5:00 PM PT daily (after market close).
+   - Cron-job.org entry: `POST https://signalera.ai/api/grading/grade-brief` with header `x-internal-key: ${INTERNAL_API_KEY}`. Schedule: 5:00 PM PT daily (after market close).
    - New env vars: none (Finnhub + Gemini already configured).
 
 **Python compile gate + tsc/build for the route. Commit:** `feat(grading): brief call outcome grading job`.
