@@ -521,7 +521,11 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
               <span className="lg:hidden">→</span>
             </button>
           ) : !!user ? (
-            <div className="flex items-center justify-center lg:justify-start gap-2.5 bg-parchment-mid border border-border-base rounded-lg px-2 lg:px-3 py-2.5">
+            // `group` on the tile so the actions group can reveal on hover.
+            // focus-within ensures keyboard tab navigation also reveals the
+            // controls (otherwise tabbing into Settings or Sign out from the
+            // keyboard would target invisible buttons).
+            <div className="group flex items-center justify-center lg:justify-start gap-2.5 bg-parchment-mid border border-border-base rounded-lg px-2 lg:px-3 py-2.5">
               <Link href="/settings/profile" aria-label={`${userName} settings`} className="lg:hidden">
                 <UserAvatar variant="sidebar" user={authUser ?? null} />
               </Link>
@@ -531,24 +535,29 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
                   <p className="font-sans text-[12px] font-bold text-text-primary truncate">
                     {userName}
                   </p>
-                  <p className="font-sans text-[10px] text-text-muted">{userRole}</p>
+                  <p className="font-sans text-[10px] text-text-muted truncate">{userRole}</p>
                 </div>
-                <Link href="/settings/profile" aria-label="Settings">
-                  <Settings size={14} className="text-text-faint hover:text-text-muted transition-colors" />
-                </Link>
-                <button
-                  type="button"
-                  title="Sign out"
-                  aria-label="Sign out"
-                  className="text-text-faint hover:text-signal-dn transition-colors cursor-pointer"
-                  onClick={async () => {
-                    const supabase = getSupabase();
-                    await supabase.auth.signOut();
-                    window.location.href = "/";
-                  }}
-                >
-                  <LogOut size={14} />
-                </button>
+                {/* Settings + sign out: hidden by default, fade in on hover or
+                    keyboard focus. Reclaims the row width for the user name so
+                    longer names ("Noah Hanning") are not truncated at 220px. */}
+                <div className="flex items-center gap-2 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-[var(--duration-base)]">
+                  <Link href="/settings/profile" aria-label="Settings">
+                    <Settings size={14} className="text-text-faint hover:text-text-muted transition-colors" />
+                  </Link>
+                  <button
+                    type="button"
+                    title="Sign out"
+                    aria-label="Sign out"
+                    className="text-text-faint hover:text-signal-dn transition-colors cursor-pointer"
+                    onClick={async () => {
+                      const supabase = getSupabase();
+                      await supabase.auth.signOut();
+                      window.location.href = "/";
+                    }}
+                  >
+                    <LogOut size={14} />
+                  </button>
+                </div>
               </div>
             </div>
           ) : null /* loading state: render nothing */}
