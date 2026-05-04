@@ -1,6 +1,19 @@
--- W2-A: Wikidata cleanup
--- See docs/w2-a-entity-resolution-design.md section 7 and docs/w2-a/fk-audit-results.md
--- DO NOT apply blindly. Noah follows the checklist in docs/w2-a/cleanup-runbook.md.
+-- W2-A: Wikidata cleanup (DEFERRED - path (b) chosen)
+--
+-- See docs/w2-a/fk-audit-results.md DECISION section.
+-- Path (b) ships the Wikidata flip ONLY. The DELETE statements below are
+-- preserved for reference but are NOT to be uncommented as part of W2-A.
+-- The polluted set is dominated by real companies (OpenAI 190 mentions,
+-- Meta, Visa, NVIDIA, etc.) that Wikidata classifies as ambiguous. Bulk
+-- deletion would destroy legitimate data and history.
+--
+-- Future narrowed cleanup (deferred to a separate workstream) will use
+-- alias-table data + resolution_log ambiguity rates to identify true
+-- noise (e.g., polluted rows with mention_count=1 AND no alias pointer
+-- AND no recent last_seen_at). That work is OUT OF SCOPE for W2-A.
+--
+-- The DELETE statements below are kept as a starting point for that
+-- future work. Do not run them as-is.
 --
 -- DRY RUN (run this FIRST, confirm count is in expected range, ~1260 at audit time):
 --   SELECT COUNT(*) FROM companies c

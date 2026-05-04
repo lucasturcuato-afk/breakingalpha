@@ -141,3 +141,39 @@ place pending manual review.
 
 The flip itself (backend/wikidata.py change) is independent of the
 cleanup decision and can ship regardless.
+
+## DECISION
+
+**Date:** 2026-05-04
+**Decided by:** Noah
+**Path (b)** - flip-only, no bulk cleanup
+
+### Reasoning
+
+The mention-count distribution of the 1,260 polluted rows tells the real story:
+
+| bucket | row_count | total_mentions |
+|--------|-----------|----------------|
+| zero | 0 | 0 |
+| low (1-5) | 1,209 | 1,631 |
+| medium (6-50) | 50 | 493 |
+| high (50+) | 1 | 190 |
+
+Inspection of the medium and 4-5 mention buckets revealed the polluted set is dominated by indisputably real companies - OpenAI, Meta, Visa, NVIDIA, Netflix, KKR, Morgan Stanley, Apollo, Carlyle, UBS, Goldman Sachs, Anduril, Berkshire, Dell Technologies, Cloudflare, Figma, Pershing Square (the literal entity that motivated W2-A), Roblox, SAP, Sequoia, Vanguard, NASA, and many more. These rows landed in the "polluted" set only because Wikidata's classifier returned `None` (ambiguous), not because they are wrong.
+
+The original section 7 plan assumed pollution = junk like Ackermann/ACP/Aidoc/Ajax. The data shows pollution = mostly OpenAI and Visa. Mass-deleting at any threshold above zero destroys legitimate data.
+
+### What ships
+
+1. The Wikidata flip (`backend/wikidata.py:131` and `:160`, `is_co is not False` to `is_co is True`). This stops new pollution from entering on every ingest cycle.
+2. No bulk cleanup of existing rows. They stay intact, preserving `mention_count`, `first_seen`, `key_themes`, `notes` history.
+
+### What does NOT ship (deferred to future workstream)
+
+- No bulk DELETE from `companies`. The existing 1,260 polluted rows remain.
+- No DELETE from `wikidata_entity_cache`. The ambiguous cache entries remain.
+- The cleanup migration in this PR keeps its commented DELETE statements as future-reference only. They are NOT to be uncommented and run as part of W2-A.
+
+### When narrowed cleanup becomes possible
+
+Once the alias table is populated and `resolution_log` has accumulated a few weeks of ambiguity data, we'll have a real basis for identifying which polluted rows are noise vs. signal. At that point, narrowed cleanup (e.g., delete polluted rows with `mention_count = 1` AND no `aliases` row pointing at them AND no recent `last_seen_at`) becomes a separate, defensible workstream. Out of scope for W2-A.
