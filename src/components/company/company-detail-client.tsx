@@ -10,7 +10,7 @@ import { getSectorStyle } from "@/lib/sector-colors";
 import { cn } from "@/lib/utils";
 import { timeAgo } from "@/lib/company-intel";
 import { CompletenessBadge, SignalScore, SourceCredibilityBadge, getCompleteness, getAdjustedScore } from "@/lib/article-signal";
-import type { CompanyArticle } from "@/lib/company-intel";
+import type { CompanyArticle, MemoArticleSource } from "@/lib/company-intel";
 
 export type CredibilityMap = Record<string, number>;
 
@@ -21,6 +21,10 @@ interface CompanyDetailClientProps {
   contextArticles: CompanyArticle[];
   memoContent: string;
   systemPrompt: string;
+  // Ordered source list aligned with the [N] markers in memoContent. Passed
+  // straight through to MemoModal.sources so the model's inline [n] citations
+  // resolve to clickable provenance entries below the memo prose.
+  memoSources?: MemoArticleSource[];
   totalArticles: number;
   credibilityMap?: CredibilityMap;
 }
@@ -32,6 +36,7 @@ export function CompanyDetailClient({
   contextArticles,
   memoContent,
   systemPrompt,
+  memoSources = [],
   totalArticles,
   credibilityMap = {},
 }: CompanyDetailClientProps) {
@@ -251,6 +256,12 @@ export function CompanyDetailClient({
         content={memoContent}
         type="company"
         systemPrompt={systemPrompt}
+        sources={memoSources.map((s) => ({
+          url: s.url,
+          title: s.title,
+          source: s.source,
+          publishedAt: s.publishedAt,
+        }))}
       />
     </div>
   );

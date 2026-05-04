@@ -309,9 +309,11 @@ export async function POST(request: NextRequest) {
     // The web prompt has 5 sections plus per-claim [n] citations plus two
     // 75-word "What To Do With This" bullets, which routinely lands in the
     // 700 to 950 output-token range. The article-grounded "company" prompt
-    // is capped at "Under 300 words" and fits comfortably in 750. Splitting
-    // the ceiling here keeps the article-grounded path byte-identical.
-    const maxOutputTokens = type === "company-web" ? 8192 : 750;
+    // is capped at "Under 300 words" but now also requires per-claim [n]
+    // citations (citation parity with web-fallback), so its working range is
+    // closer to 900 tokens. Bumped from 750 to 1200 to leave headroom for
+    // the new bracketed markers without truncating the closing sections.
+    const maxOutputTokens = type === "company-web" ? 8192 : type === "company" ? 1200 : 750;
     try {
       const completion = await ai.models.generateContent({
         model: "gemini-2.5-flash",
@@ -324,10 +326,39 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      const memo = completion.text;
+      let memo = completion.text;
       if (!memo) {
         return NextResponse.json({ error: "Gemini returned empty memo — retry" }, { status: 500 });
       }
+
+      // Article-grounded citation post-process. The model is instructed to
+      // cite only article indices that appear in the user message; this
+      // sweep is a defensive net for the rare case where the model emits a
+      // [n] marker outside the prompt's index space (most often n+1 when
+      // wrapping up a paragraph). Behavior:
+      //   1. Derive maxCitation by scanning the input prompt content for
+      //      `[N]` markers and taking the largest N. This is the size of
+      //      the source list the modal will render.
+      //   2. Walk every `[n]` in the model output. If n > maxCitation, drop
+      //      the bracket and any adjoining bracket cluster glue. If n is in
+      //      range, leave it untouched.
+      // The web-fallback path is unchanged (handled by the prompt alone).
+      if (type === "company") {
+        const promptCitations = Array.from(truncated.matchAll(/\[(\d+)\]/g))
+          .map((m) => Number(m[1]))
+          .filter((n) => Number.isFinite(n));
+        const maxCitation = promptCitations.length > 0 ? Math.max(...promptCitations) : 0;
+        if (maxCitation > 0) {
+          memo = memo.replace(/\[(\d+)\]/g, (full, raw) => {
+            const n = Number(raw);
+            return Number.isFinite(n) && n >= 1 && n <= maxCitation ? full : "";
+          });
+          // Tidy any double spaces left where a dangling marker was removed
+          // (e.g. "as expected . [99]" -> "as expected ." -> "as expected.").
+          memo = memo.replace(/[ \t]+([.,;:!?])/g, "$1").replace(/[ \t]{2,}/g, " ");
+        }
+      }
+
       return NextResponse.json({ memo });
     } catch (err) {
       console.error("[memo] Gemini content-path error:", err);

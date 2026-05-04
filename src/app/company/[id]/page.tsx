@@ -8,6 +8,7 @@ import {
   canonicalize,
   filterAndClassifyArticles,
   buildMemoContent,
+  buildMemoSources,
   buildMemoSystemPrompt,
 } from "@/lib/company-intel";
 import { fetchCompanyArticles } from "@/app/api/companies/[id]/articles/route";
@@ -75,6 +76,10 @@ export default async function CompanyDetailPage({
 
   const memoContent = buildMemoContent(companyName, developmentArticles, contextArticles);
   const systemPrompt = buildMemoSystemPrompt(companyName);
+  // Source list aligned with the [N] markers buildMemoContent emits, so the
+  // [n] citations the model writes resolve to clickable provenance entries
+  // below the memo body in the modal.
+  const memoSources = buildMemoSources(companyName, developmentArticles, contextArticles);
 
   return (
     <LiveMoodShell pageTitle="Company Intel">
@@ -85,6 +90,7 @@ export default async function CompanyDetailPage({
         contextArticles={contextArticles}
         memoContent={memoContent}
         systemPrompt={systemPrompt}
+        memoSources={memoSources}
         totalArticles={classified.length}
         credibilityMap={credibilityMap}
       />

@@ -15,6 +15,7 @@ import { SignInModal } from "@/components/auth/sign-in-modal";
 import {
   CompanyArticle,
   buildMemoContent,
+  buildMemoSources,
   buildMemoSystemPrompt,
   buildWebFallbackMemoContent,
   buildWebFallbackMemoSystemPrompt,
@@ -401,6 +402,15 @@ export default function CompanyIntelPage() {
   const memoContent = useMemo(() => {
     if (!selectedCompany) return "";
     return buildMemoContent(selectedCompany.name, developmentArticles, contextArticles);
+  }, [selectedCompany, developmentArticles, contextArticles]);
+
+  // Source list aligned with the [N] markers buildMemoContent embeds in the
+  // user message. Passed to MemoModal as `sources` so the [n] citations the
+  // model emits in the memo body resolve to clickable provenance entries
+  // below the prose, matching the web-fallback path.
+  const memoSources = useMemo(() => {
+    if (!selectedCompany) return [];
+    return buildMemoSources(selectedCompany.name, developmentArticles, contextArticles);
   }, [selectedCompany, developmentArticles, contextArticles]);
 
   // Load articles when a company is selected.
@@ -982,6 +992,12 @@ export default function CompanyIntelPage() {
           content={memoContent}
           type="company"
           systemPrompt={buildMemoSystemPrompt(selectedCompany.name)}
+          sources={memoSources.map((s) => ({
+            url: s.url,
+            title: s.title,
+            source: s.source,
+            publishedAt: s.publishedAt,
+          }))}
         />
       )}
       {/* Web-fallback memo modal. Distinct instance from the indexed-company
