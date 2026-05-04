@@ -128,7 +128,7 @@ def is_valid_company(name: str, supabase) -> bool:
             if is_co is False:
                 desc = (cached.get("wikidata_description") or "no description")[:70]
                 print(f"  ⊘ Wikidata(cache) drop [{desc}]: {name}")
-            return is_co is not False  # None → keep, True → keep, False → drop
+            return is_co is True  # None → drop, True → keep, False → drop
     except Exception as ex:
         print(f"  Wikidata cache read error [{name!r}]: {ex}")
         return True  # Cache error → keep
@@ -157,4 +157,4 @@ def is_valid_company(name: str, supabase) -> bool:
     else:
         print(f"  ~ Wikidata ambiguous (keep) [{desc_display}]: {name}")
 
-    return is_co is not False
+    return is_co is True
