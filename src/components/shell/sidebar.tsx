@@ -378,16 +378,18 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
 
   return (
     <>
-      <aside className="fixed left-0 top-0 bottom-0 w-[var(--sidebar-width)] bg-sidebar-bg border-r border-border-base flex flex-col z-40">
-        {/* Logo area */}
-        <div className="border-b border-border-base px-4 py-4 flex items-center justify-center">
+      <aside className="fixed left-0 top-0 bottom-0 w-[64px] lg:w-[var(--sidebar-width)] bg-sidebar-bg border-r border-border-base flex flex-col z-40">
+        {/* Logo area: full wordmark at lg+, hidden at icon-only width to avoid clipping */}
+        <div className="border-b border-border-base px-4 py-4 hidden lg:flex items-center justify-center">
           <Wordmark size="lg" />
         </div>
+        {/* Icon-only spacer to keep vertical rhythm at tablet */}
+        <div className="lg:hidden h-[57px] border-b border-border-base" />
 
-        {/* Nav body */}
-        <nav className="flex-1 overflow-y-auto px-3 py-3.5 space-y-5">
+        {/* Nav body. Tighter padding at icon-only width so 16px icons clear gracefully. */}
+        <nav className="flex-1 overflow-y-auto px-2 lg:px-3 py-3.5 space-y-5">
           {!!user && (
-            <div className="flex items-center justify-between px-3">
+            <div className="hidden lg:flex items-center justify-between px-3">
               <span className="font-sans text-[10px] font-semibold uppercase tracking-widest text-text-faint">
                 {customizeMode ? "Customise sections" : "Sections"}
               </span>
@@ -409,42 +411,46 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
           )}
 
           {customizeMode && !!user ? (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext items={prefs.order} strategy={verticalListSortingStrategy}>
-                <ul className="space-y-0.5">
-                  {orderedSections.map((item) => (
-                    <SortableRow
-                      key={item.id}
-                      item={item}
-                      hidden={prefs.hidden.includes(item.id)}
-                      onToggleHidden={() => toggleHidden(item.id)}
-                    />
-                  ))}
-                </ul>
-              </SortableContext>
-              <button
-                type="button"
-                onClick={resetSections}
-                className={cn(
-                  "flex items-center gap-2 w-full mt-3 px-3 py-2 rounded-lg",
-                  "font-sans text-[11px] font-medium",
-                  "text-text-muted hover:bg-parchment-mid hover:text-espresso",
-                  "transition-colors duration-[var(--duration-base)] cursor-pointer",
-                )}
+            // Customize/reorder UI is desktop-only; the icon-only width has no
+            // room for drag handles or hide toggles. dnd-kit setup unchanged.
+            <div className="hidden lg:block">
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
               >
-                <RotateCcw size={12} />
-                Reset to default
-              </button>
-            </DndContext>
+                <SortableContext items={prefs.order} strategy={verticalListSortingStrategy}>
+                  <ul className="space-y-0.5">
+                    {orderedSections.map((item) => (
+                      <SortableRow
+                        key={item.id}
+                        item={item}
+                        hidden={prefs.hidden.includes(item.id)}
+                        onToggleHidden={() => toggleHidden(item.id)}
+                      />
+                    ))}
+                  </ul>
+                </SortableContext>
+                <button
+                  type="button"
+                  onClick={resetSections}
+                  className={cn(
+                    "flex items-center gap-2 w-full mt-3 px-3 py-2 rounded-lg",
+                    "font-sans text-[11px] font-medium",
+                    "text-text-muted hover:bg-parchment-mid hover:text-espresso",
+                    "transition-colors duration-[var(--duration-base)] cursor-pointer",
+                  )}
+                >
+                  <RotateCcw size={12} />
+                  Reset to default
+                </button>
+              </DndContext>
+            </div>
           ) : (
             <>
               {mainItems.length > 0 && (
                 <NavGroup
-                  label="Main"
+                  label="Workspace"
                   items={mainItems}
                   pathname={pathname}
                   unreadCount={unreadCount}
@@ -462,68 +468,88 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
           )}
         </nav>
 
-        {/* Bell button */}
+        {/* Bell button. Label hides at icon-only; bell icon stays clickable.
+            Unread badge collapses to a corner dot at icon-only so users still
+            see there is unread state without the explicit count. */}
         {!!user && (
-          <div className="px-3 pb-2">
+          <div className="px-2 lg:px-3 pb-2">
             <button
               type="button"
               onClick={() => setNotifDrawerOpen(true)}
-              className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-text-muted hover:bg-parchment-mid hover:text-espresso transition-colors cursor-pointer relative"
+              className="flex items-center justify-center lg:justify-start gap-2 w-full px-2 lg:px-3 py-2 rounded-lg text-text-muted hover:bg-parchment-mid hover:text-espresso transition-colors cursor-pointer relative"
               aria-label="Notifications"
             >
               <Bell size={15} />
-              <span className="font-sans text-[13px] font-medium flex-1 text-left">Notifications</span>
+              <span className="hidden lg:inline font-sans text-[13px] font-medium flex-1 text-left">Notifications</span>
               {unreadBadge && (
-                <span
-                  className={cn(
-                    "min-w-[18px] h-[18px] rounded-md",
-                    "bg-gold text-cream",
-                    "flex items-center justify-center px-1",
-                    "font-sans text-[9px] font-bold",
-                  )}
-                >
-                  {unreadBadge}
-                </span>
+                <>
+                  <span
+                    className={cn(
+                      "hidden lg:flex",
+                      "min-w-[18px] h-[18px] rounded-md",
+                      "bg-gold text-cream",
+                      "items-center justify-center px-1",
+                      "font-sans text-[9px] font-bold",
+                    )}
+                  >
+                    {unreadBadge}
+                  </span>
+                  {/* Icon-only indicator: small gold dot at top-right of bell */}
+                  <span
+                    aria-hidden="true"
+                    className="lg:hidden absolute top-1 right-1 w-2 h-2 rounded-full bg-gold border border-sidebar-bg"
+                  />
+                </>
               )}
             </button>
           </div>
         )}
 
-        {/* User footer */}
-        <div className="border-t border-border-base px-3 py-3.5">
+        {/* User footer.
+            Desktop (lg+): full row with avatar, name, role, settings, sign-out.
+            Tablet (icon-only): avatar centered, name/role/buttons hidden.
+            Settings link still reachable via avatar click on tablet. */}
+        <div className="border-t border-border-base px-2 lg:px-3 py-3.5">
           {user === null ? (
             <button
               type="button"
               onClick={() => { window.location.href = "/auth"; }}
-              className="w-full flex items-center justify-center gap-2 h-10 rounded-xl font-sans text-[13px] font-semibold cursor-pointer transition-all bg-espresso text-cream"
+              className="w-full flex items-center justify-center gap-2 h-10 rounded-xl font-sans text-[12px] lg:text-[13px] font-semibold cursor-pointer transition-all bg-espresso text-cream"
+              aria-label="Sign in"
             >
-              Sign in free →
+              <span className="hidden lg:inline">Sign in free →</span>
+              <span className="lg:hidden">→</span>
             </button>
           ) : !!user ? (
-            <div className="flex items-center gap-2.5 bg-parchment-mid border border-border-base rounded-lg px-3 py-2.5">
-              <UserAvatar variant="sidebar" user={authUser ?? null} />
-              <div className="flex-1 min-w-0">
-                <p className="font-sans text-[12px] font-bold text-text-primary truncate">
-                  {userName}
-                </p>
-                <p className="font-sans text-[10px] text-text-muted">{userRole}</p>
-              </div>
-              <Link href="/settings/profile" aria-label="Settings">
-                <Settings size={14} className="text-text-faint hover:text-text-muted transition-colors" />
+            <div className="flex items-center justify-center lg:justify-start gap-2.5 bg-parchment-mid border border-border-base rounded-lg px-2 lg:px-3 py-2.5">
+              <Link href="/settings/profile" aria-label={`${userName} settings`} className="lg:hidden">
+                <UserAvatar variant="sidebar" user={authUser ?? null} />
               </Link>
-              <button
-                type="button"
-                title="Sign out"
-                aria-label="Sign out"
-                className="text-text-faint hover:text-signal-dn transition-colors cursor-pointer"
-                onClick={async () => {
-                  const supabase = getSupabase();
-                  await supabase.auth.signOut();
-                  window.location.href = "/";
-                }}
-              >
-                <LogOut size={14} />
-              </button>
+              <div className="hidden lg:flex items-center gap-2.5 flex-1 min-w-0">
+                <UserAvatar variant="sidebar" user={authUser ?? null} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-sans text-[12px] font-bold text-text-primary truncate">
+                    {userName}
+                  </p>
+                  <p className="font-sans text-[10px] text-text-muted">{userRole}</p>
+                </div>
+                <Link href="/settings/profile" aria-label="Settings">
+                  <Settings size={14} className="text-text-faint hover:text-text-muted transition-colors" />
+                </Link>
+                <button
+                  type="button"
+                  title="Sign out"
+                  aria-label="Sign out"
+                  className="text-text-faint hover:text-signal-dn transition-colors cursor-pointer"
+                  onClick={async () => {
+                    const supabase = getSupabase();
+                    await supabase.auth.signOut();
+                    window.location.href = "/";
+                  }}
+                >
+                  <LogOut size={14} />
+                </button>
+              </div>
             </div>
           ) : null /* loading state: render nothing */}
         </div>
@@ -694,49 +720,71 @@ function NavGroup({
 }) {
   return (
     <div>
-      <p className="px-3 mb-1.5 font-sans text-[10px] font-semibold uppercase tracking-widest text-text-faint">
+      {/* Eyebrow header: hidden at icon-only width to avoid unreadable wrapping. */}
+      <p className="hidden lg:block px-3 mb-1.5 font-sans text-[10px] font-semibold uppercase tracking-widest text-text-faint">
         {label}
       </p>
       <ul className="space-y-0.5">
         {items.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
           const isLiveFeed = item.href === "/live-feed";
+          const isWatchlist = item.href === "/watchlist";
+
+          // Live-feed unread or watchlist count at icon-only width: render as
+          // a small corner dot so users still see "there is something" without
+          // a numeric chip that does not fit a 64px column.
+          const hasIconBadge =
+            (isLiveFeed && (unreadCount ?? 0) > 0) ||
+            (isWatchlist && (watchlistCount ?? 0) > 0);
 
           return (
             <li key={item.id}>
               <Link
                 href={item.href}
+                title={item.label}
                 className={cn(
-                  "flex items-center gap-2.5 px-3 py-[9px] rounded-lg",
+                  "flex items-center gap-2.5 px-2 lg:px-3 py-[9px] rounded-lg",
+                  "justify-center lg:justify-start",
                   "font-sans text-[13px] font-medium",
                   "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",
+                  "relative border-l-2 border-transparent",
                   isActive
-                    ? "bg-espresso text-cream [&_svg]:text-gold dark:bg-elevated dark:text-foreground dark:border dark:border-border-default"
-                    : "text-text-muted [&_svg]:text-text-faint hover:bg-parchment-mid hover:text-espresso [&:hover_svg]:text-gold-dark dark:text-text-secondary dark:hover:bg-overlay",
+                    ? "bg-espresso text-cream [&_svg]:text-gold dark:bg-elevated dark:text-foreground dark:border-border-default"
+                    : "text-text-muted [&_svg]:text-text-faint hover:bg-parchment-mid hover:text-espresso hover:border-l-gold [&:hover_svg]:text-gold-dark dark:text-text-secondary dark:hover:bg-overlay",
                 )}
               >
                 {item.icon}
-                <span className="flex-1">{item.label}</span>
+                <span className="hidden lg:inline flex-1">{item.label}</span>
                 {item.liveDot && (
                   <span className="flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-signal-up animate-pulse" />
-                    <span className={cn(
-                      "text-[9px] font-bold uppercase",
-                      isActive ? "text-signal-up" : "text-signal-up",
-                    )}>
+                    <span
+                      className={cn(
+                        "hidden lg:inline text-[9px] font-bold uppercase",
+                        isActive ? "text-signal-up" : "text-signal-up",
+                      )}
+                    >
                       Live
                     </span>
                   </span>
                 )}
+                {/* Full numeric badge at lg+ */}
                 {isLiveFeed && (unreadCount ?? 0) > 0 && (
-                  <span className="min-w-[18px] h-[18px] flex items-center justify-center rounded-md bg-gold text-cream text-[9px] font-bold px-1">
+                  <span className="hidden lg:flex min-w-[18px] h-[18px] items-center justify-center rounded-md bg-gold text-cream text-[9px] font-bold px-1">
                     {(unreadCount ?? 0) > 99 ? "99+" : unreadCount}
                   </span>
                 )}
-                {item.href === "/watchlist" && (watchlistCount ?? 0) > 0 && (
-                  <span className="min-w-[18px] h-[18px] flex items-center justify-center rounded-md bg-gold text-cream text-[9px] font-bold px-1">
+                {isWatchlist && (watchlistCount ?? 0) > 0 && (
+                  <span className="hidden lg:flex min-w-[18px] h-[18px] items-center justify-center rounded-md bg-gold text-cream text-[9px] font-bold px-1">
                     {(watchlistCount ?? 0) > 99 ? "99+" : watchlistCount}
                   </span>
+                )}
+                {/* Icon-only width: small gold dot in the upper-right of the row */}
+                {hasIconBadge && (
+                  <span
+                    aria-hidden="true"
+                    className="lg:hidden absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-gold border border-sidebar-bg"
+                  />
                 )}
               </Link>
             </li>

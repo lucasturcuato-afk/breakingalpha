@@ -84,13 +84,17 @@ export function AppShell({
 
   return (
     <>
-      {/* Sidebar (fixed, outside flex flow) — desktop only */}
+      {/* Sidebar (fixed, outside flex flow). Visible at md+ (icon-only between
+          768-1023px, full at lg+); below md the MobileBottomNav handles
+          navigation. */}
       <div className="hidden md:block">
         <Sidebar />
       </div>
 
-      {/* Main area — full width on mobile, offset by sidebar on md+ */}
-      <div className="h-screen flex flex-col md:ml-[var(--sidebar-width)] overflow-hidden">
+      {/* Main area. Below md: full width (sidebar hidden, MobileBottomNav).
+          md to lg-1: offset by 64px icon-only sidebar.
+          lg+: offset by full --sidebar-width (220px). */}
+      <div className="h-screen flex flex-col md:ml-[64px] lg:ml-[var(--sidebar-width)] overflow-hidden">
         {/* Preview banner */}
         {isPreview && (
           <div
