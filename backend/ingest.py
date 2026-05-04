@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from watchlist import boost_watchlist_relevance
 from wikidata import is_valid_company
 from fulltext import fetch_full_text, SCRAPEABLE_SOURCES
+from entity_resolver import register_entity
 
 load_dotenv()
 
@@ -628,6 +629,8 @@ def filter_articles_batch(articles):
         return [filter_article(a) for a in articles]
 
 
+# DEPRECATED: replaced by register_entity per docs/w2-a-entity-resolution-design.md section 5.
+# Kept as dead code for one cron cycle to enable instant revert. Delete in a follow-up after validation.
 def upsert_company(name, themes, sentiment):
     try:
         ex = supabase.table("companies").select("*").eq("name", name).execute()
@@ -708,7 +711,7 @@ def store_article(article, analysis):
         }).execute()
         article_id = r.data[0]["id"]
         for company in clean_companies:
-            cid = upsert_company(company, analysis.get("themes", []), analysis.get("sentiment", "neutral"))
+            cid = register_entity(company, supabase, themes=analysis.get("themes", []), sentiment=analysis.get("sentiment", "neutral"))
             if cid:
                 supabase.table("company_mentions").insert({
                     "company_id": cid, "article_id": article_id,
