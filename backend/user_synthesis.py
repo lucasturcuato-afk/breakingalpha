@@ -24,6 +24,9 @@ from google import genai
 from google.genai import types
 
 
+from outputs import record_output
+from output_constants import ADDENDUM_PROMPT_VERSION
+
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -278,8 +281,36 @@ def run(brief_type: str = "morning") -> None:
             "generated_at": now,
         }
         try:
-            supabase.table("user_briefings").insert(row).execute()
+            ub_resp = supabase.table("user_briefings").insert(row).execute()
+            ub_id = None
+            try:
+                if ub_resp.data and isinstance(ub_resp.data[0], dict):
+                    ub_id = ub_resp.data[0].get("id")
+            except Exception:
+                pass
             written += 1
+
+            # Record to universal outputs table
+            try:
+                record_output(
+                    supabase,
+                    output_type='user_addendum',
+                    content={
+                        'user_briefing_id': str(ub_id) if ub_id else None,
+                        'briefing_type': brief_type,
+                        'addendum_excerpt': (addendum or '')[:500],
+                        'profile_hash': _profile_hash(p),
+                    },
+                    generation_context={
+                        'model': GEMINI_MODEL,
+                        'prompt_version': ADDENDUM_PROMPT_VERSION,
+                    },
+                    user_id=uid,
+                    source_table='user_briefings',
+                    source_id=ub_id,
+                )
+            except Exception as rec_err:
+                print(f"  ⚠ record_output(user_addendum) failed for {uid}: {rec_err}")
         except Exception as e:
             print(f"  ⚠ user_briefings insert failed for {uid}: {e}")
             skipped += 1

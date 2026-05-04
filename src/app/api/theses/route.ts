@@ -4,6 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { mapThesisRow, dedupByTitleSector, thesisDedupKey, thesisFuzzyKey } from "@/lib/thesis-mapper";
 import { getUserProfile, sectorWeight } from "@/lib/user-profile";
+import { recordOutput } from "@/lib/outputs";
+import { THESIS_FRONTEND_PROMPT_VERSION } from "@/lib/output-constants";
 
 export const dynamic = "force-dynamic";
 
@@ -635,14 +637,15 @@ ${clusterBlocks}`;
 
     // Insert — if user_id column doesn't exist, strip and retry so this works
     // whether or not the pre-flight DDL has landed.
-    let { error: insertError } = await supabase.from("theses").insert(filteredRows);
+    let insertResult = await supabase.from("theses").insert(filteredRows).select("id, title, sector, ticker, conviction, horizon, rationale");
+    let insertError = insertResult.error;
     if (insertError && /user_id/.test(insertError.message)) {
       console.log(
         "[theses POST] user_id column missing — retrying insert without it",
       );
       const stripped = filteredRows.map(({ user_id: _u, ...rest }) => rest);
-      const retry = await supabase.from("theses").insert(stripped);
-      insertError = retry.error;
+      insertResult = await supabase.from("theses").insert(stripped).select("id, title, sector, ticker, conviction, horizon, rationale");
+      insertError = insertResult.error;
     }
     if (insertError) {
       console.error("Supabase insert error:", insertError);
@@ -650,6 +653,35 @@ ${clusterBlocks}`;
         { error: "Failed to save theses", detail: insertError.message },
         { status: 500 }
       );
+    }
+
+    // Record each inserted thesis to universal outputs table
+    const insertedTheses = insertResult.data ?? [];
+    for (const t of insertedTheses) {
+      try {
+        await recordOutput(supabase, {
+          output_type: 'thesis',
+          content: {
+            thesis_id: t.id,
+            title: t.title,
+            ticker: t.ticker,
+            sector: t.sector,
+            conviction: t.conviction,
+            horizon: t.horizon,
+            rationale_excerpt: (t.rationale ?? '').slice(0, 500),
+          },
+          generation_context: {
+            model: 'gemini-2.5-flash',
+            prompt_version: THESIS_FRONTEND_PROMPT_VERSION,
+            generated_from: 'trend_cluster',
+          },
+          user_id: user.id,
+          source_table: 'theses',
+          source_id: t.id,
+        });
+      } catch (recErr) {
+        console.warn("[theses POST] record_output failed for thesis:", recErr);
+      }
     }
 
     return NextResponse.json({ theses: filteredRows, count: filteredRows.length });

@@ -4,6 +4,8 @@ import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { createClient } from "@supabase/supabase-js";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isAdmin } from "@/lib/admin-emails";
+import { recordOutput } from "@/lib/outputs";
+import { MEMO_PROMPT_VERSION } from "@/lib/output-constants";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -328,7 +330,29 @@ export async function POST(request: NextRequest) {
       if (!memo) {
         return NextResponse.json({ error: "Gemini returned empty memo — retry" }, { status: 500 });
       }
-      return NextResponse.json({ memo });
+
+      // Record to universal outputs table (service-role client for bypassing RLS)
+      const svcSupabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      );
+      const outputId = await recordOutput(svcSupabase, {
+        output_type: 'memo',
+        content: {
+          memo_text: memo,
+          memo_type: type ?? 'article',
+          target_company: company ?? null,
+          target_sector: sector ?? null,
+        },
+        generation_context: {
+          model: 'gemini-2.5-flash',
+          prompt_version: MEMO_PROMPT_VERSION,
+          user_profile_role: profile?.role ?? null,
+        },
+        user_id: user.id,
+      });
+
+      return NextResponse.json({ memo, output_id: outputId });
     } catch (err) {
       console.error("[memo] Gemini content-path error:", err);
       console.error("[memo] error detail:", err instanceof Error ? err.message : String(err));
@@ -373,7 +397,29 @@ Sections: TRANSACTION OVERVIEW, STRATEGIC RATIONALE, KEY RISKS, ANALYST TAKE. Un
     if (!memo) {
       return NextResponse.json({ error: "Gemini returned empty memo — retry" }, { status: 500 });
     }
-    return NextResponse.json({ memo });
+
+    // Record to universal outputs table
+    const svcSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+    const outputId = await recordOutput(svcSupabase, {
+      output_type: 'memo',
+      content: {
+        memo_text: memo,
+        memo_type: 'deal',
+        target_company: company ?? null,
+        target_sector: sector ?? null,
+      },
+      generation_context: {
+        model: 'gemini-2.5-flash',
+        prompt_version: MEMO_PROMPT_VERSION,
+        user_profile_role: profile?.role ?? null,
+      },
+      user_id: user.id,
+    });
+
+    return NextResponse.json({ memo, output_id: outputId });
   } catch (err) {
     console.error("[memo] Gemini legacy-path error:", err);
     console.error("[memo] error detail:", err instanceof Error ? err.message : String(err));

@@ -51,6 +51,8 @@ from google import genai
 # are used everywhere theses get embedded. Importing the module also gives
 # us a sanity check that backend/embedding_job.py is intact.
 import embedding_job
+from outputs import record_output
+from output_constants import THESIS_PROMPT_VERSION
 
 logger = logging.getLogger("thesis_generator")
 if not logger.handlers:
@@ -753,6 +755,33 @@ def _insert_and_embed_thesis(
         }).execute()
     except Exception as e:
         logger.warning("content_embeddings insert failed for %s: %s", new_id, e)
+
+    # Record to universal outputs table
+    try:
+        record_output(
+            sb,
+            output_type='thesis',
+            content={
+                'thesis_id': str(new_id),
+                'title': row['title'],
+                'ticker': row.get('ticker'),
+                'sector': row['sector'],
+                'conviction': row['conviction'],
+                'horizon': row.get('horizon'),
+                'rationale_excerpt': (row.get('rationale') or '')[:500],
+            },
+            generation_context={
+                'model': GEMINI_MODEL,
+                'prompt_version': THESIS_PROMPT_VERSION,
+                'source': THESIS_SOURCE,
+                'supporting_article_ids': [str(a) for a in (row.get('supporting_articles') or [])[:20]],
+            },
+            source_table='theses',
+            source_id=new_id,
+        )
+    except Exception as rec_err:
+        logger.warning("thesis_generator: record_output failed for %s: %s", new_id, rec_err)
+
     return new_id
 
 
