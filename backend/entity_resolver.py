@@ -35,7 +35,14 @@ the next call to register_entity. Specifically:
 from datetime import datetime, timezone
 from typing import Optional
 
-from backend.normalize import normalize_lookup_key
+# Dual-path import. Cron runs with cwd=backend/ (per
+# .github/workflows/schedule.yml working-directory). Tests and dev run
+# with cwd=repo-root. Try the cron path first so production wins on the
+# off chance both resolve.
+try:
+    from normalize import normalize_lookup_key  # cron context: cwd=backend/
+except ImportError:
+    from backend.normalize import normalize_lookup_key  # test/dev context: cwd=repo-root
 
 
 # Cap recursion in the rare hot-race case where two workers keep
