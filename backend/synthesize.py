@@ -3,13 +3,15 @@ synthesize.py — BreakingAlpha
 Generates a detailed analyst-style morning/evening briefing using Google Gemini.
 """
 
-import os, json, re
+import os, json, re, uuid
 from datetime import datetime, timezone, timedelta, date
 from supabase import create_client
 from google import genai
 from google.genai import types
 
 from ingest import INDUSTRY_VERTICALS
+from outputs import record_output, record_outputs_batch
+from output_constants import BRIEF_PROMPT_VERSION
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 # Admin client for writes that must bypass RLS (e.g. morning_brief_calls).
@@ -1413,6 +1415,65 @@ def run(brief_type="morning"):
     except Exception:
         brief_id = None
 
+
+    # ── Record output for universal feedback table ──
+    try:
+        record_output(
+            supabase,
+            output_type='brief',
+            content={
+                'briefing_type': brief_type,
+                'headline': data.get('headline', ''),
+                'summary_excerpt': (data.get('summary') or '')[:500],
+                'market_tone': data.get('market_tone'),
+                'briefing_id': str(brief_id) if brief_id else None,
+            },
+            generation_context={
+                'model': GEMINI_MODEL,
+                'prompt_version': BRIEF_PROMPT_VERSION,
+                'spine_count': len(spine),
+                'floor_count': len(floor),
+            },
+            source_table='briefings',
+            source_id=brief_id,
+        )
+    except Exception as e:
+        print(f"  ⚠ outputs record_output(brief) failed (non-fatal): {e}")
+
+    # ── Record one brief_section output per non-empty section ──
+    # Sections are LLM-generated narrative buckets (deals_and_ma, public_markets, etc.).
+    # Each gets a stable section_key AND a per-render UUID for addressability in outputs.
+    try:
+        sections_dict = data.get("sections", {}) or {}
+        if isinstance(sections_dict, dict) and sections_dict and brief_id:
+            section_rows = []
+            for section_key, section_text in sections_dict.items():
+                if not section_text or not isinstance(section_text, str):
+                    continue
+                section_rows.append({
+                    'output_type': 'brief_section',
+                    'content': {
+                        'section_key': section_key,
+                        'section_render_id': str(uuid.uuid4()),
+                        'briefing_id': str(brief_id),
+                        'briefing_type': brief_type,
+                        'section_text_excerpt': section_text[:500],
+                        'section_text_length': len(section_text),
+                    },
+                    'generation_context': {
+                        'model': GEMINI_MODEL,
+                        'prompt_version': BRIEF_PROMPT_VERSION,
+                        'briefing_id': str(brief_id),
+                        'briefing_type': brief_type,
+                    },
+                    'source_table': 'briefings',
+                    'source_id': brief_id,
+                })
+            if section_rows:
+                record_outputs_batch(supabase, section_rows)
+                print(f"  📝 Recorded {len(section_rows)} brief_section outputs for briefing {brief_id}")
+    except Exception as e:
+        print(f"  ⚠ brief_section recording failed (non-fatal): {e}")
 
     print(f"  ✅ {brief_type.capitalize()} briefing stored")
     print(f"  Headline: {row['headline'][:80]}")
