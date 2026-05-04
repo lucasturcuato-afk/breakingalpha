@@ -1,0 +1,51 @@
+-- W2-A: Wikidata cleanup (DEFERRED - path (b) chosen)
+--
+-- See docs/w2-a/fk-audit-results.md DECISION section.
+-- Path (b) ships the Wikidata flip ONLY. The DELETE statements below are
+-- preserved for reference but are NOT to be uncommented as part of W2-A.
+-- The polluted set is dominated by real companies (OpenAI 190 mentions,
+-- Meta, Visa, NVIDIA, etc.) that Wikidata classifies as ambiguous. Bulk
+-- deletion would destroy legitimate data and history.
+--
+-- Future narrowed cleanup (deferred to a separate workstream) will use
+-- alias-table data + resolution_log ambiguity rates to identify true
+-- noise (e.g., polluted rows with mention_count=1 AND no alias pointer
+-- AND no recent last_seen_at). That work is OUT OF SCOPE for W2-A.
+--
+-- The DELETE statements below are kept as a starting point for that
+-- future work. Do not run them as-is.
+--
+-- DRY RUN (run this FIRST, confirm count is in expected range, ~1260 at audit time):
+--   SELECT COUNT(*) FROM companies c
+--   JOIN wikidata_entity_cache w ON w.name = c.name
+--   WHERE w.is_company IS NULL;
+--
+-- IMPORTANT: the FK `company_mentions.company_id -> companies(id)` is NO ACTION,
+-- not CASCADE (verified in fk-audit-results.md). The companies-DELETE will FAIL
+-- with a foreign-key violation unless company_mentions rows are removed first.
+--
+-- Order of operations:
+--   1. DELETE the dependent company_mentions rows (so the companies-DELETE has no FK blocker)
+--   2. DELETE the polluted companies rows (uses the cache to pick the rows)
+--   3. DELETE the ambiguous wikidata_entity_cache rows (so re-ingest can re-classify)
+--
+-- If the order were swapped:
+--   - swapping 1 and 2: companies-DELETE fails on FK
+--   - swapping 2 and 3: the join in step 2 would have no cache rows to match, deletes 0 rows
+--
+-- ALL three statements are commented out so executing this file by accident is
+-- a no-op. Noah uncomments after reading the runbook.
+
+-- DELETE FROM company_mentions WHERE company_id IN (
+--   SELECT c.id FROM companies c
+--   JOIN wikidata_entity_cache w ON w.name = c.name
+--   WHERE w.is_company IS NULL
+-- );
+
+-- DELETE FROM companies WHERE id IN (
+--   SELECT c.id FROM companies c
+--   JOIN wikidata_entity_cache w ON w.name = c.name
+--   WHERE w.is_company IS NULL
+-- );
+
+-- DELETE FROM wikidata_entity_cache WHERE is_company IS NULL;
