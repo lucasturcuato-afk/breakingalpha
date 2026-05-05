@@ -32,6 +32,7 @@ the next call to register_entity. Specifically:
     unique-violation, SELECT the existing canonical_id by name and
     re-enter at step 2.
 """
+import os
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -43,6 +44,11 @@ try:
     from normalize import normalize_lookup_key  # cron context: cwd=backend/
 except ImportError:
     from backend.normalize import normalize_lookup_key  # test/dev context: cwd=repo-root
+
+try:
+    from finnhub_helper import search_finnhub_ticker  # cron context: cwd=backend/
+except ImportError:
+    from backend.finnhub_helper import search_finnhub_ticker  # test/dev context: cwd=repo-root
 
 
 # Cap recursion in the rare hot-race case where two workers keep
@@ -299,7 +305,27 @@ def _try_insert_canonical(
         resp = supabase.table("companies").insert(payload).execute()
         rows = resp.data or []
         if rows:
-            return rows[0]["id"]
+            new_id = rows[0]["id"]
+            # W2-C: best-effort ticker population on canonical creation.
+            # Silent + non-blocking: a Finnhub timeout, error, or no-match
+            # leaves companies.ticker NULL and the lazy-lookup backstop
+            # (Workstream C) handles it on first read. The
+            # DISABLE_TICKER_POPULATION env var lets unit tests opt out
+            # so they don't have to mock the new HTTP call or assert on
+            # the extra companies.update.
+            if not os.environ.get("DISABLE_TICKER_POPULATION"):
+                try:
+                    ticker = search_finnhub_ticker(name)
+                    if ticker:
+                        try:
+                            supabase.table("companies").update(
+                                {"ticker": ticker}
+                            ).eq("id", new_id).execute()
+                        except Exception:
+                            pass  # don't block on ticker write failure
+                except Exception:
+                    pass  # don't block on ticker lookup failure
+            return new_id
         # Empty response without exception: treat as race-lost so the
         # caller falls back to SELECT-by-name and re-enters step 2.
         return None
