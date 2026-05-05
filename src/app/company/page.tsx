@@ -53,6 +53,7 @@ interface ApiCompany {
   mention_count: number;
   last_updated: string | null;
   key_themes: string[] | null;
+  alias_count?: number;
 }
 
 // Row shape rendered in the directory table. We carry the raw API id so
@@ -65,6 +66,7 @@ interface CompanyRow {
   themes: string[];
   mentions: number;
   lastUpdated: string | null;
+  aliasCount: number;
 }
 
 // Convert a display name to the URL slug expected by the [id] detail route.
@@ -87,6 +89,10 @@ function dedupeAndMapApiCompanies(rows: ApiCompany[]): CompanyRow[] {
     const existing = map.get(key);
     if (existing) {
       existing.mentions += row.mention_count;
+      // Sum alias counts across deduped rows. After W2-A backfill every
+      // companies row has at least one alias, so an N-row dedup gives at
+      // least N aliasCount, plus any organic typo / variant aliases on top.
+      existing.aliasCount += row.alias_count ?? 0;
       // Preserve the highest-mention row's id and metadata; merge themes.
       if (row.key_themes) {
         for (const t of row.key_themes) {
@@ -105,6 +111,7 @@ function dedupeAndMapApiCompanies(rows: ApiCompany[]): CompanyRow[] {
         themes: row.key_themes ?? [],
         mentions: row.mention_count,
         lastUpdated: row.last_updated,
+        aliasCount: row.alias_count ?? 0,
       });
     }
   }
@@ -887,10 +894,9 @@ export default function CompanyIntelPage() {
                       <td className="px-2 py-2 font-data text-[10px] text-text-muted whitespace-nowrap">
                         {row.lastUpdated ? timeAgo(row.lastUpdated) : <span className="text-text-faint">--</span>}
                       </td>
-                      {/* Alias count placeholder */}
+                      {/* Alias count: distinct surface forms collapsed onto this canonical (per W2-A read-path PR #195) */}
                       <td className="w-10 px-2 py-2 text-center">
-                        {/* TODO(w2a-read-path): replace placeholder with row.alias_count once /api/companies returns it */}
-                        <span className="font-data text-[10px] text-gold/60">=</span>
+                        <span className="font-data text-[10px] text-gold/60">{row.aliasCount}</span>
                       </td>
                       {/* Action menu */}
                       <td className="w-8 px-2 py-2 text-center" onClick={(e) => { e.stopPropagation(); if (!isLocked) router.push(`/company/${encodeURIComponent(slugify(row.name))}`); }}>
