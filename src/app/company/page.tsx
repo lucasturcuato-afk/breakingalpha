@@ -1,43 +1,36 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Search, Building2, Bookmark, Sparkles, ExternalLink, Lock, Globe, Loader2 } from "lucide-react";
+import {
+  Search,
+  Building2,
+  Sparkles,
+  ExternalLink,
+  Lock,
+  Globe,
+  Loader2,
+  Star,
+  ChevronUp,
+  ChevronDown,
+  MoreHorizontal,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserClient } from "@supabase/ssr";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import {
-  CompanyArticle,
-  buildMemoContent,
-  buildMemoSystemPrompt,
   buildWebFallbackMemoContent,
   buildWebFallbackMemoSystemPrompt,
   canonicalize,
-  filterAndClassifyArticles,
   timeAgo,
 } from "@/lib/company-intel";
-import { CompletenessBadge, SignalScore, SourceCredibilityBadge, getCompleteness, getAdjustedScore } from "@/lib/article-signal";
-import type { Completeness } from "@/lib/article-signal";
 import { useLiveMood } from "@/hooks/useLiveMood";
-
-function getSupabase() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  );
-}
-
-interface CompanyData {
-  name: string;
-  mentions: number;
-  sectors: string[];
-}
 
 // Shape returned by /api/companies/web-fallback. Includes `summary` for the
 // memo prompt; MemoSource (used by the modal's source list) is the visible
@@ -62,24 +55,47 @@ interface ApiCompany {
   key_themes: string[] | null;
 }
 
-// Map API rows to the rendered CompanyData shape, applying canonicalize() for
-// display normalization and collapsing rows that canonicalize to the same
-// display name (e.g. "Robinhood" + "Robinhood Markets Inc" → one card).
-function dedupeAndMapApiCompanies(rows: ApiCompany[]): CompanyData[] {
-  const map = new Map<string, CompanyData>();
+// Row shape rendered in the directory table. We carry the raw API id so
+// keyboard nav and the action menu can navigate to /company/[id].
+interface CompanyRow {
+  id: string;
+  name: string;
+  ticker: string | null;
+  sector: string | null;
+  themes: string[];
+  mentions: number;
+  lastUpdated: string | null;
+}
+
+// Map API rows to the rendered row shape, applying canonicalize() for display
+// normalization and collapsing rows that canonicalize to the same display name
+// (e.g. "Robinhood" + "Robinhood Markets Inc" -> one row).
+function dedupeAndMapApiCompanies(rows: ApiCompany[]): CompanyRow[] {
+  const map = new Map<string, CompanyRow>();
   for (const row of rows) {
     const display = canonicalize(row.name);
     const key = display.toLowerCase();
     const existing = map.get(key);
-    const sector = row.sector ?? null;
     if (existing) {
       existing.mentions += row.mention_count;
-      if (sector && !existing.sectors.includes(sector)) existing.sectors.push(sector);
+      // Preserve the highest-mention row's id and metadata; merge themes.
+      if (row.key_themes) {
+        for (const t of row.key_themes) {
+          if (!existing.themes.includes(t)) existing.themes.push(t);
+        }
+      }
+      if (row.last_updated && (!existing.lastUpdated || row.last_updated > existing.lastUpdated)) {
+        existing.lastUpdated = row.last_updated;
+      }
     } else {
       map.set(key, {
+        id: row.id,
         name: display,
+        ticker: row.ticker,
+        sector: row.sector,
+        themes: row.key_themes ?? [],
         mentions: row.mention_count,
-        sectors: sector ? [sector] : [],
+        lastUpdated: row.last_updated,
       });
     }
   }
@@ -101,12 +117,8 @@ const INDUSTRY_VERTICALS = [
 ] as const;
 
 // Explicit mapping from article sector strings (old and new taxonomy) to INDUSTRY_VERTICALS.
-// Uses a deterministic lookup instead of fuzzy keyword matching to avoid false positives —
-// e.g. "Technology M&A & Investment Banking" would incorrectly fire for PE firms like Blackstone
-// under a keyword approach; here it maps to Technology (where the target companies live).
-// "Private Equity & Buyouts" maps to Financial Services, not Technology.
+// Uses a deterministic lookup instead of fuzzy keyword matching to avoid false positives.
 const SECTOR_TO_VERTICAL: Record<string, string> = {
-  // New taxonomy direct matches
   "Technology": "Technology",
   "Healthcare & Biotech": "Healthcare & Biotech",
   "Energy & Oil/Gas": "Energy & Oil/Gas",
@@ -114,7 +126,6 @@ const SECTOR_TO_VERTICAL: Record<string, string> = {
   "Consumer & Retail": "Consumer & Retail",
   "Aerospace & Defense": "Aerospace & Defense",
   "Real Estate": "Real Estate",
-  // Old taxonomy mapped to canonical INDUSTRY_VERTICALS
   "Technology M&A & Investment Banking": "Technology",
   "Venture Capital & Startup Funding": "Financial Services",
   "Private Equity & Buyouts": "Financial Services",
@@ -124,22 +135,15 @@ const SECTOR_TO_VERTICAL: Record<string, string> = {
   "Energy & Climate": "Energy & Oil/Gas",
   "Real Estate & Infrastructure": "Real Estate",
   "Real Estate & REITs": "Real Estate",
-  // "Geopolitics & Macro" intentionally unmapped — cross-cutting, not an industry vertical
 };
 
 // Layer 1: ground-truth vertical for well-known companies. Keyed by lowercase display name.
-// Checked before sector-derived logic — overrides any article sector signal for these companies.
-// An AI company like Anthropic appearing in "Fintech & Crypto" articles should still map to
-// Technology; a PE firm like Blackstone should map to Financial Services regardless of which
-// industry its portfolio companies are in.
 const COMPANY_VERTICAL_OVERRIDES: Record<string, string> = {
-  // AI & cloud infrastructure
   "anthropic": "Technology",
   "anthropic pbc": "Technology",
   "openai": "Technology",
   "xai": "Technology",
   "coreweave": "Technology",
-  // Big Tech
   "alphabet": "Technology",
   "google": "Technology",
   "microsoft": "Technology",
@@ -160,16 +164,13 @@ const COMPANY_VERTICAL_OVERRIDES: Record<string, string> = {
   "roblox": "Technology",
   "sifive": "Technology",
   "polymarket": "Technology",
-  // IT services / consulting
   "tcs": "Technology",
   "tata consultancy services": "Technology",
-  // Aerospace & Defense
   "spacex": "Aerospace & Defense",
   "lockheed martin": "Aerospace & Defense",
   "boeing": "Aerospace & Defense",
   "northrop grumman": "Aerospace & Defense",
   "nasa": "Aerospace & Defense",
-  // Financial Services
   "blackstone": "Financial Services",
   "blackstone group": "Financial Services",
   "goldman sachs": "Financial Services",
@@ -186,7 +187,6 @@ const COMPANY_VERTICAL_OVERRIDES: Record<string, string> = {
   "cango": "Financial Services",
   "cango inc": "Financial Services",
   "kreditbee": "Financial Services",
-  // Media & Telecom
   "bloomberg": "Media & Telecom",
   "techcrunch": "Media & Telecom",
   "paramount": "Media & Telecom",
@@ -194,59 +194,61 @@ const COMPANY_VERTICAL_OVERRIDES: Record<string, string> = {
   "warner brothers": "Media & Telecom",
   "comcast": "Media & Telecom",
   "disney": "Media & Telecom",
-  // Industrials & Manufacturing
   "delta": "Industrials & Manufacturing",
   "volkswagen": "Industrials & Manufacturing",
   "ford": "Industrials & Manufacturing",
   "general motors": "Industrials & Manufacturing",
-  // Energy
   "exxonmobil": "Energy & Oil/Gas",
   "chevron": "Energy & Oil/Gas",
   "bp": "Energy & Oil/Gas",
   "shell": "Energy & Oil/Gas",
-  // Healthcare
   "hologic": "Healthcare & Biotech",
   "hologic inc": "Healthcare & Biotech",
   "pfizer": "Healthcare & Biotech",
   "johnson & johnson": "Healthcare & Biotech",
   "unitedhealth": "Healthcare & Biotech",
-  // Consumer & Retail
   "peloton": "Consumer & Retail",
   "slice": "Consumer & Retail",
   "nike": "Consumer & Retail",
   "walmart": "Consumer & Retail",
 };
 
+type SortKey = "name" | "ticker" | "sector" | "mentions" | "lastUpdated";
+type SortDir = "asc" | "desc";
+
+const SIGNED_OUT_VISIBLE_ROWS = 6;
+const SKELETON_ROW_COUNT = 28;
+
 export default function CompanyIntelPage() {
   const { mood, moodHeadline, moodDetails } = useLiveMood();
   const router = useRouter();
   const [search, setSearch] = useState("");
-  const [companies, setCompanies] = useState<CompanyData[]>([]);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedCompany, setSelectedCompany] = useState<CompanyData | null>(null);
-  const [companyArticles, setCompanyArticles] = useState<CompanyArticle[]>([]);
-  const [articlesLoading, setArticlesLoading] = useState(false);
-  const [memoOpen, setMemoOpen] = useState(false);
-  const [memoToast, setMemoToast] = useState("");
   const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
   const [verticalMatchMode, setVerticalMatchMode] = useState<"any" | "all">("any");
-  const [credMap, setCredMap] = useState<Map<string, number>>(new Map());
   const [isSignedOut, setIsSignedOut] = useState(false);
   const [showSignIn, setShowSignIn] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("mentions");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [highlightedIndex, setHighlightedIndex] = useState<number>(0);
 
-  // Web-fallback state. Only meaningful when NEXT_PUBLIC_WEB_FALLBACK_ENABLED
-  // is "true"; otherwise the CTA never renders and these stay empty.
-  // Flow: empty grid + signed-in + flag on -> CTA visible -> click "Generate"
-  // -> fetch /api/companies/web-fallback -> render webResults list -> click
-  // "Generate Memo" -> open MemoModal with type="company-web".
+  // Watchlist state. Keyed by lowercase identifier; value is the watchlist row id
+  // (needed for DELETE). Populated on mount via GET /api/watchlist when signed in.
+  const [watchlist, setWatchlist] = useState<Map<string, string>>(new Map());
+
+  // Web-fallback state. Only meaningful when NEXT_PUBLIC_WEB_FALLBACK_ENABLED is "true".
   const webFallbackEnabled = process.env.NEXT_PUBLIC_WEB_FALLBACK_ENABLED === "true";
   const [webFallbackLoading, setWebFallbackLoading] = useState(false);
   const [webFallbackError, setWebFallbackError] = useState("");
-  // Full result rows (with summary) used to seed the memo content.
-  // The MemoModal `sources` prop only displays the smaller MemoSource shape.
   const [webResults, setWebResults] = useState<WebFallbackResult[]>([]);
   const [webCanonical, setWebCanonical] = useState("");
   const [webMemoOpen, setWebMemoOpen] = useState(false);
+
+  // Refs for keyboard nav: keep latest closures without re-binding the listener.
+  const rowsRef = useRef<CompanyRow[]>([]);
+  const highlightedRef = useRef(0);
 
   useEffect(() => {
     const supabase = createBrowserClient(
@@ -258,13 +260,41 @@ export default function CompanyIntelPage() {
     }).catch(() => setIsSignedOut(true));
   }, []);
 
-  // Top-100 load: runs on mount and whenever search transitions back to < 2 chars.
-  // Replaces the previous 1500-article aggregation that mis-attributed mention
-  // counts and silently dropped any company whose latest mention fell outside
-  // the most recent 1500 articles. Reads directly from the companies table via
-  // /api/companies, which applies its own quality filters server-side.
+  // Load the user's watchlist once on mount (signed-in only). Map keyed by
+  // lowercase identifier so the per-row star toggle can detect membership in O(1).
   useEffect(() => {
-    if (search.trim().length >= 2) return;
+    if (isSignedOut) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/watchlist");
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          entries?: Array<{ id: string; identifier: string; type: string }>;
+        };
+        if (cancelled) return;
+        const next = new Map<string, string>();
+        for (const e of json.entries ?? []) {
+          if (e.type === "company") next.set(e.identifier.toLowerCase(), e.id);
+        }
+        setWatchlist(next);
+      } catch {
+        // soft-fail: directory still renders without watchlist data
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isSignedOut]);
+
+  // Debounce the raw search input by 200ms. Two effects below depend on
+  // debouncedSearch (full load when < 2 chars; server query when >= 2).
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search), 200);
+    return () => clearTimeout(handle);
+  }, [search]);
+
+  // Top-N load: runs on mount and whenever debouncedSearch transitions back to < 2 chars.
+  useEffect(() => {
+    if (debouncedSearch.trim().length >= 2) return;
     let cancelled = false;
     (async () => {
       try {
@@ -280,19 +310,16 @@ export default function CompanyIntelPage() {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [search]);
+    return () => { cancelled = true; };
+  }, [debouncedSearch]);
 
-  // Debounced server-side search (250ms). Fires only when query >= 2 chars.
-  // Replaces the prior client-side Array.filter pass that could only see whatever
-  // companies the 1500-article aggregation had surfaced.
+  // Server-side search when query >= 2 chars. The 200ms debounce above already
+  // throttles network calls; this effect just maps debouncedSearch -> fetch.
   useEffect(() => {
-    const trimmed = search.trim();
+    const trimmed = debouncedSearch.trim();
     if (trimmed.length < 2) return;
     let cancelled = false;
-    const handle = setTimeout(async () => {
+    (async () => {
       try {
         const res = await fetch(`/api/companies?q=${encodeURIComponent(trimmed)}&limit=50`);
         const json = (await res.json()) as { companies?: ApiCompany[]; error?: string };
@@ -303,15 +330,12 @@ export default function CompanyIntelPage() {
           setCompanies([]);
         }
       }
-    }, 250);
-    return () => {
-      cancelled = true;
-      clearTimeout(handle);
-    };
-  }, [search]);
+    })();
+    return () => { cancelled = true; };
+  }, [debouncedSearch]);
 
-  // Reset web-fallback state on every new search keystroke. The CTA must only
-  // surface for the *current* query, not a stale one.
+  // Reset web-fallback state on every search keystroke. The CTA must only
+  // surface for the current query, not a stale one.
   useEffect(() => {
     setWebResults([]);
     setWebCanonical("");
@@ -351,8 +375,6 @@ export default function CompanyIntelPage() {
     }
   };
 
-  // Memo content + system prompt for the web-fallback modal. Memoized so we
-  // don't recompute the prompt on every render once results are loaded.
   const webMemoContent = useMemo(() => {
     if (!webCanonical || webResults.length === 0) return "";
     return buildWebFallbackMemoContent(webCanonical, webResults);
@@ -362,629 +384,555 @@ export default function CompanyIntelPage() {
     return buildWebFallbackMemoSystemPrompt(webCanonical, webResults.length);
   }, [webCanonical, webResults.length]);
 
-  // Filter companies by industry vertical only — search is handled server-side
-  // by /api/companies?q=... so we no longer Array.filter the displayed list by
-  // search query. Sector filter chip behavior is preserved client-side.
-  // Two-layer approach:
-  //   Layer 1: COMPANY_VERTICAL_OVERRIDES — ground-truth for well-known companies. When a
-  //            company has an override, its derived sectors[] are ignored entirely.
-  //            This prevents Anthropic (primary in "Fintech & Crypto" articles) from appearing
-  //            under Financial Services, and Blackstone from appearing under Technology.
-  //   Layer 2: SECTOR_TO_VERTICAL — deterministic sector string → vertical mapping as fallback
-  //            for long-tail companies not in the override map.
-  const filtered = useMemo(() => {
+  // Vertical filter (chips). Two-layer mapping: ground-truth overrides for
+  // well-known companies, sector-derived fallback for the long tail.
+  const verticalFiltered = useMemo(() => {
     if (selectedVerticals.length === 0) return companies;
     return companies.filter((c) => {
       const nameLower = c.name.toLowerCase();
       const override = COMPANY_VERTICAL_OVERRIDES[nameLower];
-      // Layer 1: if we have ground-truth, use it exclusively
-      const effectiveVerticals: Set<string> = override
+      const effective: Set<string> = override
         ? new Set([override])
-        : new Set(c.sectors.map((s) => SECTOR_TO_VERTICAL[s]).filter((v): v is string => Boolean(v)));
+        : new Set(
+            (c.sector ? [c.sector] : [])
+              .map((s) => SECTOR_TO_VERTICAL[s])
+              .filter((v): v is string => Boolean(v)),
+          );
       return verticalMatchMode === "all"
-        ? selectedVerticals.every((v) => effectiveVerticals.has(v))
-        : selectedVerticals.some((v) => effectiveVerticals.has(v));
+        ? selectedVerticals.every((v) => effective.has(v))
+        : selectedVerticals.some((v) => effective.has(v));
     });
   }, [companies, selectedVerticals, verticalMatchMode]);
 
-  // Development articles: company-specific events (earnings, funding, M&A, IPO, named announcements).
-  // Context articles: everything else — macro, geopolitical, sector analysis, competitive mentions.
-  const developmentArticles = useMemo(
-    () => companyArticles.filter((a) => a._isDevelopment),
-    [companyArticles],
-  );
-  const contextArticles = useMemo(
-    () => companyArticles.filter((a) => !a._isDevelopment),
-    [companyArticles],
-  );
+  // Client-side sort. Default mention_count desc; clicking a header toggles asc/desc.
+  const sortedRows = useMemo(() => {
+    const arr = [...verticalFiltered];
+    arr.sort((a, b) => {
+      let av: string | number;
+      let bv: string | number;
+      switch (sortKey) {
+        case "name":
+          av = a.name.toLowerCase(); bv = b.name.toLowerCase(); break;
+        case "ticker":
+          av = (a.ticker ?? "").toLowerCase(); bv = (b.ticker ?? "").toLowerCase(); break;
+        case "sector":
+          av = (a.sector ?? "").toLowerCase(); bv = (b.sector ?? "").toLowerCase(); break;
+        case "lastUpdated":
+          av = a.lastUpdated ?? ""; bv = b.lastUpdated ?? ""; break;
+        case "mentions":
+        default:
+          av = a.mentions; bv = b.mentions; break;
+      }
+      if (av < bv) return sortDir === "asc" ? -1 : 1;
+      if (av > bv) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+    return arr;
+  }, [verticalFiltered, sortKey, sortDir]);
 
-  const memoContent = useMemo(() => {
-    if (!selectedCompany) return "";
-    return buildMemoContent(selectedCompany.name, developmentArticles, contextArticles);
-  }, [selectedCompany, developmentArticles, contextArticles]);
+  // Final visible rows. For signed-out users the table still renders all rows,
+  // but rows past SIGNED_OUT_VISIBLE_ROWS are visually locked (overlay below).
+  const visibleRows = sortedRows;
 
-  // Load articles when a company is selected.
-  // Uses /api/companies/[id]/articles (cache-first) instead of the prior
-  // 1500-article scan, which silently dropped sparse-coverage companies whose
-  // latest mention fell outside the most recent 1500 ingested articles.
+  // Keep refs in sync so the keydown handler always sees the latest data
+  // without re-binding (prevents listener thrash on every keystroke).
+  useEffect(() => { rowsRef.current = visibleRows; }, [visibleRows]);
+  useEffect(() => { highlightedRef.current = highlightedIndex; }, [highlightedIndex]);
+
+  // Reset highlighted row when the filtered set changes (search, sector toggle, sort).
   useEffect(() => {
-    if (!selectedCompany) return;
-    setArticlesLoading(true);
-    setCompanyArticles([]);
+    setHighlightedIndex(0);
+  }, [debouncedSearch, selectedVerticals, verticalMatchMode, sortKey, sortDir]);
 
-    async function loadArticles() {
-      try {
-        const name = selectedCompany!.name;
-        const res = await fetch(`/api/companies/${encodeURIComponent(name)}/articles`);
-        if (!res.ok) {
-          console.error("Company articles fetch failed:", res.status);
-          setCompanyArticles([]);
-          return;
+  // Watchlist toggle with optimistic update. Looks up the current row in the
+  // watchlist map by lowercased name; POST to add, DELETE to remove.
+  const toggleWatchlist = useCallback(async (row: CompanyRow) => {
+    if (isSignedOut) { setShowSignIn(true); return; }
+    if (!row) return;
+    const key = row.name.toLowerCase();
+    const existingId = watchlist.get(key);
+    // Optimistic update
+    setWatchlist((prev) => {
+      const next = new Map(prev);
+      if (existingId) next.delete(key);
+      else next.set(key, "__pending__");
+      return next;
+    });
+    try {
+      if (existingId && existingId !== "__pending__") {
+        const res = await fetch("/api/watchlist", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: existingId }),
+        });
+        if (!res.ok) throw new Error(`DELETE failed: ${res.status}`);
+      } else {
+        const res = await fetch("/api/watchlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            identifier: row.name,
+            type: "company",
+            display_name: row.name,
+          }),
+        });
+        if (!res.ok) throw new Error(`POST failed: ${res.status}`);
+        const json = (await res.json()) as { entry?: { id: string } };
+        if (json.entry?.id) {
+          setWatchlist((prev) => {
+            const next = new Map(prev);
+            next.set(key, json.entry!.id);
+            return next;
+          });
         }
-        const json = (await res.json()) as {
-          articles?: Array<{
-            id: string;
-            title: string;
-            source?: string | null;
-            sector?: string | null;
-            sentiment?: string | null;
-            summary?: string | null;
-            published_at?: string | null;
-            ingested_at?: string | null;
-            url?: string | null;
-            companies?: unknown;
-            primary_company?: string | null;
-            relevance_score?: number | null;
-            deal_type?: string | null;
-          }>;
-          source?: string;
-          error?: string;
-        };
-        const articles = json.articles ?? [];
-        setCompanyArticles(filterAndClassifyArticles(articles, name));
+      }
+    } catch (e) {
+      console.error("Watchlist toggle failed:", e);
+      // Rollback
+      setWatchlist((prev) => {
+        const next = new Map(prev);
+        if (existingId) next.set(key, existingId);
+        else next.delete(key);
+        return next;
+      });
+    }
+  }, [isSignedOut, watchlist]);
 
-        // Batch fetch source credibility (unchanged — separate concern from the article read)
-        const uniqueSources = [
-          ...new Set(
-            articles
-              .map((a) => a.source)
-              .filter((s): s is string => typeof s === "string" && s.length > 0),
-          ),
-        ];
-        if (uniqueSources.length > 0) {
-          try {
-            const { data: credData } = await getSupabase()
-              .from("source_credibility")
-              .select("source, win_rate")
-              .in("source", uniqueSources);
-            setCredMap(new Map(credData?.map((r) => [r.source, r.win_rate]) ?? []));
-          } catch { /* soft-fail */ }
-        }
-      } catch (e) {
-        console.error("Failed to load company articles:", e);
-      } finally {
-        setArticlesLoading(false);
+  // Keep the latest toggleWatchlist reachable from the keydown handler without
+  // re-binding the global listener every render.
+  const toggleWatchlistRef = useRef(toggleWatchlist);
+  useEffect(() => { toggleWatchlistRef.current = toggleWatchlist; }, [toggleWatchlist]);
+
+  // Keyboard nav scoped to the directory: j / k navigate, w toggles watchlist,
+  // Enter opens the detail page. Bails when focus is inside an input or
+  // textarea so the search input still accepts those characters.
+  useEffect(() => {
+    function handle(e: KeyboardEvent) {
+      const tag = (document.activeElement?.tagName || "").toUpperCase();
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      const rows = rowsRef.current;
+      if (rows.length === 0) return;
+      const i = highlightedRef.current;
+      if (e.key === "j") {
+        e.preventDefault();
+        setHighlightedIndex((cur) => Math.min(cur + 1, rows.length - 1));
+      } else if (e.key === "k") {
+        e.preventDefault();
+        setHighlightedIndex((cur) => Math.max(cur - 1, 0));
+      } else if (e.key === "w") {
+        e.preventDefault();
+        const target = rows[i];
+        if (target) toggleWatchlistRef.current(target);
+      } else if (e.key === "Enter") {
+        const target = rows[i];
+        if (target) router.push(`/company/${encodeURIComponent(target.id)}`);
       }
     }
-    loadArticles();
-  }, [selectedCompany]);
+    window.addEventListener("keydown", handle);
+    return () => window.removeEventListener("keydown", handle);
+  }, [router]);
 
-  const handleAddToWatchlist = async (companyName: string) => {
-    try {
-      await fetch("/api/watchlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier: companyName, type: "company" }),
-      });
-    } catch (e) {
-      console.error("Failed to add to watchlist:", e);
+  const onHeaderClick = (key: SortKey) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "name" || key === "ticker" || key === "sector" ? "asc" : "desc");
     }
   };
 
+  const resetFilters = () => {
+    setSearch("");
+    setSelectedVerticals([]);
+    setVerticalMatchMode("any");
+  };
+
+  const lockCutoff = isSignedOut ? SIGNED_OUT_VISIBLE_ROWS : visibleRows.length;
+
   return (
     <AppShell pageTitle="Company Intel" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
-      <div className="flex h-[calc(100vh-var(--topbar-height)-var(--moodbar-height))]">
-        {/* Main panel */}
-        <div className={cn("flex-1 overflow-y-auto p-6", selectedCompany && "pr-0")}>
-          <h2 className="font-display text-[22px] font-extrabold text-espresso mb-1">
-            Company Intel
-          </h2>
-          <p className="font-sans text-[13px] text-text-secondary mb-5">
-            Companies in your news feed. Click any company to see related coverage.
-          </p>
+      <div className="h-[calc(100vh-var(--topbar-height)-var(--moodbar-height))] overflow-y-auto p-6">
+        <h2 className="font-display text-[22px] font-extrabold text-espresso mb-1">
+          Company Intel
+        </h2>
+        <p className="font-sans text-[13px] text-text-secondary mb-5">
+          Companies in your news feed. Click any row to open the detail page.
+        </p>
 
-          {/* Preview nudge banner */}
-          {isSignedOut && (
-            <div className="mb-5 px-4 py-3 rounded-xl border border-gold/20 flex items-center justify-between" style={{ backgroundColor: "var(--gold-muted)" }}>
-              <p className="font-sans text-[12px] text-text-secondary">
-                Previewing company intelligence — sign in to search, filter, and track companies.
-              </p>
+        {/* Preview nudge banner */}
+        {isSignedOut && (
+          <div className="mb-5 px-4 py-3 rounded-xl border border-gold/20 flex items-center justify-between" style={{ backgroundColor: "var(--gold-muted)" }}>
+            <p className="font-sans text-[12px] text-text-secondary">
+              Previewing company intelligence. Sign in to search, filter, and track companies.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowSignIn(true)}
+              className="flex-shrink-0 ml-4 font-sans text-[12px] font-semibold cursor-pointer"
+              style={{ color: "var(--espresso)" }}
+            >
+              Sign in free
+            </button>
+          </div>
+        )}
+
+        {/* Search */}
+        {isSignedOut ? (
+          <div className="relative mb-4 flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-border-base bg-parchment-mid">
+            <Lock size={13} className="text-text-faint" />
+            <span className="font-sans text-[12px] text-text-faint">Search available after sign in</span>
+          </div>
+        ) : (
+          <div className="relative mb-4">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search companies by name or ticker..."
+              className="pl-9 font-sans"
+            />
+          </div>
+        )}
+
+        {/* Industry vertical filter chips + Match Any/All toggle */}
+        {isSignedOut ? (
+          <div className="mb-5 flex items-center gap-1.5">
+            <Lock size={12} className="text-text-faint" />
+            <span className="font-sans text-[12px] text-text-faint">Sector filters available after sign in</span>
+          </div>
+        ) : (
+          <div className="mb-5">
+            <div className="flex items-center gap-2 mb-1.5">
+              <p className="font-data text-[9px] uppercase tracking-widest text-gold">Sector</p>
               <button
                 type="button"
-                onClick={() => setShowSignIn(true)}
-                className="flex-shrink-0 ml-4 font-sans text-[12px] font-semibold cursor-pointer"
-                style={{ color: "var(--espresso)" }}
+                onClick={() => setVerticalMatchMode((m) => (m === "any" ? "all" : "any"))}
+                className="font-data text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full border border-gold-border bg-gold-muted text-gold cursor-pointer"
+                title="Toggle Match Any / Match All"
               >
-                Sign in free →
+                Match {verticalMatchMode}
               </button>
             </div>
-          )}
-
-          {/* Search */}
-          {isSignedOut ? (
-            <div className="relative mb-4 flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-border-base bg-parchment-mid">
-              <Lock size={13} className="text-text-faint" />
-              <span className="font-sans text-[12px] text-text-faint">Search available after sign in</span>
-            </div>
-          ) : (
-            <div className="relative mb-4">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search companies..."
-                className="pl-9 font-sans"
-              />
-            </div>
-          )}
-
-          {/* Industry Vertical Filter */}
-          {isSignedOut ? (
-            <div className="mb-5 flex items-center gap-1.5">
-              <Lock size={12} className="text-text-faint" />
-              <span className="font-sans text-[12px] text-text-faint">Sector filters available after sign in</span>
-            </div>
-          ) : (
-            <div className="mb-5">
-              <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1.5">Sector</p>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {INDUSTRY_VERTICALS.map((v) => {
-                  const isActive = selectedVerticals.includes(v);
-                  return (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() =>
-                        setSelectedVerticals((prev) =>
-                          prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v],
-                        )
-                      }
-                      className={cn(
-                        "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
-                        isActive
-                          ? "border-gold bg-gold-muted text-gold"
-                          : "border-border-base bg-white text-text-muted hover:text-text-primary",
-                      )}
-                    >
-                      {v}
-                    </button>
-                  );
-                })}
-                {selectedVerticals.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {INDUSTRY_VERTICALS.map((v) => {
+                const isActive = selectedVerticals.includes(v);
+                return (
                   <button
+                    key={v}
                     type="button"
-                    onClick={() => { setSelectedVerticals([]); setVerticalMatchMode("any"); }}
-                    className="px-3 py-1 font-data text-[10px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
-                  >
-                    Clear filters
-                  </button>
-                )}
-              </div>
-              {selectedVerticals.length >= 2 && (
-                <div className="flex items-center gap-1.5 mt-2">
-                  <span className="font-data text-[9px] uppercase tracking-widest text-text-faint">Match:</span>
-                  {(["any", "all"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setVerticalMatchMode(mode)}
-                      className={cn(
-                        "px-2.5 py-0.5 rounded font-data text-[9px] font-bold uppercase cursor-pointer transition-colors border",
-                        verticalMatchMode === mode
-                          ? "border-gold bg-gold-muted text-gold"
-                          : "border-border-base bg-white text-text-muted hover:text-text-primary",
-                      )}
-                    >
-                      {mode === "any" ? "Match Any" : "Match All"}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Company grid */}
-          {loading ? (
-            <div className="grid grid-cols-3 gap-2">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <Skeleton key={i} className="h-20 rounded-xl" />
-              ))}
-            </div>
-          ) : filtered.length === 0 ? (
-            <div>
-              <EmptyState
-                icon={<Building2 size={32} />}
-                title={search ? "No companies match" : "No companies indexed yet"}
-                description={search ? "Try a different search term." : "Check back after the next update."}
-              />
-
-              {/* Web-search fallback CTA. Only renders when:
-                    - feature flag is on
-                    - user is signed in (signed-out users see the lock instead)
-                    - the user has typed >= 2 chars (we have something to search)
-                    - we have not already loaded web results for this query */}
-              {webFallbackEnabled && !isSignedOut && search.trim().length >= 2 && webResults.length === 0 && (
-                <div
-                  className="mt-4 px-4 py-4 rounded-xl border flex items-center justify-between"
-                  style={{ borderColor: "rgba(201,146,42,0.3)", backgroundColor: "var(--gold-muted)" }}
-                >
-                  <div className="flex items-start gap-3">
-                    <Globe size={16} className="mt-0.5" style={{ color: "var(--gold)" }} />
-                    <div>
-                      <p className="font-sans text-[13px] font-semibold text-espresso">
-                        We don&apos;t have {search.trim()} in our index yet.
-                      </p>
-                      <p className="font-sans text-[12px] text-text-secondary mt-0.5">
-                        Generate a memo from web search instead?
-                      </p>
-                      {webFallbackError && (
-                        <p className="font-sans text-[11px] text-signal-dn mt-1">{webFallbackError}</p>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleGenerateWebFallback}
-                    disabled={webFallbackLoading}
+                    onClick={() =>
+                      setSelectedVerticals((prev) =>
+                        prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v],
+                      )
+                    }
                     className={cn(
-                      "flex-shrink-0 ml-4 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg",
-                      "font-data text-[10px] font-bold uppercase border cursor-pointer transition-colors",
-                      "border-gold/40 bg-white text-gold hover:bg-gold/10",
-                      webFallbackLoading && "opacity-60 cursor-wait",
+                      "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                      isActive
+                        ? "border-gold bg-gold-muted text-gold"
+                        : "border-border-base bg-white text-text-muted hover:text-text-primary",
                     )}
                   >
-                    {webFallbackLoading ? (
-                      <>
-                        <Loader2 size={11} className="animate-spin" />
-                        Searching
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles size={11} />
-                        Generate
-                      </>
-                    )}
+                    {v}
                   </button>
-                </div>
-              )}
-
-              {/* Web-fallback result list. Renders after a successful search;
-                  user can click "Generate Memo" to open MemoModal. */}
-              {webFallbackEnabled && webResults.length > 0 && (
-                <div className="mt-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="font-data text-[10px] uppercase tracking-widest text-gold font-bold">
-                      Web results for {webCanonical}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setWebMemoOpen(true)}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-gold/40 bg-gold-muted text-gold font-data text-[10px] font-bold uppercase cursor-pointer hover:bg-gold/10 transition-colors"
-                    >
-                      <Sparkles size={11} />
-                      Generate Memo
-                    </button>
-                  </div>
-                  <div className="space-y-2">
-                    {webResults.map((r, i) => (
-                      <div key={r.url} className="bg-white border border-border-base rounded-xl p-3">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-data text-[9px] text-gold bg-gold-muted border border-gold-border px-1.5 py-0.5 rounded-md">
-                            [{i + 1}]
-                          </span>
-                          <span className="font-data text-[9px] text-text-muted">{r.source}</span>
-                          {r.publishedAt && (
-                            <span className="font-data text-[9px] text-text-faint ml-auto">
-                              {r.publishedAt.slice(0, 10)}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
-                            {r.title}
-                          </h4>
-                          <a
-                            href={r.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5"
-                          >
-                            <ExternalLink size={11} />
-                          </a>
-                        </div>
-                        {r.summary && (
-                          <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
-                            {r.summary}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div>
-              <div className="grid grid-cols-3 gap-2">
-                {(isSignedOut ? filtered.slice(0, 6) : filtered).map((company) => (
-                  <button
-                    key={company.name}
-                    type="button"
-                    onClick={() => setSelectedCompany(company)}
-                    className={cn(
-                      "flex flex-col items-start p-3 rounded-xl border bg-white text-left",
-                      "transition-all duration-[var(--duration-base)] cursor-pointer",
-                      selectedCompany?.name === company.name
-                        ? "border-gold shadow-[0_2px_8px_rgba(201,146,42,0.12)]"
-                        : "border-border-base hover:border-border-hover",
-                    )}
-                  >
-                    <div className="flex items-center gap-2 mb-1 w-full">
-                      <span className="font-display text-[14px] font-bold text-espresso truncate flex-1">
-                        {company.name}
-                      </span>
-                      <span className="font-data text-[10px] text-gold bg-gold-muted border border-gold-border px-1.5 py-0.5 rounded-md flex-shrink-0">
-                        {company.mentions}x
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-              {isSignedOut && filtered.length > 6 && (
-                <div className="relative mt-2">
-                  <div
-                    className="pointer-events-none absolute -top-16 left-0 right-0 h-16"
-                    style={{ background: "linear-gradient(to bottom, transparent, var(--parchment))" }}
-                  />
-                  <div
-                    className="flex items-center justify-between px-4 py-3 rounded-xl border"
-                    style={{ borderColor: "rgba(201,146,42,0.3)", backgroundColor: "var(--gold-muted)" }}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Lock size={14} style={{ color: "var(--gold)" }} />
-                      <span className="font-sans text-[13px] font-semibold text-espresso">
-                        Sign in to see all {filtered.length} companies
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowSignIn(true)}
-                      className="font-sans text-[12px] font-semibold cursor-pointer"
-                      style={{ color: "var(--gold)" }}
-                    >
-                      Sign in →
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Detail side panel */}
-        {selectedCompany && (
-          <div className="w-[420px] flex-shrink-0 border-l border-border-base bg-cream flex flex-col overflow-hidden">
-            {/* Panel header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border-base flex-shrink-0">
-              <div className="flex items-center gap-2.5">
-                <span className="font-display text-[18px] font-bold text-espresso">
-                  {selectedCompany.name}
-                </span>
-                <span className="font-data text-[10px] text-gold bg-gold-muted border border-gold-border px-1.5 py-0.5 rounded-md">
-                  {selectedCompany.mentions}x
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedCompany(null)}
-                className="font-sans text-[18px] text-text-muted hover:text-text-primary cursor-pointer p-1"
-              >
-                &times;
-              </button>
-            </div>
-
-            {/* Panel body */}
-            <div className="flex-1 overflow-y-auto px-5 py-4">
-
-              {/* Actions */}
-              <div className="flex items-center gap-2 mb-4">
+                );
+              })}
+              {selectedVerticals.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => { if (isSignedOut) { setShowSignIn(true); return; } handleAddToWatchlist(selectedCompany.name); }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-parchment-mid border border-border-base font-sans text-[11px] font-medium text-text-secondary hover:border-border-hover transition-colors cursor-pointer"
+                  onClick={() => { setSelectedVerticals([]); setVerticalMatchMode("any"); }}
+                  className="px-3 py-1 font-data text-[10px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
                 >
-                  <Bookmark size={11} />
-                  Add to Watchlist
+                  Clear filters
                 </button>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isSignedOut) { setShowSignIn(true); return; }
-                      if (articlesLoading) return;
-                      if (companyArticles.length === 0) {
-                        setMemoToast("No articles found for this company — memo cannot be grounded");
-                        setTimeout(() => setMemoToast(""), 3000);
-                        return;
-                      }
-                      setMemoOpen(true);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gold text-cream font-sans text-[11px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
-                  >
-                    <Sparkles size={11} />
-                    Generate Memo
-                  </button>
-                  {memoToast && (
-                    <div className="absolute -top-9 left-0 whitespace-nowrap bg-espresso text-cream font-sans text-[10px] px-2.5 py-1.5 rounded-md z-10">
-                      {memoToast}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Articles header */}
-              <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">
-                Articles Mentioning {selectedCompany.name.toUpperCase()} ({companyArticles.length})
-                {!articlesLoading && developmentArticles.length > 0 && (
-                  <span className="ml-2 text-gold normal-case">
-                    · {developmentArticles.length} development{developmentArticles.length !== 1 ? "s" : ""}
-                  </span>
-                )}
-              </p>
-
-              {/* Sparse-evidence notice — no development events in current feed window */}
-              {!articlesLoading && companyArticles.length > 0 && developmentArticles.length === 0 && (
-                <div className="mb-4 px-3 py-2.5 rounded-xl border border-border-base bg-parchment-mid">
-                  <p className="font-sans text-[11px] font-semibold text-text-primary leading-snug">
-                    No company events in this feed window.
-                  </p>
-                  <p className="font-sans text-[11px] text-text-secondary leading-snug mt-0.5">
-                    {selectedCompany.name} appears in {contextArticles.length} sector context article{contextArticles.length !== 1 ? "s" : ""} — no earnings, funding, M&A, or IPO found. A context-led brief is available.
-                  </p>
-                </div>
-              )}
-
-              {/* Articles */}
-              {articlesLoading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
-                </div>
-              ) : companyArticles.length === 0 ? (
-                <EmptyState
-                  icon={<Building2 size={24} />}
-                  title="No articles found"
-                  description="No recent articles mention this company"
-                  className="py-8"
-                />
-              ) : (
-                <div className="space-y-2">
-                  {/* Company Events group — articles where the company was the actor */}
-                  {developmentArticles.length > 0 && (
-                    <>
-                      <p className="font-data text-[8px] uppercase tracking-widest text-gold font-bold px-0.5 pb-0.5">
-                        Company Events
-                      </p>
-                      {developmentArticles.map((a) => {
-                        const cmplt = getCompleteness(a.content, a.summary);
-                        return (
-                        <div key={a.id} className="bg-white border border-gold/30 rounded-xl p-3">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-data text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide bg-gold-muted text-gold border border-gold-border flex-shrink-0">
-                              {a.deal_type ?? "Event"}
-                            </span>
-                            {a.source && (
-                              <span className="font-data text-[9px] text-text-muted">{a.source}</span>
-                            )}
-                            {a.published_at && (
-                              <span className="font-data text-[9px] text-text-faint ml-auto">
-                                {timeAgo(a.published_at)}
-                              </span>
-                            )}
-                            <CompletenessBadge completeness={cmplt} />
-                            <SignalScore score={getAdjustedScore(a.relevance_score ?? null, cmplt)} />
-                            <SourceCredibilityBadge winRate={a.source ? credMap.get(a.source) ?? null : null} />
-                          </div>
-                          <div className="flex items-start gap-2">
-                            <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
-                              {a.title}
-                            </h4>
-                            {a.url && (
-                              <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5">
-                                <ExternalLink size={11} />
-                              </a>
-                            )}
-                          </div>
-                          {a.summary && (
-                            <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
-                              {a.summary}
-                            </p>
-                          )}
-                        </div>
-                        );
-                      })}
-                    </>
-                  )}
-                  {/* Sector Context group — macro, geopolitical, sector analysis */}
-                  {contextArticles.length > 0 && (
-                    <>
-                      <p className={cn(
-                        "font-data text-[8px] uppercase tracking-widest text-text-faint font-bold px-0.5 pb-0.5",
-                        developmentArticles.length > 0 && "mt-3",
-                      )}>
-                        Sector Context
-                      </p>
-                      {contextArticles.map((a) => {
-                        const cmplt = getCompleteness(a.content, a.summary);
-                        return (
-                        <div key={a.id} className="bg-white border border-border-base rounded-xl p-3">
-                          <div className="flex items-center gap-2 mb-1">
-                            {a.sector && (
-                              <span
-                                style={getSectorStyle(a.sector)}
-                                className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide"
-                              >
-                                {a.sector}
-                              </span>
-                            )}
-                            {a.source && (
-                              <span className="font-data text-[9px] text-text-muted">{a.source}</span>
-                            )}
-                            {a.published_at && (
-                              <span className="font-data text-[9px] text-text-faint ml-auto">
-                                {timeAgo(a.published_at)}
-                              </span>
-                            )}
-                            <CompletenessBadge completeness={cmplt} />
-                            <SignalScore score={getAdjustedScore(a.relevance_score ?? null, cmplt)} />
-                            <SourceCredibilityBadge winRate={a.source ? credMap.get(a.source) ?? null : null} />
-                          </div>
-                          <div className="flex items-start gap-2">
-                            <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
-                              {a.title}
-                            </h4>
-                            {a.url && (
-                              <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5">
-                                <ExternalLink size={11} />
-                              </a>
-                            )}
-                          </div>
-                          {a.summary && (
-                            <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
-                              {a.summary}
-                            </p>
-                          )}
-                        </div>
-                        );
-                      })}
-                    </>
-                  )}
-                </div>
               )}
             </div>
           </div>
         )}
+
+        {/* Directory table */}
+        {loading ? (
+          <DirectoryTableSkeleton />
+        ) : visibleRows.length === 0 ? (
+          <div>
+            <EmptyState
+              icon={<Building2 size={32} />}
+              title={search.trim() || selectedVerticals.length > 0 ? "No companies match your filters" : "No companies indexed yet"}
+              description={search.trim() || selectedVerticals.length > 0 ? "Try a different search term or clear sector filters." : "Check back after the next update."}
+              action={(search.trim() || selectedVerticals.length > 0) ? (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="px-3 py-1.5 rounded-lg border border-border-base bg-white font-data text-[10px] font-bold uppercase text-text-muted hover:text-text-primary cursor-pointer"
+                >
+                  Reset filters
+                </button>
+              ) : undefined}
+            />
+
+            {webFallbackEnabled && !isSignedOut && search.trim().length >= 2 && webResults.length === 0 && (
+              <div
+                className="mt-4 px-4 py-4 rounded-xl border flex items-center justify-between"
+                style={{ borderColor: "rgba(201,146,42,0.3)", backgroundColor: "var(--gold-muted)" }}
+              >
+                <div className="flex items-start gap-3">
+                  <Globe size={16} className="mt-0.5" style={{ color: "var(--gold)" }} />
+                  <div>
+                    <p className="font-sans text-[13px] font-semibold text-espresso">
+                      We don&apos;t have {search.trim()} in our index yet.
+                    </p>
+                    <p className="font-sans text-[12px] text-text-secondary mt-0.5">
+                      Generate a memo from web search instead?
+                    </p>
+                    {webFallbackError && (
+                      <p className="font-sans text-[11px] text-signal-dn mt-1">{webFallbackError}</p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleGenerateWebFallback}
+                  disabled={webFallbackLoading}
+                  className={cn(
+                    "flex-shrink-0 ml-4 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg",
+                    "font-data text-[10px] font-bold uppercase border cursor-pointer transition-colors",
+                    "border-gold/40 bg-white text-gold hover:bg-gold/10",
+                    webFallbackLoading && "opacity-60 cursor-wait",
+                  )}
+                >
+                  {webFallbackLoading ? (
+                    <>
+                      <Loader2 size={11} className="animate-spin" />
+                      Searching
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={11} />
+                      Generate
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {webFallbackEnabled && webResults.length > 0 && (
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-data text-[10px] uppercase tracking-widest text-gold font-bold">
+                    Web results for {webCanonical}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setWebMemoOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-gold/40 bg-gold-muted text-gold font-data text-[10px] font-bold uppercase cursor-pointer hover:bg-gold/10 transition-colors"
+                  >
+                    <Sparkles size={11} />
+                    Generate Memo
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {webResults.map((r, i) => (
+                    <div key={r.url} className="bg-white border border-border-base rounded-xl p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-data text-[9px] text-gold bg-gold-muted border border-gold-border px-1.5 py-0.5 rounded-md">
+                          [{i + 1}]
+                        </span>
+                        <span className="font-data text-[9px] text-text-muted">{r.source}</span>
+                        {r.publishedAt && (
+                          <span className="font-data text-[9px] text-text-faint ml-auto">
+                            {r.publishedAt.slice(0, 10)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
+                          {r.title}
+                        </h4>
+                        <a
+                          href={r.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5"
+                        >
+                          <ExternalLink size={11} />
+                        </a>
+                      </div>
+                      {r.summary && (
+                        <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
+                          {r.summary}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="relative bg-white border border-border-base rounded-xl overflow-hidden">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-parchment-mid border-b border-border-base">
+                <tr className="font-data text-[9px] uppercase tracking-widest text-text-muted">
+                  <th className="w-8 px-2 py-2"></th>
+                  <SortHeader label="Ticker" k="ticker" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="w-20 px-2 py-2" />
+                  <SortHeader label="Name" k="name" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="px-2 py-2" />
+                  <SortHeader label="Sector" k="sector" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="px-2 py-2" />
+                  <th className="px-2 py-2">Themes</th>
+                  <th className="px-2 py-2">Mentions</th>
+                  <SortHeader label="Last seen" k="lastUpdated" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="px-2 py-2" />
+                  <th className="w-10 px-2 py-2 text-center">Aliases</th>
+                  <th className="w-8 px-2 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleRows.map((row, idx) => {
+                  const isLocked = isSignedOut && idx >= SIGNED_OUT_VISIBLE_ROWS;
+                  const isHighlighted = idx === highlightedIndex;
+                  const isWatched = watchlist.has(row.name.toLowerCase());
+                  return (
+                    <tr
+                      key={row.id}
+                      onMouseEnter={() => setHighlightedIndex(idx)}
+                      onClick={() => {
+                        if (isLocked) { setShowSignIn(true); return; }
+                        router.push(`/company/${encodeURIComponent(row.id)}`);
+                      }}
+                      className={cn(
+                        "border-b border-border-base/60 last:border-b-0 cursor-pointer transition-colors",
+                        isHighlighted ? "bg-gold-muted/40 border-l-2 border-l-gold" : "border-l-2 border-l-transparent",
+                        !isHighlighted && "hover:bg-parchment-mid",
+                        isLocked && "pointer-events-none",
+                      )}
+                    >
+                      {/* Watchlist star */}
+                      <td className="w-8 px-2 py-2" onClick={(e) => { e.stopPropagation(); if (!isLocked) toggleWatchlist(row); }}>
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          className={cn(
+                            "p-1 rounded cursor-pointer transition-colors",
+                            isWatched ? "text-gold" : "text-text-faint hover:text-gold",
+                          )}
+                          aria-label={isWatched ? "Remove from watchlist" : "Add to watchlist"}
+                        >
+                          <Star size={13} fill={isWatched ? "currentColor" : "none"} />
+                        </button>
+                      </td>
+                      {/* Ticker */}
+                      <td className="w-20 px-2 py-2 font-data text-[11px] font-bold text-espresso">
+                        {row.ticker ?? <span className="text-text-faint">--</span>}
+                      </td>
+                      {/* Name */}
+                      <td className="px-2 py-2 min-w-0">
+                        <span className="font-display text-[13px] font-bold text-espresso truncate block">
+                          {row.name}
+                        </span>
+                      </td>
+                      {/* Sector chip */}
+                      <td className="px-2 py-2">
+                        {row.sector ? (
+                          <span
+                            style={getSectorStyle(row.sector)}
+                            className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide whitespace-nowrap"
+                          >
+                            {row.sector}
+                          </span>
+                        ) : (
+                          <span className="font-data text-[10px] text-text-faint">--</span>
+                        )}
+                      </td>
+                      {/* Themes (multi-chip cluster, 2 visible + overflow) */}
+                      <td className="px-2 py-2">
+                        <div className="flex items-center gap-1">
+                          {row.themes.slice(0, 2).map((t) => (
+                            <span
+                              key={t}
+                              className="font-data text-[9px] text-text-muted bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded whitespace-nowrap"
+                            >
+                              {t}
+                            </span>
+                          ))}
+                          {row.themes.length > 2 && (
+                            <span className="font-data text-[9px] text-text-faint">
+                              +{row.themes.length - 2}
+                            </span>
+                          )}
+                          {row.themes.length === 0 && (
+                            <span className="font-data text-[10px] text-text-faint">--</span>
+                          )}
+                        </div>
+                      </td>
+                      {/* Mentions */}
+                      <td className="px-2 py-2">
+                        <span className="font-data text-[10px] text-gold bg-gold-muted border border-gold-border px-1.5 py-0.5 rounded-md">
+                          {row.mentions}x
+                        </span>
+                      </td>
+                      {/* Last seen */}
+                      <td className="px-2 py-2 font-data text-[10px] text-text-muted whitespace-nowrap">
+                        {row.lastUpdated ? timeAgo(row.lastUpdated) : <span className="text-text-faint">--</span>}
+                      </td>
+                      {/* Alias count placeholder */}
+                      <td className="w-10 px-2 py-2 text-center">
+                        {/* TODO(w2a-read-path): replace placeholder with row.alias_count once /api/companies returns it */}
+                        <span className="font-data text-[10px] text-gold/60">=</span>
+                      </td>
+                      {/* Action menu */}
+                      <td className="w-8 px-2 py-2 text-center" onClick={(e) => { e.stopPropagation(); if (!isLocked) router.push(`/company/${encodeURIComponent(row.id)}`); }}>
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          className="p-1 rounded text-text-faint hover:text-text-primary cursor-pointer"
+                          aria-label="Open detail page"
+                        >
+                          <MoreHorizontal size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {/* Sign-in lock overlay past row 6 (signed-out users only). */}
+            {isSignedOut && visibleRows.length > lockCutoff && (
+              <>
+                <div
+                  className="pointer-events-none absolute left-0 right-0 bottom-12 h-24"
+                  style={{ background: "linear-gradient(to bottom, transparent, var(--cream))" }}
+                />
+                <div
+                  className="absolute left-0 right-0 bottom-0 flex items-center justify-between px-4 py-3 border-t"
+                  style={{ borderColor: "rgba(201,146,42,0.3)", backgroundColor: "var(--gold-muted)" }}
+                >
+                  <div className="flex items-center gap-2">
+                    <Lock size={14} style={{ color: "var(--gold)" }} />
+                    <span className="font-sans text-[13px] font-semibold text-espresso">
+                      Sign in to see all {visibleRows.length} companies
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowSignIn(true)}
+                    className="font-sans text-[12px] font-semibold cursor-pointer"
+                    style={{ color: "var(--gold)" }}
+                  >
+                    Sign in
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Keyboard hint */}
+        {!isSignedOut && !loading && visibleRows.length > 0 && (
+          <p className="mt-3 font-data text-[9px] uppercase tracking-widest text-text-faint">
+            j / k navigate &middot; w toggle watchlist &middot; Enter open
+          </p>
+        )}
       </div>
-      {selectedCompany && (
-        <MemoModal
-          isOpen={memoOpen}
-          onClose={() => setMemoOpen(false)}
-          title={selectedCompany.name}
-          content={memoContent}
-          type="company"
-          systemPrompt={buildMemoSystemPrompt(selectedCompany.name)}
-        />
-      )}
-      {/* Web-fallback memo modal. Distinct instance from the indexed-company
+
+      {/* Web-fallback memo modal. Distinct instance from any future indexed-company
           modal so the two paths cannot interfere with each other. */}
       {webFallbackEnabled && webCanonical && webResults.length > 0 && (
         <MemoModal
@@ -1009,5 +957,52 @@ export default function CompanyIntelPage() {
         message="Create a free account to search, filter, track watchlists, and generate company memos."
       />
     </AppShell>
+  );
+}
+
+// --- Helpers ---------------------------------------------------------------
+
+interface SortHeaderProps {
+  label: string;
+  k: SortKey;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onClick: (k: SortKey) => void;
+  className?: string;
+}
+
+function SortHeader({ label, k, sortKey, sortDir, onClick, className }: SortHeaderProps) {
+  const isActive = sortKey === k;
+  return (
+    <th className={cn("cursor-pointer select-none", className)} onClick={() => onClick(k)}>
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {isActive && (sortDir === "asc" ? <ChevronUp size={10} /> : <ChevronDown size={10} />)}
+      </span>
+    </th>
+  );
+}
+
+function DirectoryTableSkeleton() {
+  return (
+    <div className="bg-white border border-border-base rounded-xl overflow-hidden">
+      <div className="bg-parchment-mid border-b border-border-base px-3 py-2">
+        <Skeleton className="h-3 w-24" />
+      </div>
+      <div className="divide-y divide-border-base/60">
+        {Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 px-3 py-2">
+            <Skeleton className="h-4 w-4 rounded" />
+            <Skeleton className="h-3 w-12" />
+            <Skeleton className="h-3 flex-1 max-w-[200px]" />
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-3 w-12" />
+            <Skeleton className="h-3 w-14" />
+            <Skeleton className="h-3 w-6" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
