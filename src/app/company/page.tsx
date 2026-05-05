@@ -67,6 +67,15 @@ interface CompanyRow {
   lastUpdated: string | null;
 }
 
+// Convert a display name to the URL slug expected by the [id] detail route.
+// The detail route's slugToCompanyName does the inverse (replace hyphens with
+// spaces, lowercase, look up in CANONICAL or title-case). Names with native
+// hyphens roundtrip imperfectly; that limitation is shared with the existing
+// detail route and is mitigated by the CANONICAL map.
+function slugify(name: string): string {
+  return name.toLowerCase().replace(/\s+/g, "-");
+}
+
 // Map API rows to the rendered row shape, applying canonicalize() for display
 // normalization and collapsing rows that canonicalize to the same display name
 // (e.g. "Robinhood" + "Robinhood Markets Inc" -> one row).
@@ -451,6 +460,13 @@ export default function CompanyIntelPage() {
     if (!row) return;
     const key = row.name.toLowerCase();
     const existingId = watchlist.get(key);
+    // Race guard: ignore re-clicks while a previous toggle is still in flight.
+    // Without this, a fast second click sees existingId="__pending__", falls
+    // through to the else branch (POST again), backend duplicate-check returns
+    // 400, rollback restores "__pending__", then the original POST resolution
+    // overwrites it with the real id, leaving the row in the watchlist with no
+    // visible removal. Standard async-toggle bug.
+    if (existingId === "__pending__") return;
     // Optimistic update
     setWatchlist((prev) => {
       const next = new Map(prev);
@@ -525,7 +541,7 @@ export default function CompanyIntelPage() {
         if (target) toggleWatchlistRef.current(target);
       } else if (e.key === "Enter") {
         const target = rows[i];
-        if (target) router.push(`/company/${encodeURIComponent(target.id)}`);
+        if (target) router.push(`/company/${encodeURIComponent(slugify(target.name))}`);
       }
     }
     window.addEventListener("keydown", handle);
@@ -794,7 +810,7 @@ export default function CompanyIntelPage() {
                       onMouseEnter={() => setHighlightedIndex(idx)}
                       onClick={() => {
                         if (isLocked) { setShowSignIn(true); return; }
-                        router.push(`/company/${encodeURIComponent(row.id)}`);
+                        router.push(`/company/${encodeURIComponent(slugify(row.name))}`);
                       }}
                       className={cn(
                         "border-b border-border-base/60 last:border-b-0 cursor-pointer transition-colors",
@@ -877,7 +893,7 @@ export default function CompanyIntelPage() {
                         <span className="font-data text-[10px] text-gold/60">=</span>
                       </td>
                       {/* Action menu */}
-                      <td className="w-8 px-2 py-2 text-center" onClick={(e) => { e.stopPropagation(); if (!isLocked) router.push(`/company/${encodeURIComponent(row.id)}`); }}>
+                      <td className="w-8 px-2 py-2 text-center" onClick={(e) => { e.stopPropagation(); if (!isLocked) router.push(`/company/${encodeURIComponent(slugify(row.name))}`); }}>
                         <button
                           type="button"
                           tabIndex={-1}

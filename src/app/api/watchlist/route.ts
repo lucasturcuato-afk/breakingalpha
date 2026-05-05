@@ -159,17 +159,22 @@ export async function DELETE(request: NextRequest) {
   if (!id)
     return NextResponse.json({ error: "id required" }, { status: 400 });
 
-  const { data, error } = await supabase
+  // Use plain delete + count instead of `.select().single()`. `.single()` errors
+  // if zero rows match, which fires on a stale client-side id (already deleted,
+  // or id from a different user) and turns a benign no-op into a 500 that the
+  // caller's try/catch interprets as failure -> rollback -> star reverts to
+  // watched -> user perceives the toggle as one-way. Lenient handler returns
+  // 200 with a zero-rows hint so the client can treat the row as removed
+  // either way.
+  const { error, count } = await supabase
     .from("watchlist")
-    .delete()
+    .delete({ count: "exact" })
     .eq("id", id)
-    .eq("user_id", user.id)
-    .select()
-    .single();
+    .eq("user_id", user.id);
 
   if (error) {
-    console.error("Watchlist DELETE error:", error.message);
+    console.error("Watchlist DELETE error:", error.message, error.details, error.hint);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ entry: data });
+  return NextResponse.json({ ok: true, deleted: count ?? 0 });
 }
