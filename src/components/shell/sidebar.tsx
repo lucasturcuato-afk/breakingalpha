@@ -540,7 +540,7 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
                 {/* Settings + sign out: hidden by default, fade in on hover or
                     keyboard focus. Reclaims the row width for the user name so
                     longer names ("Noah Hanning") are not truncated at 220px. */}
-                <div className="flex items-center gap-2 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-[var(--duration-base)]">
+                <div className="hidden group-hover:flex focus-within:flex items-center gap-2 flex-shrink-0">
                   <Link href="/settings/profile" aria-label="Settings">
                     <Settings size={14} className="text-text-faint hover:text-text-muted transition-colors" />
                   </Link>
