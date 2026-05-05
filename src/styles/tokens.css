@@ -78,7 +78,7 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
   /* ── Layout constants ── */
-  --sidebar-width: 236px;
+  --sidebar-width: 220px;
   --topbar-height: 52px;
   --moodbar-height: 36px;
   --right-panel-width: 268px;
