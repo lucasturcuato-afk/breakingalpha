@@ -52,6 +52,24 @@ export default async function CompanyDetailPage({
   // Replaces the prior 1500-article scan that scaled with feed depth.
   const { articles } = await fetchCompanyArticles(supabase, canonicalize(companyName));
 
+  // Pull the public-equity ticker from the companies table so the detail page
+  // can render a stock chart for listed companies. Private companies surface
+  // null and the chart is skipped client-side. COMPANY_IDENTITY does not
+  // carry tickers today, so a small select is the cleanest option.
+  let ticker: string | null = null;
+  try {
+    const { data: companyRow } = await supabase
+      .from("companies")
+      .select("ticker")
+      .eq("name", canonicalize(companyName))
+      .maybeSingle();
+    if (companyRow && typeof companyRow.ticker === "string" && companyRow.ticker.trim()) {
+      ticker = companyRow.ticker.trim().toUpperCase();
+    }
+  } catch {
+    // Soft-fail: chart simply does not render. Detail page still works.
+  }
+
   const classified = filterAndClassifyArticles(articles, companyName);
   const developmentArticles = classified.filter((a) => a._isDevelopment);
   const contextArticles = classified.filter((a) => !a._isDevelopment);
@@ -81,6 +99,7 @@ export default async function CompanyDetailPage({
       <CompanyDetailClient
         companyName={companyName}
         industry={identity?.industry ?? null}
+        ticker={ticker}
         developmentArticles={developmentArticles}
         contextArticles={contextArticles}
         memoContent={memoContent}

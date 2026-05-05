@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Building2 } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
+import { CompanyStockChart } from "@/components/company/CompanyStockChart";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { cn } from "@/lib/utils";
 import { timeAgo } from "@/lib/company-intel";
@@ -17,6 +18,7 @@ export type CredibilityMap = Record<string, number>;
 interface CompanyDetailClientProps {
   companyName: string;
   industry: string | null;
+  ticker?: string | null;
   developmentArticles: CompanyArticle[];
   contextArticles: CompanyArticle[];
   memoContent: string;
@@ -28,6 +30,7 @@ interface CompanyDetailClientProps {
 export function CompanyDetailClient({
   companyName,
   industry,
+  ticker = null,
   developmentArticles,
   contextArticles,
   memoContent,
@@ -106,6 +109,13 @@ export function CompanyDetailClient({
       {/* Articles */}
       <div className="flex-1 px-6 py-5">
         <div className="max-w-[720px]">
+
+          {/* Stock chart, public equities only */}
+          {ticker && (
+            <div className="mb-4">
+              <CompanyStockChart ticker={ticker} companyName={companyName} />
+            </div>
+          )}
 
           {/* Articles header */}
           <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">
