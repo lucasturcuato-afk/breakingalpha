@@ -53,21 +53,42 @@ export default async function CompanyDetailPage({
   const { articles } = await fetchCompanyArticles(supabase, canonicalize(companyName));
 
   // Pull the public-equity ticker from the companies table so the detail page
-  // can render a stock chart for listed companies. Private companies surface
-  // null and the chart is skipped client-side. COMPANY_IDENTITY does not
-  // carry tickers today, so a small select is the cleanest option.
+  // can render the stock chart. canonicalize() resolves variant spellings.
+  // Most rows carry tickers post-W2-C bulk backfill; the lazy lookup below
+  // is the backstop for rows the backfill missed or that were created before
+  // the web-fallback ticker-population path shipped.
   let ticker: string | null = null;
+  let companyRowId: string | null = null;
   try {
     const { data: companyRow } = await supabase
       .from("companies")
-      .select("ticker")
+      .select("id, ticker")
       .eq("name", canonicalize(companyName))
       .maybeSingle();
-    if (companyRow && typeof companyRow.ticker === "string" && companyRow.ticker.trim()) {
-      ticker = companyRow.ticker.trim().toUpperCase();
+    if (companyRow) {
+      companyRowId = companyRow.id ?? null;
+      if (typeof companyRow.ticker === "string" && companyRow.ticker.trim()) {
+        ticker = companyRow.ticker.trim().toUpperCase();
+      }
     }
   } catch {
-    // Soft-fail: chart simply does not render. Detail page still works.
+    // soft-fail: detail page still renders without a ticker
+  }
+
+  // Lazy lookup: if no ticker on file but we have a company row, try Finnhub
+  // once and persist for next load. Fire-and-forget on the write so detail
+  // rendering is not blocked by Supabase.
+  if (!ticker && companyRowId) {
+    const { fetchTickerFromFinnhub } = await import("@/lib/finnhub-ticker");
+    const lookedUp = await fetchTickerFromFinnhub(canonicalize(companyName));
+    if (lookedUp) {
+      ticker = lookedUp.trim().toUpperCase();
+      void supabase
+        .from("companies")
+        .update({ ticker })
+        .eq("id", companyRowId)
+        .then(() => undefined);
+    }
   }
 
   const classified = filterAndClassifyArticles(articles, companyName);
