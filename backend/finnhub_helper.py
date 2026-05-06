@@ -11,38 +11,26 @@ W2-C ticker matching algorithm. Used by:
 The TypeScript twin at src/lib/finnhub-ticker.ts (lazy lookup at detail-
 page request time) MUST stay logically identical to this file.
 
-Match algorithm (canonical):
-  1. Mention-count gate: skip rows where mention_count < 2. The Warner
-     false positive that sparked this rewrite had mention_count=1, the
-     actual signal that the row is Gemini extraction noise. False
-     positive cost (wrong ticker persisted) >> miss cost (stays NULL,
-     next backfill catches if mention_count climbs).
-  2. Query Finnhub /search with the name as-is.
-  3. Filter to type IN ('Common Stock', 'ADR') so foreign companies
-     with US-listed depositary receipts (BABA, TSM, BUD, TM) qualify.
-  4. Prefer matches whose displaySymbol does NOT contain a period (US
-     primary listing). If no US-primary match exists, return None;
-     foreign-only listings (.KS, .TO, .L, .DE, .HK, etc.) are NEVER
-     written. The chart proxy can render some foreign tickers, but
-     consistency with Yahoo's primary-symbol convention is the goal.
-  5. If the primary call misses (no US-primary candidate), retry with:
-     a. Trailing corporate suffix stripped ("Hologic Inc." -> "Hologic")
-     b. Internal periods stripped ("Warner Bros." -> "Warner Bros")
-     c. First-2-tokens kept ("Warner Bros Discovery" -> "Warner Bros"),
-        guarded by an ambiguous-prefix denylist so generic words like
-        "Bank", "Capital", "Apple" don't fire false positives.
-  6. If every retry misses: return None.
+Algorithm: mention-count gate -> canonicalize -> Finnhub /search ->
+filter to ACCEPTED_FINNHUB_TYPES -> prefer no-period symbols + class-
+share allowlist -> retry chain (suffix-strip, period-strip, first-2-
+tokens, space-collapse, camelCase-split) -> q-too-long recovery at
+call level.
+
+Patch J changes:
+  (a) Class-share allowlist `^[A-Z]{1,5}\\.(A|B)$` (BRK.A, BRK.B).
+  (b) ACCEPTED_FINNHUB_TYPES extended with 'NY Reg Shrs' (ASML).
+  (c) `q too long` -> retry with first-token only.
+  (d) Space-collapse retry ("JP Morgan" -> "JPMorgan").
+  (e) Pre-call canonicalize (Google -> Alphabet, Facebook -> Meta).
+  (f) CamelCase split retry ("ExxonMobil" -> "Exxon Mobil").
 
 Failures are silent. 5s timeout. Caller MUST handle None.
-
-The original (pre-tuning) version of this module shipped in PR #198 with
-divergent rules from the bulk backfill. This rewrite aligns all three
-matchers and adds the mention_count gate per Amendment 3 of the rules-
-alignment sprint.
 """
 from __future__ import annotations
 
 import os
+import re
 import time
 from typing import Iterable, Optional
 
@@ -56,9 +44,35 @@ RATE_LIMIT_SLEEP_SEC = 60
 # Gemini extraction noise and not Finnhub-matched.
 MIN_MENTION_COUNT_FOR_LOOKUP = 2
 
-# Yahoo / Finnhub type whitelist. ADRs cover foreign companies whose US
-# primary listing is via depositary receipts.
-ACCEPTED_FINNHUB_TYPES = frozenset({"Common Stock", "ADR"})
+# Patch J (b): 'NY Reg Shrs' admits ASML and similar NY-registered
+# foreign issuers that Finnhub returns under that type rather than ADR.
+ACCEPTED_FINNHUB_TYPES = frozenset({"Common Stock", "ADR", "NY Reg Shrs"})
+
+# Patch J (a): class-share allowlist re-admits US class shares (BRK.A,
+# BRK.B) that the default no-period filter rejects.
+_CLASS_SHARE_RE = re.compile(r"^[A-Z]{1,5}\.(A|B)$")
+
+# Patch J (e): canonical-name overrides mirror the brand-substitution
+# entries in CANONICAL from src/lib/company-intel.ts. Pass-through for
+# unknown names. Suffix variants are intentionally excluded; the
+# existing _strip_corporate_suffix transform handles those.
+CANONICAL_OVERRIDES = {
+    "google": "Alphabet",
+    "google llc": "Alphabet",
+    "google inc": "Alphabet",
+    "facebook": "Meta",
+    "meta platforms": "Meta",
+    "amazon.com": "Amazon",
+    "jp morgan": "JPMorgan Chase",
+    "jpmorgan": "JPMorgan Chase",
+    "tsmc": "Taiwan Semiconductor",
+    "samsung electronics": "Samsung",
+    "hon hai": "Foxconn",
+}
+
+# Patch J (f): brands where camelCase IS the canonical spelling -- skip
+# the camelCase-split transform for these so we do not produce garbage.
+_CAMELCASE_DENYLIST = frozenset({"iphone", "ebay", "paypal", "ipad", "imac"})
 
 # Trailing corporate suffixes to strip on retry. Order does not affect
 # matching (we test endswith() with each in turn), but listing the
@@ -167,6 +181,35 @@ def _strip_internal_periods(name: str) -> Optional[str]:
     return cleaned
 
 
+# Patch J (e): brand-canonicalize. Returns canonical name if matched,
+# else returns `name` unchanged (pure pass-through for unknowns).
+def _apply_canonical_override(name: str) -> str:
+    trimmed = name.strip().rstrip(".,").strip()
+    key = trimmed.lower()
+    if key in CANONICAL_OVERRIDES:
+        return CANONICAL_OVERRIDES[key]
+    return trimmed if trimmed else name
+
+
+# Patch J (d): "JP Morgan" -> "JPMorgan". Skip if <3 chars.
+def _collapse_spaces(name: str) -> Optional[str]:
+    collapsed = name.replace(" ", "")
+    if len(collapsed) < 3 or collapsed == name.strip():
+        return None
+    return collapsed
+
+
+# Patch J (f): "ExxonMobil" -> "Exxon Mobil". Skip on no boundary or denylist.
+def _camelcase_split(name: str) -> Optional[str]:
+    trimmed = name.strip()
+    if trimmed.lower() in _CAMELCASE_DENYLIST:
+        return None
+    split = re.sub(r"([a-z])([A-Z])", r"\1 \2", trimmed)
+    if split == trimmed:
+        return None
+    return split
+
+
 def _first_two_tokens(name: str) -> Optional[str]:
     """
     Return the first two whitespace-separated tokens of `name`, with
@@ -195,10 +238,15 @@ def _first_two_tokens(name: str) -> Optional[str]:
 
 
 def _do_finnhub_call(
-    query: str, finnhub_key: str, *, timeout_sec: int = FINNHUB_TIMEOUT_SEC
+    query: str, finnhub_key: str, *, timeout_sec: int = FINNHUB_TIMEOUT_SEC,
+    _allow_q_too_long_retry: bool = True,
 ) -> Optional[Iterable[dict]]:
-    """One Finnhub /search call. Returns the raw `result` list or None on
-    any error / non-200 / 429 (with one 60s retry)."""
+    """One Finnhub /search call. Returns raw `result` list or None.
+
+    Patch J (c): on non-200 with body containing `q too long`, retry
+    once with only the first whitespace-separated token. The recursive
+    retry is guarded by `_allow_q_too_long_retry=False`.
+    """
     params = {"q": query}
     headers = {"X-Finnhub-Token": finnhub_key}
 
@@ -220,6 +268,21 @@ def _do_finnhub_call(
             return None
 
     if resp.status_code != 200:
+        # Patch J (c): inspect the body for `q too long` and recover.
+        if _allow_q_too_long_retry:
+            try:
+                body = resp.text or ""
+            except Exception:
+                body = ""
+            if "q too long" in body:
+                first_token = query.strip().split()[0] if query.strip() else ""
+                if first_token and first_token != query.strip():
+                    return _do_finnhub_call(
+                        first_token,
+                        finnhub_key,
+                        timeout_sec=timeout_sec,
+                        _allow_q_too_long_retry=False,
+                    )
         return None
 
     try:
@@ -250,9 +313,14 @@ def _pick_us_primary(result: Iterable[dict]) -> Optional[str]:
     if not candidates:
         return None
 
-    primary = [
-        c for c in candidates if "." not in (c.get("displaySymbol") or "")
-    ]
+    # Patch J (a): admit class-share symbols (BRK.A, BRK.B).
+    def _is_us_primary(c: dict) -> bool:
+        ds = c.get("displaySymbol") or ""
+        if "." not in ds:
+            return True
+        return bool(_CLASS_SHARE_RE.match(ds))
+
+    primary = [c for c in candidates if _is_us_primary(c)]
     if not primary:
         return None
 
@@ -291,25 +359,31 @@ def search_finnhub_ticker(
     if not key:
         return None
 
-    base = (name or "").strip()
+    raw_trimmed = (name or "").strip()
+    if not raw_trimmed:
+        return None
+
+    # Patch J (e): pre-call canonicalize (Google -> Alphabet, etc.).
+    base = _apply_canonical_override(raw_trimmed) or raw_trimmed
     if not base:
         return None
 
-    # Try the name as-is first.
+    # Try the (canonicalized) name as-is first.
     result = _do_finnhub_call(base, key)
     if result is not None:
         sym = _pick_us_primary(result)
         if sym:
             return sym
 
-    # Retry chain. Each pass adds one Finnhub call (1.1s rate-limit
-    # spacing baked in by callers). Order goes from cheapest semantic
-    # change to most aggressive.
+    # Retry chain: cheapest semantic change first. Patch J appends
+    # _collapse_spaces and _camelcase_split after the existing transforms.
     seen = {base}
     for transform in (
         _strip_corporate_suffix,
         _strip_internal_periods,
         _first_two_tokens,
+        _collapse_spaces,
+        _camelcase_split,
     ):
         candidate = transform(base)
         if candidate is None or candidate in seen:

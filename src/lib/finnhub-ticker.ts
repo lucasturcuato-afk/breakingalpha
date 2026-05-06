@@ -1,33 +1,38 @@
 /**
- * Lazy Finnhub ticker lookup. Used by the detail-page route at
- * src/app/company/[id]/page.tsx as a backstop when companies.ticker is
- * null.
+ * Lazy Finnhub ticker lookup. MUST stay logically identical to
+ * backend/finnhub_helper.py.
  *
- * MUST stay logically identical to backend/finnhub_helper.py
- * (web-fallback ticker population on canonical creation) and
- * backend/scripts/backfill_tickers.py (one-time bulk backfill).
+ * Algorithm: mention-count gate -> canonicalize -> Finnhub /search ->
+ * filter to ACCEPTED_TYPES -> prefer no-period symbols + class-share
+ * allowlist -> retry chain (suffix-strip, period-strip, first-2-tokens,
+ * space-collapse, camelCase-split) -> q-too-long recovery at call level.
  *
- * Match algorithm (canonical, mirrored exactly from finnhub_helper.py):
- *   1. Mention-count gate: skip rows where mention_count < 2.
- *   2. Query Finnhub /search with the name as-is.
- *   3. Filter to type IN ('Common Stock', 'ADR'). ADRs cover foreign
- *      companies with US-listed depositary receipts (BABA, TSM, BUD, TM).
- *   4. Prefer matches whose displaySymbol does NOT contain a period
- *      (US primary listing). If no US-primary match, return null;
- *      foreign-only listings (.KS, .TO, .L, .DE, .HK) are NEVER written.
- *   5. If the primary call misses, retry once with each transform in
- *      sequence (cheapest semantic change first):
- *      a. Trailing corporate suffix stripped ("Hologic Inc." -> "Hologic")
- *      b. Internal periods stripped ("Warner Bros." -> "Warner Bros")
- *      c. First-2-tokens kept ("Warner Bros Discovery" -> "Warner Bros"),
- *         guarded by an ambiguous-prefix denylist so generic words like
- *         "Bank", "Capital", "Apple" do not fire false positives.
- *   6. If every retry misses: return null.
+ * Patch J changes:
+ *   (a) Class-share allowlist `^[A-Z]{1,5}\.(A|B)$` (BRK.A, BRK.B).
+ *   (b) ACCEPTED_TYPES extended with 'NY Reg Shrs' (ASML).
+ *   (c) `q too long` -> retry with first-token only.
+ *   (d) Space-collapse retry ("JP Morgan" -> "JPMorgan").
+ *   (e) Pre-call canonicalize (Google -> Alphabet, Facebook -> Meta).
+ *   (f) CamelCase split retry ("ExxonMobil" -> "Exxon Mobil").
  *
  * Failures are silent. 5s timeout. Caller MUST handle null.
  */
 
-const ACCEPTED_TYPES = new Set(["Common Stock", "ADR"]);
+import { canonicalize } from "@/lib/company-intel";
+
+// Patch J (b): 'NY Reg Shrs' admits ASML and similar NY-registered
+// foreign issuers that Finnhub returns under that type rather than ADR.
+const ACCEPTED_TYPES = new Set(["Common Stock", "ADR", "NY Reg Shrs"]);
+
+// Patch J (a): class-share allowlist re-admits genuine US class shares
+// (BRK.A, BRK.B) that the default no-period filter rejects.
+const CLASS_SHARE_RE = /^[A-Z]{1,5}\.(A|B)$/;
+
+// Patch J (f): brands where camelCase IS the canonical spelling -- skip
+// the camelCase-split transform for these so we do not produce garbage.
+const CAMELCASE_DENYLIST = new Set(
+  ["iPhone", "eBay", "PayPal", "iPad", "iMac"].map((t) => t.toLowerCase()),
+);
 
 const MIN_MENTION_COUNT_FOR_LOOKUP = 2;
 
@@ -146,9 +151,29 @@ function firstTwoTokens(name: string): string | null {
   return candidate || null;
 }
 
+// Patch J (d): "JP Morgan" -> "JPMorgan". Skip if <3 chars.
+function collapseSpaces(name: string): string | null {
+  const collapsed = name.replace(/\s+/g, "");
+  if (collapsed.length < 3 || collapsed === name.trim()) return null;
+  return collapsed;
+}
+
+// Patch J (f): "ExxonMobil" -> "Exxon Mobil". Skip on no boundary or denylist.
+function camelCaseSplit(name: string): string | null {
+  const trimmed = name.trim();
+  if (CAMELCASE_DENYLIST.has(trimmed.toLowerCase())) return null;
+  const split = trimmed.replace(/([a-z])([A-Z])/g, "$1 $2");
+  if (split === trimmed) return null;
+  return split;
+}
+
+// Patch J (c): on 4xx body containing `q too long`, retry once with
+// only the first whitespace-separated token. The `_allowRetry` guard
+// prevents recursion into another q-too-long branch.
 async function doFinnhubCall(
   query: string,
   key: string,
+  allowRetry = true,
 ): Promise<FinnhubResultItem[] | null> {
   try {
     const res = await fetch(
@@ -159,7 +184,22 @@ async function doFinnhubCall(
         cache: "no-store",
       },
     );
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (allowRetry) {
+        try {
+          const body = await res.text();
+          if (body.includes("q too long")) {
+            const firstToken = query.trim().split(/\s+/)[0];
+            if (firstToken && firstToken !== query.trim()) {
+              return doFinnhubCall(firstToken, key, false);
+            }
+          }
+        } catch {
+          // fallthrough; treat as miss
+        }
+      }
+      return null;
+    }
     const data = (await res.json()) as FinnhubSearchResult;
     const result = data.result;
     return Array.isArray(result) ? result : null;
@@ -174,9 +214,13 @@ function pickUsPrimary(result: FinnhubResultItem[]): string | null {
   );
   if (candidates.length === 0) return null;
 
-  const primary = candidates.filter(
-    (c) => typeof c.displaySymbol === "string" && !c.displaySymbol.includes("."),
-  );
+  // Patch J (a): admit class-share symbols (BRK.A, BRK.B).
+  const primary = candidates.filter((c) => {
+    const ds = c.displaySymbol;
+    if (typeof ds !== "string") return false;
+    if (!ds.includes(".")) return true;
+    return CLASS_SHARE_RE.test(ds);
+  });
   if (primary.length === 0) return null;
 
   const sym = primary[0].symbol;
@@ -206,23 +250,34 @@ export async function fetchTickerFromFinnhub(
   const key = process.env.FINNHUB_API_KEY;
   if (!key) return null;
 
-  const base = (companyName ?? "").trim();
+  const rawTrimmed = (companyName ?? "").trim();
+  if (!rawTrimmed) return null;
+
+  // Patch J (e): pre-call canonicalize (Google -> Alphabet, etc.).
+  let base: string;
+  try {
+    base = canonicalize(rawTrimmed) || rawTrimmed;
+  } catch {
+    base = rawTrimmed;
+  }
   if (!base) return null;
 
-  // Try the name as-is first.
+  // Try the (canonicalized) name as-is first.
   const primary = await doFinnhubCall(base, key);
   if (primary !== null) {
     const sym = pickUsPrimary(primary);
     if (sym) return sym;
   }
 
-  // Retry chain: each transform produces at most one additional Finnhub
-  // call. Order goes from cheapest semantic change to most aggressive.
+  // Retry chain: cheapest semantic change first. Patch J appends
+  // collapseSpaces and camelCaseSplit after the existing transforms.
   const seen = new Set<string>([base]);
   const transforms: Array<(s: string) => string | null> = [
     stripCorporateSuffix,
     stripInternalPeriods,
     firstTwoTokens,
+    collapseSpaces,
+    camelCaseSplit,
   ];
 
   for (const transform of transforms) {
