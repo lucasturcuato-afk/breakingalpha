@@ -273,6 +273,9 @@ export default function CompanyIntelPage() {
   // Refs for keyboard nav: keep latest closures without re-binding the listener.
   const rowsRef = useRef<CompanyRow[]>([]);
   const highlightedRef = useRef(0);
+  // Per-row DOM refs keyed by row.id. Used by the scrollIntoView effect to
+  // bring the highlighted row into view when j/k navigates off-screen.
+  const rowRefs = useRef<Map<string, HTMLTableRowElement | null>>(new Map());
 
   useEffect(() => {
     const supabase = createBrowserClient(
@@ -557,11 +560,26 @@ export default function CompanyIntelPage() {
       } else if (e.key === "Enter") {
         const target = rows[i];
         if (target) router.push(`/company/${encodeURIComponent(slugify(target.name))}`);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setHighlightedIndex(-1);
       }
     }
     window.addEventListener("keydown", handle);
     return () => window.removeEventListener("keydown", handle);
   }, [router]);
+
+  // Auto-scroll the highlighted row into view when j/k pushes it off-screen.
+  // block: "nearest" only scrolls when the row is actually outside the viewport,
+  // avoiding gratuitous scroll on already-visible rows. behavior: "auto" (not
+  // smooth) is intentional -- rapid j-mash with smooth animation feels laggy.
+  useEffect(() => {
+    if (highlightedIndex < 0) return;
+    const row = rowsRef.current[highlightedIndex];
+    if (!row) return;
+    const el = rowRefs.current.get(row.id);
+    el?.scrollIntoView({ block: "nearest", behavior: "auto" });
+  }, [highlightedIndex]);
 
   const onHeaderClick = (key: SortKey) => {
     if (key === sortKey) {
@@ -808,7 +826,7 @@ export default function CompanyIntelPage() {
                   <SortHeader label="Name" k="name" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="px-2 py-2" />
                   <SortHeader label="Sector" k="sector" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="px-2 py-2" />
                   <th className="px-2 py-2">Themes</th>
-                  <th className="px-2 py-2">Mentions</th>
+                  <SortHeader label="Mentions" k="mentions" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="px-2 py-2" />
                   <SortHeader label="Last seen" k="lastUpdated" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="px-2 py-2" />
                   <th className="w-10 px-2 py-2 text-center">Aliases</th>
                   <th className="w-8 px-2 py-2"></th>
@@ -822,6 +840,10 @@ export default function CompanyIntelPage() {
                   return (
                     <tr
                       key={row.id}
+                      ref={(el) => {
+                        if (el) rowRefs.current.set(row.id, el);
+                        else rowRefs.current.delete(row.id);
+                      }}
                       onMouseEnter={() => setHighlightedIndex(idx)}
                       onClick={() => {
                         if (isLocked) { setShowSignIn(true); return; }
@@ -957,7 +979,7 @@ export default function CompanyIntelPage() {
         {/* Keyboard hint */}
         {!isSignedOut && !loading && visibleRows.length > 0 && (
           <p className="mt-3 font-data text-[9px] uppercase tracking-widest text-text-faint">
-            j / k navigate &middot; w toggle watchlist &middot; Enter open
+            j / k navigate &middot; w toggle watchlist &middot; Enter open &middot; Esc clear
           </p>
         )}
       </div>
