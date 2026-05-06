@@ -25,11 +25,19 @@
   --border-subtle: #f0ebe0;
   --border-hover: #c9922a44;
 
-  /* ── Text system ── */
+  /* ── Text system ──
+     Tones picked for WCAG AA against the cream background.
+     Verified ratios vs --cream (#fffdf9):
+       text-primary  #1a1208 = 18.23:1
+       text-secondary #6b5a3f =  6.54:1  (was #8a7a60 = 4.11:1, fail at 12px)
+       text-muted    #7a6a4d =  5.17:1  (was #b0a080 = 2.53:1, hard fail)
+       text-faint    #827158 =  4.64:1  (was #c8bfa8 = 1.80:1, hard fail)
+     The warm-paper aesthetic is preserved by keeping the same warm-amber
+     hue family (H ~38, S ~25); we only deepen the L axis. */
   --text-primary: #1a1208;
-  --text-secondary: #8a7a60;
-  --text-muted: #b0a080;
-  --text-faint: #c8bfa8;
+  --text-secondary: #6b5a3f;
+  --text-muted: #7a6a4d;
+  --text-faint: #827158;
 
   /* ── Semantic / signal ── */
   --signal-up: #16a34a;
