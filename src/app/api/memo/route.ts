@@ -303,7 +303,10 @@ export async function POST(request: NextRequest) {
     // for an un-indexed company. Article-grounded memos still get the overlay.
     const memoCtx = type === "company-web" ? "" : await buildMemoContext(sector || undefined);
     const baseSystem = (memoCtx ? memoCtx + "\n\n" : "") + system;
-    const augmentedSystem = buildMemoPrompt(profile, baseSystem);
+    const augmentedSystem =
+      type === "company" || type === "company-web"
+        ? baseSystem // skip role-block; the company prompts have their own complete structure
+        : buildMemoPrompt(profile, baseSystem);
 
     // Web-fallback memos need a higher output ceiling than article-grounded.
     // The web prompt has 5 sections plus per-claim [n] citations plus two
