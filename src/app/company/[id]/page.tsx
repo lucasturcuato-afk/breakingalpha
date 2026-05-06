@@ -59,14 +59,18 @@ export default async function CompanyDetailPage({
   // the web-fallback ticker-population path shipped.
   let ticker: string | null = null;
   let companyRowId: string | null = null;
+  let mentionCount = 0;
   try {
     const { data: companyRow } = await supabase
       .from("companies")
-      .select("id, ticker")
+      .select("id, ticker, mention_count")
       .eq("name", canonicalize(companyName))
       .maybeSingle();
     if (companyRow) {
       companyRowId = companyRow.id ?? null;
+      if (typeof companyRow.mention_count === "number") {
+        mentionCount = companyRow.mention_count;
+      }
       if (typeof companyRow.ticker === "string" && companyRow.ticker.trim()) {
         ticker = companyRow.ticker.trim().toUpperCase();
       }
@@ -80,7 +84,13 @@ export default async function CompanyDetailPage({
   // rendering is not blocked by Supabase.
   if (!ticker && companyRowId) {
     const { fetchTickerFromFinnhub } = await import("@/lib/finnhub-ticker");
-    const lookedUp = await fetchTickerFromFinnhub(canonicalize(companyName));
+    // Pass mentionCount so the lazy lookup honors the same Amendment-3
+    // gate as the bulk backfill: rows with mc < 2 are extraction noise
+    // and must not consume a Finnhub call.
+    const lookedUp = await fetchTickerFromFinnhub(
+      canonicalize(companyName),
+      { mentionCount },
+    );
     if (lookedUp) {
       ticker = lookedUp.trim().toUpperCase();
       void supabase
