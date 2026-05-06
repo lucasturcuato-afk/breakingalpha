@@ -57,7 +57,7 @@ export function CompanyDetailClient({
     <div className="flex flex-col min-h-screen bg-cream">
       {/* Header */}
       <div className="border-b border-border-base bg-white px-6 py-5">
-        <div className="max-w-[720px]">
+        <div className="max-w-[960px] mx-auto">
           <h1 className="font-display text-[24px] font-extrabold text-espresso leading-tight">
             {companyName}
           </h1>
@@ -72,7 +72,7 @@ export function CompanyDetailClient({
 
       {/* Actions */}
       <div className="px-6 py-4 border-b border-border-base bg-white">
-        <div className="max-w-[720px] flex items-center gap-2">
+        <div className="max-w-[960px] mx-auto flex items-center gap-2">
           <button
             type="button"
             onClick={handleAddToWatchlist}
@@ -108,7 +108,7 @@ export function CompanyDetailClient({
 
       {/* Articles */}
       <div className="flex-1 px-6 py-5">
-        <div className="max-w-[720px]">
+        <div className="max-w-[960px] mx-auto">
 
           {/* Stock chart, public equities only */}
           {ticker && (
