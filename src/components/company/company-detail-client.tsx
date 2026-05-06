@@ -108,6 +108,11 @@ export function CompanyDetailClient({
         const json = (await res.json()) as { entry?: { id: string } };
         if (json.entry?.id) setWatchlistEntryId(json.entry.id);
       }
+      // Sidebar count is hydrated from a realtime postgres_changes channel,
+      // but delivery can be delayed or dropped under load. Broadcast a
+      // window-level event so the sidebar can refetch immediately. The
+      // sidebar registers the matching listener (see shell/sidebar.tsx).
+      window.dispatchEvent(new Event("watchlist:changed"));
     } catch (e) {
       console.error("Watchlist toggle failed:", e);
       // Rollback to whatever it was before the click.
