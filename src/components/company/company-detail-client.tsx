@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Bookmark, BookmarkCheck, Sparkles, ExternalLink } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -54,6 +54,12 @@ export function CompanyDetailClient({
   const [watchlistEntryId, setWatchlistEntryId] = useState<string | null>(null);
   const isInWatchlist = watchlistEntryId !== null;
 
+  // Synchronous in-flight lock. The state-based guard alone cannot stop
+  // multiple click events queued in the same microtask before React has
+  // re-rendered: each call reads stale state and slips past. A ref flips
+  // synchronously and is checked at the top of the handler.
+  const inFlight = useRef(false);
+
   // Hydrate watchlist state on mount. Sidebar already revalidates its count
   // via a Supabase postgres_changes subscription on the watchlist table
   // (see src/components/shell/sidebar.tsx ~L197), so the detail page only
@@ -82,7 +88,12 @@ export function CompanyDetailClient({
 
   const handleToggleWatchlist = useCallback(async () => {
     // Race guard: ignore re-clicks while a previous toggle is still in flight.
+    // The ref check fires synchronously even before React commits the next
+    // render of the disabled button, so rapid-fire clicks issued in the same
+    // microtask collapse to a single network round-trip.
+    if (inFlight.current) return;
     if (watchlistEntryId === PENDING_ID) return;
+    inFlight.current = true;
     const prev = watchlistEntryId;
     // Optimistic update
     setWatchlistEntryId(prev ? null : PENDING_ID);
@@ -117,6 +128,8 @@ export function CompanyDetailClient({
       console.error("Watchlist toggle failed:", e);
       // Rollback to whatever it was before the click.
       setWatchlistEntryId(prev);
+    } finally {
+      inFlight.current = false;
     }
   }, [companyName, watchlistEntryId]);
 
