@@ -184,10 +184,27 @@ export function CompanyStockChart({ ticker, companyName }: CompanyStockChartProp
 
     const startClose = points[0].c;
     const endClose = points[points.length - 1].c;
-    const pct = startClose > 0 ? ((endClose - startClose) / startClose) * 100 : 0;
 
-    return { xy, linePath, areaPath, startClose, endClose, pct, minC, maxC };
-  }, [data]);
+    // Range-aware percent anchor. The 1D convention used by Google,
+    // Yahoo, and every broker is "change since previous close" (i.e.
+    // yesterday's close, exposed by Yahoo as chartPreviousClose and
+    // surfaced by /api/stock-chart as data.prevClose). Anchoring to
+    // points[0] for 1D would compare against the first 5-minute candle
+    // of today's session, which is usually the highest-volatility
+    // moment of the day and produces a number that looks wildly off
+    // vs every other source.
+    //
+    // For 5D / 1M / 3M / 1Y / 5Y the conventional return IS the
+    // window-anchored "change since first point in range," so
+    // startClose is correct.
+    const anchor =
+      range === "1d" && typeof data.prevClose === "number" && data.prevClose > 0
+        ? data.prevClose
+        : startClose;
+    const pct = anchor > 0 ? ((endClose - anchor) / anchor) * 100 : 0;
+
+    return { xy, linePath, areaPath, startClose, endClose, anchor, pct, minC, maxC };
+  }, [data, range]);
 
   const isUp = (geometry?.pct ?? 0) >= 0;
   const stroke = isUp ? "var(--signal-up)" : "var(--signal-dn)";
@@ -223,12 +240,21 @@ export function CompanyStockChart({ ticker, companyName }: CompanyStockChartProp
 
   const handleLeave = useCallback(() => setHover(null), []);
 
-  // Header price/pct: prefer hovered point when available.
+  // Header price/pct: prefer hovered point when available, otherwise prefer
+  // Yahoo's regularMarketPrice (data.price) which is typically slightly
+  // fresher than the last 5-minute bucket in the chart series. Falls
+  // back to the last series point if Yahoo didn't return a meta price.
   const hoveredPoint = hover && data ? data.points[hover.index] : null;
-  const headerPrice = hoveredPoint ? hoveredPoint.c : geometry?.endClose ?? null;
+  const headerPrice = hoveredPoint
+    ? hoveredPoint.c
+    : (data?.price ?? geometry?.endClose ?? null);
+  // Range-aware hover percent: same anchor as the headline so hovering
+  // does not silently switch to a different convention. For 1D this
+  // means the hover percent is "vs prevClose"; for other ranges it is
+  // "vs first point in range."
   const headerPct =
-    hoveredPoint && geometry
-      ? ((hoveredPoint.c - geometry.startClose) / geometry.startClose) * 100
+    hoveredPoint && geometry && geometry.anchor > 0
+      ? ((hoveredPoint.c - geometry.anchor) / geometry.anchor) * 100
       : geometry?.pct ?? 0;
   const headerDate = hoveredPoint ? formatDate(hoveredPoint.t, range) : null;
 
