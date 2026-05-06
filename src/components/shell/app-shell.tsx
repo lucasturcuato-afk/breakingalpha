@@ -84,10 +84,16 @@ export function AppShell({
 
   return (
     <>
-      {/* Skip link: first focusable element so keyboard users can bypass nav. */}
+      {/* Skip link: first focusable element so keyboard users can bypass nav.
+          focus-visible (not focus) so mouse interactions never reveal it.
+          onClick explicitly focuses the target because some browsers do not
+          auto-focus hash targets even when they have tabindex=-1. */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-3 focus:py-1.5 focus:rounded focus:bg-espresso focus:text-cream focus:font-sans focus:text-[12px]"
+        onClick={() => {
+          setTimeout(() => document.getElementById("main-content")?.focus(), 0);
+        }}
+        className="sr-only focus-visible:not-sr-only focus-visible:absolute focus-visible:top-2 focus-visible:left-2 focus-visible:z-50 focus-visible:px-3 focus-visible:py-1.5 focus-visible:rounded focus-visible:bg-espresso focus-visible:text-cream focus-visible:font-sans focus-visible:text-[12px]"
       >
         Skip to main content
       </a>
