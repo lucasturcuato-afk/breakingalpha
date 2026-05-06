@@ -3,15 +3,25 @@ import { getSupabaseWithUser } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
 
+// Freshness gate: hide notifications older than this many days.
+// 14 days balances "users see notifications they may have missed last week"
+// with "stale alerts do not pile up indefinitely." Strict gate -- applies
+// regardless of read state. Tune here for future adjustment.
+const NOTIFICATION_MAX_AGE_DAYS = 14;
+
 export async function GET() {
   const { supabase, user } = await getSupabaseWithUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   try {
+    const cutoffIso = new Date(
+      Date.now() - NOTIFICATION_MAX_AGE_DAYS * 24 * 60 * 60 * 1000,
+    ).toISOString();
     const { data, error } = await supabase
       .from("watchlist_notifications")
       .select("id, identifier, type, title, body, read, created_at")
       .eq("user_id", user.id)
+      .gte("created_at", cutoffIso)
       .order("created_at", { ascending: false })
       .limit(50);
 
