@@ -50,8 +50,12 @@ export async function GET(request: NextRequest) {
 
   const interval = RANGE_TO_INTERVAL[range];
   const upperTicker = ticker.toUpperCase();
+  // Yahoo Finance v8 uses hyphens for US class shares (BRK-B, BF-B, CWEN-A);
+  // a period-form symbol returns "symbol may be delisted". Substitute at the
+  // boundary only; the original form is preserved in the response body.
+  const yahooTicker = upperTicker.replace(/\./g, "-");
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-    upperTicker,
+    yahooTicker,
   )}?interval=${interval}&range=${range}`;
 
   let upstream: Response;
