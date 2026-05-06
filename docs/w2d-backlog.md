@@ -34,6 +34,8 @@ This is a prioritized backlog, not a sprint plan. Each item lists the trigger (w
 
 12. **Esc key handler on /company directory.** Covered by Patch O if it lands tonight; otherwise carry to W2-D.
 
+13. **Sentiment chip contrast on Morning Brief and Evening Wrap.** NEUTRAL / BULLISH / BEARISH chips on `/morning-brief` and `/evening-wrap` render with low contrast against the espresso hero card background; hard to read in light mode. Likely part of the 27 remaining axe violations from the N2 contrast sweep (brand colors flagged for N3). Component scope is the brief renderer chip styling, separate from the sidebar / secondary-text tokens N2 already addressed. Smallest PR: bump chip foreground or background to hit 4.5:1 against the parent card; roughly 5-10 LOC, single file.
+
 ## Notes on sequencing
 
 - P0 #1 (alias seed) gates P1 #6 (subsidiary aliasing) and feeds the bulk run for P0 #3 (cluster merges).
