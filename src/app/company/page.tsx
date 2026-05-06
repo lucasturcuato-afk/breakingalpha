@@ -93,6 +93,14 @@ function dedupeAndMapApiCompanies(rows: ApiCompany[]): CompanyRow[] {
       // companies row has at least one alias, so an N-row dedup gives at
       // least N aliasCount, plus any organic typo / variant aliases on top.
       existing.aliasCount += row.alias_count ?? 0;
+      // Backfill ticker / sector from a later row in the same cluster
+      // when the seed lacks them. Real example: the "Google" row (mc=78,
+      // ticker=NULL) outranks "Alphabet" (mc=47, ticker=GOOGL) in the
+      // mention-ordered API response; without this, the displayed row
+      // shows "--" for ticker even though the canonical Alphabet row
+      // has GOOGL on file.
+      if (!existing.ticker && row.ticker) existing.ticker = row.ticker;
+      if (!existing.sector && row.sector) existing.sector = row.sector;
       // Preserve the highest-mention row's id and metadata; merge themes.
       if (row.key_themes) {
         for (const t of row.key_themes) {
