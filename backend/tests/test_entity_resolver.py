@@ -9,8 +9,17 @@ exercise the real Postgres; transaction ordering across the
 companies/aliases/resolution_log boundary is documented at the top of
 entity_resolver.py and verified by code inspection rather than mocks.
 """
+import os
 import unittest
 from unittest.mock import MagicMock
+
+# Disable W2-C ticker population for unit tests. The new ticker fetch
+# inside _try_insert_canonical does an outbound Finnhub HTTP call and
+# (on success) issues an additional companies.update that the existing
+# call-log assertions are not expecting. The env-var bypass keeps the
+# branch-logic tests focused on resolver behavior; the ticker fetch
+# itself is exercised by backend/finnhub_helper.py at integration time.
+os.environ["DISABLE_TICKER_POPULATION"] = "1"
 
 from backend.entity_resolver import register_entity
 
