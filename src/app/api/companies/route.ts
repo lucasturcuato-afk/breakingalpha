@@ -48,9 +48,16 @@ export async function GET(request: NextRequest) {
       .limit(limit);
 
     if (q.length >= 2) {
-      // Name-only ilike. Ticker filtering deliberately omitted — column reliability
-      // is unverified per the fix plan; revisit in a follow-up.
-      query = query.ilike("name", `%${q}%`);
+      // Search both name and ticker columns. PostgREST `.or()` strings use commas
+      // and parens as syntactic separators, so we strip those from the user input
+      // before interpolation. Percent and underscore are valid ilike wildcards we
+      // intentionally let through; the filter just becomes more permissive, not
+      // less safe (PostgREST parameterizes the resulting filter into a parsed AST,
+      // so this is not a SQL-injection vector).
+      const safeQ = q.replace(/[,()]/g, "");
+      if (safeQ.length >= 2) {
+        query = query.or(`name.ilike.%${safeQ}%,ticker.ilike.%${safeQ}%`);
+      }
     }
 
     const { data, error } = await query;
