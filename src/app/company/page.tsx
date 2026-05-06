@@ -844,6 +844,7 @@ export default function CompanyIntelPage() {
                         if (el) rowRefs.current.set(row.id, el);
                         else rowRefs.current.delete(row.id);
                       }}
+                      aria-selected={isHighlighted}
                       onMouseEnter={() => setHighlightedIndex(idx)}
                       onClick={() => {
                         if (isLocked) { setShowSignIn(true); return; }

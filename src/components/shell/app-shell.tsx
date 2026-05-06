@@ -84,6 +84,14 @@ export function AppShell({
 
   return (
     <>
+      {/* Skip link: first focusable element so keyboard users can bypass nav. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-3 focus:py-1.5 focus:rounded focus:bg-espresso focus:text-cream focus:font-sans focus:text-[12px]"
+      >
+        Skip to main content
+      </a>
+
       {/* Sidebar (fixed, outside flex flow). Visible at md+ (icon-only between
           768-1023px, full at lg+); below md the MobileBottomNav handles
           navigation. */}
@@ -132,7 +140,7 @@ export function AppShell({
         {/* Content + right panel */}
         <div className="flex-1 flex overflow-hidden">
           {/* Scrollable content area */}
-          <main className="flex-1 overflow-y-auto bg-parchment pb-[56px] md:pb-0">
+          <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto bg-parchment pb-[56px] md:pb-0">
             <PageTransition>{children}</PageTransition>
           </main>
 
