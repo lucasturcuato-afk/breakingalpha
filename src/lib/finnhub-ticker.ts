@@ -28,6 +28,13 @@ const ACCEPTED_TYPES = new Set(["Common Stock", "ADR", "NY Reg Shrs"]);
 // (BRK.A, BRK.B) that the default no-period filter rejects.
 const CLASS_SHARE_RE = /^[A-Z]{1,5}\.(A|B)$/;
 
+// Hard overrides for names where Finnhub /search returns a worse-than-desired
+// ticker (e.g. BRK.A, ~$700K/share with thin volume) but the better one (BRK.B)
+// is reachable only by direct symbol query. Keys are lowercase post-canonicalize.
+const HARD_TICKER_OVERRIDES: Record<string, string> = {
+  "berkshire hathaway": "BRK.B",
+};
+
 // Patch J (f): brands where camelCase IS the canonical spelling -- skip
 // the camelCase-split transform for these so we do not produce garbage.
 const CAMELCASE_DENYLIST = new Set(
@@ -261,6 +268,9 @@ export async function fetchTickerFromFinnhub(
     base = rawTrimmed;
   }
   if (!base) return null;
+
+  const override = HARD_TICKER_OVERRIDES[base.toLowerCase()];
+  if (override) return override;
 
   // Try the (canonicalized) name as-is first.
   const primary = await doFinnhubCall(base, key);

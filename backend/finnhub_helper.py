@@ -52,6 +52,13 @@ ACCEPTED_FINNHUB_TYPES = frozenset({"Common Stock", "ADR", "NY Reg Shrs"})
 # BRK.B) that the default no-period filter rejects.
 _CLASS_SHARE_RE = re.compile(r"^[A-Z]{1,5}\.(A|B)$")
 
+# Hard overrides for names where Finnhub /search returns a worse-than-desired
+# ticker (e.g. BRK.A, ~$700K/share with thin volume) but the better one (BRK.B)
+# is reachable only by direct symbol query. Keys are lowercase post-canonicalize.
+HARD_TICKER_OVERRIDES = {
+    "berkshire hathaway": "BRK.B",
+}
+
 # Patch J (e): canonical-name overrides mirror the brand-substitution
 # entries in CANONICAL from src/lib/company-intel.ts. Pass-through for
 # unknown names. Suffix variants are intentionally excluded; the
@@ -367,6 +374,10 @@ def search_finnhub_ticker(
     base = _apply_canonical_override(raw_trimmed) or raw_trimmed
     if not base:
         return None
+
+    override = HARD_TICKER_OVERRIDES.get(base.lower())
+    if override:
+        return override
 
     # Try the (canonicalized) name as-is first.
     result = _do_finnhub_call(base, key)
