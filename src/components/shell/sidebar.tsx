@@ -193,28 +193,34 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
     });
   }, [getSupabase]);
 
-  // Realtime subscription for watchlist count badge
+  // Realtime subscription for watchlist count badge. Also listens for a
+  // window-level "watchlist:changed" event as a fallback so client-driven
+  // mutations (e.g. company detail page toggle) can request an immediate
+  // refetch when realtime delivery is delayed or muted.
   useEffect(() => {
     if (!user?.id) return;
     const supabase = getSupabase();
+    const refetch = () => {
+      supabase
+        .from("watchlist")
+        .select("identifier, type")
+        .eq("user_id", user.id)
+        .then(({ data }) => {
+          if (data) setWatchlistCount(dedupeWatchlistCount(data));
+        });
+    };
     const channel = supabase
       .channel(`watchlist-count-${user.id}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "watchlist", filter: `user_id=eq.${user.id}` },
-        () => {
-          supabase
-            .from("watchlist")
-            .select("identifier, type")
-            .eq("user_id", user.id)
-            .then(({ data }) => {
-              if (data) setWatchlistCount(dedupeWatchlistCount(data));
-            });
-        },
+        refetch,
       )
       .subscribe();
 
+    window.addEventListener("watchlist:changed", refetch);
     return () => {
+      window.removeEventListener("watchlist:changed", refetch);
       supabase.removeChannel(channel);
     };
   }, [user?.id, getSupabase]);
