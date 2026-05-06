@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Bookmark, Sparkles, ExternalLink } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Bookmark, BookmarkCheck, Sparkles, ExternalLink } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Building2 } from "lucide-react";
@@ -27,6 +27,13 @@ interface CompanyDetailClientProps {
   credibilityMap?: CredibilityMap;
 }
 
+// Sentinel for the in-flight POST window. Mirrors the directory page's race
+// guard so a rapid double-click does not produce two POSTs (the second would
+// 400 on the server-side ilike duplicate check, but the rollback would then
+// flip the local state back to "not watched" while the row is actually
+// present -- the visible bug we are fixing).
+const PENDING_ID = "__pending__";
+
 export function CompanyDetailClient({
   companyName,
   industry,
@@ -41,17 +48,72 @@ export function CompanyDetailClient({
   const [memoOpen, setMemoOpen] = useState(false);
   const [memoToast, setMemoToast] = useState("");
 
-  const handleAddToWatchlist = async () => {
+  // Watchlist row id when this company is in the user's list, null otherwise.
+  // PENDING_ID while a POST is in-flight (used as the optimistic placeholder
+  // before the server returns the real row id).
+  const [watchlistEntryId, setWatchlistEntryId] = useState<string | null>(null);
+  const isInWatchlist = watchlistEntryId !== null;
+
+  // Hydrate watchlist state on mount. Sidebar already revalidates its count
+  // via a Supabase postgres_changes subscription on the watchlist table
+  // (see src/components/shell/sidebar.tsx ~L197), so the detail page only
+  // needs to manage local button state -- no manual sidebar broadcast.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/watchlist");
+        if (!res.ok) return; // 401 signed out, soft-fail
+        const json = (await res.json()) as {
+          entries?: Array<{ id: string; identifier: string; type: string }>;
+        };
+        if (cancelled) return;
+        const target = companyName.toLowerCase();
+        const match = (json.entries ?? []).find(
+          (e) => e.type === "company" && e.identifier.toLowerCase() === target,
+        );
+        setWatchlistEntryId(match?.id ?? null);
+      } catch {
+        // soft-fail: button still functional, just defaults to "Add"
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [companyName]);
+
+  const handleToggleWatchlist = useCallback(async () => {
+    // Race guard: ignore re-clicks while a previous toggle is still in flight.
+    if (watchlistEntryId === PENDING_ID) return;
+    const prev = watchlistEntryId;
+    // Optimistic update
+    setWatchlistEntryId(prev ? null : PENDING_ID);
     try {
-      await fetch("/api/watchlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier: companyName, type: "company" }),
-      });
+      if (prev && prev !== PENDING_ID) {
+        const res = await fetch("/api/watchlist", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: prev }),
+        });
+        if (!res.ok) throw new Error(`DELETE failed: ${res.status}`);
+      } else {
+        const res = await fetch("/api/watchlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            identifier: companyName,
+            type: "company",
+            display_name: companyName,
+          }),
+        });
+        if (!res.ok) throw new Error(`POST failed: ${res.status}`);
+        const json = (await res.json()) as { entry?: { id: string } };
+        if (json.entry?.id) setWatchlistEntryId(json.entry.id);
+      }
     } catch (e) {
-      console.error("Failed to add to watchlist:", e);
+      console.error("Watchlist toggle failed:", e);
+      // Rollback to whatever it was before the click.
+      setWatchlistEntryId(prev);
     }
-  };
+  }, [companyName, watchlistEntryId]);
 
   return (
     <div className="flex flex-col min-h-screen bg-cream">
@@ -75,11 +137,19 @@ export function CompanyDetailClient({
         <div className="max-w-[960px] mx-auto flex items-center gap-2">
           <button
             type="button"
-            onClick={handleAddToWatchlist}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-parchment-mid border border-border-base font-sans text-[11px] font-medium text-text-secondary hover:border-border-hover transition-colors cursor-pointer"
+            onClick={handleToggleWatchlist}
+            disabled={watchlistEntryId === PENDING_ID}
+            aria-pressed={isInWatchlist}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-sans text-[11px] font-medium transition-colors cursor-pointer",
+              isInWatchlist
+                ? "bg-gold-muted border-gold-border text-gold hover:bg-gold/10"
+                : "bg-parchment-mid border-border-base text-text-secondary hover:border-border-hover",
+              watchlistEntryId === PENDING_ID && "opacity-60 cursor-wait",
+            )}
           >
-            <Bookmark size={11} />
-            Add to Watchlist
+            {isInWatchlist ? <BookmarkCheck size={11} /> : <Bookmark size={11} />}
+            {isInWatchlist ? "Remove from Watchlist" : "Add to Watchlist"}
           </button>
           <div className="relative">
             <button
