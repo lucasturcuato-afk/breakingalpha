@@ -179,7 +179,13 @@ export function CompanyDetailClient({
                           {a.title}
                         </h4>
                         {a.url && (
-                          <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5">
+                          <a
+                            href={a.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={`Open "${a.title}"${a.source ? ` on ${a.source}` : ""} (opens in new tab)`}
+                            className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5"
+                          >
                             <ExternalLink size={11} />
                           </a>
                         )}
@@ -234,7 +240,13 @@ export function CompanyDetailClient({
                           {a.title}
                         </h4>
                         {a.url && (
-                          <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5">
+                          <a
+                            href={a.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={`Open "${a.title}"${a.source ? ` on ${a.source}` : ""} (opens in new tab)`}
+                            className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5"
+                          >
                             <ExternalLink size={11} />
                           </a>
                         )}

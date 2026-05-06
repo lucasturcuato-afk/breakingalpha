@@ -544,6 +544,8 @@ export default function CompanyIntelPage() {
     function handle(e: KeyboardEvent) {
       const tag = (document.activeElement?.tagName || "").toUpperCase();
       if (tag === "INPUT" || tag === "TEXTAREA") return;
+      // Skip-link-aware: don't intercept keys when focus is on an in-page anchor.
+      if (document.activeElement?.matches('a[href^="#"]')) return;
       const rows = rowsRef.current;
       if (rows.length === 0) return;
       const i = highlightedRef.current;
@@ -844,6 +846,7 @@ export default function CompanyIntelPage() {
                         if (el) rowRefs.current.set(row.id, el);
                         else rowRefs.current.delete(row.id);
                       }}
+                      aria-selected={isHighlighted}
                       onMouseEnter={() => setHighlightedIndex(idx)}
                       onClick={() => {
                         if (isLocked) { setShowSignIn(true); return; }
