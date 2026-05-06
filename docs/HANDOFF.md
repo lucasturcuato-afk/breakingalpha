@@ -1,7 +1,56 @@
-# Signalera/Breaking Alpha — Claude Chat Handoff
-**Date:** 2026-05-03 (PT)
-**Last session focus:** PR #175 (email polish) and PR #177 (web-fallback typo normalization) both merged; schema migrations applied; follow-up items (a) resolved by PR #177, (b) citation parity remains open. Wave 2 audits in draft (#172/#173/#174). OAuth + SITE_URL config still pending.
-**Status:** All three Wave 2/3 PRs merged (#175, #176, #177). SQL migrations applied to prod. Remaining blockers: OAuth config (Supabase Site URL), citation parity for article-grounded memos.
+# Signalera/Breaking Alpha -- Claude Chat Handoff
+**Date:** 2026-05-06 (PT)
+**Last session focus:** W2-C Company Intel Phase 1 sprint -- 11 PRs landed across two days on integration branch `noah/w2-c-phase-1`; PR #197 collects the merge to main pending pre-ship gates (Patches G and H, data-only). Overnight patch sprint in flight on the same integration branch.
+**Status:** Phase 1 ready-to-ship on integration; pre-ship gates pending. W2-D backlog captured in `docs/w2d-backlog.md`.
+
+---
+
+## Recently Completed (2026-05-06) -- W2-C Phase 1 sprint
+
+PR #197 collects all of the work below onto integration branch `noah/w2-c-phase-1`. Merge to main is gated on Patches G and H (data-only pre-ship gates).
+
+Sprint commits, in merge order to integration:
+
+- **PR #198** -- web-fallback ticker population during canonical creation. `register_entity` miss-branch now does a best-effort Finnhub `/api/v1/search` call before insert.
+- **PR #200** -- one-time bulk ticker backfill via Finnhub `/search`. Reference commit; ran in prod, inserted 881 of 2907 rows (30.3 percent coverage). Long-tail misses are mostly foreign ADRs (see W2-D backlog item 1).
+- **PR #201** -- unified canonical matching rules + retry chain + mention-count gate. Aligns Python helper, bulk backfill, web-fallback, and TS lazy lookup on one algorithm. Closes the foreign-ticker pollution and Warner Bros. Discovery bugs.
+- **PR #194** -- one-time alias backfill script. Inserted 2882 of 2902 rows; 1:1 with companies post-run.
+- **PR #195** -- W2-A read-path PR. Adds `alias_count` to `GET /api/companies` via PostgREST relationship-count subquery; adds typo-redirect via `normalizeLookupKey` on zero-result queries.
+- **PR #196** -- stock chart on company detail page (Phase 1.5). Pure-SVG chart, range selector, hover crosshair; new `/api/stock-chart` Yahoo proxy.
+- **PR #203** (PR D) -- skip role-block prepend for company memo types. One-line ternary in `src/app/api/memo/route.ts` so company / company-web prompts own the section structure end to end.
+- **PR #204** (PR E) -- center detail page content + widen to 960px. Three lines in `company-detail-client.tsx`.
+- **PR #205** (PR F) -- directory dedup backfills ticker/sector from sibling rows. Single-file change in `src/app/company/page.tsx` so the canonical card inherits non-null fields from cluster siblings.
+- **PR #199** -- lazy ticker lookup at detail-page request time + integration merge + mention_count threading. Falls through to Finnhub once when ticker is NULL, persists fire-and-forget; ready for self-merge to integration.
+- **PR #202** -- chart 1D percent uses `chartPreviousClose` anchor; headline price prefers `regularMarketPrice` (Bug 3 fix).
+
+Earlier in the sprint window:
+
+- **PR #191** -- sidebar refactor (Phase 1 surface 1).
+- **PR #192** -- `CompanyIntelMemoModal` fork (Phase 1 surface 2). Shared `MemoModal` left untouched per section 8 question 3 of the W2-C design doc.
+- **PR #193** -- directory page redesign (Phase 1 surface 3). Replaces 3-column card grid with the 28-row dense table.
+
+### Architecture decisions banked
+
+- **Pure-SVG charts.** No Recharts. Yahoo `/v8/finance/chart` is the data source; `chartPreviousClose` anchors the 1D percent (PR #202).
+- **Edge cache via headers.** `/api/stock-chart` does no request-time DB calls; data is cached at the edge.
+- **Ticker coverage strategy.** Resolution chain is name-as-is -> suffix-strip -> period-strip -> first-2-tokens, gated by `mention_count >= 2` (Amendment 3). The same rule fires from bulk backfill, web-fallback, and lazy lookup.
+- **Mention-count gate (Amendment 3).** Shared between PR #200, PR #198, PR #201, and PR #199. One algorithm, three call sites.
+- **Memo prompt structure.** Company prompts own complete section structure top to bottom; the role-block prepend only applies to deal / thesis / brief / article paths (PR #203).
+
+### Overnight patch sprint queued
+
+Per `.session-artifacts/overnight/SHARED_INSTRUCTIONS.md`. Status as of doc write:
+
+- Patches I (PR #206 search read-path) and S (PR #207 notification 14-day gate) opened against integration.
+- Patch P (sector backfill script) in progress.
+- Patches J, K, L, M, N1, N2, O queued; status not yet logged.
+
+### Process notes (lessons from this sprint)
+
+- **Parallel-write hazard.** Two patches that share a file produce a Git race. Mitigation: every write subagent runs in its own isolated worktree under `.claude/worktrees/`.
+- **Session-unique tmp filenames.** Commit-message and PR-body tmp files use the session UUID prefix (`overnight-2026-05-06-3a7b9c-patch-<letter>-...`) so two agents never collide on `/tmp/foo`.
+- **Onboarding-bypass PATCH for test users.** Without the `user_profiles` PATCH after `auth/v1/admin/users` POST, `/company/*` redirects to `/onboarding`. Codified in shared instructions.
+- **Playwright collision handling.** Single shared MCP browser; on "browser busy", retry every 30s up to 3 minutes, then fall back to curl/REST and document the symptom.
 
 ---
 
