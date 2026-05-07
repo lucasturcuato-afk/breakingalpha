@@ -123,3 +123,66 @@ clear all 5 occurrences.
   scrollable-region-focusable) -- those are global / shared-component issues.
 - `empty-table-header` is unique to `/company` (the directory table).
 - `heading-order` only triggers on the populated detail pages (nvidia, stripe).
+
+## Addendum 2026-05-05 -- smoke-test recipe T1 ceiling correction
+
+The smoke-test recipe `docs/w2-c-phase-1-smoke-test-recipe.md` row T1 currently
+reads (paraphrased):
+
+> T1 -- axe-core scan total <= 27 violations -- Baseline 27, no NEW violations
+> introduced post Patch N2.
+
+This ceiling is wrong. The baseline is not 27. The actual baseline (this
+document) is 96 violation nodes / 18 rule-route occurrences / 5 unique rule IDs
+across 5 routes. The "27" was almost certainly the `region` rule total
+(5+5+5+6+6 = 27) being misremembered as the global ceiling -- color-contrast
+alone is 60 nodes, more than double 27.
+
+### Recommended correction (for whoever amends the recipe)
+
+Pick ONE of the three metrics below and use it consistently in T1:
+
+| Metric | Ceiling | Use when |
+|---|---|---|
+| Total violation nodes | `<= 96` | Strictest -- counts every offending element. Sensitive to repeated patterns (e.g. 60 color-contrast nodes from a single shared chip class). |
+| Rule x route occurrences | `<= 18` | Mid-strict -- a rule firing on a route counts once regardless of how many DOM nodes hit it. Less sensitive to component-multiplicity. |
+| Unique violation rules | `<= 5` | Loosest -- counts unique rule IDs (color-contrast, region, scrollable-region-focusable, heading-order, empty-table-header). Goes up only when a NEW rule type appears. |
+
+Recommended: `<= 18` (rule-route occurrences). Total-node count is too noisy
+for component-multiplicity, unique-rule count is too lax to detect regressions
+inside an existing rule. The 18-occurrence ceiling matches the spirit of the
+original "no NEW violations" intent (a new occurrence on any route would push
+it to 19+).
+
+### Suggested T1 row replacement
+
+```
+| T1 | axe-core scan rule-route occurrences <= 18 | Baseline 18 (rule x route),
+no NEW occurrences introduced post Patch N2; total node count baseline 96, total
+unique rules 5 (color-contrast, region, scrollable-region-focusable,
+heading-order, empty-table-header). PR-A0 token swap is the expected
+re-baseline trigger -- color-contrast is 60/96 = 62 percent of node count and
+will drop significantly, taking total-node count well below 96 but possibly
+without changing rule-route occurrences. T11 captures the re-baseline. |
+```
+
+### T11 stays valid
+
+The T11 re-baseline trigger (after PR-A0 token swap / Direction D palette
+adoption) remains correct. Color-contrast will shift dramatically. The other
+4 rules (`region`, `scrollable-region-focusable`, `heading-order`,
+`empty-table-header`) are token-independent and will be unaffected by the
+palette swap; T11 should snapshot the new totals and update T1 accordingly.
+
+### Action item
+
+Whoever picks up the recipe amendment should also:
+1. Update the heading note "27-violation baseline post Patch N2" in
+   section T's preamble to the corrected 18 / 96 / 5 numbers.
+2. Update KNOWN-FAIL section bullet "T1 axe baseline 27" with the corrected
+   ceiling.
+
+This addendum was generated 2026-05-05 alongside `docs/w2-c-phase-1-component-map.md`
+and `docs/w2-c-phase-1-primitives-audit.md` to surface the recipe correction
+without modifying the recipe directly (Task 5 may still be referencing the
+recipe's current state).
