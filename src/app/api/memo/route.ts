@@ -311,7 +311,7 @@ export async function POST(request: NextRequest) {
     // 700 to 950 output-token range. The article-grounded "company" prompt
     // is capped at "Under 300 words" and fits comfortably in 750. Splitting
     // the ceiling here keeps the article-grounded path byte-identical.
-    const maxOutputTokens = type === "company-web" ? 8192 : 750;
+    const maxOutputTokens = type === "company-web" ? 8192 : 2400;
     try {
       const completion = await ai.models.generateContent({
         model: "gemini-2.5-flash",
@@ -364,7 +364,7 @@ Sections: TRANSACTION OVERVIEW, STRATEGIC RATIONALE, KEY RISKS, ANALYST TAKE. Un
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       config: {
         temperature: 0.35,
-        maxOutputTokens: 600,
+        maxOutputTokens: 2400,
         thinkingConfig: { thinkingBudget: 0 },
       },
     });
