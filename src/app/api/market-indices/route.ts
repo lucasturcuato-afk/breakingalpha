@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { DisplayUnit } from "@/lib/format-change";
 
 // How the card should be formatted for display.
 type Format =
@@ -16,16 +17,20 @@ type AssetClass = "equity-index" | "24h";
 // Known symbol → Yahoo Finance mapping + display labels.
 // The key is the user-facing symbol (what the UI and DB store);
 // `yahoo` is the query-parameter Yahoo expects.
+//
+// `displayUnit` controls how the change column is rendered downstream:
+//   - "percent" (default): relative percent change with adaptive precision
+//   - "bps": absolute delta in basis points (Treasury-yield convention)
 const SYMBOL_MAP: Record<
   string,
-  { yahoo: string; label: string; format: Format; assetClass: AssetClass }
+  { yahoo: string; label: string; format: Format; assetClass: AssetClass; displayUnit?: DisplayUnit }
 > = {
   // ── Canonical 10 symbols (in the picker) ──
   SPY:  { yahoo: "^GSPC",     label: "S&P 500",    format: "index",   assetClass: "equity-index" },
   QQQ:  { yahoo: "^IXIC",     label: "Nasdaq",     format: "index",   assetClass: "equity-index" },
   DIA:  { yahoo: "^DJI",      label: "Dow Jones",  format: "index",   assetClass: "equity-index" },
   VIX:  { yahoo: "^VIX",      label: "VIX",        format: "vix",     assetClass: "24h" },
-  TNX:  { yahoo: "^TNX",      label: "10Y Yield",  format: "yield",   assetClass: "24h" },
+  TNX:  { yahoo: "^TNX",      label: "10Y Yield",  format: "yield",   assetClass: "24h", displayUnit: "bps" },
   "BTC-USD": { yahoo: "BTC-USD", label: "Bitcoin",    format: "btc",     assetClass: "24h" },
   "GC=F":    { yahoo: "GC=F",    label: "Gold",       format: "futures", assetClass: "24h" },
   "CL=F":    { yahoo: "CL=F",    label: "Oil (WTI)",  format: "futures", assetClass: "24h" },
@@ -46,6 +51,9 @@ const SYMBOL_MAP: Record<
 
 interface YahooResult {
   raw: number;
+  // Prior close in the same units as `raw`. Used for absolute-delta display
+  // (bps for yields). 0 when upstream did not provide a usable prev close.
+  prev: number;
   pct: number;
   // unix seconds of last quote from Yahoo (regularMarketTime)
   ts: number | null;
@@ -69,7 +77,7 @@ async function fetchYahoo(symbol: string): Promise<YahooResult | null> {
   const pct = prev > 0 ? ((price - prev) / prev) * 100 : 0;
   const ts =
     typeof meta.regularMarketTime === "number" ? meta.regularMarketTime : null;
-  return { raw: price, pct, ts };
+  return { raw: price, prev, pct, ts };
 }
 
 // Stooq is more reliable for ^spx than Yahoo on some days.
@@ -87,6 +95,10 @@ async function fetchStooq(symbol: string): Promise<YahooResult | null> {
   const close = parseFloat(cols[6]);
   const open = parseFloat(cols[3]);
   if (isNaN(close) || close === 0) return null;
+  // Stooq's live CSV does not expose prior close, only today's OHLC. Using
+  // today's open as the baseline produces an intraday change, not a vs-prev-
+  // close change. Accept that approximation here because Stooq is only used
+  // as a fallback when Yahoo fails.
   const pct = open > 0 ? ((close - open) / open) * 100 : 0;
   // Stooq returns date + time columns (1, 2) — combine if present
   let ts: number | null = null;
@@ -94,14 +106,23 @@ async function fetchStooq(symbol: string): Promise<YahooResult | null> {
     const parsed = Date.parse(`${cols[1]}T${cols[2]}Z`);
     if (!isNaN(parsed)) ts = Math.floor(parsed / 1000);
   }
-  return { raw: close, pct, ts };
+  return { raw: close, prev: open, pct, ts };
 }
 
 interface CardData {
   symbol: string;
   label: string;
   value: string;
+  /** Relative percent change vs prior close. */
   pct: number;
+  /**
+   * Absolute delta in the same units as the displayed value (e.g. for TNX
+   * with a 4.36% yield, `change` is in percentage points, so bps = change*100).
+   * 0 when prior close was unavailable upstream.
+   */
+  change: number;
+  /** How the change column should be formatted. Defaults to "percent". */
+  displayUnit: DisplayUnit;
   asOf: string | null;
   closed: boolean;
 }
@@ -170,13 +191,18 @@ async function fetchSymbol(symbol: string): Promise<CardData> {
   const label = mapped?.label ?? upper;
   const format: Format = mapped?.format ?? "futures";
   const assetClass: AssetClass = mapped?.assetClass ?? "24h";
+  const displayUnit: DisplayUnit = mapped?.displayUnit ?? "percent";
 
-  // S&P 500 ETF: try Stooq first for reliability, fall back to Yahoo.
+  // S&P 500 ETF: prefer Yahoo because its chart endpoint exposes
+  // `chartPreviousClose`, which yields the correct vs-prior-close percent
+  // change. Stooq's live CSV only has today's OHLC and would compute pct
+  // against today's open (off by the overnight gap). Stooq stays as a
+  // fallback when Yahoo is unavailable.
   let result: YahooResult | null = null;
   try {
     if (upper === "SPY" || upper === "SPX") {
-      result = await fetchStooq("^spx").catch(() => null);
-      if (!result) result = await fetchYahoo(yahooSymbol).catch(() => null);
+      result = await fetchYahoo(yahooSymbol).catch(() => null);
+      if (!result) result = await fetchStooq("^spx").catch(() => null);
     } else {
       result = await fetchYahoo(yahooSymbol).catch(() => null);
     }
@@ -191,6 +217,8 @@ async function fetchSymbol(symbol: string): Promise<CardData> {
       label,
       value: "—",
       pct: 0,
+      change: 0,
+      displayUnit,
       asOf: null,
       closed: assetClass === "equity-index" && isUSMarketClosed(),
     };
@@ -216,6 +244,8 @@ async function fetchSymbol(symbol: string): Promise<CardData> {
     label,
     value: formatValue(result.raw, format),
     pct: result.pct,
+    change: result.prev > 0 ? result.raw - result.prev : 0,
+    displayUnit,
     asOf,
     closed,
   };

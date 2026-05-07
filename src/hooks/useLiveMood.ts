@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import type { MoodType } from "@/components/shell";
+import { formatChange, type DisplayUnit } from "@/lib/format-change";
 
 /**
  * Single source of truth for the global mood bar.
@@ -28,6 +29,10 @@ interface MarketCardData {
   label: string;
   value: string;
   pct: number;
+  /** Absolute delta in the same units as `value` (used for bps display). */
+  change?: number;
+  /** "percent" (default) or "bps". */
+  displayUnit?: DisplayUnit;
   asOf?: string | null;
   closed?: boolean;
 }
@@ -209,9 +214,21 @@ function deriveBanner(cards: Record<string, MarketCardData | null>): MoodBanner 
     }
   }
 
-  if (tnxCard && tnxCard.value !== "—") details.push(`10Y ${tnxCard.value}`);
+  if (tnxCard && tnxCard.value !== "—") {
+    const tnxChange = formatChange({
+      pct: tnxCard.pct,
+      change: tnxCard.change,
+      unit: tnxCard.displayUnit ?? "percent",
+    });
+    details.push(`10Y ${tnxCard.value} ${tnxChange.text}`);
+  }
   if (spyCard && spyCard.value !== "—") {
-    details.push(`S&P ${spyPct >= 0 ? "+" : ""}${spyPct.toFixed(2)}%`);
+    const spyChange = formatChange({
+      pct: spyPct,
+      change: spyCard.change,
+      unit: spyCard.displayUnit ?? "percent",
+    });
+    details.push(`S&P ${spyChange.text}`);
   }
 
   const pillMap: Record<CanonicalMoodTerm, string> = {
