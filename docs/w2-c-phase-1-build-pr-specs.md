@@ -263,7 +263,7 @@ Total spec'd: 21 sub-PRs (brief said "22" but enumerated list has 21 unique IDs;
 - Files NOT touched: Lucas list; `MemoModal.tsx` (shared).
 - data-testid manifest: (none -- writer).
 - Smoke-test rows unblocked: M1-M3, M5.
-- Depends on: none.
+- Depends on: none + memo-token hotfix on integration (PR opened against main, syncs into integration via main merge).
 - Steps:
   1. Recon: review existing memo prompt; identify Markdown sections to convert to JSON keys.
   2. Define `StructuredMemo` type: `{ tldr: string[], lead: string, context: string, watch: string[], citations: Citation[] }`.
@@ -519,6 +519,8 @@ PR-C0a (citation parity) --+--> PR-C1
 
 PR-D2 (recordOutput) -- independent of all UI; can ship any time
 ```
+
+Note: PR-C0 also depends on the memo `maxOutputTokens` 600 -> 2400 hotfix being on integration. Hotfix lives on a separate branch off main and propagates via main -> integration sync.
 
 ## 5. Recommended merge order
 
