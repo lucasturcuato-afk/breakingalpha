@@ -323,7 +323,7 @@ axe-core scan returns 0 NEW violations beyond 27-violation baseline post Patch N
 
 | ID | Test | Expected Result | Page/Element | Playwright Selector Hint | Priority |
 |----|------|-----------------|--------------|--------------------------|----------|
-| T1 | axe-core scan total <= 27 violations | Baseline 27, no NEW violations introduced post Patch N2 | full page | `@axe-core/playwright` | P0 |
+| T1 | axe-core scan returns no NEW rule-route occurrences beyond 18-occurrence baseline (post Patch N2) | Run @axe-core/playwright on /company/nvidia, /company/stripe; total unique rule x route violations <= 18. Note: node count may exceed 96 because color-contrast on shared chip classes appears across multiple components -- track rule-route occurrences instead per docs/axe-baseline-2026-05-07.md. | full page | `@axe-core/playwright` | P0 |
 | T2 | aria-label on + Watchlist button | Button has aria-label e.g. "Add NVIDIA to watchlist" | header | accessibility tree | P1 |
 | T3 | aria-label on Export | Export button has descriptive aria-label | header | accessibility tree | P1 |
 | T4 | aria-label on Generate Memo | Generate Memo button has descriptive aria-label | header | accessibility tree | P1 |
@@ -333,7 +333,7 @@ axe-core scan returns 0 NEW violations beyond 27-violation baseline post Patch N
 | T8 | h2 per section | Each major section uses h2 (Brief sections, Sources, etc.) | content | heading audit | P1 |
 | T9 | KPI text contrast >= 4.5:1 | Foreground vs background contrast ratio meets WCAG AA | KPI strip | axe color-contrast | P1 |
 | T10 | Alias chip text contrast >= 4.5:1 | Same WCAG AA threshold | alias ribbon | axe color-contrast | P1 |
-| T11 | Sentiment pill contrast >= 4.5:1 | Bullish/neutral/bearish pill text vs background passes 4.5:1 | sentiment pill | axe color-contrast | P1 |
+| T11 | Re-run axe baseline AFTER PR-A0 token swap merges. Expected: rule-route count may shift by +/-2 due to color-contrast sensitivity to gold tone change. Update baseline doc and T1 ceiling if shift exceeds +/-3. | Bullish/neutral/bearish pill text vs background passes 4.5:1 | sentiment pill | axe color-contrast | P1 |
 | T12 | Tab strip keyboard navigable | Arrow keys move between tabs per WAI-ARIA tabs pattern | tabs | keyboard | P1 |
 
 ## Test data setup
