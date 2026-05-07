@@ -17,7 +17,7 @@ Status: standalone backlog. A legacy `docs/w2d-backlog.md` was referenced in pri
 | Detail page V1.5+ | 4 | Memo prompt streaming, AI Brief auto-regen, KPI cluster expansion |
 | Code hygiene | 7 | Watchlist subtitle truncation, ESLint cleanups, em-dash cleanup |
 
-Total: 29 items.
+Total: 30 items.
 
 ## Items
 
@@ -52,6 +52,7 @@ Total: 29 items.
 | WD27 | Vercel project disconnect cleanup | XS | None | P2 | Stale Vercel project links in repo settings. |
 | WD28 | PR-body temp file fix | XS | None | P2 | Tooling cleanup -- temp file leftover from PR-body workflow. |
 | WD29 | Em-dash cleanup in /api/memo error text | XS | None | P2 | ASCII-only convention violation in user-visible error strings. |
+| WD30 | Add aliases.is_canonical boolean for explicit canonical preference | XS | None | P2 | Surfaced during PR-B0 (alias resolver). Spec called for `is_canonical` + `created_at` columns; live aliases schema has neither. Implementer correctly pivoted to recon's tiebreaker hierarchy `mention_count DESC -> last_updated DESC -> first_seen ASC -> id ASC`. An explicit `is_canonical` boolean would let editorial pin the canonical alias choice (e.g. "NVIDIA" over "NVIDIA Corporation") rather than relying on heuristic. Filed 2026-05-07. |
 
 ## Notes
 
