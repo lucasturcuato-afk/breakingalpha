@@ -75,7 +75,7 @@ Total spec'd: 21 sub-PRs (brief said "22" but enumerated list has 21 unique IDs;
 
 - Branch: `noah/pr-a0-tokens-direction-d`
 - Base: `noah/w2-c-phase-1`
-- LOC: ~25
+- LOC: ~25 + 18 PNG fixtures
 - Visual ref: `docs/DirectionD.jsx` lines 13-40 (palette constants `D.cream`, `D.gold`, `D.goldDark`, etc.)
 - Files touched: `src/styles/tokens.css`
 - Files NOT touched: all 5 Lucas-protected paths
@@ -84,11 +84,13 @@ Total spec'd: 21 sub-PRs (brief said "22" but enumerated list has 21 unique IDs;
 - Depends on: none.
 - Steps:
   1. Recon: read `src/styles/tokens.css` and DirectionD.jsx lines 13-40.
-  2. Add 5 net-new tokens: `--border-hi`, `--row-hover`, `--row-alt`, `--row-active`, `--purple`.
-  3. Update 6 existing: `--gold`, `--gold-dark`, `--cream`, `--gold-muted`, `--gold-border`, `--border-base`.
-  4. Verify `tsc` + `next build` clean.
-  5. Push as DRAFT PR with full-route Playwright sweep on `/morning-brief`, `/evening-wrap`, `/dashboard`, `/company`, `/trends`.
-- Self-review checks: tsc clean, em-dash count 0, LOC <= 30, 9 routes screenshot-diff'd, no Lucas files touched.
+  2. Capture pre-A0 screenshots of 9 routes via Playwright + commit to `docs/visual-baseline-pre-A0/` BEFORE applying token swap.
+  3. Add 5 net-new tokens: `--border-hi`, `--row-hover`, `--row-alt`, `--row-active`, `--purple`.
+  4. Update 6 existing: `--gold`, `--gold-dark`, `--cream`, `--gold-muted`, `--gold-border`, `--border-base`.
+  5. Capture post-A0 screenshots of 9 routes + commit to `docs/visual-baseline-post-A0/`.
+  6. Verify `tsc` + `next build` clean.
+  7. Push as DRAFT PR with full-route Playwright sweep on `/morning-brief`, `/evening-wrap`, `/dashboard`, `/company`, `/trends`.
+- Self-review checks: tsc clean, em-dash count 0, LOC <= 30, 9 routes screenshot-diff'd, no Lucas files touched, 9-route screenshot diff committed (18 fixtures total), color-contrast nodes shifted by <=3 (else update T1 ceiling per recipe T11).
 - Smoke-test on preview: gold tone shift on header buttons across 3 pages; cream surface tone on cards.
 
 ### PR-A1 -- Port 7 primitives + extend SentimentPill
@@ -255,10 +257,10 @@ Total spec'd: 21 sub-PRs (brief said "22" but enumerated list has 21 unique IDs;
 
 - Branch: `noah/pr-c0-structured-memo`
 - Base: `noah/w2-c-phase-1`
-- LOC: ~200
+- LOC: ~230
 - Visual ref: n/a (writer); see C1 in section 1.
-- Files touched: `src/lib/memo/writeStructuredMemo.ts`, `src/lib/memo/prompts/structured.ts`, `src/lib/memo/types.ts`.
-- Files NOT touched: Lucas list; `MemoModal.tsx` (shared); existing `/api/memo` route (C1 fix in PR-D2).
+- Files touched: `src/lib/memo/writeStructuredMemo.ts`, `src/lib/memo/prompts/structured.ts`, `src/lib/memo/types.ts`, `src/app/api/memo/route.ts`.
+- Files NOT touched: Lucas list; `MemoModal.tsx` (shared).
 - data-testid manifest: (none -- writer).
 - Smoke-test rows unblocked: M1-M3, M5.
 - Depends on: none.
@@ -267,9 +269,11 @@ Total spec'd: 21 sub-PRs (brief said "22" but enumerated list has 21 unique IDs;
   2. Define `StructuredMemo` type: `{ tldr: string[], lead: string, context: string, watch: string[], citations: Citation[] }`.
   3. Rewrite prompt requesting JSON mode; add response schema for Gemini structured output.
   4. Implement `writeStructuredMemo(input)` returning typed object; preserve fallback to Markdown on parse failure.
-  5. Verify tsc + smoke-test against 3 tickers (NVDA, AAPL, private); push DRAFT PR.
-- Self-review checks: tsc / eslint / em-dash 0 / LOC <= 220 / no UI changes / fallback path tested.
-- Smoke-test on preview: trigger writer in dev; confirm JSON parse success rate >= 95% over 10 tickers.
+  5. Implement retry-on-malformed-JSON: if first response fails JSON.parse, retry once with suffix 'your previous response was invalid JSON, return only valid JSON'. If retry also fails, log to stderr and fall back to Markdown response.
+  6. Add observability: log every malformed response with input prompt to stderr. Use console.error format `[memo:malformed] type=<type> input_chars=<N> attempt=<1|2>`.
+  7. Verify tsc + smoke-test against 3 tickers (NVDA, AAPL, private); push DRAFT PR.
+- Self-review checks: tsc / eslint / em-dash 0 / LOC <= 250 / no UI changes / fallback path tested / JSON parse rate >= 99% across 10 test memos.
+- Smoke-test on preview: trigger writer in dev; confirm JSON parse success rate >= 99% over 10 tickers.
 
 ### PR-C0a -- Article-grounded [n] citation parity
 
@@ -413,19 +417,20 @@ Total spec'd: 21 sub-PRs (brief said "22" but enumerated list has 21 unique IDs;
 - Base: `noah/w2-c-phase-1`
 - LOC: ~180
 - Visual ref: n/a (observability); side-branch ref `a67e69c`.
-- Files touched: `src/lib/observability/recordOutput.ts`, `src/app/api/memo/route.ts` (extend with `after()` hook).
+- Files touched: `src/lib/observability/recordOutput.ts`, `src/app/api/memo/route.ts` (extend with `after()` hook), `supabase/migrations/<timestamp>_output_log_v0_stub.sql`.
 - Files NOT touched: Lucas list; `MemoModal.tsx` (shared); existing memo writer (extend, don't replace).
 - data-testid manifest: (none -- observability).
 - Smoke-test rows unblocked: OBS1-OBS3.
 - Depends on: none (parallelizable).
 - Steps:
   1. Recon: read side-branch `a67e69c` for SDK shape; understand `after()` pattern A vs B (defer to Noah if ambiguous).
-  2. Implement `recordOutput({ kind, key, payload, latencyMs })` writing to `outputs` table (or new `memo_outputs` if schema requires; defer schema choice to Noah).
-  3. Extend `/api/memo` route to call `after(() => recordOutput(...))` post-response.
-  4. Add small dashboard query helper for recent outputs (read-only).
-  5. Verify tsc + smoke memo trigger; confirm row appears in outputs table; push DRAFT PR.
-- Self-review checks: tsc / eslint / em-dash 0 / LOC <= 200 / no Lucas files / `after()` does not block response / row visible in table.
-- Smoke-test on preview: trigger memo, observe row in `outputs`/`memo_outputs` within 5s.
+  2. Create migration SQL `output_log_v0_stub` with schema: id (uuid PK), output_type (text), source_table (text), source_id (text), prompt_inputs (jsonb), generated_at (timestamptz), latency_ms (integer), metadata (jsonb). Run via Supabase migration tooling.
+  3. Implement `recordOutput({ kind, key, payload, latencyMs })` writing to `output_log_v0_stub` table.
+  4. Extend `/api/memo` route to call `after(() => recordOutput(...))` post-response.
+  5. Add small dashboard query helper for recent outputs (read-only).
+  6. Verify tsc + smoke memo trigger; confirm row appears in `output_log_v0_stub` table; push DRAFT PR.
+- Self-review checks: tsc / eslint / em-dash 0 / LOC <= 200 / no Lucas files / `after()` does not block response / row visible in table / Migration SQL committed at supabase/migrations/<ts>_output_log_v0_stub.sql / Stub table writes do NOT touch the canonical `outputs` table.
+- Smoke-test on preview: trigger memo, observe row in `output_log_v0_stub` within 5s.
 
 ### PR-E1 -- Empty state variant (Stripe pattern)
 
@@ -528,13 +533,20 @@ PR-D2 (recordOutput) -- independent of all UI; can ship any time
 9. PR-E1 / PR-E2 / PR-E3 last (depend on most-mature stack).
 10. PR #197 to `main` only after all 22 ship + smoke recipe passes 180/180.
 
-## 6. Open decisions deferred to Noah
+## 6. Locked decisions (Noah confirmed 2026-05-07)
 
-- C4 alias rollup: query-time synthesizer (PR-B0 default) vs migration to add `is_canonical` + alias FK (W2-D backlog). PR-B0 ships query-time; migration deferred.
-- C0 prompt fork strategy: rewrite single prompt (PR-C0 default) vs maintain two prompts (Markdown + JSON). Default chosen; revisit if JSON parse rate < 95%.
-- PR-D2 `after()` pattern A vs B: A = `after(() => recordOutput(...))` post-response (default); B = inline before response with try/finally. Default A; switch to B if outputs table writes drop.
-- PR-A0 visual regression scope: 5 routes (default) vs 9 routes (full). Default 5; expand if reviewer requests.
-- PR-D2 outputs table: extend existing `outputs` vs create dedicated `memo_outputs` table. Defer to schema review.
-- C9/C10 schema enrichment (`key_themes` weight/tone/count, `sentiment_trend` numeric array): deferred entirely to W2-D backlog; Phase 1 uses query-time derivation.
-- PR #197 final integration timing: ship in single squash vs preserve 22-commit history. Default squash (per repo convention).
-- Yahoo crumb-auth fallback: 1h cache with v8 chart fallback (default) vs alternate provider (Polygon, Finnhub). Default Yahoo-only; revisit if 5xx rate > 2%.
+1. **C4 alias rollup** -- LOCKED: query-time synthesizer (PR-B0). Reversible. Schema migration deferred to Track C entity-resolution work.
+
+2. **C0 prompt fork** -- LOCKED: single rewrite + retry-once-on-malformed-JSON + 99% parse target. Modification from default (95% target). If Gemini returns invalid JSON, retry the same prompt with "your previous response was invalid JSON, return only valid JSON" suffix. If retry also fails, fall back to Markdown. Add observability: log every malformed response with input prompt to stderr. Adds ~30 LOC to PR-C0 (now ~230 budget).
+
+3. **PR-D2 timing pattern** -- LOCKED: Pattern A (after() post-response fire-and-forget). Per substrate plan Step 3.
+
+4. **PR-D2 table** -- LOCKED: NEW table `output_log_v0_stub`, NOT extend `outputs`. Modification from default. Schema: id (uuid PK), output_type (text), source_table (text), source_id (text), prompt_inputs (jsonb), generated_at (timestamptz), latency_ms (integer), metadata (jsonb). Stub naming preserves Lucas's eventual canonical Step 3 schema. Migration SQL at supabase/migrations/<timestamp>_output_log_v0_stub.sql.
+
+5. **PR #197 squash** -- LOCKED: squash 21-commit history into single squash commit at #197 merge time. Per repo convention.
+
+6. **Yahoo crumb fallback** -- LOCKED: 1h cache + v8 fallback (default). CRITICAL CLARIFICATION: existing Finnhub matcher integration (HARD_TICKER_OVERRIDES, lazy ticker lookup, sector data, src/lib/finnhub-ticker.ts, backend/finnhub_helper.py) is UNTOUCHED. Decision 6 only covers whether to add Polygon/Finnhub as a NEW deeper price-data fallback if Yahoo's crumb-auth fails repeatedly. Answer: no, defer to W2-D unless 5xx rate exceeds 2% over Phase 1 monitoring.
+
+7. **C9/C10 schema enrichment** -- LOCKED: deferred to W2-D backlog. Phase 1 uses query-time derivation.
+
+8. **PR-A0 visual regression scope** -- LOCKED: 9-route full sweep, NOT 5 routes. Modification from default. Routes: /, /morning-brief, /evening-wrap, /dashboard, /company, /company/nvidia, /company/stripe, /trends, /watchlist. PR-A0 includes ~18 PNG fixtures (9 pre + 9 post) committed to docs/visual-baseline-{pre,post}-A0/.
