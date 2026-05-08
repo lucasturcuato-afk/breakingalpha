@@ -1,5 +1,56 @@
 # Signalera/Breaking Alpha -- Claude Chat Handoff
-**Date:** 2026-05-07 (PT)
+**Date:** 2026-05-08 (PT)
+**Last session focus:** Diagnostic + fix for the morning pipeline run #98 6h+ hang. Ran in a separate worktree (`noah/diagnose-pipeline-timeout`) so it did not collide with the W2-C Phase 4/5/6 session. PR #239 OPEN ready-for-review, base=main. Awaits Noah eyeball + cron-job.org re-enable.
+**Status:** Pipeline fix shipped to PR #239. 4 layered changes (timeouts + UA, chunked filter, response_schema, drop batch path) brought duration from 6h+ (run #98 cancelled) -> 87 -> 36 -> 30 -> 20.7 min across 4 smoke tests. All 10 success criteria pass on smoke #4. W2-D items WD40-WD45 filed.
+
+---
+
+## Recently Completed (2026-05-08) -- Pipeline run #98 fix
+
+**Branch:** `noah/diagnose-pipeline-timeout` (off origin/main, separate from W2-C session). PR #239 ready-for-review.
+
+**Files touched:**
+- `backend/ingest.py` (+~270 LOC, -~210): bounded RSS fetch with UA + 20s timeout, dead-feed cleanup (Reuters x3 + Pitchbook removed), Gemini timeouts via ThreadPoolExecutor, pydantic FilterDecision schema, per-article filter with parallel workers (5) and retry-once, structured logging contract
+- `backend/run.py` (+~130 LOC): per-step elapsed-time prints across all 16 steps + POST steps
+- `.github/workflows/schedule.yml` (+1 LOC): timeout-minutes 90 on Run pipeline step
+- `.claude/worktrees/diagnose-pipeline-timeout/DIAGNOSIS.md` (new, ~600 LOC): full diagnostic record
+
+**Smoke test progression (all 4 documented in DIAGNOSIS.md sections 14-19):**
+
+| run | duration | filter step | failure rate |
+|---|---|---|---|
+| Run #98 (cancelled) | 6h+ | hung | unknown |
+| Smoke #1 (timeouts + UA) | 87 min | 70 min | 100% serial fallback |
+| Smoke #2 (chunked + parallel) | 36 min | 27.5 min | 12/13 chunks fell back |
+| Smoke #3 (response_schema) | 30 min | 21.5 min | 12/13 chunks fell back, 5/600 per-article errors |
+| Smoke #4 (per-article only) | 20.7 min | 9.1 min | 3/615 = 0.49% per-article |
+
+**Key finding:** The "duration creep" from 27 min (Apr 28) to 76 min (May 6-7) was NOT gradual deterioration. Every recent successful run was silently riding a serial per-article fallback path because the single-batch Gemini filter call was emitting malformed JSON for hundreds of articles. The 76 min was 70 min of fallback + 6 min of legitimate work. This PR removes the broken batch path entirely and runs per-article + parallel workers, which restores Apr-28 baseline and beats it.
+
+**What did NOT cause run #98:**
+- Memo `maxOutputTokens` bump (commit 1f3a4b3, 600 -> 2400) was suspected but is in the Next.js memo route, not pipeline code path. Falsified.
+- PR #201 / #209 retry chain in `finnhub_helper.py` was suspected but those PRs are on feature branches and not in `origin/main`. Falsified.
+
+**Production state at end of session:**
+- PR #239 OPEN, ready-for-review, base=main, head=noah/diagnose-pipeline-timeout, NOT auto-merged per safety rule
+- cron-job.org morning trigger STILL paused, awaits Noah re-enable AFTER merge
+- Today's 6 AM PT cron (run 25556935932) ran on bugged main code at 1h25m, succeeded with degraded duration. Brief landed for May 8 morning before the smoke tests overwrote it
+- Smoke #4 brief is the current /morning-brief on prod: "Trump's Tariff Setback Weakens China Trade Talk Leverage Ahead of Beijing Visit", 1140 char summary, 8 SEC 8-K + 8 SEC 10-Q stored
+
+**Next actions for Noah:**
+1. Read DIAGNOSIS.md sections 14-19 for full evidence trail
+2. Read the smoke #4 brief on /morning-brief (or query `briefings WHERE briefing_date='2026-05-08'`) and confirm content quality
+3. Squash-merge PR #239 to main
+4. Re-enable cron-job.org morning trigger
+5. Tomorrow's 6 AM PT cron is the production verification
+
+**Doc commits in this PR (`noah/w2d-pipeline-followups` -> main, separate from PR #239):**
+- This HANDOFF.md update
+- `docs/w2-d-backlog.md` adds WD40-WD45 (5 follow-up items)
+
+---
+
+## Previous session (2026-05-07) -- W2-C Phase 1 Phases 4/5/6
 **Last session focus:** W2-C Phase 1 detail-page redesign: Phases 4, 5, and 6 fan-out + sequential merge to integration branch `noah/w2-c-phase-1`. 18 PRs landed across the 3 phases (PR #221 through PR #238). PR #197 now MERGEABLE and ready for self-merge to main pending HALT 8 sign-off.
 **Status:** Phase 4/5/6 complete; integration branch contains the full new tab system + observability substrate + 4 state variants. PR #197 OPEN, MERGEABLE, base=main, head=noah/w2-c-phase-1. HALT 8 surfaced -- awaiting user self-merge in the morning.
 
