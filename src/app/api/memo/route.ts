@@ -267,6 +267,12 @@ function tryParseStructured(raw: string): StructuredMemo | null {
   return validateStructuredMemo(parsed);
 }
 
+// PR-C1a: bumped maxOutputTokens 2400 -> 4096. Multi-paragraph lead/context
+// + JSON overhead exceeded the 2400 cap and silently truncated, collapsing
+// rich output into single-string regression. 4096 leaves headroom for 3-5
+// development paragraphs + 3-4 context paragraphs + 2-3 watch items.
+const STRUCTURED_MEMO_MAX_OUTPUT_TOKENS = 4096;
+
 async function generateStructuredMemo(
   systemInstruction: string,
   userText: string,
@@ -277,7 +283,7 @@ async function generateStructuredMemo(
     config: {
       systemInstruction,
       temperature: 0.35,
-      maxOutputTokens: 2400,
+      maxOutputTokens: STRUCTURED_MEMO_MAX_OUTPUT_TOKENS,
       responseMimeType: "application/json",
       responseSchema: STRUCTURED_MEMO_SCHEMA,
       thinkingConfig: { thinkingBudget: 0 },
@@ -371,14 +377,57 @@ export async function POST(request: NextRequest) {
     // Other types (deal/thesis/brief/article/company-web) take the prose
     // path further down so the response stays byte-identical for them.
     if (type === "company") {
+      // PR-C1a: structured branch was returning before the legacy after()
+      // hook below, so structured memos never populated the cache table.
+      // recordStructured wires recordOutput here with structured_memo +
+      // markdown_memo in metadata so /api/memo-cache can serve the same
+      // payload to BriefTab.
+      const recordStructured = (
+        memo: StructuredMemo,
+        markdown: string,
+        latencyMs: number,
+        retry: boolean,
+      ) => {
+        after(async () => {
+          try {
+            const svcSupabase = createClient(
+              process.env.NEXT_PUBLIC_SUPABASE_URL!,
+              process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            );
+            await recordOutput(svcSupabase, {
+              output_type: "memo",
+              source_table: "companies",
+              source_id: company ?? "unknown",
+              prompt_inputs: {
+                type: type ?? null,
+                sector: sector ?? null,
+                content_chars: truncated.length,
+                ...(retry ? { retry: true } : {}),
+              },
+              latency_ms: latencyMs,
+              metadata: {
+                variant: "structured",
+                model: "gemini-2.5-flash",
+                max_output_tokens: STRUCTURED_MEMO_MAX_OUTPUT_TOKENS,
+                memo_chars: markdown.length,
+                structured_memo: memo,
+                markdown_memo: markdown,
+              },
+            });
+          } catch (e) {
+            console.error("[memo] recordOutput after() failed:", e);
+          }
+        });
+      };
+
       try {
+        const t0 = Date.now();
         const raw1 = await generateStructuredMemo(augmentedSystem, truncated);
         const parsed1 = raw1 ? tryParseStructured(raw1) : null;
         if (parsed1) {
-          return NextResponse.json({
-            structured: parsed1,
-            memo: deriveMemoMarkdown(parsed1),
-          });
+          const markdown = deriveMemoMarkdown(parsed1);
+          recordStructured(parsed1, markdown, Date.now() - t0, false);
+          return NextResponse.json({ structured: parsed1, memo: markdown });
         }
         console.error(`[memo:malformed] type=${type} input_chars=${truncated.length} attempt=1`);
 
@@ -388,10 +437,9 @@ export async function POST(request: NextRequest) {
         const raw2 = await generateStructuredMemo(retrySystem, truncated);
         const parsed2 = raw2 ? tryParseStructured(raw2) : null;
         if (parsed2) {
-          return NextResponse.json({
-            structured: parsed2,
-            memo: deriveMemoMarkdown(parsed2),
-          });
+          const markdown = deriveMemoMarkdown(parsed2);
+          recordStructured(parsed2, markdown, Date.now() - t0, true);
+          return NextResponse.json({ structured: parsed2, memo: markdown });
         }
         console.error(`[memo:malformed] type=${type} input_chars=${truncated.length} attempt=2`);
 
@@ -408,7 +456,7 @@ export async function POST(request: NextRequest) {
           config: {
             systemInstruction: proseSystem,
             temperature: 0.35,
-            maxOutputTokens: 2400,
+            maxOutputTokens: STRUCTURED_MEMO_MAX_OUTPUT_TOKENS,
             thinkingConfig: { thinkingBudget: 0 },
           },
         });

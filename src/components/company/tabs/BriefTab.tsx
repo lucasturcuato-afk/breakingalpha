@@ -1,15 +1,14 @@
 "use client";
 
-// BriefTab (PR-C1): F1 Brief container. POSTs /api/memo (type=company) on
-// mount, composes BriefTLDR + BriefLead + BriefContext + BriefWatch on
-// data.structured. Loading: 3-line skeleton. Empty: when fetch fails or
-// data.structured is null. Markdown-only fallback rendered as <pre>.
-// Paragraph lookup is kind-based per recon Section 1.
+// BriefTab (PR-C1a): cache-first F1 Brief container. Mount: GET
+// /api/memo-cache. Hit -> render. Miss -> Generate Brief CTA. Click ->
+// POST /api/memo (route's after() hook backfills the cache).
 
 import { useEffect, useState } from "react";
 
 import type { StructuredMemo } from "@/lib/memo-schema";
 
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -19,103 +18,157 @@ import { BriefContext } from "../BriefContext";
 import { BriefWatch } from "../BriefWatch";
 
 interface BriefTabProps {
-  /** Canonical company name. Sent as `company` to /api/memo. */
   company: string;
-  /** Concatenated article-summary content used as memo input. */
   content: string;
 }
 
-interface MemoResponse {
-  structured?: StructuredMemo;
-  memo?: string;
-  error?: string;
+interface MemoResponse { structured?: StructuredMemo; memo?: string; error?: string; }
+interface CacheResponse { cached: boolean; structured?: StructuredMemo; markdown?: string; generated_at?: string; }
+
+type Phase = "checking-cache" | "ready" | "generating" | "error";
+
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "";
+  const diffMin = Math.max(0, Math.floor((Date.now() - then) / 60000));
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour} hr ago`;
+  return `${Math.floor(diffHour / 24)} d ago`;
 }
 
+const SHELL = "bg-cream-hi border border-border-base rounded-lg p-4";
+
 export function BriefTab({ company, content }: BriefTabProps) {
-  const [loading, setLoading] = useState(true);
+  const [phase, setPhase] = useState<Phase>("checking-cache");
   const [structured, setStructured] = useState<StructuredMemo | null>(null);
   const [memoMarkdown, setMemoMarkdown] = useState<string | null>(null);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!content) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
+    let cancelled = false;
+    setPhase("checking-cache");
     setStructured(null);
     setMemoMarkdown(null);
-    let cancelled = false;
-
+    setCachedAt(null);
+    setErrorMessage(null);
     (async () => {
       try {
-        const res = await fetch("/api/memo", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "company", company, content }),
-        });
-        const data: MemoResponse = await res.json().catch(() => ({}));
+        const res = await fetch(`/api/memo-cache?company_id=${encodeURIComponent(company)}`);
+        const data: CacheResponse = await res.json().catch(() => ({ cached: false }));
         if (cancelled) return;
-        if (res.ok && data.structured) {
+        if (res.ok && data.cached && data.structured) {
           setStructured(data.structured);
-        } else if (res.ok && data.memo) {
-          setMemoMarkdown(data.memo);
+          setCachedAt(data.generated_at ?? null);
         }
       } catch {
-        // network / parse failure -> empty state
+        // network failure -> miss path
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setPhase("ready");
       }
     })();
-
     return () => { cancelled = true; };
-  }, [company, content]);
+  }, [company]);
+
+  const generateBrief = async () => {
+    if (!content) {
+      setErrorMessage("No article content available for this company.");
+      setPhase("error");
+      return;
+    }
+    setPhase("generating");
+    setErrorMessage(null);
+    try {
+      const res = await fetch("/api/memo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "company", company, content }),
+      });
+      const data: MemoResponse = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErrorMessage(data.error ?? "Failed to generate brief.");
+        setPhase("error");
+        return;
+      }
+      if (data.structured) { setStructured(data.structured); setMemoMarkdown(null); }
+      else if (data.memo) { setMemoMarkdown(data.memo); }
+      setPhase("ready");
+    } catch {
+      setErrorMessage("Network error while generating brief.");
+      setPhase("error");
+    }
+  };
 
   // TODO(C5/D1): wire scroll-to-source on Sources tab once F5 ships.
   const onCiteClick = () => {};
 
-  if (loading) {
+  const hasCache = phase === "ready" && structured !== null;
+  const cacheState = hasCache ? (cachedAt ? "hit" : "fresh") : "miss";
+
+  if (phase === "checking-cache" || phase === "generating") {
     return (
-      <div data-testid="brief-tab" className="bg-cream-hi border border-border-base rounded-lg p-4">
+      <div data-testid="brief-tab" data-cache-state={cacheState} className={SHELL}>
+        <div data-testid={cacheState === "miss" ? "brief-cache-miss" : "brief-cache-hit"} className="hidden" />
         <div data-testid="brief-loading" className="space-y-3">
           <Skeleton className="h-16 w-full" />
           <Skeleton className="h-3 w-full" />
           <Skeleton className="h-3 w-5/6" />
           <Skeleton className="h-3 w-3/4" />
+          {phase === "generating" ? (
+            <p className="font-sans text-[12px] text-text-muted text-center pt-2">
+              Generating brief... this typically takes 5-10 seconds.
+            </p>
+          ) : null}
         </div>
+      </div>
+    );
+  }
+
+  if (phase === "error") {
+    return (
+      <div data-testid="brief-tab" data-cache-state="miss" className={SHELL}>
+        <div data-testid="brief-cache-miss" className="hidden" />
+        <EmptyState
+          title="Could not generate brief"
+          description={errorMessage ?? "An unexpected error occurred."}
+          action={<Button data-testid="brief-generate-button" variant="primary" onClick={generateBrief}>Retry</Button>}
+        />
       </div>
     );
   }
 
   if (!structured) {
     return (
-      <div data-testid="brief-tab" className="bg-cream-hi border border-border-base rounded-lg p-4">
+      <div data-testid="brief-tab" data-cache-state="miss" className={SHELL}>
+        <div data-testid="brief-cache-miss" className="hidden" />
         {memoMarkdown ? (
-          <pre className="font-sans text-[13px] text-text-secondary whitespace-pre-wrap leading-relaxed">
-            {memoMarkdown}
-          </pre>
+          <pre className="font-sans text-[13px] text-text-secondary whitespace-pre-wrap leading-relaxed">{memoMarkdown}</pre>
         ) : (
-          <div data-testid="brief-empty-state">
-            <EmptyState
-              title="Memo not yet generated"
-              description="Triggers on the next pipeline cycle."
-            />
-          </div>
+          <EmptyState
+            title="No brief generated yet"
+            description="Click to generate a structured analyst brief from the latest article corpus."
+            action={<Button data-testid="brief-generate-button" variant="primary" onClick={generateBrief}>Generate Brief</Button>}
+          />
         )}
       </div>
     );
   }
 
-  const lead = structured.paragraphs.find((p) => p.kind === "lead");
-  const context = structured.paragraphs.find((p) => p.kind === "context");
-  const watch = structured.paragraphs.find((p) => p.kind === "watch");
   const sourceCount = structured.sources.length;
-
   return (
-    <div data-testid="brief-tab" className="bg-cream-hi border border-border-base rounded-lg p-4">
+    <div data-testid="brief-tab" data-cache-state={cacheState} className={SHELL}>
+      <div data-testid={cachedAt ? "brief-cache-hit" : "brief-cache-miss"} className="hidden" />
+      {cachedAt ? (
+        <p className="font-data text-[10px] uppercase tracking-[0.10em] text-text-faint mb-2">
+          Cached {relativeTime(cachedAt)}
+        </p>
+      ) : null}
       <BriefTLDR tldr={structured.tldr} sourceCount={sourceCount} onCiteClick={onCiteClick} />
-      {lead ? <BriefLead text={lead.text} sourceCount={sourceCount} onCiteClick={onCiteClick} /> : null}
-      {context ? <BriefContext text={context.text} sourceCount={sourceCount} onCiteClick={onCiteClick} /> : null}
-      {watch ? <BriefWatch text={watch.text} sourceCount={sourceCount} onCiteClick={onCiteClick} /> : null}
+      <BriefLead paragraphs={structured.lead.paragraphs} sourceCount={sourceCount} onCiteClick={onCiteClick} />
+      <BriefContext paragraphs={structured.context.paragraphs} sourceCount={sourceCount} onCiteClick={onCiteClick} />
+      <BriefWatch items={structured.watch.items} sourceCount={sourceCount} onCiteClick={onCiteClick} />
     </div>
   );
 }
