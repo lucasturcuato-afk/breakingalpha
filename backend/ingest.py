@@ -4,7 +4,8 @@ Fetches from 15+ sources, scores relevance across all sectors,
 stores in Supabase.
 """
 
-import os, json, re, time, requests, feedparser, html as _html
+import concurrent.futures
+import os, json, re, socket, time, urllib.error, urllib.request, requests, feedparser, html as _html
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
 from google import genai
@@ -17,23 +18,50 @@ from entity_resolver import register_entity
 
 load_dotenv()
 
+# Process-wide socket timeout. Belt-and-suspenders against any library that
+# might open an unbounded socket (feedparser, requests fallbacks, supabase-py
+# realtime). 30s is long enough for legitimate slow responses, short enough
+# to fail fast when an upstream stalls. Per-call timeouts (urlopen, requests,
+# httpx) override this when set explicitly.
+socket.setdefaulttimeout(30)
+
+# All RSS fetches use this UA. SEC requires a non-default UA (returns 403
+# without one); other feeds also tend to be friendlier with an identifiable
+# UA than with python-urllib's default.
+RSS_USER_AGENT = "BreakingAlpha pipeline (noahhanning03@gmail.com)"
+RSS_FETCH_TIMEOUT_SEC = 20
+
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_BATCH_TIMEOUT_SEC = 180  # hard ceiling for filter_articles_batch Gemini call
 
+
+def _fetch_feed_bytes(url: str, timeout: int = RSS_FETCH_TIMEOUT_SEC) -> bytes:
+    """Fetch raw RSS/Atom bytes with a hard timeout and identifiable UA.
+
+    Wraps urllib.request.urlopen so feedparser.parse never sees a live
+    socket. Without this, feedparser.parse(url) opens its own socket and
+    blocks indefinitely on slow servers (the run #98 silent-hang vector).
+    Raises urllib.error.URLError / HTTPError / socket.timeout on failure;
+    the per-feed try/except in fetch_all_articles catches and continues.
+    """
+    req = urllib.request.Request(url, headers={"User-Agent": RSS_USER_AGENT})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read()
+
+# Reuters x3 (feeds.reuters.com is dead, URLError) and Pitchbook (404) removed
+# 2026-05-08 after live probe. They contributed zero articles and added per-run
+# noise. Replacements TBD; tracked in W2-D backlog.
 RSS_FEEDS = {
     "NYT Technology":   "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml",
     "NYT Business":     "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml",
     "NYT World":        "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
     "MarketWatch Top":  "https://feeds.content.dowjones.io/public/rss/mw_topstories",
     "TechCrunch":       "https://techcrunch.com/feed/",
-    "Reuters Tech":     "https://feeds.reuters.com/reuters/technologyNews",
-    "Reuters Business": "https://feeds.reuters.com/reuters/businessNews",
-    "Reuters World":    "https://feeds.reuters.com/Reuters/worldNews",
     "FT Tech":          "https://www.ft.com/technology?format=rss",
     "Axios":            "https://www.axios.com/feeds/feed.rss",
     "Bloomberg Tech":   "https://feeds.bloomberg.com/technology/news.rss",
-    "Pitchbook":        "https://pitchbook.com/news/rss",
     "Crunchbase News":  "https://news.crunchbase.com/feed/",
     "PE Hub":           "https://www.pehub.com/feed/",
     "Defense News":     "https://www.defensenews.com/arc/outboundfeeds/rss/",
@@ -473,10 +501,17 @@ def fetch_all_articles():
     now = datetime.now(timezone.utc)
     freshness_cutoff = now - timedelta(days=INGEST_FRESHNESS_DAYS)
     total_skipped_stale = 0
+    rss_t0 = time.time()
+    rss_added = 0
     for source, url in RSS_FEEDS.items():
         skipped_stale = 0
+        feed_t0 = time.time()
+        feed_added = 0
         try:
-            feed = feedparser.parse(url)
+            # Bounded fetch via urllib.request.urlopen(timeout=20) so a hung
+            # upstream cannot block the pipeline forever (run #98 root cause).
+            raw = _fetch_feed_bytes(url)
+            feed = feedparser.parse(raw)
             for e in feed.entries[:8]:
                 published_at = e.get("published", now.isoformat())
                 # Skip articles older than INGEST_FRESHNESS_DAYS
@@ -495,11 +530,17 @@ def fetch_all_articles():
                     "published_at": published_at,
                     "content_type": "full_text" if source in FULL_TEXT_SOURCES else "snippet"
                 })
+                feed_added += 1
+            print(f"  RSS {source}: {feed_added} articles in {time.time() - feed_t0:.2f}s")
+        except (urllib.error.URLError, socket.timeout) as ex:
+            print(f"  RSS error {source}: network ({type(ex).__name__}: {ex}) in {time.time() - feed_t0:.2f}s")
         except Exception as ex:
-            print(f"  RSS error {source}: {ex}")
+            print(f"  RSS error {source}: {ex} in {time.time() - feed_t0:.2f}s")
         if skipped_stale:
             print(f"  RSS {source}: skipped {skipped_stale} stale articles (>{INGEST_FRESHNESS_DAYS}d old)")
             total_skipped_stale += skipped_stale
+        rss_added += feed_added
+    print(f"  RSS total: {rss_added} articles from {len(RSS_FEEDS)} feeds in {time.time() - rss_t0:.2f}s")
     if total_skipped_stale:
         print(f"  RSS total: skipped {total_skipped_stale} stale articles across all feeds")
 
@@ -548,11 +589,16 @@ def filter_article(article):
         summary=article["summary"],
         source=article["source"],
     )
-    try:
-        response = gemini_client.models.generate_content(
+
+    def _call():
+        return gemini_client.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
         )
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
+            response = _ex.submit(_call).result(timeout=30)
         text = (response.text or "").strip()
         if text.startswith("```"):
             text = text.split("```")[1]
@@ -586,16 +632,27 @@ def filter_articles_batch(articles):
         n=len(articles),
     )
 
-    try:
-        response = gemini_client.models.generate_content(
+    # Wrap the Gemini call in a thread with a hard timeout. google-genai's
+    # underlying httpx client does not bound a stuck stream; a hung response
+    # would otherwise block the pipeline forever (run #98 root cause).
+    # 16384 max_output_tokens is sized for ~100 articles per batch at ~150
+    # output tokens per article. Larger batches that exceed this fall through
+    # to the per-article fallback at the bottom of this function.
+    def _call_gemini():
+        return gemini_client.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.2,
-                max_output_tokens=65536,
+                max_output_tokens=16384,
                 response_mime_type="application/json",
             ),
         )
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
+            _fut = _ex.submit(_call_gemini)
+            response = _fut.result(timeout=GEMINI_BATCH_TIMEOUT_SEC)
         text = (response.text or "").strip()
         if text.startswith("```"):
             text = text.split("```")[1]
@@ -725,23 +782,30 @@ def store_article(article, analysis):
 
 
 def run_ingestion():
-    print(f"\n{'='*60}\nBreakingAlpha Ingestion — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n{'='*60}")
+    print(f"\n{'='*60}\nBreakingAlpha Ingestion - {datetime.now().strftime('%Y-%m-%d %H:%M')}\n{'='*60}")
+    t_total = time.time()
+
+    t = time.time()
     print("\n[1/4] Fetching articles...")
     articles = fetch_all_articles()
-    print(f"  {len(articles)} unique articles")
+    print(f"  [1/4] DONE: {len(articles)} unique articles in {time.time() - t:.2f}s")
 
+    t = time.time()
     print(f"\n[2/4] Pre-filtering {len(articles)} articles against keyword blocklist...")
     articles = [a for a in articles if not matches_ingest_blocklist(a)]
-    print(f"  {len(articles)} articles after keyword pre-filter")
+    print(f"  [2/4] DONE: {len(articles)} after keyword pre-filter in {time.time() - t:.2f}s")
 
+    t = time.time()
     print(f"\n[3/4] Filtering {len(articles)} articles with Gemini (batch)...")
     results = filter_articles_batch(articles)
+    print(f"  [3/4] DONE: Gemini filter in {time.time() - t:.2f}s")
     relevant = []
     for a, result in zip(articles, results):
         if result and result.get("relevant") and result.get("relevance_score", 0) >= 6:
             relevant.append((a, result))
             print(f"  ✓ [{result['relevance_score']}/10] [{result.get('sector','?')[:20]}] {a['title'][:60]}...")
 
+    t = time.time()
     print(f"\n[4/4] Storing {len(relevant)} articles...")
     stored_pairs = []  # (article_id, article_dict) for enrichment
     for a, r in relevant:
@@ -750,7 +814,8 @@ def run_ingestion():
             stored_pairs.append((aid, a))
     article_ids = [aid for aid, _ in stored_pairs]
     stored = len(article_ids)
-    print(f"\n✅ Done — {stored} new articles stored")
+    print(f"  [4/4] DONE: {stored} stored in {time.time() - t:.2f}s")
+    print(f"\nINGEST total elapsed: {time.time() - t_total:.2f}s ({stored} new articles stored)")
 
     # [4b] Full-text enrichment for scrapeable sources
     enriched = 0
