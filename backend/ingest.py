@@ -7,6 +7,8 @@ stores in Supabase.
 import concurrent.futures
 import os, json, re, socket, time, urllib.error, urllib.request, requests, feedparser, html as _html
 from datetime import datetime, timezone, timedelta
+from typing import Literal, Optional
+from pydantic import BaseModel
 from supabase import create_client
 from google import genai
 from google.genai import types
@@ -51,6 +53,33 @@ BATCH_MAX_OUTPUT_TOKENS = 16384
 # allow >= 1000 RPM; 5 workers gives ~45 RPM upper bound, well under that
 # limit and within the rate-limit safety factor in the user iteration brief.
 FALLBACK_PARALLEL_WORKERS = 5
+
+
+# Response schema for Gemini constrained output. Smoke test 2 (chunk_size=50)
+# saw 12/13 chunks emit malformed JSON despite mime_type=application/json,
+# triggering fallback to per-article. response_schema enforces the structure
+# at SDK level so model output is guaranteed parseable. Schema fields mirror
+# what filter_articles_batch and filter_article python parsers already expect.
+class CompanyEntity(BaseModel):
+    name: str
+    entity_type: Literal["company"]
+
+
+class FilterDecision(BaseModel):
+    relevant: bool
+    relevance_score: int
+    relevance_reason: str
+    industry_verticals: list[str]
+    activity_types: list[str]
+    companies: list[CompanyEntity]
+    themes: list[str]
+    sentiment: Literal["bullish", "bearish", "neutral"]
+    deal_type: Optional[str] = None
+    primary_company: Optional[str] = None
+
+
+class FilterDecisionWithIndex(FilterDecision):
+    index: int
 
 
 def _fetch_feed_bytes(url: str, timeout: int = RSS_FETCH_TIMEOUT_SEC) -> bytes:
@@ -610,6 +639,12 @@ def filter_article(article):
         return gemini_client.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.2,
+                max_output_tokens=2048,
+                response_mime_type="application/json",
+                response_schema=FilterDecision,
+            ),
         )
 
     try:
@@ -659,6 +694,7 @@ def _filter_one_chunk(chunk_articles, chunk_idx, total_chunks):
                 temperature=0.2,
                 max_output_tokens=BATCH_MAX_OUTPUT_TOKENS,
                 response_mime_type="application/json",
+                response_schema=list[FilterDecisionWithIndex],
             ),
         )
 

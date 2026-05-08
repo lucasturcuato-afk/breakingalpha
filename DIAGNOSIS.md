@@ -445,3 +445,94 @@ Expected runtime: 13 chunks (606 / 50) x ~30s per chunk = 6.5 min for filter, vs
 | WD42 | Finnhub 403 for `.L`, `.VI` foreign tickers in [13] watchlist sync. Pre-existing. | S | None | P2 |
 | WD43 | `column weekly_digests.morning_brief_addendum does not exist`, schema gap from synthesize step. Pre-existing. | XS | None | P2 |
 | WD44 | Articles store-step latency: 17ms per article x 368 = 6.4 min. Becomes new bottleneck after chunked filter. Likely per-row INSERT, missing index, or expensive triggers. | M | None | P2 |
+
+---
+
+## 16. Smoke test #2 results (run 25536689811)
+
+Triggered 2026-05-08 04:26:23Z on `noah/diagnose-pipeline-timeout`. Completed in 36.27 min (2176s). Used chunked filter + parallel fallback (BATCH_CHUNK_SIZE=50, FALLBACK_PARALLEL_WORKERS=5).
+
+| # | Criterion | Result | Detail |
+|---|---|---|---|
+| 1 | Duration < 60 min | PASS | 36.27 min, well under target |
+| 2 | Status = success | PASS |  |
+| 3 | NO article-fallback warnings | FAIL | 12 of 13 chunks fell back to per-article. Only chunk 13 (size 20) batched cleanly. |
+| 4 | briefings May 8 morning row | PASS | "European Energy Prices Drive Demand for Solar Panels and Heat Pumps", 797 chars |
+| 5 | Article count comparable | AMBIGUOUS | 34 stored. Likely 95% dedup against smoke #1 + 03:00 evening cron just-stored ~424 articles. Filtered 546 of 620 fetched. |
+| 6 | SEC 8-K appears | AMBIGUOUS | SEC feed returned 8 entries (UA fix works), but 0 newly stored due to dedup against earlier runs. |
+| 7 | Structured chunk logging | PASS | All 13 chunks emitted "chunk N/M: ..." lines |
+
+### Where the 36.27 minutes went
+
+```
+[1/4] Fetching articles:        95.88s   (1.6 min)
+[2/4] Pre-filter:                0.00s
+[3/4] Gemini batch filter:    1651.20s   (27.5 min, vs 70 min smoke #1)
+[4/4] Storing:                  33.82s   (0.6 min, mostly dedups)
+INGEST total:                 1780.90s   (29.7 min)
+[2/16]-[POST] downstream:       ~395s    (6.6 min)
+TOTAL:                        2176s     (36.27 min)
+```
+
+### Why 12/13 chunks fell back
+
+Each failed chunk emitted `JSONDecodeError: Expecting ',' delimiter: line N column M (char K)` where char K ranged 4770-22671 (so output sizes 5K-22K characters per failing chunk). Only chunk 13 (last, with 20 articles instead of 50) batched cleanly. This is structural fragility in the model's free-form JSON output at 50-article batch size, not a token budget shortfall.
+
+The parallel fallback contained the damage (5 workers x ~7s/article = 50 articles in ~70s per failed chunk). Aggregate filter time dropped from 70 min (smoke #1 serial fallback) to 27 min (smoke #2 parallel fallback), but still rode the fallback path.
+
+### Iteration #3 design (this section)
+
+Per the user iteration brief: pivot to Gemini's `response_schema` for SDK-side structural enforcement of JSON output. Keep chunking and parallel fallback as composing layers (response_schema makes the batch path reliable; chunking keeps token budgets safe; parallel fallback is the defense-in-depth if any chunk still fails).
+
+Three changes to `backend/ingest.py`:
+
+1. **Add Pydantic models** at module scope (matching `backend/thesis_grader.py` style which already uses pydantic):
+   ```python
+   class CompanyEntity(BaseModel):
+       name: str
+       entity_type: Literal["company"]
+
+   class FilterDecision(BaseModel):
+       relevant: bool
+       relevance_score: int
+       relevance_reason: str
+       industry_verticals: list[str]
+       activity_types: list[str]
+       companies: list[CompanyEntity]
+       themes: list[str]
+       sentiment: Literal["bullish", "bearish", "neutral"]
+       deal_type: Optional[str] = None
+       primary_company: Optional[str] = None
+
+   class FilterDecisionWithIndex(FilterDecision):
+       index: int
+   ```
+
+2. **Wire `response_schema` into batch chunk call** (`_filter_one_chunk`):
+   ```python
+   config=types.GenerateContentConfig(
+       temperature=0.2,
+       max_output_tokens=BATCH_MAX_OUTPUT_TOKENS,
+       response_mime_type="application/json",
+       response_schema=list[FilterDecisionWithIndex],   # NEW
+   )
+   ```
+
+3. **Wire `response_schema` into per-article fallback call** (`filter_article`):
+   ```python
+   config=types.GenerateContentConfig(
+       temperature=0.2,            # ADDED for batch parity
+       max_output_tokens=2048,     # ADDED, sized for one article ~135 tokens
+       response_mime_type="application/json",  # ADDED
+       response_schema=FilterDecision,         # NEW
+   )
+   ```
+
+### Smoke #3 success criteria
+
+Same 7 as smoke #2, plus:
+
+8. response_schema enforcement: <= 5% chunks fall back. Target 0/13. Acceptable 1/13. Unacceptable > 2/13.
+9. Keep-rate parity: filter pass rate (`relevant=true` ratio) within ±10% of historical run #97 baseline. If keep-rate dropped >10%, schema enforcement is making model output minimum-valid filler instead of real reasoning.
+
+If smoke #3 fails 8 or 9: HALT, surface, do not open PR.
