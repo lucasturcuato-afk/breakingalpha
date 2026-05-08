@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { LiveMoodShell } from "@/components/shell/live-mood-shell";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { CompanyDetailClient } from "@/components/company/company-detail-client";
+import { SourcesStrip } from "@/components/company/SourcesStrip";
 import {
   CANONICAL,
   COMPANY_IDENTITY,
@@ -138,6 +139,15 @@ export default async function CompanyDetailPage({
         totalArticles={classified.length}
         credibilityMap={credibilityMap}
       />
+      {/* PR-C5: SourcesStrip wires to the bottom slot of CompanyDetailLayout
+          when that layout becomes the live shell. Until then, render directly
+          beneath the client so the strip stays visible. Aggregates ONLY from
+          the top-12 articles passed in (see ARTICLE_LIMIT). */}
+      <div className="px-6 pb-5">
+        <div className="max-w-[960px] mx-auto">
+          <SourcesStrip articles={classified.slice(0, 12)} />
+        </div>
+      </div>
     </LiveMoodShell>
   );
 }
