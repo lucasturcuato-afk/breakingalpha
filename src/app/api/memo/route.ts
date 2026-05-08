@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { createClient } from "@supabase/supabase-js";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isAdmin } from "@/lib/admin-emails";
+import { recordOutput } from "@/lib/outputs";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -316,6 +317,7 @@ export async function POST(request: NextRequest) {
     // the ceiling here keeps the article-grounded path byte-identical.
     const maxOutputTokens = type === "company-web" ? 8192 : 2400;
     try {
+      const t0 = Date.now();
       const completion = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: [{ role: "user", parts: [{ text: truncated }] }],
@@ -326,11 +328,42 @@ export async function POST(request: NextRequest) {
           thinkingConfig: { thinkingBudget: 0 },
         },
       });
+      const latencyMs = Date.now() - t0;
 
       const memo = completion.text;
       if (!memo) {
         return NextResponse.json({ error: "Gemini returned empty memo — retry" }, { status: 500 });
       }
+
+      // Pattern A: fire-and-forget output capture after response is flushed.
+      after(async () => {
+        try {
+          const svcSupabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          );
+          await recordOutput(svcSupabase, {
+            output_type: "memo",
+            source_table: "companies",
+            source_id: company ?? "unknown",
+            prompt_inputs: {
+              type: type ?? null,
+              sector: sector ?? null,
+              content_chars: truncated.length,
+            },
+            latency_ms: latencyMs,
+            metadata: {
+              variant: type === "company-web" ? "web" : "articles",
+              model: "gemini-2.5-flash",
+              max_output_tokens: maxOutputTokens,
+              memo_chars: memo.length,
+            },
+          });
+        } catch (e) {
+          console.error("[memo] recordOutput after() failed:", e);
+        }
+      });
+
       return NextResponse.json({ memo });
     } catch (err) {
       console.error("[memo] Gemini content-path error:", err);
@@ -362,6 +395,7 @@ Sections: TRANSACTION OVERVIEW, STRATEGIC RATIONALE, KEY RISKS, ANALYST TAKE. Un
   const prompt = buildMemoPrompt(profile, legacyBase);
 
   try {
+    const t0 = Date.now();
     const completion = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -371,11 +405,43 @@ Sections: TRANSACTION OVERVIEW, STRATEGIC RATIONALE, KEY RISKS, ANALYST TAKE. Un
         thinkingConfig: { thinkingBudget: 0 },
       },
     });
+    const latencyMs = Date.now() - t0;
 
     const memo = completion.text;
     if (!memo) {
       return NextResponse.json({ error: "Gemini returned empty memo — retry" }, { status: 500 });
     }
+
+    // Pattern A: fire-and-forget output capture after response is flushed.
+    after(async () => {
+      try {
+        const svcSupabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        );
+        await recordOutput(svcSupabase, {
+          output_type: "memo",
+          source_table: "companies",
+          source_id: company,
+          prompt_inputs: {
+            acquirer: acquirer ?? null,
+            deal_type: deal_type ?? null,
+            value: value ?? null,
+            sector: sector ?? null,
+          },
+          latency_ms: latencyMs,
+          metadata: {
+            variant: "legacy",
+            model: "gemini-2.5-flash",
+            max_output_tokens: 2400,
+            memo_chars: memo.length,
+          },
+        });
+      } catch (e) {
+        console.error("[memo] recordOutput after() failed:", e);
+      }
+    });
+
     return NextResponse.json({ memo });
   } catch (err) {
     console.error("[memo] Gemini legacy-path error:", err);
