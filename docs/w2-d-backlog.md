@@ -17,7 +17,7 @@ Status: standalone backlog. A legacy `docs/w2d-backlog.md` was referenced in pri
 | Detail page V1.5+ | 4 | Memo prompt streaming, AI Brief auto-regen, KPI cluster expansion |
 | Code hygiene | 7 | Watchlist subtitle truncation, ESLint cleanups, em-dash cleanup |
 
-Total: 30 items.
+Total: 33 items.
 
 ## Items
 
@@ -53,6 +53,9 @@ Total: 30 items.
 | WD28 | PR-body temp file fix | XS | None | P2 | Tooling cleanup -- temp file leftover from PR-body workflow. |
 | WD29 | Em-dash cleanup in /api/memo error text | XS | None | P2 | ASCII-only convention violation in user-visible error strings. |
 | WD30 | Add aliases.is_canonical boolean for explicit canonical preference | XS | None | P2 | Surfaced during PR-B0 (alias resolver). Spec called for `is_canonical` + `created_at` columns; live aliases schema has neither. Implementer correctly pivoted to recon's tiebreaker hierarchy `mention_count DESC -> last_updated DESC -> first_seen ASC -> id ASC`. An explicit `is_canonical` boolean would let editorial pin the canonical alias choice (e.g. "NVIDIA" over "NVIDIA Corporation") rather than relying on heuristic. Filed 2026-05-07. |
+| WD31 | Legacy /company/[slug] memo trigger does not pass company name -> source_id="unknown" in output_log_v0_stub | XS | None | P2 | Surfaced 2026-05-07 during PR-D2 acceptance test. Resolves naturally once PR-C1 BriefTab replaces legacy trigger; until then, observability rows are anonymous for company-detail-page memos. |
+| WD32 | Memo prompt grounds in stale historical figures (e.g. NVIDIA Q4 FY22 instead of FY26) | S | None | P2 | Surfaced 2026-05-07 during PR-D2 acceptance test (NVIDIA memo cited "$68.13B in Q4 FY22 revenue on 73.21% growth" -- wrong fiscal year). Either article corpus has stale dates or memo prompt isn't anchoring to current quarter. Investigate after Phase 1 ships. |
+| WD33 | Acceptance-test access friction -- /api/memo requires Supabase session cookie, blocking automated curl-based testing | M | None | P2 | Surfaced 2026-05-07 during PR-D2 acceptance test. Browser session worked but added manual step. Consider service-role test endpoint OR CI-only auth bypass guarded by env flag for future Phase 4+ acceptance tests. |
 
 ## Notes
 
