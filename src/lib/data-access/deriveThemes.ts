@@ -31,6 +31,7 @@ const TOP_N = 6;
 export function deriveThemes(
   rawThemes: ReadonlyArray<string>,
   articles: ReadonlyArray<{ title: string; sentiment: string | null }>,
+  limit: number = TOP_N,
 ): DerivedTheme[] {
   if (rawThemes.length === 0) return [];
 
@@ -57,5 +58,5 @@ export function deriveThemes(
       return { label, weight: count / maxCount, tone, count };
     })
     .sort((a, b) => b.weight - a.weight)
-    .slice(0, TOP_N);
+    .slice(0, limit);
 }
