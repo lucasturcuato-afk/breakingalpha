@@ -36,30 +36,26 @@ RSS_FETCH_TIMEOUT_SEC = 20
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 GEMINI_MODEL = "gemini-2.5-flash"
-GEMINI_BATCH_TIMEOUT_SEC = 180  # hard ceiling for one filter_articles_batch chunk Gemini call
 
-# Filter batching tuned 2026-05-08 after smoke test #1 (run 25531724183, 87 min).
-# Rationale: BATCH output schema emits ~135 tokens per article (10 fields plus
-# JSON syntax). With a 1.5x model verbosity safety factor, that is ~200 tokens
-# per article. 50 articles per chunk gives ~10K output tokens, well inside the
-# 16384 max_output_tokens per call. Larger chunks (200 plus, as the previous
-# single-batch approach used implicitly) caused Gemini to emit malformed JSON
-# around article 30-40, triggering the per-article fallback for the whole run.
-BATCH_CHUNK_SIZE = 50
-BATCH_MAX_OUTPUT_TOKENS = 16384
-
-# Parallel workers for the per-article fallback inside a chunk. Smoke test 1
-# observed ~9 RPM serial throughput (606 calls in 70 min). Gemini paid tiers
-# allow >= 1000 RPM; 5 workers gives ~45 RPM upper bound, well under that
-# limit and within the rate-limit safety factor in the user iteration brief.
-FALLBACK_PARALLEL_WORKERS = 5
+# Per-article filter parallelism. Smoke test 3 (run 25538358541) proved that
+# Gemini response_schema constrains single-object output reliably (5 errors
+# of ~600 calls = 0.83%) but does not constrain list[Model] array output
+# (12/13 batch chunks fell back). Per-article only with parallel workers
+# gives the same end-to-end throughput as the chunked batch path with a
+# clean, single code path.
+#
+# 5 workers x ~7s per call = ~45 RPM upper bound, well under Gemini paid-tier
+# 1000 RPM limit. FILTER_LOG_BATCH_SIZE is a logging unit, not a model batch:
+# we group articles into 50-at-a-time output lines for run-log readability.
+FILTER_PARALLEL_WORKERS = 5
+FILTER_LOG_BATCH_SIZE = 50
 
 
 # Response schema for Gemini constrained output. Smoke test 2 (chunk_size=50)
 # saw 12/13 chunks emit malformed JSON despite mime_type=application/json,
 # triggering fallback to per-article. response_schema enforces the structure
 # at SDK level so model output is guaranteed parseable. Schema fields mirror
-# what filter_articles_batch and filter_article python parsers already expect.
+# what filter_articles and filter_article python parsers expect.
 class CompanyEntity(BaseModel):
     name: str
     entity_type: Literal["company"]
@@ -76,10 +72,6 @@ class FilterDecision(BaseModel):
     sentiment: Literal["bullish", "bearish", "neutral"]
     deal_type: Optional[str] = None
     primary_company: Optional[str] = None
-
-
-class FilterDecisionWithIndex(FilterDecision):
-    index: int
 
 
 def _fetch_feed_bytes(url: str, timeout: int = RSS_FETCH_TIMEOUT_SEC) -> bytes:
@@ -222,58 +214,6 @@ Respond ONLY in valid JSON:
   "sentiment": "bullish/bearish/neutral",
   "deal_type": "Classify as exactly one of these — apply the first definition that matches: M&A (a named company is acquiring, merging with, or being acquired by another named company), IPO (a specific named company is going public), Funding (a named company is receiving investment capital — a venture round, private equity investment, debt financing, or fundraising raise; the company receiving the money determines the type), Earnings (ONLY a company's own officially reported financial results — revenue figures, EPS, net income, or forward guidance issued as part of a formal results announcement; NEVER apply Earnings to analyst recommendations, investment theses, portfolio manager commentary, market outlooks, or forecasts — those are Other), Macro (central bank decisions, interest rate policy, inflation data, GDP, tariff or trade policy affecting broad markets — not specific to one company), Geopolitical (wars, sanctions, elections, cross-border disputes with market impact), Other (regulatory action, product launch, contract award, partnership announcement, legal settlement, personnel change, analyst note, market commentary — use this as a catch-all for anything that does not clearly fit the above). Return null only if the article is so general it fits none of these. Default to Other over null.",
   "primary_company": "The single company that is the MAIN ACTOR of the event this article covers — the company doing the action, not a company that is merely named or mentioned. Apply these rules in order: (1) Funding/IPO: primary_company is the company RECEIVING the investment or going public — not the investor, not a chip or technology supplier the article mentions, not a competitor named for comparison. Example: 'Mistral raises $830M to house Nvidia chips' → primary_company is Mistral, not Nvidia. (2) M&A: primary_company is the acquirer or the acquisition target — whichever is the article's central subject. Example: 'Goldman leads buyout of PortfolioCo' → primary_company is PortfolioCo (the target), not Goldman (the advisor). (3) Earnings: primary_company is the company that issued the results. (4) Commentary or market opinion: if a company's employee, analyst, or executive is quoted giving views on markets, sectors, or other companies — but the article is NOT about that company's own named event — return null. Example: 'Goldman's analyst recommends semiconductors' → null. (5) When one company is clearly driving the event and others are mentioned incidentally as suppliers, partners, advisors, or comparisons, always name the driving company. Return null only when two or more companies are genuinely co-equal actors with no single driver (e.g. a true joint venture announced by both parties equally). Never invent a name not present in the companies array."
-}}"""
-
-
-BATCH_FILTER_PROMPT = """You are a senior analyst at a top investment firm. Analyze EACH article in the batch below and score it for relevance to financial markets and investing.
-
-Relevant topics include: M&A deals, IPOs, fundraising, valuations, earnings, market movements, geopolitical events affecting markets, macro trends, regulatory changes, PE/VC activity, public company news, economic data.
-
-INDUSTRY_VERTICALS RULE (required per article): Return a JSON array of 1-3 values from this exact list — the industry sector(s) the companies or subjects operate in. Copy values character-for-character. Return [] if none clearly apply.
-Allowed values: Technology, Healthcare & Biotech, Energy & Oil/Gas, Financial Services, Consumer & Retail, Industrials & Manufacturing, Aerospace & Defense, Real Estate, Media & Telecom, Materials & Mining, Agriculture
-
-ACTIVITY_TYPES RULE (optional per article): Return a JSON array of 0-3 values from this exact list — the type of event or activity the article covers. Copy values character-for-character. Return [] if none clearly apply.
-Allowed values: Mergers & Acquisitions, Private Equity, Venture Capital, IPO & Capital Markets, Earnings & Results, Macro & Policy, Geopolitics, Regulation & Legal, Fundraising, Crypto & Digital Assets, Leadership & Operations
-
-COMPANIES RULE: Return a JSON array of entity objects. Each object must have exactly: "name" (verbatim from title or summary) and "entity_type" (must equal "company"). Only include entities where you are confident entity_type is "company". Default to exclusion when uncertain.
-
-COMPANY = a for-profit or non-profit private organization, publicly traded corporation, startup, or financial institution with employees and a business operation (would have a LinkedIn company page).
-
-EXCLUDE — do not include:
-- People (executives, politicians, named individuals — e.g. "Elon Musk", "Xi Jinping", "Trump")
-- Countries or regions ("China", "Iran", "Vietnam", "Greece", "the Gulf")
-- Government bodies, regulators, military branches ("NASA", "FAA", "Pentagon", "Space Force", "U.S. Navy", "Federal Reserve", "SEC", "DOJ", "FOMC")
-- Currencies and crypto ("Bitcoin", "USD", "ETH")
-- Stock indexes ("S&P 500", "Nifty 50", "Nasdaq", "Sensex", "Nikkei")
-- Abstract phrases ("Ukrainian drone makers", "Russia's energy sector", "Candy stocks", "Foundation AI model for plants")
-- Software products or AI models — include the owning company instead ("OpenAI" not "ChatGPT", "Microsoft" not "Windows", "Anthropic" not "Claude")
-- Investment vehicles, SPVs, sovereign wealth funds ("Blackstone Digital Infrastructure Trust", "Abu Dhabi Investment Authority", "GIC") — use parent firm if applicable
-- Political parties, advocacy groups, religious institutions
-
-Good: "Nvidia invests in Marvell" → [{{"name":"Nvidia","entity_type":"company"}},{{"name":"Marvell","entity_type":"company"}}]. "Fed raises rates amid China tension" → []. Return [] when no entities pass the definition.
-
-RELEVANCE_REASON GATE (apply before writing): If an article is primarily an opinion piece, profile, cultural commentary, or trend piece with no named transaction, earnings result, financing event, guidance change, regulatory action, or specific market-moving event — set relevant: false and leave relevance_reason as an empty string. Do not fabricate a read-through. Articles discussing a named person's political views, cultural influence, public commentary, or personal philosophy are not market-moving events even if that person runs a company — set relevant: false. Internal staff promotions, appointments, hires, or departures are not market-moving unless explicitly linked to a named transaction, fundraising, earnings, guidance, or regulatory action. For articles that pass the gate: 1-2 sentences max. Lead with the concrete market implication — the named deal, specific dollar figure, rate level, or event. Use specific company names, dollar figures, or named sectors. Write as a buy-side analyst flagging a signal to a portfolio manager. BANNED outputs: vague taxonomy ('relevant to PE/VC/financial markets'), article restatements, fabricated comp lists, filler like 'this matters because it is a transaction in private equity'. For macro/rates articles, state the concrete effect on deal economics — LBO spreads, floating-rate credit costs, buyout multiples, M&A financing, risk appetite — never write that rates moved or that interest rates affect markets generally.
-
-DEAL_TYPE RULE (apply first matching definition): M&A (named company acquiring/merging with/being acquired by another named company), IPO (named company going public), Funding (named company receiving investment capital — VC round, PE investment, debt financing, or fundraising raise), Earnings (ONLY a company's own officially reported financial results — revenue, EPS, net income, or forward guidance issued as part of a formal results announcement; NEVER apply Earnings to analyst recommendations, investment theses, PM commentary, market outlooks, or forecasts — those are Other), Macro (central bank decisions, interest rate policy, inflation data, GDP, tariff/trade policy affecting broad markets), Geopolitical (wars, sanctions, elections, cross-border disputes with market impact), Other (regulatory action, product launch, contract award, partnership, legal settlement, personnel change, analyst note, market commentary — catch-all). Return null only if the article fits none. Default to Other over null.
-
-PRIMARY_COMPANY RULE: The single company that is the MAIN ACTOR of the event. (1) Funding/IPO: the company RECEIVING the investment or going public — not the investor, not a supplier, not a competitor named for comparison. (2) M&A: the acquirer or target — whichever is the central subject. (3) Earnings: the company that issued the results. (4) Commentary/market opinion where a company's employee, analyst, or executive is quoted giving views on OTHER companies or markets — return null. (5) When one company is clearly driving the event and others are mentioned incidentally as suppliers/partners/advisors/comparisons, always name the driving company. Return null only for genuine co-equal actors (e.g. a true joint venture). Never invent a name not present in the companies array.
-
-ARTICLES (each prefixed with its 0-based index in square brackets):
-{articles_block}
-
-Respond ONLY with a valid JSON array containing EXACTLY {n} objects, one per article, in the same order as the input. Do not include any text before or after the array. Each object must have exactly these fields:
-{{
-  "index": <int, the 0-based index from the article list>,
-  "relevant": true or false,
-  "relevance_score": 1-10,
-  "relevance_reason": "...",
-  "industry_verticals": ["<1-3 values from the allowed industry verticals list>"],
-  "activity_types": ["<0-3 values from the allowed activity types list>"],
-  "companies": [{{"name": "Company A", "entity_type": "company"}}],
-  "themes": ["M&A", "IPO", "Earnings", "Macro", "Geopolitics", "VC", "PE", "Regulation", "AI", "Crypto"],
-  "sentiment": "bullish" or "bearish" or "neutral",
-  "deal_type": "M&A" or "IPO" or "Funding" or "Earnings" or "Macro" or "Geopolitical" or "Other" or null,
-  "primary_company": "..." or null
 }}"""
 
 
@@ -660,127 +600,83 @@ def filter_article(article):
         return None
 
 
-def _filter_one_chunk(chunk_articles, chunk_idx, total_chunks):
-    """Filter one chunk via a single Gemini batch call. Articles missing from
-    the parsed response (model omitted them, malformed item, or the whole call
-    failed) are filled via parallel per-article filter_article() invocations.
+def _filter_article_with_retry(article):
+    """filter_article() with one retry on None. Returns parsed dict or None.
 
-    Returns a list aligned by local index with chunk_articles.
+    response_schema enforcement at single-object level is reliable but not
+    perfect (smoke test 3 saw ~0.83% per-article failure rate). One retry
+    catches transient model flakiness; persistent failures get dropped with
+    a structured log line that is auditable post-merge.
 
-    Logging contract (auditable post-merge):
-      "chunk N/M: batch ok"                         (zero missing)
-      "chunk N/M: batch partial (P/T parsed); filling K via fallback"
-      "chunk N/M: batch failed (Type: msg); filling K via fallback"
+    Logging contract:
+      [filter:schema-fail] title='...': first call returned None, retrying
+      [filter:retry-fail]  title='...': retry also failed, dropping
     """
-    chunk_label = f"chunk {chunk_idx + 1}/{total_chunks}"
-
-    lines = []
-    for i, a in enumerate(chunk_articles):
-        title = (a.get("title") or "").replace("\n", " ").strip()
-        summary = (a.get("summary") or "").replace("\n", " ").strip()[:400]
-        source = a.get("source") or ""
-        lines.append(f"[{i}] SOURCE: {source} | TITLE: {title} | SUMMARY: {summary}")
-    articles_block = "\n".join(lines)
-    prompt = BATCH_FILTER_PROMPT.format(
-        articles_block=articles_block,
-        n=len(chunk_articles),
-    )
-
-    def _call_gemini():
-        return gemini_client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.2,
-                max_output_tokens=BATCH_MAX_OUTPUT_TOKENS,
-                response_mime_type="application/json",
-                response_schema=list[FilterDecisionWithIndex],
-            ),
-        )
-
-    chunk_results = [None] * len(chunk_articles)
-    parsed_count = 0
-    batch_failure = None
-
-    try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
-            response = _ex.submit(_call_gemini).result(timeout=GEMINI_BATCH_TIMEOUT_SEC)
-        text = (response.text or "").strip()
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-            text = text.strip()
-        m = re.search(r"\[[\s\S]*\]", text)
-        if m:
-            text = m.group(0)
-        parsed = json.loads(text)
-        if not isinstance(parsed, list):
-            raise ValueError("Batch response was not a JSON array")
-        for item in parsed:
-            if not isinstance(item, dict):
-                continue
-            idx = item.get("index")
-            if isinstance(idx, int) and 0 <= idx < len(chunk_articles) and chunk_results[idx] is None:
-                chunk_results[idx] = item
-                parsed_count += 1
-    except Exception as ex:
-        batch_failure = f"{type(ex).__name__}: {ex}"
-
-    missing = [i for i, r in enumerate(chunk_results) if r is None]
-
-    if not missing:
-        print(f"  {chunk_label}: batch ok")
-    elif batch_failure is not None:
-        print(f"  {chunk_label}: batch failed ({batch_failure}); filling {len(missing)} via fallback (workers={FALLBACK_PARALLEL_WORKERS})")
-    else:
-        print(f"  {chunk_label}: batch partial ({parsed_count}/{len(chunk_articles)} parsed); filling {len(missing)} via fallback (workers={FALLBACK_PARALLEL_WORKERS})")
-
-    if missing:
-        # Parallel per-article fallback. Each filter_article call already has
-        # its own 30s timeout via the inner ThreadPoolExecutor wrapper, so a
-        # single hung article cannot block the others.
-        with concurrent.futures.ThreadPoolExecutor(max_workers=FALLBACK_PARALLEL_WORKERS) as fb_ex:
-            fut_to_idx = {fb_ex.submit(filter_article, chunk_articles[i]): i for i in missing}
-            for fut in concurrent.futures.as_completed(fut_to_idx):
-                i = fut_to_idx[fut]
-                try:
-                    chunk_results[i] = fut.result()
-                except Exception as e:
-                    print(f"  {chunk_label}: fallback failed for local-idx={i} ({type(e).__name__}: {e})")
-                    chunk_results[i] = None
-
-    return chunk_results
+    title_short = (article.get("title") or "")[:60].replace("\n", " ")
+    result = filter_article(article)
+    if result is not None:
+        return result
+    print(f"  [filter:schema-fail] title='{title_short}', retrying once")
+    result = filter_article(article)
+    if result is None:
+        print(f"  [filter:retry-fail] title='{title_short}', dropping")
+    return result
 
 
-def filter_articles_batch(articles):
-    """Score articles by chunking into BATCH_CHUNK_SIZE-sized Gemini batch calls.
+def filter_articles(articles):
+    """Filter all articles via per-article Gemini calls with parallel workers.
 
-    Each chunk is processed independently via _filter_one_chunk(). Within a
-    chunk: a single batched call attempts all articles; any articles the model
-    omits or that the call drops fall through to filter_article() invocations
-    executed in parallel via FALLBACK_PARALLEL_WORKERS.
+    Replaces the prior batch path. Smoke test 3 (run 25538358541) confirmed
+    that Gemini response_schema reliably constrains single-object output
+    (5 errors of ~600 calls = 0.83% rate) but does not reliably constrain
+    list[Model] array output (12/13 batch chunks fell back to per-article).
+    Per-article + parallel workers gives identical throughput with proven
+    schema enforcement and a single code path.
 
-    Returns a list aligned by global index with the input `articles` array.
-    Any slot left as None corresponds to an article where both the batch call
-    and the per-article fallback failed; the caller's existing None-skip
-    behavior in run_ingestion's relevance gate handles that case.
+    Returns a list aligned by index with the input `articles` array. Slots
+    where filter_article plus retry both fail are None; run_ingestion's
+    relevance gate already treats None as 'skip this article'.
     """
     if not articles:
         return []
 
     total = len(articles)
-    total_chunks = (total + BATCH_CHUNK_SIZE - 1) // BATCH_CHUNK_SIZE
-    print(f"  filter: {total} articles in {total_chunks} chunks of up to {BATCH_CHUNK_SIZE}")
+    total_batches = (total + FILTER_LOG_BATCH_SIZE - 1) // FILTER_LOG_BATCH_SIZE
+    print(
+        f"  filter: {total} articles, per-article + parallel workers={FILTER_PARALLEL_WORKERS}, "
+        f"log batches of {FILTER_LOG_BATCH_SIZE}"
+    )
 
     results = [None] * total
-    for chunk_idx in range(total_chunks):
-        start = chunk_idx * BATCH_CHUNK_SIZE
-        end = min(start + BATCH_CHUNK_SIZE, total)
-        chunk = articles[start:end]
-        chunk_results = _filter_one_chunk(chunk, chunk_idx, total_chunks)
-        for local_i, r in enumerate(chunk_results):
-            results[start + local_i] = r
+    for batch_idx in range(total_batches):
+        start = batch_idx * FILTER_LOG_BATCH_SIZE
+        end = min(start + FILTER_LOG_BATCH_SIZE, total)
+        batch_label = f"filter batch {batch_idx + 1}/{total_batches}"
+        t0 = time.time()
+        kept = 0
+        skipped = 0
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=FILTER_PARALLEL_WORKERS) as ex:
+            fut_to_idx = {
+                ex.submit(_filter_article_with_retry, articles[i]): i
+                for i in range(start, end)
+            }
+            for fut in concurrent.futures.as_completed(fut_to_idx):
+                i = fut_to_idx[fut]
+                try:
+                    r = fut.result()
+                except Exception as e:
+                    title_short = (articles[i].get("title") or "")[:60].replace("\n", " ")
+                    print(f"  [filter:retry-fail] title='{title_short}' error={type(e).__name__}:{e}, dropping")
+                    r = None
+                results[i] = r
+                if r is not None:
+                    kept += 1
+                else:
+                    skipped += 1
+
+        print(f"  {batch_label} done in {time.time() - t0:.2f}s ({kept} parsed, {skipped} skipped)")
+
     return results
 
 
@@ -894,8 +790,8 @@ def run_ingestion():
     print(f"  [2/4] DONE: {len(articles)} after keyword pre-filter in {time.time() - t:.2f}s")
 
     t = time.time()
-    print(f"\n[3/4] Filtering {len(articles)} articles with Gemini (batch)...")
-    results = filter_articles_batch(articles)
+    print(f"\n[3/4] Filtering {len(articles)} articles with Gemini (per-article + parallel)...")
+    results = filter_articles(articles)
     print(f"  [3/4] DONE: Gemini filter in {time.time() - t:.2f}s")
     relevant = []
     for a, result in zip(articles, results):

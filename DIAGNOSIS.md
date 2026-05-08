@@ -623,3 +623,44 @@ Recommendation for Noah: **Option B**. Per-article path is the only one with pro
 - No merge to main from this session related to pipeline fix
 - DIAGNOSIS.md is the full record
 - W2-D items WD40-WD45 documented but not yet committed to main
+
+---
+
+## 18. Iteration #4: drop batch path, per-article + parallel workers only
+
+Decision (Noah, morning of 2026-05-08): Option B from section 17. Drop `filter_articles_batch` entirely. Use per-article calls with parallel workers. Schema enforcement on single objects is empirically reliable (smoke 3 had 5 errors out of ~600 calls = 0.83%). Schema enforcement on `list[Model]` is not reliable in google-genai 1.75.
+
+### Why not Option A (chunk_size=20)
+
+Chunk_size=20 still rides a batch path (where schema enforcement is unreliable for arrays) and adds 31 chunks per run instead of 13. More API calls, same code complexity, no proven reliability gain. Per-article-only is structurally simpler and matches what is empirically working.
+
+### Why not Option C (investigate SDK array schema)
+
+Time spent investigating google-genai 1.75 array schema behavior has no guarantee of fix. The empirical signal already says single-object schema works. Pivot to what we know works.
+
+### Code changes (single commit, all in `backend/ingest.py`)
+
+- **Removed**: `BATCH_FILTER_PROMPT` (the array-format prompt template, ~50 lines).
+- **Removed**: `FilterDecisionWithIndex` pydantic class (only used for the array schema).
+- **Removed**: `_filter_one_chunk()` helper (the batch chunk + fallback wrapper).
+- **Removed**: `filter_articles_batch()` (the chunk-iterating top-level).
+- **Removed constants**: `BATCH_CHUNK_SIZE`, `BATCH_MAX_OUTPUT_TOKENS`, `GEMINI_BATCH_TIMEOUT_SEC`, `FALLBACK_PARALLEL_WORKERS`.
+- **Added**: `_filter_article_with_retry()` helper that wraps `filter_article()` with one retry on None. Logs `[filter:schema-fail]` on first failure, `[filter:retry-fail]` if retry also fails.
+- **Added**: `filter_articles()` top-level. Iterates articles in 50-at-a-time logging batches, each batch processed via ThreadPoolExecutor with `FILTER_PARALLEL_WORKERS=5`. Per-batch line emits `filter batch N/M done in X.Xs (Y parsed, Z skipped)`.
+- **Added constants**: `FILTER_PARALLEL_WORKERS=5`, `FILTER_LOG_BATCH_SIZE=50`.
+- **Updated call site** in `run_ingestion()`: `print("[3/4] Filtering ... (per-article + parallel)")` and `results = filter_articles(articles)`.
+- Kept: `FilterDecision` pydantic class (used by per-article schema), `filter_article()` (with `response_schema=FilterDecision` from smoke 3), all timeouts, UA fix, dead-feed cleanup, per-step timing, workflow timeout-minutes 90.
+
+### Smoke #4 success criteria
+
+Same as smoke #3 (1-9), plus criterion 10:
+
+10. NO chunk-fallback log lines (no chunks). Only `[filter:schema-fail]` / `[filter:retry-fail]` / `filter batch N/M done` lines if errors occur. Acceptable per-article failure rate: <2% (target: <1%, smoke 3 baseline 0.83%).
+
+If smoke #4 passes: open PR to main as ready-for-review (NOT merge). Noah eyeballs brief content before merge.
+
+If smoke #4 fails 10 (>2% per-article failures): HALT, surface, do not ship. Schema enforcement degrading at production scale.
+
+### Forward-looking note
+
+If a future google-genai release improves `list[Model]` array schema enforcement, the batch path could be re-added as a throughput optimization. Per-article path is currently cleaner and equally fast at ~5 workers. Filed as W2-D item WD45 (P3, optimization not bug).
