@@ -536,3 +536,90 @@ Same 7 as smoke #2, plus:
 9. Keep-rate parity: filter pass rate (`relevant=true` ratio) within ±10% of historical run #97 baseline. If keep-rate dropped >10%, schema enforcement is making model output minimum-valid filler instead of real reasoning.
 
 If smoke #3 fails 8 or 9: HALT, surface, do not open PR.
+
+---
+
+## 17. Smoke test #3 results (run 25538358541), CRITERION 8 FAILED
+
+Triggered 2026-05-08 05:19:44Z on `noah/diagnose-pipeline-timeout`. Completed in 30.47 min (1828s). Used response_schema enforcement per smoke #3 design.
+
+| # | Criterion | Result | Detail |
+|---|---|---|---|
+| 1 | Duration < 60 min | PASS | 30.47 min, fastest of the three |
+| 2 | Status = success | PASS |  |
+| 3 | NO article-fallback warnings | FAIL | 12 of 13 chunks fell back |
+| 4 | briefings May 8 morning row | PASS | "European Energy Prices Drive Demand for Solar Panels and Heat Pumps", 1003 char summary |
+| 5 | Article count comparable | PASS | 23 stored. Filtered 567 of 621 fetched (relevance pass-rate 91.3%); store-rate low due to dedup against smoke #1 + #2 + evening cron |
+| 6 | SEC 8-K appears | DEDUP | RSS feed returned 8 entries (UA fix works); 0 newly stored due to dedup against prior runs |
+| 7 | Structured chunk logging | PASS | All 13 chunks emitted "chunk N/M: ..." lines |
+| 8 | <= 5% chunks fall back | FAIL HARD | 12/13 = 92.3% fallback (threshold is unacceptable >2/13) |
+| 9 | Keep-rate parity ±10% | PASS | 567/621 = 91.3% relevant; smoke #1 was 527/606 = 87.0%. Within tolerance. |
+
+### Where the 30.47 minutes went
+
+```
+[1/4] Fetching articles:        95.06s   (1.6 min)
+[2/4] Pre-filter:                0.00s
+[3/4] Gemini batch filter:    1288.60s   (21.5 min, vs 27.5 min smoke #2, 70 min smoke #1)
+[4/4] Storing:                  41.29s   (0.7 min, mostly dedups)
+INGEST total:                 1424.96s   (23.7 min)
+[2/16]-[POST] downstream:       ~404s    (6.7 min)
+TOTAL:                        1828s     (30.47 min)
+```
+
+### Critical finding: response_schema does NOT constrain batch arrays reliably
+
+Per-article filter_article calls (response_schema=FilterDecision, single object) had only **5 errors out of ~600** invocations. Schema enforcement at single-object granularity works.
+
+Batch chunk calls (response_schema=list[FilterDecisionWithIndex], array of 50) had **12/13 failures**. Schema enforcement at array granularity does NOT work.
+
+Failure pattern matches smoke #2 exactly:
+- Same chunks 1 through 12 fail with JSONDecodeError at varying char positions (2K to 22K).
+- Chunk 13 (size 21) succeeds, just like in smoke #2 where chunk 13 (size 20) succeeded.
+- response_schema did not change batch behavior at all.
+
+This means google-genai 1.75 enforces `response_schema` for single objects but loosely (or not at all) for `list[Model]` array constraints when the array is large.
+
+### What HAS improved across the three smoke tests
+
+| metric | smoke #1 | smoke #2 | smoke #3 |
+|---|---|---|---|
+| duration | 87 min | 36 min | 30 min |
+| filter step | 70 min | 27.5 min | 21.5 min |
+| per-article filter errors | 527 of ~606 | unknown (similar pattern) | 5 of ~600 |
+| chunks batch ok | 0/0 (no chunking yet) | 1/13 | 1/13 |
+
+The 87 min to 30 min progression validates the layered fixes, and per-article schema enforcement is provably working. The miss is specifically batch arrays.
+
+### Why HALT is the correct call
+
+Per user explicit instruction: "If smoke #3 FAILS criterion 8 (>2/13 fallback): HALT, surface, don't open PR."
+
+Three layered fixes do compose to bring duration from 6h+ (run #98 cancellation) to 30 min, well under the 60 min target. The pipeline produces a valid May 8 morning brief. SEC feeds work. No 6h hang risk remains.
+
+But the fallback path is still the load-bearing path for batch chunks. 12/13 chunks fall back to per-article filtering on every run, just much faster than serial fallback was. This is technically a "skip-and-log" pattern even though contained.
+
+### Options for Noah's morning iteration
+
+A. **Reduce BATCH_CHUNK_SIZE from 50 to 20.** Both smoke #2 and #3 saw chunk 13 succeed with 20-21 articles. With 620 articles / 20 = 31 chunks. At ~30s per chunk (assuming small chunks succeed) = 15.5 min for filter. Total expected runtime ~25 min.
+- Tradeoff: +18 chunks = +18 Gemini API calls per run. Still well under Tier 1 RPM limits.
+- Lowest-risk change: one constant value.
+
+B. **Drop batch entirely, use per-article-only with parallel workers.** Per-article schema enforcement works (5 errors out of 600 in smoke #3). 620 articles / 5 workers x ~7s each = 14.5 min. Total ~24 min.
+- Tradeoff: 600 API calls per run instead of 13 batch + parallel-fallback pattern. Still under Tier 1 limits.
+- Most reliable: schema enforcement is proven for single objects.
+- Cleanest code: removes the batch-vs-fallback complexity entirely.
+
+C. **Investigate google-genai 1.75 array schema behavior.** Read SDK docs/source to understand whether `response_schema=list[Model]` should work and isn't, or never was.
+- Risk: time spent investigating SDK quirks without guarantee of fix.
+
+Recommendation for Noah: **Option B**. Per-article path is the only one with proven schema enforcement; batch path's failure rate (92%) means we are riding the per-article path anyway. Removing the batch attempt simplifies the code and removes the ~5s per chunk wasted on failed batch calls.
+
+### State left for Noah
+
+- Branch `noah/diagnose-pipeline-timeout` at commit `7c5b877` with all three iteration layers
+- Three smoke test runs documented (IDs 25531724183, 25536689811, 25538358541)
+- No PR opened (per HALT instruction)
+- No merge to main from this session related to pipeline fix
+- DIAGNOSIS.md is the full record
+- W2-D items WD40-WD45 documented but not yet committed to main
