@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { CANONICAL, canonicalize } from "@/lib/company-intel";
+import { resolveAlias } from "@/lib/data-access/aliasResolver";
 
 export type AliasMention = { name: string; n: number };
 
@@ -37,25 +37,8 @@ const DAYS = 8;
 const ARTICLE_DAYS = 14;
 const ARTICLE_LIMIT = 12;
 const DAY_MS = 86_400_000;
-const COMPANY_COLS = "id, name, ticker, sector, mention_count, key_themes";
 const ARTICLE_COLS =
   "id, title, source, url, published_at, sentiment, deal_type, relevance_score, sector";
-
-type Row = {
-  id: string;
-  name: string;
-  ticker: string | null;
-  sector: string | null;
-  mention_count: number | null;
-  key_themes: string[] | null;
-};
-
-function slugToCompanyName(slug: string): string {
-  const decoded = decodeURIComponent(slug).replace(/-/g, " ");
-  const lower = decoded.toLowerCase();
-  if (CANONICAL[lower]) return CANONICAL[lower];
-  return decoded.replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 function utcDayMs(d: Date | string): number {
   const x = new Date(d);
@@ -80,37 +63,21 @@ export async function getCompanyDetail(
   supabase: SupabaseClient,
   slug: string,
 ): Promise<CompanyDetail | null> {
-  const canonicalName = canonicalize(slugToCompanyName(slug));
+  const resolved = await resolveAlias(supabase, slug);
+  if (!resolved) return null;
 
-  const { data: anchor } = await supabase
-    .from("companies")
-    .select(COMPANY_COLS)
-    .eq("name", canonicalName)
-    .maybeSingle();
-  if (!anchor) return null;
-
+  const { canonical: head, siblings, aliasMentions } = resolved;
+  const cluster = [head, ...siblings];
   const ticker =
-    typeof anchor.ticker === "string" && anchor.ticker.trim()
-      ? anchor.ticker.trim().toUpperCase()
+    typeof head.ticker === "string" && head.ticker.trim()
+      ? head.ticker.trim().toUpperCase()
       : null;
-
-  let cluster: Row[] = [anchor as Row];
-  if (ticker) {
-    const { data: rows } = await supabase
-      .from("companies")
-      .select(COMPANY_COLS)
-      .eq("ticker", ticker);
-    if (rows && rows.length > 0) cluster = rows as Row[];
-  }
-  cluster.sort((a, b) => (b.mention_count ?? 0) - (a.mention_count ?? 0));
-  const head = cluster[0];
   const ids = cluster.map((r) => r.id);
 
   const sinceDay = utcDayMs(new Date(Date.now() - (DAYS - 1) * DAY_MS));
   const sinceArticles = new Date(Date.now() - ARTICLE_DAYS * DAY_MS).toISOString();
 
-  const [aliasesRes, mentionsRes, articlesRes] = await Promise.all([
-    supabase.from("aliases").select("surface_form, mention_count").in("canonical_id", ids),
+  const [mentionsRes, articlesRes] = await Promise.all([
     supabase
       .from("company_mentions")
       .select("created_at, sentiment")
@@ -125,11 +92,6 @@ export async function getCompanyDetail(
       .limit(ARTICLE_LIMIT),
   ]);
 
-  const aliasRows = (aliasesRes.data ?? []) as Array<{ surface_form: string | null; mention_count: number | null }>;
-  const aliasMentions: AliasMention[] = aliasRows
-    .filter((r): r is { surface_form: string; mention_count: number | null } => !!r.surface_form)
-    .map((r) => ({ name: r.surface_form, n: r.mention_count ?? 0 }))
-    .sort((a, b) => b.n - a.n);
   const aliasSet = new Set<string>(cluster.map((r) => r.name).filter(Boolean));
   for (const a of aliasMentions) aliasSet.add(a.name);
 
