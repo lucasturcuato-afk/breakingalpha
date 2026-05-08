@@ -501,14 +501,39 @@ export const TAGGED_DEAL_TYPES = new Set(["Earnings", "M&A", "Funding", "IPO", "
 // Article processing
 // ---------------------------------------------------------------------------
 
-export function formatArticleList(arts: CompanyArticle[]): string {
+/**
+ * Format an article list for inclusion in a memo user message.
+ *
+ * When `startIndex` is provided, each article is prefixed with a 1-indexed
+ * `[N]` marker (N = startIndex + position). This is the citation key the
+ * model uses when emitting `[n]` provenance citations in the memo body, and
+ * it must stay aligned with the order used by `buildMemoSources` so that
+ * the frontend `sources` list maps one-to-one with bracketed references in
+ * the rendered prose. When `startIndex` is omitted, the legacy bullet form
+ * is emitted (kept for back-compat with non-citation callers).
+ */
+export function formatArticleList(arts: CompanyArticle[], startIndex?: number): string {
   if (arts.length === 0) return "None";
-  return arts
-    .slice(0, 8) // safety cap; callers should pre-slice to their desired limit
+  const sliced = arts.slice(0, 8); // safety cap; callers should pre-slice to their desired limit
+  if (typeof startIndex === "number") {
+    return sliced
+      .map((a, i) => {
+        const n = startIndex + i;
+        const tag = a.deal_type && TAGGED_DEAL_TYPES.has(a.deal_type) ? `[${a.deal_type}] ` : "";
+        const source = a.source ? ` (${a.source})` : "";
+        const date = a.published_at ? ` | ${a.published_at.slice(0, 10)}` : "";
+        const summary = a.summary
+          ? ` :: ${a.summary.replace(/\s+/g, " ").trim().slice(0, 180)}`
+          : "";
+        return `[${n}] ${tag}${a.title}${source}${date}${summary}`;
+      })
+      .join("\n");
+  }
+  return sliced
     .map((a) => {
       const tag = a.deal_type && TAGGED_DEAL_TYPES.has(a.deal_type) ? `[${a.deal_type}] ` : "";
-      const summary = a.summary ? ` — ${a.summary.slice(0, 180)}` : "";
-      return `• ${tag}${a.title}${summary}`;
+      const summary = a.summary ? ` -- ${a.summary.slice(0, 180)}` : "";
+      return `* ${tag}${a.title}${summary}`;
     })
     .join("\n\n");
 }
@@ -711,18 +736,96 @@ export function buildMemoContent(
 
   const signalLabel = buildSignalLabel(effectiveDevArts, effectiveCtxArts, companyName);
 
+  // Match the slicing used by buildMemoSources so the [N] markers in the
+  // user message stay aligned with the source list rendered in the modal.
+  const orderedDev = byRelevance(effectiveDevArts).slice(0, 6);
+  const orderedCtx = effectiveCtxArts; // already ranked + capped at 4
+
+  // Numbering is contiguous across both buckets so a single [n] index space
+  // covers all citable articles. Development articles take 1..devCount, then
+  // context articles take devCount+1..total. The `formatArticleList` cap of
+  // 8 applies per-bucket; the source list helper below uses the same cap.
+  const devStart = 1;
+  const ctxStart = devStart + Math.min(orderedDev.length, 8);
+
   return [
     `COMPANY: ${companyName}`,
     `COMPANY INDUSTRY: ${industry}`,
     `MEMO_MODE: ${memoMode}`,
     `SIGNAL QUALITY: ${signalLabel}`,
     ``,
-    `COMPANY DEVELOPMENT ARTICLES (${effectiveDevArts.length}):`,
-    formatArticleList(byRelevance(effectiveDevArts).slice(0, 6)),
+    `COMPANY DEVELOPMENT ARTICLES (${orderedDev.length}):`,
+    formatArticleList(orderedDev, devStart),
     ``,
-    `SECTOR CONTEXT ARTICLES (${effectiveCtxArts.length}):`,
-    formatArticleList(effectiveCtxArts), // already ranked by selectContextArticles
+    `SECTOR CONTEXT ARTICLES (${orderedCtx.length}):`,
+    formatArticleList(orderedCtx, ctxStart),
   ].join("\n");
+}
+
+/**
+ * Source descriptor returned by `buildMemoSources`. Mirrors the
+ * `MemoSource` shape consumed by `MemoModal` so the article-grounded path
+ * can pass provenance into the same UI surface used by web-fallback. The
+ * `id` field is the underlying `articles.id` UUID; it is the stable
+ * identifier the route uses to validate inline `[n]` citations against
+ * the prompt set.
+ */
+export interface MemoArticleSource {
+  id: string;
+  url: string;
+  title: string;
+  source: string;
+  publishedAt: string | null;
+}
+
+/**
+ * Build the ordered source list that aligns with the `[N]` numbering
+ * emitted by `buildMemoContent`. Pass the result into `MemoModal`'s
+ * `sources` prop so each `[n]` marker the model emits in the memo body
+ * resolves to a clickable provenance entry below the prose.
+ *
+ * The ordering, ranking, and per-bucket caps must mirror those used by
+ * `buildMemoContent`. If the two drift apart the rendered citations will
+ * point at the wrong articles; both helpers therefore route through the
+ * same `byRelevance` and `selectContextArticles` calls and slice to the
+ * same bounds.
+ */
+export function buildMemoSources(
+  companyName: string,
+  developmentArticles: CompanyArticle[],
+  contextArticles: CompanyArticle[],
+): MemoArticleSource[] {
+  // Recompute the same effective bucket split that buildMemoContent uses,
+  // so the index space the model cites against is identical to the source
+  // list the modal renders.
+  const memoMode = (
+    developmentArticles.some((a) => a.deal_type !== "M&A") ||
+    developmentArticles.length >= 2
+  ) ? "developments-led" : "context-led";
+
+  const effectiveDevArts = memoMode === "developments-led" ? developmentArticles : [];
+  const rawCtxArts =
+    memoMode === "developments-led"
+      ? contextArticles
+      : [...developmentArticles, ...contextArticles];
+  const effectiveCtxArts = selectContextArticles(rawCtxArts, companyName);
+
+  const orderedDev = byRelevance(effectiveDevArts).slice(0, 6);
+  const orderedCtx = effectiveCtxArts;
+
+  // Per-bucket safety cap mirrors formatArticleList's slice(0, 8).
+  const devVisible = orderedDev.slice(0, 8);
+  const ctxVisible = orderedCtx.slice(0, 8);
+
+  const toSource = (a: CompanyArticle): MemoArticleSource => ({
+    id: a.id,
+    url: a.url ?? "",
+    title: a.title,
+    source: a.source ?? "Unknown",
+    publishedAt: a.published_at ?? null,
+  });
+
+  return [...devVisible.map(toSource), ...ctxVisible.map(toSource)];
 }
 
 export function buildMemoSystemPrompt(companyName: string): string {
@@ -754,7 +857,10 @@ The paragraphs array must have exactly three entries with kinds in this order: l
 SOURCING DISCIPLINE (apply to both modes, no exceptions):
 Every specific figure, statistic, named event, percentage, dollar amount, and precise claim must be directly traceable to the provided article pool. Do not supplement with training knowledge. Do not add figures, valuations, growth rates, timelines, or named events that do not appear explicitly in the provided articles. If a figure or claim is not present in the provided articles, omit it entirely. Implications and analytical framing drawn from provided facts are permitted, invented figures are not. A memo with fewer specific claims that are all sourced is better than a memo with more claims that blend article content with model knowledge. When in doubt, omit. Before including any specific figure (percentage, dollar amount, ratio, multiplier), internally verify: does this exact figure appear in the article text provided? If you cannot point to the specific sentence in the provided articles where this figure appears, omit it. Only figures explicitly present in the provided article pool are permitted. If a company, statistic, or claim does not appear in the provided article titles or summaries, it does not exist for the purposes of this memo. Do not include any company, startup, competitor, or named entity that is not explicitly mentioned in the provided articles.
 
-INPUTS: MEMO_MODE | SIGNAL QUALITY | COMPANY DEVELOPMENT ARTICLES | SECTOR CONTEXT ARTICLES
+CITATION DISCIPLINE (apply without exception):
+The COMPANY DEVELOPMENT ARTICLES and SECTOR CONTEXT ARTICLES sections below are numbered with a single contiguous bracketed index, starting at [1]. Every factual sentence in the memo must end with at least one bracketed citation pointing to the article number it draws from, e.g. "[3]". Citations attach to the end of the sentence containing the claim. If a claim draws from two articles, cite both: "[2][5]". Implications and analytical framing drawn from cited facts are permitted (and do not need a citation themselves) -- invented figures are not. Do not invent citation numbers. Only cite indices that actually appear in the provided article list. If a sentence cannot be tied to a specific numbered article, the sentence does not belong in the memo. The "Coverage Note" line in context-led mode and the verbatim "Signal Quality" reproduction do not require citations.
+
+INPUTS: MEMO_MODE | SIGNAL QUALITY | COMPANY DEVELOPMENT ARTICLES (numbered list) | SECTOR CONTEXT ARTICLES (numbered list, continuing the same index)
 
 ${backgroundBlock}─── MEMO_MODE = "developments-led" ───
 
@@ -795,7 +901,9 @@ Analyst voice:
 
 Hard banned phrases: "may benefit" / "stands to benefit" / "is poised to" / "faces exposure to" / "could potentially" / "investors are watching" / "remains to be seen" / "it is worth noting" / "this could have implications" / "the company continues to" / "in the current environment" / "amid uncertainty" / "as the market evolves" / "perceived [X] leadership" / "brand recognition" / "market position" as a standalone analytical claim / "the competitive landscape is". If the opening observation of any section could appear in a sell-side initiation boilerplate, rewrite it.
 
-The em-dash character (U+2014) is banned everywhere in the memo output without exception, including inside bullet points. Use a period and start a new sentence instead. The hyphen-minus character is fine. Output only user-facing prose inside the JSON string fields, never reproduce bracketed instructions or meta-directives. The JSON object itself is the entire output. Do not wrap it in code fences. Do not emit any text before or after the closing brace.`;
+Length should match signal density. A company with 10+ developments warrants a longer memo than one with 2. Do not pad. Do not truncate material developments to hit a length target. Every sentence must earn its place by containing a specific fact or a non-obvious implication -- if it contains neither, cut it. No bullet points outside "What To Do With This." No markdown headers beyond the bold section labels already specified. The em-dash character (U+2014) is banned everywhere in the memo output without exception, including inside bullet points. Use a period and start a new sentence instead. The hyphen-minus character is fine. Signal Quality: verbatim reproduction only, no commentary. Output only user-facing prose inside the JSON string fields, never reproduce bracketed instructions or meta-directives. The JSON object itself is the entire output. Do not wrap it in code fences. Do not emit any text before or after the closing brace.
+
+Provenance is non-negotiable: every factual sentence inside paragraphs[].text ends with at least one bracketed citation [n] mapping to the numbered entries in the sources[] array. The frontend renders the source list below the memo so the reader can click through. A memo without citations fails this requirement and must be rewritten.`;
 }
 
 // ---------------------------------------------------------------------------
