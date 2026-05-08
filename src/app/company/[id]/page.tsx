@@ -5,6 +5,7 @@ import { LiveMoodShell } from "@/components/shell/live-mood-shell";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { CompanyDetailLayout } from "@/components/company/CompanyDetailLayout";
 import { CompanyDetailHeader } from "@/components/company/CompanyDetailHeader";
+import { EmptyState } from "@/components/company/states/EmptyState";
 import { CompanyAliasRibbon } from "@/components/company/CompanyAliasRibbon";
 import { CompanyKPIStrip } from "@/components/company/CompanyKPIStrip";
 import { CompanyTrendCard } from "@/components/company/CompanyTrendCard";
@@ -81,12 +82,12 @@ export default async function CompanyDetailPage({
   const companyDetail = await getCompanyDetail(supabase, canonicalize(companyName));
 
   // Null branch: no companies-row match (un-indexed via web-fallback path).
-  // Render an empty shell rather than 404 to keep parity with the legacy
-  // route. TODO(E1): replace with <EmptyState /> component.
+  // Renders the PR-E1 empty state inside LiveMoodShell so sidebar / topbar
+  // stay rendered. Tab grid is not mounted -- there is no data to populate.
   if (!companyDetail) {
     return (
       <LiveMoodShell pageTitle="Company Intel">
-        <CompanyDetailLayout tabContent={{}} />
+        <EmptyState canonical={companyName} />
       </LiveMoodShell>
     );
   }
