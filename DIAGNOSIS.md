@@ -354,3 +354,94 @@ If smoke fails: append failure mode to this file, do not merge.
 - **Duration creep:** Apr 28 27 min to May 6 75 min. Multi-factorial as analyzed in section 10.
 - **`gh api .../jobs/.../logs` returns 404** when a job is force-killed. GitHub Actions limitation. Section D.4's per-step timing is the primary mitigation.
 - **`pipeline_runs` row only created at Step 4 OBSERVE**, not at job start. So a hang in Step 1-3 leaves no row anywhere. A future improvement would be to insert a `started` row at job start and update on completion. Filed as part of the W2-D observability backlog.
+
+---
+
+## 14. Smoke test #1 results (run 25531724183)
+
+Triggered 2026-05-08 01:37:34Z on `noah/diagnose-pipeline-timeout`. Completed in 87.15 min (5229s).
+
+| # | Criterion | Result | Detail |
+|---|---|---|---|
+| 1 | Duration < 60 min | FAIL | 87 min (target 30-45) |
+| 2 | Status = success | PASS | conclusion=success |
+| 3 | NO skip-and-log warnings | FAIL | per-article fallback fired on all 606 articles |
+| 4 | briefings May 8 morning row, non-null body | PASS | summary 1309 chars, headline "Trade Court Strikes Down Trump's 10% Universal Tariffs" |
+| 5 | Article count comparable | PASS | 368 stored from 606 fetched |
+| 6 | SEC 8-K appears in corpus | PASS | 7 articles; UA fix worked |
+
+### Where the 87 minutes went
+
+```
+[1/4] Fetching articles:        106.25s  (1.8 min)
+[2/4] Pre-filter:                0.00s
+[3/4] Gemini batch filter:    4178.06s  (69.6 min)   <-- bottleneck
+[4/4] Storing:                 383.19s  (6.4 min)
+INGEST total:                 4667.50s  (77.8 min)
+[2/16]-[POST] downstream:      ~440s    (7.3 min)
+TOTAL:                        5229s    (87.15 min)
+```
+
+### Why [3/4] took 70 minutes, exact log evidence
+
+```
+[3/4] Filtering 606 articles with Gemini (batch)...
+  Batch filter error (Expecting ',' delimiter: line 88 column 6 (char 1947));
+    falling back to per-article...
+  Filter error: Expecting ',' delimiter: line 4 column 70 (char 115)
+  ...
+[3/4] DONE: Gemini filter in 4178.06s
+```
+
+Single batch Gemini call returned malformed JSON. Existing fallback at `backend/ingest.py:627-629` fired and ran `filter_article()` SERIALLY for all 606 articles. With my new 30s per-call timeout, average ~7s per call x 606 = 70 min.
+
+Two compounding causes:
+1. 606 articles is unusually high. INGEST_FRESHNESS_DAYS=7 means the run backfilled articles from the missing run #98 plus current freshness. Run #97 had only 365.
+2. `max_output_tokens=16384` (my reduction in Phase D) was insufficient for that volume. Even the original 65536 would have struggled: 60K-90K output tokens needed for 606 articles.
+
+The real defect is `filter_articles_batch` puts ALL articles in a single call with a single token budget. When article count grows, the response truncates or malforms, batch fails entirely, fallback fires per-article serially.
+
+### Hidden-since-Apr finding
+
+Run #97 (76 min) and most recent successful runs likely also fired the partial-fallback path: each ran ~70 min in `[3/4]` even when the batch "succeeded" partially. The partial-fallback at line 622-625 fills missing slots one by one. Approximate math:
+- Run #97 fetch+filter total: ~71 min (from `articles.MIN(ingested_at) - pipeline_runs.started_at` SQL)
+- A fully-successful single batch call would take maybe 2-5 min for 365 articles
+- Therefore run #97 was likely partial-fallback for hundreds of slots
+
+Implication: the duration creep from 27 min (Apr 28) to 75 min (May 6) is not gradual deterioration. Every recent run has been silently running degraded. **The chunked filter does not just prevent future hangs. It restores the pipeline to its proper Apr-baseline speed.** Banked in PR body.
+
+### Phase E iteration plan (smoke test 2)
+
+Three changes to `backend/ingest.py`, sized from V1-V4 verification:
+
+1. **Chunk `filter_articles_batch` into groups of 50.** Per-article output schema is ~135 tokens (10 fields plus JSON syntax) x 1.5 model verbosity safety = ~200 tokens/article. 50 x 200 = 10K, fits 16384 with headroom.
+
+2. **`BATCH_MAX_OUTPUT_TOKENS = 16384` per chunk.** Right-sized for 50 articles.
+
+3. **Parallel per-article fallback, `FALLBACK_PARALLEL_WORKERS = 5`.** Smoke test 1 ran ~9 RPM serial (606 in 70 min). 5 parallel workers gives ~45 RPM upper bound, well within Gemini paid-tier 1000 RPM limit.
+
+Plus structured logging contract (V3):
+- `chunk N/M: batch ok` (zero missing)
+- `chunk N/M: batch partial (P/T parsed); filling K via fallback (workers=5)`
+- `chunk N/M: batch failed (Type: msg); filling K via fallback (workers=5)`
+
+Expected runtime: 13 chunks (606 / 50) x ~30s per chunk = 6.5 min for filter, vs 70 min in smoke test 1.
+
+### V1-V4 verification cleared
+
+- **V1**: FILTER_PROMPT and BATCH_FILTER_PROMPT have identical output schema. Chunked-batch is semantically equivalent to current full-batch plus serial fallback. No information loss.
+- **V2**: Per-article state correlation is preserved by passing `chunk_offset + local_index` to assemble final results.
+- **V3**: Stdout-only logging today. Adding structured per-chunk lines (no new DB table; scope creep avoided).
+- **V4**: Smoke 1 stored 368 / 606 fetched = 60.7%. Run #97 stored 365 (input volume unknown but likely similar). No regression. Both runs hit per-article semantics for most articles.
+
+---
+
+## 15. W2-D filings to land in a follow-up commit (NOT this PR)
+
+| ID | Title | Size | Owner | Pri |
+|---|---|---|---|---|
+| WD40 | Exa fetch 400 Bad Request for ~80 tickers in [13] watchlist sync. Pre-existing. | XS | None | P2 |
+| WD41 | GDELT 429 rate-limiting hits multiple watchlist tickers per run. Pre-existing. | S | None | P2 |
+| WD42 | Finnhub 403 for `.L`, `.VI` foreign tickers in [13] watchlist sync. Pre-existing. | S | None | P2 |
+| WD43 | `column weekly_digests.morning_brief_addendum does not exist`, schema gap from synthesize step. Pre-existing. | XS | None | P2 |
+| WD44 | Articles store-step latency: 17ms per article x 368 = 6.4 min. Becomes new bottleneck after chunked filter. Likely per-row INSERT, missing index, or expensive triggers. | M | None | P2 |

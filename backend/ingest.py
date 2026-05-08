@@ -34,7 +34,23 @@ RSS_FETCH_TIMEOUT_SEC = 20
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 GEMINI_MODEL = "gemini-2.5-flash"
-GEMINI_BATCH_TIMEOUT_SEC = 180  # hard ceiling for filter_articles_batch Gemini call
+GEMINI_BATCH_TIMEOUT_SEC = 180  # hard ceiling for one filter_articles_batch chunk Gemini call
+
+# Filter batching tuned 2026-05-08 after smoke test #1 (run 25531724183, 87 min).
+# Rationale: BATCH output schema emits ~135 tokens per article (10 fields plus
+# JSON syntax). With a 1.5x model verbosity safety factor, that is ~200 tokens
+# per article. 50 articles per chunk gives ~10K output tokens, well inside the
+# 16384 max_output_tokens per call. Larger chunks (200 plus, as the previous
+# single-batch approach used implicitly) caused Gemini to emit malformed JSON
+# around article 30-40, triggering the per-article fallback for the whole run.
+BATCH_CHUNK_SIZE = 50
+BATCH_MAX_OUTPUT_TOKENS = 16384
+
+# Parallel workers for the per-article fallback inside a chunk. Smoke test 1
+# observed ~9 RPM serial throughput (606 calls in 70 min). Gemini paid tiers
+# allow >= 1000 RPM; 5 workers gives ~45 RPM upper bound, well under that
+# limit and within the rate-limit safety factor in the user iteration brief.
+FALLBACK_PARALLEL_WORKERS = 5
 
 
 def _fetch_feed_bytes(url: str, timeout: int = RSS_FETCH_TIMEOUT_SEC) -> bytes:
@@ -609,81 +625,127 @@ def filter_article(article):
         return None
 
 
-def filter_articles_batch(articles):
-    """Score a batch of articles in a single Gemini call.
+def _filter_one_chunk(chunk_articles, chunk_idx, total_chunks):
+    """Filter one chunk via a single Gemini batch call. Articles missing from
+    the parsed response (model omitted them, malformed item, or the whole call
+    failed) are filled via parallel per-article filter_article() invocations.
 
-    Returns a list of analysis dicts aligned by index with `articles`.
-    Any slots the model fails to return are back-filled with per-article calls.
-    If the entire batch call fails, falls back to per-article filtering.
+    Returns a list aligned by local index with chunk_articles.
+
+    Logging contract (auditable post-merge):
+      "chunk N/M: batch ok"                         (zero missing)
+      "chunk N/M: batch partial (P/T parsed); filling K via fallback"
+      "chunk N/M: batch failed (Type: msg); filling K via fallback"
     """
-    if not articles:
-        return []
+    chunk_label = f"chunk {chunk_idx + 1}/{total_chunks}"
 
     lines = []
-    for i, a in enumerate(articles):
+    for i, a in enumerate(chunk_articles):
         title = (a.get("title") or "").replace("\n", " ").strip()
         summary = (a.get("summary") or "").replace("\n", " ").strip()[:400]
         source = a.get("source") or ""
         lines.append(f"[{i}] SOURCE: {source} | TITLE: {title} | SUMMARY: {summary}")
     articles_block = "\n".join(lines)
-
     prompt = BATCH_FILTER_PROMPT.format(
         articles_block=articles_block,
-        n=len(articles),
+        n=len(chunk_articles),
     )
 
-    # Wrap the Gemini call in a thread with a hard timeout. google-genai's
-    # underlying httpx client does not bound a stuck stream; a hung response
-    # would otherwise block the pipeline forever (run #98 root cause).
-    # 16384 max_output_tokens is sized for ~100 articles per batch at ~150
-    # output tokens per article. Larger batches that exceed this fall through
-    # to the per-article fallback at the bottom of this function.
     def _call_gemini():
         return gemini_client.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.2,
-                max_output_tokens=16384,
+                max_output_tokens=BATCH_MAX_OUTPUT_TOKENS,
                 response_mime_type="application/json",
             ),
         )
 
+    chunk_results = [None] * len(chunk_articles)
+    parsed_count = 0
+    batch_failure = None
+
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
-            _fut = _ex.submit(_call_gemini)
-            response = _fut.result(timeout=GEMINI_BATCH_TIMEOUT_SEC)
+            response = _ex.submit(_call_gemini).result(timeout=GEMINI_BATCH_TIMEOUT_SEC)
         text = (response.text or "").strip()
         if text.startswith("```"):
             text = text.split("```")[1]
             if text.startswith("json"):
                 text = text[4:]
             text = text.strip()
-        # Extract the JSON array if the model wrapped it in prose
         m = re.search(r"\[[\s\S]*\]", text)
         if m:
             text = m.group(0)
         parsed = json.loads(text)
         if not isinstance(parsed, list):
             raise ValueError("Batch response was not a JSON array")
-
-        results = [None] * len(articles)
         for item in parsed:
             if not isinstance(item, dict):
                 continue
             idx = item.get("index")
-            if isinstance(idx, int) and 0 <= idx < len(articles) and results[idx] is None:
-                results[idx] = item
-
-        missing = [i for i, r in enumerate(results) if r is None]
-        if missing:
-            print(f"  ⚠ Batch returned {len(parsed)}/{len(articles)} results, filling {len(missing)} individually...")
-            for i in missing:
-                results[i] = filter_article(articles[i])
-        return results
+            if isinstance(idx, int) and 0 <= idx < len(chunk_articles) and chunk_results[idx] is None:
+                chunk_results[idx] = item
+                parsed_count += 1
     except Exception as ex:
-        print(f"  Batch filter error ({ex}); falling back to per-article...")
-        return [filter_article(a) for a in articles]
+        batch_failure = f"{type(ex).__name__}: {ex}"
+
+    missing = [i for i, r in enumerate(chunk_results) if r is None]
+
+    if not missing:
+        print(f"  {chunk_label}: batch ok")
+    elif batch_failure is not None:
+        print(f"  {chunk_label}: batch failed ({batch_failure}); filling {len(missing)} via fallback (workers={FALLBACK_PARALLEL_WORKERS})")
+    else:
+        print(f"  {chunk_label}: batch partial ({parsed_count}/{len(chunk_articles)} parsed); filling {len(missing)} via fallback (workers={FALLBACK_PARALLEL_WORKERS})")
+
+    if missing:
+        # Parallel per-article fallback. Each filter_article call already has
+        # its own 30s timeout via the inner ThreadPoolExecutor wrapper, so a
+        # single hung article cannot block the others.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=FALLBACK_PARALLEL_WORKERS) as fb_ex:
+            fut_to_idx = {fb_ex.submit(filter_article, chunk_articles[i]): i for i in missing}
+            for fut in concurrent.futures.as_completed(fut_to_idx):
+                i = fut_to_idx[fut]
+                try:
+                    chunk_results[i] = fut.result()
+                except Exception as e:
+                    print(f"  {chunk_label}: fallback failed for local-idx={i} ({type(e).__name__}: {e})")
+                    chunk_results[i] = None
+
+    return chunk_results
+
+
+def filter_articles_batch(articles):
+    """Score articles by chunking into BATCH_CHUNK_SIZE-sized Gemini batch calls.
+
+    Each chunk is processed independently via _filter_one_chunk(). Within a
+    chunk: a single batched call attempts all articles; any articles the model
+    omits or that the call drops fall through to filter_article() invocations
+    executed in parallel via FALLBACK_PARALLEL_WORKERS.
+
+    Returns a list aligned by global index with the input `articles` array.
+    Any slot left as None corresponds to an article where both the batch call
+    and the per-article fallback failed; the caller's existing None-skip
+    behavior in run_ingestion's relevance gate handles that case.
+    """
+    if not articles:
+        return []
+
+    total = len(articles)
+    total_chunks = (total + BATCH_CHUNK_SIZE - 1) // BATCH_CHUNK_SIZE
+    print(f"  filter: {total} articles in {total_chunks} chunks of up to {BATCH_CHUNK_SIZE}")
+
+    results = [None] * total
+    for chunk_idx in range(total_chunks):
+        start = chunk_idx * BATCH_CHUNK_SIZE
+        end = min(start + BATCH_CHUNK_SIZE, total)
+        chunk = articles[start:end]
+        chunk_results = _filter_one_chunk(chunk, chunk_idx, total_chunks)
+        for local_i, r in enumerate(chunk_results):
+            results[start + local_i] = r
+    return results
 
 
 # DEPRECATED: replaced by register_entity per docs/w2-a-entity-resolution-design.md section 5.
