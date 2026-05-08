@@ -664,3 +664,85 @@ If smoke #4 fails 10 (>2% per-article failures): HALT, surface, do not ship. Sch
 ### Forward-looking note
 
 If a future google-genai release improves `list[Model]` array schema enforcement, the batch path could be re-added as a throughput optimization. Per-article path is currently cleaner and equally fast at ~5 workers. Filed as W2-D item WD45 (P3, optimization not bug).
+
+---
+
+## 19. Smoke test #4 results (run 25568070063): ALL CRITERIA PASS
+
+Triggered 2026-05-08 16:52:17Z on `noah/diagnose-pipeline-timeout` at commit 92184cd. Completed in 20.7 min (1240s job time, 1244s "Run pipeline" step time). Fastest of all four smokes.
+
+| # | Criterion | Result | Detail |
+|---|---|---|---|
+| 1 | Duration < 60 min | PASS | 20.7 min, ahead of 30-45 min target |
+| 2 | Status = success | PASS | conclusion=success |
+| 3 | NO article-fallback warnings | PASS | No chunked batch path remaining; only 3 [filter:schema-fail] events (all retried OK) |
+| 4 | briefings May 8 morning row | PASS | 1140 char summary, "Trump's Tariff Setback Weakens China Trade Talk Leverage Ahead of Beijing Visit" |
+| 5 | Article count comparable | PASS | 225 stored from 615 fetched (567 passed relevance gate, 225 not duplicates) |
+| 6 | SEC 8-K appears | PASS | 8 SEC 8-K + 8 SEC 10-Q newly stored (first smoke with fresh dedup window post-fix) |
+| 7 | Structured chunk logging | PASS | All 13 log batches emitted "filter batch N/M done in X.Xs (Y parsed, Z skipped)" |
+| 8 | <=5% chunks fall back | N/A | No chunks; new structure |
+| 9 | Keep-rate parity ±10% | PASS | 565/615 = 91.9% relevance pass rate. Smoke #1 was 87.0%. Within tolerance. |
+| 10 | <2% per-article failures | PASS | 3 schema-fail events of 615 articles = 0.49%, well under target. 0 retry-fail events (all retries succeeded). |
+
+### Where the 20.7 minutes went
+
+```
+[1/4] Fetching articles:        109.11s   (1.8 min)
+[2/4] Pre-filter:                0.00s
+[3/4] Gemini filter:           545.71s   (9.1 min, all 13 log-batches parsed clean)
+[4/4] Storing:                 225.62s   (3.8 min, 225 stored)
+INGEST total:                  880.45s   (14.7 min)
+[2/16] DEAL EXTRACTION:         50.11s
+[3/16] SYNTHESIZE:              11.88s
+[13/16] WATCHLIST SYNC:        239.98s   (4.0 min, mostly Exa 400 errors WD40)
+all other steps:                 ~5s
+TOTAL:                        1240.66s   (20.7 min)
+```
+
+### Progression across all four smokes
+
+| run | duration | filter | failure rate |
+|---|---|---|---|
+| Smoke #1 (timeouts + UA) | 87 min | 70 min | 100% serial fallback |
+| Smoke #2 (chunked + parallel) | 36 min | 27.5 min | 12/13 chunks fell back |
+| Smoke #3 (response_schema) | 30 min | 21.5 min | 12/13 chunks fell back, 5/600 per-article errors |
+| Smoke #4 (per-article only) | 20.7 min | 9.1 min | 3/615 per-article errors = 0.49% |
+
+The four-smoke progression validates a clean root-cause hypothesis: the problem was not Step 1 hang (smoke 1 fixed that) nor batch chunk size (smoke 2 fixed that) nor JSON validity (smoke 3 fixed that for single objects). The actual cost-saver is removing the batch path entirely, since `response_schema=list[Model]` is unreliable in google-genai 1.75 but `response_schema=Model` is reliable. Per-article + 5 parallel workers is both simpler and faster.
+
+### Sample filter output (proves response_schema returns clean structured data)
+
+The model emitted JSON like this for each of 615 articles, with no parse failures except the 3 retried-OK errors:
+
+```json
+{
+  "relevant": true,
+  "relevance_score": 7,
+  "relevance_reason": "Trump tariff setback weakens China trade leverage ahead of Beijing visit; broad market headwind for US-listed China-exposed names.",
+  "industry_verticals": ["Financial Services", "Consumer & Retail"],
+  "activity_types": ["Macro & Policy", "Geopolitics"],
+  "companies": [],
+  "themes": ["Macro", "Geopolitics", "Regulation"],
+  "sentiment": "bearish",
+  "deal_type": "Geopolitical",
+  "primary_company": null
+}
+```
+
+### Other warnings observed (pre-existing, NOT blockers)
+
+- ~80x `Exa fetch failed for <ticker>: 400 Bad Request` in [13] watchlist sync (WD40)
+- 2x `GDELT fetch failed: HTTPSConnectionPool ... Read timed out` (WD41)
+- 2x `Finnhub fetch failed for ULVR.L / QVC.VI: 403 Forbidden` (WD42)
+- `column weekly_digests.morning_brief_addendum does not exist` (WD43)
+- `column user_signal_digest.top_sectors does not exist` (new variant of WD43)
+
+None of these are introduced by this PR or affect the brief generation.
+
+### State after smoke #4
+
+- Branch `noah/diagnose-pipeline-timeout` at commit `92184cd` ready to ship.
+- Four smoke runs documented: 25531724183, 25536689811, 25538358541, 25568070063.
+- Brief for May 8 morning written cleanly, with non-trivial content reflecting actual market events.
+- Pipeline produces full coverage: 225 fresh articles stored, 8 SEC 8-K + 8 SEC 10-Q, 5 deal_flow rows, themes / industries / sentiments populated.
+- Ready to open PR ready-for-review for Noah's eyeball before merge.
