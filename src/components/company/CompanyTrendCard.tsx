@@ -5,6 +5,7 @@ import { MiniBars } from "@/components/ui/mini-bars";
 import { Sparkline } from "@/components/ui/sparkline";
 import { SentimentHeat } from "@/components/ui/sentiment-heat";
 import { Eyebrow } from "@/components/ui/eyebrow";
+import { Tooltip } from "@/components/ui/tooltip";
 
 const MONO = "var(--font-mono), ui-monospace, monospace";
 const SERIF = "var(--font-display), serif";
@@ -135,7 +136,9 @@ export function CompanyTrendCard({
           <div style={{ height: 1, background: "var(--border-subtle)", margin: "12px 0" }} />
 
           <div style={ROW}>
-            <Eyebrow as="span" color="var(--text-faint)" testId="trend-card-sentiment-eyebrow">Sentiment</Eyebrow>
+            <Tooltip content="Aggregate tone of indexed articles over the past 7 days. Not a price signal.">
+              <Eyebrow as="span" color="var(--text-faint)" testId="trend-card-sentiment-eyebrow">Article tone</Eyebrow>
+            </Tooltip>
             <span data-testid="trend-card-sentiment-total" style={HEADLINE}>{formatSigned(sentimentSigned, 2)}</span>
             <span data-testid="trend-card-sentiment-delta" style={{ ...DELTA, color: upColor(sUp) }}>
               {sUp ? "▲" : "▼"} {Math.abs(sentimentDelta).toFixed(2)}
