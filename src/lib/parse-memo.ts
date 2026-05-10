@@ -39,7 +39,7 @@ export function parseMemo(markdown: string): ParsedMemo {
     const match = line.match(LABEL_RE);
     if (match) {
       flush();
-      currentLabel = match[1].trim().toUpperCase();
+      currentLabel = match[1].trim();
       currentBody = [];
     } else if (currentLabel !== null) {
       currentBody.push(line);
