@@ -102,7 +102,7 @@ export default async function CompanyDetailPage({
   const systemPrompt = buildMemoSystemPrompt(companyName);
 
   const tabContent = {
-    brief: <BriefTab company={companyName} content={memoContent} />,
+    brief: <BriefTab company={companyName} content={memoContent} systemPrompt={systemPrompt} />,
     articles: <ArticlesTab articles={companyDetail.articles} />,
     themes: <ThemesTab themes={companyDetail.themes} articles={companyDetail.articles} />,
     trend: (
