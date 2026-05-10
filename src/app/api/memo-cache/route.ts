@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
       .eq("output_type", "memo")
       .eq("source_table", "companies")
       .eq("source_id", companyId)
+      .eq("metadata->>variant", "articles")
       .gte("generated_at", cutoff)
       .order("generated_at", { ascending: false })
       .limit(10);
