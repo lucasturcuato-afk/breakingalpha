@@ -17,14 +17,15 @@ import { ArticlesTab } from "@/components/company/tabs/ArticlesTab";
 import { ThemesTab } from "@/components/company/tabs/ThemesTab";
 import { TrendTab } from "@/components/company/tabs/TrendTab";
 import { SourcesTab } from "@/components/company/tabs/SourcesTab";
-import { getCompanyDetail, type CompanyDetailArticle } from "@/lib/data-access/getCompanyDetail";
+import { getCompanyDetail } from "@/lib/data-access/getCompanyDetail";
 import {
   CANONICAL,
   canonicalize,
   buildMemoContent,
   buildMemoSystemPrompt,
-  type CompanyArticle,
+  filterAndClassifyArticles,
 } from "@/lib/company-intel";
+import { fetchCompanyArticles } from "@/app/api/companies/[id]/articles/route";
 
 // Convert a URL slug to a canonical company name.
 // e.g. "nvidia-corporation" -> "NVIDIA", "goldman-sachs" -> "Goldman Sachs",
@@ -34,24 +35,6 @@ function slugToCompanyName(slug: string): string {
   const lower = decoded.toLowerCase();
   if (CANONICAL[lower]) return CANONICAL[lower];
   return decoded.replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-// Map CompanyDetailArticle -> CompanyArticle for buildMemoContent. The detail
-// article shape lacks the `_isDevelopment` discriminator the legacy memo
-// builder needs, so we treat dealType-bearing rows as developments.
-function toCompanyArticle(a: CompanyDetailArticle): CompanyArticle {
-  return {
-    id: a.id,
-    title: a.title,
-    source: a.source ?? undefined,
-    sector: a.sector ?? undefined,
-    sentiment: a.sentiment ?? undefined,
-    published_at: a.publishedAt ?? undefined,
-    url: a.url ?? undefined,
-    relevance_score: a.relevanceScore ?? undefined,
-    deal_type: a.dealType,
-    _isDevelopment: a.dealType != null,
-  };
 }
 
 export async function generateMetadata({
@@ -92,12 +75,13 @@ export default async function CompanyDetailPage({
     );
   }
 
-  const developmentArticles = companyDetail.articles
-    .filter((a) => a.dealType != null)
-    .map(toCompanyArticle);
-  const contextArticles = companyDetail.articles
-    .filter((a) => a.dealType == null)
-    .map(toCompanyArticle);
+  const { articles: rawArticles } = await fetchCompanyArticles(
+    supabase,
+    canonicalize(companyName),
+  );
+  const classified = filterAndClassifyArticles(rawArticles, companyName);
+  const developmentArticles = classified.filter((a) => a._isDevelopment);
+  const contextArticles = classified.filter((a) => !a._isDevelopment);
   const memoContent = buildMemoContent(companyName, developmentArticles, contextArticles);
   const systemPrompt = buildMemoSystemPrompt(companyName);
 
