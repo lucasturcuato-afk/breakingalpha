@@ -63,3 +63,5 @@ design-reference/
 COMPANY_INTEL_*.md
 ORCHESTRATOR_SUMMARY.md
 WATCHLIST_INGESTION_DIAGNOSIS.md
+auth-state.json
+.auth/
