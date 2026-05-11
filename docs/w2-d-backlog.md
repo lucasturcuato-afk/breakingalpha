@@ -17,7 +17,7 @@ Status: standalone backlog. A legacy `docs/w2d-backlog.md` was referenced in pri
 | Detail page V1.5+ | 4 | Memo prompt streaming, AI Brief auto-regen, KPI cluster expansion |
 | Code hygiene | 7 | Watchlist subtitle truncation, ESLint cleanups, em-dash cleanup |
 
-Total: 41 items.
+Total: 42 items.
 
 ## Items
 
@@ -64,6 +64,7 @@ Total: 41 items.
 | WD43 | Schema gaps surfaced by [3/16] SYNTHESIZE: `column weekly_digests.morning_brief_addendum does not exist`, `column user_signal_digest.top_sectors does not exist` | XS | None | P2 | Pre-existing. Code expects columns the schema does not have. Either add columns OR remove dead code paths in synthesize. Both warnings are non-fatal but log noise. |
 | WD44 | Articles store-step latency: 225 articles in 226s (1s each) becomes new bottleneck after run #98 fix lands. Likely per-row INSERT through supabase-py instead of bulk upsert, missing index on `articles.url`, or expensive triggers (entity_resolver does up to 5 queries per company per article) | M | None | P2 | Surfaced 2026-05-08 during smoke test 4 of run #98 fix. Filter is now 9 min, store is 4 min, downstream is 4 min. Storing is the largest single bucket. Likely wins: bulk-insert articles in batches via supabase-py upsert, or move register_entity to a deferred job that runs after the brief lands. |
 | WD45 | Re-evaluate batch path for filter_articles if google-genai improves `list[Model]` array schema enforcement | XS | google-genai SDK release notes | P3 | Optimization, not a bug. Smoke #3 of run #98 fix proved that `response_schema=list[Model]` is unreliable in google-genai 1.75 (12/13 array chunks fell back) but `response_schema=Model` on single objects is reliable (3/615 = 0.49% per-article failure rate in smoke #4). Per-article + 5 parallel workers is currently equally fast. If a future SDK release fixes array schema enforcement, batch path could reduce API call count from 600 to 13 per run. |
+| WD50 | Pre-#197 audit pass on remaining Company Intel surfaces for content-density gaps from C1c data-access refactor | S | None | P1 | Surfaced 2026-05-10 during PR-C1e diagnostic. C1c's `getCompanyDetail` ARTICLE_COLS narrowed columns relative to main's `fetchCompanyArticles`; ArticlesTab regression was caught by Noah's visual smoke and fixed in PR-C1e (Score column restore + summary expand + source tier badge). Other surfaces in the new tab system (SourcesTab, Themes panel, right-rail Signal Trend card, BriefTab article-mention surfaces, ThemesTab expanded view) may have similar content-density gaps. Run a surface-by-surface audit comparing prod main render against C1c/C1e output before #197 ships to main. Pattern to look for: column-narrowing in upstream queries, missing data fields in render, lost badges/affordances. |
 
 ## Notes
 
