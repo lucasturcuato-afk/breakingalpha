@@ -11,6 +11,10 @@ const NVIDIA_ARTICLES: CompanyDetailArticle[] = [
     dealType: "EARNINGS",
     relevanceScore: 96,
     sector: "Technology",
+    summary: "NVIDIA reported Q1 results above consensus, with data-center revenue of $39.1B driven by sustained hyperscaler demand and Hopper-to-Blackwell mix shift.",
+    ingestedAt: "2026-05-04T14:30:00Z",
+    sourceWinRate: 72,
+    sourceSampleSize: 48,
   },
   {
     id: "fix-nvda-2",
@@ -22,6 +26,10 @@ const NVIDIA_ARTICLES: CompanyDetailArticle[] = [
     dealType: null,
     relevanceScore: 89,
     sector: "Technology",
+    summary: "Microsoft raised FY26 capex guidance to $96B, with management noting demand continues to exceed available compute capacity through year-end.",
+    ingestedAt: "2026-05-03T17:15:00Z",
+    sourceWinRate: 68,
+    sourceSampleSize: 31,
   },
   {
     id: "fix-nvda-3",
@@ -33,6 +41,10 @@ const NVIDIA_ARTICLES: CompanyDetailArticle[] = [
     dealType: "REGULATORY",
     relevanceScore: 88,
     sector: "Technology",
+    summary: "BIS is weighing a tighter performance cap on H20 SKUs destined for China, which would further constrain NVIDIA's export licence pathway for the segment.",
+    ingestedAt: "2026-05-02T09:45:00Z",
+    sourceWinRate: 65,
+    sourceSampleSize: 22,
   },
 ];
 

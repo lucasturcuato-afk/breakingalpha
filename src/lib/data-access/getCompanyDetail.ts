@@ -13,6 +13,10 @@ export type CompanyDetailArticle = {
   dealType: string | null;
   relevanceScore: number | null;
   sector: string | null;
+  summary: string | null;
+  ingestedAt: string | null;
+  sourceWinRate: number | null;
+  sourceSampleSize: number | null;
 };
 
 export interface CompanyDetail {
@@ -38,7 +42,7 @@ const ARTICLE_DAYS = 14;
 const ARTICLE_LIMIT = 12;
 const DAY_MS = 86_400_000;
 const ARTICLE_COLS =
-  "id, title, source, url, published_at, sentiment, deal_type, relevance_score, sector";
+  "id, title, source, url, published_at, sentiment, deal_type, relevance_score, sector, summary, ingested_at";
 
 function utcDayMs(d: Date | string): number {
   const x = new Date(d);
@@ -116,18 +120,43 @@ export async function getCompanyDetail(
     id: string; title: string | null; source: string | null; url: string | null;
     published_at: string | null; sentiment: string | null; deal_type: string | null;
     relevance_score: number | null; sector: string | null;
+    summary: string | null; ingested_at: string | null;
   }>;
-  const articles: CompanyDetailArticle[] = articleRows.map((r) => ({
-    id: r.id,
-    title: r.title ?? "",
-    source: r.source,
-    url: r.url,
-    publishedAt: r.published_at,
-    sentiment: r.sentiment,
-    dealType: r.deal_type,
-    relevanceScore: r.relevance_score,
-    sector: r.sector,
-  }));
+
+  const sources = Array.from(
+    new Set(articleRows.map((a) => a.source).filter((s): s is string => !!s)),
+  );
+  let credMap = new Map<string, { win_rate: number | null; n_theses: number | null }>();
+  if (sources.length > 0) {
+    const { data: credRows } = await supabase
+      .from("source_credibility")
+      .select("source, win_rate, n_theses")
+      .in("source", sources);
+    credMap = new Map(
+      (credRows ?? []).map((r: { source: string; win_rate: number | null; n_theses: number | null }) =>
+        [r.source, { win_rate: r.win_rate, n_theses: r.n_theses }],
+      ),
+    );
+  }
+
+  const articles: CompanyDetailArticle[] = articleRows.map((r) => {
+    const cred = r.source ? credMap.get(r.source) ?? null : null;
+    return {
+      id: r.id,
+      title: r.title ?? "",
+      source: r.source,
+      url: r.url,
+      publishedAt: r.published_at,
+      sentiment: r.sentiment,
+      dealType: r.deal_type,
+      relevanceScore: r.relevance_score,
+      sector: r.sector,
+      summary: r.summary,
+      ingestedAt: r.ingested_at,
+      sourceWinRate: cred?.win_rate ?? null,
+      sourceSampleSize: cred?.n_theses ?? null,
+    };
+  });
 
   return {
     canonical: head.name,
