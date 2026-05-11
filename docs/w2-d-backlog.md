@@ -17,7 +17,7 @@ Status: standalone backlog. A legacy `docs/w2d-backlog.md` was referenced in pri
 | Detail page V1.5+ | 4 | Memo prompt streaming, AI Brief auto-regen, KPI cluster expansion |
 | Code hygiene | 7 | Watchlist subtitle truncation, ESLint cleanups, em-dash cleanup |
 
-Total: 29 items.
+Total: 41 items.
 
 ## Items
 
@@ -52,6 +52,18 @@ Total: 29 items.
 | WD27 | Vercel project disconnect cleanup | XS | None | P2 | Stale Vercel project links in repo settings. |
 | WD28 | PR-body temp file fix | XS | None | P2 | Tooling cleanup -- temp file leftover from PR-body workflow. |
 | WD29 | Em-dash cleanup in /api/memo error text | XS | None | P2 | ASCII-only convention violation in user-visible error strings. |
+| WD30 | F1-F9 tab labels imply Option+number keyboard shortcuts not wired | XS | None | P1 | Either implement keyboard shortcut handlers (Alt+1..9) OR strip the Fn labels from tabs. ~30 LOC either direction. Pre-#197 polish. |
+| WD31 | Tab switch animation, hover states, active indicator missing on Company Intel detail page tab bar | XS | None | P1 | CSS-only fix on `src/components/company/CompanyDetailTabs.tsx`. |
+| WD32 | TrendTab missing context header ("Price & Sentiment 8d" or similar) | XS | None | P2 | User needs to know what tab they're on independent of F4 highlight. Small chrome addition. |
+| WD33 | BriefTab download/export button missing | S | None | P1 | Prod MemoModal had a download action that wasn't ported to BriefTab during C1a. ~30-50 LOC. Pre-beta-launch polish. |
+| WD34 | BriefTab TLDR gold-faint block per DirectionD MemoCard chrome (Phase 2 enhancement) | S | None | P2 | Reclassified from P0-drift to P2 since production MemoModal also lacks this treatment. |
+| WD35 | 21 batched P1/P2 chrome polish items from C1b/C1c drift reports | M | None | P1 | Single chrome-sweep PR scope. Details in PR #243 drift appendix and PR #244 drift appendix. |
+| WD36 | Stale JSDoc comment in `src/lib/company-intel.ts:510` (formatArticleList) references deleted `buildMemoSources` function | XS | None | P2 | Non-functional but should be cleaned up. |
+| WD37 | Orphaned legacy components from PR-A2 -> PR-E0 migration | XS | None | P2 | `company-detail-client.tsx`, `company-header.tsx`, `company-tabs.tsx`, `index.ts` barrel, `companyDetailFixture.ts`. Zero importers verified. Safe to delete. |
+| WD38 | Lucas-protected file review post-#197 | XS | Lucas conversation | P2 | Evaluate whether `MemoModal.tsx`, `trends/page.tsx`, `briefing/route.ts` protections are still load-bearing given Phase 1 architectural shifts (BriefTab supersedes MemoModal's role for company memos). Coordinate with Lucas. Scope TBD if any removals are agreed. |
+| WD39 | Pre-#197 systematic visual smoke audit across all Company Intel surfaces | S | None | P1 | Phase 4 of overnight run executed a static-analysis version; a manual authenticated browser audit by Noah is still recommended pre-#197 ship. |
+| WD40 | User-triggered web-fallback search on empty-state surface for unindexed companies | M | WD11-WD16 (backend infra exists) | P1 | Backend web-fallback infrastructure exists per WD11-WD16. New scope: wire user-initiated search on `/company/[unindexed-id]` empty state to invoke the web-fallback pipeline (with quota enforcement per WD12). Product scope decision required: is this Phase 1 or Phase 2? |
+| WD41 | Empty-state surface bug scope (brand string, contrast, search-directory, ticker blur) | S | WD40 (web-fallback) for full resolution | P1 | Phase 2 of overnight run classifications: (a) brand "Breaking Alpha" should be "Signalera" at `EmptyState.tsx:93` -- introduced in PR-E1 #238, never displayed correct brand. (b) "Add to watchlist" button uses undefined CSS tokens `--gold-deep`/`--gold-faint` in `EmptyStateCTA.tsx:39-45`, fails through to cream-on-cream-hi -- never worked. (c) "Search directory" is a `<Link href="/company">` in `EmptyStateCTA.tsx:86-94`, no onClick missing -- if user expected inline search, that flow was never built (see WD40). (d) Ticker controlled-input blur in Lucas-protected `WatchlistAddInput.tsx` -- byte-identical to main, pre-existing, requires Lucas coordination. All four bugs classified (iii) NEVER WORKED or (i) PRE-EXISTING + Lucas-protected; no C1c regressions surfaced. |
 
 ## Notes
 
