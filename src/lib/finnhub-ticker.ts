@@ -38,6 +38,11 @@ const HARD_TICKER_OVERRIDES: Record<string, string> = {
   "taiwan semiconductor": "TSM",
   "samsung": "SSNLF",
   "samsung electronics": "SSNLF",
+  // Added from corrected C1f audit (3 high-confidence entries; mention_count
+  // >= 5, ticker NULL, public US-listed via primary listing or ADR).
+  "asml": "ASML",
+  "novo nordisk": "NVO",
+  "barclays": "BCS",
 };
 
 // Patch J (f): brands where camelCase IS the canonical spelling -- skip
