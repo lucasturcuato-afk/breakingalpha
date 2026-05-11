@@ -371,6 +371,7 @@ Total spec'd: 21 sub-PRs (brief said "22" but enumerated list has 21 unique IDs;
   4. Verify tsc + visual diff; push DRAFT PR.
 - Self-review checks: tsc / eslint / em-dash 0 / LOC <= 200 / Lucas check / 4 data-testids / window toggle preserves URL state.
 - Smoke-test on preview: NVDA trend tab loads chart + overlay + heat together; toggle 30d <-> 90d.
+- **2026-05-08 Path D update (HALT 6 decision):** Phase 5 ship is 8d-only with NO toggle UI. Three testids only: `trend-tab`, `trend-tab-stock-chart`, `trend-tab-sentiment-overlay` (drop `trend-tab-window-toggle`). LOC target ~140. Toggle + 30d/90d/1y aggregation route deferred to PR-C4b (see Section 3b below).
 
 ### PR-C5 -- SourcesTab + SourcesStrip footer + source-to-tier map
 
@@ -491,6 +492,29 @@ Total spec'd: 21 sub-PRs (brief said "22" but enumerated list has 21 unique IDs;
   5. Verify tsc + visual diff + axe (no skeleton a11y violations); push DRAFT PR.
 - Self-review checks: tsc / eslint / em-dash 0 / LOC <= 150 / Lucas check / 4 data-testids / reduced-motion path tested.
 - Smoke-test on preview: artificially slow `getCompanyDetail` to 2s; loading state visible with cycling chip.
+
+## 3b. Phase 5b -- PR-C4b (Trend tab 30d/90d toggle + aggregation route)
+
+Sequence: post-Phase-1, pre-PR-#197. Ships AFTER Phase 5 batch merges to integration, BEFORE the final PR-#197 squash to main. Follow-up to PR-C4 Path D.
+
+### PR-C4b -- TrendTab window toggle + /api/company-trend route
+
+- Branch: `noah/pr-c4b-trend-window-toggle` (off integration after C-series batch)
+- Base: `noah/w2-c-phase-1`
+- LOC: ~280-340
+- Visual ref: `docs/DirectionD.jsx` lines 701-734 (TrendCard) -- restore the toggle UI per original spec.
+- Files touched: `src/app/api/company-trend/route.ts` (NEW aggregation route, was originally PR-B4 Option B); `src/components/company/tabs/TrendTab.tsx` (extend with toggle + fetch wiring); possibly `src/lib/data-access/getCompanyTrend.ts` (NEW data helper).
+- Files NOT touched: Lucas list; `CompanyStockChart` itself (compose, don't fork).
+- data-testid manifest: `trend-tab-window-toggle` (added to PR-C4's manifest of 3); `trend-tab-window-{8d,30d,90d,1y}` per option.
+- Steps:
+  1. Recon: confirm DB shape supports 30d/90d/1y aggregation off `articles` joined to `company_mentions`. Check existing trend cron pattern from `/api/trends`.
+  2. Build `/api/company-trend` route: query-time aggregation (mentions per day, sentiment per day) for windows [8d, 30d, 90d, 1y] keyed by company_id or slug. Cache 15min Vercel (`s-maxage=900, stale-while-revalidate=1800`).
+  3. Add window toggle UI to TrendTab. URL state via `?trendWindow=8d|30d|90d|1y`. Default 8d (matches Phase 5 ship behavior; no breaking change).
+  4. Wire toggle to fetch from new route. Loading state during fetch. Error state -> fall back to 8d static data.
+  5. Verify tsc + visual diff + a11y (toggle is keyboard-navigable group); push DRAFT PR.
+- Self-review checks: tsc / eslint / em-dash 0 / LOC <= 360 / Lucas check / 5 data-testids / window toggle preserves URL state / route caches correctly / 4 windows return valid shapes.
+- Smoke-test on preview: NVDA trend tab loads with 8d default; toggle to 30d -> data refetches and chart updates; URL reflects window choice; 1y window returns degraded-but-valid shape if data sparse.
+- Sequencing: ships before PR-#197 (final squash to main). Counts as a 22nd PR alongside the existing 21-PR sequence.
 
 ## 4. Dependency graph
 

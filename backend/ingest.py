@@ -4,8 +4,11 @@ Fetches from 15+ sources, scores relevance across all sectors,
 stores in Supabase.
 """
 
-import os, json, re, time, requests, feedparser, html as _html
+import concurrent.futures
+import os, json, re, socket, time, urllib.error, urllib.request, requests, feedparser, html as _html
 from datetime import datetime, timezone, timedelta
+from typing import Literal, Optional
+from pydantic import BaseModel
 from supabase import create_client
 from google import genai
 from google.genai import types
@@ -17,23 +20,85 @@ from entity_resolver import register_entity
 
 load_dotenv()
 
+# Process-wide socket timeout. Belt-and-suspenders against any library that
+# might open an unbounded socket (feedparser, requests fallbacks, supabase-py
+# realtime). 30s is long enough for legitimate slow responses, short enough
+# to fail fast when an upstream stalls. Per-call timeouts (urlopen, requests,
+# httpx) override this when set explicitly.
+socket.setdefaulttimeout(30)
+
+# All RSS fetches use this UA. SEC requires a non-default UA (returns 403
+# without one); other feeds also tend to be friendlier with an identifiable
+# UA than with python-urllib's default.
+RSS_USER_AGENT = "BreakingAlpha pipeline (noahhanning03@gmail.com)"
+RSS_FETCH_TIMEOUT_SEC = 20
+
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 GEMINI_MODEL = "gemini-2.5-flash"
 
+# Per-article filter parallelism. Smoke test 3 (run 25538358541) proved that
+# Gemini response_schema constrains single-object output reliably (5 errors
+# of ~600 calls = 0.83%) but does not constrain list[Model] array output
+# (12/13 batch chunks fell back). Per-article only with parallel workers
+# gives the same end-to-end throughput as the chunked batch path with a
+# clean, single code path.
+#
+# 5 workers x ~7s per call = ~45 RPM upper bound, well under Gemini paid-tier
+# 1000 RPM limit. FILTER_LOG_BATCH_SIZE is a logging unit, not a model batch:
+# we group articles into 50-at-a-time output lines for run-log readability.
+FILTER_PARALLEL_WORKERS = 5
+FILTER_LOG_BATCH_SIZE = 50
+
+
+# Response schema for Gemini constrained output. Smoke test 2 (chunk_size=50)
+# saw 12/13 chunks emit malformed JSON despite mime_type=application/json,
+# triggering fallback to per-article. response_schema enforces the structure
+# at SDK level so model output is guaranteed parseable. Schema fields mirror
+# what filter_articles and filter_article python parsers expect.
+class CompanyEntity(BaseModel):
+    name: str
+    entity_type: Literal["company"]
+
+
+class FilterDecision(BaseModel):
+    relevant: bool
+    relevance_score: int
+    relevance_reason: str
+    industry_verticals: list[str]
+    activity_types: list[str]
+    companies: list[CompanyEntity]
+    themes: list[str]
+    sentiment: Literal["bullish", "bearish", "neutral"]
+    deal_type: Optional[str] = None
+    primary_company: Optional[str] = None
+
+
+def _fetch_feed_bytes(url: str, timeout: int = RSS_FETCH_TIMEOUT_SEC) -> bytes:
+    """Fetch raw RSS/Atom bytes with a hard timeout and identifiable UA.
+
+    Wraps urllib.request.urlopen so feedparser.parse never sees a live
+    socket. Without this, feedparser.parse(url) opens its own socket and
+    blocks indefinitely on slow servers (the run #98 silent-hang vector).
+    Raises urllib.error.URLError / HTTPError / socket.timeout on failure;
+    the per-feed try/except in fetch_all_articles catches and continues.
+    """
+    req = urllib.request.Request(url, headers={"User-Agent": RSS_USER_AGENT})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read()
+
+# Reuters x3 (feeds.reuters.com is dead, URLError) and Pitchbook (404) removed
+# 2026-05-08 after live probe. They contributed zero articles and added per-run
+# noise. Replacements TBD; tracked in W2-D backlog.
 RSS_FEEDS = {
     "NYT Technology":   "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml",
     "NYT Business":     "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml",
     "NYT World":        "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
     "MarketWatch Top":  "https://feeds.content.dowjones.io/public/rss/mw_topstories",
     "TechCrunch":       "https://techcrunch.com/feed/",
-    "Reuters Tech":     "https://feeds.reuters.com/reuters/technologyNews",
-    "Reuters Business": "https://feeds.reuters.com/reuters/businessNews",
-    "Reuters World":    "https://feeds.reuters.com/Reuters/worldNews",
     "FT Tech":          "https://www.ft.com/technology?format=rss",
     "Axios":            "https://www.axios.com/feeds/feed.rss",
     "Bloomberg Tech":   "https://feeds.bloomberg.com/technology/news.rss",
-    "Pitchbook":        "https://pitchbook.com/news/rss",
     "Crunchbase News":  "https://news.crunchbase.com/feed/",
     "PE Hub":           "https://www.pehub.com/feed/",
     "Defense News":     "https://www.defensenews.com/arc/outboundfeeds/rss/",
@@ -149,58 +214,6 @@ Respond ONLY in valid JSON:
   "sentiment": "bullish/bearish/neutral",
   "deal_type": "Classify as exactly one of these — apply the first definition that matches: M&A (a named company is acquiring, merging with, or being acquired by another named company), IPO (a specific named company is going public), Funding (a named company is receiving investment capital — a venture round, private equity investment, debt financing, or fundraising raise; the company receiving the money determines the type), Earnings (ONLY a company's own officially reported financial results — revenue figures, EPS, net income, or forward guidance issued as part of a formal results announcement; NEVER apply Earnings to analyst recommendations, investment theses, portfolio manager commentary, market outlooks, or forecasts — those are Other), Macro (central bank decisions, interest rate policy, inflation data, GDP, tariff or trade policy affecting broad markets — not specific to one company), Geopolitical (wars, sanctions, elections, cross-border disputes with market impact), Other (regulatory action, product launch, contract award, partnership announcement, legal settlement, personnel change, analyst note, market commentary — use this as a catch-all for anything that does not clearly fit the above). Return null only if the article is so general it fits none of these. Default to Other over null.",
   "primary_company": "The single company that is the MAIN ACTOR of the event this article covers — the company doing the action, not a company that is merely named or mentioned. Apply these rules in order: (1) Funding/IPO: primary_company is the company RECEIVING the investment or going public — not the investor, not a chip or technology supplier the article mentions, not a competitor named for comparison. Example: 'Mistral raises $830M to house Nvidia chips' → primary_company is Mistral, not Nvidia. (2) M&A: primary_company is the acquirer or the acquisition target — whichever is the article's central subject. Example: 'Goldman leads buyout of PortfolioCo' → primary_company is PortfolioCo (the target), not Goldman (the advisor). (3) Earnings: primary_company is the company that issued the results. (4) Commentary or market opinion: if a company's employee, analyst, or executive is quoted giving views on markets, sectors, or other companies — but the article is NOT about that company's own named event — return null. Example: 'Goldman's analyst recommends semiconductors' → null. (5) When one company is clearly driving the event and others are mentioned incidentally as suppliers, partners, advisors, or comparisons, always name the driving company. Return null only when two or more companies are genuinely co-equal actors with no single driver (e.g. a true joint venture announced by both parties equally). Never invent a name not present in the companies array."
-}}"""
-
-
-BATCH_FILTER_PROMPT = """You are a senior analyst at a top investment firm. Analyze EACH article in the batch below and score it for relevance to financial markets and investing.
-
-Relevant topics include: M&A deals, IPOs, fundraising, valuations, earnings, market movements, geopolitical events affecting markets, macro trends, regulatory changes, PE/VC activity, public company news, economic data.
-
-INDUSTRY_VERTICALS RULE (required per article): Return a JSON array of 1-3 values from this exact list — the industry sector(s) the companies or subjects operate in. Copy values character-for-character. Return [] if none clearly apply.
-Allowed values: Technology, Healthcare & Biotech, Energy & Oil/Gas, Financial Services, Consumer & Retail, Industrials & Manufacturing, Aerospace & Defense, Real Estate, Media & Telecom, Materials & Mining, Agriculture
-
-ACTIVITY_TYPES RULE (optional per article): Return a JSON array of 0-3 values from this exact list — the type of event or activity the article covers. Copy values character-for-character. Return [] if none clearly apply.
-Allowed values: Mergers & Acquisitions, Private Equity, Venture Capital, IPO & Capital Markets, Earnings & Results, Macro & Policy, Geopolitics, Regulation & Legal, Fundraising, Crypto & Digital Assets, Leadership & Operations
-
-COMPANIES RULE: Return a JSON array of entity objects. Each object must have exactly: "name" (verbatim from title or summary) and "entity_type" (must equal "company"). Only include entities where you are confident entity_type is "company". Default to exclusion when uncertain.
-
-COMPANY = a for-profit or non-profit private organization, publicly traded corporation, startup, or financial institution with employees and a business operation (would have a LinkedIn company page).
-
-EXCLUDE — do not include:
-- People (executives, politicians, named individuals — e.g. "Elon Musk", "Xi Jinping", "Trump")
-- Countries or regions ("China", "Iran", "Vietnam", "Greece", "the Gulf")
-- Government bodies, regulators, military branches ("NASA", "FAA", "Pentagon", "Space Force", "U.S. Navy", "Federal Reserve", "SEC", "DOJ", "FOMC")
-- Currencies and crypto ("Bitcoin", "USD", "ETH")
-- Stock indexes ("S&P 500", "Nifty 50", "Nasdaq", "Sensex", "Nikkei")
-- Abstract phrases ("Ukrainian drone makers", "Russia's energy sector", "Candy stocks", "Foundation AI model for plants")
-- Software products or AI models — include the owning company instead ("OpenAI" not "ChatGPT", "Microsoft" not "Windows", "Anthropic" not "Claude")
-- Investment vehicles, SPVs, sovereign wealth funds ("Blackstone Digital Infrastructure Trust", "Abu Dhabi Investment Authority", "GIC") — use parent firm if applicable
-- Political parties, advocacy groups, religious institutions
-
-Good: "Nvidia invests in Marvell" → [{{"name":"Nvidia","entity_type":"company"}},{{"name":"Marvell","entity_type":"company"}}]. "Fed raises rates amid China tension" → []. Return [] when no entities pass the definition.
-
-RELEVANCE_REASON GATE (apply before writing): If an article is primarily an opinion piece, profile, cultural commentary, or trend piece with no named transaction, earnings result, financing event, guidance change, regulatory action, or specific market-moving event — set relevant: false and leave relevance_reason as an empty string. Do not fabricate a read-through. Articles discussing a named person's political views, cultural influence, public commentary, or personal philosophy are not market-moving events even if that person runs a company — set relevant: false. Internal staff promotions, appointments, hires, or departures are not market-moving unless explicitly linked to a named transaction, fundraising, earnings, guidance, or regulatory action. For articles that pass the gate: 1-2 sentences max. Lead with the concrete market implication — the named deal, specific dollar figure, rate level, or event. Use specific company names, dollar figures, or named sectors. Write as a buy-side analyst flagging a signal to a portfolio manager. BANNED outputs: vague taxonomy ('relevant to PE/VC/financial markets'), article restatements, fabricated comp lists, filler like 'this matters because it is a transaction in private equity'. For macro/rates articles, state the concrete effect on deal economics — LBO spreads, floating-rate credit costs, buyout multiples, M&A financing, risk appetite — never write that rates moved or that interest rates affect markets generally.
-
-DEAL_TYPE RULE (apply first matching definition): M&A (named company acquiring/merging with/being acquired by another named company), IPO (named company going public), Funding (named company receiving investment capital — VC round, PE investment, debt financing, or fundraising raise), Earnings (ONLY a company's own officially reported financial results — revenue, EPS, net income, or forward guidance issued as part of a formal results announcement; NEVER apply Earnings to analyst recommendations, investment theses, PM commentary, market outlooks, or forecasts — those are Other), Macro (central bank decisions, interest rate policy, inflation data, GDP, tariff/trade policy affecting broad markets), Geopolitical (wars, sanctions, elections, cross-border disputes with market impact), Other (regulatory action, product launch, contract award, partnership, legal settlement, personnel change, analyst note, market commentary — catch-all). Return null only if the article fits none. Default to Other over null.
-
-PRIMARY_COMPANY RULE: The single company that is the MAIN ACTOR of the event. (1) Funding/IPO: the company RECEIVING the investment or going public — not the investor, not a supplier, not a competitor named for comparison. (2) M&A: the acquirer or target — whichever is the central subject. (3) Earnings: the company that issued the results. (4) Commentary/market opinion where a company's employee, analyst, or executive is quoted giving views on OTHER companies or markets — return null. (5) When one company is clearly driving the event and others are mentioned incidentally as suppliers/partners/advisors/comparisons, always name the driving company. Return null only for genuine co-equal actors (e.g. a true joint venture). Never invent a name not present in the companies array.
-
-ARTICLES (each prefixed with its 0-based index in square brackets):
-{articles_block}
-
-Respond ONLY with a valid JSON array containing EXACTLY {n} objects, one per article, in the same order as the input. Do not include any text before or after the array. Each object must have exactly these fields:
-{{
-  "index": <int, the 0-based index from the article list>,
-  "relevant": true or false,
-  "relevance_score": 1-10,
-  "relevance_reason": "...",
-  "industry_verticals": ["<1-3 values from the allowed industry verticals list>"],
-  "activity_types": ["<0-3 values from the allowed activity types list>"],
-  "companies": [{{"name": "Company A", "entity_type": "company"}}],
-  "themes": ["M&A", "IPO", "Earnings", "Macro", "Geopolitics", "VC", "PE", "Regulation", "AI", "Crypto"],
-  "sentiment": "bullish" or "bearish" or "neutral",
-  "deal_type": "M&A" or "IPO" or "Funding" or "Earnings" or "Macro" or "Geopolitical" or "Other" or null,
-  "primary_company": "..." or null
 }}"""
 
 
@@ -473,10 +486,17 @@ def fetch_all_articles():
     now = datetime.now(timezone.utc)
     freshness_cutoff = now - timedelta(days=INGEST_FRESHNESS_DAYS)
     total_skipped_stale = 0
+    rss_t0 = time.time()
+    rss_added = 0
     for source, url in RSS_FEEDS.items():
         skipped_stale = 0
+        feed_t0 = time.time()
+        feed_added = 0
         try:
-            feed = feedparser.parse(url)
+            # Bounded fetch via urllib.request.urlopen(timeout=20) so a hung
+            # upstream cannot block the pipeline forever (run #98 root cause).
+            raw = _fetch_feed_bytes(url)
+            feed = feedparser.parse(raw)
             for e in feed.entries[:8]:
                 published_at = e.get("published", now.isoformat())
                 # Skip articles older than INGEST_FRESHNESS_DAYS
@@ -495,11 +515,17 @@ def fetch_all_articles():
                     "published_at": published_at,
                     "content_type": "full_text" if source in FULL_TEXT_SOURCES else "snippet"
                 })
+                feed_added += 1
+            print(f"  RSS {source}: {feed_added} articles in {time.time() - feed_t0:.2f}s")
+        except (urllib.error.URLError, socket.timeout) as ex:
+            print(f"  RSS error {source}: network ({type(ex).__name__}: {ex}) in {time.time() - feed_t0:.2f}s")
         except Exception as ex:
-            print(f"  RSS error {source}: {ex}")
+            print(f"  RSS error {source}: {ex} in {time.time() - feed_t0:.2f}s")
         if skipped_stale:
             print(f"  RSS {source}: skipped {skipped_stale} stale articles (>{INGEST_FRESHNESS_DAYS}d old)")
             total_skipped_stale += skipped_stale
+        rss_added += feed_added
+    print(f"  RSS total: {rss_added} articles from {len(RSS_FEEDS)} feeds in {time.time() - rss_t0:.2f}s")
     if total_skipped_stale:
         print(f"  RSS total: skipped {total_skipped_stale} stale articles across all feeds")
 
@@ -548,11 +574,22 @@ def filter_article(article):
         summary=article["summary"],
         source=article["source"],
     )
-    try:
-        response = gemini_client.models.generate_content(
+
+    def _call():
+        return gemini_client.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.2,
+                max_output_tokens=2048,
+                response_mime_type="application/json",
+                response_schema=FilterDecision,
+            ),
         )
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
+            response = _ex.submit(_call).result(timeout=30)
         text = (response.text or "").strip()
         if text.startswith("```"):
             text = text.split("```")[1]
@@ -563,70 +600,84 @@ def filter_article(article):
         return None
 
 
-def filter_articles_batch(articles):
-    """Score a batch of articles in a single Gemini call.
+def _filter_article_with_retry(article):
+    """filter_article() with one retry on None. Returns parsed dict or None.
 
-    Returns a list of analysis dicts aligned by index with `articles`.
-    Any slots the model fails to return are back-filled with per-article calls.
-    If the entire batch call fails, falls back to per-article filtering.
+    response_schema enforcement at single-object level is reliable but not
+    perfect (smoke test 3 saw ~0.83% per-article failure rate). One retry
+    catches transient model flakiness; persistent failures get dropped with
+    a structured log line that is auditable post-merge.
+
+    Logging contract:
+      [filter:schema-fail] title='...': first call returned None, retrying
+      [filter:retry-fail]  title='...': retry also failed, dropping
+    """
+    title_short = (article.get("title") or "")[:60].replace("\n", " ")
+    result = filter_article(article)
+    if result is not None:
+        return result
+    print(f"  [filter:schema-fail] title='{title_short}', retrying once")
+    result = filter_article(article)
+    if result is None:
+        print(f"  [filter:retry-fail] title='{title_short}', dropping")
+    return result
+
+
+def filter_articles(articles):
+    """Filter all articles via per-article Gemini calls with parallel workers.
+
+    Replaces the prior batch path. Smoke test 3 (run 25538358541) confirmed
+    that Gemini response_schema reliably constrains single-object output
+    (5 errors of ~600 calls = 0.83% rate) but does not reliably constrain
+    list[Model] array output (12/13 batch chunks fell back to per-article).
+    Per-article + parallel workers gives identical throughput with proven
+    schema enforcement and a single code path.
+
+    Returns a list aligned by index with the input `articles` array. Slots
+    where filter_article plus retry both fail are None; run_ingestion's
+    relevance gate already treats None as 'skip this article'.
     """
     if not articles:
         return []
 
-    lines = []
-    for i, a in enumerate(articles):
-        title = (a.get("title") or "").replace("\n", " ").strip()
-        summary = (a.get("summary") or "").replace("\n", " ").strip()[:400]
-        source = a.get("source") or ""
-        lines.append(f"[{i}] SOURCE: {source} | TITLE: {title} | SUMMARY: {summary}")
-    articles_block = "\n".join(lines)
-
-    prompt = BATCH_FILTER_PROMPT.format(
-        articles_block=articles_block,
-        n=len(articles),
+    total = len(articles)
+    total_batches = (total + FILTER_LOG_BATCH_SIZE - 1) // FILTER_LOG_BATCH_SIZE
+    print(
+        f"  filter: {total} articles, per-article + parallel workers={FILTER_PARALLEL_WORKERS}, "
+        f"log batches of {FILTER_LOG_BATCH_SIZE}"
     )
 
-    try:
-        response = gemini_client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.2,
-                max_output_tokens=65536,
-                response_mime_type="application/json",
-            ),
-        )
-        text = (response.text or "").strip()
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-            text = text.strip()
-        # Extract the JSON array if the model wrapped it in prose
-        m = re.search(r"\[[\s\S]*\]", text)
-        if m:
-            text = m.group(0)
-        parsed = json.loads(text)
-        if not isinstance(parsed, list):
-            raise ValueError("Batch response was not a JSON array")
+    results = [None] * total
+    for batch_idx in range(total_batches):
+        start = batch_idx * FILTER_LOG_BATCH_SIZE
+        end = min(start + FILTER_LOG_BATCH_SIZE, total)
+        batch_label = f"filter batch {batch_idx + 1}/{total_batches}"
+        t0 = time.time()
+        kept = 0
+        skipped = 0
 
-        results = [None] * len(articles)
-        for item in parsed:
-            if not isinstance(item, dict):
-                continue
-            idx = item.get("index")
-            if isinstance(idx, int) and 0 <= idx < len(articles) and results[idx] is None:
-                results[idx] = item
+        with concurrent.futures.ThreadPoolExecutor(max_workers=FILTER_PARALLEL_WORKERS) as ex:
+            fut_to_idx = {
+                ex.submit(_filter_article_with_retry, articles[i]): i
+                for i in range(start, end)
+            }
+            for fut in concurrent.futures.as_completed(fut_to_idx):
+                i = fut_to_idx[fut]
+                try:
+                    r = fut.result()
+                except Exception as e:
+                    title_short = (articles[i].get("title") or "")[:60].replace("\n", " ")
+                    print(f"  [filter:retry-fail] title='{title_short}' error={type(e).__name__}:{e}, dropping")
+                    r = None
+                results[i] = r
+                if r is not None:
+                    kept += 1
+                else:
+                    skipped += 1
 
-        missing = [i for i, r in enumerate(results) if r is None]
-        if missing:
-            print(f"  ⚠ Batch returned {len(parsed)}/{len(articles)} results, filling {len(missing)} individually...")
-            for i in missing:
-                results[i] = filter_article(articles[i])
-        return results
-    except Exception as ex:
-        print(f"  Batch filter error ({ex}); falling back to per-article...")
-        return [filter_article(a) for a in articles]
+        print(f"  {batch_label} done in {time.time() - t0:.2f}s ({kept} parsed, {skipped} skipped)")
+
+    return results
 
 
 # DEPRECATED: replaced by register_entity per docs/w2-a-entity-resolution-design.md section 5.
@@ -725,23 +776,30 @@ def store_article(article, analysis):
 
 
 def run_ingestion():
-    print(f"\n{'='*60}\nBreakingAlpha Ingestion — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n{'='*60}")
+    print(f"\n{'='*60}\nBreakingAlpha Ingestion - {datetime.now().strftime('%Y-%m-%d %H:%M')}\n{'='*60}")
+    t_total = time.time()
+
+    t = time.time()
     print("\n[1/4] Fetching articles...")
     articles = fetch_all_articles()
-    print(f"  {len(articles)} unique articles")
+    print(f"  [1/4] DONE: {len(articles)} unique articles in {time.time() - t:.2f}s")
 
+    t = time.time()
     print(f"\n[2/4] Pre-filtering {len(articles)} articles against keyword blocklist...")
     articles = [a for a in articles if not matches_ingest_blocklist(a)]
-    print(f"  {len(articles)} articles after keyword pre-filter")
+    print(f"  [2/4] DONE: {len(articles)} after keyword pre-filter in {time.time() - t:.2f}s")
 
-    print(f"\n[3/4] Filtering {len(articles)} articles with Gemini (batch)...")
-    results = filter_articles_batch(articles)
+    t = time.time()
+    print(f"\n[3/4] Filtering {len(articles)} articles with Gemini (per-article + parallel)...")
+    results = filter_articles(articles)
+    print(f"  [3/4] DONE: Gemini filter in {time.time() - t:.2f}s")
     relevant = []
     for a, result in zip(articles, results):
         if result and result.get("relevant") and result.get("relevance_score", 0) >= 6:
             relevant.append((a, result))
             print(f"  ✓ [{result['relevance_score']}/10] [{result.get('sector','?')[:20]}] {a['title'][:60]}...")
 
+    t = time.time()
     print(f"\n[4/4] Storing {len(relevant)} articles...")
     stored_pairs = []  # (article_id, article_dict) for enrichment
     for a, r in relevant:
@@ -750,7 +808,8 @@ def run_ingestion():
             stored_pairs.append((aid, a))
     article_ids = [aid for aid, _ in stored_pairs]
     stored = len(article_ids)
-    print(f"\n✅ Done — {stored} new articles stored")
+    print(f"  [4/4] DONE: {stored} stored in {time.time() - t:.2f}s")
+    print(f"\nINGEST total elapsed: {time.time() - t_total:.2f}s ({stored} new articles stored)")
 
     # [4b] Full-text enrichment for scrapeable sources
     enriched = 0
