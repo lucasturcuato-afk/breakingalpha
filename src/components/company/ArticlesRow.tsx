@@ -17,7 +17,7 @@ import type { KeyboardEvent, Ref, MouseEvent as ReactMouseEvent } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { SentimentPill, type SentimentTone } from "@/components/ui/sentiment-pill";
-import { CompletenessBadge, SourceCredibilityBadge } from "@/lib/article-signal";
+import { CompletenessBadge, SourceCredibilityBadge, getAdjustedScore } from "@/lib/article-signal";
 import type { CompanyDetailArticle } from "@/lib/data-access/getCompanyDetail";
 
 export interface ArticlesRowProps {
@@ -108,8 +108,8 @@ export function ArticlesRow({
 
   const rowBg = index % 2 === 1 ? "bg-[var(--row-alt)]" : "";
   const rowInteractive = hasSummary ? "cursor-pointer" : "";
-  const scoreText =
-    article.relevanceScore != null ? article.relevanceScore.toString() : "--";
+  const adjustedScore = getAdjustedScore(article.relevanceScore, article.completeness);
+  const scoreText = adjustedScore != null ? adjustedScore.toFixed(1) : "--";
 
   return (
     <>
