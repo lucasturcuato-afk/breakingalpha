@@ -10,6 +10,7 @@
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Delta, Eyebrow } from "@/components/ui";
+import { Tooltip } from "@/components/ui/tooltip";
 import type { CompanyDetail } from "@/lib/data-access/getCompanyDetail";
 
 interface CompanyKPIStripProps { companyDetail: CompanyDetail }
@@ -72,13 +73,15 @@ const privateBadgeStyle: CSSProperties = {
 interface CellProps {
   label: string; valueTestId: string; value: ReactNode;
   delta?: number | null; sub?: ReactNode; isLast?: boolean; trailing?: ReactNode;
+  tooltip?: ReactNode;
 }
 
-function Cell({ label, valueTestId, value, delta, sub, isLast, trailing }: CellProps) {
+function Cell({ label, valueTestId, value, delta, sub, isLast, trailing, tooltip }: CellProps) {
   const showDelta = delta !== null && delta !== undefined && Number.isFinite(delta);
+  const labelNode = <Eyebrow as="span">{label}</Eyebrow>;
   return (
     <div data-testid="kpi-card" style={isLast ? cellBase : cellRight}>
-      <Eyebrow as="span">{label}</Eyebrow>
+      {tooltip ? <Tooltip content={tooltip}>{labelNode}</Tooltip> : labelNode}
       <div data-testid={valueTestId} style={valueStyle}>{value}{trailing}</div>
       {showDelta && (
         <div data-testid={valueTestId === "kpi-card-last" ? "kpi-card-last-delta" : undefined} style={{ marginTop: 1 }}>
@@ -148,8 +151,9 @@ export function CompanyKPIStrip({ companyDetail }: CompanyKPIStripProps) {
         sub={isPrivate ? "private" : null} />
       <Cell label="Mentions 30d" valueTestId="kpi-card-mentions"
         value={companyDetail.mentions.toLocaleString("en-US")} />
-      <Cell label="Sentiment" valueTestId="kpi-card-sentiment"
-        value={sentiment.value} delta={sentiment.delta * 100} />
+      <Cell label="Article tone" valueTestId="kpi-card-sentiment"
+        value={sentiment.value} delta={sentiment.delta * 100}
+        tooltip="Aggregate tone of indexed articles over the past 7 days. Not a price signal." />
       <Cell label="Articles today" valueTestId="kpi-card-articles-today" value={todayN}
         sub={eventsToday > 0 ? `${eventsToday} ${eventsToday === 1 ? "event" : "events"}` : null} />
       <Cell label="Sources" valueTestId="kpi-card-sources" value={sourcesCount}

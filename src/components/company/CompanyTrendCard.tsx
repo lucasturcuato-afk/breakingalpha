@@ -1,14 +1,19 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { MiniBars } from "@/components/ui/mini-bars";
 import { Sparkline } from "@/components/ui/sparkline";
 import { SentimentHeat } from "@/components/ui/sentiment-heat";
 import { Eyebrow } from "@/components/ui/eyebrow";
+import { Tooltip } from "@/components/ui/tooltip";
 
 const MONO = "var(--font-mono), ui-monospace, monospace";
 const SERIF = "var(--font-display), serif";
-const RAIL_W = 310;
+// Default + minimum rail widths. The default seeds SSR and the first paint
+// before ResizeObserver fires; the minimum protects against negative-sized
+// SVG primitives at extreme narrow viewports.
+const RAIL_W_DEFAULT = 310;
+const RAIL_W_MIN = 220;
 
 const HEADLINE: CSSProperties = {
   fontFamily: MONO,
@@ -79,6 +84,25 @@ export function CompanyTrendCard({
   days,
   className,
 }: CompanyTrendCardProps) {
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const [railW, setRailW] = useState<number>(RAIL_W_DEFAULT);
+
+  useEffect(() => {
+    const node = sectionRef.current;
+    if (!node) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (typeof w === "number" && w > 0) {
+        // Section has 14px horizontal padding on the inner content wrapper;
+        // subtract on both sides so chart primitives fit inside.
+        const inner = Math.floor(w) - 28;
+        setRailW(Math.max(RAIL_W_MIN, inner));
+      }
+    });
+    ro.observe(node);
+    return () => ro.disconnect();
+  }, []);
+
   const mentionsTotal = mentions7d.reduce((a, b) => a + b, 0);
   const halves = sumHalves(mentions7d);
   const mentionsDelta = pctDelta(halves.first, halves.last);
@@ -95,6 +119,7 @@ export function CompanyTrendCard({
 
   return (
     <section
+      ref={sectionRef}
       data-testid="trend-card"
       data-rail="trend-card-rail"
       className={className}
@@ -125,7 +150,7 @@ export function CompanyTrendCard({
               {mUp ? "▲" : "▼"} {Math.abs(mentionsDelta).toFixed(0)}%
             </span>
           </div>
-          <MiniBars values={mentions7d} w={RAIL_W} h={42} color="var(--gold)" gap={4} />
+          <MiniBars values={mentions7d} w={railW} h={42} color="var(--gold)" gap={4} />
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
             {dayLabels.map((d, i) => (
               <span key={i} style={{ fontFamily: MONO, fontSize: 8.5, color: "var(--text-faint)" }}>{d}</span>
@@ -135,15 +160,17 @@ export function CompanyTrendCard({
           <div style={{ height: 1, background: "var(--border-subtle)", margin: "12px 0" }} />
 
           <div style={ROW}>
-            <Eyebrow as="span" color="var(--text-faint)" testId="trend-card-sentiment-eyebrow">Sentiment</Eyebrow>
+            <Tooltip content="Aggregate tone of indexed articles over the past 7 days. Not a price signal.">
+              <Eyebrow as="span" color="var(--text-faint)" testId="trend-card-sentiment-eyebrow">Article tone</Eyebrow>
+            </Tooltip>
             <span data-testid="trend-card-sentiment-total" style={HEADLINE}>{formatSigned(sentimentSigned, 2)}</span>
             <span data-testid="trend-card-sentiment-delta" style={{ ...DELTA, color: upColor(sUp) }}>
               {sUp ? "▲" : "▼"} {Math.abs(sentimentDelta).toFixed(2)}
             </span>
           </div>
-          <Sparkline values={sentiment7d} w={RAIL_W} h={36} stroke="var(--signal-up)" fill="rgba(22,163,74,0.10)" strokeWidth={1.8} />
+          <Sparkline values={sentiment7d} w={railW} h={36} stroke="var(--signal-up)" fill="rgba(22,163,74,0.10)" strokeWidth={1.8} />
           <div style={{ marginTop: 4 }}>
-            <SentimentHeat values={sentiment7d} w={RAIL_W} h={7} gap={3} />
+            <SentimentHeat values={sentiment7d} w={railW} h={7} gap={3} />
           </div>
         </div>
       </div>

@@ -4,12 +4,6 @@ import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { createClient } from "@supabase/supabase-js";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isAdmin } from "@/lib/admin-emails";
-import {
-  STRUCTURED_MEMO_SCHEMA,
-  validateStructuredMemo,
-  deriveMemoMarkdown,
-  type StructuredMemo,
-} from "@/lib/memo-schema";
 import { recordOutput } from "@/lib/outputs";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -237,55 +231,6 @@ Hard rules: no invented counterparties, dollar figures, or valuation assumptions
 
 const RATE_LIMIT_MEMO = 10; // memos per 24h
 
-// ---------------------------------------------------------------------------
-// Structured-output memo path (PR-C0)
-// ---------------------------------------------------------------------------
-// Used for type === "company" (article-grounded). Calls Gemini in JSON mode
-// once. On parse / shape failure, retries once with a corrective suffix. On
-// second failure, the caller falls back to the existing Markdown prose path.
-// Every malformed response logs to stderr in the locked format:
-//   [memo:malformed] type=<type> input_chars=<N> attempt=<1|2>
-
-function tryParseStructured(raw: string): StructuredMemo | null {
-  // Gemini sometimes emits fenced JSON despite responseMimeType, so strip
-  // any code-fence wrappers before parsing. Mirror the theses route helper.
-  const cleaned = raw.replace(/```json|```/g, "").trim();
-  let parsed: unknown = null;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch {
-    const objectMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (objectMatch) {
-      try {
-        parsed = JSON.parse(objectMatch[0]);
-      } catch {
-        parsed = null;
-      }
-    }
-  }
-  if (parsed === null) return null;
-  return validateStructuredMemo(parsed);
-}
-
-async function generateStructuredMemo(
-  systemInstruction: string,
-  userText: string,
-): Promise<string> {
-  const completion = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: [{ role: "user", parts: [{ text: userText }] }],
-    config: {
-      systemInstruction,
-      temperature: 0.35,
-      maxOutputTokens: 2400,
-      responseMimeType: "application/json",
-      responseSchema: STRUCTURED_MEMO_SCHEMA,
-      thinkingConfig: { thinkingBudget: 0 },
-    },
-  });
-  return completion.text || "";
-}
-
 export async function POST(request: NextRequest) {
   const { user } = await getSupabaseWithUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
@@ -359,70 +304,7 @@ export async function POST(request: NextRequest) {
     // for an un-indexed company. Article-grounded memos still get the overlay.
     const memoCtx = type === "company-web" ? "" : await buildMemoContext(sector || undefined);
     const baseSystem = (memoCtx ? memoCtx + "\n\n" : "") + system;
-    const augmentedSystem =
-      type === "company" || type === "company-web"
-        ? baseSystem // skip role-block; the company prompts have their own complete structure
-        : buildMemoPrompt(profile, baseSystem);
-
-    // ── Structured-output branch (PR-C0): type === "company" only ──
-    // The article-grounded company memo emits JSON matching StructuredMemo.
-    // BriefTab (PR-C1) consumes the typed object; the watchlist cache and
-    // existing Markdown consumers read the derived `memo` field below.
-    // Other types (deal/thesis/brief/article/company-web) take the prose
-    // path further down so the response stays byte-identical for them.
-    if (type === "company") {
-      try {
-        const raw1 = await generateStructuredMemo(augmentedSystem, truncated);
-        const parsed1 = raw1 ? tryParseStructured(raw1) : null;
-        if (parsed1) {
-          return NextResponse.json({
-            structured: parsed1,
-            memo: deriveMemoMarkdown(parsed1),
-          });
-        }
-        console.error(`[memo:malformed] type=${type} input_chars=${truncated.length} attempt=1`);
-
-        const retrySystem =
-          augmentedSystem +
-          "\n\nyour previous response was invalid JSON, return only valid JSON";
-        const raw2 = await generateStructuredMemo(retrySystem, truncated);
-        const parsed2 = raw2 ? tryParseStructured(raw2) : null;
-        if (parsed2) {
-          return NextResponse.json({
-            structured: parsed2,
-            memo: deriveMemoMarkdown(parsed2),
-          });
-        }
-        console.error(`[memo:malformed] type=${type} input_chars=${truncated.length} attempt=2`);
-
-        // Fallback: re-run the original prose prompt without JSON mode.
-        // The system prompt now mandates JSON, so swap in a compact prose
-        // directive that preserves the section labels older Markdown
-        // consumers already render. Keeps response shape `{ memo }` only.
-        const proseSystem =
-          augmentedSystem +
-          "\n\nIGNORE the JSON output format directive above. Instead emit Markdown prose with bold section labels: **Analyst Brief**, **What Just Changed**, **Cross-Signals**, **What To Do With This**, **Signal Quality**. Same content rules apply.";
-        const fallback = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: [{ role: "user", parts: [{ text: truncated }] }],
-          config: {
-            systemInstruction: proseSystem,
-            temperature: 0.35,
-            maxOutputTokens: 2400,
-            thinkingConfig: { thinkingBudget: 0 },
-          },
-        });
-        const memoText = fallback.text;
-        if (!memoText) {
-          return NextResponse.json({ error: "Gemini returned empty memo, retry" }, { status: 500 });
-        }
-        return NextResponse.json({ memo: memoText });
-      } catch (err) {
-        console.error("[memo] Gemini structured-path error:", err);
-        console.error("[memo] error detail:", err instanceof Error ? err.message : String(err));
-        return NextResponse.json({ error: "Failed to generate memo" }, { status: 500 });
-      }
-    }
+    const augmentedSystem = buildMemoPrompt(profile, baseSystem);
 
     // Web-fallback memos need a higher output ceiling than article-grounded.
     // The web prompt has 5 sections plus per-claim [n] citations plus two
@@ -470,6 +352,8 @@ export async function POST(request: NextRequest) {
               model: "gemini-2.5-flash",
               max_output_tokens: maxOutputTokens,
               memo_chars: memo.length,
+              markdown_memo: memo,
+              user_id: user.id,
             },
           });
         } catch (e) {
