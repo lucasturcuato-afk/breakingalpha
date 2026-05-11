@@ -10,10 +10,17 @@
  * structured-output schema we abandoned in PR-C1c.
  *
  * If the model deviates from the bold-label convention and the parse
- * yields fewer than three distinct sections, we return an empty section
+ * yields fewer than two distinct sections, we return an empty section
  * map and surface `rawMarkdown` so the caller can fall back to rendering
  * the unsplit Markdown body. This keeps the UI graceful when Gemini
- * occasionally drops or merges labels.
+ * occasionally drops or merges labels. The threshold is lower than the
+ * prompt's six-label contract to fail open on short briefs and to keep
+ * single-section memos visible during prompt iteration.
+ *
+ * Section labels are preserved in the case the model emits (typically
+ * Title Case). Callers that want all-caps presentation should apply
+ * `text-transform: uppercase` in CSS rather than relying on the parser
+ * to normalize the key.
  */
 
 export interface ParsedMemo {
@@ -47,7 +54,7 @@ export function parseMemo(markdown: string): ParsedMemo {
   }
   flush();
 
-  if (Object.keys(sections).length < 3) {
+  if (Object.keys(sections).length < 2) {
     return { sections: {}, rawMarkdown: markdown };
   }
 

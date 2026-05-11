@@ -45,7 +45,7 @@ export function CompanyDetailTabs({
       data-testid="tab-strip"
       className={[
         "flex items-center gap-1 overflow-x-auto no-scrollbar",
-        "border-b border-border-base py-1",
+        "border-b border-border-subtle py-1",
         className ?? "",
       ].join(" ")}
     >
@@ -63,21 +63,21 @@ export function CompanyDetailTabs({
             data-testid={`tab-${id}`}
             onClick={() => setActiveTab(id)}
             className={[
-              "inline-flex items-center gap-[7px] shrink-0",
+              "relative inline-flex items-center gap-[7px] shrink-0",
               "px-[11px] py-[5px] rounded-[5px]",
-              "border transition-colors",
+              "border motion-safe:transition-all motion-safe:duration-150",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-1",
               isActive
-                ? "border-gold-border bg-cream-hi"
-                : "border-border-base bg-transparent hover:bg-cream-hi",
+                ? "border-gold-border bg-cream-hi shadow-[inset_0_-2px_0_0_var(--gold)]"
+                : "border-border-base bg-transparent hover:bg-cream-hi hover:border-border-hi motion-safe:hover:-translate-y-[1px]",
             ].join(" ")}
           >
             <span
               className={[
-                "font-sans text-[12px]",
+                "font-sans text-[12px] motion-safe:transition-colors motion-safe:duration-150",
                 isActive
                   ? "font-semibold text-espresso"
-                  : "font-medium text-text-secondary",
+                  : "font-medium text-text-secondary group-hover:text-espresso hover:text-espresso",
               ].join(" ")}
             >
               {TAB_LABELS[id]}
