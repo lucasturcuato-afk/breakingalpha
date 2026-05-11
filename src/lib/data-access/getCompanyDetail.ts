@@ -41,7 +41,7 @@ export interface CompanyDetail {
 
 const DAYS = 8;
 const ARTICLE_DAYS = 14;
-const ARTICLE_LIMIT = 12;
+const ARTICLE_LIMIT = 50;
 const DAY_MS = 86_400_000;
 const ARTICLE_COLS =
   "id, title, source, url, published_at, sentiment, deal_type, relevance_score, sector, summary, ingested_at";
@@ -95,6 +95,7 @@ export async function getCompanyDetail(
       .contains("companies", [head.name])
       .gte("published_at", sinceArticles)
       .order("relevance_score", { ascending: false })
+      .order("published_at", { ascending: false })
       .limit(ARTICLE_LIMIT),
   ]);
 
