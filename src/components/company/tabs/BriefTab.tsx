@@ -30,15 +30,22 @@ interface BriefTabProps {
 interface MemoResponse {
   memo?: string;
   error?: string;
+  regenerations_remaining_today?: number;
+  resetsAt?: string;
 }
 
 interface CacheResponse {
   cached: boolean;
   markdown?: string;
   generated_at?: string;
+  regenerations_remaining_today?: number;
 }
 
 type Phase = "checking-cache" | "ready" | "generating" | "error";
+
+// WD70: BriefTab Regenerate button daily quota. Kept in lockstep with the
+// MEMO_REGENERATIONS_PER_DAY constant in /api/memo/route.ts.
+const MEMO_REGENERATIONS_PER_DAY = 3;
 
 function relativeTime(iso: string): string {
   const then = new Date(iso).getTime();
@@ -65,6 +72,10 @@ export function BriefTab({ company, content, systemPrompt }: BriefTabProps) {
   const [parsed, setParsed] = useState<ParsedMemo | null>(null);
   const [cachedAt, setCachedAt] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // WD70: Regenerate state.
+  const [regenRemaining, setRegenRemaining] = useState<number>(MEMO_REGENERATIONS_PER_DAY);
+  const [isRegenerating, setIsRegenerating] = useState<boolean>(false);
+  const [regenToast, setRegenToast] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,12 +88,15 @@ export function BriefTab({ company, content, systemPrompt }: BriefTabProps) {
         const res = await fetch(`/api/memo-cache?company_id=${encodeURIComponent(company)}`);
         const data: CacheResponse = await res.json().catch(() => ({ cached: false }));
         if (cancelled) return;
+        if (typeof data.regenerations_remaining_today === "number") {
+          setRegenRemaining(data.regenerations_remaining_today);
+        }
         if (res.ok && data.cached && typeof data.markdown === "string" && data.markdown.length > 0) {
           setParsed(parseMemo(data.markdown));
           setCachedAt(data.generated_at ?? null);
         }
       } catch {
-        // network failure -> miss path
+        // network failure, render miss path
       } finally {
         if (!cancelled) setPhase("ready");
       }
@@ -115,12 +129,58 @@ export function BriefTab({ company, content, systemPrompt }: BriefTabProps) {
         setPhase("error");
         return;
       }
+      if (typeof data.regenerations_remaining_today === "number") {
+        setRegenRemaining(data.regenerations_remaining_today);
+      }
       setParsed(parseMemo(data.memo));
       setCachedAt(null);
       setPhase("ready");
     } catch {
       setErrorMessage("Network error while generating brief.");
       setPhase("error");
+    }
+  };
+
+  // WD70: in-place regenerate. Does NOT swap to the full-screen generating
+  // skeleton (the user is already looking at a brief). Disables the button,
+  // posts to /api/memo?regenerate=true, swaps memo content on success, and
+  // surfaces a small inline toast on 429.
+  const regenerateBrief = async () => {
+    if (!content || isRegenerating) return;
+    setIsRegenerating(true);
+    setRegenToast(null);
+    try {
+      const res = await fetch("/api/memo?regenerate=true", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "company",
+          company,
+          content,
+          systemPrompt,
+        }),
+      });
+      const data: MemoResponse = await res.json().catch(() => ({}));
+      if (res.status === 429) {
+        setRegenRemaining(0);
+        setRegenToast("Daily regeneration limit reached. Resets at midnight UTC.");
+        return;
+      }
+      if (!res.ok || typeof data.memo !== "string" || data.memo.length === 0) {
+        setRegenToast(data.error ?? "Failed to regenerate brief.");
+        return;
+      }
+      if (typeof data.regenerations_remaining_today === "number") {
+        setRegenRemaining(data.regenerations_remaining_today);
+      } else {
+        setRegenRemaining((n) => Math.max(0, n - 1));
+      }
+      setParsed(parseMemo(data.memo));
+      setCachedAt(null);
+    } catch {
+      setRegenToast("Network error while regenerating brief.");
+    } finally {
+      setIsRegenerating(false);
     }
   };
 
@@ -183,6 +243,7 @@ export function BriefTab({ company, content, systemPrompt }: BriefTabProps) {
 
   const sectionEntries = Object.entries(parsed.sections);
   const hasSections = sectionEntries.length >= 3;
+  const regenDisabled = isRegenerating || regenRemaining <= 0 || !content;
 
   return (
     <div data-testid="brief-tab" data-cache-state={cacheState} className={SHELL}>
@@ -190,11 +251,45 @@ export function BriefTab({ company, content, systemPrompt }: BriefTabProps) {
         data-testid={cachedAt ? "brief-cache-hit" : "brief-cache-miss"}
         className="hidden"
       />
-      {cachedAt ? (
-        <p className="font-data text-[10px] uppercase tracking-[0.10em] text-text-faint mb-3">
-          Cached {relativeTime(cachedAt)}
-        </p>
-      ) : null}
+      <div className="flex items-start justify-between gap-3 mb-3">
+        {cachedAt ? (
+          <p className="font-data text-[10px] uppercase tracking-[0.10em] text-text-faint">
+            Cached {relativeTime(cachedAt)}
+          </p>
+        ) : (
+          <span aria-hidden className="invisible" />
+        )}
+        <div className="flex items-center gap-2">
+          {regenToast ? (
+            <span
+              data-testid="brief-regenerate-toast"
+              className="font-sans text-[11px] text-signal-dn font-semibold"
+              role="status"
+            >
+              {regenToast}
+            </span>
+          ) : null}
+          <Button
+            data-testid="brief-regenerate-button"
+            variant="secondary"
+            size="sm"
+            disabled={regenDisabled}
+            onClick={regenerateBrief}
+          >
+            {isRegenerating ? (
+              <>
+                <span
+                  aria-hidden
+                  className="inline-block h-3 w-3 rounded-full border border-text-faint border-t-transparent animate-spin"
+                />
+                Regenerating
+              </>
+            ) : (
+              <>Regenerate ({regenRemaining}/{MEMO_REGENERATIONS_PER_DAY} today)</>
+            )}
+          </Button>
+        </div>
+      </div>
       {hasSections ? (
         <div className="space-y-4">
           {sectionEntries.map(([label, body]) => (
