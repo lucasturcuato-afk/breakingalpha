@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAlias } from "@/lib/data-access/aliasResolver";
+import type { Completeness } from "@/lib/article-signal";
 
 export type AliasMention = { name: string; n: number };
 
@@ -17,6 +18,7 @@ export type CompanyDetailArticle = {
   ingestedAt: string | null;
   sourceWinRate: number | null;
   sourceSampleSize: number | null;
+  completeness: Completeness;
 };
 
 export interface CompanyDetail {
@@ -39,7 +41,7 @@ export interface CompanyDetail {
 
 const DAYS = 8;
 const ARTICLE_DAYS = 14;
-const ARTICLE_LIMIT = 12;
+const ARTICLE_LIMIT = 50;
 const DAY_MS = 86_400_000;
 const ARTICLE_COLS =
   "id, title, source, url, published_at, sentiment, deal_type, relevance_score, sector, summary, ingested_at";
@@ -93,6 +95,7 @@ export async function getCompanyDetail(
       .contains("companies", [head.name])
       .gte("published_at", sinceArticles)
       .order("relevance_score", { ascending: false })
+      .order("published_at", { ascending: false })
       .limit(ARTICLE_LIMIT),
   ]);
 
@@ -141,6 +144,11 @@ export async function getCompanyDetail(
 
   const articles: CompanyDetailArticle[] = articleRows.map((r) => {
     const cred = r.source ? credMap.get(r.source) ?? null : null;
+    // Derive completeness from summary only; we do NOT project article.content
+    // to the client (avoids shipping paywall payloads). Matches getCompleteness()
+    // summary-branch threshold in src/lib/article-signal.tsx.
+    const completeness: Completeness =
+      r.summary && r.summary.length > 200 ? "summary" : "headline";
     return {
       id: r.id,
       title: r.title ?? "",
@@ -155,6 +163,7 @@ export async function getCompanyDetail(
       ingestedAt: r.ingested_at,
       sourceWinRate: cred?.win_rate ?? null,
       sourceSampleSize: cred?.n_theses ?? null,
+      completeness,
     };
   });
 
