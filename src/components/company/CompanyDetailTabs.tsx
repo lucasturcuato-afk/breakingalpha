@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * F1-F9 ARIA tablist for the company detail page.
+ * ARIA tablist for the company detail page.
  *
  * Pure UI: receives activeTab + setActiveTab from CompanyDetailLayout.
- * Visual frame mirrors docs/DirectionD.jsx lines 613-645 (FunctionTabs).
+ * Keyboard shortcuts (Alt+1..9, [ / ]) are wired in CompanyDetailLayout
+ * but intentionally not surfaced in the UI.
  *
  * Mobile: horizontally scrollable on viewports < 768px (lg breakpoint
  * stack handled by parent layout); we set overflow-x-auto + no-scrollbar
@@ -48,8 +49,7 @@ export function CompanyDetailTabs({
         className ?? "",
       ].join(" ")}
     >
-      {TAB_ORDER.map((id, i) => {
-        const slot = `F${i + 1}`;
+      {TAB_ORDER.map((id) => {
         const isActive = activeTab === id;
         return (
           <button
@@ -74,14 +74,6 @@ export function CompanyDetailTabs({
           >
             <span
               className={[
-                "font-data text-[9.5px] font-bold",
-                isActive ? "text-gold-dark" : "text-text-faint",
-              ].join(" ")}
-            >
-              {slot}
-            </span>
-            <span
-              className={[
                 "font-sans text-[12px]",
                 isActive
                   ? "font-semibold text-espresso"
@@ -93,12 +85,6 @@ export function CompanyDetailTabs({
           </button>
         );
       })}
-      <span
-        data-testid="tab-shortcut-hint"
-        className="ml-auto pl-3 font-data text-[10px] text-text-faint shrink-0"
-      >
-        Option+number to jump
-      </span>
     </div>
   );
 }
