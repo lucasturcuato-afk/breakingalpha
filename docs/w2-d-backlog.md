@@ -17,7 +17,7 @@ Status: standalone backlog. A legacy `docs/w2d-backlog.md` was referenced in pri
 | Detail page V1.5+ | 4 | Memo prompt streaming, AI Brief auto-regen, KPI cluster expansion |
 | Code hygiene | 7 | Watchlist subtitle truncation, ESLint cleanups, em-dash cleanup |
 
-Total: 41 items.
+Total: 49 items.
 
 ## Items
 
@@ -64,6 +64,14 @@ Total: 41 items.
 | WD39 | Pre-#197 systematic visual smoke audit across all Company Intel surfaces | S | None | P1 | Phase 4 of overnight run executed a static-analysis version; a manual authenticated browser audit by Noah is still recommended pre-#197 ship. |
 | WD40 | User-triggered web-fallback search on empty-state surface for unindexed companies | M | WD11-WD16 (backend infra exists) | P1 | Backend web-fallback infrastructure exists per WD11-WD16. New scope: wire user-initiated search on `/company/[unindexed-id]` empty state to invoke the web-fallback pipeline (with quota enforcement per WD12). Product scope decision required: is this Phase 1 or Phase 2? |
 | WD41 | Empty-state surface bug scope (brand string, contrast, search-directory, ticker blur) | S | WD40 (web-fallback) for full resolution | P1 | Phase 2 of overnight run classifications: (a) brand "Breaking Alpha" should be "Signalera" at `EmptyState.tsx:93` -- introduced in PR-E1 #238, never displayed correct brand. (b) "Add to watchlist" button uses undefined CSS tokens `--gold-deep`/`--gold-faint` in `EmptyStateCTA.tsx:39-45`, fails through to cream-on-cream-hi -- never worked. (c) "Search directory" is a `<Link href="/company">` in `EmptyStateCTA.tsx:86-94`, no onClick missing -- if user expected inline search, that flow was never built (see WD40). (d) Ticker controlled-input blur in Lucas-protected `WatchlistAddInput.tsx` -- byte-identical to main, pre-existing, requires Lucas coordination. All four bugs classified (iii) NEVER WORKED or (i) PRE-EXISTING + Lucas-protected; no C1c regressions surfaced. |
+| WD51 | ThemesTab substring match over-broad | S | None | P2 | Surfaced during Phase 4 WD50 audit. Theme matching uses naive substring filter that may over-match unrelated articles (e.g. theme "AI" matches any article containing "AI" anywhere in title). Consider word-boundary regex or token match. |
+| WD52 | Duplicate "Sources" h3 on detail page (SourcesStrip footer + SourcesTab heading) | XS | None | P2 | Surfaced during Phase 4 WD50 audit. Both surfaces label themselves "Sources" creating visual confusion when both visible simultaneously. Consider renaming the footer strip to "Top sources" or removing one h3. |
+| WD53 | CompanyTrendCard sentiment Sparkline ink hardcoded green | XS | None | P2 | Surfaced during Phase 4 WD50 audit. The right-rail TrendCard sentiment line is hardcoded green regardless of actual sentiment polarity. Should bind to the sentiment value (green for bullish, red for bearish, gray for neutral). |
+| WD54 | CompanyKPIStrip "events today" label vs data window mismatch | XS | None | P2 | Surfaced during Phase 4 WD50 audit. Label says "events today" but the underlying count uses a 14-day window. Either relabel "events 14d" or scope the count to actual today. |
+| WD55 | CompanyDetailHeader subtitle hardcoded "NASDAQ" for any tickered company | XS | None | P2 | Surfaced during Phase 4 WD50 audit. Pre-existing on main: subtitle reads "NASDAQ" even for NYSE-listed or foreign tickers. Should bind to actual exchange field or omit. |
+| WD56 | CompanyAliasRibbon alias chips are buttons with no onClick (misleading affordance) | XS | None | P2 | Surfaced during Phase 4 WD50 audit. Alias chips render as `<button>` elements with no click handler, suggesting interactivity that doesn't exist. Either implement filter-by-alias behavior or convert to `<span>`. |
+| WD57 | No distinct 404 surface for malformed `/company/[id]` slugs | S | None | P2 | Surfaced during Phase 4 WD50 audit. When slug doesn't resolve, page falls back to EmptyState (the "isn't on Signalera yet" surface) which is meant for valid-but-unindexed companies. Add a true 404 path for malformed inputs. |
+| WD58 | Tab keyboard hint advertises Alt+number but omits `[`/`]` cycle keys | XS | None | P2 | Surfaced during Phase 4 WD50 audit. CompanyDetailTabs tooltip / a11y hint shows Alt+1..9 but the handler also supports `[`/`]` for cycling. Either document both or remove the bracket-key support. |
 
 ## Notes
 
