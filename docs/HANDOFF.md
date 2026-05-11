@@ -1,13 +1,156 @@
 # Signalera/Breaking Alpha -- Claude Chat Handoff
 **Date:** 2026-05-11 (PT)
-**Last session focus:** W2-C Company Intel Phase 1 ship complete. PR #197 squash-merged to main; both Vercel deployments SUCCESS.
-**Status:** Main is at `22cda0c`; integration branch `noah/w2-c-phase-1` deleted post-merge. Phase 1 fully live.
+**Last session focus:** W2-C Company Intel Phase 1 ship complete + W2-D parallel sprint executed (6 draft PRs opened across chrome polish, orphan cleanup, entity-resolution recon, classifier audit, visual smoke, BriefTab regenerate).
+**Status:** Main is at `22dd457` (Phase 1 squash `22cda0c` -> HANDOFF doc-update `8c693c0` -> `.gitignore` for auth state `22dd457`). 6 W2-D draft PRs (#247-#252) open and ready for Noah's review.
 
 ---
 
 ## Recently Completed (2026-05-11) -- W2-C Phase 1 ship
 
 **PR #197 merged to main** (squash commit `22cda0c`) with integration branch `noah/w2-c-phase-1` deleted post-merge. Both Vercel deployments (breakingalpha + signalera) reported SUCCESS within 90s. Phase 1 content now live: C1c freeform brief, C1e ArticlesTab (6-column table + density restoration), C1f completion badges + overrides, C1g tab label strip.
+
+---
+
+## Recently Completed (2026-05-11) -- W2-D parallel sprint (6 threads, all returned within ~35 min)
+
+Dispatch start `2026-05-11T21:43:57Z`. All 6 background agents returned with deliverables before 8h hard cap. Zero merges to main. All work as DRAFT PRs based on main `22dd457`. Lucas-protected files untouched except `/api/memo/route.ts` (Thread F exception). Zero em-dashes across all new content.
+
+### Sprint summary
+
+| Thread | Scope (WD coverage) | Branch | Type | Status | Draft PR | LOC delta |
+|---|---|---|---|---|---|---|
+| A | WD81 WD82 WD84 WD85 WD86 (chrome polish) | `noah/w2-d-chrome-polish` | code | COMPLETED | [#249](https://github.com/lucasturcuato-afk/breakingalpha/pull/249) | +158 / -60 (10 files) |
+| B | WD87 (orphan cleanup) | `noah/w2-d-orphan-cleanup` | code | COMPLETED | [#247](https://github.com/lucasturcuato-afk/breakingalpha/pull/247) | +0 / -564 (4 files) |
+| C | WD72 WD61 WD62 WD64 WD03 WD06 WD26 WD60 WD71 WD69 WD83 (entity + process) | `noah/w2-d-recon-entity` | doc | COMPLETED | [#250](https://github.com/lucasturcuato-afk/breakingalpha/pull/250) | +812 / -0 (2 findings docs) |
+| D | WD63 WD59 WD49 (classifier + summary + sentiment) | `noah/w2-d-recon-classifier` | doc | COMPLETED | [#252](https://github.com/lucasturcuato-afk/breakingalpha/pull/252) | +396 / -0 (1 findings doc) |
+| E | WD89 WD66 WD91 (visual smoke, auth-blocked) | `noah/w2-d-recon-smoke` | doc | COMPLETED-PARTIAL | [#248](https://github.com/lucasturcuato-afk/breakingalpha/pull/248) | +298 / -0 (5 files) |
+| F | WD70 (BriefTab regenerate + 3/day quota) | `noah/w2-d-wd70-regenerate` | code + migration | COMPLETED | [#251](https://github.com/lucasturcuato-afk/breakingalpha/pull/251) | +296 / -13 (4 files) |
+
+**Aggregate**: +1,960 LOC / -637 LOC across 26 files, 6 draft PRs.
+
+### Halts encountered
+
+None. Every thread completed inside-scope. Thread E's auth-wall was anticipated and gracefully handled via code-read substitutes for WD66/WD91.
+
+### Mandatory manual steps for Noah (in priority order)
+
+1. **PR #251 (WD70 Regenerate)** -- highest user value:
+   - Review migration SQL at `supabase/migrations/20260511215034_wd70_user_memo_regeneration_quota.sql`
+   - Execute migration in Supabase dashboard
+   - Pull branch + re-test regenerate end-to-end (live test gated on migration)
+   - Verify RLS policies (signed-in user reads/writes only their own quota rows)
+   - Loop Lucas async on PR review (no blocker per protocol override)
+   - Merge when satisfied
+2. **PR #249 (Chrome polish)** -- authenticated visual smoke on `/company/<slug>`: confirm tab underline + hover lift, trend tab context header, BriefTab gold TLDR block + ordinal eyebrows, KPI strip middle dots, alias ribbon middle dots
+3. **PR #247 (Orphan cleanup)** -- review the 4 deletions (`company-detail-client.tsx`, `company-header.tsx`, `company-tabs.tsx`, `index.ts` barrel). tsc clean. Worktree-shape build failure flagged separately as new WD candidate.
+4. **PR #250 (Entity + process recon)** -- read `entity-resolution-audit.md` + `process-and-spec-recon.md`. Decide which WD-A through WD-L candidates to promote.
+5. **PR #248 (Visual smoke partial)** -- read findings; queue auth-seed work so re-run is possible. Confirm `/company` directory-mention-count exposure decision (intended vs accidental).
+6. **PR #252 (Classifier audit)** -- read `classifier-summary-audit.md`. **WD-number collision warning: Thread D used proposed numbers WD64-WD75 that already exist in `docs/w2-d-backlog.md`. Must renumber on intake.**
+
+### Recommended Noah triage order
+
+Per highest leverage first (matches dispatch spec recommendation):
+1. **#251** -- WD70 (ships actual user-facing feature once migration runs)
+2. **#249** -- Chrome polish (visible polish across Company Intel)
+3. **#247** -- Orphan cleanup (pure tech-debt win, no UX risk)
+4. **#250** -- Entity + process recon (informs many follow-on WDs)
+5. **#248** -- Visual smoke partial (auth-seed is the unlock for future smokes)
+6. **#252** -- Classifier audit (reframes WD59 and surfaces highest-leverage cheap win: surface `relevance_reason` in ArticlesRow)
+
+### Cross-thread converging findings
+
+- **Undefined CSS tokens `--gold-deep` / `--gold-faint`** independently surfaced by:
+  - Thread A WD-candidate-E: broad scope (9+ silent-fall-through references in `CompanyDetailHeader`, `CompanyAliasRibbon`, `EmptyState`, `EmptyStateCTA`, `WebFallbackBanner`)
+  - Thread E WD91-B: narrow scope (EmptyStateCTA contrast)
+  - **Recommendation**: define at root in `src/styles/tokens.css`; closes both findings in one pass.
+- **Worktree `next build` Turbopack-root failure** flagged by Threads A, B, F. Build verification gate effectively non-functional in worktree mode. Configure `turbopack.root` so future code-thread sprints can run full build verification.
+
+### Highest-leverage / lowest-effort follow-up (from Thread D)
+
+Surface existing `relevance_reason` column in the ArticlesRow expand-row instead of the noisy RSS-derived `summary`. The LLM rationale already exists in DB and is currently unused by any UI surface. Single-file UI change, no schema work.
+
+### WD-number collision warning
+
+`docs/w2-d-backlog.md` currently runs WD30 through WD91. Thread D's findings doc proposed WD64 through WD75 for new entries, which collides with existing entries. **Noah must renumber Thread D's proposals on intake** (e.g. WD92 onward, or interleave with semantic grouping). Other threads correctly used "WD-A through WD-L" placeholder labels.
+
+### New WD candidates discovered (consolidated, deduplicated)
+
+**Chrome / UI tokens / UX polish** (5, Thread A):
+- BriefTab "AI Brief" card header strip component (~30 LOC)
+- ArticlesTable "Recent coverage" header strip (~35 LOC)
+- BriefTab cache-checking flash hardening
+- Surface alt-key glyph hint on CompanyDetailTabs (currently hidden)
+- **Define `--gold-deep` / `--gold-faint` tokens at root** (cross-cuts WD91-B)
+
+**Empty-state surface (Thread E breakdown of WD91)** (4):
+- WD91-A (P2): brand string fix at `EmptyState.tsx:93`
+- WD91-B (P1): undefined gold tokens (subsumed by chrome item above)
+- WD91-C (P3): close as-designed (Search Directory Link works)
+- WD91-D (P2): rescope to `/watchlist`, Lucas-coordinate
+
+**Auth / visual-smoke infra** (4, Thread E):
+- **P0: seed `auth-state.json` or wire Playwright login automation** -- blocker for all future visual-smoke threads
+- P1: re-run 180-surface sweep post-seed (deferred WD89)
+- P3: production landing CTA renders literal em-dash glyph despite ASCII-only convention
+- P2: `/company` directory exposes real mention counts unauthenticated -- confirm intended
+
+**Entity resolution + ingestion** (12, Thread C):
+- Name normalization
+- `primary_company` UUID FK migration
+- `articles.companies` link table
+- pg_trgm install + fuzzy ingest hook
+- `validateExtractedCompanyName` reject list (geos / agencies / parentheticals)
+- One-shot UPDATE for NULL fragment-row tickers
+- ExxonMobil / JPMorgan / Tencent HARD_TICKER_OVERRIDES + canonicalize aliases
+- Null-ticker-backfill cron
+- Segment-as-company blocklist + parent rollup (AWS, Facebook, Instagram, TikTok)
+- Index baseline (`companies(lower(name))` unique + `companies(ticker)` partial)
+- aliasResolver sync on every CANONICAL/HARD_TICKER_OVERRIDE addition
+- Upstream trace on token-stem fragments (Pillar / Cove / AMI / MMV / Uni / Mach / NS / Rocket)
+
+**Classifier / pipeline** (12, Thread D, requires renumber):
+- P0: Earnings prompt tightening at `backend/ingest.py:215`
+- P0: Sentiment frame definition (event-vs-reaction) at `backend/ingest.py:214` -- resolves WD49 root cause
+- P2: Reintroduce Regulation deal_type bucket + backfill migration
+- P1: `strip_html` prefix peeling for PRNewswire / Investing.com / wire datelines
+- P1: SEC summary backfill from `content` column (61 SEC rows have only filing-metadata as summary)
+- P1: `primary_company` hallucination guard tightening
+- P3: Low-quality source blocklist (Naturalnews, Globalresearch, Crypto Briefing, Futurism, Om.co, Bitcoinfoundation.org)
+- P2: JV deal_type disambiguator (Funding vs M&A vs Other)
+- P2: IPO clause excludes ETF launches and SPAC over-allotments
+- P3: UI-side sentiment label sweep (story-card, feed-row, brief-pdf)
+- **HIGHEST-LEVERAGE / LOWEST-EFFORT**: surface existing `relevance_reason` in ArticlesRow expand-row
+- (Optional larger) Add a true per-article synthesized lede prompt
+
+**Infra / DX** (2, Thread F):
+- Configure `turbopack.root` for worktree builds (so future thread-F-style sprints can run full build verification)
+- `MEMO_REGENERATIONS_PER_DAY` triple-source-of-truth -- hoist to `src/lib/quotas.ts` to prevent drift
+
+### Critical pipeline finding (reframes WD59)
+
+`articles.summary` is **NOT** LLM-generated. It is the RSS feed `description` HTML-stripped and capped at 500 chars in `backend/ingest.py:349-361, 466, 512, 543`. There is no synthesis prompt to diff for article summaries. WD59 should be reframed from "summary-prompt-tuning audit" to "feed/normalization audit."
+
+### Constraint compliance
+
+All 6 threads confirmed:
+- Zero merges to main
+- Zero SQL writes (Thread C + D used read-only Supabase MCP)
+- Zero `buildMemoSystemPrompt` changes
+- Zero em-dashes in new content
+- Zero structured-output reintroduction
+- Lucas-protected files: untouched except `/api/memo/route.ts` (Thread F exception per protocol override)
+- WD88 (Lucas-protected file review) not addressed -- requires Lucas coordination
+
+### Sprint artifacts
+
+- Status log: `docs/w2-d/sprint-status.md` (this commit, on main)
+- Findings docs (on respective PR branches, NOT on main):
+  - `docs/w2-d/entity-resolution-audit.md` (PR #250, branch `noah/w2-d-recon-entity`)
+  - `docs/w2-d/process-and-spec-recon.md` (PR #250)
+  - `docs/w2-d/classifier-summary-audit.md` (PR #252, branch `noah/w2-d-recon-classifier`)
+  - `docs/w2-d/visual-smoke-audit.md` (PR #248, branch `noah/w2-d-recon-smoke`)
+
+To inspect a findings doc without checking out the branch: `git fetch origin && git show origin/<branch>:docs/w2-d/<file>.md`
 
 ---
 
