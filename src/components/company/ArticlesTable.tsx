@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * ArticlesTable (PR-C2) -- semantic 5-column table.
+ * ArticlesTable (PR-C2 + PR-C1e) -- semantic 6-column table.
  *
- * Columns: deal-type chip | headline | source | tone | age. Spec omits
- * relevanceScore. Anchor refs collected here so ArticlesRow can move
- * focus across rows on ArrowDown / ArrowUp.
+ * Columns: deal-type chip | headline | source | score | tone | age.
+ * Score restored in PR-C1e (DirectionD L762-811). Anchor refs collected
+ * here so ArticlesRow can move focus across rows on ArrowDown / ArrowUp.
  */
 
 import { useCallback, useRef } from "react";
@@ -35,16 +35,17 @@ export function ArticlesTable({ articles }: ArticlesTableProps) {
   }, []);
 
   return (
-    <div className="overflow-hidden rounded-md border border-border-subtle bg-cream-hi">
+    <div className="overflow-x-auto rounded-md border border-border-subtle bg-cream-hi">
       <table
         data-testid="articles-table"
-        className="w-full border-collapse text-left text-sm"
+        className="w-full table-fixed border-collapse text-left text-sm min-w-[700px]"
       >
         <thead>
           <tr className="border-b border-border-subtle bg-[var(--row-alt)]">
             <th className={`${TH} w-[88px]`}>Type</th>
-            <th className={TH}>Headline</th>
-            <th className={`${TH} w-[120px]`}>Source</th>
+            <th className={`${TH} min-w-[200px]`}>Headline</th>
+            <th className={`${TH} w-[160px]`}>Source</th>
+            <th className={`${TH} w-[56px] text-right`}>Score</th>
             <th className={`${TH} w-[88px]`}>Tone</th>
             <th className={`${TH} w-[72px] text-right`}>Age</th>
           </tr>

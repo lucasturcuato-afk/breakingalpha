@@ -33,6 +33,22 @@ const CLASS_SHARE_RE = /^[A-Z]{1,5}\.(A|B)$/;
 // is reachable only by direct symbol query. Keys are lowercase post-canonicalize.
 const HARD_TICKER_OVERRIDES: Record<string, string> = {
   "berkshire hathaway": "BRK.B",
+  "celestica": "CLS",
+  "tsmc": "TSM",
+  "taiwan semiconductor": "TSM",
+  "samsung": "SSNLF",
+  "samsung electronics": "SSNLF",
+  // Added from corrected C1f audit (3 high-confidence entries; mention_count
+  // >= 5, ticker NULL, public US-listed via primary listing or ADR).
+  "asml": "ASML",
+  "novo nordisk": "NVO",
+  "barclays": "BCS",
+  // Raytheon -> RTX (NYSE:RTX, RTX Corporation, formerly Raytheon
+  // Technologies). Standalone "Raytheon" row had ticker NULL with 7
+  // mentions while canonical "RTX" row (8 mentions) had ticker=RTX.
+  // CANONICAL map has no Raytheon entry so aliasResolver could not
+  // cluster the two rows by ticker. Added per WD64-adjacent recon.
+  "raytheon": "RTX",
 };
 
 // Patch J (f): brands where camelCase IS the canonical spelling -- skip
