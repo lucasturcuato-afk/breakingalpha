@@ -60,7 +60,9 @@ interface YahooResult {
 }
 
 async function fetchYahoo(symbol: string): Promise<YahooResult | null> {
-  const encoded = encodeURIComponent(symbol);
+  // Defensive: Yahoo uses hyphens for class shares (BRK-B not BRK.B). No-op
+  // for current indices but closes the bug class against future additions.
+  const encoded = encodeURIComponent(symbol.replace(/\./g, "-"));
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`;
   const res = await fetch(url, {
     headers: { "User-Agent": "Mozilla/5.0" },

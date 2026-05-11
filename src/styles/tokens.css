@@ -7,29 +7,42 @@
 
 :root {
   /* ── Core palette ── */
-  --cream: #fffdf9;
+  /* PR-A0: --cream rebased to D.cream (darker); legacy value preserved as --cream-hi (D.creamHi). */
+  --cream: #fbf6ec;
+  --cream-hi: #fffdf9;
   --parchment: #faf7f2;
   --parchment-mid: #faf5ed;
   --espresso: #1a1208;
   --espresso-light: #3d2b1f;
 
   /* ── Gold system ── */
-  --gold: #c9922a;
+  /* PR-A0: rebased to D.gold (#d4a84b) and D.goldDeep (#a88542). */
+  --gold: #d4a84b;
   --gold-light: #e8b84b;
-  --gold-dark: #8a5a10;
-  --gold-muted: #c9922a18;
-  --gold-border: #c9922a33;
+  --gold-dark: #a88542;
+  --gold-muted: rgba(212, 168, 75, 0.10);
+  --gold-border: rgba(212, 168, 75, 0.32);
 
   /* ── Border system ── */
-  --border-base: #ede8df;
-  --border-subtle: #f0ebe0;
+  /* PR-A0: rebased to D.border (#ede4d3) and D.borderSoft (#f0e8d6); add D.borderHi. */
+  --border-base: #ede4d3;
+  --border-subtle: #f0e8d6;
+  --border-hi: #dccfb6;
   --border-hover: #c9922a44;
 
-  /* ── Text system ── */
+  /* ── Text system ──
+     Tones picked for WCAG AA against the cream background.
+     Verified ratios vs --cream (#fffdf9):
+       text-primary  #1a1208 = 18.23:1
+       text-secondary #6b5a3f =  6.54:1  (was #8a7a60 = 4.11:1, fail at 12px)
+       text-muted    #7a6a4d =  5.17:1  (was #b0a080 = 2.53:1, hard fail)
+       text-faint    #827158 =  4.64:1  (was #c8bfa8 = 1.80:1, hard fail)
+     The warm-paper aesthetic is preserved by keeping the same warm-amber
+     hue family (H ~38, S ~25); we only deepen the L axis. */
   --text-primary: #1a1208;
-  --text-secondary: #8a7a60;
-  --text-muted: #b0a080;
-  --text-faint: #c8bfa8;
+  --text-secondary: #6b5a3f;
+  --text-muted: #7a6a4d;
+  --text-faint: #827158;
 
   /* ── Semantic / signal ── */
   --signal-up: #16a34a;
@@ -78,7 +91,7 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
   /* ── Layout constants ── */
-  --sidebar-width: 236px;
+  --sidebar-width: 220px;
   --topbar-height: 52px;
   --moodbar-height: 36px;
   --right-panel-width: 268px;
@@ -168,6 +181,17 @@
   --pill-watch-bg: var(--gold-muted);
   --pill-watch-text: var(--gold-dark);
   --pill-watch-border: var(--gold-border);
+
+  /* ── Row interaction tokens (Direction D, PR-A0) ──
+     Used by ArticlesTable, directory rows, alias chips. */
+  --row-hover: #f6efe0;
+  --row-alt: #f9f3e6;
+  --row-active: #fbf3df;
+
+  /* ── Citation accent (Direction D, PR-A0) ──
+     --purple binds to web-fallback citation markers (e.g. [w1]) per
+     PR-E2 spec; gold tokens stay reserved for article-grounded [n] cites. */
+  --purple: #8b5cf6;
 }
 
 /* ── Dark mode overrides ── */

@@ -1,29 +1,30 @@
 """
-W2-C one-time ticker backfill.
+W2-C ticker backfill (re-runnable, idempotent).
 
-Diagnosis (2026-05-03):
-  companies.ticker is null for every row (0 of 2,907). PR #196 ships a
-  CompanyStockChart component but the conditional gate
-    { ticker && <CompanyStockChart .../> }
-  fails for every company. The code is correct; the data is missing.
+This script delegates the matching algorithm to
+backend.finnhub_helper.search_finnhub_ticker so the bulk backfill, the
+web-fallback ticker population in entity_resolver.py, and the lazy
+lookup at request time in src/lib/finnhub-ticker.ts all share one
+canonical implementation. See finnhub_helper.py for the full match
+rules: type filter, US-primary preference, suffix-strip retry,
+internal-period-strip retry, first-2-tokens retry with denylist guard,
+and the mention-count gate.
 
-This script populates companies.ticker by querying Finnhub
-  GET https://finnhub.io/api/v1/search?q=<name>
-for each row where ticker IS NULL and selecting the best Common Stock
-match. It writes via supabase-py with the SERVICE ROLE key (bypasses RLS).
+This script's job is the surrounding loop: page through companies that
+need a ticker, call the helper, write back the result, log progress.
 
-Matching algorithm (canonical, mirrored from src/app/api/finnhub-search/
-route.ts but stricter on the type filter):
-
-  candidates = [c for c in result if c.type == "Common Stock"]
-  if empty: return None
-  primary = [c for c in candidates if "." not in c.displaySymbol]
-  if primary: return primary[0].symbol
-  return candidates[0].symbol
+Mention-count gate:
+  Per Amendment 3 of the rules-alignment sprint, only rows with
+  mention_count >= 2 are matched. Rows with mention_count = 1 are
+  almost always Gemini extraction noise (a single article mentioned
+  the string and it has not recurred). The Warner false positive that
+  motivated the gate was a 1-mention row.
 
 Rate limits:
-  Finnhub free tier is 60 req/min. We sleep 1.1s between calls (~55/min).
-  On HTTP 429 we sleep 60s and retry once.
+  Finnhub free tier is 60 req/min. We sleep 1.1s between calls between
+  successive companies. Each per-company call may internally trigger
+  up to 4 Finnhub requests (primary + 3 retries) so worst-case
+  effective rate is ~15 names per minute.
 
 Usage:
   cd /Users/noahhanning/breakingalpha
@@ -41,90 +42,23 @@ import sys
 import time
 from typing import Optional
 
-# Dual-path import to mirror entity_resolver.py / backfill_aliases.py:
-# cron runs with cwd=backend/; tests/dev run with cwd=repo-root. We don't
-# actually import a backend module today, but keep the pattern consistent
-# so future helpers can be added cleanly.
+# Dual-path import to mirror entity_resolver.py: cron runs with
+# cwd=backend/; tests/dev run with cwd=repo-root.
 try:
-    import normalize  # noqa: F401  # cron context: cwd=backend/
+    from finnhub_helper import (  # cron context: cwd=backend/
+        MIN_MENTION_COUNT_FOR_LOOKUP,
+        search_finnhub_ticker,
+    )
 except ImportError:
-    try:
-        from backend import normalize  # noqa: F401  # repo-root context
-    except ImportError:
-        pass
+    from backend.finnhub_helper import (  # test/dev context: cwd=repo-root
+        MIN_MENTION_COUNT_FOR_LOOKUP,
+        search_finnhub_ticker,
+    )
 
 
-FINNHUB_SEARCH_URL = "https://finnhub.io/api/v1/search"
-FINNHUB_TIMEOUT_SEC = 5
 SLEEP_BETWEEN_CALLS_SEC = 1.1
-RATE_LIMIT_SLEEP_SEC = 60
 DRY_RUN_SAMPLE_SIZE = 10
 PROGRESS_EVERY_N = 50
-
-# Accepted Finnhub result types. ADRs cover foreign companies whose primary US
-# listing is via depositary receipts (BABA, TSM, BUD, TM, etc.). Foreign-only
-# listings (.L, .DE, .HK) are filtered out at the displaySymbol step regardless
-# of type.
-ACCEPTED_FINNHUB_TYPES = {"Common Stock", "ADR"}
-
-# Corporate suffixes to strip when the primary search misses. Order in this
-# list does NOT affect matching because we test endswith() with each suffix
-# in turn and stop at the first hit; a longer suffix that subsumes a shorter
-# one (e.g. "Corporation" vs "Corp") is checked first via list order.
-# Case-insensitive, whitespace + comma tolerant on the boundary.
-_CORPORATE_SUFFIXES = [
-    "Corporation",
-    "Incorporated",
-    "Limited",
-    "Company",
-    "Holdings",
-    "Holding",
-    "Corp.",
-    "Corp",
-    "Inc.",
-    "Inc",
-    "Ltd.",
-    "Ltd",
-    "Co.",
-    "Co",
-    "LLC",
-    "L.L.C.",
-    "PLC",
-    "plc",
-    "P.L.C.",
-    "S.A.",
-    "SA",
-    "N.V.",
-    "NV",
-    "GmbH",
-    "AG",
-    "SE",
-]
-
-
-def _strip_corporate_suffix(name: str) -> Optional[str]:
-    """
-    If name ends with a recognized corporate suffix (case-insensitive,
-    whitespace-and-comma-tolerant), return the name with that suffix
-    removed. Otherwise return None.
-
-    The suffix must be preceded by either whitespace or a comma so we
-    don't strip mid-word matches (e.g. "AGCO" must not strip to "GCO"
-    by matching "AG").
-    """
-    base = name.strip()
-    base_lower = base.lower()
-    for suffix in _CORPORATE_SUFFIXES:
-        sl = suffix.lower()
-        # Must be preceded by whitespace, comma, or comma+space.
-        for boundary in (" ", ",", ", "):
-            tail = boundary + sl
-            if base_lower.endswith(tail):
-                stripped = base[: -len(tail)].rstrip(" ,").strip()
-                if stripped and stripped != base:
-                    return stripped
-                return None
-    return None
 
 
 def _load_env() -> None:
@@ -177,68 +111,26 @@ def _get_finnhub_key() -> str:
     return key
 
 
-def _count_missing_ticker(supabase) -> int:
+def _load_eligible_companies(supabase, batch_size: int = 1000) -> list:
     """
-    Return the total count of companies rows where ticker IS NULL. Used
-    only for the dry-run summary / ETA so we don't double-page the table.
-    """
-    resp = (
-        supabase.table("companies")
-        .select("id", count="exact")
-        .is_("ticker", "null")
-        .limit(1)
-        .execute()
-    )
-    return resp.count or 0
+    Return rows that need a ticker AND clear the mention-count gate.
 
+    Mention-count gate (Amendment 3): companies with mention_count < 2 are
+    Gemini extraction noise. Filtered server-side here so we never spend
+    a Finnhub call on them. The same gate is applied as a safety net
+    inside finnhub_helper.search_finnhub_ticker.
 
-def _iter_missing_ticker_companies(supabase, batch_size: int = 100):
-    """
-    Yield companies rows where ticker IS NULL, ordered by id, paged via
-    .range(). Stops when a batch returns fewer rows than batch_size.
-
-    Note: in LIVE mode each iteration writes back to the row's ticker
-    field. We still page by offset because rows we just wrote no longer
-    match the IS NULL filter, which would shift later rows leftward and
-    cause us to skip companies. To avoid that, we accumulate ids of
-    written rows in the caller and we order by id (stable). The simplest
-    fix is to fetch the whole id-list up front when we know the count is
-    bounded. We do that here.
-    """
-    offset = 0
-    while True:
-        resp = (
-            supabase.table("companies")
-            .select("id, name")
-            .is_("ticker", "null")
-            .order("id")
-            .range(offset, offset + batch_size - 1)
-            .execute()
-        )
-        rows = resp.data or []
-        if not rows:
-            return
-        for r in rows:
-            yield r
-        if len(rows) < batch_size:
-            return
-        offset += batch_size
-
-
-def _load_all_missing_ticker_companies(supabase, batch_size: int = 1000) -> list:
-    """
-    Pull the full list of (id, name) for rows where ticker IS NULL into
-    memory up front. This is safer than paging while writing because LIVE
-    writes flip ticker from NULL to a real value, which would cause an
-    offset-paged query to skip rows. ~3k rows * ~80 bytes is trivial.
+    The IS NULL filter on ticker also excludes rows we've already
+    populated in a previous run, so re-running this script is idempotent.
     """
     out: list = []
     offset = 0
     while True:
         resp = (
             supabase.table("companies")
-            .select("id, name")
+            .select("id, name, mention_count")
             .is_("ticker", "null")
+            .gte("mention_count", MIN_MENTION_COUNT_FOR_LOOKUP)
             .order("id")
             .range(offset, offset + batch_size - 1)
             .execute()
@@ -248,131 +140,6 @@ def _load_all_missing_ticker_companies(supabase, batch_size: int = 1000) -> list
         if len(rows) < batch_size:
             return out
         offset += batch_size
-
-
-def _call_and_pick_us_primary(query: str, finnhub_key: str) -> Optional[str]:
-    """
-    Single Finnhub call. Returns the symbol of the best US-primary match, or
-    None if no candidate qualifies.
-
-    Match rules (W2-C canonical):
-      candidates = [c for c in result if c.type in ('Common Stock', 'ADR')]
-      primary    = [c for c in candidates if '.' not in c.displaySymbol]
-      if primary: return primary[0].symbol
-      return None  # foreign-only listings are deliberately not written
-
-    Returns None on any non-200 / network error after one 429 retry. Errors
-    are silent at the caller; we WARN to stderr but never propagate.
-    """
-    import requests
-
-    params = {"q": query}
-    headers = {"X-Finnhub-Token": finnhub_key}
-
-    def _do_call():
-        return requests.get(
-            FINNHUB_SEARCH_URL,
-            params=params,
-            headers=headers,
-            timeout=FINNHUB_TIMEOUT_SEC,
-        )
-
-    try:
-        resp = _do_call()
-    except Exception as ex:  # noqa: BLE001
-        print(
-            "backfill_tickers: WARN search failed for {!r}: {}".format(query, ex),
-            file=sys.stderr,
-        )
-        return None
-
-    if resp.status_code == 429:
-        print(
-            "backfill_tickers: WARN 429 rate-limited on {!r}; sleeping {}s and retrying once".format(
-                query, RATE_LIMIT_SLEEP_SEC
-            ),
-            file=sys.stderr,
-        )
-        time.sleep(RATE_LIMIT_SLEEP_SEC)
-        try:
-            resp = _do_call()
-        except Exception as ex:  # noqa: BLE001
-            print(
-                "backfill_tickers: WARN retry after 429 failed for {!r}: {}".format(query, ex),
-                file=sys.stderr,
-            )
-            return None
-
-    if resp.status_code != 200:
-        print(
-            "backfill_tickers: WARN non-200 status {} for {!r}".format(
-                resp.status_code, query
-            ),
-            file=sys.stderr,
-        )
-        return None
-
-    try:
-        data = resp.json() or {}
-    except Exception:  # noqa: BLE001
-        return None
-
-    result = data.get("result") or []
-    if not isinstance(result, list):
-        return None
-
-    candidates = [
-        c for c in result
-        if isinstance(c, dict) and c.get("type") in ACCEPTED_FINNHUB_TYPES
-    ]
-    if not candidates:
-        return None
-
-    # Foreign-only filter: chosen MUST have a US-primary displaySymbol (no dot
-    # exchange suffix). If every candidate is foreign-listed, return None
-    # rather than write a .L / .DE / .HK ticker that the Yahoo chart proxy
-    # may not handle gracefully.
-    primary = [
-        c for c in candidates
-        if "." not in (c.get("displaySymbol") or "")
-    ]
-    if not primary:
-        return None
-
-    sym = primary[0].get("symbol")
-    if not sym or not isinstance(sym, str):
-        return None
-    return sym.strip() or None
-
-
-def search_ticker(name: str, finnhub_key: str) -> Optional[str]:
-    """
-    Two-pass ticker search with corporate-suffix strip retry.
-
-    Pass 1: query Finnhub with the name as-is.
-    Pass 2 (only if pass 1 misses): if the name ends with a recognized
-            corporate suffix (Inc., Corp., Ltd., etc.), retry once with
-            the suffix stripped. Many Finnhub matches fail when the
-            suffix + period are included (verified: 'Hologic Inc.' returns
-            zero candidates while 'Hologic' returns HOLX).
-
-    Returns the chosen symbol (str) or None. Foreign-only listings
-    (displaySymbol contains '.') are deliberately returned as None
-    regardless of pass; W2-C policy stores NULL for non-US-primary.
-
-    Sleeps SLEEP_BETWEEN_CALLS_SEC between the two passes so back-to-back
-    Finnhub calls stay under the 60/min free-tier limit.
-    """
-    primary = _call_and_pick_us_primary(name, finnhub_key)
-    if primary is not None:
-        return primary
-
-    stripped = _strip_corporate_suffix(name)
-    if stripped is not None and stripped != name:
-        time.sleep(SLEEP_BETWEEN_CALLS_SEC)
-        return _call_and_pick_us_primary(stripped, finnhub_key)
-
-    return None
 
 
 def _format_eta(seconds: float) -> str:
@@ -387,7 +154,7 @@ def _format_eta(seconds: float) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="One-time backfill: populate companies.ticker via Finnhub /search."
+        description="Backfill: populate companies.ticker via Finnhub /search."
     )
     parser.add_argument(
         "--dry-run",
@@ -405,12 +172,16 @@ def main() -> int:
     mode = "DRY-RUN" if args.dry_run else "LIVE"
     print("backfill_tickers: starting (mode={})".format(mode))
 
-    rows = _load_all_missing_ticker_companies(supabase)
+    rows = _load_eligible_companies(supabase)
     total = len(rows)
+    # Per-company nominal cost is one Finnhub call (best case) plus
+    # SLEEP_BETWEEN_CALLS_SEC. Worst case (3 retries) is ~4x. ETA below
+    # uses the nominal cost; expect 1.5x-3x in practice.
     eta_sec = total * SLEEP_BETWEEN_CALLS_SEC
     print(
-        "backfill_tickers: companies missing ticker = {}; ETA at {:.1f}s/call ~ {}".format(
-            total, SLEEP_BETWEEN_CALLS_SEC, _format_eta(eta_sec)
+        "backfill_tickers: eligible companies (ticker IS NULL AND mention_count >= {}) = {}; "
+        "ETA at {:.1f}s/call ~ {}".format(
+            MIN_MENTION_COUNT_FOR_LOOKUP, total, SLEEP_BETWEEN_CALLS_SEC, _format_eta(eta_sec)
         )
     )
 
@@ -426,14 +197,14 @@ def main() -> int:
     started = time.time()
 
     # In dry-run we only call Finnhub for the first DRY_RUN_SAMPLE_SIZE rows
-    # so we don't burn ~50 minutes on a no-write rehearsal. The spec calls
-    # for "first 10 rows actually queried, plus the total count + ETA".
+    # so we don't burn ~50 minutes on a no-write rehearsal.
     dry_run_call_cap = DRY_RUN_SAMPLE_SIZE if args.dry_run else None
 
     try:
         for row in rows:
             cid = row.get("id")
             name = row.get("name")
+            mc = row.get("mention_count")
             processed += 1
 
             if not cid or not name:
@@ -445,19 +216,19 @@ def main() -> int:
                 continue
 
             if dry_run_call_cap is not None and sample_logged >= dry_run_call_cap:
-                # Stop spending API calls in dry-run after we've logged the
-                # sample. Total / ETA are already printed above.
                 break
 
-            ticker = search_ticker(name, finnhub_key)
+            ticker = search_finnhub_ticker(
+                name, mention_count=mc, finnhub_key=finnhub_key
+            )
             time.sleep(SLEEP_BETWEEN_CALLS_SEC)
 
             if args.dry_run:
                 sample_logged += 1
                 shown = ticker if ticker else "NO MATCH"
                 print(
-                    "backfill_tickers: SAMPLE {}: {!r} -> {}".format(
-                        sample_logged, name, shown
+                    "backfill_tickers: SAMPLE {}: {!r} (mc={}) -> {}".format(
+                        sample_logged, name, mc, shown
                     )
                 )
                 if ticker:
@@ -495,7 +266,7 @@ def main() -> int:
         print("backfill_tickers: interrupted", file=sys.stderr)
         return 130
 
-    skipped = 0  # rows with an existing ticker are excluded by the IS NULL filter
+    skipped = 0  # rows with an existing ticker AND rows below the gate are excluded server-side
     print(
         "inserted={} skipped={} no_match={} errored={} total={}".format(
             updated, skipped, no_match, errored, total if not args.dry_run else processed

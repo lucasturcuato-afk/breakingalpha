@@ -84,13 +84,31 @@ export function AppShell({
 
   return (
     <>
-      {/* Sidebar (fixed, outside flex flow) — desktop only */}
+      {/* Skip link: first focusable element so keyboard users can bypass nav.
+          focus-visible (not focus) so mouse interactions never reveal it.
+          onClick explicitly focuses the target because some browsers do not
+          auto-focus hash targets even when they have tabindex=-1. */}
+      <a
+        href="#main-content"
+        onClick={() => {
+          setTimeout(() => document.getElementById("main-content")?.focus(), 0);
+        }}
+        className="sr-only focus-visible:not-sr-only focus-visible:absolute focus-visible:top-2 focus-visible:left-2 focus-visible:z-50 focus-visible:px-3 focus-visible:py-1.5 focus-visible:rounded focus-visible:bg-espresso focus-visible:text-cream focus-visible:font-sans focus-visible:text-[12px]"
+      >
+        Skip to main content
+      </a>
+
+      {/* Sidebar (fixed, outside flex flow). Visible at md+ (icon-only between
+          768-1023px, full at lg+); below md the MobileBottomNav handles
+          navigation. */}
       <div className="hidden md:block">
         <Sidebar />
       </div>
 
-      {/* Main area — full width on mobile, offset by sidebar on md+ */}
-      <div className="h-screen flex flex-col md:ml-[var(--sidebar-width)] overflow-hidden">
+      {/* Main area. Below md: full width (sidebar hidden, MobileBottomNav).
+          md to lg-1: offset by 64px icon-only sidebar.
+          lg+: offset by full --sidebar-width (220px). */}
+      <div className="h-screen flex flex-col md:ml-[64px] lg:ml-[var(--sidebar-width)] overflow-hidden">
         {/* Preview banner */}
         {isPreview && (
           <div
@@ -128,7 +146,7 @@ export function AppShell({
         {/* Content + right panel */}
         <div className="flex-1 flex overflow-hidden">
           {/* Scrollable content area */}
-          <main className="flex-1 overflow-y-auto bg-parchment pb-[56px] md:pb-0">
+          <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto bg-parchment pb-[56px] md:pb-0">
             <PageTransition>{children}</PageTransition>
           </main>
 

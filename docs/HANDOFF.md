@@ -1,7 +1,152 @@
 # Signalera/Breaking Alpha -- Claude Chat Handoff
-**Date:** 2026-05-08 (PT)
-**Last session focus:** Diagnostic + fix for the morning pipeline run #98 6h+ hang. Ran in a separate worktree (`noah/diagnose-pipeline-timeout`) so it did not collide with the W2-C Phase 4/5/6 session. PR #239 OPEN ready-for-review, base=main. Awaits Noah eyeball + cron-job.org re-enable.
-**Status:** Pipeline fix shipped to PR #239. 4 layered changes (timeouts + UA, chunked filter, response_schema, drop batch path) brought duration from 6h+ (run #98 cancelled) -> 87 -> 36 -> 30 -> 20.7 min across 4 smoke tests. All 10 success criteria pass on smoke #4. W2-D items WD40-WD45 filed.
+**Date:** 2026-05-11 (PT)
+**Last session focus:** W2-C Company Intel Phase 1 ship sequence. C1a -> C1g architectural arc, merge cascade through integration, SQL ticker backfills, Alphabet 7-dup consolidation, #197 squash to main pending.
+**Status:** PR #197 in final-ship sequence. Integration at the post-cascade tip with all C1c-C1g work + main's pipeline run #98 fix + WD backlog reconciled.
+
+---
+
+## 2026-05-10 overnight -- parallel agent work (Overnight C1c/C1e session)
+
+### PR state summary
+
+| PR | State | Tip | Key fact |
+|---|---|---|---|
+| #241 (C1a) | CLOSED | n/a | superseded comment posted; structured-output path abandoned |
+| #242 (C1b) | CLOSED | n/a | superseded comment posted; density-floor port unnecessary post-C1c |
+| #243 (C1c) | OPEN DRAFT | `dc3d925` | Density fix verified via verbatim Alphabet + Anthropic memos. NOT yet squashed. |
+| #244 (C1e) | OPEN DRAFT | `5ab967a` | ArticlesTable density restoration + Option 3 CSS column-collapse repair (3 LOC). Stacked on C1c. NOT yet marked ready. |
+| #197 | OPEN | n/a | Integration -> main. Held. |
+
+### Phase outcomes
+
+**Phase 1 (CSS fix):** LANDED on PR #244 as commit `5fbe05b`. Single file `src/components/company/ArticlesTable.tsx`, 3 LOC: `overflow-hidden -> overflow-x-auto` on wrapper, `table-fixed + min-w-[700px]` on table, `min-w-[200px]` on Headline `<th>`. Restores 6-column visibility at typical desktop viewports; horizontal scrollbar fallback at narrow viewports.
+
+**Phase 2 (empty-state triage):** COMPLETE -- no C1c regressions among the 5 known bugs. Classifications:
+- (a) Brand "Breaking Alpha" -> (iii) NEVER WORKED. Introduced in PR-E1 #238 by Noah on 2026-05-07; no "Signalera" string anywhere in src/.
+- (b) "Add to watchlist" contrast -> (iii) NEVER WORKED. EmptyStateCTA uses undefined CSS tokens `--gold-deep`/`--gold-faint`/`--gold-border-deep`; falls through to cream-on-cream-hi.
+- (c) "Search directory" onClick -> (iii). Element is `<Link href="/company">`, no onClick needed. If inline-search was expected, that flow was never built (see WD40).
+- (d) Ticker controlled-input blur -> (i) PRE-EXISTING + Lucas-protected. `WatchlistAddInput.tsx` byte-identical to main.
+- (e) Web-fallback empty-state -> (iii) per C9 mandate (out of scope this session).
+All five filed as WD41 (consolidated) + WD40 (separate web-fallback search scope).
+
+**Phase 3 (regression fixes):** SKIPPED per F6. Zero eligible (ii) C1c-regressions surfaced in Phase 2. PR-C1f NOT opened.
+
+**Phase 4 (WD50 audit):** COMPLETE -- 16 surfaces static-analyzed. 0 C1c regressions. 2 pre-existing prod-main bugs (sources top-12 cap; header NASDAQ subtitle). 5 design drift items (ArticlesTab DR-A1..A4 under WD35 family + tab keyboard hint omits `[/]`). 6 ambiguous items filed as WD51-WD58. Phase 7 NOT triggered. NO ship-blocker alerts for #197.
+
+**Phase 5 (HANDOFF.md):** This section. Committed to `noah/pr-c1e-articles-table-density` per overnight P5.1.
+
+**Phase 6 (closures):** PR #241 + #242 closed with pre-authorized supersession comments. 'superseded' label not applied (label availability not verified).
+
+### W2-D backlog additions (WD30-WD41, WD51-WD58)
+
+Filed to `docs/w2-d-backlog.md` on the C1e branch (NOT main). 20 entries total. Highlights:
+- **WD30-WD33, WD41**: tab keyboard shortcuts, tab chrome polish, BriefTab download/export, empty-state bug consolidation
+- **WD34, WD35**: BriefTab TLDR gold-faint block + 21-item chrome polish batch from C1b/C1c drift
+- **WD36-WD37**: stale JSDoc cleanup + orphaned legacy components (verified zero importers)
+- **WD38**: Lucas-protected file review post-#197
+- **WD39**: pre-#197 manual visual smoke audit (Noah's recommended pre-ship action)
+- **WD40**: user-triggered web-fallback search on unindexed empty-state -- product scope decision required
+- **WD51-WD58**: Phase 4 audit findings (themes substring match, duplicate Sources h3, sparkline ink hardcoded green, KPI events-today label mismatch, header NASDAQ hardcode, alias chips no-onClick, no distinct 404, keyboard hint omits brackets)
+
+**Numbering note**: WD30-WD41 + WD51-WD58 used here on the C1e branch. Main branch has its own WD30-WD33 + WD34-WD35 + WD40-WD45 + WD50 from prior sessions. There will be a merge conflict at WD30 onward when integration eventually merges to main. Resolve at PR #197 merge time.
+
+### Open product questions for Noah
+
+1. **WD40 web-fallback scope:** wire user-triggered search on unindexed empty-state. Is this Phase 1 (pre-#197 ship) or Phase 2 (post-ship)? Backend infrastructure exists per WD11-WD16.
+2. **WD30 tab keyboard shortcuts:** Fn labels imply Alt+number shortcuts. Implement handlers (~30 LOC) OR strip Fn labels from tabs. Either direction is acceptable; pick before #197.
+3. **WD38 Lucas-protected file review:** Phase 1 architectural shifts mean some protections may no longer be load-bearing. MemoModal.tsx is largely superseded by BriefTab for company memos. Worth a conversation with Lucas before final ship.
+4. **Tab system architectural drift:** F7 = Transcripts on live codebase but spec said Insider; F8 = Insider but spec said Options; F9 = Comps but spec said Peers. PR-A2 locked the live labels. Document deviations in #197 PR body.
+5. **WD33 BriefTab download/export:** prod MemoModal had it; was not ported to BriefTab during C1a. Adds Phase 1 polish if it's a launch blocker. Otherwise file as Phase 2.
+
+### Recommended morning eyeball priority
+
+1. **PR #244 preview at d60442 (latest tip `5ab967a`):** sign in, navigate `/company/alphabet?tab=articles`. Confirm 6 columns visible (Type / Headline / Source / Score / Tone / Age) + expand-on-click summary + source-credibility badge in source cell. Side-by-side with prod /company landing right-rail card for visual parity.
+2. **BriefTab regression check:** trigger fresh Generate Brief on `/company/alphabet` post-density-fix. Confirm 5-section dense memo still produces (no regression from ARTICLE_COLS extension). Cache hit on reload still works.
+3. **PR #243 + PR #244 eyeball decisions:** mark ready -> squash both -> close cascade. Order: squash #244 (C1e) into noah/pr-c1c-brieftab-prod-generator, then squash #243 (C1c, now including C1e) into noah/w2-c-phase-1.
+4. **Integration Vercel preview** on noah/w2-c-phase-1 post-squashes. Smoke `/company/alphabet`, `/company/anthropic`, `/company/microsoft`. Same density bar as the verbatim memos posted on PR #243.
+5. **Decision on open product questions** above (web-fallback scope, tab shortcuts, Lucas review).
+6. **PR #197 squash to main** when integration smoke passes. The ship.
+
+### Files modified this session (on noah/pr-c1e-articles-table-density)
+
+- `src/components/company/ArticlesTable.tsx` (Phase 1 CSS fix, 3 LOC)
+- `docs/w2-d-backlog.md` (WD30-WD41 + WD51-WD58 = 20 entries, 49 total)
+- `docs/HANDOFF.md` (this section)
+
+### Files NOT modified
+
+- No application logic touched
+- Lucas-protected files (WatchlistAddInput.tsx, MemoModal.tsx, watchlist-utils.ts, trends/page.tsx, briefing/route.ts) -- read only
+- `buildMemoSystemPrompt` in company-intel.ts -- byte-identical to main
+- No structured-output infrastructure reintroduced
+- Zero new em-dashes (3 pre-existing verbatim revert remain)
+- main, w2-c-phase-1 branches not pushed to from C1e work
+
+### PRs to close (pending squash-to-integration)
+
+PR #241 and #242 closed during this session per Phase 6 mandate. After PR #243 squashes to integration, no further closures needed.
+
+### Comments posted on PR #244 (audit trail)
+
+- Phase 1 land + preview URL: https://github.com/lucasturcuato-afk/breakingalpha/pull/244#issuecomment-4417925138
+- Phase 2 empty-state triage: https://github.com/lucasturcuato-afk/breakingalpha/pull/244#issuecomment-4417923179
+- Phase 4 WD50 audit: https://github.com/lucasturcuato-afk/breakingalpha/pull/244#issuecomment-4417933033
+- Earlier diagnostic chain (CSS column-collapse, code-path trace, Vercel collision rule-out): see PR #244 comment thread for sequence
+
+---
+
+## Recently Completed (2026-05-06) -- W2-C Phase 1 sprint
+
+PR #197 collects all of the work below onto integration branch `noah/w2-c-phase-1`. Merge to main is gated on Patches G and H (data-only pre-ship gates).
+
+Sprint commits, in merge order to integration:
+
+- **PR #198** -- web-fallback ticker population during canonical creation. `register_entity` miss-branch now does a best-effort Finnhub `/api/v1/search` call before insert.
+- **PR #200** -- one-time bulk ticker backfill via Finnhub `/search`. Reference commit; ran in prod, inserted 881 of 2907 rows (30.3 percent coverage). Long-tail misses are mostly foreign ADRs (see W2-D backlog item 1).
+- **PR #201** -- unified canonical matching rules + retry chain + mention-count gate. Aligns Python helper, bulk backfill, web-fallback, and TS lazy lookup on one algorithm. Closes the foreign-ticker pollution and Warner Bros. Discovery bugs.
+- **PR #194** -- one-time alias backfill script. Inserted 2882 of 2902 rows; 1:1 with companies post-run.
+- **PR #195** -- W2-A read-path PR. Adds `alias_count` to `GET /api/companies` via PostgREST relationship-count subquery; adds typo-redirect via `normalizeLookupKey` on zero-result queries.
+- **PR #196** -- stock chart on company detail page (Phase 1.5). Pure-SVG chart, range selector, hover crosshair; new `/api/stock-chart` Yahoo proxy.
+- **PR #203** (PR D) -- skip role-block prepend for company memo types. One-line ternary in `src/app/api/memo/route.ts` so company / company-web prompts own the section structure end to end.
+- **PR #204** (PR E) -- center detail page content + widen to 960px. Three lines in `company-detail-client.tsx`.
+- **PR #205** (PR F) -- directory dedup backfills ticker/sector from sibling rows. Single-file change in `src/app/company/page.tsx` so the canonical card inherits non-null fields from cluster siblings.
+- **PR #199** -- lazy ticker lookup at detail-page request time + integration merge + mention_count threading. Falls through to Finnhub once when ticker is NULL, persists fire-and-forget; ready for self-merge to integration.
+- **PR #202** -- chart 1D percent uses `chartPreviousClose` anchor; headline price prefers `regularMarketPrice` (Bug 3 fix).
+
+Earlier in the sprint window:
+
+- **PR #191** -- sidebar refactor (Phase 1 surface 1).
+- **PR #192** -- `CompanyIntelMemoModal` fork (Phase 1 surface 2). Shared `MemoModal` left untouched per section 8 question 3 of the W2-C design doc.
+- **PR #193** -- directory page redesign (Phase 1 surface 3). Replaces 3-column card grid with the 28-row dense table.
+
+### Architecture decisions banked
+
+- **Pure-SVG charts.** No Recharts. Yahoo `/v8/finance/chart` is the data source; `chartPreviousClose` anchors the 1D percent (PR #202).
+- **Edge cache via headers.** `/api/stock-chart` does no request-time DB calls; data is cached at the edge.
+- **Ticker coverage strategy.** Resolution chain is name-as-is -> suffix-strip -> period-strip -> first-2-tokens, gated by `mention_count >= 2` (Amendment 3). The same rule fires from bulk backfill, web-fallback, and lazy lookup.
+- **Mention-count gate (Amendment 3).** Shared between PR #200, PR #198, PR #201, and PR #199. One algorithm, three call sites.
+- **Memo prompt structure.** Company prompts own complete section structure top to bottom; the role-block prepend only applies to deal / thesis / brief / article paths (PR #203).
+
+### Overnight patch sprint queued
+
+Per `.session-artifacts/overnight/SHARED_INSTRUCTIONS.md`. Status as of doc write:
+
+- Patches I (PR #206 search read-path) and S (PR #207 notification 14-day gate) opened against integration.
+- Patch P (sector backfill script) in progress.
+- Patches J, K, L, M, N1, N2, O queued; status not yet logged.
+
+### Process notes (lessons from this sprint)
+
+- **Parallel-write hazard.** Two patches that share a file produce a Git race. Mitigation: every write subagent runs in its own isolated worktree under `.claude/worktrees/`.
+- **Session-unique tmp filenames.** Commit-message and PR-body tmp files use the session UUID prefix (`overnight-2026-05-06-3a7b9c-patch-<letter>-...`) so two agents never collide on `/tmp/foo`.
+- **Onboarding-bypass PATCH for test users.** Without the `user_profiles` PATCH after `auth/v1/admin/users` POST, `/company/*` redirects to `/onboarding`. Codified in shared instructions.
+- **Playwright collision handling.** Single shared MCP browser; on "browser busy", retry every 30s up to 3 minutes, then fall back to curl/REST and document the symptom.
+
+---
+
+## 2026-05-08 -- Pipeline run #98 fix (from main)
+
+Diagnostic + fix for the morning pipeline run #98 6h+ hang. Ran in a separate worktree (`noah/diagnose-pipeline-timeout`) so it did not collide with the W2-C Phase 4/5/6 session. PR #239 OPEN ready-for-review, base=main. Pipeline fix shipped to PR #239. 4 layered changes (timeouts + UA, chunked filter, response_schema, drop batch path) brought duration from 6h+ (run #98 cancelled) -> 87 -> 36 -> 30 -> 20.7 min across 4 smoke tests. All 10 success criteria pass on smoke #4. W2-D items WD40-WD45 filed. Full detail in "Recently Completed (2026-05-08)" section below.
 
 ---
 

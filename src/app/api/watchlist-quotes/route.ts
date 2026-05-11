@@ -29,8 +29,12 @@ async function fetchFinnhub(symbol: string, apiKey: string): Promise<Quote | nul
 // keyless. Used both as a primary for ^/= symbols and as a fallback for
 // anything Finnhub blanks on.
 async function fetchYahoo(symbol: string): Promise<Quote | null> {
+  // Yahoo Finance v8 uses hyphens for US class shares (BRK-B, BF-B, CWEN-A);
+  // a period-form symbol returns "symbol may be delisted". Substitute at the
+  // boundary only; the original form is preserved in the caller's response.
+  const yahooSymbol = symbol.replace(/\./g, "-");
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-    symbol,
+    yahooSymbol,
   )}?interval=1d&range=1d`;
   const res = await fetch(url, {
     signal: AbortSignal.timeout(5000),

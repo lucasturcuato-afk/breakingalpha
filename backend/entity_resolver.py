@@ -315,7 +315,14 @@ def _try_insert_canonical(
             # the extra companies.update.
             if not os.environ.get("DISABLE_TICKER_POPULATION"):
                 try:
-                    ticker = search_finnhub_ticker(name)
+                    # mention_count=1 here because we just inserted a fresh
+                    # canonical row. Per Amendment 3 of the rules-alignment
+                    # sprint, the helper applies a >= 2 gate, so this call
+                    # is effectively a no-op for new rows: 1-mention rows
+                    # are usually Gemini extraction noise and should not be
+                    # ticker-matched. Bulk backfill picks them up later if
+                    # they recur and climb past the threshold.
+                    ticker = search_finnhub_ticker(name, mention_count=1)
                     if ticker:
                         try:
                             supabase.table("companies").update(
