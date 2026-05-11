@@ -1,21 +1,31 @@
 # Signalera/Breaking Alpha -- Claude Chat Handoff
 **Date:** 2026-05-11 (PT)
-**Last session focus:** W2-C Company Intel Phase 1 ship sequence. C1a -> C1g architectural arc, merge cascade through integration, SQL ticker backfills, Alphabet 7-dup consolidation, #197 squash to main pending.
-**Status:** PR #197 in final-ship sequence. Integration at the post-cascade tip with all C1c-C1g work + main's pipeline run #98 fix + WD backlog reconciled.
+**Last session focus:** W2-C Company Intel Phase 1 ship complete. PR #197 squash-merged to main; both Vercel deployments SUCCESS.
+**Status:** Main is at `22cda0c`; integration branch `noah/w2-c-phase-1` deleted post-merge. Phase 1 fully live.
 
 ---
 
-## 2026-05-10 overnight -- parallel agent work (Overnight C1c/C1e session)
+## Recently Completed (2026-05-11) -- W2-C Phase 1 ship
 
-### PR state summary
+**PR #197 merged to main** (squash commit `22cda0c`) with integration branch `noah/w2-c-phase-1` deleted post-merge. Both Vercel deployments (breakingalpha + signalera) reported SUCCESS within 90s. Phase 1 content now live: C1c freeform brief, C1e ArticlesTab (6-column table + density restoration), C1f completion badges + overrides, C1g tab label strip.
+
+---
+
+## 2026-05-10 overnight -- parallel agent work (Overnight C1c/C1e session) -- COMPLETED
+
+Merge cascade concluded on 2026-05-11 morning. PR #246 (C1f) -> C1e -> PR #245 (C1g) -> C1e -> PR #244 (C1e+C1f+C1g) -> C1c -> PR #243 (C1c+everything) -> integration -> squash PR #197 to main at `22cda0c`. SQL gate (18 tickers + Alphabet 7-dup) executed via dashboard. All 9 cascade steps complete; integration smoke and main deployment both passed.
+
+### PR state summary (final state post-cascade)
 
 | PR | State | Tip | Key fact |
 |---|---|---|---|
 | #241 (C1a) | CLOSED | n/a | superseded comment posted; structured-output path abandoned |
 | #242 (C1b) | CLOSED | n/a | superseded comment posted; density-floor port unnecessary post-C1c |
-| #243 (C1c) | OPEN DRAFT | `dc3d925` | Density fix verified via verbatim Alphabet + Anthropic memos. NOT yet squashed. |
-| #244 (C1e) | OPEN DRAFT | `5ab967a` | ArticlesTable density restoration + Option 3 CSS column-collapse repair (3 LOC). Stacked on C1c. NOT yet marked ready. |
-| #197 | OPEN | n/a | Integration -> main. Held. |
+| #243 (C1c) | MERGED | `debec11` | Squashed to integration, absorbed C1f + C1g in cascade sequence. |
+| #244 (C1e+C1f+C1g) | MERGED | `debec11` | Squashed to C1c/integration as part of cascade. ArticlesTab + overrides + label strip. |
+| #245 (C1g) | MERGED | `ebe7197` | Tab label strip PR, squashed to C1e. |
+| #246 (C1f) | MERGED | `23bc58e` | Density restoration PR, squashed to C1e. |
+| #197 | MERGED | `22cda0c` | Integration -> main. Squash-merged on 2026-05-11. |
 
 ### Phase outcomes
 
@@ -58,14 +68,17 @@ Filed to `docs/w2-d-backlog.md` on the C1e branch (NOT main). 20 entries total. 
 4. **Tab system architectural drift:** F7 = Transcripts on live codebase but spec said Insider; F8 = Insider but spec said Options; F9 = Comps but spec said Peers. PR-A2 locked the live labels. Document deviations in #197 PR body.
 5. **WD33 BriefTab download/export:** prod MemoModal had it; was not ported to BriefTab during C1a. Adds Phase 1 polish if it's a launch blocker. Otherwise file as Phase 2.
 
-### Recommended morning eyeball priority
+### Cascade and ship sequence (completed 2026-05-11 morning)
 
-1. **PR #244 preview at d60442 (latest tip `5ab967a`):** sign in, navigate `/company/alphabet?tab=articles`. Confirm 6 columns visible (Type / Headline / Source / Score / Tone / Age) + expand-on-click summary + source-credibility badge in source cell. Side-by-side with prod /company landing right-rail card for visual parity.
-2. **BriefTab regression check:** trigger fresh Generate Brief on `/company/alphabet` post-density-fix. Confirm 5-section dense memo still produces (no regression from ARTICLE_COLS extension). Cache hit on reload still works.
-3. **PR #243 + PR #244 eyeball decisions:** mark ready -> squash both -> close cascade. Order: squash #244 (C1e) into noah/pr-c1c-brieftab-prod-generator, then squash #243 (C1c, now including C1e) into noah/w2-c-phase-1.
-4. **Integration Vercel preview** on noah/w2-c-phase-1 post-squashes. Smoke `/company/alphabet`, `/company/anthropic`, `/company/microsoft`. Same density bar as the verbatim memos posted on PR #243.
-5. **Decision on open product questions** above (web-fallback scope, tab shortcuts, Lucas review).
-6. **PR #197 squash to main** when integration smoke passes. The ship.
+1. Squashed PR #246 (C1f) and PR #245 (C1g) into C1e branch.
+2. Squashed combined C1e+C1f+C1g (PR #244) into C1c branch (PR #243).
+3. Squashed PR #243 (C1c with all above) into integration.
+4. Executed SQL gate: 18 ticker UPDATEs + Alphabet 7-dup merge via Supabase dashboard.
+5. Integration smoke passed (HTTP 200 on test routes).
+6. Resolved main-to-integration conflict via backlog reconciliation (WD30-WD91 numbering).
+7. Squashed PR #197 integration -> main at commit `22cda0c`.
+8. Vercel deployment: breakingalpha SUCCESS, signalera SUCCESS (both within 90s).
+9. Deleted `noah/w2-c-phase-1` branch post-merge.
 
 ### Files modified this session (on noah/pr-c1e-articles-table-density)
 
@@ -82,22 +95,24 @@ Filed to `docs/w2-d-backlog.md` on the C1e branch (NOT main). 20 entries total. 
 - Zero new em-dashes (3 pre-existing verbatim revert remain)
 - main, w2-c-phase-1 branches not pushed to from C1e work
 
-### PRs to close (pending squash-to-integration)
+### PRs status (post-cascade)
 
-PR #241 and #242 closed during this session per Phase 6 mandate. After PR #243 squashes to integration, no further closures needed.
+PR #241 and #242 closed during 2026-05-10 phase. PR #243, #244, #245, #246 merged via cascade. PR #197 merged to main and deleted branch post-merge.
 
-### Comments posted on PR #244 (audit trail)
+### Cascade commits
 
-- Phase 1 land + preview URL: https://github.com/lucasturcuato-afk/breakingalpha/pull/244#issuecomment-4417925138
-- Phase 2 empty-state triage: https://github.com/lucasturcuato-afk/breakingalpha/pull/244#issuecomment-4417923179
-- Phase 4 WD50 audit: https://github.com/lucasturcuato-afk/breakingalpha/pull/244#issuecomment-4417933033
-- Earlier diagnostic chain (CSS column-collapse, code-path trace, Vercel collision rule-out): see PR #244 comment thread for sequence
+- PR #246 (C1f) squashed to C1e at `23bc58e`
+- PR #245 (C1g) squashed to C1e at `ebe7197`
+- PR #244 (C1e+C1f+C1g) squashed to C1c at `debec11`
+- PR #243 (C1c+all above) squashed to integration at `8ac706b`
+- Integration tip post-cascade: `e6d8f1e` (conflict resolution for main backlog reconciliation)
+- PR #197 squashed to main at `22cda0c`
 
 ---
 
-## Recently Completed (2026-05-06) -- W2-C Phase 1 sprint
+## Recently Completed (2026-05-06) -- W2-C Phase 1 sprint (merged 2026-05-11)
 
-PR #197 collects all of the work below onto integration branch `noah/w2-c-phase-1`. Merge to main is gated on Patches G and H (data-only pre-ship gates).
+PR #197 collected all of the work below onto integration branch `noah/w2-c-phase-1`. Merged to main on 2026-05-11 (commit `22cda0c`) after SQL pre-ship gates (18 ticker UPDATEs + Alphabet 7-dup merge) completed successfully.
 
 Sprint commits, in merge order to integration:
 
