@@ -17,7 +17,7 @@ import type { KeyboardEvent, Ref, MouseEvent as ReactMouseEvent } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { SentimentPill, type SentimentTone } from "@/components/ui/sentiment-pill";
-import { SourceCredibilityBadge } from "@/lib/article-signal";
+import { CompletenessBadge, SourceCredibilityBadge } from "@/lib/article-signal";
 import type { CompanyDetailArticle } from "@/lib/data-access/getCompanyDetail";
 
 export interface ArticlesRowProps {
@@ -147,6 +147,7 @@ export function ArticlesRow({
                 sampleSize={article.sourceSampleSize}
               />
             ) : null}
+            <CompletenessBadge completeness={article.completeness} />
           </span>
         </td>
         <td

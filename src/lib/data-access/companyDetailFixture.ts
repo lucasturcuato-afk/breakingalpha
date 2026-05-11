@@ -15,6 +15,7 @@ const NVIDIA_ARTICLES: CompanyDetailArticle[] = [
     ingestedAt: "2026-05-04T14:30:00Z",
     sourceWinRate: 72,
     sourceSampleSize: 48,
+    completeness: "summary",
   },
   {
     id: "fix-nvda-2",
@@ -30,6 +31,7 @@ const NVIDIA_ARTICLES: CompanyDetailArticle[] = [
     ingestedAt: "2026-05-03T17:15:00Z",
     sourceWinRate: 68,
     sourceSampleSize: 31,
+    completeness: "summary",
   },
   {
     id: "fix-nvda-3",
@@ -45,6 +47,7 @@ const NVIDIA_ARTICLES: CompanyDetailArticle[] = [
     ingestedAt: "2026-05-02T09:45:00Z",
     sourceWinRate: 65,
     sourceSampleSize: 22,
+    completeness: "summary",
   },
 ];
 

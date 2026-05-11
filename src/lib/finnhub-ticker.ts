@@ -33,6 +33,11 @@ const CLASS_SHARE_RE = /^[A-Z]{1,5}\.(A|B)$/;
 // is reachable only by direct symbol query. Keys are lowercase post-canonicalize.
 const HARD_TICKER_OVERRIDES: Record<string, string> = {
   "berkshire hathaway": "BRK.B",
+  "celestica": "CLS",
+  "tsmc": "TSM",
+  "taiwan semiconductor": "TSM",
+  "samsung": "SSNLF",
+  "samsung electronics": "SSNLF",
 };
 
 // Patch J (f): brands where camelCase IS the canonical spelling -- skip
