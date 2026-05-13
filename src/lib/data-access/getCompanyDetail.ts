@@ -15,6 +15,7 @@ export type CompanyDetailArticle = {
   relevanceScore: number | null;
   sector: string | null;
   summary: string | null;
+  relevanceReason: string | null;
   ingestedAt: string | null;
   sourceWinRate: number | null;
   sourceSampleSize: number | null;
@@ -44,7 +45,7 @@ const ARTICLE_DAYS = 14;
 const ARTICLE_LIMIT = 50;
 const DAY_MS = 86_400_000;
 const ARTICLE_COLS =
-  "id, title, source, url, published_at, sentiment, deal_type, relevance_score, sector, summary, ingested_at";
+  "id, title, source, url, published_at, sentiment, deal_type, relevance_score, sector, summary, relevance_reason, ingested_at";
 
 function utcDayMs(d: Date | string): number {
   const x = new Date(d);
@@ -123,7 +124,7 @@ export async function getCompanyDetail(
     id: string; title: string | null; source: string | null; url: string | null;
     published_at: string | null; sentiment: string | null; deal_type: string | null;
     relevance_score: number | null; sector: string | null;
-    summary: string | null; ingested_at: string | null;
+    summary: string | null; relevance_reason: string | null; ingested_at: string | null;
   }>;
 
   const sources = Array.from(
@@ -160,6 +161,7 @@ export async function getCompanyDetail(
       relevanceScore: r.relevance_score,
       sector: r.sector,
       summary: r.summary,
+      relevanceReason: r.relevance_reason,
       ingestedAt: r.ingested_at,
       sourceWinRate: cred?.win_rate ?? null,
       sourceSampleSize: cred?.n_theses ?? null,

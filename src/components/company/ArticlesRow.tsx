@@ -65,7 +65,19 @@ export function ArticlesRow({
   const tone = toTone(article.sentiment);
   const dealType = article.dealType;
   const [expanded, setExpanded] = useState(false);
-  const hasSummary = !!(article.summary && article.summary.trim().length > 0);
+  const reasonText =
+    article.relevanceReason && article.relevanceReason.trim().length > 0
+      ? article.relevanceReason.trim()
+      : null;
+  const summaryText =
+    article.summary && article.summary.trim().length > 0
+      ? article.summary.trim()
+      : null;
+  // WD74: prefer LLM-synthesized relevance_reason; fall back to RSS summary for
+  // legacy rows where relevance_reason was never populated. Toggle hides if both empty.
+  const expandBody = reasonText ?? summaryText;
+  const expandLabel = reasonText ? "Why this matters" : null;
+  const hasExpandable = expandBody !== null;
 
   function onAnchorKeyDown(e: KeyboardEvent<HTMLAnchorElement>) {
     if (e.key === "ArrowDown" && index < total - 1) {
@@ -82,7 +94,7 @@ export function ArticlesRow({
   }
 
   function onRowClick(e: ReactMouseEvent<HTMLTableRowElement>) {
-    if (!hasSummary) return;
+    if (!hasExpandable) return;
     const target = e.target as HTMLElement;
     if (target.closest("a")) return;
     if (target.closest('[data-articles-row-toggle="true"]')) return;
@@ -90,7 +102,7 @@ export function ArticlesRow({
   }
 
   function onRowKeyDown(e: KeyboardEvent<HTMLTableRowElement>) {
-    if (!hasSummary) return;
+    if (!hasExpandable) return;
     if (e.key === "Enter" || e.key === " ") {
       const target = e.target as HTMLElement;
       if (target.closest("a")) return;
@@ -107,7 +119,7 @@ export function ArticlesRow({
   }
 
   const rowBg = index % 2 === 1 ? "bg-[var(--row-alt)]" : "";
-  const rowInteractive = hasSummary ? "cursor-pointer" : "";
+  const rowInteractive = hasExpandable ? "cursor-pointer" : "";
   const adjustedScore = getAdjustedScore(article.relevanceScore, article.completeness);
   const scoreText = adjustedScore != null ? adjustedScore.toFixed(1) : "--";
 
@@ -115,7 +127,7 @@ export function ArticlesRow({
     <>
       <tr
         data-testid="articles-row"
-        tabIndex={hasSummary ? 0 : undefined}
+        tabIndex={hasExpandable ? 0 : undefined}
         onClick={onRowClick}
         onKeyDown={onRowKeyDown}
         className={`border-b border-border-subtle last:border-b-0 transition-colors hover:bg-[var(--row-hover)] ${rowBg} ${rowInteractive}`}
@@ -169,13 +181,13 @@ export function ArticlesRow({
             ) : (
               <span aria-hidden="true">{""}</span>
             )}
-            {hasSummary ? (
+            {hasExpandable ? (
               <button
                 type="button"
                 data-testid="articles-row-expand-toggle"
                 data-articles-row-toggle="true"
                 aria-expanded={expanded}
-                aria-label={expanded ? "Collapse summary" : "Expand summary"}
+                aria-label={expanded ? "Collapse details" : "Expand details"}
                 onClick={(e) => {
                   e.stopPropagation();
                   toggle();
@@ -192,19 +204,26 @@ export function ArticlesRow({
           </span>
         </td>
       </tr>
-      <tr
-        data-testid="articles-row-summary-row"
-        aria-hidden={!expanded}
-        className={expanded ? "border-b border-border-subtle last:border-b-0" : "hidden"}
-      >
-        <td
-          data-testid="articles-row-summary"
-          colSpan={6}
-          className={`px-4 py-3 text-xs leading-relaxed text-text-secondary bg-[var(--row-alt)] ${rowBg}`}
+      {hasExpandable ? (
+        <tr
+          data-testid="articles-row-summary-row"
+          aria-hidden={!expanded}
+          className={expanded ? "border-b border-border-subtle last:border-b-0" : "hidden"}
         >
-          {article.summary ?? ""}
-        </td>
-      </tr>
+          <td
+            data-testid="articles-row-summary"
+            colSpan={6}
+            className={`px-4 py-3 text-xs leading-relaxed text-text-secondary bg-[var(--row-alt)] ${rowBg}`}
+          >
+            {expandLabel ? (
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                {expandLabel}
+              </div>
+            ) : null}
+            {expandBody}
+          </td>
+        </tr>
+      ) : null}
     </>
   );
 }
