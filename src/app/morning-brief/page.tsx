@@ -171,6 +171,8 @@ export default function MorningBriefPage() {
   const [showSignIn, setShowSignIn] = useState(false);
   const [formatLabel, setFormatLabel] = useState<string | null>(null);
   const [userAddendum, setUserAddendum] = useState<string | null>(null);
+  const [briefOutputId, setBriefOutputId] = useState<string | null>(null);
+  const [sectionOutputIds, setSectionOutputIds] = useState<Record<string, string>>({});
   const [thesesCount, setThesesCount] = useState<number | null>(null);
   const [thesesLoading, setThesesLoading] = useState(true);
   const [vixQuote, setVixQuote] = useState<{ price: string; pct: number } | null>(null);
@@ -295,6 +297,8 @@ export default function MorningBriefPage() {
           if (data.last_attempt_status) setLastRunStatus(data.last_attempt_status);
           if (data.personalization?.format_label) setFormatLabel(data.personalization.format_label);
           if (typeof data.user_addendum === "string") setUserAddendum(data.user_addendum);
+          if (data.brief_output_id) setBriefOutputId(data.brief_output_id);
+          if (data.section_output_ids) setSectionOutputIds(data.section_output_ids);
         } else {
           setBriefing(null);
         }
@@ -1282,6 +1286,7 @@ export default function MorningBriefPage() {
                       briefSource="Morning Brief"
                       currentRating={sectionRatings[section.key] ?? 0}
                       onRate={handleSectionRate}
+                      outputId={sectionOutputIds[section.key] ?? null}
                     />
                   ))}
                 </div>

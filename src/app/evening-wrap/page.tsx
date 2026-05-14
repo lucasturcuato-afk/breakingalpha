@@ -176,6 +176,8 @@ export default function EveningWrapPage() {
   const [leadMemoContent, setLeadMemoContent] = useState("");
   const [formatLabel, setFormatLabel] = useState<string | null>(null);
   const [userAddendum, setUserAddendum] = useState<string | null>(null);
+  const [briefOutputId, setBriefOutputId] = useState<string | null>(null);
+  const [sectionOutputIds, setSectionOutputIds] = useState<Record<string, string>>({});
   const [user, setUser] = useState<{ id: string; email?: string | null } | null>(null);
   const [thesesCount, setThesesCount] = useState<number | null>(null);
   const [vixQuote, setVixQuote] = useState<{ price: string; pct: number } | null>(null);
@@ -266,6 +268,8 @@ export default function EveningWrapPage() {
           if (data.last_attempt_status) setLastRunStatus(data.last_attempt_status);
           if (data.personalization?.format_label) setFormatLabel(data.personalization.format_label);
           if (typeof data.user_addendum === "string") setUserAddendum(data.user_addendum);
+          if (data.brief_output_id) setBriefOutputId(data.brief_output_id);
+          if (data.section_output_ids) setSectionOutputIds(data.section_output_ids);
         }
 
         const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -1025,6 +1029,7 @@ export default function EveningWrapPage() {
                       briefSource="Evening Wrap"
                       currentRating={sectionRatings[section.key] ?? 0}
                       onRate={handleSectionRate}
+                      outputId={sectionOutputIds[section.key] ?? null}
                     />
                   ))}
                 </div>

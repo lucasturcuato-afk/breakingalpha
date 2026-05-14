@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/strip-html";
 import { Sparkles, Plus, Loader2, ThumbsUp, ThumbsDown } from "lucide-react";
+import { useOutputFeedback } from "@/hooks/useOutputFeedback";
 
 interface BriefSectionProps {
   title: string;
@@ -21,6 +22,8 @@ interface BriefSectionProps {
   compact?: boolean;
   /** When true, root stretches to fill its parent's height (dashboard mode lead quadrant). */
   fillHeight?: boolean;
+  /** Output tracking ID for implicit feedback collection. */
+  outputId?: string | null;
 }
 
 export function BriefSection({
@@ -38,7 +41,9 @@ export function BriefSection({
   currentRating = 0,
   compact = false,
   fillHeight = false,
+  outputId,
 }: BriefSectionProps) {
+  const { ref: feedbackRef, setThumbs } = useOutputFeedback({ output_id: outputId });
   const cleanContent = stripHtml(content);
 
   const hasRating = currentRating !== 0;
@@ -46,6 +51,7 @@ export function BriefSection({
 
   return (
     <div
+      ref={feedbackRef as React.RefObject<HTMLDivElement>}
       onClick={onToggle}
       className={cn(
         "relative rounded-xl border border-border-base bg-white dark:bg-elevated dark:border-border-default group",
@@ -84,7 +90,7 @@ export function BriefSection({
         >
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); onRate?.(sectionKey as string, 1); }}
+            onClick={(e) => { e.stopPropagation(); onRate?.(sectionKey as string, 1); setThumbs("up"); }}
             className={cn(
               "p-1 rounded transition-colors cursor-pointer",
               currentRating === 1
@@ -100,7 +106,7 @@ export function BriefSection({
           </button>
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); onRate?.(sectionKey as string, -1); }}
+            onClick={(e) => { e.stopPropagation(); onRate?.(sectionKey as string, -1); setThumbs("down"); }}
             className={cn(
               "p-1 rounded transition-colors cursor-pointer",
               currentRating === -1

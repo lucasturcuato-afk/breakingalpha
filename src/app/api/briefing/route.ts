@@ -357,6 +357,29 @@ export async function GET(request: NextRequest) {
 
   const raw = bData[0];
 
+  // Best-effort: fetch output_ids for this briefing (brief + brief_section rows)
+  let briefOutputId: string | null = null;
+  const sectionOutputIds: Record<string, string> = {};
+  try {
+    if (raw.id) {
+      const { data: outputRows } = await supabase
+        .from("outputs")
+        .select("id, output_type, content")
+        .eq("source_table", "briefings")
+        .eq("source_id", raw.id);
+      for (const row of outputRows ?? []) {
+        if (row.output_type === "brief") {
+          briefOutputId = row.id;
+        } else if (row.output_type === "brief_section") {
+          const key = (row.content as { section_key?: string })?.section_key;
+          if (key) sectionOutputIds[key] = row.id;
+        }
+      }
+    }
+  } catch {
+    // outputs table query failed — continue without output_ids
+  }
+
   // Freshness metadata — how old is this briefing row?
   const briefingCreatedAt = raw.created_at ? new Date(raw.created_at) : null;
   const ageMs = briefingCreatedAt ? Date.now() - briefingCreatedAt.getTime() : null;
@@ -393,6 +416,8 @@ export async function GET(request: NextRequest) {
       pref_applied: false,
       personalization: buildBriefPersonalization(userProfile, type),
       user_addendum: userAddendum,
+      brief_output_id: briefOutputId,
+      section_output_ids: sectionOutputIds,
       briefing_age_hours: briefingAgeHours,
       is_stale: isStale,
       last_attempt_status: lastRun?.status ?? null,
@@ -435,6 +460,8 @@ export async function GET(request: NextRequest) {
     pref_applied: true,
     personalization: buildBriefPersonalization(userProfile, type),
     user_addendum: userAddendum,
+    brief_output_id: briefOutputId,
+    section_output_ids: sectionOutputIds,
     profile_role: userProfile?.role ?? null,
     profile_risk_appetite: userProfile?.risk_appetite ?? null,
     briefing_age_hours: briefingAgeHours,

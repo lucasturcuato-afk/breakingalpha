@@ -129,6 +129,27 @@ export async function GET() {
       console.warn("[theses GET] weekly_digests threw:", e);
     }
 
+    // Best-effort: join output_ids from universal outputs table
+    try {
+      const thesisIds = theses.map((t) => String(t.id)).filter(Boolean);
+      if (thesisIds.length > 0) {
+        const { data: outputRows } = await supabase
+          .from("outputs")
+          .select("id, source_id")
+          .eq("source_table", "theses")
+          .in("source_id", thesisIds);
+        if (outputRows && outputRows.length > 0) {
+          const outputMap = new Map(outputRows.map((r) => [r.source_id, r.id]));
+          theses = theses.map((t) => ({
+            ...t,
+            output_id: outputMap.get(String(t.id)) ?? null,
+          }));
+        }
+      }
+    } catch (e) {
+      console.log("[theses GET] outputs lookup failed (continuing):", e);
+    }
+
     // Map to canonical UI shape via single source of truth
     const mapped = theses.map((t) => mapThesisRow(t as Parameters<typeof mapThesisRow>[0]));
 
