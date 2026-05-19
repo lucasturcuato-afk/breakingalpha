@@ -31,7 +31,7 @@ function toneFromSentiment7d(values: number[]): SentimentTone {
 
 function formatSubtitle(d: CompanyDetail): string {
   const sector = d.sector ?? "--";
-  return d.ticker ? `NASDAQ . ${sector}` : sector;
+  return d.ticker ? `NASDAQ · ${sector}` : sector;
 }
 
 export function CompanyDetailHeader({ detail }: Props) {

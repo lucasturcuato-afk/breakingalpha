@@ -505,12 +505,14 @@ export const TAGGED_DEAL_TYPES = new Set(["Earnings", "M&A", "Funding", "IPO", "
  * Format an article list for inclusion in a memo user message.
  *
  * When `startIndex` is provided, each article is prefixed with a 1-indexed
- * `[N]` marker (N = startIndex + position). This is the citation key the
- * model uses when emitting `[n]` provenance citations in the memo body, and
- * it must stay aligned with the order used by `buildMemoSources` so that
- * the frontend `sources` list maps one-to-one with bracketed references in
- * the rendered prose. When `startIndex` is omitted, the legacy bullet form
- * is emitted (kept for back-compat with non-citation callers).
+ * `[N]` marker (N = startIndex + position). The contiguous numbering across
+ * devArts + ctxArts (devArts first, ctxArts starting at devArts.length + 1)
+ * gives the model a stable citation key for `[n]` provenance markers in the
+ * memo body. Callers therefore pass startIndex = 1 for devArts and
+ * startIndex = devArts.length + 1 for ctxArts so the indices form a single
+ * 1..N namespace across the two lists. When `startIndex` is omitted, the
+ * legacy bullet form is emitted (kept for back-compat with non-citation
+ * callers).
  */
 export function formatArticleList(arts: CompanyArticle[], startIndex?: number): string {
   if (arts.length === 0) return "None";

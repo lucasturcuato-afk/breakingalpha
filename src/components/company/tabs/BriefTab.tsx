@@ -187,16 +187,34 @@ export function BriefTab({ company, content, systemPrompt }: BriefTabProps) {
   const hasContent = phase === "ready" && parsed !== null;
   const cacheState = hasContent ? (cachedAt ? "hit" : "fresh") : "miss";
 
+  // Tailwind v4 utility groups (chrome polish per WD84 + WD85 sweep).
+  // - `bodyProse` drops the previous `prose prose-sm` wrap that was
+  //   overriding the explicit 13px / leading-relaxed treatment, and adds
+  //   bullet styling tuned to the cream/espresso palette.
+  const bodyProse = [
+    "font-sans text-[13px] text-text-secondary leading-relaxed",
+    "[&_p]:m-0 [&_p+p]:mt-2",
+    "[&_ul]:pl-5 [&_ul]:list-disc [&_ul]:my-2 [&_li]:my-0.5",
+    "[&_li]:marker:text-text-faint",
+    "[&_strong]:text-espresso [&_strong]:font-semibold",
+  ].join(" ");
+
   if (phase === "checking-cache" || phase === "generating") {
     return (
       <div data-testid="brief-tab" data-cache-state={cacheState} className={SHELL}>
-        <div data-testid="brief-loading" className="space-y-3">
+        <div
+          data-testid="brief-loading"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+          className="space-y-3"
+        >
           <Skeleton className="h-16 w-full" />
           <Skeleton className="h-3 w-full" />
           <Skeleton className="h-3 w-5/6" />
           <Skeleton className="h-3 w-3/4" />
           {phase === "generating" ? (
-            <p className="font-sans text-[12px] text-text-muted text-center pt-2">
+            <p className="font-data text-[11px] uppercase tracking-[0.10em] text-text-faint text-center pt-2">
               Generating brief... this typically takes 5-10 seconds.
             </p>
           ) : null}
@@ -209,15 +227,24 @@ export function BriefTab({ company, content, systemPrompt }: BriefTabProps) {
     return (
       <div data-testid="brief-tab" data-cache-state="miss" className={SHELL}>
         <div data-testid="brief-cache-miss" className="hidden" />
-        <EmptyState
-          title="Could not generate brief"
-          description={errorMessage ?? "An unexpected error occurred."}
-          action={
-            <Button data-testid="brief-generate-button" variant="primary" onClick={generateBrief}>
+        <div
+          data-testid="brief-error"
+          role="alert"
+          className="flex flex-col gap-2 py-2"
+        >
+          <p className="font-sans text-[13px] text-signal-dn">
+            {errorMessage ?? "An unexpected error occurred."}
+          </p>
+          <div>
+            <Button
+              data-testid="brief-generate-button"
+              variant="secondary"
+              onClick={generateBrief}
+            >
               Retry
             </Button>
-          }
-        />
+          </div>
+        </div>
       </div>
     );
   }
@@ -229,7 +256,7 @@ export function BriefTab({ company, content, systemPrompt }: BriefTabProps) {
         <div data-testid="brief-empty-state">
           <EmptyState
             title="No brief generated yet"
-            description="Generate a structured analyst brief from the latest article corpus."
+            description="Generate an analyst brief from the latest article corpus."
             action={
               <Button data-testid="brief-generate-button" variant="primary" onClick={generateBrief}>
                 Generate Brief
@@ -242,7 +269,7 @@ export function BriefTab({ company, content, systemPrompt }: BriefTabProps) {
   }
 
   const sectionEntries = Object.entries(parsed.sections);
-  const hasSections = sectionEntries.length >= 3;
+  const hasSections = sectionEntries.length >= 2;
   const regenDisabled = isRegenerating || regenRemaining <= 0 || !content;
 
   return (
@@ -251,7 +278,7 @@ export function BriefTab({ company, content, systemPrompt }: BriefTabProps) {
         data-testid={cachedAt ? "brief-cache-hit" : "brief-cache-miss"}
         className="hidden"
       />
-      <div className="flex items-start justify-between gap-3 mb-3">
+      <div className="flex items-start justify-between gap-3 mb-4">
         {cachedAt ? (
           <p className="font-data text-[10px] uppercase tracking-[0.10em] text-text-faint">
             Cached {relativeTime(cachedAt)}
@@ -292,27 +319,56 @@ export function BriefTab({ company, content, systemPrompt }: BriefTabProps) {
       </div>
       {hasSections ? (
         <div className="space-y-4">
-          {sectionEntries.map(([label, body]) => (
-            <section
-              key={label}
-              data-testid={`brief-section-${slugify(label)}`}
-              className="space-y-1"
-            >
-              <h3 className="font-data text-[11px] uppercase tracking-[0.10em] text-text-secondary">
-                {label}
-              </h3>
-              <div className="font-sans text-[13px] text-text-secondary leading-relaxed prose prose-sm max-w-none">
-                <ReactMarkdown>{body}</ReactMarkdown>
-              </div>
-            </section>
-          ))}
+          {sectionEntries.map(([label, body], i) => {
+            const ordinal = String(i + 1).padStart(2, "0");
+            // WD84: first section gets the gold-faint TLDR treatment per
+            // DirectionD MemoCard L668-677 to anchor the lead beat.
+            if (i === 0) {
+              return (
+                <section
+                  key={label}
+                  data-testid={`brief-section-${slugify(label)}`}
+                  className="rounded-md border border-gold-border bg-gold-muted px-[14px] py-[11px] space-y-1"
+                >
+                  <h3
+                    data-testid="brief-tldr-eyebrow"
+                    className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-gold-dark"
+                  >
+                    TLDR
+                  </h3>
+                  <div className={bodyProse}>
+                    <ReactMarkdown>{body}</ReactMarkdown>
+                  </div>
+                </section>
+              );
+            }
+            return (
+              <section
+                key={label}
+                data-testid={`brief-section-${slugify(label)}`}
+                className="space-y-1"
+              >
+                <h3 className="font-mono text-[9.5px] font-bold uppercase tracking-[0.10em] text-text-faint">
+                  {ordinal} · {label}
+                </h3>
+                <div className={bodyProse}>
+                  <ReactMarkdown>{body}</ReactMarkdown>
+                </div>
+              </section>
+            );
+          })}
         </div>
       ) : (
-        <div
-          data-testid="brief-fallback-markdown"
-          className="font-sans text-[13px] text-text-secondary leading-relaxed prose prose-sm max-w-none"
-        >
-          <ReactMarkdown>{parsed.rawMarkdown}</ReactMarkdown>
+        <div className="space-y-2">
+          <p className="font-data text-[10px] uppercase tracking-[0.10em] text-text-faint">
+            Showing unparsed memo
+          </p>
+          <div
+            data-testid="brief-fallback-markdown"
+            className={bodyProse}
+          >
+            <ReactMarkdown>{parsed.rawMarkdown}</ReactMarkdown>
+          </div>
         </div>
       )}
     </div>

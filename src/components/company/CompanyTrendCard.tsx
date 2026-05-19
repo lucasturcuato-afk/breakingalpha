@@ -144,7 +144,7 @@ export function CompanyTrendCard({
 
         <div style={{ padding: "12px 14px" }}>
           <div style={ROW}>
-            <Eyebrow as="span" color="var(--text-faint)" testId="trend-card-mentions-eyebrow">Mentions</Eyebrow>
+            <Eyebrow as="span" variant="mono" color="var(--text-faint)" testId="trend-card-mentions-eyebrow">Mentions</Eyebrow>
             <span data-testid="trend-card-mentions-total" style={HEADLINE}>{mentionsTotal}</span>
             <span data-testid="trend-delta" style={{ ...DELTA, color: upColor(mUp) }}>
               {mUp ? "▲" : "▼"} {Math.abs(mentionsDelta).toFixed(0)}%
@@ -161,7 +161,7 @@ export function CompanyTrendCard({
 
           <div style={ROW}>
             <Tooltip content="Aggregate tone of indexed articles over the past 7 days. Not a price signal.">
-              <Eyebrow as="span" color="var(--text-faint)" testId="trend-card-sentiment-eyebrow">Article tone</Eyebrow>
+              <Eyebrow as="span" variant="mono" color="var(--text-faint)" testId="trend-card-sentiment-eyebrow">Article tone</Eyebrow>
             </Tooltip>
             <span data-testid="trend-card-sentiment-total" style={HEADLINE}>{formatSigned(sentimentSigned, 2)}</span>
             <span data-testid="trend-card-sentiment-delta" style={{ ...DELTA, color: upColor(sUp) }}>

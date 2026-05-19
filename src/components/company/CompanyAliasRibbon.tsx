@@ -48,11 +48,11 @@ export function CompanyAliasRibbon({ canonical, aliasMentions, maxBeforeCollapse
         </span>
       </Eyebrow>
       <span style={{ color: "var(--espresso)", fontWeight: 600 }}>{canonical}</span>
-      <span style={{ color: "var(--text-faint)" }}>.</span>
+      <span style={{ color: "var(--text-faint)" }}>·</span>
       <span>aka</span>
       {visible.map((alias, i) => (
         <Fragment key={alias.name}>
-          {i > 0 ? <span style={{ color: "var(--text-faint)" }}>.</span> : null}
+          {i > 0 ? <span style={{ color: "var(--text-faint)" }}>·</span> : null}
           <button
             type="button"
             data-testid="alias-ribbon-chip"

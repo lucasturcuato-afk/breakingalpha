@@ -78,7 +78,7 @@ interface CellProps {
 
 function Cell({ label, valueTestId, value, delta, sub, isLast, trailing, tooltip }: CellProps) {
   const showDelta = delta !== null && delta !== undefined && Number.isFinite(delta);
-  const labelNode = <Eyebrow as="span">{label}</Eyebrow>;
+  const labelNode = <Eyebrow as="span" variant="mono">{label}</Eyebrow>;
   return (
     <div data-testid="kpi-card" style={isLast ? cellBase : cellRight}>
       {tooltip ? <Tooltip content={tooltip}>{labelNode}</Tooltip> : labelNode}
@@ -149,15 +149,15 @@ export function CompanyKPIStrip({ companyDetail }: CompanyKPIStripProps) {
       <Cell label="Market cap" valueTestId="kpi-card-marketcap"
         value={isPrivate ? "--" : formatMarketCap(kpi.marketCap)}
         sub={isPrivate ? "private" : null} />
-      <Cell label="Mentions 30d" valueTestId="kpi-card-mentions"
+      <Cell label="Mentions · 30d" valueTestId="kpi-card-mentions"
         value={companyDetail.mentions.toLocaleString("en-US")} />
       <Cell label="Article tone" valueTestId="kpi-card-sentiment"
         value={sentiment.value} delta={sentiment.delta * 100}
         tooltip="Aggregate tone of indexed articles over the past 7 days. Not a price signal." />
-      <Cell label="Articles today" valueTestId="kpi-card-articles-today" value={todayN}
+      <Cell label="Articles · today" valueTestId="kpi-card-articles-today" value={todayN}
         sub={eventsToday > 0 ? `${eventsToday} ${eventsToday === 1 ? "event" : "events"}` : null} />
       <Cell label="Sources" valueTestId="kpi-card-sources" value={sourcesCount}
-        sub={sourcesCount > 0 ? "distinct outlets" : null} isLast />
+        sub={sourcesCount > 0 ? "primary + tier-1" : null} isLast />
     </div>
   );
 }

@@ -124,6 +124,19 @@ export function TrendTab({
       aria-label="Signal Trend"
       style={{ display: "flex", flexDirection: "column", gap: 14 }}
     >
+      <div
+        data-testid="trend-tab-context-header"
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          gap: 8,
+          padding: "0 2px",
+        }}
+      >
+        <h2 style={{ ...PANEL_TITLE, fontSize: 16 }}>Price &amp; Sentiment</h2>
+        <span style={{ color: "var(--text-faint)", fontWeight: 400 }}>·</span>
+        <span style={PANEL_BADGE}>{dayCount}d</span>
+      </div>
       {ticker ? (
         <div data-testid="trend-tab-stock-chart" style={PANEL}>
           <CompanyStockChart ticker={ticker} companyName={companyName} />
@@ -144,7 +157,7 @@ export function TrendTab({
           {hasSentiment ? (
             <>
               <div style={ROW}>
-                <Eyebrow as="span" color="var(--text-faint)">Latest</Eyebrow>
+                <Eyebrow as="span" variant="mono" color="var(--text-faint)">Latest</Eyebrow>
                 <span style={HEADLINE}>{formatSigned(sentimentSigned, 2)}</span>
                 <span style={{ ...DELTA, color: upColor }}>
                   {sUp ? "▲" : "▼"} {Math.abs(sentimentDelta).toFixed(0)}%
