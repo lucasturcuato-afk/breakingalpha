@@ -39,6 +39,7 @@ import user_synthesis
 import user_signal_aggregator
 import embedding_job
 import thesis_generator
+import sector_backfill
 
 logger = logging.getLogger("run")
 if not logger.handlers:
@@ -85,6 +86,14 @@ if __name__ == "__main__":
         print(f"  [1c/16] USER SIGNAL AGGREGATION done in {time.time() - _t:.2f}s")
     except Exception as e:
         print(f"  [1c/16] USER SIGNAL AGGREGATION FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
+
+    print("\n[1d/16] SECTOR BACKFILL")
+    _t = time.time()
+    try:
+        n = sector_backfill.run()
+        print(f"  [1d/16] SECTOR BACKFILL done in {time.time() - _t:.2f}s (companies={n})")
+    except Exception as e:
+        print(f"  [1d/16] SECTOR BACKFILL FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
     # Path B: deal_extractor runs BEFORE synthesize so the Python pre-picker
     # in lead_preselect.py sees fresh deal_flow rows for the $1B+ primary-story
@@ -299,6 +308,8 @@ if __name__ == "__main__":
 # ---------------------------------------------------------------------------
 # 1:    ingest
 # 1c:   user_signal_aggregator  (aggregate user behavioral events → digest)
+# 1d:   sector_backfill         (WD92 — idempotent fill of companies.sector
+#                                from articles.sector mode per primary_company)
 # 2:    deal_extractor          (MUST run before synthesize — Path B pre-picker
 #                                reads deal_flow for confirmed $1B+ leads)
 # 3:    synthesize              (consumes user_signal_digest for engagement context
