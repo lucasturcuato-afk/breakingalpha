@@ -133,7 +133,7 @@ export function TrendTab({
           padding: "0 2px",
         }}
       >
-        <h2 style={{ ...PANEL_TITLE, fontSize: 16 }}>Price &amp; Sentiment</h2>
+        <h2 style={{ ...PANEL_TITLE, fontSize: 16 }}>Price &amp; Tone</h2>
         <span style={{ color: "var(--text-faint)", fontWeight: 400 }}>·</span>
         <span style={PANEL_BADGE}>{dayCount}d</span>
       </div>
@@ -149,7 +149,7 @@ export function TrendTab({
 
       <div data-testid="trend-tab-sentiment-overlay" style={PANEL}>
         <div style={PANEL_HEAD}>
-          <h3 style={PANEL_TITLE}>Sentiment</h3>
+          <h3 style={PANEL_TITLE}>Tone</h3>
           <span style={{ color: "var(--text-faint)", fontWeight: 400 }}>·</span>
           <span style={PANEL_BADGE}>{dayCount}d</span>
         </div>

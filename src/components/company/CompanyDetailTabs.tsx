@@ -19,7 +19,7 @@ const TAB_LABELS: Record<CompanyTabId, string> = {
   brief: "Brief",
   articles: "Articles",
   themes: "Themes",
-  trend: "Trend",
+  trend: "Price & Tone",
   sources: "Sources",
   filings: "Filings",
   transcripts: "Transcripts",
