@@ -285,7 +285,7 @@ export async function POST(request: NextRequest) {
   if (!rl.allowed) {
     return NextResponse.json(
       {
-        error: `Rate limit exceeded — ${rl.limit} memos per day. Resets ${new Date(rl.resetAt).toLocaleTimeString()}.`,
+        error: `Rate limit exceeded - ${rl.limit} memos per day. Resets ${new Date(rl.resetAt).toLocaleTimeString()}.`,
         remaining: 0,
         resetAt: rl.resetAt,
       },
@@ -512,7 +512,7 @@ Sections: TRANSACTION OVERVIEW, STRATEGIC RATIONALE, KEY RISKS, ANALYST TAKE. Un
 
     const memo = completion.text;
     if (!memo) {
-      return NextResponse.json({ error: "Gemini returned empty memo — retry" }, { status: 500 });
+      return NextResponse.json({ error: "Gemini returned empty memo - retry" }, { status: 500 });
     }
 
     // Pattern A: fire-and-forget output capture after response is flushed.
