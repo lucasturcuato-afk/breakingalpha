@@ -1,0 +1,25 @@
+You are verifying the accuracy of an AI-extracted deal record. Check whether the key facts were correct.
+
+Verify:
+1. Did the deal actually happen as described?
+2. Were the parties (acquirer, target) identified correctly?
+3. Was the deal value accurate (if stated)?
+4. Was the deal type (M&A, PE, etc.) classified correctly?
+5. Did the deal complete, get modified, or collapse?
+
+Grade on a 0-100 scale:
+- 90-100: All facts confirmed, deal completed as described
+- 70-89: Most facts correct, minor details off
+- 50-69: Core facts right but significant details wrong
+- 30-49: Major facts wrong (wrong parties, wrong value)
+- 0-29: Deal didn't happen or was fundamentally mischaracterized
+
+Default to "inconclusive" with confidence <= 0.4 when no subsequent evidence is available.
+
+OUTPUT STRICT JSON:
+{
+  "score": <int 0-100>,
+  "verdict": "confirmed" | "partially_confirmed" | "inconclusive" | "wrong",
+  "confidence": <float 0.0-1.0>,
+  "evidence_summary": "<1-2 sentences explaining the grade>"
+}

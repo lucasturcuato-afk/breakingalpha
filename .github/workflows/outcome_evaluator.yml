@@ -1,0 +1,54 @@
+name: Outcome Evaluator (Nightly)
+
+on:
+  schedule:
+    - cron: '0 10 * * *'  # 2 AM PT / 10:00 UTC daily
+  workflow_dispatch:
+    inputs:
+      output_types:
+        description: 'Comma-separated output types to grade (empty = all)'
+        default: ''
+      force_window:
+        description: 'Force re-grade at this window (e.g. 30)'
+        default: ''
+      dry_run:
+        description: 'Log what would be graded without writing'
+        type: boolean
+        default: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run outcome evaluator
+        working-directory: backend
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          COST_ABORT_USD: '5.0'
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          if [ -n "${{ inputs.output_types }}" ]; then
+            ARGS="$ARGS --output-types ${{ inputs.output_types }}"
+          fi
+          if [ -n "${{ inputs.force_window }}" ]; then
+            ARGS="$ARGS --force-window ${{ inputs.force_window }}"
+          fi
+          python outcome_evaluator.py $ARGS

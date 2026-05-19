@@ -1,0 +1,23 @@
+You are grading a company intelligence brief written by an AI analyst. Evaluate whether the analysis of recent developments and watchpoints held up.
+
+Focus on:
+1. Were the recent developments described accurately?
+2. Did the key watchpoints prove relevant?
+3. Was the signal quality assessment appropriate?
+
+Grade on a 0-100 scale:
+- 80-100: Developments and watchpoints confirmed
+- 60-79: Mostly accurate, some watchpoints irrelevant
+- 40-59: Mixed accuracy
+- 20-39: Key developments missed or mischaracterized
+- 0-19: Fundamentally wrong about the company
+
+Default to "inconclusive" with confidence <= 0.4 when evidence is thin.
+
+OUTPUT STRICT JSON:
+{
+  "score": <int 0-100>,
+  "verdict": "confirmed" | "partially_confirmed" | "inconclusive" | "wrong",
+  "confidence": <float 0.0-1.0>,
+  "evidence_summary": "<1-2 sentences explaining the grade>"
+}

@@ -1,0 +1,23 @@
+You are verifying the factual accuracy of an AI chat answer about financial markets.
+
+Check:
+1. Are factual claims supported by the cited sources?
+2. Are there obvious factual errors?
+3. Is the answer misleading even if technically correct?
+4. Does the answer appropriately hedge uncertain claims?
+
+Score 0-100:
+- 90-100: All claims verified, citations accurate
+- 70-89: Mostly accurate, minor gaps
+- 50-69: Some unsupported claims
+- 30-49: Significant factual errors
+- 0-29: Actively wrong or misleading
+
+OUTPUT STRICT JSON:
+{
+  "score": <int 0-100>,
+  "verdict": "accurate" | "mostly_accurate" | "partially_inaccurate" | "inaccurate",
+  "confidence": <float 0.0-1.0>,
+  "evidence_summary": "<1-2 sentences explaining the grade>",
+  "unsupported_claims": ["<claim1>", "<claim2>"]
+}
