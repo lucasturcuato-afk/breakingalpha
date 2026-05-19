@@ -36,6 +36,7 @@ yarn-error.log*
 # env files
 .env
 .env.local
+.env.playwright
 .env*
 
 # vercel
@@ -49,6 +50,9 @@ next-env.d.ts
 __pycache__/
 *.pyc
 .venv/
+
+# smoke test output (script generated, do not commit)
+scripts/wd49-*.csv
 
 # claude
 .claude/settings.local.json
