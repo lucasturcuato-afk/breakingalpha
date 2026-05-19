@@ -7,6 +7,11 @@ dotenvConfig({ path: path.resolve(__dirname, ".env.local") });
 
 const AUTH_FILE = path.join(__dirname, "e2e", ".auth", "user.json");
 
+// When E2E_BASE_URL points at a remote host (e.g. https://signalera.ai via
+// .env.playwright), skip the localhost dev server and the setup-project storage
+// state — the smoke-prod project signs in fresh against the remote URL.
+const isRemoteTarget = !!process.env.E2E_BASE_URL?.startsWith("https://");
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
@@ -32,12 +37,20 @@ export default defineConfig({
         storageState: AUTH_FILE,
       },
       dependencies: ["setup"],
+      testIgnore: /auth-smoke\.spec\.ts/,
+    },
+    {
+      name: "smoke-prod",
+      testMatch: /auth-smoke\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
-    command: "npm run dev",
-    url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
-  },
+  webServer: isRemoteTarget
+    ? undefined
+    : {
+        command: "npm run dev",
+        url: "http://localhost:3000",
+        reuseExistingServer: !process.env.CI,
+        timeout: 60_000,
+      },
 });
