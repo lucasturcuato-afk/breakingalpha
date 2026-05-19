@@ -101,7 +101,7 @@ Surface existing `relevance_reason` column in the ArticlesRow expand-row instead
 
 **Classifier / pipeline** (12, Thread D, requires renumber):
 - P0: Earnings prompt tightening at `backend/ingest.py:215`
-- P0: Sentiment frame definition (event-vs-reaction) at `backend/ingest.py:214` -- resolves WD49 root cause
+- P0: Sentiment frame definition (event-vs-reaction) at `backend/ingest.py:214` -- resolves WD49 root cause [SHIPPED 2026-05-18 via commit `6f9c91d` `feat(wd49): add sentiment_reason field with event-frame prompt`]
 - P2: Reintroduce Regulation deal_type bucket + backfill migration
 - P1: `strip_html` prefix peeling for PRNewswire / Investing.com / wire datelines
 - P1: SEC summary backfill from `content` column (61 SEC rows have only filing-metadata as summary)
@@ -110,7 +110,7 @@ Surface existing `relevance_reason` column in the ArticlesRow expand-row instead
 - P2: JV deal_type disambiguator (Funding vs M&A vs Other)
 - P2: IPO clause excludes ETF launches and SPAC over-allotments
 - P3: UI-side sentiment label sweep (story-card, feed-row, brief-pdf)
-- **HIGHEST-LEVERAGE / LOWEST-EFFORT**: surface existing `relevance_reason` in ArticlesRow expand-row
+- **HIGHEST-LEVERAGE / LOWEST-EFFORT**: surface existing `relevance_reason` in ArticlesRow expand-row [SHIPPED 2026-05-18 as WD74 / PR #253]
 - (Optional larger) Add a true per-article synthesized lede prompt
 
 **Infra / DX** (2, Thread F):
@@ -393,9 +393,9 @@ PR #197 collects all of the work below. 18 PRs squash-merged to integration via 
 
 Migration `20260507073312_output_log_v0_stub.sql` applied to dev Supabase (`pnfjelfvtypkpnwpflmv`). NVIDIA memo triggered via D2 preview UI; `SELECT * FROM output_log_v0_stub ORDER BY generated_at DESC LIMIT 1` returned valid row: `output_type="memo"`, `source_table="companies"`, `source_id="unknown"` (caller-side gap from legacy modal -- filed as WD31, resolves naturally when PR-C1 BriefTab replaces the trigger), `latency_ms=3757`, `prompt_inputs` + `metadata` JSONB valid.
 
-## HALT 8 -- HOLDING for self-merge of PR #197 to main
+## HALT 8 -- RESOLVED (PR #197 self-merged to main 2026-05-11 at commit `22cda0c`)
 
-Phase 7 prep complete. PR #197 (`Noah/w2 c phase 1`) is OPEN, mergeable, base=main, head=noah/w2-c-phase-1. Self-merge in the morning per locked plan.
+Phase 7 prep complete. PR #197 (`Noah/w2 c phase 1`) was OPEN, mergeable, base=main, head=noah/w2-c-phase-1 at the time this halt was filed. Self-merge executed 2026-05-11 morning per locked plan; details captured in the "Recently Completed (2026-05-11) -- W2-C Phase 1 ship" section above.
 
 **Open items for self-merge sequence:**
 
