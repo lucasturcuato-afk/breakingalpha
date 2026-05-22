@@ -1,7 +1,13 @@
 # Signalera/Breaking Alpha -- Claude Chat Handoff
-**Date:** 2026-05-11 (PT)
-**Last session focus:** W2-C Company Intel Phase 1 ship complete + W2-D parallel sprint executed (6 draft PRs opened across chrome polish, orphan cleanup, entity-resolution recon, classifier audit, visual smoke, BriefTab regenerate).
-**Status:** Main is at `22dd457` (Phase 1 squash `22cda0c` -> HANDOFF doc-update `8c693c0` -> `.gitignore` for auth state `22dd457`). 6 W2-D draft PRs (#247-#252) open and ready for Noah's review.
+**Date:** 2026-05-19 (PT)
+**Last session focus:** W2-D parallel sprint all PRs merged to main + WD110 tone surface spec shipped + WD92-WD95 implementation PRs merged.
+**Status:** Main is at `4156a4c`. All 6 W2-D draft PRs (#247-#252) merged. Additional PRs #253-#257 also merged (WD74, WD93, WD95, WD110, WD92).
+
+---
+
+## Recently Completed (2026-05-19) -- W2-D all PRs merged + tone surface spec
+
+PR #247 through #257 all merged to main as of 2026-05-19. W2-D parallel sprint completions: WD87 (orphan cleanup), WD81/WD82/WD84/WD85/WD86 (chrome polish), WD63/WD59/WD49 (classifier audit), WD72/WD61/WD62/WD64/WD03/WD06/WD26/WD60/WD71/WD69/WD83 (entity recon), WD70 (BriefTab regenerate), WD89/WD66/WD91 (visual smoke). Additional merges: WD74 (relevance_reason surface), WD93 (Trend tab rename to "Price & Tone"), WD95 (decouple tab state from RSC refetch), WD110 (tone surface redesign spec), WD92 (sector backfill + cron). All constraint compliance maintained (zero em-dashes, zero Lucas-protected file modifications except PR #251 precedent, zero structured output reintroduction).
 
 ---
 
@@ -11,9 +17,9 @@
 
 ---
 
-## Recently Completed (2026-05-11) -- W2-D parallel sprint (6 threads, all returned within ~35 min)
+## Recently Completed (2026-05-11) -- W2-D parallel sprint (6 threads, all returned within ~35 min) -- NOW ALL MERGED AS OF 2026-05-19
 
-Dispatch start `2026-05-11T21:43:57Z`. All 6 background agents returned with deliverables before 8h hard cap. Zero merges to main. All work as DRAFT PRs based on main `22dd457`. Lucas-protected files untouched except `/api/memo/route.ts` (Thread F exception). Zero em-dashes across all new content.
+Dispatch start `2026-05-11T21:43:57Z`. All 6 background agents returned with deliverables before 8h hard cap. All 6 PRs initially DRAFT, all now MERGED to main as of 2026-05-19. Lucas-protected files untouched except `/api/memo/route.ts` (Thread F exception). Zero em-dashes across all new content.
 
 ### Sprint summary
 
@@ -26,36 +32,21 @@ Dispatch start `2026-05-11T21:43:57Z`. All 6 background agents returned with del
 | E | WD89 WD66 WD91 (visual smoke, auth-blocked) | `noah/w2-d-recon-smoke` | doc | COMPLETED-PARTIAL | [#248](https://github.com/lucasturcuato-afk/breakingalpha/pull/248) | +298 / -0 (5 files) |
 | F | WD70 (BriefTab regenerate + 3/day quota) | `noah/w2-d-wd70-regenerate` | code + migration | COMPLETED | [#251](https://github.com/lucasturcuato-afk/breakingalpha/pull/251) | +296 / -13 (4 files) |
 
-**Aggregate**: +1,960 LOC / -637 LOC across 26 files, 6 draft PRs.
+**Aggregate**: +1,960 LOC / -637 LOC across 26 files. All 6 PRs merged to main 2026-05-19.
 
 ### Halts encountered
 
 None. Every thread completed inside-scope. Thread E's auth-wall was anticipated and gracefully handled via code-read substitutes for WD66/WD91.
 
-### Mandatory manual steps for Noah (in priority order)
+### Merge notes -- all complete as of 2026-05-19
 
-1. **PR #251 (WD70 Regenerate)** -- highest user value:
-   - Review migration SQL at `supabase/migrations/20260511215034_wd70_user_memo_regeneration_quota.sql`
-   - Execute migration in Supabase dashboard
-   - Pull branch + re-test regenerate end-to-end (live test gated on migration)
-   - Verify RLS policies (signed-in user reads/writes only their own quota rows)
-   - Loop Lucas async on PR review (no blocker per protocol override)
-   - Merge when satisfied
-2. **PR #249 (Chrome polish)** -- authenticated visual smoke on `/company/<slug>`: confirm tab underline + hover lift, trend tab context header, BriefTab gold TLDR block + ordinal eyebrows, KPI strip middle dots, alias ribbon middle dots
-3. **PR #247 (Orphan cleanup)** -- review the 4 deletions (`company-detail-client.tsx`, `company-header.tsx`, `company-tabs.tsx`, `index.ts` barrel). tsc clean. Worktree-shape build failure flagged separately as new WD candidate.
-4. **PR #250 (Entity + process recon)** -- read `entity-resolution-audit.md` + `process-and-spec-recon.md`. Decide which WD-A through WD-L candidates to promote.
-5. **PR #248 (Visual smoke partial)** -- read findings; queue auth-seed work so re-run is possible. Confirm `/company` directory-mention-count exposure decision (intended vs accidental).
-6. **PR #252 (Classifier audit)** -- read `classifier-summary-audit.md`. **WD-number collision warning: Thread D used proposed numbers WD64-WD75 that already exist in `docs/w2-d-backlog.md`. Must renumber on intake.**
-
-### Recommended Noah triage order
-
-Per highest leverage first (matches dispatch spec recommendation):
-1. **#251** -- WD70 (ships actual user-facing feature once migration runs)
-2. **#249** -- Chrome polish (visible polish across Company Intel)
-3. **#247** -- Orphan cleanup (pure tech-debt win, no UX risk)
-4. **#250** -- Entity + process recon (informs many follow-on WDs)
-5. **#248** -- Visual smoke partial (auth-seed is the unlock for future smokes)
-6. **#252** -- Classifier audit (reframes WD59 and surfaces highest-leverage cheap win: surface `relevance_reason` in ArticlesRow)
+All 6 W2-D PRs merged to main in sequence (2026-05-18 to 2026-05-19). Noah completed:
+1. **PR #251 (WD70 Regenerate)** -- merged with migration executed in Supabase
+2. **PR #249 (Chrome polish)** -- merged
+3. **PR #247 (Orphan cleanup)** -- merged
+4. **PR #250 (Entity + process recon)** -- merged with findings docs now on main
+5. **PR #248 (Visual smoke partial)** -- merged with findings docs now on main
+6. **PR #252 (Classifier audit)** -- merged with audit doc on main. WD-number renumbering handled post-merge (WD64-WD75 from audit backfilled as WD92-WD109).
 
 ### Cross-thread converging findings
 
@@ -110,7 +101,7 @@ Surface existing `relevance_reason` column in the ArticlesRow expand-row instead
 
 **Classifier / pipeline** (12, Thread D, requires renumber):
 - P0: Earnings prompt tightening at `backend/ingest.py:215`
-- P0: Sentiment frame definition (event-vs-reaction) at `backend/ingest.py:214` -- resolves WD49 root cause
+- P0: Sentiment frame definition (event-vs-reaction) at `backend/ingest.py:214` -- resolves WD49 root cause [SHIPPED 2026-05-18 via commit `6f9c91d` `feat(wd49): add sentiment_reason field with event-frame prompt`]
 - P2: Reintroduce Regulation deal_type bucket + backfill migration
 - P1: `strip_html` prefix peeling for PRNewswire / Investing.com / wire datelines
 - P1: SEC summary backfill from `content` column (61 SEC rows have only filing-metadata as summary)
@@ -119,7 +110,7 @@ Surface existing `relevance_reason` column in the ArticlesRow expand-row instead
 - P2: JV deal_type disambiguator (Funding vs M&A vs Other)
 - P2: IPO clause excludes ETF launches and SPAC over-allotments
 - P3: UI-side sentiment label sweep (story-card, feed-row, brief-pdf)
-- **HIGHEST-LEVERAGE / LOWEST-EFFORT**: surface existing `relevance_reason` in ArticlesRow expand-row
+- **HIGHEST-LEVERAGE / LOWEST-EFFORT**: surface existing `relevance_reason` in ArticlesRow expand-row [SHIPPED 2026-05-18 as WD74 / PR #253]
 - (Optional larger) Add a true per-article synthesized lede prompt
 
 **Infra / DX** (2, Thread F):
@@ -402,9 +393,9 @@ PR #197 collects all of the work below. 18 PRs squash-merged to integration via 
 
 Migration `20260507073312_output_log_v0_stub.sql` applied to dev Supabase (`pnfjelfvtypkpnwpflmv`). NVIDIA memo triggered via D2 preview UI; `SELECT * FROM output_log_v0_stub ORDER BY generated_at DESC LIMIT 1` returned valid row: `output_type="memo"`, `source_table="companies"`, `source_id="unknown"` (caller-side gap from legacy modal -- filed as WD31, resolves naturally when PR-C1 BriefTab replaces the trigger), `latency_ms=3757`, `prompt_inputs` + `metadata` JSONB valid.
 
-## HALT 8 -- HOLDING for self-merge of PR #197 to main
+## HALT 8 -- RESOLVED (PR #197 self-merged to main 2026-05-11 at commit `22cda0c`)
 
-Phase 7 prep complete. PR #197 (`Noah/w2 c phase 1`) is OPEN, mergeable, base=main, head=noah/w2-c-phase-1. Self-merge in the morning per locked plan.
+Phase 7 prep complete. PR #197 (`Noah/w2 c phase 1`) was OPEN, mergeable, base=main, head=noah/w2-c-phase-1 at the time this halt was filed. Self-merge executed 2026-05-11 morning per locked plan; details captured in the "Recently Completed (2026-05-11) -- W2-C Phase 1 ship" section above.
 
 **Open items for self-merge sequence:**
 

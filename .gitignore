@@ -36,6 +36,7 @@ yarn-error.log*
 # env files
 .env
 .env.local
+.env.playwright
 .env*
 
 # vercel
@@ -55,6 +56,8 @@ scripts/wd49-backfill-log.txt
 scripts/wd49-backfill-errors.txt
 scripts/wd49-backfill-flips.txt
 scripts/wd49-backfill-v2-stdout.log
+# smoke test output (script generated, do not commit)
+scripts/wd49-*.csv
 
 # claude
 .claude/settings.local.json
