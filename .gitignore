@@ -51,6 +51,11 @@ __pycache__/
 *.pyc
 .venv/
 
+# WD49 backfill artifacts (transient output, never committed)
+scripts/wd49-backfill-log.txt
+scripts/wd49-backfill-errors.txt
+scripts/wd49-backfill-flips.txt
+scripts/wd49-backfill-v2-stdout.log
 # smoke test output (script generated, do not commit)
 scripts/wd49-*.csv
 
