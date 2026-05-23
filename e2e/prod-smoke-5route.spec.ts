@@ -50,24 +50,34 @@ function slugify(route: string): string {
 
 async function auditRoute(page: Page, route: string): Promise<RouteFindings> {
   const slug = slugify(route);
+  // Per-route arrays, declared fresh here so prior-route entries cannot leak
+  // (each test gets its own Page anyway, but keep the contract explicit).
   const consoleErrors: string[] = [];
   const networkFailures: NetworkFailure[] = [];
-
-  page.on("console", (msg) => {
-    if (msg.type() === "error") {
-      consoleErrors.push(msg.text());
-    }
-  });
-  page.on("response", (response) => {
-    if (response.status() >= 400) {
-      networkFailures.push({ url: response.url(), status: response.status() });
-    }
-  });
 
   const start = Date.now();
   let loadError: string | null = null;
 
+  // Sign in BEFORE installing the network/console listeners. Otherwise the
+  // pre-auth /api/user-profile ping fired from /auth (a guaranteed 401 prior
+  // to the WD124 provider gate) gets mis-attributed to whichever route is
+  // currently under test, producing a phantom "401 on every route" pattern.
   await signIn(page);
+
+  // Listeners scoped to THIS audit only — installed after sign-in and removed
+  // before the function returns so they cannot bleed into the next route.
+  const onConsole = (msg: import("@playwright/test").ConsoleMessage) => {
+    if (msg.type() === "error") {
+      consoleErrors.push(msg.text());
+    }
+  };
+  const onResponse = (response: import("@playwright/test").Response) => {
+    if (response.status() >= 400) {
+      networkFailures.push({ url: response.url(), status: response.status() });
+    }
+  };
+  page.on("console", onConsole);
+  page.on("response", onResponse);
 
   const { baseUrl } = getTestCredentials();
   try {
@@ -147,6 +157,10 @@ async function auditRoute(page: Page, route: string): Promise<RouteFindings> {
     path.join(FINDINGS_DIR, `${slug}.findings.json`),
     JSON.stringify(findings, null, 2),
   );
+
+  // Detach listeners so the next test/route starts with a clean slate.
+  page.off("console", onConsole);
+  page.off("response", onResponse);
 
   return findings;
 }
