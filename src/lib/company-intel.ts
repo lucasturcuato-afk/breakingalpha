@@ -45,6 +45,11 @@ export interface RawArticleRow {
   sector?: string | null;
   sentiment?: string | null;
   summary?: string | null;
+  // WD130: `content` is selected by ARTICLE_COLUMNS in the company-articles
+  // route but was previously dropped at the type layer, which meant
+  // formatArticleList only ever saw `summary`. Carrying it through here lets
+  // the memo prompt feed full article text when available.
+  content?: string | null;
   published_at?: string | null;
   ingested_at?: string | null;
   url?: string | null;
@@ -502,6 +507,50 @@ export const TAGGED_DEAL_TYPES = new Set(["Earnings", "M&A", "Funding", "IPO", "
 // ---------------------------------------------------------------------------
 
 /**
+ * WD130: per-article body cap (chars) used by `formatArticleList`.
+ *
+ * The memo route truncates the entire prompt content to 4000 chars
+ * (src/app/api/memo/route.ts). With ~10 in-pool articles + ~250 chars of
+ * memo header + ~110 chars per-article overhead (index/title/source/date),
+ * a 600-char body cap lets a 10-article dev-led pool stay well within budget
+ * in the typical case (most articles have <300 char summaries) while
+ * delivering 3.3x more body text per article than the previous 180-char
+ * slice in the long-content/long-summary cases that actually drove the
+ * truncation problem.
+ */
+const ARTICLE_BODY_CAP = 600;
+
+/**
+ * WD130: pick the richer text source for an article and word-boundary
+ * truncate it. Prefers `content` when present and meaningfully longer than
+ * `summary`; otherwise returns the (un-sliced) summary. Always collapses
+ * runs of whitespace to a single space so the prompt stays compact.
+ *
+ * Word-boundary truncation: if the text exceeds `cap`, scan back from `cap`
+ * to the most recent space and cut there, append " ..." sentinel. This
+ * avoids the prior behavior of cutting mid-word ("This sentence is unfini").
+ * If no space is found within the first 80% of the cap, fall back to a hard
+ * cut so we never return an empty body for pathological inputs.
+ */
+function pickArticleBody(a: CompanyArticle, cap: number): string {
+  const summary = (a.summary ?? "").replace(/\s+/g, " ").trim();
+  const content = (a.content ?? "").replace(/\s+/g, " ").trim();
+
+  // Prefer content only when it carries materially more text than the
+  // summary. The threshold (summary length + 50 chars) avoids switching to
+  // a near-identical content field that re-renders the same opening sentence
+  // for a few extra trailing words.
+  const source = content.length > summary.length + 50 ? content : summary;
+  if (source.length === 0) return "";
+  if (source.length <= cap) return source;
+
+  const window = source.slice(0, cap);
+  const lastSpace = window.lastIndexOf(" ");
+  const cutAt = lastSpace >= Math.floor(cap * 0.8) ? lastSpace : cap;
+  return source.slice(0, cutAt) + " ...";
+}
+
+/**
  * Format an article list for inclusion in a memo user message.
  *
  * When `startIndex` is provided, each article is prefixed with a 1-indexed
@@ -513,6 +562,13 @@ export const TAGGED_DEAL_TYPES = new Set(["Earnings", "M&A", "Funding", "IPO", "
  * 1..N namespace across the two lists. When `startIndex` is omitted, the
  * legacy bullet form is emitted (kept for back-compat with non-citation
  * callers).
+ *
+ * WD130: the article body is now sourced via `pickArticleBody`, which prefers
+ * full `content` when present and meaningfully longer than `summary`,
+ * otherwise falls back to the full `summary` (no 180-char slice), and
+ * word-boundary truncates at `ARTICLE_BODY_CAP` (600 chars) instead of
+ * cutting mid-sentence at 180 chars. The 4000-char total cap in the memo
+ * route remains the binding outer constraint and is unchanged.
  */
 export function formatArticleList(arts: CompanyArticle[], startIndex?: number): string {
   if (arts.length === 0) return "None";
@@ -524,18 +580,18 @@ export function formatArticleList(arts: CompanyArticle[], startIndex?: number): 
         const tag = a.deal_type && TAGGED_DEAL_TYPES.has(a.deal_type) ? `[${a.deal_type}] ` : "";
         const source = a.source ? ` (${a.source})` : "";
         const date = a.published_at ? ` | ${a.published_at.slice(0, 10)}` : "";
-        const summary = a.summary
-          ? ` :: ${a.summary.replace(/\s+/g, " ").trim().slice(0, 180)}`
-          : "";
-        return `[${n}] ${tag}${a.title}${source}${date}${summary}`;
+        const body = pickArticleBody(a, ARTICLE_BODY_CAP);
+        const bodyOut = body ? ` :: ${body}` : "";
+        return `[${n}] ${tag}${a.title}${source}${date}${bodyOut}`;
       })
       .join("\n");
   }
   return sliced
     .map((a) => {
       const tag = a.deal_type && TAGGED_DEAL_TYPES.has(a.deal_type) ? `[${a.deal_type}] ` : "";
-      const summary = a.summary ? ` -- ${a.summary.slice(0, 180)}` : "";
-      return `* ${tag}${a.title}${summary}`;
+      const body = pickArticleBody(a, ARTICLE_BODY_CAP);
+      const bodyOut = body ? ` -- ${body}` : "";
+      return `* ${tag}${a.title}${bodyOut}`;
     })
     .join("\n\n");
 }
@@ -601,6 +657,11 @@ export function filterAndClassifyArticles(
       sector: a.sector ?? undefined,
       sentiment: a.sentiment ?? undefined,
       summary: stripHtml(a.summary ?? undefined),
+      // WD130: pass `content` through so formatArticleList can prefer it over
+      // `summary` when it carries more of the article body. `stripHtml` returns
+      // "" for null/undefined input, so a null-check guard preserves "no
+      // content" vs "empty after strip".
+      content: a.content != null ? stripHtml(a.content) : null,
       published_at: a.published_at ?? a.ingested_at ?? undefined,
       url: a.url ?? undefined,
       primary_company: a.primary_company ?? null,
