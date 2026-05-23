@@ -8,7 +8,7 @@ import concurrent.futures
 import os, json, re, socket, time, urllib.error, urllib.request, requests, feedparser, html as _html
 from datetime import datetime, timezone, timedelta
 from typing import Literal, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from supabase import create_client
 from google import genai
 from google.genai import types
@@ -63,7 +63,7 @@ class CompanyEntity(BaseModel):
 
 class FilterDecision(BaseModel):
     relevant: bool
-    relevance_score: int
+    relevance_score: int = Field(ge=1, le=10)
     relevance_reason: str
     industry_verticals: list[str]
     activity_types: list[str]
@@ -206,7 +206,7 @@ Good examples: "Nvidia invests in Marvell" → [{{"name": "Nvidia", "entity_type
 Respond ONLY in valid JSON:
 {{
   "relevant": true/false,
-  "relevance_score": 1-10,
+  "relevance_score": "Integer 1-10 measuring how directly and materially this article is about the primary_company. Anchors: 10 = direct, material, company-specific event (earnings result with named figures, product launch with named revenue or contract value, M&A announcement with the company as named acquirer or target, named leadership change tied to strategy, named regulatory action against the company, IPO pricing or filing). 8 = significant but secondary (sector trend with the company named as exemplar, analyst-coverage event such as initiation, upgrade, downgrade, or price-target change, partnership where the company is one of several named parties, peer-group earnings read-through where the company is explicitly cited). 6 = tangential mention (passing reference, peer comparison, list inclusion, the company is named but the article is not about its activity). Below 6 means the article is not about the company at all; only use sub-6 in that case (the >=6 ingest gate will drop these). Use the FULL 6-10 range, including intermediate values 7 and 9 when the article sits between two anchors. Do NOT default to round numbers (10 or 8): if a 10-anchor event is mentioned but lacks concrete figures or named parties, score 9; if an 8-anchor signal is only partially named or one-sided, score 7. Score must reflect article-to-company fit, not headline excitement.",
   "relevance_reason": "GATE — apply before writing: If this article is primarily an opinion piece, profile, cultural commentary, or trend piece with no named transaction, earnings result, financing event, guidance change, regulatory action, or specific market-moving event — set relevant: false and leave this field as an empty string. Do not fabricate a read-through. Articles discussing a named person's political views, cultural influence, public commentary, or personal philosophy are not market-moving events even if that person runs a public or private company — set relevant: false. Internal staff promotions, appointments, hires, or departures are not market-moving events unless the article explicitly links the change to a named transaction, fundraising event, earnings event, guidance change, or regulatory action — if no such link exists, set relevant: false. For articles that pass the gate: 1-2 sentences max. Lead with the concrete market implication — the named deal, specific dollar figure, rate level, or event — not a description of what happened. Only name comp companies or sector read-throughs if the mechanism directly follows from what this article reports; do not append a comp list just to fill the format. Use specific company names, dollar figures, or named sectors where available. BANNED outputs — never write these: vague taxonomy ('this is relevant to PE / VC / financial markets / investing'), article restatements that just paraphrase the headline, fabricated comp lists, filler like 'this matters because it is a transaction in private equity'. For macro or rates articles, state the concrete effect on deal economics — LBO spreads, floating-rate credit costs, buyout multiples, M&A financing conditions, or risk appetite for new deals — never write that rates moved, banks are impacted, or that interest rates affect markets generally. Write as a buy-side analyst flagging a signal to a portfolio manager.",
   "industry_verticals": ["<1-3 values from the allowed industry verticals list above>"],
   "activity_types": ["<0-3 values from the allowed activity types list above>"],
