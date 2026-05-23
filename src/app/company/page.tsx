@@ -819,13 +819,13 @@ export default function CompanyIntelPage() {
             )}
           </div>
         ) : (
-          <div className="relative bg-white border border-border-base rounded-xl overflow-hidden">
-            <table className="w-full text-left border-collapse">
+          <div className="relative bg-white border border-border-base rounded-xl overflow-x-auto">
+            <table className="w-full table-fixed text-left border-collapse min-w-[900px]">
               <thead className="bg-parchment-mid border-b border-border-base">
                 <tr className="font-data text-[9px] uppercase tracking-widest text-text-muted">
                   <th className="w-8 px-2 py-2"></th>
                   <SortHeader label="Ticker" k="ticker" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="w-20 px-2 py-2" />
-                  <SortHeader label="Name" k="name" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="px-2 py-2" />
+                  <SortHeader label="Name" k="name" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="px-2 py-2 min-w-[200px]" />
                   <SortHeader label="Sector" k="sector" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="px-2 py-2" />
                   <th className="px-2 py-2">Themes</th>
                   <SortHeader label="Mentions" k="mentions" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="px-2 py-2" />
