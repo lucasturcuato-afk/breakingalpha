@@ -453,7 +453,41 @@ export async function POST(request: NextRequest) {
   // New path: type-based memo with content string
   if (content || systemPrompt) {
     const system = systemPrompt || (type ? TYPE_PROMPTS[type] : undefined) || TYPE_PROMPTS.article;
-    const truncated = String(content || "").slice(0, 4000);
+    // WD133: raise the input cap from 4000 to 16000 chars.
+    //
+    // History: the previous 4000-char cap was set before WD130 widened the
+    // per-article body cap from 180 to 600 chars and before WD129 work on
+    // pool selection. Post-WD130, a pool=10 worst case projects to ~7286
+    // chars of assembled article-pool text (10 articles x ~600-char body
+    // plus ~110-char overhead each), which the old cap would silently
+    // truncate by ~3300 chars. That dropped trailing context articles with
+    // no log, no warning, and no signal to the caller. The right input
+    // (chosen by WD129) was being shredded by an arbitrary route-level cap.
+    //
+    // Risk profile: Gemini 2.5 Flash has a ~1M-token context (~4M chars).
+    // 16000 chars is <0.5% of that ceiling, so this is not a model-budget
+    // risk; it is purely an upstream guardrail against runaway prompts.
+    // 16000 chars comfortably absorbs pool=10 worst case (~7286 chars) plus
+    // a 2x headroom for future per-article-body growth or pool-size bumps.
+    //
+    // Fail-loud safety net: if a future caller still overflows (e.g. a
+    // very large systemPrompt is mistakenly placed in content), the truncation
+    // now emits a structured warn instead of silently dropping data.
+    const INPUT_CAP = 16000;
+    const originalContent = String(content || "");
+    const truncated = originalContent.slice(0, INPUT_CAP);
+    if (originalContent.length > INPUT_CAP) {
+      console.warn(
+        "[memo] WD133 input cap truncated content",
+        JSON.stringify({
+          original_chars: originalContent.length,
+          capped_chars: truncated.length,
+          dropped_chars: originalContent.length - INPUT_CAP,
+          cap_value: INPUT_CAP,
+          type: type ?? null,
+        }),
+      );
+    }
 
     // Skip the historical-context overlay for the web-fallback path: that
     // overlay is keyed on indexed sectors and theses, neither of which exist
