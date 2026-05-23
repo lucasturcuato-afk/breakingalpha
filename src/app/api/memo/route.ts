@@ -268,6 +268,65 @@ Hard rules: no invented counterparties, dollar figures, or valuation assumptions
 
 const RATE_LIMIT_MEMO = 10; // memos per 24h
 
+/**
+ * WD126: Server-side rescue for callers that POST /api/memo without a `company`
+ * body field (MemoModal, CompanyIntelMemoModal, thesis-detail-panel). Those
+ * surfaces all include a "COMPANY: <name>" line in the prompt content, so we
+ * can recover the cache key here without touching the protected modal files.
+ *
+ * Matches the first line of the form `COMPANY: <name>` (case-insensitive,
+ * tolerates leading whitespace). Returns null if not present or unusable.
+ */
+function extractCompanyFromContent(content: string): string | null {
+  try {
+    if (!content || typeof content !== "string") return null;
+    const lines = content.split(/\r?\n/);
+    for (const line of lines) {
+      const m = line.match(/^\s*COMPANY\s*:\s*(.+?)\s*$/i);
+      if (m && m[1]) {
+        const value = m[1].trim();
+        // Guard against pathological inputs (e.g. an empty match, an unbounded
+        // value pulled from a wrapped paragraph). Cap to a reasonable column
+        // length and reject anything that still looks like prose.
+        if (value.length === 0 || value.length > 200) return null;
+        return value;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * WD126: Resolve the cache key the output_log_v0_stub row should be written
+ * under. Prefer the explicit `company` body field (BriefTab path). Fall back
+ * to the server-side parse of the content prompt (modal-driven paths). If
+ * neither is available, return "unknown" to preserve the pre-fix behavior and
+ * emit a structured log so Noah can monitor any callers that still miss.
+ */
+function resolveMemoCacheKey(
+  explicitCompany: string | undefined,
+  content: string | undefined,
+  ctx: { userId: string; type: string | undefined },
+): string {
+  if (explicitCompany && explicitCompany.trim().length > 0) {
+    return explicitCompany.trim();
+  }
+  const parsed = extractCompanyFromContent(content ?? "");
+  if (parsed) return parsed;
+  console.warn(
+    "[memo] WD126 cache-key fallback to 'unknown'",
+    JSON.stringify({
+      user_id: ctx.userId,
+      type: ctx.type ?? null,
+      has_content: Boolean(content),
+      content_chars: content ? content.length : 0,
+    }),
+  );
+  return "unknown";
+}
+
 export async function POST(request: NextRequest) {
   const { supabase: userSupabase, user } = await getSupabaseWithUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
@@ -427,6 +486,16 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Gemini returned empty memo, retry" }, { status: 500 });
       }
 
+      // WD126: derive the cache key BEFORE handing to the after() hook so the
+      // request-scoped body fields are captured by closure. Prefer the
+      // explicit `company` field, fall back to parsing the COMPANY line from
+      // content for the modal-driven callers (MemoModal,
+      // CompanyIntelMemoModal, thesis-detail-panel) that omit it.
+      const cacheKey = resolveMemoCacheKey(company, content, {
+        userId: user.id,
+        type,
+      });
+
       // Pattern A: fire-and-forget output capture after response is flushed.
       after(async () => {
         try {
@@ -437,7 +506,7 @@ export async function POST(request: NextRequest) {
           await recordOutput(svcSupabase, {
             output_type: "memo",
             source_table: "companies",
-            source_id: company ?? "unknown",
+            source_id: cacheKey,
             prompt_inputs: {
               type: type ?? null,
               sector: sector ?? null,
