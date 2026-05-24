@@ -10,6 +10,9 @@ from supabase import create_client
 from google import genai
 from google.genai import types
 
+from outputs import record_output
+from output_constants import DEAL_PROMPT_VERSION
+
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -230,9 +233,39 @@ def run():
                 print(f"    → Updated existing deal (id: {deal_id})")
             else:
                 row["created_at"] = datetime.now(timezone.utc).isoformat()
-                supabase.table("deal_flow").insert(row).execute()
+                ins_resp = supabase.table("deal_flow").insert(row).execute()
+                deal_id = None
+                try:
+                    if ins_resp.data and isinstance(ins_resp.data[0], dict):
+                        deal_id = ins_resp.data[0].get("id")
+                except Exception:
+                    pass
                 print(f"    → Inserted new deal")
                 upserted += 1
+
+            # Record to universal outputs table
+            try:
+                record_output(
+                    supabase,
+                    output_type='deal_extraction',
+                    content={
+                        'deal_id': str(deal_id) if deal_id else None,
+                        'company': deal.get('company'),
+                        'acquirer': deal.get('acquirer'),
+                        'deal_type': deal.get('deal_type'),
+                        'valuation': deal.get('valuation'),
+                        'sector': deal.get('sector') or article.get('sector'),
+                    },
+                    generation_context={
+                        'model': GEMINI_MODEL,
+                        'prompt_version': DEAL_PROMPT_VERSION,
+                        'source_article_id': article.get('id'),
+                    },
+                    source_table='deal_flow',
+                    source_id=deal_id,
+                )
+            except Exception as rec_err:
+                print(f"    ⚠ record_output(deal_extraction) failed: {rec_err}")
 
         except Exception as e:
             print(f"  ⚠ Supabase error: {e}")

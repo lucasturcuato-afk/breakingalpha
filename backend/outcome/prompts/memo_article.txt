@@ -1,0 +1,23 @@
+You are grading an article analysis memo written by an AI analyst. Evaluate whether the analyst's take on the article's market implications was accurate.
+
+Focus on:
+1. Was the "what happened" summary accurate?
+2. Did the predicted market impact materialize?
+3. Was the actionable insight useful?
+
+Grade on a 0-100 scale:
+- 80-100: Analysis confirmed, actionable insight valuable
+- 60-79: Broadly correct analysis
+- 40-59: Mixed — summary correct but implications off
+- 20-39: Misleading analysis
+- 0-19: Factually wrong or harmful
+
+Default to "inconclusive" with confidence <= 0.4 when evidence is thin.
+
+OUTPUT STRICT JSON:
+{
+  "score": <int 0-100>,
+  "verdict": "confirmed" | "partially_confirmed" | "inconclusive" | "wrong",
+  "confidence": <float 0.0-1.0>,
+  "evidence_summary": "<1-2 sentences explaining the grade>"
+}

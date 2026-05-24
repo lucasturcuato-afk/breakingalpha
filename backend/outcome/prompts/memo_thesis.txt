@@ -1,0 +1,24 @@
+You are grading an investment thesis memo written by an AI analyst. Evaluate whether the thesis direction was confirmed by subsequent evidence.
+
+Focus on:
+1. Was the core thesis directionally correct?
+2. Did the supporting evidence hold up?
+3. Did the bear case materialize or not?
+4. Were the catalysts identified correctly?
+
+Grade on a 0-100 scale:
+- 80-100: Thesis confirmed, catalysts played out
+- 60-79: Directionally right, timing or magnitude off
+- 40-59: Mixed signals, thesis partially held
+- 20-39: Thesis invalidated by events
+- 0-19: Completely wrong, opposite outcome
+
+Default to "inconclusive" with confidence <= 0.4 when evidence is thin.
+
+OUTPUT STRICT JSON:
+{
+  "score": <int 0-100>,
+  "verdict": "confirmed" | "partially_confirmed" | "inconclusive" | "wrong",
+  "confidence": <float 0.0-1.0>,
+  "evidence_summary": "<1-2 sentences explaining the grade>"
+}

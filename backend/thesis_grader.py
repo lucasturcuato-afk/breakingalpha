@@ -63,6 +63,9 @@ except ImportError:  # when imported as backend.thesis_grader (tests, dry-run)
     )
 
 
+from outputs import record_output
+from output_constants import GRADER_PROMPT_VERSION as _OUTPUT_GRADER_VERSION
+
 logger = logging.getLogger(__name__)
 
 # --- Clients ---------------------------------------------------------------
@@ -672,7 +675,13 @@ def grade_one(thesis: dict) -> dict | None:
         verdict_row = _build_verdict_row(
             thesis, verdict_obj, features, signals, cost, len(contradicting)
         )
-        supabase.table("thesis_verdicts").insert(verdict_row).execute()
+        verdict_resp = supabase.table("thesis_verdicts").insert(verdict_row).execute()
+        verdict_id = None
+        try:
+            if verdict_resp.data and isinstance(verdict_resp.data[0], dict):
+                verdict_id = verdict_resp.data[0].get("id")
+        except Exception:
+            pass
         logger.info("grader: step=7 thesis=%s verdict_row_inserted=1", thesis_id)
 
         # Steps 8/9/10 — combined theses update (outcome mirror + lock + expire)
@@ -695,6 +704,32 @@ def grade_one(thesis: dict) -> dict | None:
             "grader: step=8-10 thesis=%s outcome=%s locked=%s expired=%s",
             thesis_id, verdict_obj.verdict, locked, expired,
         )
+
+        # Record to universal outputs table
+        try:
+            record_output(
+                supabase,
+                output_type='thesis_grade',
+                content={
+                    'verdict_id': str(verdict_id) if verdict_id else None,
+                    'thesis_id': str(thesis_id),
+                    'verdict': verdict_obj.verdict,
+                    'confidence': verdict_obj.confidence,
+                    'time_elapsed_days': features.time_elapsed_days,
+                    'new_article_count': features.new_article_count,
+                },
+                generation_context={
+                    'model': GEMINI_MODEL,
+                    'prompt_version': PROMPT_VERSION,
+                    'output_grader_version': _OUTPUT_GRADER_VERSION,
+                    'tag_overlap_count': features.tag_overlap_count,
+                    'source_diversity_score': features.source_diversity_score,
+                },
+                source_table='thesis_verdicts',
+                source_id=verdict_id,
+            )
+        except Exception as rec_err:
+            logger.warning("thesis_grader: record_output failed for %s: %s", thesis_id, rec_err)
 
         print(f"    ✓ {ticker} → {verdict_obj.verdict} (conf={verdict_obj.confidence})")
         return {

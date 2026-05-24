@@ -24,6 +24,8 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { isAdmin } from "@/lib/admin-emails";
 import { cacheGet, cacheSet, buildCacheKey } from "@/lib/response-cache";
 import { getUserProfile, buildPersonalizationContext } from "@/lib/user-profile";
+import { recordOutput } from "@/lib/outputs";
+import { CHAT_PROMPT_VERSION } from "@/lib/output-constants";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -333,7 +335,26 @@ export async function POST(request: NextRequest) {
       cacheSet<CachedResponse>(cacheKey, { response, sources });
     }
 
-    return NextResponse.json({ response, sources, remaining: rl.remaining });
+    /* ── Record to universal outputs table ── */
+    const turnIndex = history?.length ?? 0;
+    const outputId = await recordOutput(supabase, {
+      output_type: 'chat_answer',
+      content: {
+        question: query,
+        answer: response,
+        citations: sources,
+        turn_index: turnIndex,
+      },
+      generation_context: {
+        model: 'gemini-2.5-flash',
+        prompt_version: CHAT_PROMPT_VERSION,
+        rag_match_count: typedMatches.length,
+        is_first_message: isFirstMessage,
+      },
+      user_id: user.id,
+    });
+
+    return NextResponse.json({ response, sources, remaining: rl.remaining, output_id: outputId });
   } catch (err) {
     console.error("[intelligence] Step 5 — generate response failed:", err);
     return NextResponse.json(

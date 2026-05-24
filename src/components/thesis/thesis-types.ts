@@ -65,6 +65,8 @@ export interface ThesisItem {
   generated_at?: string | null;
   // Sparkline cache
   sparklineData?: { prices: number[]; direction: "up" | "down" } | null;
+  // Output tracking
+  output_id?: string | null;
 }
 
 export interface WeeklyDigest {

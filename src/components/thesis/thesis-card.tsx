@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { Tooltip } from "@/components/ui/tooltip";
+import { useOutputFeedback } from "@/hooks/useOutputFeedback";
 import type { ThesisItem } from "./thesis-types";
 import { ConvictionRing } from "./ConvictionRing";
 import { SparklineChart } from "./SparklineChart";
@@ -143,6 +144,9 @@ interface ThesisCardProps {
 export function ThesisCard({ thesis, isSelected }: ThesisCardProps) {
   const [memoOpen, setMemoOpen] = useState(false);
   const [bearOpen, setBearOpen] = useState(false);
+  const { ref: feedbackRef, recordFollowup } = useOutputFeedback({
+    output_id: thesis.output_id,
+  });
 
   // FIX 6A: sentiment left border color
   const sentimentBorder =
@@ -157,7 +161,8 @@ export function ThesisCard({ thesis, isSelected }: ThesisCardProps) {
   return (
     <>
       <div
-        onClick={() => setMemoOpen(true)}
+        ref={feedbackRef as React.RefObject<HTMLDivElement>}
+        onClick={() => { setMemoOpen(true); recordFollowup(); }}
         className={cn(
           "bg-parchment border border-border-base rounded-xl p-3 cursor-pointer",
           "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",

@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 import { X, Copy, Check, Download, Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
+import { useOutputFeedback } from "@/hooks/useOutputFeedback";
+import { ThumbsControl } from "@/components/feedback/ThumbsControl";
 
 /* ── Markdown component overrides ── */
 
@@ -119,6 +121,10 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [visibleSections, setVisibleSections] = useState<Set<number>>(new Set());
+  const [memoOutputId, setMemoOutputId] = useState<string | null>(null);
+  const { ref: feedbackRef, thumbs, setThumbs, recordExport } = useOutputFeedback({
+    output_id: memoOutputId,
+  });
 
   // Keep onGenerated ref in sync to avoid stale closure bugs
   const onGeneratedRef = useRef(onGenerated);
@@ -133,15 +139,36 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
     setError("");
     setCopied(false);
     setVisibleSections(new Set());
+    setMemoOutputId(null);
 
-    // If a preloaded memo was provided, skip the API call entirely.
+    let cancelled = false;
+
+    // If a preloaded memo was provided, skip regeneration but still record
+    // an output row so ThumbsControl can attach feedback.
     if (preloadedMemo) {
       setMemo(preloadedMemo);
-      return;
+      (async () => {
+        try {
+          const res = await fetch("/api/outputs/record", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              output_type: "memo",
+              content: { memo_text: preloadedMemo, memo_type: type, preloaded: true },
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (!cancelled && data.output_id) setMemoOutputId(data.output_id);
+          }
+        } catch {
+          // Soft-fail — feedback just won't be available for this preloaded memo
+        }
+      })();
+      return () => { cancelled = true; };
     }
 
     setLoading(true);
-    let cancelled = false;
 
     (async () => {
       try {
@@ -157,6 +184,7 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
         const data = await res.json();
         if (!cancelled && data.memo) {
           setMemo(data.memo);
+          if (data.output_id) setMemoOutputId(data.output_id);
           onGeneratedRef.current?.(data.memo);
           // Fire-and-forget behavioral event
           try {
@@ -230,7 +258,8 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
     a.download = `${title.replace(/\s+/g, "_")}_memo.md`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [memo, title]);
+    recordExport();
+  }, [memo, title, recordExport]);
 
   if (!isOpen || !mounted) return null;
 
@@ -278,7 +307,7 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">
+        <div ref={feedbackRef as React.RefObject<HTMLDivElement>} className="flex-1 overflow-y-auto px-6 py-5">
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 size={24} className="text-gold animate-spin" />
@@ -346,6 +375,9 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
         {/* Footer */}
         {memo && !loading && !error && (
           <div className="flex items-center justify-end gap-2 px-6 py-3 border-t border-border-base flex-shrink-0">
+            {memoOutputId && (
+              <ThumbsControl value={thumbs} onChange={setThumbs} size="md" className="mr-auto" />
+            )}
             <button
               type="button"
               onClick={handleCopy}

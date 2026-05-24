@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Loader2, Bot, User, Sparkles } from "lucide-react";
+import { Send, Loader2, Bot, User, Sparkles, ThumbsUp, ThumbsDown } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import { cn } from "@/lib/utils";
+import { useOutputFeedback } from "@/hooks/useOutputFeedback";
 
 /* ── Markdown component overrides (mirrors MemoModal pattern) ── */
 
@@ -53,6 +54,7 @@ const mdComponents: Components = {
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  output_id?: string | null;
 }
 
 const SUGGESTED_PROMPTS = [
@@ -60,6 +62,37 @@ const SUGGESTED_PROMPTS = [
   "Summarize recent M&A activity",
   "Which sectors show the most momentum?",
 ];
+
+/* ── Per-message feedback wrapper ── */
+
+function ChatMessageFeedback({ outputId, children }: { outputId?: string | null; children: React.ReactNode }) {
+  const { ref, thumbs, setThumbs } = useOutputFeedback({ output_id: outputId });
+  return (
+    <div ref={ref as React.RefObject<HTMLDivElement>}>
+      {children}
+      {outputId && (
+        <div className="flex items-center gap-1 mt-1.5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+          <button
+            type="button"
+            onClick={() => setThumbs(thumbs === "up" ? null : "up")}
+            className={cn("p-0.5 rounded cursor-pointer", thumbs === "up" ? "text-gold" : "text-text-faint hover:text-gold")}
+            aria-label="Helpful"
+          >
+            <ThumbsUp size={11} strokeWidth={1.75} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setThumbs(thumbs === "down" ? null : "down")}
+            className={cn("p-0.5 rounded cursor-pointer", thumbs === "down" ? "text-gold" : "text-text-faint hover:text-gold")}
+            aria-label="Not helpful"
+          >
+            <ThumbsDown size={11} strokeWidth={1.75} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ── Component ── */
 
@@ -117,6 +150,7 @@ export function IntelligenceChat({ userId }: IntelligenceChatProps) {
         const assistantMessage: ChatMessage = {
           role: "assistant",
           content: data.response || "No response received.",
+          output_id: data.output_id ?? null,
         };
         setMessages([...updatedMessages, assistantMessage]);
       } catch (err) {
@@ -199,7 +233,7 @@ export function IntelligenceChat({ userId }: IntelligenceChatProps) {
               <div
                 key={i}
                 className={cn(
-                  "flex",
+                  "flex group/msg",
                   msg.role === "user" ? "justify-end" : "justify-start",
                 )}
               >
@@ -217,9 +251,11 @@ export function IntelligenceChat({ userId }: IntelligenceChatProps) {
                   )}
                 >
                   {msg.role === "assistant" ? (
-                    <ReactMarkdown components={mdComponents}>
-                      {msg.content}
-                    </ReactMarkdown>
+                    <ChatMessageFeedback outputId={msg.output_id}>
+                      <ReactMarkdown components={mdComponents}>
+                        {msg.content}
+                      </ReactMarkdown>
+                    </ChatMessageFeedback>
                   ) : (
                     msg.content
                   )}

@@ -125,6 +125,7 @@ export function mapThesisRow(row: RawThesisRow): MappedThesis {
     check_after: typeof row.check_after === "string" ? row.check_after : null,
     notes: typeof row.notes === "string" ? row.notes : null,
     generated_at: generatedAt,
+    output_id: typeof row.output_id === "string" ? row.output_id : null,
   };
 }
 

@@ -6,6 +6,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { Sparkles, Plus, ThumbsUp, ThumbsDown, Loader2 } from "lucide-react";
 import { stripHtml } from "@/lib/strip-html";
 import { MemoModal } from "@/components/memo/MemoModal";
+import { useOutputFeedback } from "@/hooks/useOutputFeedback";
 
 const HERITAGE_GOLD = "#d4a84b";
 const DC_ESPRESSO = "#1a1208";
@@ -17,6 +18,7 @@ export interface DCAnalystSectionProps {
   briefSource: "Morning Brief" | "Evening Wrap";
   currentRating: number;
   onRate: (sectionKey: string, rating: 1 | -1) => void;
+  outputId?: string | null;
 }
 
 export function DCAnalystSection({
@@ -26,10 +28,14 @@ export function DCAnalystSection({
   briefSource,
   currentRating,
   onRate,
+  outputId,
 }: DCAnalystSectionProps) {
   const [memoOpen, setMemoOpen] = useState(false);
   const [addingThesis, setAddingThesis] = useState(false);
   const router = useRouter();
+  const { ref: feedbackRef, setThumbs, recordFollowup } = useOutputFeedback({
+    output_id: outputId,
+  });
 
   const plain = stripHtml(content);
 
@@ -59,6 +65,7 @@ export function DCAnalystSection({
 
   return (
     <div
+      ref={feedbackRef as React.RefObject<HTMLDivElement>}
       style={{
         background: "var(--elevated)",
         border: "1px solid var(--border-base)",
@@ -108,7 +115,7 @@ export function DCAnalystSection({
       >
         <button
           type="button"
-          onClick={() => setMemoOpen(true)}
+          onClick={() => { setMemoOpen(true); recordFollowup(); }}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -174,7 +181,7 @@ export function DCAnalystSection({
           </span>
           <button
             type="button"
-            onClick={() => onRate(sectionKey, 1)}
+            onClick={() => { onRate(sectionKey, 1); setThumbs("up"); }}
             aria-label="Mark useful"
             style={{
               padding: 5,
@@ -189,7 +196,7 @@ export function DCAnalystSection({
           </button>
           <button
             type="button"
-            onClick={() => onRate(sectionKey, -1)}
+            onClick={() => { onRate(sectionKey, -1); setThumbs("down"); }}
             aria-label="Mark not useful"
             style={{
               padding: 5,

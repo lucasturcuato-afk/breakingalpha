@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isAdmin } from "@/lib/admin-emails";
 import { recordOutput } from "@/lib/outputs";
+import { MEMO_PROMPT_VERSION } from "@/lib/output-constants";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -299,11 +300,10 @@ function extractCompanyFromContent(content: string): string | null {
 }
 
 /**
- * WD126: Resolve the cache key the output_log_v0_stub row should be written
- * under. Prefer the explicit `company` body field (BriefTab path). Fall back
- * to the server-side parse of the content prompt (modal-driven paths). If
- * neither is available, return "unknown" to preserve the pre-fix behavior and
- * emit a structured log so Noah can monitor any callers that still miss.
+ * WD126: Resolve the company cache key for the outputs row. Prefer the
+ * explicit `company` body field (BriefTab path). Fall back to the server-side
+ * parse of the content prompt (modal-driven paths). If neither is available,
+ * return "unknown" and emit a structured log.
  */
 function resolveMemoCacheKey(
   explicitCompany: string | undefined,
@@ -430,21 +430,20 @@ export async function POST(request: NextRequest) {
       );
     }
     // Invalidate the prior cached memo row(s) for this user+company so the
-    // next BriefTab mount cannot return stale content while after() is still
-    // writing the fresh row.
+    // next BriefTab mount cannot return stale content while the fresh row
+    // is being written.
     try {
       const svcSupabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       );
       await svcSupabase
-        .from("output_log_v0_stub")
+        .from("outputs")
         .delete()
         .eq("output_type", "memo")
         .eq("source_table", "companies")
         .eq("source_id", company)
-        .eq("metadata->>variant", "articles")
-        .eq("metadata->>user_id", user.id);
+        .eq("user_id", user.id);
     } catch (e) {
       console.warn("[memo] cache invalidation soft-failed:", e);
     }
@@ -502,7 +501,6 @@ export async function POST(request: NextRequest) {
     // 700 to 950 output-token range. Other types fit comfortably in 2400.
     const maxOutputTokens = type === "company-web" ? 8192 : 2400;
     try {
-      const t0 = Date.now();
       const completion = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: [{ role: "user", parts: [{ text: truncated }] }],
@@ -513,64 +511,51 @@ export async function POST(request: NextRequest) {
           thinkingConfig: { thinkingBudget: 0 },
         },
       });
-      const latencyMs = Date.now() - t0;
 
       const memo = completion.text;
       if (!memo) {
         return NextResponse.json({ error: "Gemini returned empty memo, retry" }, { status: 500 });
       }
 
-      // WD126: derive the cache key BEFORE handing to the after() hook so the
-      // request-scoped body fields are captured by closure. Prefer the
-      // explicit `company` field, fall back to parsing the COMPANY line from
-      // content for the modal-driven callers (MemoModal,
-      // CompanyIntelMemoModal, thesis-detail-panel) that omit it.
+      // WD126: derive the company cache key — prefer explicit `company` field,
+      // fall back to parsing COMPANY line from content (modal-driven callers).
       const cacheKey = resolveMemoCacheKey(company, content, {
         userId: user.id,
         type,
       });
+      const resolvedCompany = cacheKey === "unknown" ? null : cacheKey;
 
-      // Pattern A: fire-and-forget output capture after response is flushed.
-      after(async () => {
-        try {
-          const svcSupabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-          );
-          await recordOutput(svcSupabase, {
-            output_type: "memo",
-            source_table: "companies",
-            source_id: cacheKey,
-            prompt_inputs: {
-              type: type ?? null,
-              sector: sector ?? null,
-              content_chars: truncated.length,
-            },
-            latency_ms: latencyMs,
-            metadata: {
-              variant: type === "company-web" ? "web" : "articles",
-              model: "gemini-2.5-flash",
-              max_output_tokens: maxOutputTokens,
-              memo_chars: memo.length,
-              markdown_memo: memo,
-              user_id: user.id,
-            },
-          });
-        } catch (e) {
-          console.error("[memo] recordOutput after() failed:", e);
-        }
+      // Record to universal outputs table (service-role client for bypassing RLS)
+      const svcSupabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      );
+      const outputId = await recordOutput(svcSupabase, {
+        output_type: 'memo',
+        content: {
+          memo_text: memo,
+          memo_type: type ?? 'article',
+          target_company: resolvedCompany,
+          target_sector: sector ?? null,
+        },
+        generation_context: {
+          model: 'gemini-2.5-flash',
+          prompt_version: MEMO_PROMPT_VERSION,
+          user_profile_role: profile?.role ?? null,
+        },
+        user_id: user.id,
       });
 
       // WD70: surface remaining quota when the caller is a regenerate-eligible
       // request so the frontend can render the counter without a second round
-      // trip. Only the article-grounded company path is gated, so we mirror
-      // that in the payload condition.
+      // trip. Only the article-grounded company path is gated.
       if (type === "company") {
         const used = await countRegenerationsToday(userSupabase, user.id);
         const remaining = Math.max(0, MEMO_REGENERATIONS_PER_DAY - used);
-        return NextResponse.json({ memo, regenerations_remaining_today: remaining });
+        return NextResponse.json({ memo, output_id: outputId, regenerations_remaining_today: remaining });
       }
-      return NextResponse.json({ memo });
+
+      return NextResponse.json({ memo, output_id: outputId });
     } catch (err) {
       console.error("[memo] Gemini content-path error:", err);
       console.error("[memo] error detail:", err instanceof Error ? err.message : String(err));
@@ -601,7 +586,6 @@ Sections: TRANSACTION OVERVIEW, STRATEGIC RATIONALE, KEY RISKS, ANALYST TAKE. Un
   const prompt = buildMemoPrompt(profile, legacyBase);
 
   try {
-    const t0 = Date.now();
     const completion = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -611,44 +595,34 @@ Sections: TRANSACTION OVERVIEW, STRATEGIC RATIONALE, KEY RISKS, ANALYST TAKE. Un
         thinkingConfig: { thinkingBudget: 0 },
       },
     });
-    const latencyMs = Date.now() - t0;
 
     const memo = completion.text;
     if (!memo) {
       return NextResponse.json({ error: "Gemini returned empty memo - retry" }, { status: 500 });
     }
 
-    // Pattern A: fire-and-forget output capture after response is flushed.
-    after(async () => {
-      try {
-        const svcSupabase = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        );
-        await recordOutput(svcSupabase, {
-          output_type: "memo",
-          source_table: "companies",
-          source_id: company,
-          prompt_inputs: {
-            acquirer: acquirer ?? null,
-            deal_type: deal_type ?? null,
-            value: value ?? null,
-            sector: sector ?? null,
-          },
-          latency_ms: latencyMs,
-          metadata: {
-            variant: "legacy",
-            model: "gemini-2.5-flash",
-            max_output_tokens: 2400,
-            memo_chars: memo.length,
-          },
-        });
-      } catch (e) {
-        console.error("[memo] recordOutput after() failed:", e);
-      }
+    // Record to universal outputs table
+    const svcSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+    const outputId = await recordOutput(svcSupabase, {
+      output_type: 'memo',
+      content: {
+        memo_text: memo,
+        memo_type: 'deal',
+        target_company: company ?? null,
+        target_sector: sector ?? null,
+      },
+      generation_context: {
+        model: 'gemini-2.5-flash',
+        prompt_version: MEMO_PROMPT_VERSION,
+        user_profile_role: profile?.role ?? null,
+      },
+      user_id: user.id,
     });
 
-    return NextResponse.json({ memo });
+    return NextResponse.json({ memo, output_id: outputId });
   } catch (err) {
     console.error("[memo] Gemini legacy-path error:", err);
     console.error("[memo] error detail:", err instanceof Error ? err.message : String(err));

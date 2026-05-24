@@ -30,6 +30,9 @@ from google import genai
 from google.genai.types import GenerateContentConfig, ThinkingConfig
 
 
+from outputs import record_output
+from output_constants import ADVERSARIAL_PROMPT_VERSION
+
 logger = logging.getLogger(__name__)
 
 
@@ -237,6 +240,29 @@ def run_bear_case(thesis: dict) -> dict | None:
             "passed_adversarial": bool(passed),
         }
         supabase.table("theses").update(update).eq("id", thesis_id).execute()
+
+        # Record to universal outputs table
+        try:
+            record_output(
+                supabase,
+                output_type='contrarian_signal',
+                content={
+                    'thesis_id': str(thesis_id),
+                    'bear_case_excerpt': (bear_case or '')[:500],
+                    'adversarial_score': _r4(winning_score),
+                    'passed_adversarial': bool(passed),
+                },
+                generation_context={
+                    'model': GEMINI_MODEL,
+                    'prompt_version': ADVERSARIAL_PROMPT_VERSION,
+                    'thesis_sector': thesis.get('sector'),
+                },
+                source_table='theses',
+                source_id=thesis_id,
+            )
+        except Exception as rec_err:
+            logger.warning("adversarial: record_output failed for %s: %s", thesis_id, rec_err)
+
         logger.info(
             "adversarial: %s bull=%.2f bear=%.2f passed=%s",
             thesis_id, scores["bull"], scores["bear"], passed,
