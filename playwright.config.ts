@@ -37,11 +37,11 @@ export default defineConfig({
         storageState: AUTH_FILE,
       },
       dependencies: ["setup"],
-      testIgnore: /auth-smoke\.spec\.ts/,
+      testIgnore: /(auth-smoke|prod-smoke-5route)\.spec\.ts/,
     },
     {
       name: "smoke-prod",
-      testMatch: /auth-smoke\.spec\.ts/,
+      testMatch: /(auth-smoke|prod-smoke-5route)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
   ],

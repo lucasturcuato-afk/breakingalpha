@@ -269,6 +269,64 @@ Hard rules: no invented counterparties, dollar figures, or valuation assumptions
 
 const RATE_LIMIT_MEMO = 10; // memos per 24h
 
+/**
+ * WD126: Server-side rescue for callers that POST /api/memo without a `company`
+ * body field (MemoModal, CompanyIntelMemoModal, thesis-detail-panel). Those
+ * surfaces all include a "COMPANY: <name>" line in the prompt content, so we
+ * can recover the cache key here without touching the protected modal files.
+ *
+ * Matches the first line of the form `COMPANY: <name>` (case-insensitive,
+ * tolerates leading whitespace). Returns null if not present or unusable.
+ */
+function extractCompanyFromContent(content: string): string | null {
+  try {
+    if (!content || typeof content !== "string") return null;
+    const lines = content.split(/\r?\n/);
+    for (const line of lines) {
+      const m = line.match(/^\s*COMPANY\s*:\s*(.+?)\s*$/i);
+      if (m && m[1]) {
+        const value = m[1].trim();
+        // Guard against pathological inputs (e.g. an empty match, an unbounded
+        // value pulled from a wrapped paragraph). Cap to a reasonable column
+        // length and reject anything that still looks like prose.
+        if (value.length === 0 || value.length > 200) return null;
+        return value;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * WD126: Resolve the company cache key for the outputs row. Prefer the
+ * explicit `company` body field (BriefTab path). Fall back to the server-side
+ * parse of the content prompt (modal-driven paths). If neither is available,
+ * return "unknown" and emit a structured log.
+ */
+function resolveMemoCacheKey(
+  explicitCompany: string | undefined,
+  content: string | undefined,
+  ctx: { userId: string; type: string | undefined },
+): string {
+  if (explicitCompany && explicitCompany.trim().length > 0) {
+    return explicitCompany.trim();
+  }
+  const parsed = extractCompanyFromContent(content ?? "");
+  if (parsed) return parsed;
+  console.warn(
+    "[memo] WD126 cache-key fallback to 'unknown'",
+    JSON.stringify({
+      user_id: ctx.userId,
+      type: ctx.type ?? null,
+      has_content: Boolean(content),
+      content_chars: content ? content.length : 0,
+    }),
+  );
+  return "unknown";
+}
+
 export async function POST(request: NextRequest) {
   const { supabase: userSupabase, user } = await getSupabaseWithUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
@@ -286,7 +344,7 @@ export async function POST(request: NextRequest) {
   if (!rl.allowed) {
     return NextResponse.json(
       {
-        error: `Rate limit exceeded — ${rl.limit} memos per day. Resets ${new Date(rl.resetAt).toLocaleTimeString()}.`,
+        error: `Rate limit exceeded - ${rl.limit} memos per day. Resets ${new Date(rl.resetAt).toLocaleTimeString()}.`,
         remaining: 0,
         resetAt: rl.resetAt,
       },
@@ -394,7 +452,41 @@ export async function POST(request: NextRequest) {
   // New path: type-based memo with content string
   if (content || systemPrompt) {
     const system = systemPrompt || (type ? TYPE_PROMPTS[type] : undefined) || TYPE_PROMPTS.article;
-    const truncated = String(content || "").slice(0, 4000);
+    // WD133: raise the input cap from 4000 to 16000 chars.
+    //
+    // History: the previous 4000-char cap was set before WD130 widened the
+    // per-article body cap from 180 to 600 chars and before WD129 work on
+    // pool selection. Post-WD130, a pool=10 worst case projects to ~7286
+    // chars of assembled article-pool text (10 articles x ~600-char body
+    // plus ~110-char overhead each), which the old cap would silently
+    // truncate by ~3300 chars. That dropped trailing context articles with
+    // no log, no warning, and no signal to the caller. The right input
+    // (chosen by WD129) was being shredded by an arbitrary route-level cap.
+    //
+    // Risk profile: Gemini 2.5 Flash has a ~1M-token context (~4M chars).
+    // 16000 chars is <0.5% of that ceiling, so this is not a model-budget
+    // risk; it is purely an upstream guardrail against runaway prompts.
+    // 16000 chars comfortably absorbs pool=10 worst case (~7286 chars) plus
+    // a 2x headroom for future per-article-body growth or pool-size bumps.
+    //
+    // Fail-loud safety net: if a future caller still overflows (e.g. a
+    // very large systemPrompt is mistakenly placed in content), the truncation
+    // now emits a structured warn instead of silently dropping data.
+    const INPUT_CAP = 16000;
+    const originalContent = String(content || "");
+    const truncated = originalContent.slice(0, INPUT_CAP);
+    if (originalContent.length > INPUT_CAP) {
+      console.warn(
+        "[memo] WD133 input cap truncated content",
+        JSON.stringify({
+          original_chars: originalContent.length,
+          capped_chars: truncated.length,
+          dropped_chars: originalContent.length - INPUT_CAP,
+          cap_value: INPUT_CAP,
+          type: type ?? null,
+        }),
+      );
+    }
 
     // Skip the historical-context overlay for the web-fallback path: that
     // overlay is keyed on indexed sectors and theses, neither of which exist
@@ -425,6 +517,14 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Gemini returned empty memo, retry" }, { status: 500 });
       }
 
+      // WD126: derive the company cache key — prefer explicit `company` field,
+      // fall back to parsing COMPANY line from content (modal-driven callers).
+      const cacheKey = resolveMemoCacheKey(company, content, {
+        userId: user.id,
+        type,
+      });
+      const resolvedCompany = cacheKey === "unknown" ? null : cacheKey;
+
       // Record to universal outputs table (service-role client for bypassing RLS)
       const svcSupabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -435,7 +535,7 @@ export async function POST(request: NextRequest) {
         content: {
           memo_text: memo,
           memo_type: type ?? 'article',
-          target_company: company ?? null,
+          target_company: resolvedCompany,
           target_sector: sector ?? null,
         },
         generation_context: {
@@ -498,7 +598,7 @@ Sections: TRANSACTION OVERVIEW, STRATEGIC RATIONALE, KEY RISKS, ANALYST TAKE. Un
 
     const memo = completion.text;
     if (!memo) {
-      return NextResponse.json({ error: "Gemini returned empty memo — retry" }, { status: 500 });
+      return NextResponse.json({ error: "Gemini returned empty memo - retry" }, { status: 500 });
     }
 
     // Record to universal outputs table

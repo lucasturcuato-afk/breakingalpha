@@ -2,6 +2,19 @@
 
 import { useState, useEffect, useCallback, createContext, useContext } from "react";
 import type { ReactNode } from "react";
+import { usePathname } from "next/navigation";
+
+// Pre-auth public paths where the provider must NOT fetch /api/user-profile.
+// Mirrors the public-path list in src/proxy.ts (kept inline to avoid a server
+// import in this client hook). Update both if a new public route is added.
+const PUBLIC_PATHS = new Set<string>(["/", "/auth", "/preview"]);
+const PUBLIC_PATH_PREFIXES = ["/auth/callback", "/legal/"];
+
+function isPublicPath(pathname: string | null): boolean {
+  if (!pathname) return false;
+  if (PUBLIC_PATHS.has(pathname)) return true;
+  return PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
 
 export interface UserProfile {
   id?: string;
@@ -38,6 +51,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const pathname = usePathname();
 
   const refetch = useCallback(async () => {
     try {
@@ -50,15 +64,22 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
       setProfile(data as UserProfile);
       setError(null);
     } catch {
-      // Soft-fail — leave current state
+      // Soft-fail, leave current state
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    // Skip the fetch on known public/pre-auth routes where no session exists.
+    // Without this gate, the provider fires a guaranteed 401 against
+    // /api/user-profile from /auth on every mount (WD124 root cause).
+    if (isPublicPath(pathname)) {
+      setLoading(false);
+      return;
+    }
     refetch();
-  }, [refetch]);
+  }, [pathname, refetch]);
 
   const updateProfile = useCallback(
     async (patch: Partial<UserProfile>): Promise<boolean> => {

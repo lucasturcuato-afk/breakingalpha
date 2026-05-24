@@ -45,6 +45,11 @@ export interface RawArticleRow {
   sector?: string | null;
   sentiment?: string | null;
   summary?: string | null;
+  // WD130: `content` is selected by ARTICLE_COLUMNS in the company-articles
+  // route but was previously dropped at the type layer, which meant
+  // formatArticleList only ever saw `summary`. Carrying it through here lets
+  // the memo prompt feed full article text when available.
+  content?: string | null;
   published_at?: string | null;
   ingested_at?: string | null;
   url?: string | null;
@@ -502,6 +507,50 @@ export const TAGGED_DEAL_TYPES = new Set(["Earnings", "M&A", "Funding", "IPO", "
 // ---------------------------------------------------------------------------
 
 /**
+ * WD130: per-article body cap (chars) used by `formatArticleList`.
+ *
+ * The memo route truncates the entire prompt content to 4000 chars
+ * (src/app/api/memo/route.ts). With ~10 in-pool articles + ~250 chars of
+ * memo header + ~110 chars per-article overhead (index/title/source/date),
+ * a 600-char body cap lets a 10-article dev-led pool stay well within budget
+ * in the typical case (most articles have <300 char summaries) while
+ * delivering 3.3x more body text per article than the previous 180-char
+ * slice in the long-content/long-summary cases that actually drove the
+ * truncation problem.
+ */
+const ARTICLE_BODY_CAP = 600;
+
+/**
+ * WD130: pick the richer text source for an article and word-boundary
+ * truncate it. Prefers `content` when present and meaningfully longer than
+ * `summary`; otherwise returns the (un-sliced) summary. Always collapses
+ * runs of whitespace to a single space so the prompt stays compact.
+ *
+ * Word-boundary truncation: if the text exceeds `cap`, scan back from `cap`
+ * to the most recent space and cut there, append " ..." sentinel. This
+ * avoids the prior behavior of cutting mid-word ("This sentence is unfini").
+ * If no space is found within the first 80% of the cap, fall back to a hard
+ * cut so we never return an empty body for pathological inputs.
+ */
+function pickArticleBody(a: CompanyArticle, cap: number): string {
+  const summary = (a.summary ?? "").replace(/\s+/g, " ").trim();
+  const content = (a.content ?? "").replace(/\s+/g, " ").trim();
+
+  // Prefer content only when it carries materially more text than the
+  // summary. The threshold (summary length + 50 chars) avoids switching to
+  // a near-identical content field that re-renders the same opening sentence
+  // for a few extra trailing words.
+  const source = content.length > summary.length + 50 ? content : summary;
+  if (source.length === 0) return "";
+  if (source.length <= cap) return source;
+
+  const window = source.slice(0, cap);
+  const lastSpace = window.lastIndexOf(" ");
+  const cutAt = lastSpace >= Math.floor(cap * 0.8) ? lastSpace : cap;
+  return source.slice(0, cutAt) + " ...";
+}
+
+/**
  * Format an article list for inclusion in a memo user message.
  *
  * When `startIndex` is provided, each article is prefixed with a 1-indexed
@@ -513,6 +562,13 @@ export const TAGGED_DEAL_TYPES = new Set(["Earnings", "M&A", "Funding", "IPO", "
  * 1..N namespace across the two lists. When `startIndex` is omitted, the
  * legacy bullet form is emitted (kept for back-compat with non-citation
  * callers).
+ *
+ * WD130: the article body is now sourced via `pickArticleBody`, which prefers
+ * full `content` when present and meaningfully longer than `summary`,
+ * otherwise falls back to the full `summary` (no 180-char slice), and
+ * word-boundary truncates at `ARTICLE_BODY_CAP` (600 chars) instead of
+ * cutting mid-sentence at 180 chars. The 4000-char total cap in the memo
+ * route remains the binding outer constraint and is unchanged.
  */
 export function formatArticleList(arts: CompanyArticle[], startIndex?: number): string {
   if (arts.length === 0) return "None";
@@ -524,18 +580,18 @@ export function formatArticleList(arts: CompanyArticle[], startIndex?: number): 
         const tag = a.deal_type && TAGGED_DEAL_TYPES.has(a.deal_type) ? `[${a.deal_type}] ` : "";
         const source = a.source ? ` (${a.source})` : "";
         const date = a.published_at ? ` | ${a.published_at.slice(0, 10)}` : "";
-        const summary = a.summary
-          ? ` :: ${a.summary.replace(/\s+/g, " ").trim().slice(0, 180)}`
-          : "";
-        return `[${n}] ${tag}${a.title}${source}${date}${summary}`;
+        const body = pickArticleBody(a, ARTICLE_BODY_CAP);
+        const bodyOut = body ? ` :: ${body}` : "";
+        return `[${n}] ${tag}${a.title}${source}${date}${bodyOut}`;
       })
       .join("\n");
   }
   return sliced
     .map((a) => {
       const tag = a.deal_type && TAGGED_DEAL_TYPES.has(a.deal_type) ? `[${a.deal_type}] ` : "";
-      const summary = a.summary ? ` -- ${a.summary.slice(0, 180)}` : "";
-      return `* ${tag}${a.title}${summary}`;
+      const body = pickArticleBody(a, ARTICLE_BODY_CAP);
+      const bodyOut = body ? ` -- ${body}` : "";
+      return `* ${tag}${a.title}${bodyOut}`;
     })
     .join("\n\n");
 }
@@ -601,6 +657,11 @@ export function filterAndClassifyArticles(
       sector: a.sector ?? undefined,
       sentiment: a.sentiment ?? undefined,
       summary: stripHtml(a.summary ?? undefined),
+      // WD130: pass `content` through so formatArticleList can prefer it over
+      // `summary` when it carries more of the article body. `stripHtml` returns
+      // "" for null/undefined input, so a null-check guard preserves "no
+      // content" vs "empty after strip".
+      content: a.content != null ? stripHtml(a.content) : null,
       published_at: a.published_at ?? a.ingested_at ?? undefined,
       url: a.url ?? undefined,
       primary_company: a.primary_company ?? null,
@@ -770,10 +831,18 @@ Every specific figure, statistic, named event, percentage, dollar amount, and pr
 
 INPUTS: MEMO_MODE | SIGNAL QUALITY | COMPANY DEVELOPMENT ARTICLES | SECTOR CONTEXT ARTICLES
 
-${backgroundBlock}─── MEMO_MODE = "developments-led" ───
+${backgroundBlock}─── UNIVERSAL OPENING RULES -- APPLY TO ALL SECTIONS, BOTH MODES, NO EXCEPTIONS ───
+
+These rules outrank any section-specific instruction below (including the What Just Changed "Sentence 1: State the fact precisely" directive). If a section-specific instruction appears to conflict with a rule here, the rule here wins. Apply these rules to the opening sentence of EVERY section: Analyst Brief, What Just Changed (section 02), Cross-Signals (section 03), and What To Do With This (section 04).
+
+1. No-company-name-as-grammatical-subject (applies to ALL sections, including section 02 What Just Changed): Never open any section with ${companyName} as the grammatical subject of the first sentence. This explicitly includes constructions like "${companyName} has filed...", "${companyName} reported...", "${companyName} announced...", "${companyName} is launching...". Instead, lead with the named counterparty, named filing, named regulator, named product, or specific dollar/percentage figure, and place ${companyName} as the object or in a subordinate clause. Acceptable rewrites: "The filing covers...", "Filings show...", "Pre-IPO disclosures landed with the SEC on...", "The SEC accepted ${companyName}'s pre-IPO disclosure on...", "A Starship test flight is scheduled for...". The fact is still stated precisely; only the grammatical subject changes.
+
+2. No-"The"-or-mood-noun opener (applies to the Analyst Brief): Never open the Analyst Brief with "The" OR any abstract-mood-noun (e.g. Anticipation, Excitement, Concern, Optimism, Pessimism, Confidence, Uncertainty, Hope, Fear, Worry, Sentiment, Momentum). These openers signal opinion or framing rather than a sourced fact and degrade analyst-grade trust. If the first word would be one of those, rewrite to lead with the named event, named counterparty, named filing, or specific numeric figure that caused the mood. Example fix: instead of "Anticipation for a potential $2T IPO...", write "Pre-IPO disclosures from ${companyName} landed at the SEC on..." or "A $2T-plus IPO valuation range is now in prediction-market trading..." -- the figure or named filing leads, not the mood it produced.
+
+─── MEMO_MODE = "developments-led" ───
 
 **Analyst Brief**
-One tight paragraph. The Analyst Brief must open with a market condition, competitive dynamic, or strategic inflection point as the grammatical subject of the first sentence -- not the company name, not a descriptor for the company ("the accelerated computing provider", "the AI safety startup", "the payments network"), and not a rephrasing of what the company does. The opener must begin with a proper noun or specific figure drawn from the article pool -- a named company (not the subject company), a named filing, a named data release, a named executive action, or a specific dollar figure. The first word of the memo should be a proper noun or specific figure. If the first word is "The", rewrite the opener. The opener must name a specific event or data point that occurred recently and is present in the article pool. Generic scene-setting is banned. Banned opener patterns: "The accelerating buildout of...", "The growing demand for...", "The intensifying competition in...", "The rapid advancement of...", "The expanding market for...". These describe permanent conditions, not market moments. EXCEPTION -- LOW RECOGNITION COMPANIES: If the company is unlikely to be recognized by a finance professional without context (private companies, international companies, sector-specific names, companies outside the S&P 500), one grounding clause is permitted in the Analyst Brief. The grounding clause must identify the company by sector and stage in the context of a market observation, not as a standalone description. Correct format: "[Market condition] -- [Company] is the [brief identifier] making this visible." Incorrect format: "[Company] is a [category] company that [does X]." The grounding clause should not exceed one subordinate clause. It is not a separate sentence. This exception applies ONLY to companies that would not be recognized by name by a typical finance professional: private companies outside major tech/finance, international companies outside G7 markets, pre-IPO startups, and sector-specific firms below $5B valuation. It does NOT apply to: any company covered by major financial media, any company with a valuation above $10B, any household consumer brand, or any company that has appeared in mainstream financial press in the past 12 months. When in doubt, do not apply the exception -- write a market-first opener. State the company's current strategic posture: what management is actively betting on right now, where capital and attention are flowing inside the business, and what the single sharpest competitive advantage or vulnerability is at this moment. Write as if the reader needs to understand the company's strategic reality this week, not its founding story. The Analyst Brief must contain at least one temporal anchor: a specific upcoming event, earnings print, regulatory deadline, or named catalyst drawn from the article pool that makes this brief time-sensitive. A brief that could have been written six months ago fails this requirement. The temporal anchor does not need to be a full sentence: one clause referencing a specific upcoming event is sufficient.
+One tight paragraph. The Analyst Brief must open with a market condition, competitive dynamic, or strategic inflection point as the grammatical subject of the first sentence -- not the company name, not a descriptor for the company ("the accelerated computing provider", "the AI safety startup", "the payments network"), and not a rephrasing of what the company does. The opener must begin with a proper noun or specific figure drawn from the article pool -- a named company (not the subject company), a named filing, a named data release, a named executive action, or a specific dollar figure. The first word of the memo should be a proper noun or specific figure. If the first word is "The" OR any abstract-mood-noun (Anticipation, Excitement, Concern, Optimism, Pessimism, Confidence, Uncertainty, Hope, Fear, Worry, Sentiment, Momentum), rewrite the opener. These openers signal opinion or framing rather than a sourced fact and degrade analyst-grade trust. The opener must name a specific event or data point that occurred recently and is present in the article pool. Generic scene-setting is banned. Banned opener patterns: "The accelerating buildout of...", "The growing demand for...", "The intensifying competition in...", "The rapid advancement of...", "The expanding market for...", "Anticipation for...", "Excitement around...", "Concern about...", "Momentum behind...". These describe permanent conditions or market moods, not market moments. EXCEPTION -- LOW RECOGNITION COMPANIES: If the company is unlikely to be recognized by a finance professional without context (private companies, international companies, sector-specific names, companies outside the S&P 500), one grounding clause is permitted in the Analyst Brief. The grounding clause must identify the company by sector and stage in the context of a market observation, not as a standalone description. Correct format: "[Market condition] -- [Company] is the [brief identifier] making this visible." Incorrect format: "[Company] is a [category] company that [does X]." The grounding clause should not exceed one subordinate clause. It is not a separate sentence. This exception applies ONLY to companies that would not be recognized by name by a typical finance professional: private companies outside major tech/finance, international companies outside G7 markets, pre-IPO startups, and sector-specific firms below $5B valuation. It does NOT apply to: any company covered by major financial media, any company with a valuation above $10B, any household consumer brand, or any company that has appeared in mainstream financial press in the past 12 months. When in doubt, do not apply the exception -- write a market-first opener. State the company's current strategic posture: what management is actively betting on right now, where capital and attention are flowing inside the business, and what the single sharpest competitive advantage or vulnerability is at this moment. Write as if the reader needs to understand the company's strategic reality this week, not its founding story. The Analyst Brief must contain at least one temporal anchor: a specific upcoming event, earnings print, regulatory deadline, or named catalyst drawn from the article pool that makes this brief time-sensitive. A brief that could have been written six months ago fails this requirement. The temporal anchor does not need to be a full sentence: one clause referencing a specific upcoming event is sufficient.
 
 **What Just Changed**
 Draw exclusively from COMPANY DEVELOPMENT ARTICLES. For each development in the article pool, apply this filter before writing: does this development involve a specific dollar figure, a named strategic counterparty, a named product with a deployment status, or a direct change to the company's capital structure or competitive position? If yes, cover it with full two-sentence discipline. If no, omit it entirely. Developments that do not clear this filter: executive hires without a named strategic rationale tied to a specific initiative, revenue milestones without a named counterparty or valuation implication, incremental partnership extensions that restate existing relationships, and press mentions without a named outcome. After filtering, if more than 4 developments remain, apply a second pass: which 3-4 have the most specific dollar figures or named counterparties? Cover those. The goal is maximum analytical density per word, not maximum coverage.
@@ -794,7 +863,7 @@ Reproduce the SIGNAL QUALITY value verbatim. No added prose.
 ─── MEMO_MODE = "context-led" ───
 
 **Analyst Brief**
-One tight paragraph. Same analytical standard as developments-led. The Analyst Brief must open with a market condition, competitive dynamic, or strategic inflection point as the grammatical subject of the first sentence -- not the company name, not a descriptor for the company ("the accelerated computing provider", "the AI safety startup", "the payments network"), and not a rephrasing of what the company does. The opener must begin with a proper noun or specific figure drawn from the article pool -- a named company (not the subject company), a named filing, a named data release, a named executive action, or a specific dollar figure. The first word of the memo should be a proper noun or specific figure. If the first word is "The", rewrite the opener. The opener must name a specific event or data point that occurred recently and is present in the article pool. Generic scene-setting is banned. Banned opener patterns: "The accelerating buildout of...", "The growing demand for...", "The intensifying competition in...", "The rapid advancement of...", "The expanding market for...". These describe permanent conditions, not market moments. EXCEPTION -- LOW RECOGNITION COMPANIES: If the company is unlikely to be recognized by a finance professional without context (private companies, international companies, sector-specific names, companies outside the S&P 500), one grounding clause is permitted in the Analyst Brief. The grounding clause must identify the company by sector and stage in the context of a market observation, not as a standalone description. Correct format: "[Market condition] -- [Company] is the [brief identifier] making this visible." Incorrect format: "[Company] is a [category] company that [does X]." The grounding clause should not exceed one subordinate clause. It is not a separate sentence. This exception applies ONLY to companies that would not be recognized by name by a typical finance professional: private companies outside major tech/finance, international companies outside G7 markets, pre-IPO startups, and sector-specific firms below $5B valuation. It does NOT apply to: any company covered by major financial media, any company with a valuation above $10B, any household consumer brand, or any company that has appeared in mainstream financial press in the past 12 months. When in doubt, do not apply the exception -- write a market-first opener. Use sector context and available background to frame the company's strategic posture and what matters about it right now. The Analyst Brief must contain at least one temporal anchor: a specific upcoming event, earnings print, regulatory deadline, or named catalyst drawn from the article pool that makes this brief time-sensitive. A brief that could have been written six months ago fails this requirement. The temporal anchor does not need to be a full sentence: one clause referencing a specific upcoming event is sufficient.
+One tight paragraph. Same analytical standard as developments-led. The Analyst Brief must open with a market condition, competitive dynamic, or strategic inflection point as the grammatical subject of the first sentence -- not the company name, not a descriptor for the company ("the accelerated computing provider", "the AI safety startup", "the payments network"), and not a rephrasing of what the company does. The opener must begin with a proper noun or specific figure drawn from the article pool -- a named company (not the subject company), a named filing, a named data release, a named executive action, or a specific dollar figure. The first word of the memo should be a proper noun or specific figure. If the first word is "The" OR any abstract-mood-noun (Anticipation, Excitement, Concern, Optimism, Pessimism, Confidence, Uncertainty, Hope, Fear, Worry, Sentiment, Momentum), rewrite the opener. These openers signal opinion or framing rather than a sourced fact and degrade analyst-grade trust. The opener must name a specific event or data point that occurred recently and is present in the article pool. Generic scene-setting is banned. Banned opener patterns: "The accelerating buildout of...", "The growing demand for...", "The intensifying competition in...", "The rapid advancement of...", "The expanding market for...", "Anticipation for...", "Excitement around...", "Concern about...", "Momentum behind...". These describe permanent conditions or market moods, not market moments. EXCEPTION -- LOW RECOGNITION COMPANIES: If the company is unlikely to be recognized by a finance professional without context (private companies, international companies, sector-specific names, companies outside the S&P 500), one grounding clause is permitted in the Analyst Brief. The grounding clause must identify the company by sector and stage in the context of a market observation, not as a standalone description. Correct format: "[Market condition] -- [Company] is the [brief identifier] making this visible." Incorrect format: "[Company] is a [category] company that [does X]." The grounding clause should not exceed one subordinate clause. It is not a separate sentence. This exception applies ONLY to companies that would not be recognized by name by a typical finance professional: private companies outside major tech/finance, international companies outside G7 markets, pre-IPO startups, and sector-specific firms below $5B valuation. It does NOT apply to: any company covered by major financial media, any company with a valuation above $10B, any household consumer brand, or any company that has appeared in mainstream financial press in the past 12 months. When in doubt, do not apply the exception -- write a market-first opener. Use sector context and available background to frame the company's strategic posture and what matters about it right now. The Analyst Brief must contain at least one temporal anchor: a specific upcoming event, earnings print, regulatory deadline, or named catalyst drawn from the article pool that makes this brief time-sensitive. A brief that could have been written six months ago fails this requirement. The temporal anchor does not need to be a full sentence: one clause referencing a specific upcoming event is sufficient.
 
 **Coverage Note**
 No direct company development articles are in the current feed window. This brief draws from sector context only.
