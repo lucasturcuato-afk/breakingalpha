@@ -1,0 +1,185 @@
+"use client";
+
+/**
+ * CompanyDetailHeader (PR-B1) -- docs/DirectionD.jsx lines 528-579.
+ * Watchlist toggle mirrors company-detail-client.tsx (53-134) without
+ * importing Lucas-protected helpers. Memo button fires window event;
+ * MemoModal mount lands in a later PR.
+ */
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { SentimentPill, type SentimentTone } from "@/components/ui";
+import type { CompanyDetail } from "@/lib/data-access/getCompanyDetail";
+
+const PENDING = "__pending__";
+const SANS = "var(--font-inter), Inter, sans-serif";
+const MONO = "var(--font-mono), ui-monospace, monospace";
+
+const btnBase = { fontFamily: SANS, fontSize: 12, fontWeight: 600, padding: "5px 10px", borderRadius: 6 } as const;
+const btnSecondary = { ...btnBase, background: "var(--cream)", border: "1px solid var(--border)", color: "var(--espresso)" } as const;
+const btnPrimary = { ...btnBase, background: "var(--gold-deep)", border: "1px solid var(--gold-deep)", color: "var(--cream)", cursor: "pointer" } as const;
+
+interface Props { detail: CompanyDetail }
+
+function toneFromSentiment7d(values: number[]): SentimentTone {
+  if (!values || values.length === 0) return "NEUTRAL";
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+  if (avg >= 0.65) return "BULLISH";
+  if (avg <= 0.35) return "BEARISH";
+  return "NEUTRAL";
+}
+
+function formatSubtitle(d: CompanyDetail): string {
+  const sector = d.sector ?? "--";
+  return d.ticker ? `NASDAQ · ${sector}` : sector;
+}
+
+export function CompanyDetailHeader({ detail }: Props) {
+  const [entryId, setEntryId] = useState<string | null>(null);
+  const isOn = entryId !== null;
+  const pending = entryId === PENDING;
+  const inFlight = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/watchlist");
+        if (!res.ok) return;
+        const json = (await res.json()) as { entries?: Array<{ id: string; identifier: string; type: string }> };
+        if (cancelled) return;
+        const target = detail.canonical.toLowerCase();
+        const match = (json.entries ?? []).find((e) => e.type === "company" && e.identifier.toLowerCase() === target);
+        setEntryId(match?.id ?? null);
+      } catch { /* soft-fail: button defaults to Add */ }
+    })();
+    return () => { cancelled = true; };
+  }, [detail.canonical]);
+
+  const onToggle = useCallback(async () => {
+    if (inFlight.current || entryId === PENDING) return;
+    inFlight.current = true;
+    const prev = entryId;
+    setEntryId(prev ? null : PENDING);
+    try {
+      if (prev && prev !== PENDING) {
+        const res = await fetch("/api/watchlist", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: prev }),
+        });
+        if (!res.ok) throw new Error(`DELETE failed: ${res.status}`);
+      } else {
+        const res = await fetch("/api/watchlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ identifier: detail.canonical, type: "company", display_name: detail.display }),
+        });
+        if (!res.ok) throw new Error(`POST failed: ${res.status}`);
+        const json = (await res.json()) as { entry?: { id: string } };
+        if (json.entry?.id) setEntryId(json.entry.id);
+      }
+      window.dispatchEvent(new Event("watchlist:changed"));
+    } catch (e) {
+      console.error("Watchlist toggle failed:", e);
+      setEntryId(prev);
+    } finally {
+      inFlight.current = false;
+    }
+  }, [detail.canonical, detail.display, entryId]);
+
+  const onGenerateMemo = useCallback(() => {
+    window.dispatchEvent(new CustomEvent("memo:generate", { detail: { canonical: detail.canonical } }));
+  }, [detail.canonical]);
+
+  const tone = toneFromSentiment7d(detail.sentiment7d);
+  const initial = (detail.display.charAt(0) || "?").toUpperCase();
+  const exportHref = `/api/export/company-pdf?identifier=${encodeURIComponent(detail.canonical)}`;
+
+  return (
+    <header
+      data-testid="company-header"
+      className="rounded-md"
+      style={{ background: "var(--cream-hi)", border: "1px solid var(--border)", padding: "16px 18px" }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+        <div
+          data-testid="company-header-logo"
+          className="font-display"
+          style={{
+            width: 44, height: 44, borderRadius: 8, flexShrink: 0,
+            background: "var(--cream)", border: "1px solid var(--gold-border)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 20, fontWeight: 700, color: "var(--gold-deep)", textTransform: "uppercase",
+          }}
+        >
+          {initial}
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <h1
+              className="font-display"
+              style={{ fontSize: 26, fontWeight: 700, margin: 0, letterSpacing: "-0.015em", color: "var(--espresso)" }}
+            >
+              {detail.display}
+            </h1>
+            {detail.ticker ? (
+              <span
+                data-testid="company-header-ticker"
+                style={{
+                  fontFamily: MONO, fontSize: 11, fontWeight: 700, color: "var(--gold-deep)",
+                  padding: "2px 7px", borderRadius: 3,
+                  background: "var(--gold-faint)", border: "1px solid var(--gold-border)",
+                }}
+              >
+                {detail.ticker}
+              </span>
+            ) : null}
+            <span
+              data-testid="company-header-subtitle"
+              style={{ fontFamily: SANS, fontSize: 12, color: "var(--text-soft)" }}
+            >
+              {formatSubtitle(detail)}
+            </span>
+            <SentimentPill tone={tone} size="sm" testId="company-header-sentiment-pill" />
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <button
+            type="button"
+            data-testid="watchlist-toggle-btn"
+            aria-pressed={isOn}
+            aria-label={isOn ? "Remove from watchlist" : "Add to watchlist"}
+            disabled={pending}
+            onClick={onToggle}
+            className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+            style={{ ...btnSecondary, cursor: pending ? "default" : "pointer", opacity: pending ? 0.6 : 1 }}
+          >
+            {isOn ? "On Watchlist" : "+ Watchlist"}
+          </button>
+          <a
+            data-testid="export-btn"
+            href={exportHref}
+            aria-label="Export company report as PDF"
+            className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+            style={{ ...btnSecondary, textDecoration: "none", display: "inline-flex", alignItems: "center" }}
+          >
+            Export
+          </a>
+          <button
+            type="button"
+            data-testid="generate-memo-btn"
+            aria-label="Generate research memo"
+            onClick={onGenerateMemo}
+            className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+            style={btnPrimary}
+          >
+            Generate Memo
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}

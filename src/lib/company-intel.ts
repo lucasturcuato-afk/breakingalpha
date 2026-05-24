@@ -501,14 +501,41 @@ export const TAGGED_DEAL_TYPES = new Set(["Earnings", "M&A", "Funding", "IPO", "
 // Article processing
 // ---------------------------------------------------------------------------
 
-export function formatArticleList(arts: CompanyArticle[]): string {
+/**
+ * Format an article list for inclusion in a memo user message.
+ *
+ * When `startIndex` is provided, each article is prefixed with a 1-indexed
+ * `[N]` marker (N = startIndex + position). The contiguous numbering across
+ * devArts + ctxArts (devArts first, ctxArts starting at devArts.length + 1)
+ * gives the model a stable citation key for `[n]` provenance markers in the
+ * memo body. Callers therefore pass startIndex = 1 for devArts and
+ * startIndex = devArts.length + 1 for ctxArts so the indices form a single
+ * 1..N namespace across the two lists. When `startIndex` is omitted, the
+ * legacy bullet form is emitted (kept for back-compat with non-citation
+ * callers).
+ */
+export function formatArticleList(arts: CompanyArticle[], startIndex?: number): string {
   if (arts.length === 0) return "None";
-  return arts
-    .slice(0, 8) // safety cap; callers should pre-slice to their desired limit
+  const sliced = arts.slice(0, 8); // safety cap; callers should pre-slice to their desired limit
+  if (typeof startIndex === "number") {
+    return sliced
+      .map((a, i) => {
+        const n = startIndex + i;
+        const tag = a.deal_type && TAGGED_DEAL_TYPES.has(a.deal_type) ? `[${a.deal_type}] ` : "";
+        const source = a.source ? ` (${a.source})` : "";
+        const date = a.published_at ? ` | ${a.published_at.slice(0, 10)}` : "";
+        const summary = a.summary
+          ? ` :: ${a.summary.replace(/\s+/g, " ").trim().slice(0, 180)}`
+          : "";
+        return `[${n}] ${tag}${a.title}${source}${date}${summary}`;
+      })
+      .join("\n");
+  }
+  return sliced
     .map((a) => {
       const tag = a.deal_type && TAGGED_DEAL_TYPES.has(a.deal_type) ? `[${a.deal_type}] ` : "";
-      const summary = a.summary ? ` — ${a.summary.slice(0, 180)}` : "";
-      return `• ${tag}${a.title}${summary}`;
+      const summary = a.summary ? ` -- ${a.summary.slice(0, 180)}` : "";
+      return `* ${tag}${a.title}${summary}`;
     })
     .join("\n\n");
 }

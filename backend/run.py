@@ -19,6 +19,7 @@ Gating:
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timezone
 
 from ingest import run_ingestion as run_ingest
@@ -38,6 +39,7 @@ import user_synthesis
 import user_signal_aggregator
 import embedding_job
 import thesis_generator
+import sector_backfill
 
 logger = logging.getLogger("run")
 if not logger.handlers:
@@ -59,28 +61,45 @@ if __name__ == "__main__":
     print(f"🌅 BreakingAlpha Pipeline — {brief_type.upper()} RUN")
     print("=" * 50)
 
-    print("\n[1/12] INGEST")
+    pipeline_t0 = time.time()
+
+    print("\n[1/16] INGEST")
+    _t = time.time()
     ingest_count = run_ingest()
+    print(f"  [1/16] INGEST done in {time.time() - _t:.2f}s")
 
     # Optional backfill: RUN_BACKFILL=true python backend/run.py
     if os.getenv("RUN_BACKFILL", "false").lower() == "true":
-        print("\n[1b/12] CONTENT BACKFILL")
+        print("\n[1b/16] CONTENT BACKFILL")
+        _t = time.time()
         try:
             import backfill_content
             backfill_content.main()
+            print(f"  [1b/16] CONTENT BACKFILL done in {time.time() - _t:.2f}s")
         except Exception as e:
-            print(f"  ⚠ Backfill failed (pipeline unaffected): {e}")
+            print(f"  [1b/16] CONTENT BACKFILL FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
-    print("\n[1c/15] USER SIGNAL AGGREGATION")
+    print("\n[1c/16] USER SIGNAL AGGREGATION")
+    _t = time.time()
     try:
         user_signal_aggregator.main()
+        print(f"  [1c/16] USER SIGNAL AGGREGATION done in {time.time() - _t:.2f}s")
     except Exception as e:
-        print(f"  ⚠ User signal aggregation failed (pipeline unaffected): {e}")
+        print(f"  [1c/16] USER SIGNAL AGGREGATION FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
+
+    print("\n[1d/16] SECTOR BACKFILL")
+    _t = time.time()
+    try:
+        n = sector_backfill.run()
+        print(f"  [1d/16] SECTOR BACKFILL done in {time.time() - _t:.2f}s (companies={n})")
+    except Exception as e:
+        print(f"  [1d/16] SECTOR BACKFILL FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
     # Path B: deal_extractor runs BEFORE synthesize so the Python pre-picker
     # in lead_preselect.py sees fresh deal_flow rows for the $1B+ primary-story
-    # filter. See SPEC_path_b_lead_preselect.md §2 and §8.
-    print("\n[2/15] DEAL EXTRACTION")
+    # filter. See SPEC_path_b_lead_preselect.md sections 2 and 8.
+    print("\n[2/16] DEAL EXTRACTION")
+    _t = time.time()
     deal_extractor_status = {"ok": True, "error": None, "upserted": 0}
     try:
         result = run_deal_extractor() or {}
@@ -88,13 +107,16 @@ if __name__ == "__main__":
         if deal_extractor_status["upserted"] == 0:
             deal_extractor_status["ok"] = False
             deal_extractor_status["error"] = "deal_extractor wrote 0 rows"
+        print(f"  [2/16] DEAL EXTRACTION done in {time.time() - _t:.2f}s (upserted={deal_extractor_status['upserted']})")
     except Exception as e:
         deal_extractor_status["ok"] = False
         deal_extractor_status["error"] = f"deal_extractor raised: {e}"
-        print(f"  ⚠ Deal Extractor failed (pipeline continues, lead_preselect may fall back): {e}")
+        print(f"  [2/16] DEAL EXTRACTION FAILED in {time.time() - _t:.2f}s (pipeline continues, lead_preselect may fall back): {e}")
 
-    print("\n[3/15] SYNTHESIZE")
+    print("\n[3/16] SYNTHESIZE")
+    _t = time.time()
     synth_result = run_synthesize(brief_type) or {}
+    print(f"  [3/16] SYNTHESIZE done in {time.time() - _t:.2f}s")
 
     # Snapshot lead_preselect's per-run decision log for observability.
     # Populated inside synthesize.run() via preselect_primary_story();
@@ -106,7 +128,8 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"  ⚠ preselect decision log read failed (pipeline unaffected): {e}")
 
-    print("\n[4/15] OBSERVE")
+    print("\n[4/16] OBSERVE")
+    _t = time.time()
     run_id = None
     try:
         run_id = observe.record_run(
@@ -116,107 +139,134 @@ if __name__ == "__main__":
             deal_extractor_status=deal_extractor_status,
             preselect_decision=preselect_decision,
         )
+        print(f"  [4/16] OBSERVE done in {time.time() - _t:.2f}s (run_id={run_id})")
     except Exception as e:
-        print(f"  ⚠ Observer failed (pipeline unaffected): {e}")
+        print(f"  [4/16] OBSERVE FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
-    print("\n[5/15] CRITIQUE")
+    print("\n[5/16] CRITIQUE")
+    _t = time.time()
     try:
         critique.score_run(brief_type, started_at, run_id=run_id)
+        print(f"  [5/16] CRITIQUE done in {time.time() - _t:.2f}s")
     except Exception as e:
-        print(f"  ⚠ Critic failed (pipeline unaffected): {e}")
+        print(f"  [5/16] CRITIQUE FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
-    print("\n[6/15] AUDIT")
+    print("\n[6/16] AUDIT")
+    _t = time.time()
     try:
         audit.audit_run(brief_type, run_id=run_id)
+        print(f"  [6/16] AUDIT done in {time.time() - _t:.2f}s")
     except Exception as e:
-        print(f"  ⚠ Auditor failed (pipeline unaffected): {e}")
+        print(f"  [6/16] AUDIT FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
-    print("\n[7/15] TREND MAP")
+    print("\n[7/16] TREND MAP")
+    _t = time.time()
     try:
         trend_mapper.map_trends(brief_type, started_at, run_id=run_id)
+        print(f"  [7/16] TREND MAP done in {time.time() - _t:.2f}s")
     except Exception as e:
-        print(f"  ⚠ Trend Mapper failed (pipeline unaffected): {e}")
+        print(f"  [7/16] TREND MAP FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
-    print("\n[8/15] SUMMARY")
+    print("\n[8/16] SUMMARY")
+    _t = time.time()
     try:
         summarize.print_summary(brief_type, run_id=run_id)
+        print(f"  [8/16] SUMMARY done in {time.time() - _t:.2f}s")
     except Exception as e:
-        print(f"  ⚠ Summary failed (pipeline unaffected): {e}")
+        print(f"  [8/16] SUMMARY FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
-    print("\n[9/15] THESIS GRADING")
+    print("\n[9/16] THESIS GRADING")
+    _t = time.time()
     if brief_type == "morning":
         try:
             thesis_grader.main()
+            print(f"  [9/16] THESIS GRADING done in {time.time() - _t:.2f}s")
         except Exception as e:
-            logger.warning("thesis_grader step failed: %s", e)
+            print(f"  [9/16] THESIS GRADING FAILED in {time.time() - _t:.2f}s: {e}")
     else:
-        logger.info("thesis_grader: skipped (morning only)")
+        print("  [9/16] THESIS GRADING skipped (morning only)")
 
-    print("\n[10/15] PATTERN MEMORY")
+    print("\n[10/16] PATTERN MEMORY")
+    _t = time.time()
     if brief_type == "morning":
         try:
             pattern_memory.main()
+            print(f"  [10/16] PATTERN MEMORY done in {time.time() - _t:.2f}s")
         except Exception as e:
-            logger.warning("pattern_memory step failed: %s", e)
+            print(f"  [10/16] PATTERN MEMORY FAILED in {time.time() - _t:.2f}s: {e}")
     else:
-        logger.info("pattern_memory: skipped (morning only)")
+        print("  [10/16] PATTERN MEMORY skipped (morning only)")
 
-    print("\n[11/15] SOURCE CREDIBILITY")
+    print("\n[11/16] SOURCE CREDIBILITY")
+    _t = time.time()
     if brief_type == "morning":
         try:
             source_credibility.main()
+            print(f"  [11/16] SOURCE CREDIBILITY done in {time.time() - _t:.2f}s")
         except Exception as e:
-            logger.warning("source_credibility step failed: %s", e)
+            print(f"  [11/16] SOURCE CREDIBILITY FAILED in {time.time() - _t:.2f}s: {e}")
     else:
-        logger.info("source_credibility: skipped (morning only)")
+        print("  [11/16] SOURCE CREDIBILITY skipped (morning only)")
 
-    print("\n[12/14] ADVERSARIAL REVIEW")
+    print("\n[12/16] ADVERSARIAL REVIEW")
+    _t = time.time()
     if _is_sunday_morning(brief_type):
         try:
             adversarial.main()
+            print(f"  [12/16] ADVERSARIAL REVIEW done in {time.time() - _t:.2f}s")
         except Exception as e:
-            logger.warning("adversarial step failed: %s", e)
+            print(f"  [12/16] ADVERSARIAL REVIEW FAILED in {time.time() - _t:.2f}s: {e}")
     else:
-        logger.info("adversarial: skipped (Sunday morning only)")
+        print("  [12/16] ADVERSARIAL REVIEW skipped (Sunday morning only)")
 
-    print("\n[13/14] WATCHLIST ARTICLE SYNC")
+    print("\n[13/16] WATCHLIST ARTICLE SYNC")
+    _t = time.time()
     try:
         watchlist_sync.run_sync()
+        print(f"  [13/16] WATCHLIST ARTICLE SYNC done in {time.time() - _t:.2f}s")
     except Exception as e:
-        logger.warning("watchlist sync failed (pipeline unaffected): %s", e)
+        print(f"  [13/16] WATCHLIST ARTICLE SYNC FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
     print("\n[14/16] CONTENT EMBEDDINGS (RAG)")
+    _t = time.time()
     try:
         embedding_job.main()
+        print(f"  [14/16] CONTENT EMBEDDINGS done in {time.time() - _t:.2f}s")
     except Exception as e:
-        logger.warning("embedding_job step failed (pipeline unaffected): %s", e)
+        print(f"  [14/16] CONTENT EMBEDDINGS FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
     print("\n[15/16] USER-AWARE BRIEF PERSONALIZATION")
+    _t = time.time()
     try:
         user_synthesis.run(brief_type)
+        print(f"  [15/16] USER-AWARE BRIEF PERSONALIZATION done in {time.time() - _t:.2f}s")
     except Exception as e:
-        logger.warning("user_synthesis step failed (pipeline unaffected): %s", e)
+        print(f"  [15/16] USER-AWARE BRIEF PERSONALIZATION FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
     print("\n[16/16] THESIS GENERATION (system, semantic dedup)")
+    _t = time.time()
     if brief_type == "morning":
         try:
             thesis_generator.main()
+            print(f"  [16/16] THESIS GENERATION done in {time.time() - _t:.2f}s")
         except Exception as e:
-            logger.warning("thesis_generator step failed (pipeline unaffected): %s", e)
+            print(f"  [16/16] THESIS GENERATION FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
     else:
-        logger.info("thesis_generator: skipped (morning only)")
+        print("  [16/16] THESIS GENERATION skipped (morning only)")
 
     # --- Brief feedback loop: score the just-generated brief (soft-fail) ---
     print("\n[POST] BRIEF SCORING")
+    _t = time.time()
     try:
         from brief_feedback_loop import score_brief
         brief_text = synth_result.get("brief_text", "")
         if brief_text:
             score_brief(brief_text, brief_type, run_id)
+            print(f"  [POST] BRIEF SCORING done in {time.time() - _t:.2f}s")
         else:
-            logger.info("brief scoring: skipped (no brief text available)")
+            print("  [POST] BRIEF SCORING skipped (no brief text available)")
     except Exception as e:
-        logger.warning("brief scoring skipped: %s", e)
+        print(f"  [POST] BRIEF SCORING FAILED in {time.time() - _t:.2f}s: {e}")
 
     # --- Build improvement addenda once daily (morning run only, soft-fail) ---
     if brief_type == "morning":
@@ -250,7 +300,7 @@ if __name__ == "__main__":
             logger.warning("brief addendum build skipped: %s", e)
 
     print("\n" + "=" * 50)
-    print("✅ Pipeline complete")
+    print(f"Pipeline complete in {time.time() - pipeline_t0:.2f}s ({(time.time() - pipeline_t0) / 60:.1f} min)")
     print("=" * 50)
 
 # ---------------------------------------------------------------------------
@@ -258,6 +308,8 @@ if __name__ == "__main__":
 # ---------------------------------------------------------------------------
 # 1:    ingest
 # 1c:   user_signal_aggregator  (aggregate user behavioral events → digest)
+# 1d:   sector_backfill         (WD92 — idempotent fill of companies.sector
+#                                from articles.sector mode per primary_company)
 # 2:    deal_extractor          (MUST run before synthesize — Path B pre-picker
 #                                reads deal_flow for confirmed $1B+ leads)
 # 3:    synthesize              (consumes user_signal_digest for engagement context

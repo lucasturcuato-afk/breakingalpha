@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export type OutputType =
   | 'memo'
   | 'brief'
+  | 'brief_section'
   | 'brief_cluster'
   | 'chat_answer'
   | 'thesis'

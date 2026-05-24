@@ -74,6 +74,8 @@ interface MarketCardData {
   label: string;
   value: string;
   pct: number;
+  change?: number;
+  displayUnit?: "percent" | "bps";
   asOf?: string | null;
   closed?: boolean;
 }
@@ -432,6 +434,8 @@ export default function DashboardPage() {
         label={card?.label ?? labelForSymbol(sym)}
         value={card?.value ?? "—"}
         change={card?.pct ?? 0}
+        changeAbs={card?.change}
+        displayUnit={card?.displayUnit}
         stale={card?.closed ?? false}
         accentGold={i === 0}
         detailRows={[]}

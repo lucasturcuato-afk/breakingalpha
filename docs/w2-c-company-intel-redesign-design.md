@@ -1,6 +1,19 @@
 # W2-C: Company Intel Redesign Design
 
-Author: Noah Hanning. Date: 2026-05-04. Status: scoping. Lucas signed off on the sidebar redesign that ships alongside Company Intel; mockup synthesis (A+C direction across 10 frames) is locked. This doc is for the team (Noah, Lucas, future contributors) and is the foundation for the W2-C build. Implementation is phased across three milestones; section 8 lists the open questions Lucas decides before Phase 1 starts.
+Author: Noah Hanning. Date: 2026-05-04. Status: Phase 1 substantially shipped on integration branch `noah/w2-c-phase-1` as of 2026-05-06; PR #197 collects the merge to main pending pre-ship gates. Phase 1.5 chart shipped (PR #196). Lucas signed off on the sidebar redesign that ships alongside Company Intel; mockup synthesis (A+C direction across 10 frames) is locked. This doc is for the team (Noah, Lucas, future contributors) and is the foundation for the W2-C build. Implementation is phased across three milestones; section 8 lists the open questions Lucas decides before Phase 1 starts.
+
+## Status (2026-05-06)
+
+Phase 1 surfaces 1-3 plus Phase 1.5 chart all merged to integration. Companion fixes on top of the surface PRs (memo prompt, layout width, dedup ticker fill, chart math, ticker-coverage retry chain, lazy ticker lookup at request time) merged the same window. Detailed PR list lives in `docs/HANDOFF.md` under the 2026-05-06 sprint summary.
+
+Deferred from Phase 1 to W2-D (full enumeration in `docs/w2d-backlog.md`):
+
+- F1-F7 function-key tabs (already deferred by section 6; status unchanged).
+- Memo modal evolution for the other 6 callers (we forked `CompanyIntelMemoModal` per section 8 question 3, the shared `MemoModal` is untouched).
+- ADR brand alias map for foreign tickers; subsidiary aliasing.
+- 401 canonicalize-key duplicate cluster merges; false-positive ticker scrub.
+- Memo per-company in-memory cache; mobile tap-target audit.
+- Sector backfill live-run; /api/companies pagination.
 
 ### 1. Context and goals
 

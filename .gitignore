@@ -36,6 +36,7 @@ yarn-error.log*
 # env files
 .env
 .env.local
+.env.playwright
 .env*
 
 # vercel
@@ -50,6 +51,9 @@ __pycache__/
 *.pyc
 .venv/
 
+# smoke test output (script generated, do not commit)
+scripts/wd49-*.csv
+
 # claude
 .claude/settings.local.json
 .claude/agent-memory/
@@ -63,3 +67,5 @@ design-reference/
 COMPANY_INTEL_*.md
 ORCHESTRATOR_SUMMARY.md
 WATCHLIST_INGESTION_DIAGNOSIS.md
+auth-state.json
+.auth/

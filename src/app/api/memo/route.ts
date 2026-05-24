@@ -1,13 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isAdmin } from "@/lib/admin-emails";
 import { recordOutput } from "@/lib/outputs";
 import { MEMO_PROMPT_VERSION } from "@/lib/output-constants";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+// WD70: BriefTab Regenerate button daily per-user quota.
+const MEMO_REGENERATIONS_PER_DAY = 3;
+
+/** Returns the ISO timestamp of the next UTC midnight from now. */
+function nextUtcMidnightISO(): string {
+  const d = new Date();
+  d.setUTCHours(24, 0, 0, 0);
+  return d.toISOString();
+}
+
+/** Returns the ISO timestamp of the most recent UTC midnight. */
+function todayUtcMidnightISO(): string {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+/**
+ * Counts how many regeneration rows the user has logged since the most recent
+ * UTC midnight. Uses the user-scoped client so RLS enforces ownership.
+ */
+async function countRegenerationsToday(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<number> {
+  const { count, error } = await supabase
+    .from("user_memo_regeneration_quota")
+    .select("user_id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .gte("regenerated_at", todayUtcMidnightISO());
+  if (error) {
+    console.warn("[memo] regeneration quota count failed:", error.message);
+    return 0;
+  }
+  return count ?? 0;
+}
 
 /* ── User profile helpers for personalization ── */
 interface UserProfile {
@@ -233,8 +270,13 @@ Hard rules: no invented counterparties, dollar figures, or valuation assumptions
 const RATE_LIMIT_MEMO = 10; // memos per 24h
 
 export async function POST(request: NextRequest) {
-  const { user } = await getSupabaseWithUser();
+  const { supabase: userSupabase, user } = await getSupabaseWithUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  // WD70: regenerate flag opts the request into the daily-quota path. The
+  // synthesis branch is unchanged; only the gating + cache-invalidation steps
+  // run first when this is set.
+  const isRegenerate = request.nextUrl.searchParams.get("regenerate") === "true";
 
   /* ── Rate limit ── */
   // Admins bypass rate limits
@@ -295,6 +337,60 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // WD70: BriefTab regenerate flow. We only support the article-grounded
+  // company path through this gate (the only caller). The block:
+  //   1. enforces a 3-per-UTC-day quota,
+  //   2. logs the attempt before invoking Gemini so a click burst cannot bypass,
+  //   3. invalidates the prior cached memo so the next mount picks up the new row.
+  // The synthesis itself is unchanged below.
+  if (isRegenerate) {
+    if (type !== "company" || !company) {
+      return NextResponse.json(
+        { error: "regenerate requires type=company and a company identifier" },
+        { status: 400 },
+      );
+    }
+    const used = await countRegenerationsToday(userSupabase, user.id);
+    if (used >= MEMO_REGENERATIONS_PER_DAY) {
+      return NextResponse.json(
+        {
+          error: "Daily regeneration limit reached. Resets at midnight UTC.",
+          remaining: 0,
+          resetsAt: nextUtcMidnightISO(),
+        },
+        { status: 429 },
+      );
+    }
+    const { error: insertErr } = await userSupabase
+      .from("user_memo_regeneration_quota")
+      .insert({ user_id: user.id, company_id: company });
+    if (insertErr) {
+      console.error("[memo] failed to record regeneration quota row:", insertErr.message);
+      return NextResponse.json(
+        { error: "Failed to record regeneration attempt" },
+        { status: 500 },
+      );
+    }
+    // Invalidate the prior cached memo row(s) for this user+company so the
+    // next BriefTab mount cannot return stale content while the fresh row
+    // is being written.
+    try {
+      const svcSupabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      );
+      await svcSupabase
+        .from("outputs")
+        .delete()
+        .eq("output_type", "memo")
+        .eq("source_table", "companies")
+        .eq("source_id", company)
+        .eq("user_id", user.id);
+    } catch (e) {
+      console.warn("[memo] cache invalidation soft-failed:", e);
+    }
+  }
+
   // New path: type-based memo with content string
   if (content || systemPrompt) {
     const system = systemPrompt || (type ? TYPE_PROMPTS[type] : undefined) || TYPE_PROMPTS.article;
@@ -310,10 +406,8 @@ export async function POST(request: NextRequest) {
     // Web-fallback memos need a higher output ceiling than article-grounded.
     // The web prompt has 5 sections plus per-claim [n] citations plus two
     // 75-word "What To Do With This" bullets, which routinely lands in the
-    // 700 to 950 output-token range. The article-grounded "company" prompt
-    // is capped at "Under 300 words" and fits comfortably in 750. Splitting
-    // the ceiling here keeps the article-grounded path byte-identical.
-    const maxOutputTokens = type === "company-web" ? 8192 : 750;
+    // 700 to 950 output-token range. Other types fit comfortably in 2400.
+    const maxOutputTokens = type === "company-web" ? 8192 : 2400;
     try {
       const completion = await ai.models.generateContent({
         model: "gemini-2.5-flash",
@@ -328,7 +422,7 @@ export async function POST(request: NextRequest) {
 
       const memo = completion.text;
       if (!memo) {
-        return NextResponse.json({ error: "Gemini returned empty memo — retry" }, { status: 500 });
+        return NextResponse.json({ error: "Gemini returned empty memo, retry" }, { status: 500 });
       }
 
       // Record to universal outputs table (service-role client for bypassing RLS)
@@ -351,6 +445,15 @@ export async function POST(request: NextRequest) {
         },
         user_id: user.id,
       });
+
+      // WD70: surface remaining quota when the caller is a regenerate-eligible
+      // request so the frontend can render the counter without a second round
+      // trip. Only the article-grounded company path is gated.
+      if (type === "company") {
+        const used = await countRegenerationsToday(userSupabase, user.id);
+        const remaining = Math.max(0, MEMO_REGENERATIONS_PER_DAY - used);
+        return NextResponse.json({ memo, output_id: outputId, regenerations_remaining_today: remaining });
+      }
 
       return NextResponse.json({ memo, output_id: outputId });
     } catch (err) {
@@ -388,7 +491,7 @@ Sections: TRANSACTION OVERVIEW, STRATEGIC RATIONALE, KEY RISKS, ANALYST TAKE. Un
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       config: {
         temperature: 0.35,
-        maxOutputTokens: 600,
+        maxOutputTokens: 2400,
         thinkingConfig: { thinkingBudget: 0 },
       },
     });

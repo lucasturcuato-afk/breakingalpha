@@ -2,11 +2,20 @@
 
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { formatChange, type DisplayUnit } from "@/lib/format-change";
 
 interface StatCardProps {
   label: string;
   value: string;
+  /** Relative percent change. */
   change: number;
+  /**
+   * Absolute delta in the same units as `value`. Required when
+   * `displayUnit === "bps"` so the change can be rendered in basis points.
+   */
+  changeAbs?: number;
+  /** "percent" (default) or "bps". See src/lib/format-change.ts. */
+  displayUnit?: DisplayUnit;
   accentGold?: boolean;
   sparkData?: number[];
   detailRows?: { label: string; value: string }[];
@@ -20,6 +29,8 @@ export function StatCard({
   label,
   value,
   change,
+  changeAbs,
+  displayUnit = "percent",
   accentGold = false,
   sparkData = [],
   detailRows = [],
@@ -28,9 +39,9 @@ export function StatCard({
 }: StatCardProps) {
   const [hovered, setHovered] = useState(false);
 
-  const isPositive = change >= 0;
+  const changeDisplay = formatChange({ pct: change, change: changeAbs, unit: displayUnit });
+  const isPositive = changeDisplay.isPositive;
   const changeColor = isPositive ? "text-signal-up" : "text-signal-dn";
-  const changeSign = isPositive ? "+" : "";
 
   return (
     <div
@@ -80,8 +91,7 @@ export function StatCard({
                   changeColor,
                 )}
               >
-                {changeSign}
-                {change.toFixed(2)}%
+                {changeDisplay.text}
               </span>
             </div>
             <span className="block font-sans text-[10px] text-text-muted mt-0.5">
@@ -104,8 +114,7 @@ export function StatCard({
                 changeColor,
               )}
             >
-              {changeSign}
-              {change.toFixed(2)}%
+              {changeDisplay.text}
             </span>
           </div>
         )}

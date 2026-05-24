@@ -5,18 +5,32 @@ from typing import Callable, Optional
 
 from supabase import Client
 
-from backend.outcome.types import GradeResult
-from backend.outcome.graders import (
-    memo,
-    brief_section,
-    brief_rollup,
-    chat_answer,
-    thesis_adapter,
-    thesis_grade_meta,
-    contrarian,
-    deal_extraction,
-    engagement_only,
-)
+try:
+    from outcome.types import GradeResult
+    from outcome.graders import (
+        memo,
+        brief_section,
+        brief_rollup,
+        chat_answer,
+        thesis_adapter,
+        thesis_grade_meta,
+        contrarian,
+        deal_extraction,
+        engagement_only,
+    )
+except ImportError:
+    from backend.outcome.types import GradeResult
+    from backend.outcome.graders import (
+        memo,
+        brief_section,
+        brief_rollup,
+        chat_answer,
+        thesis_adapter,
+        thesis_grade_meta,
+        contrarian,
+        deal_extraction,
+        engagement_only,
+    )
 
 GraderFn = Callable[[Client, dict, int], GradeResult]
 
