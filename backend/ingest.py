@@ -109,9 +109,13 @@ RSS_FEEDS = {
     "SEC 10-Q":         "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=10-Q&dateb=&owner=include&count=10&search_text=&output=atom",
     "Federal Reserve":  "https://www.federalreserve.gov/feeds/press_all.xml",
     "PR Newswire":      "https://www.prnewswire.com/rss/news-releases-list.rss",
+    "GlobeNewswire":    "https://www.globenewswire.com/RssFeed/subjectcode/01-ABN/feedTitle/All%20Press%20Releases",
 }
 
 FULL_TEXT_SOURCES = {"SEC 8-K", "SEC 10-Q", "Federal Reserve"}
+
+# Press wire sources — used for per-wire signal/noise logging in run_ingestion.
+WIRE_SOURCES = {"PR Newswire", "GlobeNewswire"}
 
 INDUSTRY_VERTICALS = [
     "Technology",
@@ -485,6 +489,9 @@ INGEST_FRESHNESS_DAYS = 7
 
 def fetch_all_articles():
     articles = []
+    # Per-source fetch stats: {source: {"fetched": N, "fresh": N}}
+    # Used by run_ingestion for per-wire signal/noise logging.
+    source_fetch_stats: dict[str, dict[str, int]] = {}
     now = datetime.now(timezone.utc)
     freshness_cutoff = now - timedelta(days=INGEST_FRESHNESS_DAYS)
     total_skipped_stale = 0
@@ -494,12 +501,17 @@ def fetch_all_articles():
         skipped_stale = 0
         feed_t0 = time.time()
         feed_added = 0
+        feed_total = 0
         try:
             # Bounded fetch via urllib.request.urlopen(timeout=20) so a hung
             # upstream cannot block the pipeline forever (run #98 root cause).
             raw = _fetch_feed_bytes(url)
             feed = feedparser.parse(raw)
-            for e in feed.entries[:8]:
+            # Wire sources get a higher entry cap — they produce more volume
+            # and the relevance filter handles noise.
+            entry_cap = 40 if source in WIRE_SOURCES else 8
+            for e in feed.entries[:entry_cap]:
+                feed_total += 1
                 published_at = e.get("published", now.isoformat())
                 # Skip articles older than INGEST_FRESHNESS_DAYS
                 try:
@@ -526,6 +538,7 @@ def fetch_all_articles():
         if skipped_stale:
             print(f"  RSS {source}: skipped {skipped_stale} stale articles (>{INGEST_FRESHNESS_DAYS}d old)")
             total_skipped_stale += skipped_stale
+        source_fetch_stats[source] = {"fetched": feed_total, "fresh": feed_added}
         rss_added += feed_added
     print(f"  RSS total: {rss_added} articles from {len(RSS_FEEDS)} feeds in {time.time() - rss_t0:.2f}s")
     if total_skipped_stale:
@@ -567,7 +580,7 @@ def fetch_all_articles():
         if a["url"] and a["url"] not in seen and a["title"]:
             seen.add(a["url"])
             unique.append(a)
-    return unique
+    return unique, source_fetch_stats
 
 
 def filter_article(article):
@@ -784,7 +797,7 @@ def run_ingestion():
 
     t = time.time()
     print("\n[1/4] Fetching articles...")
-    articles = fetch_all_articles()
+    articles, source_fetch_stats = fetch_all_articles()
     print(f"  [1/4] DONE: {len(articles)} unique articles in {time.time() - t:.2f}s")
 
     t = time.time()
@@ -813,6 +826,15 @@ def run_ingestion():
     stored = len(article_ids)
     print(f"  [4/4] DONE: {stored} stored in {time.time() - t:.2f}s")
     print(f"\nINGEST total elapsed: {time.time() - t_total:.2f}s ({stored} new articles stored)")
+
+    # Per-wire signal/noise funnel
+    for src in sorted(WIRE_SOURCES):
+        stats = source_fetch_stats.get(src, {"fetched": 0, "fresh": 0})
+        wire_relevant = sum(1 for a, _ in relevant if a["source"] == src)
+        print(
+            f"  [ingest] {src}: {stats['fetched']} articles fetched, "
+            f"{stats['fresh']} passed freshness, {wire_relevant} passed relevance >= 6"
+        )
 
     # [4b] Full-text enrichment for scrapeable sources
     enriched = 0
