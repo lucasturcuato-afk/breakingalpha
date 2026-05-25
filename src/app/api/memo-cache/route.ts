@@ -9,8 +9,17 @@ import { getSupabaseWithUser } from "@/lib/supabase-server";
 // company was generated within the last 24 hours, return the cached
 // payload so we do not burn a Gemini call (and rate-limit slot) on every
 // visit. On miss, BriefTab renders a Generate Brief CTA that POSTs
-// /api/memo; the route's after() hook records the freeform memo via
-// output_log_v0_stub.metadata.markdown_memo for the next visit.
+// /api/memo; the route's recordOutput call persists the freeform memo to
+// the `outputs` table for the next visit.
+//
+// WD139: read path repointed from output_log_v0_stub to `outputs` after
+// #259 consolidated the memo write target. Lucas's merge resolution dropped
+// the legacy stub writes (Pattern A after() hook) but the cache reads were
+// not migrated alongside, so /api/memo-cache returned cached:false on every
+// memo view from 2026-05-24 15:55 UTC onward. Match key is
+// content->>'target_company' (populated by the WD126 server-side resolver
+// for every memo write path that knows the company; null-company writes are
+// legitimately skipped because the writer had no company anchor).
 
 const CACHE_TTL_HOURS = 24;
 
@@ -20,11 +29,19 @@ const CACHE_TTL_HOURS = 24;
 const MEMO_REGENERATIONS_PER_DAY = 3;
 
 interface CacheRow {
-  generated_at: string;
-  metadata: {
-    markdown_memo?: unknown;
+  created_at: string;
+  content: {
+    memo_text?: unknown;
+    memo_type?: unknown;
   } | null;
 }
+
+// Memo types eligible for the BriefTab cache. BriefTab itself writes
+// 'company'; modal-driven flows (MemoModal, CompanyIntelMemoModal,
+// thesis-detail-panel) default to 'article'. Unrelated memo types like
+// 'deal', 'thesis', 'brief' are excluded so the company-scoped cache does
+// not surface, for example, a deal memo as the cached company brief.
+const ELIGIBLE_MEMO_TYPES = new Set(["company", "article"]);
 
 function todayUtcMidnightISO(): string {
   const d = new Date();
@@ -64,23 +81,26 @@ export async function GET(request: NextRequest) {
   const regenerationsRemaining = await computeRegenerationsRemaining(userSupabase, user.id);
 
   try {
-    // Service-role client; output_log_v0_stub is not user-scoped at the row level.
+    // Service-role client; outputs RLS is row-level user_id scoped but we
+    // filter explicitly on user_id below so the service role only acts as
+    // an RLS bypass for clean indexed lookups.
     const svc = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     );
 
     const cutoff = new Date(Date.now() - CACHE_TTL_HOURS * 60 * 60 * 1000).toISOString();
+    // WD139: filter by target_company in the query (indexed JSONB path lookup),
+    // then filter memo_type in JS so the SQL stays a single eq chain. memo_type
+    // eligibility is per ELIGIBLE_MEMO_TYPES above.
     const { data, error } = await svc
-      .from("output_log_v0_stub")
-      .select("generated_at, metadata")
+      .from("outputs")
+      .select("created_at, content")
       .eq("output_type", "memo")
-      .eq("source_table", "companies")
-      .eq("source_id", companyId)
-      .eq("metadata->>variant", "articles")
-      .eq("metadata->>user_id", user.id)
-      .gte("generated_at", cutoff)
-      .order("generated_at", { ascending: false })
+      .eq("user_id", user.id)
+      .eq("content->>target_company", companyId)
+      .gte("created_at", cutoff)
+      .order("created_at", { ascending: false })
       .limit(10);
 
     if (error) {
@@ -93,14 +113,16 @@ export async function GET(request: NextRequest) {
 
     const rows = (data ?? []) as CacheRow[];
     for (const row of rows) {
-      const meta = row.metadata;
-      if (!meta || typeof meta !== "object") continue;
-      const markdownRaw = meta.markdown_memo;
-      if (typeof markdownRaw !== "string" || markdownRaw.length === 0) continue;
+      const content = row.content;
+      if (!content || typeof content !== "object") continue;
+      const memoType = content.memo_type;
+      if (typeof memoType !== "string" || !ELIGIBLE_MEMO_TYPES.has(memoType)) continue;
+      const memoText = content.memo_text;
+      if (typeof memoText !== "string" || memoText.length === 0) continue;
       return NextResponse.json({
         cached: true,
-        markdown: markdownRaw,
-        generated_at: row.generated_at,
+        markdown: memoText,
+        generated_at: row.created_at,
         regenerations_remaining_today: regenerationsRemaining,
       });
     }
