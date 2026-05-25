@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAlias } from "@/lib/data-access/aliasResolver";
+import { buildCompanyContainsOr, getCompanyVariants } from "@/lib/company-intel";
 import type { Completeness } from "@/lib/article-signal";
 
 export type AliasMention = { name: string; n: number };
@@ -90,10 +91,13 @@ export async function getCompanyDetail(
       .select("created_at, sentiment")
       .in("company_id", ids)
       .gte("created_at", new Date(sinceDay).toISOString()),
+    // WD136 Phase 1: variant-expansion. Filter articles by ANY known surface
+    // form of `head.name` (case + alias variants from CANONICAL), not just the
+    // single canonical string. See getCompanyVariants() in company-intel.ts.
     supabase
       .from("articles")
       .select(ARTICLE_COLS)
-      .contains("companies", [head.name])
+      .or(buildCompanyContainsOr(getCompanyVariants(head.name)))
       .gte("published_at", sinceArticles)
       .order("relevance_score", { ascending: false })
       .order("published_at", { ascending: false })

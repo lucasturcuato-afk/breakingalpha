@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
-import { canonicalize, type RawArticleRow } from "@/lib/company-intel";
+import {
+  buildCompanyContainsOr,
+  canonicalize,
+  getCompanyVariants,
+  type RawArticleRow,
+} from "@/lib/company-intel";
 
 export const dynamic = "force-dynamic";
 
@@ -227,10 +232,14 @@ export async function fetchCompanyArticles(
 
     // 30-day facet candidate set. Pull enough rows that the in-memory selector
     // has room to find facet matches even when the recent burst dominates.
+    // WD136 Phase 1: variant-expansion. Match all known casing/alias surface
+    // forms of `canonicalName` in `articles.companies`, not just the single
+    // canonical string. See getCompanyVariants() in company-intel.ts.
+    const variantFilter = buildCompanyContainsOr(getCompanyVariants(canonicalName));
     const { data: facetRows, error: facetErr } = await supabase
       .from("articles")
       .select(ARTICLE_COLUMNS)
-      .contains("companies", [canonicalName])
+      .or(variantFilter)
       .gte("published_at", facetCutoff)
       .gte("relevance_score", MIN_RELEVANCE)
       .order("published_at", { ascending: false })
@@ -256,10 +265,11 @@ export async function fetchCompanyArticles(
     // no published_at coverage in 30d), fall back to the legacy recency
     // query so the page never returns 0 articles.
     if (selected.length === 0) {
+      // WD136 Phase 1: variant-expansion (mirror of facet-window filter above).
       const { data: legacy, error: legacyErr } = await supabase
         .from("articles")
         .select(ARTICLE_COLUMNS)
-        .contains("companies", [canonicalName])
+        .or(variantFilter)
         .order("ingested_at", { ascending: false })
         .limit(POOL_SIZE);
       if (legacyErr) {

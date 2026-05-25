@@ -427,6 +427,159 @@ export function canonicalize(name: string): string {
   return trimmed;
 }
 
+// ---------------------------------------------------------------------------
+// WD136 Phase 1: read-side variant expansion
+// ---------------------------------------------------------------------------
+// Source of truth: .claude/recon/agent-wd136-scope.md
+//
+// Why this exists:
+//   articles.companies is a Postgres text[] array. Filtering with
+//   `.contains("companies", [canonicalName])` is case-sensitive and matches
+//   only one surface form. The CANONICAL map already enumerates the known
+//   surface forms (lowercase keys) that map to each canonical name, but it
+//   was previously only used to compute the canonical name itself, never to
+//   expand the filter into the surface-form set actually present in the data.
+//
+//   For NVIDIA, that single-name filter returns 10 rows when the union of all
+//   surface forms returns ~448 (97.8% blackout). Same pattern for Alphabet
+//   (133 vs 315), JPMorgan Chase (12 vs 55), Anthropic, Apple, Meta, etc.
+//
+// What this provides:
+//   - getCompanyVariants(canonical): all surface forms that should be matched
+//     for a given canonical name. Derived by inverting CANONICAL: every key
+//     whose value equals `canonical` becomes a candidate variant. We then
+//     emit a small, deterministic set of casing forms per variant (Title Case
+//     of the lowercase key, plus the canonical itself), de-duped.
+//   - buildCompanyContainsOr(variants): a PostgREST `.or(...)` expression
+//     string that ORs together one `companies.cs.{variant}` per variant.
+//     Each variant is escaped for the PostgREST array-literal syntax.
+//
+// What this does NOT do:
+//   - No new alias data. Only existing CANONICAL entries are consulted.
+//   - No write-side changes. `articles.companies` is never modified.
+//   - No SQL functions, no migrations.
+//   - Long-tail variants outside CANONICAL (e.g. "Nvidia Inc.") remain
+//     stranded; that is Phase 2 (write-side canonicalize + backfill in the
+//     supervised entity-cleanup window).
+
+/**
+ * Return all surface-form variants that should be matched when filtering
+ * `articles.companies` for a given canonical name. The canonical name itself
+ * is always the first element. The remainder are derived from CANONICAL keys
+ * that resolve to this canonical, with case variants common in stored rows.
+ *
+ * Deterministic, dedupe-preserving order so callers can rely on the first
+ * element for logging / cache-key purposes.
+ */
+export function getCompanyVariants(canonical: string): string[] {
+  const variants = new Set<string>();
+  variants.add(canonical);
+
+  // Also expand each whitespace-separated token of the canonical name into a
+  // standalone variant when the token itself is a distinctive multi-letter
+  // word. This catches abbreviated surface forms commonly written by ingest,
+  // e.g. canonical "JPMorgan Chase" -> first-token variant "JPMorgan", which
+  // is the way ~30 rows are stored even though CANONICAL keys are lowercased
+  // and never reproduce that internal capital. Only the first token is
+  // expanded (and only when length >= 5) to avoid expanding generic words
+  // like "Inc", "Corp", "Group", "The", etc.
+  const firstToken = canonical.split(/\s+/)[0];
+  if (firstToken && firstToken.length >= 5 && firstToken !== canonical) {
+    variants.add(firstToken);
+  }
+
+  // Lowercase keys in CANONICAL whose value matches `canonical` are alias
+  // candidates. For each key, emit a few common casing forms seen in the
+  // wild: as-typed lowercase, Title Case, and the original key with its
+  // first letter uppercased.
+  for (const [key, value] of Object.entries(CANONICAL)) {
+    if (value !== canonical) continue;
+    // Skip very short keys (tickers like "hood", "coin") - they create
+    // false-positive matches against unrelated `companies` entries.
+    if (key.length < 4) continue;
+    // Original lowercase form (some ingest rows store lowercase).
+    variants.add(key);
+    // Title Case: capitalize first letter of each word.
+    variants.add(
+      key
+        .split(/(\s+)/)
+        .map((part) =>
+          /\s+/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1),
+        )
+        .join(""),
+    );
+    // ALL-CAPS first word + Title Case rest (handles "NVIDIA Corporation").
+    const words = key.split(/\s+/);
+    if (words.length > 0 && words[0].length > 0) {
+      const allCapsFirst = [
+        words[0].toUpperCase(),
+        ...words
+          .slice(1)
+          .map((w) => (w.length > 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w)),
+      ].join(" ");
+      variants.add(allCapsFirst);
+    }
+    // Special: punctuated suffix variants. "nvidia corp" should also try
+    // "Nvidia Corp." and "NVIDIA Corp." since ingest sometimes preserves
+    // the trailing period.
+    if (/\b(corp|inc)$/i.test(key)) {
+      variants.add(
+        key
+          .split(/(\s+)/)
+          .map((part) =>
+            /\s+/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1),
+          )
+          .join("") + ".",
+      );
+      const wordsForPeriod = key.split(/\s+/);
+      if (wordsForPeriod.length > 0 && wordsForPeriod[0].length > 0) {
+        variants.add(
+          [
+            wordsForPeriod[0].toUpperCase(),
+            ...wordsForPeriod
+              .slice(1)
+              .map((w) =>
+                w.length > 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w,
+              ),
+          ].join(" ") + ".",
+        );
+      }
+    }
+  }
+
+  return Array.from(variants);
+}
+
+/**
+ * Escape a single value for use inside a PostgREST array literal. PostgREST
+ * `cs.{"...","..."}` syntax requires quoting any value containing commas,
+ * spaces, periods, or special characters, with backslash-escaped embedded
+ * double quotes.
+ */
+function escapeForPostgrestArrayLiteral(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * Build a PostgREST `.or(...)` filter expression that matches `articles.companies`
+ * against ANY of the supplied variants using array containment (`cs`).
+ *
+ * Usage:
+ *   const variants = getCompanyVariants(canonicalName);
+ *   query = query.or(buildCompanyContainsOr(variants));
+ *
+ * Returns a single-variant `companies.cs.{...}` (no comma) when there is only
+ * one variant, so the result is always a valid PostgREST `or` argument.
+ */
+export function buildCompanyContainsOr(variants: string[]): string {
+  if (variants.length === 0) return "";
+  return variants
+    .map(
+      (v) => `companies.cs.{${escapeForPostgrestArrayLiteral(v)}}`,
+    )
+    .join(",");
+}
+
 export function parseCompanies(cos: unknown): string[] {
   if (!cos) return [];
   if (typeof cos === "string") {
