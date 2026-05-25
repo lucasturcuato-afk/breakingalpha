@@ -17,6 +17,8 @@ try:
         contrarian,
         deal_extraction,
         engagement_only,
+        sec_filing,
+        insider_transaction,
     )
 except ImportError:
     from backend.outcome.types import GradeResult
@@ -30,6 +32,8 @@ except ImportError:
         contrarian,
         deal_extraction,
         engagement_only,
+        sec_filing,
+        insider_transaction,
     )
 
 GraderFn = Callable[[Client, dict, int], GradeResult]
@@ -46,6 +50,8 @@ GRADER_REGISTRY: dict[str, GraderFn] = {
     "user_addendum": engagement_only.grade,
     "mention_alert": engagement_only.grade,
     "cross_reference": engagement_only.grade,
+    "sec_filing": sec_filing.grade,
+    "insider_transaction": insider_transaction.grade,
 }
 
 # Windows per output type. The evaluator grades each output at each
@@ -62,9 +68,11 @@ WINDOWS_BY_TYPE: dict[str, list[int]] = {
     "user_addendum": [7],
     "mention_alert": [7],
     "cross_reference": [7],
+    "sec_filing": [7, 30],
+    "insider_transaction": [7, 30],
 }
 
 # Types that cost $0 (no LLM call)
-TIER_1_TYPES = {"thesis", "thesis_grade", "brief", "user_addendum", "mention_alert", "cross_reference"}
+TIER_1_TYPES = {"thesis", "thesis_grade", "brief", "user_addendum", "mention_alert", "cross_reference", "sec_filing", "insider_transaction"}
 # Types that use Gemini Flash
 TIER_2_TYPES = {"memo", "brief_section", "chat_answer", "contrarian_signal", "deal_extraction"}
