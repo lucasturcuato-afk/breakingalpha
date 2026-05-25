@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 OutputType = Literal[
     'memo', 'brief', 'brief_cluster', 'brief_section', 'chat_answer',
     'thesis', 'thesis_grade', 'contrarian_signal', 'deal_extraction',
-    'user_addendum', 'mention_alert', 'cross_reference'
+    'user_addendum', 'mention_alert', 'cross_reference',
+    'sec_filing', 'insider_transaction',
 ]
 
 
