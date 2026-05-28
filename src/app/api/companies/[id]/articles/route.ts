@@ -7,6 +7,9 @@ import {
   getCompanyVariants,
   type RawArticleRow,
 } from "@/lib/company-intel";
+import { FACETS, matchesFacet } from "@/lib/facet-predicates";
+// Re-export for callers that previously imported matchesFacet from this route.
+export { matchesFacet } from "@/lib/facet-predicates";
 
 export const dynamic = "force-dynamic";
 
@@ -75,48 +78,8 @@ const FILLER_WINDOW_DAYS = 14;
 const CANDIDATE_LIMIT = 200; // enough to give the in-memory selector room
 const MIN_RELEVANCE = 6;
 
-// Facets to protect. Order is deterministic so dedupe gives priority to
-// earlier facets when the same article satisfies multiple.
-export type Facet = "governance" | "bear" | "financial-risk" | "valuation-range";
-const FACETS: Facet[] = ["governance", "bear", "financial-risk", "valuation-range"];
-
-// Facet predicates. Each operates on the concatenated (title + summary + content)
-// text. Tuned against the SpaceX corpus per the design brief. Future-company
-// expansion will need to validate that these keywords are not too SpaceX-specific
-// (the "85.1" anchor and the dual-class language are not).
-function articleText(a: RawArticleRow): string {
-  return [a.title ?? "", a.summary ?? "", a.content ?? ""].join(" ");
-}
-
-const GOVERNANCE_RE =
-  /\b(dual[- ]class|class\s+[ab]\b|supervoting|super[- ]voting|voting\s+(power|control|rights)|85\.1|proxy(\s+fight)?|board\s+(control|seats?)|governance|monarchical|tight\s+grip|complete\s+control)\b/i;
-
-const BEAR_KEYWORD_RE =
-  /\b(overvalued|hard\s+to\s+justify|skeptical|bear\s+case|bearish|frothy|paradox|money-losing|behemoth|warned|scrub|billion\s+loss|biggest\s+threat|not\s+buying)\b/i;
-
-const FIN_RISK_RE =
-  /\b(bridge\s+loan|dilution|cash\s+burn|going\s+concern|runway|down\s+round|debt\s+covenant|default(?!\s+(rate|to))|liquidity\s+(risk|crunch)|negative\s+cash\s+flow|losing\s+money|lost\s+\$[\d.]+\s*billion)\b/i;
-
-// Valuation range: an explicit "$X to $Y billion/trillion" pattern. The
-// connector can be "to", "-", or an en-dash. Also catches the canonical
-// "$1.75" SpaceX anchor when written in the article body.
-const RANGE_RE =
-  /\$\d[\d,.]*\s*(billion|trillion|[bt])\b[\s\S]{0,40}(to|-|–|—)\s*\$\d[\d,.]*\s*(billion|trillion|[bt])\b/i;
-const RANGE_ALT_RE = /\$1\.75\s*(trillion|t)\b/i;
-
-export function matchesFacet(facet: Facet, a: RawArticleRow): boolean {
-  const text = articleText(a);
-  switch (facet) {
-    case "governance":
-      return GOVERNANCE_RE.test(text);
-    case "bear":
-      return a.sentiment === "bearish" || BEAR_KEYWORD_RE.test(text);
-    case "financial-risk":
-      return FIN_RISK_RE.test(text);
-    case "valuation-range":
-      return RANGE_RE.test(text) || RANGE_ALT_RE.test(text);
-  }
-}
+// Facet type, predicates, and matchesFacet now live in @/lib/facet-predicates
+// so WD141's facet-aware slicing in buildMemoContent runs the identical checks.
 
 function byRelevanceThenRecency(a: RawArticleRow, b: RawArticleRow): number {
   const ra = a.relevance_score ?? 0;

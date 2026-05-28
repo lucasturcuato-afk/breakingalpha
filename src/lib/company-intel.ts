@@ -8,6 +8,7 @@
  */
 
 import { stripHtml } from "@/lib/strip-html";
+import { isFacetProtected } from "@/lib/facet-predicates";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -829,14 +830,23 @@ export function filterAndClassifyArticles(
 // Memo content builders
 // ---------------------------------------------------------------------------
 
-function byRelevance(arts: CompanyArticle[]): CompanyArticle[] {
-  return [...arts].sort((a, b) => {
+// Rank development articles by relevance (recency tiebreak) and cap the list.
+// WD141: facet-protected articles (WD129's governance/bear/financial-risk/
+// valuation picks) are partitioned out first so they survive the cap. Without
+// this, a protected article tying on relevance loses the recency tiebreak and
+// gets sliced past the cap before the model sees it, silently defeating WD129.
+// The cap lives here (single source of truth) so callers do not re-slice.
+function byRelevance(arts: CompanyArticle[], cap = 6): CompanyArticle[] {
+  const sorted = [...arts].sort((a, b) => {
     const scoreDiff = (b.relevance_score ?? 5) - (a.relevance_score ?? 5);
     if (scoreDiff !== 0) return scoreDiff;
     const dateA = a.published_at ? new Date(a.published_at).getTime() : 0;
     const dateB = b.published_at ? new Date(b.published_at).getTime() : 0;
     return dateB - dateA;
   });
+  const protectedArts = sorted.filter((a) => isFacetProtected(a));
+  const unprotected = sorted.filter((a) => !isFacetProtected(a));
+  return [...protectedArts, ...unprotected].slice(0, cap);
 }
 
 // Company-specific relevance score for context article ranking.
@@ -868,7 +878,16 @@ function contextScore(a: CompanyArticle, companyName: string): number {
 // Returns at most 4 articles — fewer, higher-quality articles produce sharper
 // memo synthesis than a longer list of mixed-signal items.
 function selectContextArticles(arts: CompanyArticle[], companyName: string): CompanyArticle[] {
-  const ranked = [...arts].sort((a, b) => {
+  const cap = 4;
+
+  // WD141: facet-protected context articles (WD129 picks) bypass the
+  // contextScore ranking AND the zero-signal noise filter below. A governance
+  // or bear article without the company name in its title scores 0 on
+  // contextScore and would otherwise be dropped, defeating WD129's protection.
+  const protectedArts = arts.filter((a) => isFacetProtected(a));
+  const unprotected = arts.filter((a) => !isFacetProtected(a));
+
+  const ranked = [...unprotected].sort((a, b) => {
     const csDiff = contextScore(b, companyName) - contextScore(a, companyName);
     if (csDiff !== 0) return csDiff;
     // Tiebreak: general relevance, then recency
@@ -881,10 +900,11 @@ function selectContextArticles(arts: CompanyArticle[], companyName: string): Com
   // If at least 4 articles have company-specific signal (score > 0), drop
   // zero-signal articles so the model isn't diluted by incidental mentions.
   // Conservative: only filter when ≥4 signal articles remain without them.
+  // Applied to the unprotected pool only — protected articles are kept.
   const withSignal = ranked.filter((a) => contextScore(a, companyName) > 0);
-  const pool = withSignal.length >= 4 ? withSignal : ranked;
+  const unprotectedPool = withSignal.length >= 4 ? withSignal : ranked;
 
-  return pool.slice(0, 4);
+  return [...protectedArts, ...unprotectedPool].slice(0, cap);
 }
 
 // Build a descriptive signal quality label that tells the model what the evidence
@@ -959,7 +979,7 @@ export function buildMemoContent(
     `SIGNAL QUALITY: ${signalLabel}`,
     ``,
     `COMPANY DEVELOPMENT ARTICLES (${effectiveDevArts.length}):`,
-    formatArticleList(byRelevance(effectiveDevArts).slice(0, 6)),
+    formatArticleList(byRelevance(effectiveDevArts)),
     ``,
     `SECTOR CONTEXT ARTICLES (${effectiveCtxArts.length}):`,
     formatArticleList(effectiveCtxArts), // already ranked by selectContextArticles
