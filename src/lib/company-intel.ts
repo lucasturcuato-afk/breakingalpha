@@ -8,7 +8,7 @@
  */
 
 import { stripHtml } from "@/lib/strip-html";
-import { isFacetProtected } from "@/lib/facet-predicates";
+import { isFacetProtected, facetMatchSpans } from "@/lib/facet-predicates";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -686,6 +686,16 @@ const ARTICLE_BODY_CAP = 600;
  * If no space is found within the first 80% of the cap, fall back to a hard
  * cut so we never return an empty body for pathological inputs.
  */
+// Legacy first-cap excerpt: word-boundary truncate at `cap` and append a
+// trailing sentinel. Kept verbatim from the pre-WD134 pickArticleBody so the
+// non-facet path stays byte-identical.
+function firstCapExcerpt(source: string, cap: number): string {
+  const window = source.slice(0, cap);
+  const lastSpace = window.lastIndexOf(" ");
+  const cutAt = lastSpace >= Math.floor(cap * 0.8) ? lastSpace : cap;
+  return source.slice(0, cutAt) + " ...";
+}
+
 function pickArticleBody(a: CompanyArticle, cap: number): string {
   const summary = (a.summary ?? "").replace(/\s+/g, " ").trim();
   const content = (a.content ?? "").replace(/\s+/g, " ").trim();
@@ -698,10 +708,73 @@ function pickArticleBody(a: CompanyArticle, cap: number): string {
   if (source.length === 0) return "";
   if (source.length <= cap) return source;
 
-  const window = source.slice(0, cap);
-  const lastSpace = window.lastIndexOf(" ");
-  const cutAt = lastSpace >= Math.floor(cap * 0.8) ? lastSpace : cap;
-  return source.slice(0, cutAt) + " ...";
+  // Non-facet articles keep the legacy first-cap excerpt unchanged.
+  if (!isFacetProtected(a)) return firstCapExcerpt(source, cap);
+
+  // WD134 smart-excerpt: for facet-protected articles the analyst-critical
+  // detail (e.g. "85.1% voting control", the dual-class structure, the
+  // "$1.65 trillion to $1.75 trillion" range) often sits deep in the body
+  // while the lede carries only a bare keyword. First-cap clips exactly the
+  // figures the facet protection exists to preserve. Instead, center a
+  // cap-width window on the position that captures the MOST distinct facet
+  // matches. Centering on the EARLIEST match was rejected: a generic
+  // "governance" keyword in the lede reproduces the broken first-cap behavior.
+  const spans = facetMatchSpans(source);
+  if (spans.length === 0) return firstCapExcerpt(source, cap); // guard: facet hit was in title/summary only
+
+  const maxStart = source.length - cap; // > 0 here since source.length > cap
+  let best: { start: number; end: number; score: number; hasDigit: boolean } | null = null;
+
+  for (const center of spans) {
+    const mid = (center.start + center.end) / 2;
+    let winStart = Math.round(mid - cap / 2);
+    if (winStart < 0) winStart = 0;
+    if (winStart > maxStart) winStart = maxStart;
+    // Guarantee the centering span is fully contained even when it sits near
+    // an edge of the source.
+    if (center.start < winStart) winStart = center.start;
+    if (center.end > winStart + cap) winStart = Math.min(center.end - cap, maxStart);
+    if (winStart < 0) winStart = 0;
+    const winEnd = winStart + cap;
+
+    let score = 0;
+    for (const s of spans) {
+      if (s.start >= winStart && s.end <= winEnd) score++;
+    }
+
+    const cand = { start: winStart, end: winEnd, score, hasDigit: center.hasDigit };
+    if (best === null) {
+      best = cand;
+    } else if (cand.score !== best.score) {
+      if (cand.score > best.score) best = cand;
+    } else if (cand.hasDigit !== best.hasDigit) {
+      // Equal coverage: quantified detail beats a bare keyword.
+      if (cand.hasDigit) best = cand;
+    } else if (cand.start < best.start) {
+      // Equal coverage and equal digit-ness: prefer the earlier window.
+      best = cand;
+    }
+  }
+
+  const chosen = best!;
+  const startCut = chosen.start > 0;
+  const endCut = chosen.end < source.length;
+  let s = chosen.start;
+  let e = chosen.end;
+  // Word-boundary cleanup on both edges: drop a partial leading/trailing word.
+  if (startCut) {
+    const sp = source.indexOf(" ", s);
+    if (sp !== -1 && sp < e) s = sp + 1;
+  }
+  if (endCut) {
+    const sp = source.lastIndexOf(" ", e);
+    if (sp > s) e = sp;
+  }
+  let excerpt = source.slice(s, e).trim();
+  // Directional sentinels: only where text was actually cut.
+  if (startCut) excerpt = "... " + excerpt;
+  if (endCut) excerpt = excerpt + " ...";
+  return excerpt;
 }
 
 /**

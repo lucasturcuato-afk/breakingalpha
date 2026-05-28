@@ -66,3 +66,41 @@ export function matchesFacet(facet: Facet, a: FacetableArticle): boolean {
 export function isFacetProtected(a: FacetableArticle): boolean {
   return FACETS.some((f) => matchesFacet(f, a));
 }
+
+// All keyword/pattern facet regexes, for span scanning. The bear facet also
+// has a sentiment-based trigger (a.sentiment === "bearish") that carries no
+// text span, so it is not represented here; facetMatchSpans only reports
+// spans that exist within the scanned text.
+const FACET_REGEXES = [GOVERNANCE_RE, BEAR_KEYWORD_RE, FIN_RISK_RE, RANGE_RE, RANGE_ALT_RE];
+
+export interface FacetSpan {
+  start: number;
+  end: number;
+  hasDigit: boolean;
+}
+
+// Return every facet-keyword match span over `text`, sorted by start offset.
+// WD134 smart-excerpt uses these offsets to center the article-body window on
+// the position that captures the most distinct facet matches. The offsets are
+// into the exact string passed in, so the caller MUST pass the same string it
+// later slices (pickArticleBody passes its chosen `source`, not articleText)
+// or the positions are meaningless.
+export function facetMatchSpans(text: string): FacetSpan[] {
+  const spans: FacetSpan[] = [];
+  for (const re of FACET_REGEXES) {
+    const g = re.flags.includes("g") ? re : new RegExp(re.source, re.flags + "g");
+    let m: RegExpExecArray | null;
+    while ((m = g.exec(text)) !== null) {
+      const matched = m[0];
+      spans.push({
+        start: m.index,
+        end: m.index + matched.length,
+        hasDigit: /\d/.test(matched),
+      });
+      // Defensive: a zero-length match would not advance lastIndex.
+      if (m.index === g.lastIndex) g.lastIndex++;
+    }
+  }
+  spans.sort((a, b) => a.start - b.start);
+  return spans;
+}
