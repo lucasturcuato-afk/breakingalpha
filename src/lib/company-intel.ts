@@ -775,10 +775,24 @@ export function filterAndClassifyArticles(
   return matched.map((a) => {
     const cosRaw = parseCompanies(a.companies);
 
+    // WD127: Earnings/M&A with null primary_company are common in Yahoo
+    // aggregator headlines that are still directly about the subject company
+    // (e.g. "NVDA Reports Q3 Beat..."). Without the null-primary fallback they
+    // mis-bucket as context, which (a) suppresses real direct-event coverage
+    // and (b) trips the context-led Coverage Note banner ("No direct company
+    // development articles") even when the pool contains a subject-of-title
+    // earnings recap. The fallback uses isSubjectOfTitle, which requires the
+    // company to be the first token of the headline (after stripping
+    // REPORT:/BREAKING:-style prefixes) — sector-context articles where the
+    // company merely appears mid-headline ("Microsoft challenges Apple's lead
+    // in cloud") return false and do not mis-trigger as development. Direct
+    // mirror of the existing isFundingOrIPO branch below.
     const isStrictDevelopment =
       (a.deal_type === "Earnings" || a.deal_type === "M&A") &&
-      a.primary_company != null &&
-      matchesCanonical(a.primary_company, companyName);
+      (
+        (a.primary_company != null && matchesCanonical(a.primary_company, companyName)) ||
+        (a.primary_company == null && isSubjectOfTitle(a.title, companyName))
+      );
 
     const isFundingOrIPO =
       (a.deal_type === "Funding" || a.deal_type === "IPO") &&
@@ -1011,6 +1025,24 @@ These rules outrank any section-specific instruction below (including the What J
 1. No-company-name-as-grammatical-subject (applies to ALL sections, including section 02 What Just Changed): Never open any section with ${companyName} as the grammatical subject of the first sentence. This explicitly includes constructions like "${companyName} has filed...", "${companyName} reported...", "${companyName} announced...", "${companyName} is launching...". Instead, lead with the named counterparty, named filing, named regulator, named product, or specific dollar/percentage figure, and place ${companyName} as the object or in a subordinate clause. Acceptable rewrites: "The filing covers...", "Filings show...", "Pre-IPO disclosures landed with the SEC on...", "The SEC accepted ${companyName}'s pre-IPO disclosure on...", "A Starship test flight is scheduled for...". The fact is still stated precisely; only the grammatical subject changes.
 
 2. No-"The"-or-mood-noun opener (applies to the Analyst Brief): Never open the Analyst Brief with "The" OR any abstract-mood-noun (e.g. Anticipation, Excitement, Concern, Optimism, Pessimism, Confidence, Uncertainty, Hope, Fear, Worry, Sentiment, Momentum). These openers signal opinion or framing rather than a sourced fact and degrade analyst-grade trust. If the first word would be one of those, rewrite to lead with the named event, named counterparty, named filing, or specific numeric figure that caused the mood. Example fix: instead of "Anticipation for a potential $2T IPO...", write "Pre-IPO disclosures from ${companyName} landed at the SEC on..." or "A $2T-plus IPO valuation range is now in prediction-market trading..." -- the figure or named filing leads, not the mood it produced.
+
+─── COVERAGE-BALANCE RULE -- APPLIES TO ALL SECTIONS, BOTH MODES, CONDITIONAL ON THE POOL ───
+
+This rule is SUBORDINATE TO SOURCING DISCIPLINE (the SOURCING DISCIPLINE block at the top of this prompt always wins). It outranks any section-specific filtering instruction below: if an article in the pool carries the material listed under TRIGGERS, the section-specific "what to cover" filters do not get to silently skip it.
+
+TRIGGERS -- material that activates this rule when explicitly present in the COMPANY DEVELOPMENT ARTICLES or SECTOR CONTEXT ARTICLES pool:
+- GOVERNANCE / CONTROL: dual-class shares, supervoting, voting power or voting control percentages, founder voting rights, board composition or proxy contests, "tight grip" or "management-favorable" framing tied to a named structure.
+- STRUCTURAL FINANCIAL RISK: going concern, bridge loan, dilution risk, runway, cash burn, debt covenant, down round, "$X billion loss" framings tied to capital-structure consequence.
+- BEAR / DISSENT: bearish sentiment articles, named short-seller commentary, ratings downgrades, "overvalued" or "hard to justify" or "frothy" or "skeptical" framing attributed to a named source.
+
+REQUIREMENT -- when any of the above is present in the pool, the memo MUST surface it. Surfacing is satisfied by at least one of:
+  (a) coverage as a discrete development in What Just Changed, OR
+  (b) the bear-case or "If [opposite condition]" clause of a What To Do With This bullet naming the specific risk, OR
+  (c) one explicit clause in the Analyst Brief naming the specific structural or bear element (counts as the "vulnerability" half of the strategic-posture statement).
+
+CONDITIONALITY -- if NONE of the above is present in the pool, this rule is a NO-OP. Do not infer governance from absence of disclosure. Do not invent financial distress from a neutral pool. Do not manufacture bear framing when the pool is bullish or neutral. A clean pool produces a clean memo. The rule binds only what is already sourced.
+
+NEVER use this rule as a license to introduce facts, percentages, or named parties not in the article pool. If a triggering article is in the pool, surface what that article actually says, with the same sourcing discipline that governs every other claim in the memo.
 
 ─── MEMO_MODE = "developments-led" ───
 
