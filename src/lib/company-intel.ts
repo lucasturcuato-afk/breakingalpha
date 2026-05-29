@@ -8,7 +8,7 @@
  */
 
 import { stripHtml } from "@/lib/strip-html";
-import { isFacetProtected, facetMatchSpans } from "@/lib/facet-predicates";
+import { isFacetProtected, facetMatchSpans, type FacetSpan } from "@/lib/facet-predicates";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -696,33 +696,31 @@ function firstCapExcerpt(source: string, cap: number): string {
   return source.slice(0, cutAt) + " ...";
 }
 
-function pickArticleBody(a: CompanyArticle, cap: number): string {
-  const summary = (a.summary ?? "").replace(/\s+/g, " ").trim();
-  const content = (a.content ?? "").replace(/\s+/g, " ").trim();
+// WD143: multi-facet excerpt window tuning. Single-window articles keep the
+// 600-char cap unchanged; a multi-facet-spread article gets up to MAX_WINDOWS
+// focused windows of PER_WINDOW_CAP each (bounded by GLOBAL_CAP) so a
+// non-densest facet is not clipped. MIN_CLUSTER_SCORE gates lone-keyword
+// clusters out of their own window.
+const PER_WINDOW_CAP = 400;
+const GLOBAL_CAP = 800;
+const MAX_WINDOWS = 2;
+const MIN_CLUSTER_SCORE = 1;
 
-  // Prefer content only when it carries materially more text than the
-  // summary. The threshold (summary length + 50 chars) avoids switching to
-  // a near-identical content field that re-renders the same opening sentence
-  // for a few extra trailing words.
-  const source = content.length > summary.length + 50 ? content : summary;
-  if (source.length === 0) return "";
-  if (source.length <= cap) return source;
+interface CenteredWindow {
+  text: string;
+  start: number;
+  end: number;
+  startCut: boolean;
+  endCut: boolean;
+}
 
-  // Non-facet articles keep the legacy first-cap excerpt unchanged.
-  if (!isFacetProtected(a)) return firstCapExcerpt(source, cap);
-
-  // WD134 smart-excerpt: for facet-protected articles the analyst-critical
-  // detail (e.g. "85.1% voting control", the dual-class structure, the
-  // "$1.65 trillion to $1.75 trillion" range) often sits deep in the body
-  // while the lede carries only a bare keyword. First-cap clips exactly the
-  // figures the facet protection exists to preserve. Instead, center a
-  // cap-width window on the position that captures the MOST distinct facet
-  // matches. Centering on the EARLIEST match was rejected: a generic
-  // "governance" keyword in the lede reproduces the broken first-cap behavior.
-  const spans = facetMatchSpans(source);
-  if (spans.length === 0) return firstCapExcerpt(source, cap); // guard: facet hit was in title/summary only
-
-  const maxStart = source.length - cap; // > 0 here since source.length > cap
+// Max-coverage centering scoped to `spans`, at width `cap`. This is the WD134
+// single-window logic, extracted and parameterized on cap + span subset so the
+// multi-window path can reuse it per cluster with a smaller cap. Returns the
+// word-boundary-trimmed slice bounds, per-edge cut flags, and sentinel-wrapped
+// text (the single-facet path returns `.text` verbatim, byte-identical to WD134).
+function centeredWindow(source: string, spans: FacetSpan[], cap: number): CenteredWindow {
+  const maxStart = source.length - cap;
   let best: { start: number; end: number; score: number; hasDigit: boolean } | null = null;
 
   for (const center of spans) {
@@ -730,8 +728,6 @@ function pickArticleBody(a: CompanyArticle, cap: number): string {
     let winStart = Math.round(mid - cap / 2);
     if (winStart < 0) winStart = 0;
     if (winStart > maxStart) winStart = maxStart;
-    // Guarantee the centering span is fully contained even when it sits near
-    // an edge of the source.
     if (center.start < winStart) winStart = center.start;
     if (center.end > winStart + cap) winStart = Math.min(center.end - cap, maxStart);
     if (winStart < 0) winStart = 0;
@@ -761,7 +757,6 @@ function pickArticleBody(a: CompanyArticle, cap: number): string {
   const endCut = chosen.end < source.length;
   let s = chosen.start;
   let e = chosen.end;
-  // Word-boundary cleanup on both edges: drop a partial leading/trailing word.
   if (startCut) {
     const sp = source.indexOf(" ", s);
     if (sp !== -1 && sp < e) s = sp + 1;
@@ -770,11 +765,109 @@ function pickArticleBody(a: CompanyArticle, cap: number): string {
     const sp = source.lastIndexOf(" ", e);
     if (sp > s) e = sp;
   }
-  let excerpt = source.slice(s, e).trim();
-  // Directional sentinels: only where text was actually cut.
-  if (startCut) excerpt = "... " + excerpt;
-  if (endCut) excerpt = excerpt + " ...";
-  return excerpt;
+  let text = source.slice(s, e).trim();
+  if (startCut) text = "... " + text;
+  if (endCut) text = text + " ...";
+  return { text, start: s, end: e, startCut, endCut };
+}
+
+// Group spans (already sorted by start) into position clusters: a new cluster
+// begins when a span starts more than `gap` chars after the previous span.
+function clusterByPosition(spans: FacetSpan[], gap: number): FacetSpan[][] {
+  const clusters: FacetSpan[][] = [];
+  let prevStart = Number.NEGATIVE_INFINITY;
+  for (const span of spans) {
+    if (clusters.length === 0 || span.start - prevStart > gap) {
+      clusters.push([span]);
+    } else {
+      clusters[clusters.length - 1].push(span);
+    }
+    prevStart = span.start;
+  }
+  return clusters;
+}
+
+// Pick up to `max` clusters, preferring distinct-facet coverage so a far-apart
+// facet (e.g. governance) keeps its slot rather than losing it to a second
+// same-facet cluster, tiebreaking by span count then earliest position.
+function selectClusters(clusters: FacetSpan[][], max: number): FacetSpan[][] {
+  if (clusters.length <= max) return clusters;
+  const byScore = [...clusters].sort((a, b) => b.length - a.length || a[0].start - b[0].start);
+  const picked: FacetSpan[][] = [];
+  const covered = new Set<string>();
+  for (const c of byScore) {
+    if (picked.length >= max) break;
+    if ([...new Set(c.map((s) => s.facet))].some((f) => !covered.has(f))) {
+      picked.push(c);
+      c.forEach((s) => covered.add(s.facet));
+    }
+  }
+  for (const c of byScore) {
+    if (picked.length >= max) break;
+    if (!picked.includes(c)) picked.push(c);
+  }
+  return picked;
+}
+
+// Assemble windows into one excerpt. Overlapping or touching windows merge so
+// text is never duplicated and no doubled sentinel is emitted; a single " ... "
+// separates disjoint windows, with directional sentinels at the outer edges only.
+function joinWindows(source: string, windows: CenteredWindow[]): string {
+  const intervals = windows.map((w) => ({ s: w.start, e: w.end })).sort((a, b) => a.s - b.s);
+  const merged: Array<{ s: number; e: number }> = [];
+  for (const cur of intervals) {
+    const last = merged[merged.length - 1];
+    if (last && cur.s <= last.e) last.e = Math.max(last.e, cur.e);
+    else merged.push({ ...cur });
+  }
+  let body = merged.map((m) => source.slice(m.s, m.e).trim()).join(" ... ");
+  if (merged[0].s > 0) body = "... " + body;
+  if (merged[merged.length - 1].e < source.length) body = body + " ...";
+  return body;
+}
+
+function pickArticleBody(a: CompanyArticle, cap: number): string {
+  const summary = (a.summary ?? "").replace(/\s+/g, " ").trim();
+  const content = (a.content ?? "").replace(/\s+/g, " ").trim();
+
+  // Prefer content only when it carries materially more text than the
+  // summary. The threshold (summary length + 50 chars) avoids switching to
+  // a near-identical content field that re-renders the same opening sentence
+  // for a few extra trailing words.
+  const source = content.length > summary.length + 50 ? content : summary;
+  if (source.length === 0) return "";
+  if (source.length <= cap) return source;
+
+  // Non-facet articles keep the legacy first-cap excerpt unchanged.
+  if (!isFacetProtected(a)) return firstCapExcerpt(source, cap);
+
+  // WD134 + WD143 smart-excerpt: for facet-protected articles the analyst-critical
+  // detail (e.g. an "85.1% voting power" governance figure) often sits deep in
+  // the body while the lede carries only a bare keyword, and first-cap clips
+  // exactly the figures the facet protection exists to preserve.
+  const spans = facetMatchSpans(source);
+  if (spans.length === 0) return firstCapExcerpt(source, cap); // guard: facet hit was in title/summary only
+
+  // WD143: cluster facet spans by position. A single cluster (the common case,
+  // including every single-facet article) keeps WD134's single-window behavior
+  // unchanged. A genuinely multi-facet-spread article gets one focused window
+  // per cluster so a non-densest facet (e.g. an 85.1% governance figure in a
+  // loss-dominated filing) survives instead of being clipped.
+  const clusters = clusterByPosition(spans, PER_WINDOW_CAP).filter(
+    (c) => c.length >= MIN_CLUSTER_SCORE,
+  );
+  const distinctFacets = new Set(clusters.flatMap((c) => c.map((s) => s.facet)));
+  if (clusters.length <= 1 || distinctFacets.size <= 1) {
+    // Single window at the caller's cap (600). Byte-identical to WD134.
+    return centeredWindow(source, spans, cap).text;
+  }
+
+  // Multi-facet-spread: one focused window per selected cluster, joined.
+  const maxWindows = Math.min(MAX_WINDOWS, Math.max(1, Math.floor(GLOBAL_CAP / PER_WINDOW_CAP)));
+  const windows = selectClusters(clusters, maxWindows)
+    .map((c) => centeredWindow(source, c, PER_WINDOW_CAP))
+    .sort((w1, w2) => w1.start - w2.start);
+  return joinWindows(source, windows);
 }
 
 /**

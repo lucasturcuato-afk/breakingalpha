@@ -67,16 +67,24 @@ export function isFacetProtected(a: FacetableArticle): boolean {
   return FACETS.some((f) => matchesFacet(f, a));
 }
 
-// All keyword/pattern facet regexes, for span scanning. The bear facet also
-// has a sentiment-based trigger (a.sentiment === "bearish") that carries no
-// text span, so it is not represented here; facetMatchSpans only reports
-// spans that exist within the scanned text.
-const FACET_REGEXES = [GOVERNANCE_RE, BEAR_KEYWORD_RE, FIN_RISK_RE, RANGE_RE, RANGE_ALT_RE];
+// All keyword/pattern facet regexes, paired with the facet each one signals, for
+// span scanning. RANGE_RE and RANGE_ALT_RE both signal valuation-range. The bear
+// facet also has a sentiment-based trigger (a.sentiment === "bearish") that
+// carries no text span, so it is not represented here; facetMatchSpans only
+// reports spans that exist within the scanned text.
+const FACET_REGEXES: Array<{ facet: Facet; re: RegExp }> = [
+  { facet: "governance", re: GOVERNANCE_RE },
+  { facet: "bear", re: BEAR_KEYWORD_RE },
+  { facet: "financial-risk", re: FIN_RISK_RE },
+  { facet: "valuation-range", re: RANGE_RE },
+  { facet: "valuation-range", re: RANGE_ALT_RE },
+];
 
 export interface FacetSpan {
   start: number;
   end: number;
   hasDigit: boolean;
+  facet: Facet;
 }
 
 // Return every facet-keyword match span over `text`, sorted by start offset.
@@ -87,7 +95,7 @@ export interface FacetSpan {
 // or the positions are meaningless.
 export function facetMatchSpans(text: string): FacetSpan[] {
   const spans: FacetSpan[] = [];
-  for (const re of FACET_REGEXES) {
+  for (const { facet, re } of FACET_REGEXES) {
     const g = re.flags.includes("g") ? re : new RegExp(re.source, re.flags + "g");
     let m: RegExpExecArray | null;
     while ((m = g.exec(text)) !== null) {
@@ -96,6 +104,7 @@ export function facetMatchSpans(text: string): FacetSpan[] {
         start: m.index,
         end: m.index + matched.length,
         hasDigit: /\d/.test(matched),
+        facet,
       });
       // Defensive: a zero-length match would not advance lastIndex.
       if (m.index === g.lastIndex) g.lastIndex++;
