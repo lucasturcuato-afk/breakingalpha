@@ -698,8 +698,11 @@ function firstCapExcerpt(source: string, cap: number): string {
 
 // WD143: multi-facet excerpt window tuning. Single-window articles keep the
 // 600-char cap unchanged; a multi-facet-spread article gets up to MAX_WINDOWS
-// focused windows of PER_WINDOW_CAP each (bounded by GLOBAL_CAP) so a
-// non-densest facet is not clipped. MIN_CLUSTER_SCORE gates lone-keyword
+// focused windows of PER_WINDOW_CAP each. GLOBAL_CAP is a hard ceiling on the
+// final joined output (joiner and edge sentinels included), enforced by
+// joinWindows: it bounds how many windows can be requested AND trims the
+// trailing window at a word boundary if assembly overshoots, so the returned
+// excerpt is always <= GLOBAL_CAP. MIN_CLUSTER_SCORE gates lone-keyword
 // clusters out of their own window.
 const PER_WINDOW_CAP = 400;
 const GLOBAL_CAP = 800;
@@ -812,7 +815,10 @@ function selectClusters(clusters: FacetSpan[][], max: number): FacetSpan[][] {
 // Assemble windows into one excerpt. Overlapping or touching windows merge so
 // text is never duplicated and no doubled sentinel is emitted; a single " ... "
 // separates disjoint windows, with directional sentinels at the outer edges only.
-function joinWindows(source: string, windows: CenteredWindow[]): string {
+// `cap` is a hard ceiling on the returned string (joiner + sentinels included):
+// if assembly overshoots, the trailing window is trimmed back to a word boundary
+// and the trailing sentinel re-attached so the truncation stays visible.
+function joinWindows(source: string, windows: CenteredWindow[], cap: number): string {
   const intervals = windows.map((w) => ({ s: w.start, e: w.end })).sort((a, b) => a.s - b.s);
   const merged: Array<{ s: number; e: number }> = [];
   for (const cur of intervals) {
@@ -823,6 +829,19 @@ function joinWindows(source: string, windows: CenteredWindow[]): string {
   let body = merged.map((m) => source.slice(m.s, m.e).trim()).join(" ... ");
   if (merged[0].s > 0) body = "... " + body;
   if (merged[merged.length - 1].e < source.length) body = body + " ...";
+
+  // GLOBAL_CAP is an output ceiling, not just a pre-join content budget: the
+  // " ... " joiner and edge sentinels count against it. If the assembled body
+  // overshoots, trim the trailing window at the most recent word boundary that
+  // leaves room for the trailing sentinel (same idiom as firstCapExcerpt).
+  if (body.length > cap) {
+    const sentinel = " ...";
+    const budget = cap - sentinel.length;
+    const head = body.slice(0, budget);
+    const lastSpace = head.lastIndexOf(" ");
+    const cutAt = lastSpace >= Math.floor(budget * 0.8) ? lastSpace : budget;
+    body = body.slice(0, cutAt).trimEnd() + sentinel;
+  }
   return body;
 }
 
@@ -867,7 +886,7 @@ function pickArticleBody(a: CompanyArticle, cap: number): string {
   const windows = selectClusters(clusters, maxWindows)
     .map((c) => centeredWindow(source, c, PER_WINDOW_CAP))
     .sort((w1, w2) => w1.start - w2.start);
-  return joinWindows(source, windows);
+  return joinWindows(source, windows, GLOBAL_CAP);
 }
 
 /**
