@@ -1,9 +1,8 @@
 name: EDGAR Ingestion (30-min)
 
-# Cron schedule intentionally omitted — enable after manual verification:
-#   schedule:
-#     - cron: '*/30 * * * *'
 on:
+  schedule:
+    - cron: '*/30 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:
