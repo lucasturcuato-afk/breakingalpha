@@ -1,8 +1,8 @@
-name: EDGAR Ingestion (30-min)
+name: EDGAR Ingestion (hourly)
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '0 * * * *'  # Hourly, on the hour
   workflow_dispatch:
     inputs:
       dry_run:
