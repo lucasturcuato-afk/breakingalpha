@@ -117,6 +117,139 @@ FULL_TEXT_SOURCES = {"SEC 8-K", "SEC 10-Q", "Federal Reserve"}
 # Press wire sources — used for per-wire signal/noise logging in run_ingestion.
 WIRE_SOURCES = {"PR Newswire", "GlobeNewswire"}
 
+# Google News per-ticker RSS
+GNEWS_PREFIX = "https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q="
+GNEWS_ENTRY_CAP = 20
+GNEWS_WORKERS = 8
+
+# Single-letter or very common-word tickers that need company name disambiguation
+AMBIGUOUS_TICKERS = {
+    "A", "B", "C", "D", "F", "G", "K", "L", "M", "O", "R", "T", "U", "V", "X", "Y", "Z",
+    "AI", "AN", "AM", "ALL", "ARE", "BIG", "CAN", "CAR", "DD", "DO", "FUN",
+    "GO", "HAS", "HE", "IT", "MAN", "MAT", "MET", "NEW", "NOW", "ON",
+    "OUT", "OWL", "PAY", "RUN", "SAM", "SEE", "SO", "SUN", "TEN", "TRUE",
+    "TWO", "UP", "WAR", "WE", "YOU",
+}
+
+# Ticker → company name for disambiguation (populated on first call)
+_TICKER_COMPANY_NAMES: dict[str, str] = {}
+
+
+def _load_ticker_company_names() -> dict[str, str]:
+    """Load ticker → company name mapping from companies table (cached)."""
+    if _TICKER_COMPANY_NAMES:
+        return _TICKER_COMPANY_NAMES
+    try:
+        resp = supabase.table("companies").select("ticker, name").not_.is_("ticker", "null").execute()
+        for row in (resp.data or []):
+            t = (row.get("ticker") or "").strip().upper()
+            n = (row.get("name") or "").strip()
+            if t and n:
+                _TICKER_COMPANY_NAMES[t] = n
+    except Exception as ex:
+        print(f"  gnews: failed to load company names: {ex}")
+    return _TICKER_COMPANY_NAMES
+
+
+def _build_gnews_url(ticker: str) -> str:
+    """Build a Google News RSS search URL for a ticker.
+
+    Ambiguous tickers (single letter, common words) get the company name
+    appended to reduce noise. Tickers with dots (e.g. BRK.B) use '+'.
+    """
+    query_parts = [ticker.replace(".", "+")]
+    if ticker in AMBIGUOUS_TICKERS:
+        names = _load_ticker_company_names()
+        company = names.get(ticker)
+        if company:
+            # Use first two words of company name to disambiguate
+            words = company.split()[:2]
+            query_parts.extend(words)
+    query_parts.append("stock")
+    return GNEWS_PREFIX + "+".join(urllib.request.quote(p, safe="") for p in query_parts)
+
+
+def _get_gnews_tickers() -> list[str]:
+    """Return deduplicated ticker list from watchlist + top companies."""
+    tickers: set[str] = set()
+    try:
+        resp = supabase.table("watchlist").select("identifier").eq("type", "ticker").execute()
+        for row in (resp.data or []):
+            t = (row.get("identifier") or "").strip().upper()
+            if t:
+                tickers.add(t)
+    except Exception as ex:
+        print(f"  gnews: watchlist read failed: {ex}")
+    try:
+        resp = supabase.table("companies").select("ticker").not_.is_("ticker", "null").execute()
+        for row in (resp.data or []):
+            t = (row.get("ticker") or "").strip().upper()
+            if t:
+                tickers.add(t)
+    except Exception as ex:
+        print(f"  gnews: companies read failed: {ex}")
+    return sorted(tickers)
+
+
+def _fetch_single_gnews_feed(ticker: str) -> list[dict]:
+    """Fetch and parse one Google News RSS feed for a ticker."""
+    url = _build_gnews_url(ticker)
+    articles = []
+    try:
+        raw = _fetch_feed_bytes(url)
+        feed = feedparser.parse(raw)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        for e in feed.entries[:GNEWS_ENTRY_CAP]:
+            link = e.get("link", "")
+            title = e.get("title", "")
+            if not link or not title:
+                continue
+            articles.append({
+                "title": title,
+                "summary": strip_html(e.get("summary", e.get("description", "")))[:500],
+                "url": link,
+                "source": f"Google News ({ticker})",
+                "published_at": e.get("published", now_iso),
+                "content_type": "snippet",
+            })
+    except Exception as ex:
+        print(f"  gnews: fetch failed for {ticker}: {ex}")
+    return articles
+
+
+def fetch_gnews_per_ticker_feeds() -> tuple[list[dict], dict[str, dict[str, int]]]:
+    """Fetch Google News RSS for all watchlist+company tickers in parallel.
+
+    Returns (articles, gnews_stats) where gnews_stats maps
+    ticker → {"fetched": N} for funnel logging.
+    """
+    tickers = _get_gnews_tickers()
+    if not tickers:
+        print("  gnews: 0 tickers found, skipping")
+        return [], {}
+
+    print(f"  gnews: fetching {len(tickers)} tickers with {GNEWS_WORKERS} workers...")
+    t0 = time.time()
+    all_articles: list[dict] = []
+    gnews_stats: dict[str, dict[str, int]] = {}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=GNEWS_WORKERS) as pool:
+        future_to_ticker = {pool.submit(_fetch_single_gnews_feed, t): t for t in tickers}
+        for future in concurrent.futures.as_completed(future_to_ticker):
+            ticker = future_to_ticker[future]
+            try:
+                result = future.result()
+                gnews_stats[ticker] = {"fetched": len(result)}
+                all_articles.extend(result)
+            except Exception as ex:
+                print(f"  gnews: worker error for {ticker}: {ex}")
+                gnews_stats[ticker] = {"fetched": 0}
+
+    elapsed = time.time() - t0
+    print(f"  gnews: {len(all_articles)} articles from {len(tickers)} tickers in {elapsed:.1f}s")
+    return all_articles, gnews_stats
+
+
 INDUSTRY_VERTICALS = [
     "Technology",
     "Healthcare & Biotech",
@@ -574,13 +707,21 @@ def fetch_all_articles():
     except Exception as ex:
         print(f"  watchlist-finnhub error: {ex}")
 
+    # Google News per-ticker feeds
+    gnews_stats: dict[str, dict[str, int]] = {}
+    try:
+        gnews_articles, gnews_stats = fetch_gnews_per_ticker_feeds()
+        articles.extend(gnews_articles)
+    except Exception as ex:
+        print(f"  gnews error: {ex}")
+
     # Deduplicate
     seen, unique = set(), []
     for a in articles:
         if a["url"] and a["url"] not in seen and a["title"]:
             seen.add(a["url"])
             unique.append(a)
-    return unique, source_fetch_stats
+    return unique, source_fetch_stats, gnews_stats
 
 
 def filter_article(article):
@@ -797,7 +938,7 @@ def run_ingestion():
 
     t = time.time()
     print("\n[1/4] Fetching articles...")
-    articles, source_fetch_stats = fetch_all_articles()
+    articles, source_fetch_stats, gnews_stats = fetch_all_articles()
     print(f"  [1/4] DONE: {len(articles)} unique articles in {time.time() - t:.2f}s")
 
     t = time.time()
@@ -834,6 +975,15 @@ def run_ingestion():
         print(
             f"  [ingest] {src}: {stats['fetched']} articles fetched, "
             f"{stats['fresh']} passed freshness, {wire_relevant} passed relevance >= 6"
+        )
+
+    # Google News per-ticker funnel
+    if gnews_stats:
+        gnews_total_fetched = sum(s["fetched"] for s in gnews_stats.values())
+        gnews_relevant = sum(1 for a, _ in relevant if a["source"].startswith("Google News ("))
+        print(
+            f"  [ingest] Google News: {len(gnews_stats)} tickers, "
+            f"{gnews_total_fetched} articles fetched, {gnews_relevant} passed relevance >= 6"
         )
 
     # [4b] Full-text enrichment for scrapeable sources
