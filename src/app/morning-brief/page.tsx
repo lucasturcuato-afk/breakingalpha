@@ -28,6 +28,7 @@ import { useUserProfile } from "@/hooks/useUserProfile";
 import { useLiveMood } from "@/hooks/useLiveMood";
 import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
 import type { ContentDescriptor } from "@/lib/personalization";
+import { PersonalizationBanner } from "@/components/personalization/PersonalizationBanner";
 
 function getSupabase() {
   return createBrowserClient(
@@ -579,6 +580,9 @@ export default function MorningBriefPage() {
       }
     >
       <TickerStrip />
+      <div className="px-6 pt-3">
+        <PersonalizationBanner />
+      </div>
 
       {/* Sherwood Direction C masthead — gold anchors the left and fades
           into the page's espresso body on the right. Reversible: restore

@@ -29,6 +29,7 @@ export interface UserProfile {
   watchlist_tickers?: string[] | null;
   market_cards?: string[] | null;
   onboarding_completed?: boolean;
+  tour_completed?: boolean;
 }
 
 interface UserProfileContext {
