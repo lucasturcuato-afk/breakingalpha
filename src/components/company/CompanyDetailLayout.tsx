@@ -43,7 +43,7 @@ export interface CompanyDetailLayoutProps {
   kpiStrip?: ReactNode;
   /** Right rail content (TrendCard + ThemesCard). */
   rightRail?: ReactNode;
-  /** Below-fold rows (ArticlesTable + SourcesStrip). */
+  /** Optional below-fold row. Unused by the company page today. */
   bottom?: ReactNode;
   /** Optional outer wrapper className for caller-side adjustments. */
   className?: string;

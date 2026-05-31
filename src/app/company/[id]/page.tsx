@@ -9,15 +9,14 @@ import { EmptyState } from "@/components/company/states/EmptyState";
 import { CompanyAliasRibbon } from "@/components/company/CompanyAliasRibbon";
 import { CompanyKPIStrip } from "@/components/company/CompanyKPIStrip";
 import { CompanyTrendCard } from "@/components/company/CompanyTrendCard";
-import { CompanyThemesCard } from "@/components/company/CompanyThemesCard";
-import { SourcesStrip } from "@/components/company/SourcesStrip";
 import { CompanyMemoModalListener } from "@/components/company/CompanyMemoModalListener";
 import { BriefTab } from "@/components/company/tabs/BriefTab";
 import { ArticlesTab } from "@/components/company/tabs/ArticlesTab";
-import { ThemesTab } from "@/components/company/tabs/ThemesTab";
 import { TrendTab } from "@/components/company/tabs/TrendTab";
-import { SourcesTab } from "@/components/company/tabs/SourcesTab";
+import { FilingsTab } from "@/components/company/tabs/FilingsTab";
+import { ComingSoonTab } from "@/components/company/tabs/ComingSoonTab";
 import { getCompanyDetail } from "@/lib/data-access/getCompanyDetail";
+import { fetchCompanyFilings } from "@/lib/sec-filings";
 import {
   CANONICAL,
   canonicalize,
@@ -85,10 +84,14 @@ export default async function CompanyDetailPage({
   const memoContent = buildMemoContent(companyName, developmentArticles, contextArticles);
   const systemPrompt = buildMemoSystemPrompt(companyName);
 
+  // SEC filings (read-only). Resolves by name to a CIK; private/pre-IPO names
+  // resolve to a null CIK and an empty list, which FilingsTab renders as the
+  // empty state. See src/lib/sec-filings.ts.
+  const filingsResult = await fetchCompanyFilings(supabase, { name: companyName }, 25);
+
   const tabContent = {
     brief: <BriefTab company={companyName} content={memoContent} systemPrompt={systemPrompt} />,
     articles: <ArticlesTab articles={companyDetail.articles} />,
-    themes: <ThemesTab themes={companyDetail.themes} articles={companyDetail.articles} />,
     trend: (
       <TrendTab
         ticker={companyDetail.ticker}
@@ -97,7 +100,9 @@ export default async function CompanyDetailPage({
         mentions7d={companyDetail.mentions7d}
       />
     ),
-    sources: <SourcesTab articles={companyDetail.articles} />,
+    filings: <FilingsTab filings={filingsResult.filings} hasCik={filingsResult.cik != null} />,
+    insider: <ComingSoonTab tabId="insider" />,
+    comps: <ComingSoonTab tabId="comps" />,
   };
 
   return (
@@ -113,18 +118,11 @@ export default async function CompanyDetailPage({
         }
         kpiStrip={<CompanyKPIStrip companyDetail={companyDetail} />}
         rightRail={
-          <>
-            <CompanyTrendCard
-              mentions7d={companyDetail.mentions7d}
-              sentiment7d={companyDetail.sentiment7d}
-            />
-            <CompanyThemesCard
-              themes={companyDetail.themes}
-              articles={companyDetail.articles}
-            />
-          </>
+          <CompanyTrendCard
+            mentions7d={companyDetail.mentions7d}
+            sentiment7d={companyDetail.sentiment7d}
+          />
         }
-        bottom={<SourcesStrip articles={companyDetail.articles} />}
       />
       <CompanyMemoModalListener
         companyName={companyName}
