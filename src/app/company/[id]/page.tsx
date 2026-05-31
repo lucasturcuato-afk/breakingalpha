@@ -96,9 +96,8 @@ export default async function CompanyDetailPage({
       <TrendTab
         ticker={companyDetail.ticker}
         companyName={companyDetail.display}
-        sentiment7d={companyDetail.sentiment7d}
+        company={companyDetail.canonical}
         tone={companyDetail.tone}
-        mentions7d={companyDetail.mentions7d}
       />
     ),
     filings: <FilingsTab filings={filingsResult.filings} hasCik={filingsResult.cik != null} />,
@@ -120,9 +119,10 @@ export default async function CompanyDetailPage({
         kpiStrip={<CompanyKPIStrip companyDetail={companyDetail} />}
         rightRail={
           <CompanyTrendCard
+            company={companyDetail.canonical}
             mentions7d={companyDetail.mentions7d}
-            sentiment7d={companyDetail.sentiment7d}
             tone={companyDetail.tone}
+            attention={companyDetail.attention}
           />
         }
       />
