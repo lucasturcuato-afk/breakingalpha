@@ -18,6 +18,7 @@ import {
   SystemIntelligenceWidget,
   WatchlistFeed,
 } from "@/components/dashboard";
+import { PersonalizationBanner } from "@/components/personalization/PersonalizationBanner";
 import type { StoryData } from "@/components/dashboard";
 import { CompetitorAlertsWidget } from "@/components/dashboard/competitor-alerts-widget";
 import { CollectiveSignalsWidget } from "@/components/dashboard/collective-signals-widget";
@@ -518,6 +519,7 @@ export default function DashboardPage() {
       <div className="px-6 py-4">
         {/* Onboarding banner */}
         <OnboardingBanner />
+        <PersonalizationBanner />
 
         {/* Greeting */}
         <Greeting
@@ -627,7 +629,7 @@ export default function DashboardPage() {
         </div>
 
         {/* AI signal bar */}
-        <div className="mt-3">
+        <div className="mt-3" data-tour="ai-signal-bar">
           <AISignalBar
             text={briefingHeadline ?? "Loading intelligence briefing..."}
             boldParts={[]}

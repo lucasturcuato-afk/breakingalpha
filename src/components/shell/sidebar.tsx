@@ -482,6 +482,7 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
             <button
               type="button"
               onClick={() => setNotifDrawerOpen(true)}
+              data-tour="notifications-bell"
               className="flex items-center justify-center lg:justify-start gap-2 w-full px-2 lg:px-3 py-2 rounded-lg text-text-muted hover:bg-parchment-mid hover:text-espresso transition-colors cursor-pointer relative"
               aria-label="Notifications"
             >
@@ -532,7 +533,7 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
             // controls (otherwise tabbing into Settings or Sign out from the
             // keyboard would target invisible buttons).
             <div className="group flex items-center justify-center lg:justify-start gap-2.5 bg-parchment-mid border border-border-base rounded-lg px-2 lg:px-3 py-2.5">
-              <Link href="/settings/profile" aria-label={`${userName} settings`} className="lg:hidden">
+              <Link href="/settings/profile" aria-label={`${userName} settings`} data-tour="settings-link" className="lg:hidden">
                 <UserAvatar variant="sidebar" user={authUser ?? null} />
               </Link>
               <div className="hidden lg:flex items-center gap-2.5 flex-1 min-w-0">
@@ -547,7 +548,7 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
                     keyboard focus. Reclaims the row width for the user name so
                     longer names ("Noah Hanning") are not truncated at 220px. */}
                 <div className="hidden group-hover:flex focus-within:flex items-center gap-2 flex-shrink-0">
-                  <Link href="/settings/profile" aria-label="Settings">
+                  <Link href="/settings/profile" aria-label="Settings" data-tour="settings-link-desktop">
                     <Settings size={14} className="text-text-faint hover:text-text-muted transition-colors" />
                   </Link>
                   <button
@@ -757,6 +758,7 @@ function NavGroup({
               <Link
                 href={item.href}
                 title={item.label}
+                data-tour={`${item.id}-link`}
                 className={cn(
                   "flex items-center gap-2.5 px-2 lg:px-3 py-[9px] rounded-lg",
                   "justify-center lg:justify-start",

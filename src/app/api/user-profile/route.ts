@@ -100,6 +100,8 @@ export async function PATCH(request: Request) {
       "onboarding_completed",
       "inferred_sector_weights",
       "market_cards",
+      "tour_completed",
+      "tour_completed_at",
     ] as const;
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
