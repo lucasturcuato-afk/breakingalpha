@@ -4,6 +4,9 @@ export type SentimentPillSize = "xs" | "sm" | "md" | "lg";
 
 interface SentimentPillProps {
   tone: SentimentTone;
+  /** Override the displayed text while keeping `tone` for color (e.g. a tone
+   *  LEVEL label like "Strongly Positive"). Defaults to the tone name. */
+  label?: string;
   size?: SentimentPillSize;
   className?: string;
   testId?: string;
@@ -24,7 +27,7 @@ const sizeStyles: Record<SentimentPillSize, { font: number; pad: string; tr: str
   lg: { font: 11, pad: "5px 11px", tr: "0.14em" },
 };
 
-export function SentimentPill({ tone, size = "md", className, testId }: SentimentPillProps) {
+export function SentimentPill({ tone, label, size = "md", className, testId }: SentimentPillProps) {
   const s = toneStyles[tone];
   const z = sizeStyles[size];
   return (
@@ -47,7 +50,7 @@ export function SentimentPill({ tone, size = "md", className, testId }: Sentimen
         whiteSpace: "nowrap",
       }}
     >
-      {tone}
+      {label ?? tone}
     </span>
   );
 }

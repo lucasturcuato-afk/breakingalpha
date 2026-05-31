@@ -6,6 +6,8 @@ import { Sparkline } from "@/components/ui/sparkline";
 import { SentimentHeat } from "@/components/ui/sentiment-heat";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Tooltip } from "@/components/ui/tooltip";
+import { ToneReadout } from "@/components/company/ToneReadout";
+import type { ToneSummary } from "@/lib/tone";
 
 const MONO = "var(--font-mono), ui-monospace, monospace";
 const SERIF = "var(--font-display), serif";
@@ -38,6 +40,7 @@ const ROW: CSSProperties = {
 interface CompanyTrendCardProps {
   mentions7d: number[];
   sentiment7d: number[];
+  tone: ToneSummary;
   days?: string[];
   className?: string;
 }
@@ -59,10 +62,6 @@ function pctDelta(prev: number, next: number): number {
   return ((next - prev) / prev) * 100;
 }
 
-function formatSigned(v: number, digits = 2): string {
-  return (v >= 0 ? "+" : "-") + Math.abs(v).toFixed(digits);
-}
-
 function deriveDayLabels(count: number): string[] {
   const out: string[] = [];
   const today = new Date();
@@ -81,6 +80,7 @@ function deriveDayLabels(count: number): string[] {
 export function CompanyTrendCard({
   mentions7d,
   sentiment7d,
+  tone,
   days,
   className,
 }: CompanyTrendCardProps) {
@@ -106,14 +106,8 @@ export function CompanyTrendCard({
   const mentionsTotal = mentions7d.reduce((a, b) => a + b, 0);
   const halves = sumHalves(mentions7d);
   const mentionsDelta = pctDelta(halves.first, halves.last);
-  const sentimentLatest =
-    sentiment7d.length > 0 ? sentiment7d[sentiment7d.length - 1] : 0.5;
-  const sentimentFirst = sentiment7d.length > 0 ? sentiment7d[0] : 0.5;
-  const sentimentSigned = sentimentLatest * 2 - 1;
-  const sentimentDelta = sentimentLatest - sentimentFirst;
   const dayLabels = days ?? deriveDayLabels(mentions7d.length);
   const mUp = mentionsDelta >= 0;
-  const sUp = sentimentDelta >= 0;
   const upColor = (up: boolean) =>
     up ? "var(--signal-up)" : "var(--signal-dn)";
 
@@ -159,18 +153,17 @@ export function CompanyTrendCard({
 
           <div style={{ height: 1, background: "var(--border-subtle)", margin: "12px 0" }} />
 
-          <div style={ROW}>
-            <Tooltip content="Aggregate tone of indexed articles over the past 7 days. Not a price signal.">
+          <div style={{ marginBottom: 6 }}>
+            <Tooltip content="Plain-language tone of indexed articles over the last 7 days, with week-over-week direction. Not a price signal.">
               <Eyebrow as="span" variant="mono" color="var(--text-faint)" testId="trend-card-sentiment-eyebrow">Article tone</Eyebrow>
             </Tooltip>
-            <span data-testid="trend-card-sentiment-total" style={HEADLINE}>{formatSigned(sentimentSigned, 2)}</span>
-            <span data-testid="trend-card-sentiment-delta" style={{ ...DELTA, color: upColor(sUp) }}>
-              {sUp ? "▲" : "▼"} {Math.abs(sentimentDelta).toFixed(2)}
-            </span>
           </div>
-          <Sparkline values={sentiment7d} w={railW} h={36} stroke="var(--signal-up)" fill="rgba(22,163,74,0.10)" strokeWidth={1.8} />
-          <div style={{ marginTop: 4 }}>
-            <SentimentHeat values={sentiment7d} w={railW} h={7} gap={3} />
+          <ToneReadout tone={tone} scale="rail" />
+          <div style={{ marginTop: 8 }}>
+            <Sparkline values={sentiment7d} w={railW} h={36} stroke="var(--signal-up)" fill="rgba(22,163,74,0.10)" strokeWidth={1.8} />
+            <div style={{ marginTop: 4 }}>
+              <SentimentHeat values={sentiment7d} w={railW} h={7} gap={3} />
+            </div>
           </div>
         </div>
       </div>

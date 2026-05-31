@@ -97,6 +97,7 @@ export default async function CompanyDetailPage({
         ticker={companyDetail.ticker}
         companyName={companyDetail.display}
         sentiment7d={companyDetail.sentiment7d}
+        tone={companyDetail.tone}
         mentions7d={companyDetail.mentions7d}
       />
     ),
@@ -121,6 +122,7 @@ export default async function CompanyDetailPage({
           <CompanyTrendCard
             mentions7d={companyDetail.mentions7d}
             sentiment7d={companyDetail.sentiment7d}
+            tone={companyDetail.tone}
           />
         }
       />

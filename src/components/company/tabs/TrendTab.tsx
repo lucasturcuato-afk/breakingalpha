@@ -17,16 +17,18 @@
  * sentiment-overlay window. We wrap it in a div carrying the testid since the
  * component does not expose one on its root.
  *
- * Helpers (sumHalves, pctDelta, formatSigned) are inline-copied from
- * CompanyTrendCard.tsx (PR-B4). Dedupe is tracked for W2-D follow-up; the B4
- * card is rail-shaped (RAIL_W=310) and not directly reusable as a panel.
+ * Tone now renders through the shared ToneReadout (level + week-over-week
+ * direction + evidence count), the same component the Signal Trend rail card
+ * uses, both fed by the single ToneSummary from getCompanyDetail. The old
+ * inline sentiment scalar/delta helpers are gone.
  */
 
 import type { CSSProperties } from "react";
 import { CompanyStockChart } from "@/components/company/CompanyStockChart";
 import { Sparkline } from "@/components/ui/sparkline";
 import { SentimentHeat } from "@/components/ui/sentiment-heat";
-import { Eyebrow } from "@/components/ui/eyebrow";
+import { ToneReadout } from "@/components/company/ToneReadout";
+import { levelPolarity, type ToneSummary } from "@/lib/tone";
 
 const MONO = "var(--font-mono), ui-monospace, monospace";
 const SERIF = "var(--font-display), serif";
@@ -59,25 +61,6 @@ const PANEL_BADGE: CSSProperties = {
   fontWeight: 600,
   letterSpacing: "0.05em",
 };
-const HEADLINE: CSSProperties = {
-  fontFamily: MONO,
-  fontSize: 18,
-  fontWeight: 700,
-  color: "var(--espresso)",
-  fontVariantNumeric: "tabular-nums",
-};
-const DELTA: CSSProperties = {
-  fontFamily: MONO,
-  fontSize: 11,
-  fontWeight: 600,
-  fontVariantNumeric: "tabular-nums",
-};
-const ROW: CSSProperties = {
-  display: "flex",
-  alignItems: "baseline",
-  gap: 8,
-  marginBottom: 6,
-};
 const EMPTY: CSSProperties = {
   padding: 16,
   textAlign: "center",
@@ -86,19 +69,11 @@ const EMPTY: CSSProperties = {
   color: "var(--text-faint)",
 };
 
-function pctDelta(prev: number, next: number): number {
-  if (prev === 0) return next === 0 ? 0 : 100;
-  return ((next - prev) / prev) * 100;
-}
-
-function formatSigned(v: number, digits = 2): string {
-  return (v >= 0 ? "+" : "-") + Math.abs(v).toFixed(digits);
-}
-
 export interface TrendTabProps {
   ticker: string | null;
   companyName: string;
   sentiment7d: number[];
+  tone: ToneSummary;
   /** Optional. When present, used for the panel-scale chart axis count. */
   mentions7d?: number[];
 }
@@ -107,16 +82,14 @@ export function TrendTab({
   ticker,
   companyName,
   sentiment7d,
+  tone,
   mentions7d,
 }: TrendTabProps) {
   const dayCount = sentiment7d.length || mentions7d?.length || 0;
   const hasSentiment = sentiment7d.some((v) => v !== 0.5);
-  const sentimentLatest = sentiment7d.length > 0 ? sentiment7d[sentiment7d.length - 1] : 0.5;
-  const sentimentFirst = sentiment7d.length > 0 ? sentiment7d[0] : 0.5;
-  const sentimentSigned = sentimentLatest * 2 - 1;
-  const sentimentDelta = pctDelta(sentimentFirst, sentimentLatest);
-  const sUp = sentimentLatest >= sentimentFirst;
-  const upColor = sUp ? "var(--signal-up)" : "var(--signal-dn)";
+  const negative = tone.level ? levelPolarity(tone.level) === "negative" : false;
+  const sparkStroke = negative ? "var(--signal-dn)" : "var(--signal-up)";
+  const sparkFill = negative ? "rgba(220,38,38,0.10)" : "rgba(22,163,74,0.10)";
 
   return (
     <section
@@ -154,30 +127,22 @@ export function TrendTab({
           <span style={PANEL_BADGE}>{dayCount}d</span>
         </div>
         <div style={{ padding: "12px 14px" }}>
+          <ToneReadout tone={tone} scale="panel" />
           {hasSentiment ? (
-            <>
-              <div style={ROW}>
-                <Eyebrow as="span" variant="mono" color="var(--text-faint)">Latest</Eyebrow>
-                <span style={HEADLINE}>{formatSigned(sentimentSigned, 2)}</span>
-                <span style={{ ...DELTA, color: upColor }}>
-                  {sUp ? "▲" : "▼"} {Math.abs(sentimentDelta).toFixed(0)}%
-                </span>
-              </div>
+            <div style={{ marginTop: 10 }}>
               <Sparkline
                 values={sentiment7d}
                 w={720}
                 h={64}
-                stroke={upColor}
-                fill={sUp ? "rgba(22,163,74,0.10)" : "rgba(220,38,38,0.10)"}
+                stroke={sparkStroke}
+                fill={sparkFill}
                 strokeWidth={1.8}
               />
               <div style={{ marginTop: 6 }}>
                 <SentimentHeat values={sentiment7d} w={720} h={12} gap={3} />
               </div>
-            </>
-          ) : (
-            <div style={EMPTY}>Not enough sentiment data yet</div>
-          )}
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

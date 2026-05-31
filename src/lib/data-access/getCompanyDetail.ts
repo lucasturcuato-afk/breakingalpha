@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAlias } from "@/lib/data-access/aliasResolver";
 import { buildCompanyContainsOr, getCompanyVariants } from "@/lib/company-intel";
 import type { Completeness } from "@/lib/article-signal";
+import { computeTone, type SentimentLabel, type ToneSummary } from "@/lib/tone";
 
 export type AliasMention = { name: string; n: number };
 
@@ -35,6 +36,7 @@ export interface CompanyDetail {
   mentions: number;
   mentions7d: number[];
   sentiment7d: number[];
+  tone: ToneSummary;
   articles: CompanyDetailArticle[];
   themes: string[];
   memo: null;
@@ -45,6 +47,11 @@ const DAYS = 8;
 const ARTICLE_DAYS = 14;
 const ARTICLE_LIMIT = 50;
 const DAY_MS = 86_400_000;
+// Tone (src/lib/tone.ts): a trailing 7-day window scored against the preceding
+// 7-day window for direction, so mentions must be fetched 14 days back. This is
+// wider than the 8 sentiment7d slots, which still drive the sparkline visuals.
+const TONE_WINDOW_MS = 7 * DAY_MS;
+const TONE_LOOKBACK_MS = 14 * DAY_MS;
 const ARTICLE_COLS =
   "id, title, source, url, published_at, sentiment, deal_type, relevance_score, sector, summary, relevance_reason, ingested_at";
 
@@ -84,13 +91,14 @@ export async function getCompanyDetail(
 
   const sinceDay = utcDayMs(new Date(Date.now() - (DAYS - 1) * DAY_MS));
   const sinceArticles = new Date(Date.now() - ARTICLE_DAYS * DAY_MS).toISOString();
+  const sinceTone = new Date(Date.now() - TONE_LOOKBACK_MS).toISOString();
 
   const [mentionsRes, articlesRes] = await Promise.all([
     supabase
       .from("company_mentions")
       .select("created_at, sentiment")
       .in("company_id", ids)
-      .gte("created_at", new Date(sinceDay).toISOString()),
+      .gte("created_at", sinceTone),
     // WD136 Phase 1: variant-expansion. Filter articles by ANY known surface
     // form of `head.name` (case + alias variants from CANONICAL), not just the
     // single canonical string. See getCompanyVariants() in company-intel.ts.
@@ -123,6 +131,24 @@ export async function getCompanyDetail(
   for (let i = 0; i < DAYS; i++) {
     if (sentN[i] > 0) sentiment7d[i] = (sentSum[i] / sentN[i] + 1) / 2;
   }
+
+  // Tone (canonical, src/lib/tone.ts): split the 14-day mention set into the
+  // trailing 7-day and preceding 7-day windows by timestamp, then derive the one
+  // ToneSummary every tone surface renders. Empty days are excluded by simply
+  // being absent from the arrays, so a quiet "today" no longer reads neutral.
+  const nowMs = Date.now();
+  const toneCurStart = nowMs - TONE_WINDOW_MS;
+  const tonePriorStart = nowMs - TONE_LOOKBACK_MS;
+  const toneCurrent: SentimentLabel[] = [];
+  const tonePrior: SentimentLabel[] = [];
+  for (const row of mentionRows) {
+    if (!row.created_at) continue;
+    if (row.sentiment !== "bullish" && row.sentiment !== "bearish" && row.sentiment !== "neutral") continue;
+    const t = new Date(row.created_at).getTime();
+    if (t >= toneCurStart) toneCurrent.push(row.sentiment);
+    else if (t >= tonePriorStart) tonePrior.push(row.sentiment);
+  }
+  const tone = computeTone(toneCurrent, tonePrior);
 
   const articleRows = (articlesRes.data ?? []) as Array<{
     id: string; title: string | null; source: string | null; url: string | null;
@@ -185,6 +211,7 @@ export async function getCompanyDetail(
     mentions: cluster.reduce((a, r) => a + (r.mention_count ?? 0), 0),
     mentions7d,
     sentiment7d,
+    tone,
     articles,
     themes: (head.key_themes ?? []) as string[],
     memo: null,

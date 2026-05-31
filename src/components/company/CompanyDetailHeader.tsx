@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SentimentPill, type SentimentTone } from "@/components/ui";
 import type { CompanyDetail } from "@/lib/data-access/getCompanyDetail";
+import { formatEvidence, levelPolarity, type ToneSummary } from "@/lib/tone";
 
 const PENDING = "__pending__";
 const SANS = "var(--font-inter), Inter, sans-serif";
@@ -21,12 +22,12 @@ const btnPrimary = { ...btnBase, background: "var(--gold-deep)", border: "1px so
 
 interface Props { detail: CompanyDetail }
 
-function toneFromSentiment7d(values: number[]): SentimentTone {
-  if (!values || values.length === 0) return "NEUTRAL";
-  const avg = values.reduce((a, b) => a + b, 0) / values.length;
-  if (avg >= 0.65) return "BULLISH";
-  if (avg <= 0.35) return "BEARISH";
-  return "NEUTRAL";
+// Pill color follows tone polarity; the pill text carries the full level label
+// (e.g. "Strongly Positive"). Insufficient coverage shows a neutral pill.
+function pillToneFor(t: ToneSummary): SentimentTone {
+  if (!t.level) return "NEUTRAL";
+  const p = levelPolarity(t.level);
+  return p === "positive" ? "BULLISH" : p === "negative" ? "BEARISH" : "MIXED";
 }
 
 function formatSubtitle(d: CompanyDetail): string {
@@ -92,7 +93,7 @@ export function CompanyDetailHeader({ detail }: Props) {
     window.dispatchEvent(new CustomEvent("memo:generate", { detail: { canonical: detail.canonical } }));
   }, [detail.canonical]);
 
-  const tone = toneFromSentiment7d(detail.sentiment7d);
+  const tone = detail.tone;
   const initial = (detail.display.charAt(0) || "?").toUpperCase();
   const exportHref = `/api/export/company-pdf?identifier=${encodeURIComponent(detail.canonical)}`;
 
@@ -142,7 +143,20 @@ export function CompanyDetailHeader({ detail }: Props) {
             >
               {formatSubtitle(detail)}
             </span>
-            <SentimentPill tone={tone} size="sm" testId="company-header-sentiment-pill" />
+            <SentimentPill
+              tone={pillToneFor(tone)}
+              label={tone.sufficient ? tone.levelLabel : "Limited coverage"}
+              size="sm"
+              testId="company-header-sentiment-pill"
+            />
+            {tone.sufficient ? (
+              <span
+                data-testid="company-header-tone-evidence"
+                style={{ fontFamily: MONO, fontSize: 10, color: "var(--text-faint)" }}
+              >
+                {formatEvidence(tone.evidence)}
+              </span>
+            ) : null}
           </div>
         </div>
 

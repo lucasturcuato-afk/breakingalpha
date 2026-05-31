@@ -9,9 +9,16 @@
 // Cells 1-2 hydrate from /api/company-kpis. Cells 3-6 from companyDetail prop.
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { Delta, Eyebrow } from "@/components/ui";
+import { Delta, Eyebrow, SentimentPill, type SentimentTone } from "@/components/ui";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { CompanyDetail } from "@/lib/data-access/getCompanyDetail";
+import {
+  directionVerb,
+  formatEvidence,
+  levelPolarity,
+  type ToneDirection,
+  type ToneSummary,
+} from "@/lib/tone";
 
 interface CompanyKPIStripProps { companyDetail: CompanyDetail }
 
@@ -43,13 +50,39 @@ function formatMarketCap(v: number | null): string {
   return `$${v.toFixed(0)}`;
 }
 
-function deriveSentiment(s7d: number[]): { value: string; delta: number } {
-  // sentiment7d normalized 0..1 (0.5 neutral). Map to -1..+1.
-  const avg = (a: number[]) => a.length === 0 ? 0 : a.reduce((x, y) => x + y, 0) / a.length;
-  const recent = avg(s7d.slice(-3));
-  const prior = s7d.length > 3 ? avg(s7d.slice(0, -3)) : 0.5;
-  const score = recent * 2 - 1;
-  return { value: `${score >= 0 ? "+" : ""}${score.toFixed(2)}`, delta: (recent - prior) * 2 };
+// Pill color follows tone polarity; the pill text carries the level label.
+function pillToneFor(t: ToneSummary): SentimentTone {
+  if (!t.level) return "NEUTRAL";
+  const p = levelPolarity(t.level);
+  return p === "positive" ? "BULLISH" : p === "negative" ? "BEARISH" : "MIXED";
+}
+
+const DIR_GLYPH: Record<ToneDirection, string> = { improving: "▲", deteriorating: "▼", steady: "→" };
+const DIR_COLOR: Record<ToneDirection, string> = {
+  improving: "var(--signal-up)",
+  deteriorating: "var(--signal-dn)",
+  steady: "var(--text-faint)",
+};
+
+// Sub-content under the tone level: a compact week-over-week direction (when not
+// suppressed) plus the evidence count, which ALWAYS renders beside a level.
+function ToneCellMeta({ tone }: { tone: ToneSummary }) {
+  if (!tone.sufficient) {
+    return <span style={{ color: "var(--text-faint)" }}>Not enough coverage yet</span>;
+  }
+  return (
+    <>
+      {tone.direction ? (
+        <div
+          data-testid="kpi-card-sentiment-direction"
+          style={{ color: DIR_COLOR[tone.direction], fontWeight: 600 }}
+        >
+          {DIR_GLYPH[tone.direction]} {directionVerb(tone.direction)}
+        </div>
+      ) : null}
+      <div data-testid="kpi-card-sentiment-evidence">{formatEvidence(tone.evidence)}</div>
+    </>
+  );
 }
 
 const cellBase: CSSProperties = { padding: "11px 14px", minWidth: 0 };
@@ -130,7 +163,7 @@ export function CompanyKPIStrip({ companyDetail }: CompanyKPIStripProps) {
   const eventsToday = companyDetail.articles.filter((a) =>
     a.dealType ? ["M&A", "Earnings", "Funding", "IPO"].includes(a.dealType) : false,
   ).length;
-  const sentiment = deriveSentiment(companyDetail.sentiment7d);
+  const tone = companyDetail.tone;
 
   return (
     <div
@@ -152,8 +185,16 @@ export function CompanyKPIStrip({ companyDetail }: CompanyKPIStripProps) {
       <Cell label="Mentions · 30d" valueTestId="kpi-card-mentions"
         value={companyDetail.mentions.toLocaleString("en-US")} />
       <Cell label="Article tone" valueTestId="kpi-card-sentiment"
-        value={sentiment.value} delta={sentiment.delta * 100}
-        tooltip="Aggregate tone of indexed articles over the past 7 days. Not a price signal." />
+        value={
+          <SentimentPill
+            tone={pillToneFor(tone)}
+            label={tone.sufficient ? tone.levelLabel : "Limited"}
+            size="sm"
+            testId="kpi-card-sentiment-pill"
+          />
+        }
+        sub={<ToneCellMeta tone={tone} />}
+        tooltip="Plain-language tone of indexed articles over the last 7 days, with week-over-week direction. Not a price signal." />
       <Cell label="Articles · today" valueTestId="kpi-card-articles-today" value={todayN}
         sub={eventsToday > 0 ? `${eventsToday} ${eventsToday === 1 ? "event" : "events"}` : null} />
       <Cell label="Sources" valueTestId="kpi-card-sources" value={sourcesCount}
