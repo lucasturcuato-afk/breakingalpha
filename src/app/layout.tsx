@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Playfair_Display, Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { UserProfileProvider } from "@/hooks/useUserProfile";
+import { SignaleraTour, TourHelpButton } from "@/components/tour/SignaleraTour";
 import "./globals.css";
 
 const playfairDisplay = Playfair_Display({
@@ -50,7 +51,11 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <ThemeProvider>
-          <UserProfileProvider>{children}</UserProfileProvider>
+          <UserProfileProvider>
+            {children}
+            <SignaleraTour />
+            <TourHelpButton />
+          </UserProfileProvider>
         </ThemeProvider>
       </body>
     </html>
