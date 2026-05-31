@@ -52,7 +52,7 @@ function ComingSoonCard({ slot, title, description, step, icon, className }: Com
                 Subscribe to updates
               </button>
             </Tooltip>
-            <span className="font-data text-[10px] text-text-faint">{step}</span>
+            {step ? <span className="font-data text-[10px] text-text-faint">{step}</span> : null}
           </div>
         }
       />

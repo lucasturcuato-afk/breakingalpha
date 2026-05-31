@@ -19,35 +19,33 @@ interface SlotConfig {
 }
 
 const ICON = "w-6 h-6";
-const STEP = "Step 5: Component scaffolding";
-
 const SLOTS: Record<ComingSoonTabId, SlotConfig> = {
   filings: {
     slot: "f6",
     title: "Filings",
-    description: "SEC filings (10-K, 10-Q, 8-K) summarized with cited deltas. Shipping after substrate is wired.",
-    step: STEP,
+    description: "SEC filings (10-K, 10-Q, 8-K) summarized with cited deltas.",
+    step: "",
     icon: <FileText className={ICON} />,
   },
   transcripts: {
     slot: "f7",
     title: "Transcripts",
     description: "Earnings call transcripts with speaker turns, sentiment, and key Q&A pulls.",
-    step: STEP,
+    step: "",
     icon: <Mic className={ICON} />,
   },
   insider: {
     slot: "f8",
     title: "Insider",
     description: "Form 4 insider buys and sells, ranked by signal strength and recency.",
-    step: STEP,
+    step: "Pending the SEC Form 4 ingest fix",
     icon: <UserRound className={ICON} />,
   },
   comps: {
     slot: "f9",
     title: "Comps",
     description: "Peer multiples and relative-value snapshots across sector cohorts.",
-    step: STEP,
+    step: "Pending the comps data set",
     icon: <Scale className={ICON} />,
   },
 };

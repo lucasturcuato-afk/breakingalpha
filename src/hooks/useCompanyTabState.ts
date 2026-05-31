@@ -15,9 +15,12 @@
  * reads window.location. setActiveTab writes via replaceState and notifies
  * subscribers so any other hook instance on the page stays in sync.
  *
- * Tab IDs are LOCKED per docs/w2-c-phase-1-recon-synthesis.md Section 8.
- * F1 Brief, F2 Articles, F3 Themes, F4 Trend, F5 Sources,
- * F6 Filings, F7 Transcripts, F8 Insider, F9 Comps.
+ * The CompanyTabId union keeps the full LOCKED id vocabulary (docs/
+ * w2-c-phase-1-recon-synthesis.md Section 8) so a stale ?tab=themes /
+ * ?tab=sources / ?tab=transcripts deep-link still validates and falls back
+ * cleanly. TAB_ORDER -- the array that actually renders the tab bar -- is the
+ * shipped set: Brief, Articles, Price & Tone, Filings, Insider, Comps. Themes
+ * and Sources were cut; Transcripts is dropped from the bar (no button).
  */
 
 import { useCallback, useSyncExternalStore } from "react";
@@ -36,11 +39,8 @@ export type CompanyTabId =
 export const TAB_ORDER: readonly CompanyTabId[] = [
   "brief",
   "articles",
-  "themes",
   "trend",
-  "sources",
   "filings",
-  "transcripts",
   "insider",
   "comps",
 ] as const;
