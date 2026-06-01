@@ -46,12 +46,14 @@ GEMINI_MODEL = "gemini-2.5-flash"
 #
 # Throughput model: per-call latency is ~6s, and the filter runs ONE shared
 # pool for the whole pass (no per-batch serialization), so sustained
-# RPM ~= workers x 10. 30 workers ~= ~300 RPM -> a ~14k pool clears in ~47 min,
-# comfortably inside the 90-min pipeline step with room for fetch/store. The
+# RPM ~= workers x ~9 calls/min. 50 workers ~= ~450 RPM -> a ~14k pool clears
+# in ~31 min, comfortably inside the 90-min pipeline step with room for
+# fetch/store, and the 60-min filter budget only trims past ~27k articles. The
 # 2026-06-01 probe confirmed the (shared-project) GEMINI_API_KEY sustains
-# >=1000 RPM with zero 429s, so 300 RPM stays well under the measured ceiling.
-# Env-overridable so the rate can be tuned without a redeploy.
-FILTER_PARALLEL_WORKERS = int(os.getenv("FILTER_PARALLEL_WORKERS", "30"))
+# >=1000 RPM with zero 429s, so 450 RPM stays well under the measured ceiling.
+# Validated live at 30 workers / ~272 RPM (same single-pool mechanism); 50 is a
+# linear step up, not re-validated live. Env-overridable to tune without redeploy.
+FILTER_PARALLEL_WORKERS = int(os.getenv("FILTER_PARALLEL_WORKERS", "50"))
 # FILTER_LOG_BATCH_SIZE is a logging cadence (progress line every N completions),
 # not a model batch: each article is still one Gemini call.
 FILTER_LOG_BATCH_SIZE = 50
