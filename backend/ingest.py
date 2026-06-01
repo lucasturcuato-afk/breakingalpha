@@ -5,7 +5,7 @@ stores in Supabase.
 """
 
 import concurrent.futures
-import os, json, re, socket, time, urllib.error, urllib.request, requests, feedparser, html as _html
+import os, json, re, random, socket, time, urllib.error, urllib.request, requests, feedparser, html as _html
 from datetime import datetime, timezone, timedelta
 from typing import Literal, Optional
 from pydantic import BaseModel, Field
@@ -44,11 +44,30 @@ GEMINI_MODEL = "gemini-2.5-flash"
 # gives the same end-to-end throughput as the chunked batch path with a
 # clean, single code path.
 #
-# 5 workers x ~7s per call = ~45 RPM upper bound, well under Gemini paid-tier
-# 1000 RPM limit. FILTER_LOG_BATCH_SIZE is a logging unit, not a model batch:
-# we group articles into 50-at-a-time output lines for run-log readability.
-FILTER_PARALLEL_WORKERS = 5
+# Throughput model: per-call latency is ~6s, and the filter runs ONE shared
+# pool for the whole pass (no per-batch serialization), so sustained
+# RPM ~= workers x 10. 30 workers ~= ~300 RPM -> a ~14k pool clears in ~47 min,
+# comfortably inside the 90-min pipeline step with room for fetch/store. The
+# 2026-06-01 probe confirmed the (shared-project) GEMINI_API_KEY sustains
+# >=1000 RPM with zero 429s, so 300 RPM stays well under the measured ceiling.
+# Env-overridable so the rate can be tuned without a redeploy.
+FILTER_PARALLEL_WORKERS = int(os.getenv("FILTER_PARALLEL_WORKERS", "30"))
+# FILTER_LOG_BATCH_SIZE is a logging cadence (progress line every N completions),
+# not a model batch: each article is still one Gemini call.
 FILTER_LOG_BATCH_SIZE = 50
+# Bounded exponential backoff for transient 429 / RESOURCE_EXHAUSTED. The probe
+# saw zero 429s on an isolated key, but the per-project Gemini quota is shared
+# with grading / outcome_evaluator / weekly_summary, so a concurrent workflow
+# can trigger transient 429s at high filter concurrency. Retry with backoff a
+# bounded number of times, then drop-and-log (same contract as a schema drop).
+FILTER_MAX_RATE_RETRIES = int(os.getenv("FILTER_MAX_RATE_RETRIES", "5"))
+# Wall-clock safety net for the whole filter phase. If the candidate pool ever
+# spikes again (the #294 gnews per-ticker fan-out pushed it to ~14k and hung the
+# filter past the 90-min step ceiling, freezing the feed because a hard kill
+# stores nothing), stop submitting new work past this budget, let in-flight
+# calls finish, and proceed with a partial-but-fresh feed. Default 60 min leaves
+# ~30 min of step headroom for fetch + store + downstream.
+FILTER_PHASE_BUDGET_SEC = int(os.getenv("FILTER_PHASE_BUDGET_SEC", "3600"))
 
 
 # Response schema for Gemini constrained output. Smoke test 2 (chunk_size=50)
@@ -724,6 +743,12 @@ def fetch_all_articles():
     return unique, source_fetch_stats, gnews_stats
 
 
+def _is_rate_limit_error(ex) -> bool:
+    """True if the exception is a Gemini rate-limit signal worth backing off on."""
+    s = str(ex)
+    return "429" in s or "RESOURCE_EXHAUSTED" in s
+
+
 def filter_article(article):
     prompt = FILTER_PROMPT.format(
         title=article["title"],
@@ -743,17 +768,33 @@ def filter_article(article):
             ),
         )
 
-    try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
-            response = _ex.submit(_call).result(timeout=30)
-        text = (response.text or "").strip()
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"): text = text[4:]
-        return json.loads(text.strip())
-    except Exception as ex:
-        print(f"  Filter error: {ex}")
-        return None
+    # Bounded exponential backoff on transient 429 / RESOURCE_EXHAUSTED only.
+    # Schema/parse/timeout failures are NOT retried here (the caller's
+    # _filter_article_with_retry handles the single schema retry); they fall
+    # straight through to drop-and-log, preserving the prior behaviour.
+    delay = 1.0
+    for attempt in range(FILTER_MAX_RATE_RETRIES + 1):
+        try:
+            # Inner single-worker pool enforces the 30s per-call hard timeout.
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
+                response = _ex.submit(_call).result(timeout=30)
+            text = (response.text or "").strip()
+            if text.startswith("```"):
+                text = text.split("```")[1]
+                if text.startswith("json"): text = text[4:]
+            return json.loads(text.strip())
+        except Exception as ex:
+            if _is_rate_limit_error(ex) and attempt < FILTER_MAX_RATE_RETRIES:
+                sleep_s = min(delay, 30.0) + random.uniform(0, 0.5)
+                print(
+                    f"  [filter:rate-limit] 429/RESOURCE_EXHAUSTED, backoff "
+                    f"{sleep_s:.1f}s (attempt {attempt + 1}/{FILTER_MAX_RATE_RETRIES})"
+                )
+                time.sleep(sleep_s)
+                delay *= 2
+                continue
+            print(f"  Filter error: {ex}")
+            return None
 
 
 def _filter_article_with_retry(article):
@@ -792,46 +833,88 @@ def filter_articles(articles):
     Returns a list aligned by index with the input `articles` array. Slots
     where filter_article plus retry both fail are None; run_ingestion's
     relevance gate already treats None as 'skip this article'.
+
+    Concurrency: a SINGLE ThreadPoolExecutor processes the whole pass, so
+    batches no longer serialize (the prior code re-created a pool per 50-article
+    log batch, which capped throughput at one batch at a time). FILTER_LOG_BATCH_SIZE
+    now only sets the progress-log cadence.
+
+    Safety net: FILTER_PHASE_BUDGET_SEC bounds the wall-clock for the whole
+    phase. Past the budget we cancel not-yet-started calls, let in-flight calls
+    finish, and return the partial set so the pipeline stores a fresh-but-partial
+    feed rather than being hard-killed at the 90-min step ceiling (which writes
+    nothing). Budget-skipped slots are None, same as a schema drop.
     """
     if not articles:
         return []
 
     total = len(articles)
-    total_batches = (total + FILTER_LOG_BATCH_SIZE - 1) // FILTER_LOG_BATCH_SIZE
     print(
-        f"  filter: {total} articles, per-article + parallel workers={FILTER_PARALLEL_WORKERS}, "
-        f"log batches of {FILTER_LOG_BATCH_SIZE}"
+        f"  filter: {total} articles, single-pool workers={FILTER_PARALLEL_WORKERS}, "
+        f"budget={FILTER_PHASE_BUDGET_SEC}s, progress every {FILTER_LOG_BATCH_SIZE}"
     )
 
     results = [None] * total
-    for batch_idx in range(total_batches):
-        start = batch_idx * FILTER_LOG_BATCH_SIZE
-        end = min(start + FILTER_LOG_BATCH_SIZE, total)
-        batch_label = f"filter batch {batch_idx + 1}/{total_batches}"
-        t0 = time.time()
-        kept = 0
-        skipped = 0
+    done = kept = skipped = 0
+    budget_hit = False
+    t0 = time.time()
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=FILTER_PARALLEL_WORKERS) as ex:
-            fut_to_idx = {
-                ex.submit(_filter_article_with_retry, articles[i]): i
-                for i in range(start, end)
-            }
-            for fut in concurrent.futures.as_completed(fut_to_idx):
-                i = fut_to_idx[fut]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=FILTER_PARALLEL_WORKERS) as ex:
+        fut_to_idx = {ex.submit(_filter_article_with_retry, a): i for i, a in enumerate(articles)}
+        for fut in concurrent.futures.as_completed(fut_to_idx):
+            i = fut_to_idx[fut]
+            try:
+                r = fut.result()
+            except concurrent.futures.CancelledError:
+                continue
+            except Exception as e:
+                title_short = (articles[i].get("title") or "")[:60].replace("\n", " ")
+                print(f"  [filter:retry-fail] title='{title_short}' error={type(e).__name__}:{e}, dropping")
+                r = None
+            results[i] = r
+            done += 1
+            if r is not None:
+                kept += 1
+            else:
+                skipped += 1
+            if done % FILTER_LOG_BATCH_SIZE == 0 or done == total:
+                rpm = done / max(time.time() - t0, 1e-6) * 60.0
+                print(
+                    f"  filter progress {done}/{total} in {time.time() - t0:.0f}s "
+                    f"({kept} parsed, {skipped} skipped, ~{rpm:.0f} RPM)"
+                )
+            if time.time() - t0 > FILTER_PHASE_BUDGET_SEC:
+                cancelled = sum(1 for f2 in fut_to_idx if not f2.done() and f2.cancel())
+                budget_hit = True
+                print(
+                    f"  [filter:budget] wall-clock budget {FILTER_PHASE_BUDGET_SEC}s exceeded "
+                    f"after {done}/{total}; cancelled {cancelled} not-started, finishing in-flight"
+                )
+                break
+
+    if budget_hit:
+        # Pool has shut down (in-flight calls finished); recover any that
+        # completed during the cancellation window so their calls aren't wasted.
+        recovered = 0
+        for f2, j in fut_to_idx.items():
+            if results[j] is None and not f2.cancelled() and f2.done():
                 try:
-                    r = fut.result()
-                except Exception as e:
-                    title_short = (articles[i].get("title") or "")[:60].replace("\n", " ")
-                    print(f"  [filter:retry-fail] title='{title_short}' error={type(e).__name__}:{e}, dropping")
-                    r = None
-                results[i] = r
-                if r is not None:
-                    kept += 1
-                else:
-                    skipped += 1
-
-        print(f"  {batch_label} done in {time.time() - t0:.2f}s ({kept} parsed, {skipped} skipped)")
+                    rr = f2.result()
+                except Exception:
+                    rr = None
+                if rr is not None:
+                    results[j] = rr
+                    recovered += 1
+        filtered_ok = sum(1 for r in results if r is not None)
+        print(
+            f"  filter done (partial): {filtered_ok} filtered, ~{total - done} unprocessed "
+            f"(budget skip), {recovered} recovered in-flight, elapsed {time.time() - t0:.0f}s"
+        )
+    else:
+        print(
+            f"  filter done: {kept} filtered, {skipped} dropped, "
+            f"elapsed {time.time() - t0:.0f}s (~{done / max(time.time() - t0, 1e-6) * 60.0:.0f} RPM)"
+        )
 
     return results
 
