@@ -87,21 +87,34 @@ export function ToneTrendChart({ company, compact = false, defaultRange = "30d" 
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/company-trend?company=${encodeURIComponent(company)}&range=${range}`, {
-      signal: AbortSignal.timeout(8000),
-    })
-      .then(async (r) => {
+    const url = `/api/company-trend?company=${encodeURIComponent(company)}&range=${range}`;
+    const attempt = () =>
+      fetch(url, { signal: AbortSignal.timeout(15000) }).then(async (r) => {
         if (!r.ok) throw new Error(`status ${r.status}`);
         return (await r.json()) as ToneTrendResponse;
-      })
-      .then((body) => {
-        if (cancelled) return;
-        setFetchState({ status: "ready", data: body });
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setFetchState({ status: "error" });
       });
+
+    // One retry with a small backoff covers a slow first response (a cold start,
+    // the dev first-compile, or a slow query under load) instead of flashing
+    // "unavailable". If it still fails after the retry, the error state is the
+    // final fallback and the server-rendered headline tone level is unaffected.
+    (async () => {
+      try {
+        const body = await attempt();
+        if (!cancelled) setFetchState({ status: "ready", data: body });
+      } catch {
+        if (cancelled) return;
+        await new Promise((r) => setTimeout(r, 600));
+        if (cancelled) return;
+        try {
+          const body = await attempt();
+          if (!cancelled) setFetchState({ status: "ready", data: body });
+        } catch {
+          if (!cancelled) setFetchState({ status: "error" });
+        }
+      }
+    })();
+
     return () => {
       cancelled = true;
     };
