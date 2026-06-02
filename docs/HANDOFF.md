@@ -1,7 +1,13 @@
 # Signalera/Breaking Alpha -- Claude Chat Handoff
-**Date:** 2026-05-19 (PT)
-**Last session focus:** W2-D parallel sprint all PRs merged to main + WD110 tone surface spec shipped + WD92-WD95 implementation PRs merged.
-**Status:** Main is at `4156a4c`. All 6 W2-D draft PRs (#247-#252) merged. Additional PRs #253-#257 also merged (WD74, WD93, WD95, WD110, WD92).
+**Date:** 2026-06-02 (PT)
+**Last session focus:** Five-PR filter cost optimization arc (#305–#310) shipped to main. Gemini relevance filter moved to Flash-Lite, dedup-before-filter, disabled thinking, outlet blocklist, SEC bypass, V3 rubric, and token usage metering all live.
+**Status:** Main is at `e10e992`. PRs #305–#310 all merged. VALIDATION PLAN: confirm meter delta ($5→$1.5/run) on next real cron run via #307 log output.
+
+---
+
+## Recently Completed (2026-06-02) -- Filter cost optimization arc (five PRs #305–#310)
+
+**Five-PR arc shipped to main** (all merged 2026-05-31–2026-06-02): PR #305 (dedup-before-filter, ~77% fewer filter calls), PR #306 (disabled thinking on filter call, ~$10→$5/run estimate), PR #307 (thread-safe usage metering with `[filter:usage]` log line per run), PR #308 (outlet blocklist strip from company_mentions), PR #309 (SEC bypass: deterministic 8-K/10-Q routing around Gemini), PR #310 (V3 rubric + Flash-Lite swap on filter only). **INGEST GATE:** `if result and result.get("relevant") and result.get("relevance_score", 0) >= 6` — article must independently pass both gates. **Flash-Lite scope:** FILTER_MODEL only (line ~44 backend/ingest.py); all 14 other Gemini call sites stay on gemini-2.5-flash. **VALIDATION PLAN for first real run:** meter delta should reach ~$1.5/run; check #307 log `[filter:usage]`; run-over-run backstop on ingest count + relevance_score distribution; SEC count unchanged via bypass; brief headline + pool quality intact.
 
 ---
 
@@ -898,6 +904,9 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 - **Real comp data integration** — Polygon/FMP API integration + Lucas budget conversation. Deferred.
 
 ## Pending / Known Issues
+
+**Filter cost optimization (2026-06-02) — VALIDATION PLAN PENDING FIRST RUN**
+- **PRs #305–#310 merged to main, AWAITING FIRST REAL CRON RUN** — Five-PR arc shipped end-to-end; no code issues found in dev testing. Meter delta on next live run should confirm ~$5→$1.5/run. Key validation checkpoints: (1) #307 log `[filter:usage]` line emits per run with token breakdown + estimated cost; (2) run-over-run article count stable (no flood/collapse); (3) relevance_score distribution unchanged (rubric working as expected); (4) SEC article count unchanged via deterministic bypass; (5) brief headline + pool quality visually acceptable. FLASHLITE SCOPE: filter call only (backend/ingest.py:44 FILTER_MODEL); all 14 other Gemini steps stay on gemini-2.5-flash. INGEST GATE: both `relevant==true` AND `relevance_score>=6` must independently pass. Throwaway analysis scripts (backend/scripts/) untracked, safe to delete.
 
 **Recently merged (2026-05-02) — Wave 3 in flight**
 - **PR #176 — feat(company-intel): web-search fallback for un-indexed companies** — MERGED at 8a99f3f. Feature gate default off (NEXT_PUBLIC_WEB_FALLBACK_ENABLED). Truncation fix included (7e07688: per-type maxOutputTokens ternary). **Manual Supabase step required:** Apply `sql/web_search_cache.sql` (6h TTL cache table) before flag enable. NOT required before merge — flag is default off, gate returns 503.
