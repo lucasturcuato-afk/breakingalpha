@@ -6,7 +6,7 @@ Unit tests for the store-scale fix in backend/ingest.py:
 
 NO production DB / Wikidata / Gemini calls. A FakeSupabase records the chained
 calls so we can assert the batch path collapses the per-article round-trips and
-preserves dedup semantics. is_valid_company / register_entity are patched with
+preserves dedup semantics. is_valid_company / resolve_entity are patched with
 call-counters (the real ones live in wikidata.py / entity_resolver.py, outside
 this PR's scope).
 
@@ -126,12 +126,15 @@ class StoreBatchTest(unittest.TestCase):
         self.p_sb = patch.object(ingest, "supabase", self.fake)
         self.p_block = patch.object(ingest, "is_blocked_entity", lambda name: False)
         self.p_valid = patch.object(ingest, "is_valid_company", self._valid_counter())
-        self.p_reg = patch.object(ingest, "register_entity", self._reg_counter())
-        self.p_sb.start(); self.p_block.start(); self.p_valid.start(); self.p_reg.start()
+        self.p_res = patch.object(ingest, "resolve_entity", self._resolve_counter())
+        self.p_inc = patch.object(ingest, "increment_mention_counts", self._inc_recorder())
+        self.p_sb.start(); self.p_block.start(); self.p_valid.start()
+        self.p_res.start(); self.p_inc.start()
         self.addCleanup(self.p_sb.stop)
         self.addCleanup(self.p_block.stop)
         self.addCleanup(self.p_valid.stop)
-        self.addCleanup(self.p_reg.stop)
+        self.addCleanup(self.p_res.stop)
+        self.addCleanup(self.p_inc.stop)
 
     def _valid_counter(self):
         self.valid_calls = []
@@ -141,13 +144,27 @@ class StoreBatchTest(unittest.TestCase):
             return True
         return _f
 
-    def _reg_counter(self):
-        self.reg_calls = []
+    def _resolve_counter(self):
+        self.resolve_calls = []
 
         def _f(name, supabase, themes=None, sentiment=None, _attempt=0):
-            self.reg_calls.append(name)
-            return f"cid-{name}"
+            self.resolve_calls.append(name)
+            return {"canonical_id": f"cid-{name}", "alias_id": f"alias-{name}"}
         return _f
+
+    def _inc_recorder(self):
+        # Capture each batched increment call as (table, {id: delta}) copy.
+        self.inc_calls = []
+
+        def _f(supabase, table, id_to_delta):
+            self.inc_calls.append((table, dict(id_to_delta)))
+        return _f
+
+    def _inc_for(self, table):
+        for t, d in self.inc_calls:
+            if t == table:
+                return d
+        return {}
 
     # --- Memoization: N articles, K unique names -> K resolutions, not N -----
     def test_entity_resolution_memoized_per_unique_name(self):
@@ -156,7 +173,7 @@ class StoreBatchTest(unittest.TestCase):
         self.assertEqual(len(stored), 10)
         self.assertEqual(len(set(self.valid_calls)), 1)
         self.assertEqual(len(self.valid_calls), 1, "is_valid_company memoized to 1 call")
-        self.assertEqual(len(self.reg_calls), 1, "register_entity memoized to 1 call")
+        self.assertEqual(len(self.resolve_calls), 1, "resolve_entity memoized to 1 call")
         # Every mention still recorded (memo caches the id, not the linkage).
         self.assertEqual(self.fake.n_inserted("company_mentions"), 10)
 
@@ -170,8 +187,37 @@ class StoreBatchTest(unittest.TestCase):
             an["companies"] = [f"Name{i % 3}"]
             relevant.append((a, an))
         ingest.store_articles_batch(relevant)
-        self.assertEqual(len(self.reg_calls), 3, "3 unique names -> 3 register_entity")
+        self.assertEqual(len(self.resolve_calls), 3, "3 unique names -> 3 resolve_entity")
         self.assertEqual(len(self.valid_calls), 3)
+
+    # --- Per-mention counting preserved despite once-per-name resolution -----
+    def test_mention_count_tally_is_per_mention_not_per_name(self):
+        # Same company mentioned across 10 stored articles -> resolution once,
+        # but the bulk increment must still tally 10 mentions (the bug we fix).
+        relevant = _pairs(10, companies_per=("AcmeCorp",))
+        ingest.store_articles_batch(relevant)
+        self.assertEqual(len(self.resolve_calls), 1, "resolved once")
+        # companies tally: cid-AcmeCorp -> 10 (per persisted mention, not 1)
+        self.assertEqual(self._inc_for("companies"), {"cid-AcmeCorp": 10})
+        # aliases tally: alias-AcmeCorp -> 10
+        self.assertEqual(self._inc_for("aliases"), {"alias-AcmeCorp": 10})
+
+    def test_mention_tally_only_counts_persisted_mentions_under_budget(self):
+        # Small chunk so the budget trips DURING the mention-insert phase (all
+        # articles store first; mentions are written in chunks afterward).
+        ticks = iter(range(0, 10_000))
+        with patch.object(ingest, "STORE_CHUNK_SIZE", 2), \
+             patch.object(ingest.time, "time", lambda: next(ticks)):
+            base = ingest.time.time()
+            ingest.store_articles_batch(_pairs(10, companies_per=("AcmeCorp",)),
+                                        deadline=base + 13)
+        # Some but not all mentions persisted; the company tally equals exactly
+        # the number of company_mentions actually inserted (per-mention,
+        # partial-safe -- never over- or under-counts the stored set).
+        persisted = self.fake.n_inserted("company_mentions")
+        self.assertGreater(persisted, 0)
+        self.assertLess(persisted, 10, "budget cut the mention writes short")
+        self.assertEqual(self._inc_for("companies").get("cid-AcmeCorp", 0), persisted)
 
     # --- Batching collapses round-trips -------------------------------------
     def test_batched_round_trips_collapse(self):
@@ -200,14 +246,16 @@ class StoreBatchTest(unittest.TestCase):
         self.assertEqual(len(urls), 4, "5 minus existing-dup; intra-batch dup also dropped")
         self.assertGreaterEqual(dupes, 2)
 
-    # --- Resilience: a raising register_entity must not propagate ------------
-    def test_register_entity_error_does_not_propagate(self):
+    # --- Resilience: a raising resolve_entity must not propagate -------------
+    def test_resolve_entity_error_does_not_propagate(self):
         def _boom(name, supabase, themes=None, sentiment=None, _attempt=0):
             raise RuntimeError("429 RESOURCE_EXHAUSTED simulated")
-        with patch.object(ingest, "register_entity", _boom):
+        with patch.object(ingest, "resolve_entity", _boom):
             stored, dupes = ingest.store_articles_batch(_pairs(3))
         self.assertEqual(len(stored), 3, "articles still stored")
         self.assertEqual(self.fake.n_inserted("company_mentions"), 0, "no mentions on resolve failure")
+        # No tally for unresolved entities.
+        self.assertEqual(self._inc_for("companies"), {})
 
     # --- Budget: degrade to partial, stop, proceed --------------------------
     def test_budget_stops_and_returns_partial(self):

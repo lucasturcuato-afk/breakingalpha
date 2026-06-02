@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 from watchlist import boost_watchlist_relevance
 from wikidata import is_valid_company
 from fulltext import fetch_full_text, SCRAPEABLE_SOURCES
-from entity_resolver import register_entity
+from entity_resolver import resolve_entity, increment_mention_counts
 
 load_dotenv()
 
@@ -963,34 +963,34 @@ def _normalize_title(title):
     return t
 
 
-# --- Within-run entity resolution cache (store-scale fix) ------------------
+# --- Within-run entity resolution cache + per-mention tally (store-scale fix) -
 # At gnews scale a single run sees ~13k articles that map to far fewer unique
-# company names. Resolving each unique surface form once per run -- both the
-# Wikidata validation and the canonical-id lookup -- collapses the Wikidata API
-# misses and the register_entity DB round-trips from per-mention to
-# per-unique-name. is_valid_company already does its own Supabase cache-first
-# lookup (backend/wikidata.py); this is an additional in-process memo so a name
-# seen 40 times this run hits neither Wikidata nor the cache table 40 times.
+# company names. The expensive parts -- Wikidata validation and the entity
+# resolution (alias lookup / canonical-id) -- are memoized once per unique
+# surface form per run. is_valid_company already does its own Supabase
+# cache-first lookup (backend/wikidata.py); this is an additional in-process memo.
 #
-# FLAGGED FOR REVIEW (entity_resolver.py semantics, Lucas's lane): memoizing
-# register_entity means its per-call side effects -- companies.mention_count
-# increment, last_seen_at refresh, key_themes union -- now fire once per unique
-# name per run instead of once per article-mention. The authoritative
-# per-mention record is still written to company_mentions for every mention;
-# only the denormalized companies.mention_count changes (it stops being inflated
-# by gnews per-ticker fan-out). If per-mention counting must be preserved, the
-# count step has to move out of register_entity, which is out of this PR's
-# ingest.py-only scope.
+# Counting is DECOUPLED from resolution (see backend/entity_resolver.resolve_entity
+# + increment_mention_counts): resolution is memoized (side-effect-free), but every
+# PERSISTED company_mention is tallied per canonical id AND per alias id, and the
+# tallies are applied in bulk after the writes. So companies.mention_count and
+# aliases.mention_count keep their exact per-mention totals (Company Intel ranking
+# in src/app/api/companies/route.ts and the V1 hit-many tiebreaker stay correct),
+# computed in a handful of UPDATEs instead of ~26k per-mention round-trips.
 _RUN_VALID_COMPANY_CACHE: dict = {}
-_RUN_ENTITY_ID_CACHE: dict = {}
+_RUN_ENTITY_RESOLUTION_CACHE: dict = {}   # surface form -> (canonical_id, alias_id)
+_RUN_COMPANY_MENTION_TALLY: dict = {}     # canonical_id -> persisted-mention count
+_RUN_ALIAS_MENTION_TALLY: dict = {}       # alias_id -> persisted-mention count
 
 
 def _reset_run_entity_caches() -> None:
-    """Clear the per-run entity memo. Called at the top of run_ingestion so a
-    long-lived process does not carry resolutions across runs (in CI each run is
-    a fresh process, so this is belt-and-suspenders)."""
+    """Clear the per-run entity memo + mention tallies. Called at the top of
+    run_ingestion so a long-lived process does not carry resolutions or counts
+    across runs (in CI each run is a fresh process, so this is belt-and-suspenders)."""
     _RUN_VALID_COMPANY_CACHE.clear()
-    _RUN_ENTITY_ID_CACHE.clear()
+    _RUN_ENTITY_RESOLUTION_CACHE.clear()
+    _RUN_COMPANY_MENTION_TALLY.clear()
+    _RUN_ALIAS_MENTION_TALLY.clear()
 
 
 def _resolve_company_valid(company: str) -> bool:
@@ -1002,17 +1002,29 @@ def _resolve_company_valid(company: str) -> bool:
     return ok
 
 
-def _resolve_company_id(company: str, themes, sentiment):
-    """register_entity() memoized by surface form for the run. See FLAGGED note."""
-    if company in _RUN_ENTITY_ID_CACHE:
-        return _RUN_ENTITY_ID_CACHE[company]
+def _resolve_company_entity(company: str, themes, sentiment):
+    """resolve_entity() memoized by surface form for the run (side-effect-free
+    resolution; no mention_count increment). Returns (canonical_id, alias_id),
+    either of which may be None on a resolution failure."""
+    if company in _RUN_ENTITY_RESOLUTION_CACHE:
+        return _RUN_ENTITY_RESOLUTION_CACHE[company]
     try:
-        cid = register_entity(company, supabase, themes=themes, sentiment=sentiment)
+        res = resolve_entity(company, supabase, themes=themes, sentiment=sentiment)
+        cid, alias_id = res.get("canonical_id"), res.get("alias_id")
     except Exception as ex:
-        print(f"  register_entity error [{company!r}]: {ex}")
-        cid = None
-    _RUN_ENTITY_ID_CACHE[company] = cid
-    return cid
+        print(f"  resolve_entity error [{company!r}]: {ex}")
+        cid, alias_id = None, None
+    _RUN_ENTITY_RESOLUTION_CACHE[company] = (cid, alias_id)
+    return cid, alias_id
+
+
+def _tally_mention(canonical_id, alias_id) -> None:
+    """Record one PERSISTED company_mention against its canonical id + alias id.
+    Applied in bulk by increment_mention_counts() after the writes."""
+    if canonical_id:
+        _RUN_COMPANY_MENTION_TALLY[canonical_id] = _RUN_COMPANY_MENTION_TALLY.get(canonical_id, 0) + 1
+    if alias_id:
+        _RUN_ALIAS_MENTION_TALLY[alias_id] = _RUN_ALIAS_MENTION_TALLY.get(alias_id, 0) + 1
 
 
 # --- Batched store path (store-scale fix) ----------------------------------
@@ -1195,27 +1207,45 @@ def store_articles_batch(relevant, deadline=None):
             print(f"  store: row build failed [{(a.get('title') or '')[:50]}]: {ex}")
     _flush()  # final partial chunk (and the in-flight buffer on a budget stop)
 
-    # Resolve entities (memoized) and bulk-insert company_mentions for the stored
-    # set. Also bounded by the budget so we never blow past the ceiling here.
-    mention_rows = []
+    # Resolve entities (memoized, side-effect-free) and bulk-insert
+    # company_mentions for the stored set. Each mention carries its (cid,
+    # alias_id) so we can tally per-mention counts for ONLY the rows that
+    # actually persist, then apply the increments in bulk (decoupled counting).
+    mention_items = []  # (row, cid, alias_id)
     for (aid, a, analysis, companies) in stored:
         for company in companies:
-            cid = _resolve_company_id(company, analysis.get("themes", []), analysis.get("sentiment", "neutral"))
+            cid, alias_id = _resolve_company_entity(
+                company, analysis.get("themes", []), analysis.get("sentiment", "neutral")
+            )
             if cid:
-                mention_rows.append({
-                    "company_id": cid, "article_id": aid,
-                    "context": (a.get("summary") or "")[:300],
-                    "sentiment": analysis.get("sentiment", "neutral"),
-                })
-    for i in range(0, len(mention_rows), STORE_CHUNK_SIZE):
+                mention_items.append((
+                    {
+                        "company_id": cid, "article_id": aid,
+                        "context": (a.get("summary") or "")[:300],
+                        "sentiment": analysis.get("sentiment", "neutral"),
+                    },
+                    cid, alias_id,
+                ))
+    for i in range(0, len(mention_items), STORE_CHUNK_SIZE):
         if _over_budget():
-            print(f"  [store:budget] budget reached; {len(mention_rows) - i} "
+            print(f"  [store:budget] budget reached; {len(mention_items) - i} "
                   f"company_mentions left unwritten (articles already stored)")
             break
-        chunk = mention_rows[i:i + STORE_CHUNK_SIZE]
-        if _bulk_insert("company_mentions", chunk) is None:
-            for m in chunk:
-                _bulk_insert("company_mentions", [m])
+        chunk = mention_items[i:i + STORE_CHUNK_SIZE]
+        if _bulk_insert("company_mentions", [m[0] for m in chunk]) is not None:
+            for (_row, cid, alias_id) in chunk:
+                _tally_mention(cid, alias_id)
+        else:
+            # per-row fallback: tally only the rows that actually insert
+            for (row, cid, alias_id) in chunk:
+                if _bulk_insert("company_mentions", [row]) is not None:
+                    _tally_mention(cid, alias_id)
+
+    # Apply per-mention counts in bulk for exactly what was persisted. Runs after
+    # the writes (even on a budget-stopped partial set) so companies.mention_count
+    # and aliases.mention_count match the stored company_mentions.
+    increment_mention_counts(supabase, "companies", _RUN_COMPANY_MENTION_TALLY)
+    increment_mention_counts(supabase, "aliases", _RUN_ALIAS_MENTION_TALLY)
 
     if budget_skipped:
         print(f"  [store:budget] stored {len(stored)}, skipped {budget_skipped} "
@@ -1252,13 +1282,20 @@ def store_article(article, analysis):
         ).execute()
         article_id = r.data[0]["id"]
         for company in clean_companies:
-            cid = _resolve_company_id(company, analysis.get("themes", []), analysis.get("sentiment", "neutral"))
+            # Legacy single-article path: resolve (no count) then increment this
+            # one mention inline, preserving the original per-mention semantics.
+            cid, alias_id = _resolve_company_entity(
+                company, analysis.get("themes", []), analysis.get("sentiment", "neutral")
+            )
             if cid:
                 supabase.table("company_mentions").insert({
                     "company_id": cid, "article_id": article_id,
                     "context": article["summary"][:300],
                     "sentiment": analysis.get("sentiment", "neutral")
                 }).execute()
+                increment_mention_counts(supabase, "companies", {cid: 1})
+                if alias_id:
+                    increment_mention_counts(supabase, "aliases", {alias_id: 1})
         return article_id
     except Exception as ex:
         print(f"  Store error: {ex}")
