@@ -435,10 +435,39 @@ _LAW_SUBSTRINGS = [
     "law firm", "legal counsel",
 ]
 
+# Media outlets / financial-news aggregators that the relevance filter sometimes
+# extracts as a "company" because their name appears in the headline (e.g. the
+# "- Yahoo Finance" / "- Seeking Alpha" gnews title suffix). These are NOT the
+# subject company and must never reach company_mentions. Matched by NORMALIZED
+# EXACT name only (see _normalize_outlet) so a real company whose name merely
+# contains a blocklisted token is never stripped. Every entry was verified to
+# NOT collide with a real ticker / public-company name / watchlist identifier.
+_OUTLET_BLOCKLIST_RAW = {
+    "Yahoo Finance", "Yahoo", "Yahoo! Finance",
+    "Seeking Alpha", "TradingView", "Stock Titan",
+    "The Motley Fool", "Motley Fool", "The Motley Fool Australia",
+    "GuruFocus", "Quiver Quantitative", "MarketBeat",
+    "24/7 Wall St", "24/7 Wall St.", "Benzinga", "Statista",
+    "Insider Monkey", "Stock Traders Daily", "Investing.com",
+    "Business Wire", "BusinessWire", "PR Newswire", "PRNewswire",
+    "GlobeNewswire", "Simply Wall St", "Simply Wall St.", "SimplyWall.st",
+    "Trefis", "Moomoo",
+}
+
+
+def _normalize_outlet(name: str) -> str:
+    """Lowercase, drop punctuation, collapse whitespace -- so 'Yahoo! Finance',
+    '24/7 Wall St.' and 'Investing.com' match their blocklist entries exactly."""
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", "", (name or "").lower())).strip()
+
+
+_OUTLET_BLOCKLIST = {_normalize_outlet(x) for x in _OUTLET_BLOCKLIST_RAW}
+
 
 def is_blocked_entity(name: str) -> bool:
     """Return True if the entity name is a currency, country, government body,
-    or law firm that should not be written to the companies table."""
+    law firm, or media outlet/aggregator that should not be written to the
+    companies table."""
     low = name.lower().strip()
     if low in _CURRENCY_BLOCKLIST:
         return True
@@ -452,6 +481,8 @@ def is_blocked_entity(name: str) -> bool:
     for pat in _LAW_SUBSTRINGS:
         if pat in low:
             return True
+    if _normalize_outlet(name) in _OUTLET_BLOCKLIST:
+        return True
     return False
 
 
