@@ -1005,6 +1005,184 @@ def _resolve_company_id(company: str, themes, sentiment):
     return cid
 
 
+# --- Batched store path (store-scale fix) ----------------------------------
+# The legacy per-article store_article() issued ~5 Supabase round-trips per
+# article (url-dedup SELECT, a recent-titles SELECT that re-pulled the whole
+# growing 24h window every call -- O(N^2) -- the insert, an entity lookup, and a
+# mention insert). At ~13k relevant articles that did ~16k dedup GETs alone and
+# could not finish inside the 90-min step. store_articles_batch() pre-loads the
+# dedup sets once and bulk-inserts articles + company_mentions in chunks.
+STORE_CHUNK_SIZE = int(os.getenv("STORE_CHUNK_SIZE", "500"))
+
+
+def _article_row(article, analysis, clean_companies):
+    """Build the articles-table insert row. Shared by store_article (legacy) and
+    store_articles_batch so the column shape can never drift between them."""
+    industry_verticals = validate_tags(analysis.get("industry_verticals", []), INDUSTRY_VERTICALS)
+    activity_types = validate_tags(analysis.get("activity_types", []), ACTIVITY_TYPES)
+    # Backward compat: write sector as first vertical so synthesize.py and any
+    # frontend code still reading the old column keeps working.
+    sector_fallback = industry_verticals[0] if industry_verticals else ""
+    return {
+        "title": article["title"],
+        "summary": article["summary"] or "",
+        "url": article["url"],
+        "source": article["source"],
+        "published_at": article["published_at"],
+        "relevance_score": analysis["relevance_score"],
+        "relevance_reason": analysis.get("relevance_reason", ""),
+        "companies": clean_companies,
+        "themes": analysis.get("themes", []),
+        "sentiment": analysis.get("sentiment", "neutral"),
+        "sentiment_reason": analysis.get("sentiment_reason"),
+        "sector": sector_fallback,
+        "industry_verticals": industry_verticals,
+        "activity_types": activity_types,
+        "deal_type": analysis.get("deal_type"),
+        "primary_company": analysis.get("primary_company"),
+        "content_type": article.get("content_type", "snippet"),
+    }
+
+
+def _clean_companies(analysis):
+    """Validate + filter the analysis company list (blocklist + memoized Wikidata)."""
+    out = []
+    for company in extract_company_names(analysis.get("companies", [])):
+        if is_blocked_entity(company):
+            continue
+        if not _resolve_company_valid(company):
+            continue
+        out.append(company)
+    return out
+
+
+def _load_store_dedup_sets():
+    """Pre-fetch existing URLs (30d) and recent normalized titles (24h) ONCE,
+    replacing the per-article dedup SELECTs. Paginated past PostgREST's 1000-row
+    default cap. Read-only; failures degrade to empty sets (store still runs)."""
+    existing_urls, recent_titles = set(), set()
+
+    def _paged(select_col, since_iso):
+        rows_out, page, size = [], 0, 1000
+        while True:
+            resp = (supabase.table("articles").select(select_col)
+                    .gte("ingested_at", since_iso)
+                    .range(page * size, page * size + size - 1).execute())
+            rows = resp.data or []
+            rows_out.extend(rows)
+            if len(rows) < size:
+                return rows_out
+            page += 1
+
+    try:
+        url_cut = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        for r in _paged("url", url_cut):
+            if r.get("url"):
+                existing_urls.add(r["url"])
+    except Exception as ex:
+        print(f"  store: existing-url preload failed (continuing without it): {ex}")
+    try:
+        title_cut = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        for r in _paged("title", title_cut):
+            nt = _normalize_title(r.get("title", "") or "")
+            if nt:
+                recent_titles.add(nt)
+    except Exception as ex:
+        print(f"  store: recent-title preload failed (continuing without it): {ex}")
+    return existing_urls, recent_titles
+
+
+def _bulk_insert(table, rows):
+    """Insert a list of rows in one call; return inserted .data, or None on error."""
+    if not rows:
+        return []
+    try:
+        resp = supabase.table(table).insert(rows).execute()
+        return resp.data or []
+    except Exception as ex:
+        print(f"  store: bulk insert into {table} failed ({len(rows)} rows): {ex}")
+        return None
+
+
+def _insert_articles_chunk(chunk):
+    """Insert a chunk of (article, analysis, companies, row) and yield
+    (article_id, article, analysis, companies). Falls back to per-row inserts if
+    the bulk call fails or returns an ambiguous row count, so one bad row never
+    drops the whole chunk and id->row alignment stays exact."""
+    rows = [row for (_a, _an, _c, row) in chunk]
+    inserted = _bulk_insert("articles", rows)
+    aligned = inserted is not None and len(inserted) == len(chunk)
+    if aligned:
+        for (a, analysis, companies, _row), ins in zip(chunk, inserted):
+            if ins.get("id"):
+                yield (ins["id"], a, analysis, companies)
+        return
+    if inserted is not None and len(inserted) != len(chunk):
+        print(f"  store: bulk insert returned {len(inserted)} for {len(chunk)} rows; per-row fallback")
+    for (a, analysis, companies, row) in chunk:
+        one = _bulk_insert("articles", [row])
+        if one and one[0].get("id"):
+            yield (one[0]["id"], a, analysis, companies)
+
+
+def store_articles_batch(relevant):
+    """Store relevant (article, analysis) pairs with batched dedup + bulk insert.
+
+    Returns (stored_pairs, dupes_skipped) where stored_pairs is a list of
+    (article_id, article) preserving the legacy contract for enrichment/boost.
+
+    SCOPE NOTE: bulk-write correctness (column shape, PostgREST returned-row
+    ordering, UNIQUE guards) is validated at the logic level only in this PR --
+    no live Supabase schema test. The post-merge dispatch is the integration
+    test. Chunk inserts fall back to per-row on any failure to stay safe.
+    """
+    existing_urls, recent_titles = _load_store_dedup_sets()
+    seen_urls, seen_titles = set(existing_urls), set(recent_titles)
+
+    pending = []  # (article, analysis, companies, row)
+    dupes = 0
+    for a, analysis in relevant:
+        try:
+            url = a.get("url")
+            if not url or url in seen_urls:
+                dupes += 1
+                continue
+            norm = _normalize_title(a.get("title", ""))
+            if norm and norm in seen_titles:
+                dupes += 1
+                continue
+            companies = _clean_companies(analysis)
+            pending.append((a, analysis, companies, _article_row(a, analysis, companies)))
+            seen_urls.add(url)
+            if norm:
+                seen_titles.add(norm)
+        except Exception as ex:
+            print(f"  store: row build failed [{(a.get('title') or '')[:50]}]: {ex}")
+
+    stored = []  # (article_id, article, analysis, companies)
+    for i in range(0, len(pending), STORE_CHUNK_SIZE):
+        stored.extend(_insert_articles_chunk(pending[i:i + STORE_CHUNK_SIZE]))
+
+    # Resolve entities (memoized) and bulk-insert company_mentions.
+    mention_rows = []
+    for (aid, a, analysis, companies) in stored:
+        for company in companies:
+            cid = _resolve_company_id(company, analysis.get("themes", []), analysis.get("sentiment", "neutral"))
+            if cid:
+                mention_rows.append({
+                    "company_id": cid, "article_id": aid,
+                    "context": (a.get("summary") or "")[:300],
+                    "sentiment": analysis.get("sentiment", "neutral"),
+                })
+    for i in range(0, len(mention_rows), STORE_CHUNK_SIZE):
+        chunk = mention_rows[i:i + STORE_CHUNK_SIZE]
+        if _bulk_insert("company_mentions", chunk) is None:
+            for m in chunk:
+                _bulk_insert("company_mentions", [m])
+
+    return [(aid, a) for (aid, a, _an, _c) in stored], dupes
+
+
 def store_article(article, analysis):
     try:
         if supabase.table("articles").select("id").eq("url", article["url"]).execute().data:
@@ -1028,32 +1206,9 @@ def store_article(article, analysis):
                 continue
             clean_companies.append(company)
 
-        industry_verticals = validate_tags(analysis.get("industry_verticals", []), INDUSTRY_VERTICALS)
-        activity_types = validate_tags(analysis.get("activity_types", []), ACTIVITY_TYPES)
-
-        # Backward compat: write sector as first vertical so synthesize.py and
-        # any frontend code still reading the old column keeps working.
-        sector_fallback = industry_verticals[0] if industry_verticals else ""
-
-        r = supabase.table("articles").insert({
-            "title": article["title"],
-            "summary": article["summary"] or "",
-            "url": article["url"],
-            "source": article["source"],
-            "published_at": article["published_at"],
-            "relevance_score": analysis["relevance_score"],
-            "relevance_reason": analysis.get("relevance_reason", ""),
-            "companies": clean_companies,
-            "themes": analysis.get("themes", []),
-            "sentiment": analysis.get("sentiment", "neutral"),
-            "sentiment_reason": analysis.get("sentiment_reason"),
-            "sector": sector_fallback,
-            "industry_verticals": industry_verticals,
-            "activity_types": activity_types,
-            "deal_type": analysis.get("deal_type"),
-            "primary_company": analysis.get("primary_company"),
-            "content_type": article.get("content_type", "snippet"),
-        }).execute()
+        r = supabase.table("articles").insert(
+            _article_row(article, analysis, clean_companies)
+        ).execute()
         article_id = r.data[0]["id"]
         for company in clean_companies:
             cid = _resolve_company_id(company, analysis.get("themes", []), analysis.get("sentiment", "neutral"))
@@ -1095,15 +1250,11 @@ def run_ingestion():
             print(f"  ✓ [{result['relevance_score']}/10] [{result.get('sector','?')[:20]}] {a['title'][:60]}...")
 
     t = time.time()
-    print(f"\n[4/4] Storing {len(relevant)} articles...")
-    stored_pairs = []  # (article_id, article_dict) for enrichment
-    for a, r in relevant:
-        aid = store_article(a, r)
-        if aid:
-            stored_pairs.append((aid, a))
+    print(f"\n[4/4] Storing {len(relevant)} articles (batched)...")
+    stored_pairs, dupes = store_articles_batch(relevant)
     article_ids = [aid for aid, _ in stored_pairs]
     stored = len(article_ids)
-    print(f"  [4/4] DONE: {stored} stored in {time.time() - t:.2f}s")
+    print(f"  [4/4] DONE: {stored} stored, {dupes} dupes skipped in {time.time() - t:.2f}s")
     print(f"\nINGEST total elapsed: {time.time() - t_total:.2f}s ({stored} new articles stored)")
 
     # Per-wire signal/noise funnel
