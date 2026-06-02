@@ -70,6 +70,16 @@ FILTER_MAX_RATE_RETRIES = int(os.getenv("FILTER_MAX_RATE_RETRIES", "5"))
 # calls finish, and proceed with a partial-but-fresh feed. Default 60 min leaves
 # ~30 min of step headroom for fetch + store + downstream.
 FILTER_PHASE_BUDGET_SEC = int(os.getenv("FILTER_PHASE_BUDGET_SEC", "3600"))
+# Wall-clock budget for the WHOLE ingest run (measured from run_ingestion start),
+# the store-phase analogue of FILTER_PHASE_BUDGET_SEC. The 06-01 retry cleared
+# the filter but then hung in [4/4] store (7,947 of 13,302 stored in 61 min),
+# hitting the 90-min kill so run.py's brief steps never ran. Past this budget the
+# store stops, keeps what is already written, and returns so the pipeline
+# proceeds to synthesize on a partial-but-fresh set. Default 80 min leaves ~10
+# min downstream reserve under the 90-min step ceiling. NOTE: post-store
+# enrichment + boost_watchlist_relevance still scale with the stored count and
+# are not separately budgeted -- the reserve assumes they fit in the remainder.
+INGEST_PHASE_BUDGET_SEC = int(os.getenv("INGEST_PHASE_BUDGET_SEC", "4800"))
 
 
 # Response schema for Gemini constrained output. Smoke test 2 (chunk_size=50)
@@ -1125,11 +1135,16 @@ def _insert_articles_chunk(chunk):
             yield (one[0]["id"], a, analysis, companies)
 
 
-def store_articles_batch(relevant):
+def store_articles_batch(relevant, deadline=None):
     """Store relevant (article, analysis) pairs with batched dedup + bulk insert.
 
     Returns (stored_pairs, dupes_skipped) where stored_pairs is a list of
     (article_id, article) preserving the legacy contract for enrichment/boost.
+
+    `deadline` is an absolute time.time() value (INGEST_PHASE_BUDGET_SEC from the
+    run start). Past it the store stops taking on new work, keeps what is already
+    written, and returns so the pipeline proceeds to synthesize on a partial set
+    instead of running into the 90-min step kill that writes-then-dies.
 
     SCOPE NOTE: bulk-write correctness (column shape, PostgREST returned-row
     ordering, UNIQUE guards) is validated at the logic level only in this PR --
@@ -1139,9 +1154,27 @@ def store_articles_batch(relevant):
     existing_urls, recent_titles = _load_store_dedup_sets()
     seen_urls, seen_titles = set(existing_urls), set(recent_titles)
 
-    pending = []  # (article, analysis, companies, row)
-    dupes = 0
-    for a, analysis in relevant:
+    def _over_budget():
+        return deadline is not None and time.time() > deadline
+
+    # Build and flush by chunk in one pass. The budget is checked once per
+    # article (cheap); on a budget stop we break but still flush the in-flight
+    # buffer, so already-built rows are never discarded ("finish in-flight").
+    stored = []   # (article_id, article, analysis, companies)
+    buf = []      # (article, analysis, companies, row) for the current chunk
+    dupes = budget_skipped = 0
+
+    def _flush():
+        if buf:
+            stored.extend(_insert_articles_chunk(buf))
+            buf.clear()
+
+    for idx, (a, analysis) in enumerate(relevant):
+        if _over_budget():
+            budget_skipped = len(relevant) - idx
+            print(f"  [store:budget] ingest budget reached after {idx} of "
+                  f"{len(relevant)}; skipping {budget_skipped} and flushing in-flight")
+            break
         try:
             url = a.get("url")
             if not url or url in seen_urls:
@@ -1152,18 +1185,18 @@ def store_articles_batch(relevant):
                 dupes += 1
                 continue
             companies = _clean_companies(analysis)
-            pending.append((a, analysis, companies, _article_row(a, analysis, companies)))
+            buf.append((a, analysis, companies, _article_row(a, analysis, companies)))
             seen_urls.add(url)
             if norm:
                 seen_titles.add(norm)
+            if len(buf) >= STORE_CHUNK_SIZE:
+                _flush()
         except Exception as ex:
             print(f"  store: row build failed [{(a.get('title') or '')[:50]}]: {ex}")
+    _flush()  # final partial chunk (and the in-flight buffer on a budget stop)
 
-    stored = []  # (article_id, article, analysis, companies)
-    for i in range(0, len(pending), STORE_CHUNK_SIZE):
-        stored.extend(_insert_articles_chunk(pending[i:i + STORE_CHUNK_SIZE]))
-
-    # Resolve entities (memoized) and bulk-insert company_mentions.
+    # Resolve entities (memoized) and bulk-insert company_mentions for the stored
+    # set. Also bounded by the budget so we never blow past the ceiling here.
     mention_rows = []
     for (aid, a, analysis, companies) in stored:
         for company in companies:
@@ -1175,10 +1208,18 @@ def store_articles_batch(relevant):
                     "sentiment": analysis.get("sentiment", "neutral"),
                 })
     for i in range(0, len(mention_rows), STORE_CHUNK_SIZE):
+        if _over_budget():
+            print(f"  [store:budget] budget reached; {len(mention_rows) - i} "
+                  f"company_mentions left unwritten (articles already stored)")
+            break
         chunk = mention_rows[i:i + STORE_CHUNK_SIZE]
         if _bulk_insert("company_mentions", chunk) is None:
             for m in chunk:
                 _bulk_insert("company_mentions", [m])
+
+    if budget_skipped:
+        print(f"  [store:budget] stored {len(stored)}, skipped {budget_skipped} "
+              f"under budget; proceeding to downstream on the partial set")
 
     return [(aid, a) for (aid, a, _an, _c) in stored], dupes
 
@@ -1251,7 +1292,9 @@ def run_ingestion():
 
     t = time.time()
     print(f"\n[4/4] Storing {len(relevant)} articles (batched)...")
-    stored_pairs, dupes = store_articles_batch(relevant)
+    stored_pairs, dupes = store_articles_batch(
+        relevant, deadline=t_total + INGEST_PHASE_BUDGET_SEC
+    )
     article_ids = [aid for aid, _ in stored_pairs]
     stored = len(article_ids)
     print(f"  [4/4] DONE: {stored} stored, {dupes} dupes skipped in {time.time() - t:.2f}s")
