@@ -20,6 +20,7 @@ import logging
 import os
 import sys
 import time
+import traceback
 from datetime import datetime, timezone
 
 from ingest import run_ingestion as run_ingest
@@ -53,6 +54,43 @@ def _is_sunday_morning(brief_type: str) -> bool:
     )
 
 
+def _run_ingest_guarded():
+    """Run [1/16] INGEST with a soft-fail guard, mirroring the try/except shape
+    of steps 2-16. An ingest-tail failure (e.g. a downstream per-run query that
+    overflows at gnews scale -- run #141's boost_watchlist_relevance 400) must no
+    longer kill the brief: the exception is logged with a full traceback at error
+    level and the pipeline continues to synthesize on whatever was already
+    stored. Returns (ingest_count, degraded, error)."""
+    _t = time.time()
+    try:
+        count = run_ingest()
+        print(f"  [1/16] INGEST done in {time.time() - _t:.2f}s")
+        return count, False, None
+    except Exception as e:
+        logger.error("INGEST failed after %.2fs:\n%s", time.time() - _t, traceback.format_exc())
+        print(
+            f"  [1/16] INGEST FAILED in {time.time() - _t:.2f}s "
+            f"(continuing to brief on already-stored articles; stored count in ingest logs above): {e}"
+        )
+        return 0, True, str(e)
+
+
+def _finalize_exit_code(ingest_degraded: bool, ingest_error) -> int:
+    """Process exit code for the run. A degraded ingest surfaces the run as
+    FAILED (exit 1) AFTER the brief has generated, so the feed still updates but
+    the run is never green-washed. This intentionally goes beyond the steps 2-16
+    soft-fail convention, which exits 0 even on soft-failures; see PR notes."""
+    if ingest_degraded:
+        print("\n" + "!" * 50)
+        print(
+            f"RUN DEGRADED: ingest failed ({ingest_error}); brief generated from "
+            f"already-stored articles. Surfacing the run as failed for visibility."
+        )
+        print("!" * 50)
+        return 1
+    return 0
+
+
 if __name__ == "__main__":
     brief_type = sys.argv[1] if len(sys.argv) > 1 else "morning"
     started_at = datetime.now(timezone.utc)
@@ -64,9 +102,7 @@ if __name__ == "__main__":
     pipeline_t0 = time.time()
 
     print("\n[1/16] INGEST")
-    _t = time.time()
-    ingest_count = run_ingest()
-    print(f"  [1/16] INGEST done in {time.time() - _t:.2f}s")
+    ingest_count, ingest_degraded, ingest_error = _run_ingest_guarded()
 
     # Optional backfill: RUN_BACKFILL=true python backend/run.py
     if os.getenv("RUN_BACKFILL", "false").lower() == "true":
@@ -302,6 +338,10 @@ if __name__ == "__main__":
     print("\n" + "=" * 50)
     print(f"Pipeline complete in {time.time() - pipeline_t0:.2f}s ({(time.time() - pipeline_t0) / 60:.1f} min)")
     print("=" * 50)
+
+    # Surface a degraded ingest as a failed run AFTER the brief has generated,
+    # so the feed updates but the run is not green-washed.
+    sys.exit(_finalize_exit_code(ingest_degraded, ingest_error))
 
 # ---------------------------------------------------------------------------
 # STEP MANIFEST — canonical pipeline order (update when adding steps)
