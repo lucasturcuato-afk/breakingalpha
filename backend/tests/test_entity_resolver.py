@@ -21,7 +21,11 @@ from unittest.mock import MagicMock
 # itself is exercised by backend/finnhub_helper.py at integration time.
 os.environ["DISABLE_TICKER_POPULATION"] = "1"
 
-from backend.entity_resolver import register_entity
+from backend.entity_resolver import (
+    register_entity,
+    resolve_entity,
+    increment_mention_counts,
+)
 
 
 class _FakeQuery:
@@ -56,6 +60,10 @@ class _FakeQuery:
 
     def eq(self, column, value):
         self.filters.append((column, value))
+        return self
+
+    def in_(self, column, values):
+        self.filters.append((column, tuple(values)))
         return self
 
     def execute(self):
@@ -141,14 +149,15 @@ class RegisterEntityTests(unittest.TestCase):
         companies_inserts = sb.calls_to("companies", "insert")
         self.assertEqual(len(companies_inserts), 1)
         self.assertEqual(companies_inserts[0]["payload"]["name"], "Acme Holdings")
-        self.assertEqual(companies_inserts[0]["payload"]["mention_count"], 1)
+        # New design: new rows start at 0; the bulk increment applies the tally.
+        self.assertEqual(companies_inserts[0]["payload"]["mention_count"], 0)
 
         alias_inserts = sb.calls_to("aliases", "insert")
         self.assertEqual(len(alias_inserts), 1)
         self.assertEqual(alias_inserts[0]["payload"]["surface_form"], "Acme Holdings")
         self.assertEqual(alias_inserts[0]["payload"]["lookup_key"], "acme holdings")
         self.assertEqual(alias_inserts[0]["payload"]["canonical_id"], "uuid-new-001")
-        self.assertEqual(alias_inserts[0]["payload"]["mention_count"], 1)
+        self.assertEqual(alias_inserts[0]["payload"]["mention_count"], 0)
 
         log_inserts = sb.calls_to("resolution_log", "insert")
         self.assertEqual(len(log_inserts), 1)
@@ -159,7 +168,7 @@ class RegisterEntityTests(unittest.TestCase):
         )
 
     # Step 3 (hit-one) ---------------------------------------------------
-    def test_one_row_increments_and_returns_existing(self):
+    def test_one_row_touches_existing_without_counting(self):
         sb = FakeSupabase()
         # alias lookup returns exactly one row
         sb.queue(
@@ -167,7 +176,7 @@ class RegisterEntityTests(unittest.TestCase):
             "select",
             [{"id": "alias-1", "canonical_id": "uuid-existing", "mention_count": 7}],
         )
-        # _bump_existing reads the canonical row before updating
+        # _touch_existing reads the canonical row (id, key_themes) before updating
         sb.queue(
             "companies",
             "select",
@@ -184,21 +193,22 @@ class RegisterEntityTests(unittest.TestCase):
 
         self.assertEqual(result, "uuid-existing")
 
-        # companies should be updated, not inserted
+        # companies updated (themes + last_updated) but mention_count NOT touched
+        # here -- counting is decoupled and applied in bulk.
         self.assertEqual(len(sb.calls_to("companies", "insert")), 0)
         company_updates = sb.calls_to("companies", "update")
         self.assertEqual(len(company_updates), 1)
-        self.assertEqual(company_updates[0]["payload"]["mention_count"], 43)
+        self.assertNotIn("mention_count", company_updates[0]["payload"])
         self.assertIn("last_updated", company_updates[0]["payload"])
         self.assertEqual(
             sorted(company_updates[0]["payload"]["key_themes"]),
             sorted(["AI", "chips"]),
         )
 
-        # alias mention_count incremented and last_seen_at bumped
+        # alias last_seen_at bumped, mention_count NOT touched here
         alias_updates = sb.calls_to("aliases", "update")
         self.assertEqual(len(alias_updates), 1)
-        self.assertEqual(alias_updates[0]["payload"]["mention_count"], 8)
+        self.assertNotIn("mention_count", alias_updates[0]["payload"])
         self.assertIn("last_seen_at", alias_updates[0]["payload"])
 
         # No resolution_log write on the unambiguous-hit-one path. The
@@ -221,7 +231,7 @@ class RegisterEntityTests(unittest.TestCase):
                 {"id": "alias-c", "canonical_id": "canon-c", "mention_count": 30},
             ],
         )
-        # _bump_existing reads canon-b
+        # _touch_existing reads canon-b
         sb.queue(
             "companies",
             "select",
@@ -230,6 +240,7 @@ class RegisterEntityTests(unittest.TestCase):
 
         result = register_entity("Bridgewater", sb)
 
+        # Tiebreaker UNCHANGED: highest aliases.mention_count (100) -> canon-b.
         self.assertEqual(result, "canon-b")
 
         # Update hit canon-b, not canon-a or canon-c
@@ -237,10 +248,12 @@ class RegisterEntityTests(unittest.TestCase):
         self.assertEqual(len(company_updates), 1)
         self.assertEqual(company_updates[0]["filters"], [("id", "canon-b")])
 
+        # The chosen alias is touched (last_seen) but mention_count is NOT
+        # incremented here -- decoupled to the bulk path.
         alias_updates = sb.calls_to("aliases", "update")
         self.assertEqual(len(alias_updates), 1)
         self.assertEqual(alias_updates[0]["filters"], [("id", "alias-b")])
-        self.assertEqual(alias_updates[0]["payload"]["mention_count"], 101)
+        self.assertNotIn("mention_count", alias_updates[0]["payload"])
 
         # resolution_log: was_ambiguous=True, candidate list has all 3
         log_inserts = sb.calls_to("resolution_log", "insert")
@@ -352,6 +365,55 @@ class RegisterEntityTests(unittest.TestCase):
         # upsert_company behavior in backend/ingest.py).
         companies_inserts = sb.calls_to("companies", "insert")
         self.assertEqual(companies_inserts[0]["payload"]["name"], raw)
+
+
+class DecoupledCountingTests(unittest.TestCase):
+    """resolve_entity exposes (canonical_id, alias_id) and does not count;
+    increment_mention_counts applies the per-mention tally in bulk."""
+
+    def test_resolve_entity_returns_alias_id_hit_one(self):
+        sb = FakeSupabase()
+        sb.queue(
+            "aliases", "select",
+            [{"id": "alias-1", "canonical_id": "uuid-existing", "mention_count": 7}],
+        )
+        sb.queue("companies", "select",
+                 [{"id": "uuid-existing", "key_themes": []}])
+        res = resolve_entity("Existing Corp", sb)
+        self.assertEqual(res["canonical_id"], "uuid-existing")
+        self.assertEqual(res["alias_id"], "alias-1")
+        # No mention_count anywhere in this path.
+        for c in sb.calls_to("companies", "update") + sb.calls_to("aliases", "update"):
+            self.assertNotIn("mention_count", c["payload"])
+
+    def test_resolve_entity_returns_alias_id_miss(self):
+        sb = FakeSupabase()
+        sb.queue("aliases", "select", [])
+        sb.queue("companies", "insert", [{"id": "uuid-new"}])
+        sb.queue("aliases", "insert", [{"id": "alias-new"}])
+        res = resolve_entity("Brand New Co", sb)
+        self.assertEqual(res["canonical_id"], "uuid-new")
+        self.assertEqual(res["alias_id"], "alias-new")
+        self.assertEqual(sb.calls_to("companies", "insert")[0]["payload"]["mention_count"], 0)
+        self.assertEqual(sb.calls_to("aliases", "insert")[0]["payload"]["mention_count"], 0)
+
+    def test_increment_mention_counts_adds_delta_to_existing(self):
+        sb = FakeSupabase()
+        # bulk read of current counts
+        sb.queue("companies", "select",
+                 [{"id": "c1", "mention_count": 10}, {"id": "c2", "mention_count": 0}])
+        increment_mention_counts(sb, "companies", {"c1": 5, "c2": 3})
+        updates = {u["filters"][0][1]: u["payload"]["mention_count"]
+                   for u in sb.calls_to("companies", "update")}
+        # c1: 10 + 5 = 15 (existing); c2: 0 + 3 = 3 (new row inserted at 0 -> N)
+        self.assertEqual(updates, {"c1": 15, "c2": 3})
+
+    def test_increment_mention_counts_noop_on_empty(self):
+        sb = FakeSupabase()
+        increment_mention_counts(sb, "companies", {})
+        increment_mention_counts(sb, "aliases", {"a1": 0})  # zero delta skipped
+        self.assertEqual(len(sb.calls_to("companies", "update")), 0)
+        self.assertEqual(len(sb.calls_to("aliases", "update")), 0)
 
 
 if __name__ == "__main__":

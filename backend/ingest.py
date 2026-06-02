@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 from watchlist import boost_watchlist_relevance
 from wikidata import is_valid_company
 from fulltext import fetch_full_text, SCRAPEABLE_SOURCES
-from entity_resolver import register_entity
+from entity_resolver import resolve_entity, increment_mention_counts
 
 load_dotenv()
 
@@ -70,6 +70,16 @@ FILTER_MAX_RATE_RETRIES = int(os.getenv("FILTER_MAX_RATE_RETRIES", "5"))
 # calls finish, and proceed with a partial-but-fresh feed. Default 60 min leaves
 # ~30 min of step headroom for fetch + store + downstream.
 FILTER_PHASE_BUDGET_SEC = int(os.getenv("FILTER_PHASE_BUDGET_SEC", "3600"))
+# Wall-clock budget for the WHOLE ingest run (measured from run_ingestion start),
+# the store-phase analogue of FILTER_PHASE_BUDGET_SEC. The 06-01 retry cleared
+# the filter but then hung in [4/4] store (7,947 of 13,302 stored in 61 min),
+# hitting the 90-min kill so run.py's brief steps never ran. Past this budget the
+# store stops, keeps what is already written, and returns so the pipeline
+# proceeds to synthesize on a partial-but-fresh set. Default 80 min leaves ~10
+# min downstream reserve under the 90-min step ceiling. NOTE: post-store
+# enrichment + boost_watchlist_relevance still scale with the stored count and
+# are not separately budgeted -- the reserve assumes they fit in the remainder.
+INGEST_PHASE_BUDGET_SEC = int(os.getenv("INGEST_PHASE_BUDGET_SEC", "4800"))
 
 
 # Response schema for Gemini constrained output. Smoke test 2 (chunk_size=50)
@@ -953,6 +963,297 @@ def _normalize_title(title):
     return t
 
 
+# --- Within-run entity resolution cache + per-mention tally (store-scale fix) -
+# At gnews scale a single run sees ~13k articles that map to far fewer unique
+# company names. The expensive parts -- Wikidata validation and the entity
+# resolution (alias lookup / canonical-id) -- are memoized once per unique
+# surface form per run. is_valid_company already does its own Supabase
+# cache-first lookup (backend/wikidata.py); this is an additional in-process memo.
+#
+# Counting is DECOUPLED from resolution (see backend/entity_resolver.resolve_entity
+# + increment_mention_counts): resolution is memoized (side-effect-free), but every
+# PERSISTED company_mention is tallied per canonical id AND per alias id, and the
+# tallies are applied in bulk after the writes. So companies.mention_count and
+# aliases.mention_count keep their exact per-mention totals (Company Intel ranking
+# in src/app/api/companies/route.ts and the V1 hit-many tiebreaker stay correct),
+# computed in a handful of UPDATEs instead of ~26k per-mention round-trips.
+_RUN_VALID_COMPANY_CACHE: dict = {}
+_RUN_ENTITY_RESOLUTION_CACHE: dict = {}   # surface form -> (canonical_id, alias_id)
+_RUN_COMPANY_MENTION_TALLY: dict = {}     # canonical_id -> persisted-mention count
+_RUN_ALIAS_MENTION_TALLY: dict = {}       # alias_id -> persisted-mention count
+
+
+def _reset_run_entity_caches() -> None:
+    """Clear the per-run entity memo + mention tallies. Called at the top of
+    run_ingestion so a long-lived process does not carry resolutions or counts
+    across runs (in CI each run is a fresh process, so this is belt-and-suspenders)."""
+    _RUN_VALID_COMPANY_CACHE.clear()
+    _RUN_ENTITY_RESOLUTION_CACHE.clear()
+    _RUN_COMPANY_MENTION_TALLY.clear()
+    _RUN_ALIAS_MENTION_TALLY.clear()
+
+
+def _resolve_company_valid(company: str) -> bool:
+    """is_valid_company() memoized for the run. Pure validation -> safe to cache."""
+    if company in _RUN_VALID_COMPANY_CACHE:
+        return _RUN_VALID_COMPANY_CACHE[company]
+    ok = is_valid_company(company, supabase)
+    _RUN_VALID_COMPANY_CACHE[company] = ok
+    return ok
+
+
+def _resolve_company_entity(company: str, themes, sentiment):
+    """resolve_entity() memoized by surface form for the run (side-effect-free
+    resolution; no mention_count increment). Returns (canonical_id, alias_id),
+    either of which may be None on a resolution failure."""
+    if company in _RUN_ENTITY_RESOLUTION_CACHE:
+        return _RUN_ENTITY_RESOLUTION_CACHE[company]
+    try:
+        res = resolve_entity(company, supabase, themes=themes, sentiment=sentiment)
+        cid, alias_id = res.get("canonical_id"), res.get("alias_id")
+    except Exception as ex:
+        print(f"  resolve_entity error [{company!r}]: {ex}")
+        cid, alias_id = None, None
+    _RUN_ENTITY_RESOLUTION_CACHE[company] = (cid, alias_id)
+    return cid, alias_id
+
+
+def _tally_mention(canonical_id, alias_id) -> None:
+    """Record one PERSISTED company_mention against its canonical id + alias id.
+    Applied in bulk by increment_mention_counts() after the writes."""
+    if canonical_id:
+        _RUN_COMPANY_MENTION_TALLY[canonical_id] = _RUN_COMPANY_MENTION_TALLY.get(canonical_id, 0) + 1
+    if alias_id:
+        _RUN_ALIAS_MENTION_TALLY[alias_id] = _RUN_ALIAS_MENTION_TALLY.get(alias_id, 0) + 1
+
+
+# --- Batched store path (store-scale fix) ----------------------------------
+# The legacy per-article store_article() issued ~5 Supabase round-trips per
+# article (url-dedup SELECT, a recent-titles SELECT that re-pulled the whole
+# growing 24h window every call -- O(N^2) -- the insert, an entity lookup, and a
+# mention insert). At ~13k relevant articles that did ~16k dedup GETs alone and
+# could not finish inside the 90-min step. store_articles_batch() pre-loads the
+# dedup sets once and bulk-inserts articles + company_mentions in chunks.
+STORE_CHUNK_SIZE = int(os.getenv("STORE_CHUNK_SIZE", "500"))
+
+
+def _article_row(article, analysis, clean_companies):
+    """Build the articles-table insert row. Shared by store_article (legacy) and
+    store_articles_batch so the column shape can never drift between them."""
+    industry_verticals = validate_tags(analysis.get("industry_verticals", []), INDUSTRY_VERTICALS)
+    activity_types = validate_tags(analysis.get("activity_types", []), ACTIVITY_TYPES)
+    # Backward compat: write sector as first vertical so synthesize.py and any
+    # frontend code still reading the old column keeps working.
+    sector_fallback = industry_verticals[0] if industry_verticals else ""
+    return {
+        "title": article["title"],
+        "summary": article["summary"] or "",
+        "url": article["url"],
+        "source": article["source"],
+        "published_at": article["published_at"],
+        "relevance_score": analysis["relevance_score"],
+        "relevance_reason": analysis.get("relevance_reason", ""),
+        "companies": clean_companies,
+        "themes": analysis.get("themes", []),
+        "sentiment": analysis.get("sentiment", "neutral"),
+        "sentiment_reason": analysis.get("sentiment_reason"),
+        "sector": sector_fallback,
+        "industry_verticals": industry_verticals,
+        "activity_types": activity_types,
+        "deal_type": analysis.get("deal_type"),
+        "primary_company": analysis.get("primary_company"),
+        "content_type": article.get("content_type", "snippet"),
+    }
+
+
+def _clean_companies(analysis):
+    """Validate + filter the analysis company list (blocklist + memoized Wikidata)."""
+    out = []
+    for company in extract_company_names(analysis.get("companies", [])):
+        if is_blocked_entity(company):
+            continue
+        if not _resolve_company_valid(company):
+            continue
+        out.append(company)
+    return out
+
+
+def _load_store_dedup_sets():
+    """Pre-fetch existing URLs (30d) and recent normalized titles (24h) ONCE,
+    replacing the per-article dedup SELECTs. Paginated past PostgREST's 1000-row
+    default cap. Read-only; failures degrade to empty sets (store still runs)."""
+    existing_urls, recent_titles = set(), set()
+
+    def _paged(select_col, since_iso):
+        rows_out, page, size = [], 0, 1000
+        while True:
+            resp = (supabase.table("articles").select(select_col)
+                    .gte("ingested_at", since_iso)
+                    .range(page * size, page * size + size - 1).execute())
+            rows = resp.data or []
+            rows_out.extend(rows)
+            if len(rows) < size:
+                return rows_out
+            page += 1
+
+    try:
+        url_cut = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        for r in _paged("url", url_cut):
+            if r.get("url"):
+                existing_urls.add(r["url"])
+    except Exception as ex:
+        print(f"  store: existing-url preload failed (continuing without it): {ex}")
+    try:
+        title_cut = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        for r in _paged("title", title_cut):
+            nt = _normalize_title(r.get("title", "") or "")
+            if nt:
+                recent_titles.add(nt)
+    except Exception as ex:
+        print(f"  store: recent-title preload failed (continuing without it): {ex}")
+    return existing_urls, recent_titles
+
+
+def _bulk_insert(table, rows):
+    """Insert a list of rows in one call; return inserted .data, or None on error."""
+    if not rows:
+        return []
+    try:
+        resp = supabase.table(table).insert(rows).execute()
+        return resp.data or []
+    except Exception as ex:
+        print(f"  store: bulk insert into {table} failed ({len(rows)} rows): {ex}")
+        return None
+
+
+def _insert_articles_chunk(chunk):
+    """Insert a chunk of (article, analysis, companies, row) and yield
+    (article_id, article, analysis, companies). Falls back to per-row inserts if
+    the bulk call fails or returns an ambiguous row count, so one bad row never
+    drops the whole chunk and id->row alignment stays exact."""
+    rows = [row for (_a, _an, _c, row) in chunk]
+    inserted = _bulk_insert("articles", rows)
+    aligned = inserted is not None and len(inserted) == len(chunk)
+    if aligned:
+        for (a, analysis, companies, _row), ins in zip(chunk, inserted):
+            if ins.get("id"):
+                yield (ins["id"], a, analysis, companies)
+        return
+    if inserted is not None and len(inserted) != len(chunk):
+        print(f"  store: bulk insert returned {len(inserted)} for {len(chunk)} rows; per-row fallback")
+    for (a, analysis, companies, row) in chunk:
+        one = _bulk_insert("articles", [row])
+        if one and one[0].get("id"):
+            yield (one[0]["id"], a, analysis, companies)
+
+
+def store_articles_batch(relevant, deadline=None):
+    """Store relevant (article, analysis) pairs with batched dedup + bulk insert.
+
+    Returns (stored_pairs, dupes_skipped) where stored_pairs is a list of
+    (article_id, article) preserving the legacy contract for enrichment/boost.
+
+    `deadline` is an absolute time.time() value (INGEST_PHASE_BUDGET_SEC from the
+    run start). Past it the store stops taking on new work, keeps what is already
+    written, and returns so the pipeline proceeds to synthesize on a partial set
+    instead of running into the 90-min step kill that writes-then-dies.
+
+    SCOPE NOTE: bulk-write correctness (column shape, PostgREST returned-row
+    ordering, UNIQUE guards) is validated at the logic level only in this PR --
+    no live Supabase schema test. The post-merge dispatch is the integration
+    test. Chunk inserts fall back to per-row on any failure to stay safe.
+    """
+    existing_urls, recent_titles = _load_store_dedup_sets()
+    seen_urls, seen_titles = set(existing_urls), set(recent_titles)
+
+    def _over_budget():
+        return deadline is not None and time.time() > deadline
+
+    # Build and flush by chunk in one pass. The budget is checked once per
+    # article (cheap); on a budget stop we break but still flush the in-flight
+    # buffer, so already-built rows are never discarded ("finish in-flight").
+    stored = []   # (article_id, article, analysis, companies)
+    buf = []      # (article, analysis, companies, row) for the current chunk
+    dupes = budget_skipped = 0
+
+    def _flush():
+        if buf:
+            stored.extend(_insert_articles_chunk(buf))
+            buf.clear()
+
+    for idx, (a, analysis) in enumerate(relevant):
+        if _over_budget():
+            budget_skipped = len(relevant) - idx
+            print(f"  [store:budget] ingest budget reached after {idx} of "
+                  f"{len(relevant)}; skipping {budget_skipped} and flushing in-flight")
+            break
+        try:
+            url = a.get("url")
+            if not url or url in seen_urls:
+                dupes += 1
+                continue
+            norm = _normalize_title(a.get("title", ""))
+            if norm and norm in seen_titles:
+                dupes += 1
+                continue
+            companies = _clean_companies(analysis)
+            buf.append((a, analysis, companies, _article_row(a, analysis, companies)))
+            seen_urls.add(url)
+            if norm:
+                seen_titles.add(norm)
+            if len(buf) >= STORE_CHUNK_SIZE:
+                _flush()
+        except Exception as ex:
+            print(f"  store: row build failed [{(a.get('title') or '')[:50]}]: {ex}")
+    _flush()  # final partial chunk (and the in-flight buffer on a budget stop)
+
+    # Resolve entities (memoized, side-effect-free) and bulk-insert
+    # company_mentions for the stored set. Each mention carries its (cid,
+    # alias_id) so we can tally per-mention counts for ONLY the rows that
+    # actually persist, then apply the increments in bulk (decoupled counting).
+    mention_items = []  # (row, cid, alias_id)
+    for (aid, a, analysis, companies) in stored:
+        for company in companies:
+            cid, alias_id = _resolve_company_entity(
+                company, analysis.get("themes", []), analysis.get("sentiment", "neutral")
+            )
+            if cid:
+                mention_items.append((
+                    {
+                        "company_id": cid, "article_id": aid,
+                        "context": (a.get("summary") or "")[:300],
+                        "sentiment": analysis.get("sentiment", "neutral"),
+                    },
+                    cid, alias_id,
+                ))
+    for i in range(0, len(mention_items), STORE_CHUNK_SIZE):
+        if _over_budget():
+            print(f"  [store:budget] budget reached; {len(mention_items) - i} "
+                  f"company_mentions left unwritten (articles already stored)")
+            break
+        chunk = mention_items[i:i + STORE_CHUNK_SIZE]
+        if _bulk_insert("company_mentions", [m[0] for m in chunk]) is not None:
+            for (_row, cid, alias_id) in chunk:
+                _tally_mention(cid, alias_id)
+        else:
+            # per-row fallback: tally only the rows that actually insert
+            for (row, cid, alias_id) in chunk:
+                if _bulk_insert("company_mentions", [row]) is not None:
+                    _tally_mention(cid, alias_id)
+
+    # Apply per-mention counts in bulk for exactly what was persisted. Runs after
+    # the writes (even on a budget-stopped partial set) so companies.mention_count
+    # and aliases.mention_count match the stored company_mentions.
+    increment_mention_counts(supabase, "companies", _RUN_COMPANY_MENTION_TALLY)
+    increment_mention_counts(supabase, "aliases", _RUN_ALIAS_MENTION_TALLY)
+
+    if budget_skipped:
+        print(f"  [store:budget] stored {len(stored)}, skipped {budget_skipped} "
+              f"under budget; proceeding to downstream on the partial set")
+
+    return [(aid, a) for (aid, a, _an, _c) in stored], dupes
+
+
 def store_article(article, analysis):
     try:
         if supabase.table("articles").select("id").eq("url", article["url"]).execute().data:
@@ -972,45 +1273,29 @@ def store_article(article, analysis):
             if is_blocked_entity(company):
                 print(f"  ⊘ Blocked entity: {company}")
                 continue
-            if not is_valid_company(company, supabase):
+            if not _resolve_company_valid(company):
                 continue
             clean_companies.append(company)
 
-        industry_verticals = validate_tags(analysis.get("industry_verticals", []), INDUSTRY_VERTICALS)
-        activity_types = validate_tags(analysis.get("activity_types", []), ACTIVITY_TYPES)
-
-        # Backward compat: write sector as first vertical so synthesize.py and
-        # any frontend code still reading the old column keeps working.
-        sector_fallback = industry_verticals[0] if industry_verticals else ""
-
-        r = supabase.table("articles").insert({
-            "title": article["title"],
-            "summary": article["summary"] or "",
-            "url": article["url"],
-            "source": article["source"],
-            "published_at": article["published_at"],
-            "relevance_score": analysis["relevance_score"],
-            "relevance_reason": analysis.get("relevance_reason", ""),
-            "companies": clean_companies,
-            "themes": analysis.get("themes", []),
-            "sentiment": analysis.get("sentiment", "neutral"),
-            "sentiment_reason": analysis.get("sentiment_reason"),
-            "sector": sector_fallback,
-            "industry_verticals": industry_verticals,
-            "activity_types": activity_types,
-            "deal_type": analysis.get("deal_type"),
-            "primary_company": analysis.get("primary_company"),
-            "content_type": article.get("content_type", "snippet"),
-        }).execute()
+        r = supabase.table("articles").insert(
+            _article_row(article, analysis, clean_companies)
+        ).execute()
         article_id = r.data[0]["id"]
         for company in clean_companies:
-            cid = register_entity(company, supabase, themes=analysis.get("themes", []), sentiment=analysis.get("sentiment", "neutral"))
+            # Legacy single-article path: resolve (no count) then increment this
+            # one mention inline, preserving the original per-mention semantics.
+            cid, alias_id = _resolve_company_entity(
+                company, analysis.get("themes", []), analysis.get("sentiment", "neutral")
+            )
             if cid:
                 supabase.table("company_mentions").insert({
                     "company_id": cid, "article_id": article_id,
                     "context": article["summary"][:300],
                     "sentiment": analysis.get("sentiment", "neutral")
                 }).execute()
+                increment_mention_counts(supabase, "companies", {cid: 1})
+                if alias_id:
+                    increment_mention_counts(supabase, "aliases", {alias_id: 1})
         return article_id
     except Exception as ex:
         print(f"  Store error: {ex}")
@@ -1020,6 +1305,7 @@ def store_article(article, analysis):
 def run_ingestion():
     print(f"\n{'='*60}\nBreakingAlpha Ingestion - {datetime.now().strftime('%Y-%m-%d %H:%M')}\n{'='*60}")
     t_total = time.time()
+    _reset_run_entity_caches()
 
     t = time.time()
     print("\n[1/4] Fetching articles...")
@@ -1042,15 +1328,13 @@ def run_ingestion():
             print(f"  ✓ [{result['relevance_score']}/10] [{result.get('sector','?')[:20]}] {a['title'][:60]}...")
 
     t = time.time()
-    print(f"\n[4/4] Storing {len(relevant)} articles...")
-    stored_pairs = []  # (article_id, article_dict) for enrichment
-    for a, r in relevant:
-        aid = store_article(a, r)
-        if aid:
-            stored_pairs.append((aid, a))
+    print(f"\n[4/4] Storing {len(relevant)} articles (batched)...")
+    stored_pairs, dupes = store_articles_batch(
+        relevant, deadline=t_total + INGEST_PHASE_BUDGET_SEC
+    )
     article_ids = [aid for aid, _ in stored_pairs]
     stored = len(article_ids)
-    print(f"  [4/4] DONE: {stored} stored in {time.time() - t:.2f}s")
+    print(f"  [4/4] DONE: {stored} stored, {dupes} dupes skipped in {time.time() - t:.2f}s")
     print(f"\nINGEST total elapsed: {time.time() - t_total:.2f}s ({stored} new articles stored)")
 
     # Per-wire signal/noise funnel

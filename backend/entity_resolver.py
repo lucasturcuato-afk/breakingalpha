@@ -58,21 +58,29 @@ except ImportError:
 _MAX_RACE_RETRIES = 3
 
 
-def register_entity(
+def resolve_entity(
     surface_form: str,
     supabase,
     themes: Optional[list] = None,
     sentiment: Optional[str] = None,
     _attempt: int = 0,
-) -> str:
+) -> dict:
     """
-    Resolve a raw entity surface form to a canonical companies.id.
+    Resolve a raw entity surface form to a canonical companies.id WITHOUT
+    incrementing mention_count. Returns {"canonical_id", "alias_id"}.
+
+    mention_count is now decoupled from resolution: the ingest store path tallies
+    every PERSISTED mention and applies the increments in bulk via
+    increment_mention_counts(), so a name resolved once per run (memoized) still
+    contributes its full per-mention total to companies.mention_count and
+    aliases.mention_count. This keeps the Company Intel ranking and the V1
+    hit-many tiebreaker correct while collapsing ~13k per-mention round-trips.
 
     Implements the three-branch resolver from
     docs/w2-a-entity-resolution-design.md section 5:
-      - hit-one: increment counts, update last_seen_at, return canonical
-      - hit-many: pick highest mention_count, log ambiguity, return chosen
-      - miss: insert canonical + alias + resolution_log, return new id
+      - hit-one: touch last_seen/themes, return canonical + alias
+      - hit-many: pick highest mention_count (tiebreaker unchanged), log, return
+      - miss: insert canonical + alias (mention_count 0) + resolution_log
 
     Args:
         surface_form: Raw entity name as it appeared in the source. Stored
@@ -96,7 +104,11 @@ def register_entity(
             pass from callers.
 
     Returns:
-        canonical_id (uuid as str) for the resolved entity.
+        {"canonical_id": <uuid str>, "alias_id": <uuid str or None>} for the
+        resolved entity. alias_id is the specific alias row the resolution
+        landed on (the chosen one on hit-many), so the caller can tally
+        aliases.mention_count per-mention against the exact row the V1
+        tiebreaker reads.
     """
     themes = themes or []
     lookup_key = normalize_lookup_key(surface_form)
@@ -115,25 +127,25 @@ def register_entity(
     if len(alias_rows) == 1:
         row = alias_rows[0]
         canonical_id = row["canonical_id"]
-        return _bump_existing(
+        _touch_existing(
             supabase=supabase,
             alias_id=row["id"],
-            alias_mention_count=row.get("mention_count") or 0,
             canonical_id=canonical_id,
             themes=themes,
             now_iso=now_iso,
         )
+        return {"canonical_id": canonical_id, "alias_id": row["id"]}
 
     # Step 4: hit-many. V1 tiebreak = highest mention_count on aliases
-    # (denormalized from companies per design doc section 3).
+    # (denormalized from companies per design doc section 3). Tiebreaker logic
+    # is UNCHANGED -- it still reads aliases.mention_count from the SELECT above.
     if len(alias_rows) > 1:
         chosen = max(alias_rows, key=lambda r: (r.get("mention_count") or 0))
         chosen_canonical_id = chosen["canonical_id"]
         candidate_ids = [r["canonical_id"] for r in alias_rows]
-        _bump_existing(
+        _touch_existing(
             supabase=supabase,
             alias_id=chosen["id"],
-            alias_mention_count=chosen.get("mention_count") or 0,
             canonical_id=chosen_canonical_id,
             themes=themes,
             now_iso=now_iso,
@@ -146,7 +158,7 @@ def register_entity(
             candidate_canonical_ids=candidate_ids,
             was_ambiguous=True,
         )
-        return chosen_canonical_id
+        return {"canonical_id": chosen_canonical_id, "alias_id": chosen["id"]}
 
     # Step 5: miss. Try to INSERT a new canonical companies row, then the
     # alias row, then the resolution_log row.
@@ -186,14 +198,17 @@ def register_entity(
                 or []
             )
             if existing:
-                return existing[0]["id"]
+                # Defensive race path: we resolved the canonical but not the
+                # specific alias row -> alias_id None (its per-mention count is
+                # skipped this run; extremely rare, flagged).
+                return {"canonical_id": existing[0]["id"], "alias_id": None}
             # If even the SELECT misses, raise so the caller sees it
             # rather than silently returning None.
             raise RuntimeError(
-                f"register_entity: could not resolve or insert {surface_form!r} "
+                f"resolve_entity: could not resolve or insert {surface_form!r} "
                 f"after {_MAX_RACE_RETRIES} race retries"
             )
-        return register_entity(
+        return resolve_entity(
             surface_form=surface_form,
             supabase=supabase,
             themes=themes,
@@ -203,16 +218,20 @@ def register_entity(
 
     # Canonical row created (we won the race or there was no race).
     # Now insert the alias pointing to it. surface_form stored RAW;
-    # lookup_key stored normalized.
-    supabase.table("aliases").insert(
+    # lookup_key stored normalized. mention_count starts at 0 -- the bulk
+    # increment_mention_counts() applies the full per-run tally uniformly to new
+    # and existing rows, so a first-seen company mentioned N times lands at
+    # exactly N (was: insert at 1, then N-1 per-mention bumps).
+    alias_ins = supabase.table("aliases").insert(
         {
             "surface_form": surface_form,
             "lookup_key": lookup_key,
             "canonical_id": new_canonical_id,
-            "mention_count": 1,
+            "mention_count": 0,
             "last_seen_at": now_iso,
         }
     ).execute()
+    new_alias_id = (alias_ins.data or [{}])[0].get("id")
 
     _write_resolution_log(
         supabase=supabase,
@@ -223,57 +242,98 @@ def register_entity(
         was_ambiguous=False,
     )
 
-    return new_canonical_id
+    return {"canonical_id": new_canonical_id, "alias_id": new_alias_id}
 
 
-def _bump_existing(
+def _touch_existing(
     *,
     supabase,
     alias_id: str,
-    alias_mention_count: int,
     canonical_id: str,
     themes: list,
     now_iso: str,
-) -> str:
+) -> None:
     """
-    Increment alias and companies mention_counts for an existing canonical,
-    bump aliases.last_seen_at, and union new themes into companies.key_themes.
-
-    Mirrors the UPDATE branch of upsert_company in backend/ingest.py: we
-    read existing key_themes, union with the new themes, write back.
-    sentiment_trend is intentionally NOT updated here (see register_entity
+    Refresh last_seen_at / last_updated and union new themes for an existing
+    canonical + alias. Does NOT touch mention_count -- per-mention counting is
+    applied in bulk by increment_mention_counts() from the ingest store path, so
+    a name resolved once per run (memoized) still tallies every persisted
+    mention. sentiment_trend is intentionally NOT updated here (see resolve_entity
     docstring for the spec-vs-existing-behavior note).
     """
-    # Read current canonical row so we can union themes and increment
-    # mention_count atomically-ish (single UPDATE).
     company_rows = (
         supabase.table("companies")
-        .select("id, mention_count, key_themes")
+        .select("id, key_themes")
         .eq("id", canonical_id)
         .execute()
         .data
         or []
     )
     if company_rows:
-        company = company_rows[0]
-        existing_themes = company.get("key_themes") or []
+        existing_themes = company_rows[0].get("key_themes") or []
         merged_themes = list(set(existing_themes + (themes or [])))
         supabase.table("companies").update(
             {
-                "mention_count": (company.get("mention_count") or 0) + 1,
                 "last_updated": now_iso,
                 "key_themes": merged_themes,
             }
         ).eq("id", canonical_id).execute()
 
     supabase.table("aliases").update(
-        {
-            "mention_count": (alias_mention_count or 0) + 1,
-            "last_seen_at": now_iso,
-        }
+        {"last_seen_at": now_iso}
     ).eq("id", alias_id).execute()
 
-    return canonical_id
+
+def register_entity(
+    surface_form: str,
+    supabase,
+    themes: Optional[list] = None,
+    sentiment: Optional[str] = None,
+    _attempt: int = 0,
+) -> str:
+    """Back-compat shim: resolve and return the canonical id only.
+
+    mention_count is now decoupled (resolve_entity does not increment;
+    increment_mention_counts applies the per-mention tally in bulk). Retained
+    because callers/tests still import register_entity and expect a cid string.
+    """
+    return resolve_entity(
+        surface_form, supabase, themes=themes, sentiment=sentiment, _attempt=_attempt
+    )["canonical_id"]
+
+
+def increment_mention_counts(supabase, table: str, id_to_delta: dict) -> None:
+    """Apply mention_count += delta per id for `table` ("companies" or "aliases").
+
+    Read-modify-write in bulk: one chunked SELECT of the current counts, then one
+    UPDATE per id. PostgREST has no atomic `col = col + n`; a SQL RPC would
+    collapse the writes to a single statement -- flagged as a follow-up. Rows
+    inserted this run start at mention_count 0, so applying the full per-run
+    tally lands new and existing rows uniformly at old_count + tally.
+
+    NOTE: like the prior per-call read-modify-write in _bump_existing, this is
+    not concurrency-safe across parallel writers; the ingest pipeline is the sole
+    writer during a run, so within-run correctness holds.
+    """
+    ids = [i for i, d in id_to_delta.items() if i and d]
+    if not ids:
+        return
+    current = {}
+    for i in range(0, len(ids), 200):
+        chunk = ids[i:i + 200]
+        rows = (
+            supabase.table(table)
+            .select("id, mention_count")
+            .in_("id", chunk)
+            .execute()
+            .data
+            or []
+        )
+        for r in rows:
+            current[r["id"]] = r.get("mention_count") or 0
+    for _id in ids:
+        new_val = current.get(_id, 0) + id_to_delta[_id]
+        supabase.table(table).update({"mention_count": new_val}).eq("id", _id).execute()
 
 
 def _try_insert_canonical(
@@ -292,14 +352,16 @@ def _try_insert_canonical(
 
     Raw SQL intent (single statement; not expressible in supabase-py):
         INSERT INTO companies (name, key_themes, sentiment_trend, mention_count)
-        VALUES ($1, $2, $3, 1)
+        VALUES ($1, $2, $3, 0)
         ON CONFLICT (name) DO NOTHING RETURNING id
     """
     payload = {
         "name": name,
         "key_themes": themes or [],
         "sentiment_trend": sentiment,
-        "mention_count": 1,
+        # Start at 0; increment_mention_counts() applies the full per-run tally
+        # uniformly to new and existing rows (was 1 + per-mention bumps).
+        "mention_count": 0,
     }
     try:
         resp = supabase.table("companies").insert(payload).execute()
