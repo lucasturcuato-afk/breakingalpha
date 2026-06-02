@@ -1236,6 +1236,80 @@ def partition_unseen_articles(articles, existing_urls, recent_titles):
     return fresh, skipped
 
 
+# ---------------------------------------------------------------------------
+# Deterministic SEC bypass. SEC RSS filings (source "SEC 8-K"/"SEC 10-Q") enter
+# with the rigid EDGAR title "{FORM} - {FILER} ({CIK}) (Filer)" and carry 8-K
+# item codes in the summary ("Item N.NN"). We score them deterministically so
+# the SEC feed does not depend on the relevance model. COVERAGE-NEUTRAL on the
+# current model: every pinned score is >=6, matching today's behavior where the
+# model rates all SEC filings 6-10 (0 below the gate in 30d of data).
+# ---------------------------------------------------------------------------
+_SEC_TITLE_RE = re.compile(r"^(8-K|10-Q)\s+-\s+(.+?)\s+\((\d{10})\)\s+\(Filer\)\s*$")
+_SEC_ITEM_RE = re.compile(r"Item (\d+\.\d+)")
+# Material 8-K items keep the filing at the top of the SEC band (8); routine-only
+# items keep it at the gate floor (6). Both stay >=6, so coverage is unchanged.
+_SEC_MATERIAL_8K_ITEMS = {"1.01", "1.03", "2.01", "2.02", "2.03", "3.02", "4.01", "4.02", "5.02"}
+
+
+def _sec_bypass_decision(article):
+    """Return a FilterDecision-shaped result dict for an SEC RSS filing,
+    bypassing the Gemini filter -- or None if the article is not SEC-sourced or
+    its title does not match the canonical EDGAR pattern (~3%), in which case it
+    falls back to the normal LLM filter. Mirrors today's stored SEC behavior:
+    primary_company = filer, companies = [] (SEC filings produce no
+    company_mentions), sentiment = neutral, relevance pinned >=6."""
+    src = article.get("source") or ""
+    if not src.startswith("SEC "):
+        return None
+    m = _SEC_TITLE_RE.match(article.get("title") or "")
+    if not m:
+        return None  # odd title -> normal LLM filter, never force-pinned
+    form, filer = m.group(1), m.group(2).strip()
+    items = set(_SEC_ITEM_RE.findall(article.get("summary") or ""))
+    if form == "10-Q":
+        score, deal = 8, "Earnings"
+    else:  # 8-K
+        score = 8 if (items & _SEC_MATERIAL_8K_ITEMS) else 6
+        deal = "Earnings" if "2.02" in items else "Other"
+    return {
+        "relevant": True,
+        "relevance_score": score,
+        "relevance_reason": f"SEC {form} filing by {filer} (deterministic SEC bypass)",
+        "industry_verticals": [],
+        "activity_types": [],
+        "companies": [],
+        "themes": [],
+        "sentiment": "neutral",
+        "sentiment_reason": "SEC filing; no first-order event tone (deterministic)",
+        "deal_type": deal,
+        "primary_company": filer,
+    }
+
+
+def _apply_filter_with_sec_bypass(fresh, filter_fn):
+    """Route `fresh` through the SEC deterministic bypass plus the Gemini filter.
+
+    SEC filings matching the EDGAR pattern get a deterministic decision; every
+    other article (incl. ~3% of SEC titles that don't match) goes to filter_fn.
+    Returns (results, n_sec, n_llm) where `results` is index-aligned with
+    `fresh`, so callers can zip(fresh, results) exactly as before."""
+    sec_results = {}            # index in `fresh` -> deterministic decision
+    llm_items = []              # (index, article) routed to the Gemini filter
+    for i, a in enumerate(fresh):
+        dec = _sec_bypass_decision(a)
+        if dec is not None:
+            sec_results[i] = dec
+        else:
+            llm_items.append((i, a))
+    llm_results = filter_fn([a for _i, a in llm_items])
+    results = [None] * len(fresh)
+    for i, dec in sec_results.items():
+        results[i] = dec
+    for (i, _a), r in zip(llm_items, llm_results):
+        results[i] = r
+    return results, len(sec_results), len(llm_items)
+
+
 def _bulk_insert(table, rows):
     """Insert a list of rows in one call; return inserted .data, or None on error."""
     if not rows:
@@ -1462,10 +1536,18 @@ def run_ingestion():
         f"{len(fresh)} genuinely-new to filter (of {len(articles)})"
     )
 
+    # SEC deterministic bypass: route SEC-sourced filings around the Gemini
+    # filter and assign their decision fields from the structured EDGAR title +
+    # item codes, so the SEC feed is independent of the relevance model.
+    # Coverage-neutral on the current model (all pinned scores >=6); SEC titles
+    # that don't match the EDGAR pattern (~3%) fall back to the LLM. Results stay
+    # index-aligned with `fresh`, so order/shape are identical downstream.
     t = time.time()
-    print(f"\n[3/4] Filtering {len(fresh)} articles with Gemini (per-article + parallel)...")
-    results = filter_articles(fresh)
-    print(f"  [3/4] DONE: Gemini filter in {time.time() - t:.2f}s")
+    print(f"\n[3/4] Filtering {len(fresh)} fresh articles (SEC pinned deterministically, "
+          f"rest via Gemini per-article + parallel)...")
+    results, n_sec, n_llm = _apply_filter_with_sec_bypass(fresh, filter_articles)
+    print(f"  [3/4] DONE: {n_sec} SEC pinned (no Gemini), Gemini filter on {n_llm} "
+          f"in {time.time() - t:.2f}s")
     relevant = []
     for a, result in zip(fresh, results):
         if result and result.get("relevant") and result.get("relevance_score", 0) >= 6:
