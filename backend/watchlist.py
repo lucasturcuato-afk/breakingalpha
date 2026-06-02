@@ -10,6 +10,13 @@ from supabase import create_client
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 
+# Chunk size for the boost .in_("id", ...) read. Matches the 200-id chunk that
+# #301's chunked .in_ read uses in entity_resolver.increment_mention_counts:
+# 200 UUIDs keep the GET querystring well under the proxy URL limit. The
+# unbatched query overflowed at 1,156 ids (~52 KB URL -> raw 400 'Bad Request')
+# in pipeline run #141. Env-overridable, like #301's STORE_CHUNK_SIZE.
+WATCHLIST_BOOST_CHUNK = int(os.getenv("WATCHLIST_BOOST_CHUNK", "200"))
+
 
 def list_watchlist():
     """Return all watchlist entries ordered by created_at descending."""
@@ -60,6 +67,29 @@ def clear_watchlist():
     return resp.data or []
 
 
+def _fetch_boost_candidates(article_ids):
+    """Fetch the candidate article rows for boosting.
+
+    When article_ids is provided, the .in_("id", ...) filter is split into
+    batches of WATCHLIST_BOOST_CHUNK so the GET querystring never overflows the
+    proxy URL limit (the unbatched query 400'd at 1,156 ids in run #141); the
+    batch results are concatenated in input-batch order. When article_ids is
+    empty/None the behaviour is unchanged: a single unfiltered query over all
+    articles (preserved deliberately -- the caller always passes the stored ids).
+    """
+    cols = "id, title, summary, companies, relevance_score"
+    if not article_ids:
+        return supabase.table("articles").select(cols).execute().data or []
+
+    rows = []
+    for i in range(0, len(article_ids), WATCHLIST_BOOST_CHUNK):
+        chunk = article_ids[i:i + WATCHLIST_BOOST_CHUNK]
+        rows.extend(
+            supabase.table("articles").select(cols).in_("id", chunk).execute().data or []
+        )
+    return rows
+
+
 def boost_watchlist_relevance(article_ids: list = None) -> int:
     """
     For articles whose title, summary, or companies field contains a watchlist
@@ -73,10 +103,7 @@ def boost_watchlist_relevance(article_ids: list = None) -> int:
 
     identifiers = [entry["identifier"].lower() for entry in watchlist]
 
-    query = supabase.table("articles").select("id, title, summary, companies, relevance_score")
-    if article_ids:
-        query = query.in_("id", article_ids)
-    articles = query.execute().data or []
+    articles = _fetch_boost_candidates(article_ids)
 
     boosted = 0
     for article in articles:
