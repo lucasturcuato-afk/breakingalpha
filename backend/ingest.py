@@ -775,6 +775,7 @@ def filter_article(article):
             config=types.GenerateContentConfig(
                 temperature=0.2,
                 max_output_tokens=2048,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
                 response_mime_type="application/json",
                 response_schema=FilterDecision,
             ),
