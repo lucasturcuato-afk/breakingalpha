@@ -5,6 +5,7 @@ stores in Supabase.
 """
 
 import concurrent.futures
+import threading
 import os, json, re, random, socket, time, urllib.error, urllib.request, requests, feedparser, html as _html
 from datetime import datetime, timezone, timedelta
 from typing import Literal, Optional
@@ -761,6 +762,46 @@ def _is_rate_limit_error(ex) -> bool:
     return "429" in s or "RESOURCE_EXHAUSTED" in s
 
 
+# ---------------------------------------------------------------------------
+# Filter-step Gemini usage accounting (FILTER ONLY). Best-effort, thread-safe,
+# and fully exception-guarded so it can NEVER break filtering. Accumulates one
+# summed line per run (logged at the end of filter_articles), not per call.
+# ---------------------------------------------------------------------------
+_FILTER_USAGE_LOCK = threading.Lock()
+_FILTER_USAGE = {"calls": 0, "prompt": 0, "candidates": 0, "thoughts": 0,
+                 "cached": 0, "total": 0}
+
+
+def _reset_filter_usage() -> None:
+    with _FILTER_USAGE_LOCK:
+        for k in _FILTER_USAGE:
+            _FILTER_USAGE[k] = 0
+
+
+def _accumulate_filter_usage(response) -> None:
+    """Sum one filter response's token usage into the run totals. Defensive on
+    a missing usage_metadata or any None field; swallows everything so logging
+    can never raise into the filter path."""
+    try:
+        um = getattr(response, "usage_metadata", None)
+        if um is None:
+            return
+
+        def _g(name):
+            v = getattr(um, name, None)
+            return int(v) if v else 0
+
+        with _FILTER_USAGE_LOCK:
+            _FILTER_USAGE["calls"] += 1
+            _FILTER_USAGE["prompt"] += _g("prompt_token_count")
+            _FILTER_USAGE["candidates"] += _g("candidates_token_count")
+            _FILTER_USAGE["thoughts"] += _g("thoughts_token_count")
+            _FILTER_USAGE["cached"] += _g("cached_content_token_count")
+            _FILTER_USAGE["total"] += _g("total_token_count")
+    except Exception:
+        pass
+
+
 def filter_article(article):
     prompt = FILTER_PROMPT.format(
         title=article["title"],
@@ -791,6 +832,7 @@ def filter_article(article):
             # Inner single-worker pool enforces the 30s per-call hard timeout.
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
                 response = _ex.submit(_call).result(timeout=30)
+            _accumulate_filter_usage(response)
             text = (response.text or "").strip()
             if text.startswith("```"):
                 text = text.split("```")[1]
@@ -861,6 +903,7 @@ def filter_articles(articles):
     if not articles:
         return []
 
+    _reset_filter_usage()
     total = len(articles)
     print(
         f"  filter: {total} articles, single-pool workers={FILTER_PARALLEL_WORKERS}, "
@@ -928,6 +971,24 @@ def filter_articles(articles):
             f"  filter done: {kept} filtered, {skipped} dropped, "
             f"elapsed {time.time() - t0:.0f}s (~{done / max(time.time() - t0, 1e-6) * 60.0:.0f} RPM)"
         )
+
+    # One summed usage line for the whole filter step (never per-call). Output
+    # billing is candidates + thoughts (both at the output rate); input is
+    # prompt tokens. Cost is ESTIMATED -- the billing meter is the source of
+    # truth. Fully guarded so it cannot abort the step.
+    try:
+        with _FILTER_USAGE_LOCK:
+            u = dict(_FILTER_USAGE)
+        out_tok = u["candidates"] + u["thoughts"]
+        est = u["prompt"] * (0.30 / 1_000_000) + out_tok * (2.50 / 1_000_000)
+        print(
+            f"  [filter:usage] calls={u['calls']} prompt_tok={u['prompt']} "
+            f"candidates_tok={u['candidates']} thoughts_tok={u['thoughts']} "
+            f"cached_tok={u['cached']} total_tok={u['total']} "
+            f"est_cost=${est:.4f} ESTIMATED (@ $0.30/1M in, $2.50/1M out; meter is truth)"
+        )
+    except Exception as ex:
+        print(f"  [filter:usage] summary skipped: {ex}")
 
     return results
 
