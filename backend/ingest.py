@@ -953,6 +953,58 @@ def _normalize_title(title):
     return t
 
 
+# --- Within-run entity resolution cache (store-scale fix) ------------------
+# At gnews scale a single run sees ~13k articles that map to far fewer unique
+# company names. Resolving each unique surface form once per run -- both the
+# Wikidata validation and the canonical-id lookup -- collapses the Wikidata API
+# misses and the register_entity DB round-trips from per-mention to
+# per-unique-name. is_valid_company already does its own Supabase cache-first
+# lookup (backend/wikidata.py); this is an additional in-process memo so a name
+# seen 40 times this run hits neither Wikidata nor the cache table 40 times.
+#
+# FLAGGED FOR REVIEW (entity_resolver.py semantics, Lucas's lane): memoizing
+# register_entity means its per-call side effects -- companies.mention_count
+# increment, last_seen_at refresh, key_themes union -- now fire once per unique
+# name per run instead of once per article-mention. The authoritative
+# per-mention record is still written to company_mentions for every mention;
+# only the denormalized companies.mention_count changes (it stops being inflated
+# by gnews per-ticker fan-out). If per-mention counting must be preserved, the
+# count step has to move out of register_entity, which is out of this PR's
+# ingest.py-only scope.
+_RUN_VALID_COMPANY_CACHE: dict = {}
+_RUN_ENTITY_ID_CACHE: dict = {}
+
+
+def _reset_run_entity_caches() -> None:
+    """Clear the per-run entity memo. Called at the top of run_ingestion so a
+    long-lived process does not carry resolutions across runs (in CI each run is
+    a fresh process, so this is belt-and-suspenders)."""
+    _RUN_VALID_COMPANY_CACHE.clear()
+    _RUN_ENTITY_ID_CACHE.clear()
+
+
+def _resolve_company_valid(company: str) -> bool:
+    """is_valid_company() memoized for the run. Pure validation -> safe to cache."""
+    if company in _RUN_VALID_COMPANY_CACHE:
+        return _RUN_VALID_COMPANY_CACHE[company]
+    ok = is_valid_company(company, supabase)
+    _RUN_VALID_COMPANY_CACHE[company] = ok
+    return ok
+
+
+def _resolve_company_id(company: str, themes, sentiment):
+    """register_entity() memoized by surface form for the run. See FLAGGED note."""
+    if company in _RUN_ENTITY_ID_CACHE:
+        return _RUN_ENTITY_ID_CACHE[company]
+    try:
+        cid = register_entity(company, supabase, themes=themes, sentiment=sentiment)
+    except Exception as ex:
+        print(f"  register_entity error [{company!r}]: {ex}")
+        cid = None
+    _RUN_ENTITY_ID_CACHE[company] = cid
+    return cid
+
+
 def store_article(article, analysis):
     try:
         if supabase.table("articles").select("id").eq("url", article["url"]).execute().data:
@@ -972,7 +1024,7 @@ def store_article(article, analysis):
             if is_blocked_entity(company):
                 print(f"  ⊘ Blocked entity: {company}")
                 continue
-            if not is_valid_company(company, supabase):
+            if not _resolve_company_valid(company):
                 continue
             clean_companies.append(company)
 
@@ -1004,7 +1056,7 @@ def store_article(article, analysis):
         }).execute()
         article_id = r.data[0]["id"]
         for company in clean_companies:
-            cid = register_entity(company, supabase, themes=analysis.get("themes", []), sentiment=analysis.get("sentiment", "neutral"))
+            cid = _resolve_company_id(company, analysis.get("themes", []), analysis.get("sentiment", "neutral"))
             if cid:
                 supabase.table("company_mentions").insert({
                     "company_id": cid, "article_id": article_id,
@@ -1020,6 +1072,7 @@ def store_article(article, analysis):
 def run_ingestion():
     print(f"\n{'='*60}\nBreakingAlpha Ingestion - {datetime.now().strftime('%Y-%m-%d %H:%M')}\n{'='*60}")
     t_total = time.time()
+    _reset_run_entity_caches()
 
     t = time.time()
     print("\n[1/4] Fetching articles...")
