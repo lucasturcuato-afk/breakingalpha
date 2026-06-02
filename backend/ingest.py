@@ -1114,6 +1114,35 @@ def _load_store_dedup_sets():
     return existing_urls, recent_titles
 
 
+def partition_unseen_articles(articles, existing_urls, recent_titles):
+    """Split a fetched pool into (fresh, skipped_count) against the store's dedup
+    key, so dedup-before-filter only sends genuinely-new articles to the Gemini
+    filter. An article is already-in-DB if its exact url is in existing_urls
+    (articles.url, 30d) OR its normalized title is in recent_titles
+    (articles.title, 24h) -- the SAME key store_articles_batch uses.
+
+    This deliberately does NOT collapse within-run duplicates (two fresh
+    articles with the same normalized title): that is left to the store's own
+    in-batch dedup, exactly as today, so the filter input is identical to the
+    current pool minus the rows the store would have dropped as already-stored.
+    Already-in-DB rows produce zero DB mutations today (no insert, no mention,
+    no mention_count) -- skipping them pre-filter removes only the wasted LLM
+    call and changes no stored data.
+    """
+    fresh, skipped = [], 0
+    for a in articles:
+        url = a.get("url")
+        if url and url in existing_urls:
+            skipped += 1
+            continue
+        nt = _normalize_title(a.get("title", "") or "")
+        if nt and nt in recent_titles:
+            skipped += 1
+            continue
+        fresh.append(a)
+    return fresh, skipped
+
+
 def _bulk_insert(table, rows):
     """Insert a list of rows in one call; return inserted .data, or None on error."""
     if not rows:
@@ -1147,7 +1176,7 @@ def _insert_articles_chunk(chunk):
             yield (one[0]["id"], a, analysis, companies)
 
 
-def store_articles_batch(relevant, deadline=None):
+def store_articles_batch(relevant, deadline=None, dedup_sets=None):
     """Store relevant (article, analysis) pairs with batched dedup + bulk insert.
 
     Returns (stored_pairs, dupes_skipped) where stored_pairs is a list of
@@ -1158,12 +1187,21 @@ def store_articles_batch(relevant, deadline=None):
     written, and returns so the pipeline proceeds to synthesize on a partial set
     instead of running into the 90-min step kill that writes-then-dies.
 
+    `dedup_sets` is an optional pre-loaded (existing_urls, recent_titles) tuple.
+    When the caller already partitioned the fetched pool against the same sets
+    (dedup-before-filter), it passes them in so the store does not re-read them
+    from the DB. The in-batch dedup (url/title seen within this run) still runs,
+    so behavior is identical whether the sets are loaded here or upstream.
+
     SCOPE NOTE: bulk-write correctness (column shape, PostgREST returned-row
     ordering, UNIQUE guards) is validated at the logic level only in this PR --
     no live Supabase schema test. The post-merge dispatch is the integration
     test. Chunk inserts fall back to per-row on any failure to stay safe.
     """
-    existing_urls, recent_titles = _load_store_dedup_sets()
+    if dedup_sets is not None:
+        existing_urls, recent_titles = dedup_sets
+    else:
+        existing_urls, recent_titles = _load_store_dedup_sets()
     seen_urls, seen_titles = set(existing_urls), set(recent_titles)
 
     def _over_budget():
@@ -1317,12 +1355,26 @@ def run_ingestion():
     articles = [a for a in articles if not matches_ingest_blocklist(a)]
     print(f"  [2/4] DONE: {len(articles)} after keyword pre-filter in {time.time() - t:.2f}s")
 
+    # Dedup-before-filter: drop articles already in the DB BEFORE the per-article
+    # Gemini filter so we only spend filter calls on genuinely-new stories. Uses
+    # the SAME dedup key as the store (url 30d / normalized title 24h); the sets
+    # are loaded once here and handed to store_articles_batch so the DB read is
+    # not repeated. Already-in-DB rows produce no stored data today (they are
+    # skipped at store with no mention/count side effect), so removing them here
+    # is data-neutral -- it only saves the redundant filter calls.
+    dedup_sets = _load_store_dedup_sets()
+    fresh, prefilter_skipped = partition_unseen_articles(articles, *dedup_sets)
+    print(
+        f"  [3/4] dedup-before-filter: {prefilter_skipped} already-in-DB skipped, "
+        f"{len(fresh)} genuinely-new to filter (of {len(articles)})"
+    )
+
     t = time.time()
-    print(f"\n[3/4] Filtering {len(articles)} articles with Gemini (per-article + parallel)...")
-    results = filter_articles(articles)
+    print(f"\n[3/4] Filtering {len(fresh)} articles with Gemini (per-article + parallel)...")
+    results = filter_articles(fresh)
     print(f"  [3/4] DONE: Gemini filter in {time.time() - t:.2f}s")
     relevant = []
-    for a, result in zip(articles, results):
+    for a, result in zip(fresh, results):
         if result and result.get("relevant") and result.get("relevance_score", 0) >= 6:
             relevant.append((a, result))
             print(f"  ✓ [{result['relevance_score']}/10] [{result.get('sector','?')[:20]}] {a['title'][:60]}...")
@@ -1330,7 +1382,7 @@ def run_ingestion():
     t = time.time()
     print(f"\n[4/4] Storing {len(relevant)} articles (batched)...")
     stored_pairs, dupes = store_articles_batch(
-        relevant, deadline=t_total + INGEST_PHASE_BUDGET_SEC
+        relevant, deadline=t_total + INGEST_PHASE_BUDGET_SEC, dedup_sets=dedup_sets
     )
     article_ids = [aid for aid, _ in stored_pairs]
     stored = len(article_ids)
