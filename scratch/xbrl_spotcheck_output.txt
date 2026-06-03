@@ -1,0 +1,32 @@
+================================================================================
+SPOT-CHECK 1 — cross-endpoint agreement (Company Concept vs Company Facts)
+================================================================================
+
+  AAPL us-gaap:Assets  latest 10-K @ 2025-09-27
+    companyfacts  = 359,241,000,000
+    companyconcept= 359,241,000,000
+    MATCH: True   accn=0000320193-25-000079
+
+  NVDA us-gaap:Revenues  latest 10-K @ 2026-01-25
+    companyfacts  = 215,938,000,000
+    companyconcept= 215,938,000,000
+    MATCH: True   accn=0001045810-26-000021
+
+================================================================================
+SPOT-CHECK 2 — internal tie-out: GrossProfit == Revenue - CostOfRevenue (latest 10-K)
+================================================================================
+  AAPL  @ 2025-09-27  Rev  416.161B - CoR 220.960B =  195.201B vs GrossProfit  195.201B  diff=+0.0M  [OK]
+  NVDA  @ 2026-01-25  Rev  215.938B - CoR  62.475B =  153.463B vs GrossProfit  153.463B  diff=+0.0M  [OK]
+  CRWD  @ 2026-01-31  Rev    4.812B - CoR   1.219B =    3.593B vs GrossProfit    3.593B  diff=+0.0M  [OK]
+  DDOG  @ 2025-12-31  Rev    3.427B - CoR   0.687B =    2.740B vs GrossProfit    2.740B  diff=+0.0M  [OK]
+  SNOW  @ 2026-01-31  Rev    4.684B - CoR   1.538B =    3.146B vs GrossProfit    3.146B  diff=+0.0M  [OK]
+
+================================================================================
+SPOT-CHECK 3 — source filing URLs (open and eyeball the income statement)
+================================================================================
+  AAPL  FY NetIncome=112.010B  end=2025-09-27  accn=0000320193-25-000079
+    https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany (or) https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/
+  NVDA  FY NetIncome=120.067B  end=2026-01-25  accn=0001045810-26-000021
+    https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany (or) https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/
+
+DONE (read-only).

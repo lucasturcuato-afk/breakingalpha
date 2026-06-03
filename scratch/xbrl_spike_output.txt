@@ -1,0 +1,342 @@
+============================================================================================
+SEC XBRL Company Facts SPIKE — read-only, public API, no DB writes
+============================================================================================
+
+############################################################################################
+# AAPL  (Apple Inc.)   CIK 0000320193
+############################################################################################
+  taxonomies present: ['dei', 'us-gaap']  | #us-gaap concepts tagged: 503  | #dei: 2
+
+  --- LATEST ANNUAL (10-K) ---
+    Revenue              $416.161B  (USD)             <- us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax
+      fy=2025 fp=FY form=10-K period[2024-09-29->2025-09-27] accn=0000320193-25-000079 filed=2025-10-31 frame=CY2025
+    CostOfRevenue        $220.960B  (USD)             <- us-gaap:CostOfGoodsAndServicesSold
+      fy=2025 fp=FY form=10-K period[2024-09-29->2025-09-27] accn=0000320193-25-000079 filed=2025-10-31 frame=CY2025
+    GrossProfit          $195.201B  (USD)             <- us-gaap:GrossProfit
+      fy=2025 fp=FY form=10-K period[2024-09-29->2025-09-27] accn=0000320193-25-000079 filed=2025-10-31 frame=CY2025
+    OperatingIncome      $133.050B  (USD)             <- us-gaap:OperatingIncomeLoss
+      fy=2025 fp=FY form=10-K period[2024-09-29->2025-09-27] accn=0000320193-25-000079 filed=2025-10-31 frame=CY2025
+    NetIncome            $112.010B  (USD)             <- us-gaap:NetIncomeLoss
+      fy=2025 fp=FY form=10-K period[2024-09-29->2025-09-27] accn=0000320193-25-000079 filed=2025-10-31 frame=CY2025
+    EPS_Basic            7.49  (USD/shares)           <- us-gaap:EarningsPerShareBasic
+      fy=2025 fp=FY form=10-K period[2024-09-29->2025-09-27] accn=0000320193-25-000079 filed=2025-10-31 frame=CY2025
+    EPS_Diluted          7.46  (USD/shares)           <- us-gaap:EarningsPerShareDiluted
+      fy=2025 fp=FY form=10-K period[2024-09-29->2025-09-27] accn=0000320193-25-000079 filed=2025-10-31 frame=CY2025
+    OperatingCashFlow    $111.482B  (USD)             <- us-gaap:NetCashProvidedByUsedInOperatingActivities
+      fy=2025 fp=FY form=10-K period[2024-09-29->2025-09-27] accn=0000320193-25-000079 filed=2025-10-31 frame=CY2025
+    TotalAssets          $359.241B  (USD)             <- us-gaap:Assets
+      fy=2025 fp=FY form=10-K period[@ 2025-09-27] accn=0000320193-25-000079 filed=2025-10-31 frame=-
+    TotalLiabilities     $285.508B  (USD)             <- us-gaap:Liabilities
+      fy=2025 fp=FY form=10-K period[@ 2025-09-27] accn=0000320193-25-000079 filed=2025-10-31 frame=-
+    StockholdersEquity   $73.733B  (USD)              <- us-gaap:StockholdersEquity
+      fy=2025 fp=FY form=10-K period[@ 2025-09-27] accn=0000320193-25-000079 filed=2025-10-31 frame=-
+    CashAndEquivalents   $35.934B  (USD)              <- us-gaap:CashAndCashEquivalentsAtCarryingValue
+      fy=2025 fp=FY form=10-K period[@ 2025-09-27] accn=0000320193-25-000079 filed=2025-10-31 frame=-
+    GrossMargin(derived) 46.91%  (GrossProfit/Revenue)
+
+  --- LATEST QUARTER (10-Q) ---
+    Revenue              $111.184B  (USD)             <- us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax
+      fy=2026 fp=Q2 form=10-Q period[2025-12-28->2026-03-28] accn=0000320193-26-000013 filed=2026-05-01 frame=CY2026Q1
+    CostOfRevenue        $56.403B  (USD)              <- us-gaap:CostOfGoodsAndServicesSold
+      fy=2026 fp=Q2 form=10-Q period[2025-12-28->2026-03-28] accn=0000320193-26-000013 filed=2026-05-01 frame=CY2026Q1
+    GrossProfit          $54.781B  (USD)              <- us-gaap:GrossProfit
+      fy=2026 fp=Q2 form=10-Q period[2025-12-28->2026-03-28] accn=0000320193-26-000013 filed=2026-05-01 frame=CY2026Q1
+    OperatingIncome      $35.885B  (USD)              <- us-gaap:OperatingIncomeLoss
+      fy=2026 fp=Q2 form=10-Q period[2025-12-28->2026-03-28] accn=0000320193-26-000013 filed=2026-05-01 frame=CY2026Q1
+    NetIncome            $29.578B  (USD)              <- us-gaap:NetIncomeLoss
+      fy=2026 fp=Q2 form=10-Q period[2025-12-28->2026-03-28] accn=0000320193-26-000013 filed=2026-05-01 frame=CY2026Q1
+    EPS_Basic            2.02  (USD/shares)           <- us-gaap:EarningsPerShareBasic
+      fy=2026 fp=Q2 form=10-Q period[2025-12-28->2026-03-28] accn=0000320193-26-000013 filed=2026-05-01 frame=CY2026Q1
+    EPS_Diluted          2.01  (USD/shares)           <- us-gaap:EarningsPerShareDiluted
+      fy=2026 fp=Q2 form=10-Q period[2025-12-28->2026-03-28] accn=0000320193-26-000013 filed=2026-05-01 frame=CY2026Q1
+    OperatingCashFlow    $82.627B  (USD)              <- us-gaap:NetCashProvidedByUsedInOperatingActivities
+      fy=2026 fp=Q2 form=10-Q period[2025-09-28->2026-03-28] accn=0000320193-26-000013 filed=2026-05-01 frame=-
+    TotalAssets          $371.082B  (USD)             <- us-gaap:Assets
+      fy=2026 fp=Q2 form=10-Q period[@ 2026-03-28] accn=0000320193-26-000013 filed=2026-05-01 frame=CY2026Q1I
+    TotalLiabilities     $264.591B  (USD)             <- us-gaap:Liabilities
+      fy=2026 fp=Q2 form=10-Q period[@ 2026-03-28] accn=0000320193-26-000013 filed=2026-05-01 frame=CY2026Q1I
+    StockholdersEquity   $106.491B  (USD)             <- us-gaap:StockholdersEquity
+      fy=2026 fp=Q2 form=10-Q period[@ 2026-03-28] accn=0000320193-26-000013 filed=2026-05-01 frame=CY2026Q1I
+    CashAndEquivalents   $45.572B  (USD)              <- us-gaap:CashAndCashEquivalentsAtCarryingValue
+      fy=2026 fp=Q2 form=10-Q period[@ 2026-03-28] accn=0000320193-26-000013 filed=2026-05-01 frame=CY2026Q1I
+    GrossMargin(derived) 49.27%  (GrossProfit/Revenue)
+
+  --- SEGMENTS probe ---
+    us-gaap keys containing 'Segment': ['SegmentReportingInformationOperatingIncomeLoss', 'SegmentReportingReconcilingItemsAssets', 'SegmentReportingSegmentAssets']
+    NOTE: Company Facts returns only the consolidated value per concept;
+    per-segment (dimensional) breakdowns are NOT present here.
+
+############################################################################################
+# NVDA  (NVIDIA CORP)   CIK 0001045810
+############################################################################################
+  taxonomies present: ['dei', 'invest', 'us-gaap', 'srt', 'ecd']  | #us-gaap concepts tagged: 626  | #dei: 2
+
+  --- LATEST ANNUAL (10-K) ---
+    Revenue              $215.938B  (USD)             <- us-gaap:Revenues
+      fy=2026 fp=FY form=10-K period[2025-01-27->2026-01-25] accn=0001045810-26-000021 filed=2026-02-25 frame=CY2025
+    CostOfRevenue        $62.475B  (USD)              <- us-gaap:CostOfRevenue
+      fy=2026 fp=FY form=10-K period[2025-01-27->2026-01-25] accn=0001045810-26-000021 filed=2026-02-25 frame=CY2025
+    GrossProfit          $153.463B  (USD)             <- us-gaap:GrossProfit
+      fy=2026 fp=FY form=10-K period[2025-01-27->2026-01-25] accn=0001045810-26-000021 filed=2026-02-25 frame=CY2025
+    OperatingIncome      $130.387B  (USD)             <- us-gaap:OperatingIncomeLoss
+      fy=2026 fp=FY form=10-K period[2025-01-27->2026-01-25] accn=0001045810-26-000021 filed=2026-02-25 frame=CY2025
+    NetIncome            $120.067B  (USD)             <- us-gaap:NetIncomeLoss
+      fy=2026 fp=FY form=10-K period[2025-01-27->2026-01-25] accn=0001045810-26-000021 filed=2026-02-25 frame=-
+    EPS_Basic            4.93  (USD/shares)           <- us-gaap:EarningsPerShareBasic
+      fy=2026 fp=FY form=10-K period[2025-01-27->2026-01-25] accn=0001045810-26-000021 filed=2026-02-25 frame=CY2025
+    EPS_Diluted          4.9  (USD/shares)            <- us-gaap:EarningsPerShareDiluted
+      fy=2026 fp=FY form=10-K period[2025-01-27->2026-01-25] accn=0001045810-26-000021 filed=2026-02-25 frame=CY2025
+    OperatingCashFlow    $102.718B  (USD)             <- us-gaap:NetCashProvidedByUsedInOperatingActivities
+      fy=2026 fp=FY form=10-K period[2025-01-27->2026-01-25] accn=0001045810-26-000021 filed=2026-02-25 frame=CY2025
+    TotalAssets          $206.803B  (USD)             <- us-gaap:Assets
+      fy=2026 fp=FY form=10-K period[@ 2026-01-25] accn=0001045810-26-000021 filed=2026-02-25 frame=-
+    TotalLiabilities     $49.510B  (USD)              <- us-gaap:Liabilities
+      fy=2026 fp=FY form=10-K period[@ 2026-01-25] accn=0001045810-26-000021 filed=2026-02-25 frame=-
+    StockholdersEquity   $157.293B  (USD)             <- us-gaap:StockholdersEquity
+      fy=2026 fp=FY form=10-K period[@ 2026-01-25] accn=0001045810-26-000021 filed=2026-02-25 frame=-
+    CashAndEquivalents   $10.605B  (USD)              <- us-gaap:CashAndCashEquivalentsAtCarryingValue
+      fy=2026 fp=FY form=10-K period[@ 2026-01-25] accn=0001045810-26-000021 filed=2026-02-25 frame=-
+    GrossMargin(derived) 71.07%  (GrossProfit/Revenue)
+
+  --- LATEST QUARTER (10-Q) ---
+    Revenue              $81.615B  (USD)              <- us-gaap:Revenues
+      fy=2027 fp=Q1 form=10-Q period[2026-01-26->2026-04-26] accn=0001045810-26-000052 filed=2026-05-20 frame=CY2026Q1
+    CostOfRevenue        $20.458B  (USD)              <- us-gaap:CostOfRevenue
+      fy=2027 fp=Q1 form=10-Q period[2026-01-26->2026-04-26] accn=0001045810-26-000052 filed=2026-05-20 frame=CY2026Q1
+    GrossProfit          $61.157B  (USD)              <- us-gaap:GrossProfit
+      fy=2027 fp=Q1 form=10-Q period[2026-01-26->2026-04-26] accn=0001045810-26-000052 filed=2026-05-20 frame=CY2026Q1
+    OperatingIncome      $53.536B  (USD)              <- us-gaap:OperatingIncomeLoss
+      fy=2027 fp=Q1 form=10-Q period[2026-01-26->2026-04-26] accn=0001045810-26-000052 filed=2026-05-20 frame=CY2026Q1
+    NetIncome            $58.321B  (USD)              <- us-gaap:NetIncomeLoss
+      fy=2027 fp=Q1 form=10-Q period[2026-01-26->2026-04-26] accn=0001045810-26-000052 filed=2026-05-20 frame=CY2026Q1
+    EPS_Basic            2.4  (USD/shares)            <- us-gaap:EarningsPerShareBasic
+      fy=2027 fp=Q1 form=10-Q period[2026-01-26->2026-04-26] accn=0001045810-26-000052 filed=2026-05-20 frame=CY2026Q1
+    EPS_Diluted          2.39  (USD/shares)           <- us-gaap:EarningsPerShareDiluted
+      fy=2027 fp=Q1 form=10-Q period[2026-01-26->2026-04-26] accn=0001045810-26-000052 filed=2026-05-20 frame=CY2026Q1
+    OperatingCashFlow    $50.344B  (USD)              <- us-gaap:NetCashProvidedByUsedInOperatingActivities
+      fy=2027 fp=Q1 form=10-Q period[2026-01-26->2026-04-26] accn=0001045810-26-000052 filed=2026-05-20 frame=CY2026Q1
+    TotalAssets          $259.474B  (USD)             <- us-gaap:Assets
+      fy=2027 fp=Q1 form=10-Q period[@ 2026-04-26] accn=0001045810-26-000052 filed=2026-05-20 frame=CY2026Q1I
+    TotalLiabilities     $64.000B  (USD)              <- us-gaap:Liabilities
+      fy=2027 fp=Q1 form=10-Q period[@ 2026-04-26] accn=0001045810-26-000052 filed=2026-05-20 frame=CY2026Q1I
+    StockholdersEquity   $195.474B  (USD)             <- us-gaap:StockholdersEquity
+      fy=2027 fp=Q1 form=10-Q period[@ 2026-04-26] accn=0001045810-26-000052 filed=2026-05-20 frame=CY2026Q1I
+    CashAndEquivalents   $13.237B  (USD)              <- us-gaap:CashAndCashEquivalentsAtCarryingValue
+      fy=2027 fp=Q1 form=10-Q period[@ 2026-04-26] accn=0001045810-26-000052 filed=2026-05-20 frame=CY2026Q1I
+    GrossMargin(derived) 74.93%  (GrossProfit/Revenue)
+
+  --- SEGMENTS probe ---
+    us-gaap keys containing 'Segment': ['NumberOfReportableSegments', 'NumberOfOperatingSegments']
+    NOTE: Company Facts returns only the consolidated value per concept;
+    per-segment (dimensional) breakdowns are NOT present here.
+
+############################################################################################
+# CRWD  (CrowdStrike Holdings, Inc.)   CIK 0001535527
+############################################################################################
+  taxonomies present: ['dei', 'us-gaap', 'ecd']  | #us-gaap concepts tagged: 430  | #dei: 2
+
+  --- LATEST ANNUAL (10-K) ---
+    Revenue              $4.812B  (USD)               <- us-gaap:RevenueFromContractWithCustomerIncludingAssessedTax
+      fy=2026 fp=FY form=10-K period[2025-02-01->2026-01-31] accn=0001535527-26-000010 filed=2026-03-05 frame=CY2025
+    CostOfRevenue        $1.219B  (USD)               <- us-gaap:CostOfGoodsAndServicesSold
+      fy=2026 fp=FY form=10-K period[2025-02-01->2026-01-31] accn=0001535527-26-000010 filed=2026-03-05 frame=CY2025
+    GrossProfit          $3.593B  (USD)               <- us-gaap:GrossProfit
+      fy=2026 fp=FY form=10-K period[2025-02-01->2026-01-31] accn=0001535527-26-000010 filed=2026-03-05 frame=CY2025
+    OperatingIncome      $-293.292M  (USD)            <- us-gaap:OperatingIncomeLoss
+      fy=2026 fp=FY form=10-K period[2025-02-01->2026-01-31] accn=0001535527-26-000010 filed=2026-03-05 frame=CY2025
+    NetIncome            $-162.502M  (USD)            <- us-gaap:NetIncomeLoss
+      fy=2026 fp=FY form=10-K period[2025-02-01->2026-01-31] accn=0001535527-26-000010 filed=2026-03-05 frame=-
+    EPS_Basic            -0.65  (USD/shares)          <- us-gaap:EarningsPerShareBasic
+      fy=2026 fp=FY form=10-K period[2025-02-01->2026-01-31] accn=0001535527-26-000010 filed=2026-03-05 frame=CY2025
+    EPS_Diluted          -0.65  (USD/shares)          <- us-gaap:EarningsPerShareDiluted
+      fy=2026 fp=FY form=10-K period[2025-02-01->2026-01-31] accn=0001535527-26-000010 filed=2026-03-05 frame=CY2025
+    OperatingCashFlow    $1.612B  (USD)               <- us-gaap:NetCashProvidedByUsedInOperatingActivities
+      fy=2026 fp=FY form=10-K period[2025-02-01->2026-01-31] accn=0001535527-26-000010 filed=2026-03-05 frame=CY2025
+    TotalAssets          $11.087B  (USD)              <- us-gaap:Assets
+      fy=2026 fp=FY form=10-K period[@ 2026-01-31] accn=0001535527-26-000010 filed=2026-03-05 frame=CY2025Q4I
+    TotalLiabilities     $6.614B  (USD)               <- us-gaap:Liabilities
+      fy=2026 fp=FY form=10-K period[@ 2026-01-31] accn=0001535527-26-000010 filed=2026-03-05 frame=CY2025Q4I
+    StockholdersEquity   $4.428B  (USD)               <- us-gaap:StockholdersEquity
+      fy=2026 fp=FY form=10-K period[@ 2026-01-31] accn=0001535527-26-000010 filed=2026-03-05 frame=CY2025Q4I
+    CashAndEquivalents   $5.230B  (USD)               <- us-gaap:CashAndCashEquivalentsAtCarryingValue
+      fy=2026 fp=FY form=10-K period[@ 2026-01-31] accn=0001535527-26-000010 filed=2026-03-05 frame=CY2025Q4I
+    GrossMargin(derived) 74.67%  (GrossProfit/Revenue)
+
+  --- LATEST QUARTER (10-Q) ---
+    Revenue              $1.234B  (USD)               <- us-gaap:RevenueFromContractWithCustomerIncludingAssessedTax
+      fy=2026 fp=Q3 form=10-Q period[2025-08-01->2025-10-31] accn=0001535527-25-000033 filed=2025-12-03 frame=CY2025Q3
+    CostOfRevenue        $307.805M  (USD)             <- us-gaap:CostOfGoodsAndServicesSold
+      fy=2026 fp=Q3 form=10-Q period[2025-08-01->2025-10-31] accn=0001535527-25-000033 filed=2025-12-03 frame=CY2025Q3
+    GrossProfit          $926.439M  (USD)             <- us-gaap:GrossProfit
+      fy=2026 fp=Q3 form=10-Q period[2025-08-01->2025-10-31] accn=0001535527-25-000033 filed=2025-12-03 frame=CY2025Q3
+    OperatingIncome      $-69.443M  (USD)             <- us-gaap:OperatingIncomeLoss
+      fy=2026 fp=Q3 form=10-Q period[2025-08-01->2025-10-31] accn=0001535527-25-000033 filed=2025-12-03 frame=CY2025Q3
+    NetIncome            $-33.997M  (USD)             <- us-gaap:NetIncomeLoss
+      fy=2026 fp=Q3 form=10-Q period[2025-08-01->2025-10-31] accn=0001535527-25-000033 filed=2025-12-03 frame=CY2025Q3
+    EPS_Basic            -0.14  (USD/shares)          <- us-gaap:EarningsPerShareBasic
+      fy=2026 fp=Q3 form=10-Q period[2025-08-01->2025-10-31] accn=0001535527-25-000033 filed=2025-12-03 frame=CY2025Q3
+    EPS_Diluted          -0.14  (USD/shares)          <- us-gaap:EarningsPerShareDiluted
+      fy=2026 fp=Q3 form=10-Q period[2025-08-01->2025-10-31] accn=0001535527-25-000033 filed=2025-12-03 frame=CY2025Q3
+    OperatingCashFlow    $1.114B  (USD)               <- us-gaap:NetCashProvidedByUsedInOperatingActivities
+      fy=2026 fp=Q3 form=10-Q period[2025-02-01->2025-10-31] accn=0001535527-25-000033 filed=2025-12-03 frame=-
+    TotalAssets          $9.965B  (USD)               <- us-gaap:Assets
+      fy=2026 fp=Q3 form=10-Q period[@ 2025-10-31] accn=0001535527-25-000033 filed=2025-12-03 frame=CY2025Q3I
+    TotalLiabilities     $5.906B  (USD)               <- us-gaap:Liabilities
+      fy=2026 fp=Q3 form=10-Q period[@ 2025-10-31] accn=0001535527-25-000033 filed=2025-12-03 frame=CY2025Q3I
+    StockholdersEquity   $4.016B  (USD)               <- us-gaap:StockholdersEquity
+      fy=2026 fp=Q3 form=10-Q period[@ 2025-10-31] accn=0001535527-25-000033 filed=2025-12-03 frame=CY2025Q3I
+    CashAndEquivalents   $4.801B  (USD)               <- us-gaap:CashAndCashEquivalentsAtCarryingValue
+      fy=2026 fp=Q3 form=10-Q period[@ 2025-10-31] accn=0001535527-25-000033 filed=2025-12-03 frame=CY2025Q3I
+    GrossMargin(derived) 75.06%  (GrossProfit/Revenue)
+
+  --- SEGMENTS probe ---
+    us-gaap keys containing 'Segment': ['NumberOfOperatingSegments', 'NumberOfReportableSegments']
+    NOTE: Company Facts returns only the consolidated value per concept;
+    per-segment (dimensional) breakdowns are NOT present here.
+
+############################################################################################
+# DDOG  (Datadog, Inc.)   CIK 0001561550
+############################################################################################
+  taxonomies present: ['dei', 'us-gaap', 'ecd']  | #us-gaap concepts tagged: 320  | #dei: 1
+
+  --- LATEST ANNUAL (10-K) ---
+    Revenue              $3.427B  (USD)               <- us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax
+      fy=2025 fp=FY form=10-K period[2025-01-01->2025-12-31] accn=0001628280-26-008819 filed=2026-02-18 frame=CY2025
+    CostOfRevenue        $686.957M  (USD)             <- us-gaap:CostOfGoodsAndServicesSold
+      fy=2025 fp=FY form=10-K period[2025-01-01->2025-12-31] accn=0001628280-26-008819 filed=2026-02-18 frame=CY2025
+    GrossProfit          $2.740B  (USD)               <- us-gaap:GrossProfit
+      fy=2025 fp=FY form=10-K period[2025-01-01->2025-12-31] accn=0001628280-26-008819 filed=2026-02-18 frame=CY2025
+    OperatingIncome      $-44.373M  (USD)             <- us-gaap:OperatingIncomeLoss
+      fy=2025 fp=FY form=10-K period[2025-01-01->2025-12-31] accn=0001628280-26-008819 filed=2026-02-18 frame=CY2025
+    NetIncome            $107.741M  (USD)             <- us-gaap:NetIncomeLoss
+      fy=2025 fp=FY form=10-K period[2025-01-01->2025-12-31] accn=0001628280-26-008819 filed=2026-02-18 frame=-
+    EPS_Basic            0.31  (USD/shares)           <- us-gaap:EarningsPerShareBasic
+      fy=2025 fp=FY form=10-K period[2025-01-01->2025-12-31] accn=0001628280-26-008819 filed=2026-02-18 frame=CY2025
+    EPS_Diluted          0.31  (USD/shares)           <- us-gaap:EarningsPerShareDiluted
+      fy=2025 fp=FY form=10-K period[2025-01-01->2025-12-31] accn=0001628280-26-008819 filed=2026-02-18 frame=CY2025
+    OperatingCashFlow    $1.050B  (USD)               <- us-gaap:NetCashProvidedByUsedInOperatingActivities
+      fy=2025 fp=FY form=10-K period[2025-01-01->2025-12-31] accn=0001628280-26-008819 filed=2026-02-18 frame=CY2025
+    TotalAssets          $6.644B  (USD)               <- us-gaap:Assets
+      fy=2025 fp=FY form=10-K period[@ 2025-12-31] accn=0001628280-26-008819 filed=2026-02-18 frame=-
+    TotalLiabilities     $2.912B  (USD)               <- us-gaap:Liabilities
+      fy=2025 fp=FY form=10-K period[@ 2025-12-31] accn=0001628280-26-008819 filed=2026-02-18 frame=-
+    StockholdersEquity   $3.732B  (USD)               <- us-gaap:StockholdersEquity
+      fy=2025 fp=FY form=10-K period[@ 2025-12-31] accn=0001628280-26-008819 filed=2026-02-18 frame=-
+    CashAndEquivalents   $401.305M  (USD)             <- us-gaap:CashAndCashEquivalentsAtCarryingValue
+      fy=2025 fp=FY form=10-K period[@ 2025-12-31] accn=0001628280-26-008819 filed=2026-02-18 frame=-
+    GrossMargin(derived) 79.96%  (GrossProfit/Revenue)
+
+  --- LATEST QUARTER (10-Q) ---
+    Revenue              $1.006B  (USD)               <- us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax
+      fy=2026 fp=Q1 form=10-Q period[2026-01-01->2026-03-31] accn=0001628280-26-032328 filed=2026-05-07 frame=CY2026Q1
+    CostOfRevenue        $209.228M  (USD)             <- us-gaap:CostOfGoodsAndServicesSold
+      fy=2026 fp=Q1 form=10-Q period[2026-01-01->2026-03-31] accn=0001628280-26-032328 filed=2026-05-07 frame=CY2026Q1
+    GrossProfit          $797.198M  (USD)             <- us-gaap:GrossProfit
+      fy=2026 fp=Q1 form=10-Q period[2026-01-01->2026-03-31] accn=0001628280-26-032328 filed=2026-05-07 frame=CY2026Q1
+    OperatingIncome      $7.327M  (USD)               <- us-gaap:OperatingIncomeLoss
+      fy=2026 fp=Q1 form=10-Q period[2026-01-01->2026-03-31] accn=0001628280-26-032328 filed=2026-05-07 frame=CY2026Q1
+    NetIncome            $52.574M  (USD)              <- us-gaap:NetIncomeLoss
+      fy=2026 fp=Q1 form=10-Q period[2026-01-01->2026-03-31] accn=0001628280-26-032328 filed=2026-05-07 frame=CY2026Q1
+    EPS_Basic            0.15  (USD/shares)           <- us-gaap:EarningsPerShareBasic
+      fy=2026 fp=Q1 form=10-Q period[2026-01-01->2026-03-31] accn=0001628280-26-032328 filed=2026-05-07 frame=CY2026Q1
+    EPS_Diluted          0.15  (USD/shares)           <- us-gaap:EarningsPerShareDiluted
+      fy=2026 fp=Q1 form=10-Q period[2026-01-01->2026-03-31] accn=0001628280-26-032328 filed=2026-05-07 frame=CY2026Q1
+    OperatingCashFlow    $334.622M  (USD)             <- us-gaap:NetCashProvidedByUsedInOperatingActivities
+      fy=2026 fp=Q1 form=10-Q period[2026-01-01->2026-03-31] accn=0001628280-26-032328 filed=2026-05-07 frame=CY2026Q1
+    TotalAssets          $6.952B  (USD)               <- us-gaap:Assets
+      fy=2026 fp=Q1 form=10-Q period[@ 2026-03-31] accn=0001628280-26-032328 filed=2026-05-07 frame=CY2026Q1I
+    TotalLiabilities     $2.964B  (USD)               <- us-gaap:Liabilities
+      fy=2026 fp=Q1 form=10-Q period[@ 2026-03-31] accn=0001628280-26-032328 filed=2026-05-07 frame=CY2026Q1I
+    StockholdersEquity   $3.988B  (USD)               <- us-gaap:StockholdersEquity
+      fy=2026 fp=Q1 form=10-Q period[@ 2026-03-31] accn=0001628280-26-032328 filed=2026-05-07 frame=CY2026Q1I
+    CashAndEquivalents   $426.360M  (USD)             <- us-gaap:CashAndCashEquivalentsAtCarryingValue
+      fy=2026 fp=Q1 form=10-Q period[@ 2026-03-31] accn=0001628280-26-032328 filed=2026-05-07 frame=CY2026Q1I
+    GrossMargin(derived) 79.21%  (GrossProfit/Revenue)
+
+  --- SEGMENTS probe ---
+    us-gaap keys containing 'Segment': ['NumberOfOperatingSegments', 'NumberOfReportableSegments']
+    NOTE: Company Facts returns only the consolidated value per concept;
+    per-segment (dimensional) breakdowns are NOT present here.
+
+############################################################################################
+# SNOW  (Snowflake Inc.)   CIK 0001640147
+############################################################################################
+  taxonomies present: ['dei', 'us-gaap', 'srt', 'ecd']  | #us-gaap concepts tagged: 361  | #dei: 2
+
+  --- LATEST ANNUAL (10-K) ---
+    Revenue              $4.684B  (USD)               <- us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax
+      fy=2026 fp=FY form=10-K period[2025-02-01->2026-01-31] accn=0001640147-26-000008 filed=2026-03-20 frame=CY2025
+    CostOfRevenue        $1.538B  (USD)               <- us-gaap:CostOfGoodsAndServicesSold
+      fy=2026 fp=FY form=10-K period[2025-02-01->2026-01-31] accn=0001640147-26-000008 filed=2026-03-20 frame=CY2025
+    GrossProfit          $3.146B  (USD)               <- us-gaap:GrossProfit
+      fy=2026 fp=FY form=10-K period[2025-02-01->2026-01-31] accn=0001640147-26-000008 filed=2026-03-20 frame=CY2025
+    OperatingIncome      $-1.435B  (USD)              <- us-gaap:OperatingIncomeLoss
+      fy=2026 fp=FY form=10-K period[2025-02-01->2026-01-31] accn=0001640147-26-000008 filed=2026-03-20 frame=CY2025
+    NetIncome            $-1.332B  (USD)              <- us-gaap:NetIncomeLoss
+      fy=2026 fp=FY form=10-K period[2025-02-01->2026-01-31] accn=0001640147-26-000008 filed=2026-03-20 frame=-
+    EPS_Basic            -3.95  (USD/shares)          <- us-gaap:EarningsPerShareBasic
+      fy=2026 fp=FY form=10-K period[2025-02-01->2026-01-31] accn=0001640147-26-000008 filed=2026-03-20 frame=CY2025
+    EPS_Diluted          -3.95  (USD/shares)          <- us-gaap:EarningsPerShareDiluted
+      fy=2026 fp=FY form=10-K period[2025-02-01->2026-01-31] accn=0001640147-26-000008 filed=2026-03-20 frame=CY2025
+    OperatingCashFlow    $1.222B  (USD)               <- us-gaap:NetCashProvidedByUsedInOperatingActivities
+      fy=2026 fp=FY form=10-K period[2025-02-01->2026-01-31] accn=0001640147-26-000008 filed=2026-03-20 frame=CY2025
+    TotalAssets          $9.132B  (USD)               <- us-gaap:Assets
+      fy=2026 fp=FY form=10-K period[@ 2026-01-31] accn=0001640147-26-000008 filed=2026-03-20 frame=-
+    TotalLiabilities     $7.208B  (USD)               <- us-gaap:Liabilities
+      fy=2026 fp=FY form=10-K period[@ 2026-01-31] accn=0001640147-26-000008 filed=2026-03-20 frame=-
+    StockholdersEquity   $1.924B  (USD)               <- us-gaap:StockholdersEquity
+      fy=2026 fp=FY form=10-K period[@ 2026-01-31] accn=0001640147-26-000008 filed=2026-03-20 frame=CY2025Q4I
+    CashAndEquivalents   $2.828B  (USD)               <- us-gaap:CashAndCashEquivalentsAtCarryingValue
+      fy=2026 fp=FY form=10-K period[@ 2026-01-31] accn=0001640147-26-000008 filed=2026-03-20 frame=-
+    GrossMargin(derived) 67.17%  (GrossProfit/Revenue)
+
+  --- LATEST QUARTER (10-Q) ---
+    Revenue              $1.391B  (USD)               <- us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax
+      fy=2027 fp=Q1 form=10-Q period[2026-02-01->2026-04-30] accn=0001640147-26-000030 filed=2026-05-29 frame=CY2026Q1
+    CostOfRevenue        $464.500M  (USD)             <- us-gaap:CostOfGoodsAndServicesSold
+      fy=2027 fp=Q1 form=10-Q period[2026-02-01->2026-04-30] accn=0001640147-26-000030 filed=2026-05-29 frame=CY2026Q1
+    GrossProfit          $926.451M  (USD)             <- us-gaap:GrossProfit
+      fy=2027 fp=Q1 form=10-Q period[2026-02-01->2026-04-30] accn=0001640147-26-000030 filed=2026-05-29 frame=CY2026Q1
+    OperatingIncome      $-326.154M  (USD)            <- us-gaap:OperatingIncomeLoss
+      fy=2027 fp=Q1 form=10-Q period[2026-02-01->2026-04-30] accn=0001640147-26-000030 filed=2026-05-29 frame=CY2026Q1
+    NetIncome            $-295.571M  (USD)            <- us-gaap:NetIncomeLoss
+      fy=2027 fp=Q1 form=10-Q period[2026-02-01->2026-04-30] accn=0001640147-26-000030 filed=2026-05-29 frame=CY2026Q1
+    EPS_Basic            -0.86  (USD/shares)          <- us-gaap:EarningsPerShareBasic
+      fy=2027 fp=Q1 form=10-Q period[2026-02-01->2026-04-30] accn=0001640147-26-000030 filed=2026-05-29 frame=CY2026Q1
+    EPS_Diluted          -0.86  (USD/shares)          <- us-gaap:EarningsPerShareDiluted
+      fy=2027 fp=Q1 form=10-Q period[2026-02-01->2026-04-30] accn=0001640147-26-000030 filed=2026-05-29 frame=CY2026Q1
+    OperatingCashFlow    $243.223M  (USD)             <- us-gaap:NetCashProvidedByUsedInOperatingActivities
+      fy=2027 fp=Q1 form=10-Q period[2026-02-01->2026-04-30] accn=0001640147-26-000030 filed=2026-05-29 frame=CY2026Q1
+    TotalAssets          $8.554B  (USD)               <- us-gaap:Assets
+      fy=2027 fp=Q1 form=10-Q period[@ 2026-04-30] accn=0001640147-26-000030 filed=2026-05-29 frame=CY2026Q1I
+    TotalLiabilities     $6.615B  (USD)               <- us-gaap:Liabilities
+      fy=2027 fp=Q1 form=10-Q period[@ 2026-04-30] accn=0001640147-26-000030 filed=2026-05-29 frame=CY2026Q1I
+    StockholdersEquity   $1.940B  (USD)               <- us-gaap:StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest
+      fy=2027 fp=Q1 form=10-Q period[@ 2026-04-30] accn=0001640147-26-000030 filed=2026-05-29 frame=CY2026Q1I
+    CashAndEquivalents   $2.085B  (USD)               <- us-gaap:CashAndCashEquivalentsAtCarryingValue
+      fy=2027 fp=Q1 form=10-Q period[@ 2026-04-30] accn=0001640147-26-000030 filed=2026-05-29 frame=CY2026Q1I
+    GrossMargin(derived) 66.61%  (GrossProfit/Revenue)
+
+  --- SEGMENTS probe ---
+    us-gaap keys containing 'Segment': ['NumberOfOperatingSegments', 'NumberOfReportableSegments']
+    NOTE: Company Facts returns only the consolidated value per concept;
+    per-segment (dimensional) breakdowns are NOT present here.
+
+============================================================================================
+COVERAGE SUMMARY across 5 companies (count with a value found)
+============================================================================================
+  concept                  annual  quarterly
+  Revenue                     5/5        5/5
+  CostOfRevenue               5/5        5/5
+  GrossProfit                 5/5        5/5
+  OperatingIncome             5/5        5/5
+  NetIncome                   5/5        5/5
+  EPS_Basic                   5/5        5/5
+  EPS_Diluted                 5/5        5/5
+  OperatingCashFlow           5/5        5/5
+  TotalAssets                 5/5        5/5
+  TotalLiabilities            5/5        5/5
+  StockholdersEquity          5/5        5/5
+  CashAndEquivalents          5/5        5/5
+
+DONE. (read-only; nothing written)
