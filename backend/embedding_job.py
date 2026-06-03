@@ -78,6 +78,13 @@ def _fetch_unembedded(content_table: str, content_type: str, select_cols: str,
     each chunk would only exclude its own slice, re-embedding everything.) Pages
     newest-first so freshly ingested content is embedded first and the scan
     stays bounded -- the newest page is almost always already unembedded.
+
+    The order has a stable `id` tiebreaker: `order_col` alone is not a total
+    order (gnews batch-inserts share near-identical ingested_at), so ties at a
+    .range() page boundary are non-deterministic across requests -- a row can
+    appear on two adjacent pages (duplicate embed) or fall between them (skipped
+    forever). A backfill on the no-tiebreaker version produced ~262 duplicate
+    embeddings and ~262 skips; adding `id` makes pagination exact.
     """
     embedded = _embedded_content_ids(content_type)
     out: list[dict] = []
@@ -87,6 +94,7 @@ def _fetch_unembedded(content_table: str, content_type: str, select_cols: str,
             supabase.table(content_table)
             .select(select_cols)
             .order(order_col, desc=True)
+            .order("id", desc=True)
             .range(page * _PAGE_SIZE, page * _PAGE_SIZE + _PAGE_SIZE - 1)
             .execute()
             .data

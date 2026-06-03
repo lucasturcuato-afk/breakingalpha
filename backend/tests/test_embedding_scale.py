@@ -44,6 +44,7 @@ class _Q:
         return self
 
     def order(self, col, desc=False):
+        self.fake.orders.setdefault(self.table, []).append((col, desc))
         return self
 
     def range(self, a, b):
@@ -80,6 +81,7 @@ class _Fake:
         self.in_calls = 0
         self.not_used = False
         self.ranges = {}                  # table -> [(a,b), ...]
+        self.orders = {}                  # table -> [(col, desc), ...]
 
     def table(self, name):
         return _Q(self, name)
@@ -140,6 +142,22 @@ class EmbeddingScaleTest(unittest.TestCase):
         art_ranges = fake.ranges.get("articles", [])
         self.assertGreaterEqual(len(art_ranges), 2, "candidate scan paged past the all-embedded first page")
         self.assertEqual(len(rows), 200)
+
+    def test_stable_pagination_tiebreaker(self):
+        # Candidate pages must order by the recency column AND a stable `id`
+        # tiebreaker, or ties at a page boundary duplicate/skip rows (the bug
+        # that produced ~262 duplicate embeddings + ~262 skips in the backfill).
+        fake = self._install(_Fake(_embeddings("article", 1500), _articles(2500)))
+        embedding_job._fetch_unembedded_articles(50)
+        art_orders = fake.orders.get("articles", [])
+        self.assertIn(("ingested_at", True), art_orders, "ordered newest-first by ingested_at")
+        self.assertIn(("id", True), art_orders, "stable id tiebreaker present")
+
+    def test_no_duplicate_ids_returned(self):
+        fake = self._install(_Fake(_embeddings("article", 1500), _articles(2500)))
+        rows = embedding_job._fetch_unembedded_articles(200)
+        ids = [r["id"] for r in rows]
+        self.assertEqual(len(ids), len(set(ids)), "no row returned twice")
 
     def test_fewer_than_limit_available(self):
         # Only 100 unembedded exist -> return all 100, terminate (no infinite loop).
