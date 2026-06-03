@@ -35,38 +35,92 @@ CREATE INDEX IF NOT EXISTS content_embeddings_type_idx ON content_embeddings(con
 """
 
 
-def _fetch_unembedded_articles(limit: int) -> list[dict]:
-    """Fetch articles that don't yet have embeddings."""
-    existing = (
-        supabase.table("content_embeddings")
-        .select("content_id")
-        .eq("content_type", "article")
-        .execute()
-    )
-    existing_ids = [r["content_id"] for r in existing.data]
+# PostgREST returns at most 1000 rows per request; we paginate with .range().
+_PAGE_SIZE = 1000
 
-    query = supabase.table("articles").select("id, title, summary")
-    if existing_ids:
-        query = query.not_.in_("id", existing_ids)
-    result = query.limit(limit).execute()
-    return result.data
+
+def _embedded_content_ids(content_type: str) -> set:
+    """Full set of already-embedded content_ids for a content_type.
+
+    Paginated: the prior single .select() silently capped at PostgREST's
+    1000-row default, so once >1000 items were embedded the exclusion set was
+    incomplete and embedded items got re-embedded.
+    """
+    ids: set = set()
+    page = 0
+    while True:
+        rows = (
+            supabase.table("content_embeddings")
+            .select("content_id")
+            .eq("content_type", content_type)
+            .range(page * _PAGE_SIZE, page * _PAGE_SIZE + _PAGE_SIZE - 1)
+            .execute()
+            .data
+            or []
+        )
+        for r in rows:
+            cid = r.get("content_id")
+            if cid:
+                ids.add(cid)
+        if len(rows) < _PAGE_SIZE:
+            return ids
+        page += 1
+
+
+def _fetch_unembedded(content_table: str, content_type: str, select_cols: str,
+                      order_col: str, limit: int) -> list[dict]:
+    """Return up to `limit` rows from `content_table` not yet embedded.
+
+    Filters against the embedded-id set IN MEMORY instead of a
+    not.in.(<ids>) URL filter. That exclusion list grew to ~800 ids and
+    overflowed the proxy URL limit (raw 400), so embedding_job silently embedded
+    nothing in pipeline run #142. (Chunking a not.in. list is not an option:
+    each chunk would only exclude its own slice, re-embedding everything.) Pages
+    newest-first so freshly ingested content is embedded first and the scan
+    stays bounded -- the newest page is almost always already unembedded.
+
+    The order has a stable `id` tiebreaker: `order_col` alone is not a total
+    order (gnews batch-inserts share near-identical ingested_at), so ties at a
+    .range() page boundary are non-deterministic across requests -- a row can
+    appear on two adjacent pages (duplicate embed) or fall between them (skipped
+    forever). A backfill on the no-tiebreaker version produced ~262 duplicate
+    embeddings and ~262 skips; adding `id` makes pagination exact.
+    """
+    embedded = _embedded_content_ids(content_type)
+    out: list[dict] = []
+    page = 0
+    while len(out) < limit:
+        rows = (
+            supabase.table(content_table)
+            .select(select_cols)
+            .order(order_col, desc=True)
+            .order("id", desc=True)
+            .range(page * _PAGE_SIZE, page * _PAGE_SIZE + _PAGE_SIZE - 1)
+            .execute()
+            .data
+            or []
+        )
+        if not rows:
+            break
+        for r in rows:
+            if r["id"] not in embedded:
+                out.append(r)
+                if len(out) >= limit:
+                    break
+        if len(rows) < _PAGE_SIZE:
+            break
+        page += 1
+    return out
+
+
+def _fetch_unembedded_articles(limit: int) -> list[dict]:
+    """Fetch articles that don't yet have embeddings (newest-first, bounded)."""
+    return _fetch_unembedded("articles", "article", "id, title, summary", "ingested_at", limit)
 
 
 def _fetch_unembedded_theses(limit: int) -> list[dict]:
-    """Fetch theses that don't yet have embeddings."""
-    existing = (
-        supabase.table("content_embeddings")
-        .select("content_id")
-        .eq("content_type", "thesis")
-        .execute()
-    )
-    existing_ids = [r["content_id"] for r in existing.data]
-
-    query = supabase.table("theses").select("id, title, rationale")
-    if existing_ids:
-        query = query.not_.in_("id", existing_ids)
-    result = query.limit(limit).execute()
-    return result.data
+    """Fetch theses that don't yet have embeddings (newest-first, bounded)."""
+    return _fetch_unembedded("theses", "thesis", "id, title, rationale", "generated_at", limit)
 
 
 def _build_text(row: dict, content_type: str) -> str:
