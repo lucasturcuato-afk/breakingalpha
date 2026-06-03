@@ -356,6 +356,43 @@ events), not on tagged financials.
 
 ---
 
+## Appendix A0 — Phase 1 implementation (added 2026-06-03)
+
+Phase 1 is now built on this branch (per Noah's decisions: daily refresh of
+tracked CIKs as an isolated job; full Company Facts history; Frames/Comps
+deferred; standalone table, no `output_type` enum change):
+
+- `backend/edgar/xbrl_facts.py` — extraction: union-candidate-tags with
+  period-aware resolution, YTD→discrete cash-flow differencing, fiscal labels +
+  actual dates + SEC frame, accession-keyed history, restatement & tag-drift
+  hooks (detection + logging; alerting is a fast-follow).
+- `backend/edgar/xbrl_validation.py` — runtime gate: gross-profit / balance-sheet
+  (NCI-aware) / EPS / cash-flow-roll tie-outs, magnitude & sign bounds (incl.
+  the 570% gross-margin case and QoQ jumps), and to-the-dollar cross-endpoint
+  reconciliation against Company Concept. Fail-closed: every fact is
+  `validated` or `quarantined` + reason; `validated_only()` / the
+  `financial_facts_latest` view are the only read paths.
+- `backend/ingest_xbrl_facts.py` — isolated daily job (`--dry-run` works
+  without the table; real runs fail with a clear error until the migration is
+  applied).
+- `backend/tests/test_xbrl_facts.py`, `backend/tests/test_xbrl_validation.py`
+  — 35 offline unit tests (stdlib unittest), incl. the NVDA tag-migration
+  regression and the YTD differencing fixtures.
+- `backend/evals/xbrl_golden_eval.py` — the golden-set regression gate:
+  18 spot-verified company × concept × period values asserted exact AND
+  validated against live Company Facts under the FULL gate. This eval is the
+  definition of done for any future extractor change.
+  Evidence: `scratch/golden_eval_output.txt` (18/18 PASS; per-ticker
+  validated/quarantined dry-run counts).
+
+Observed gate behavior on real data: quarantines land on historical
+comparatives only — AAPL split-basis EPS eras, NVDA 2007–2010 share counts
+tagged in thousands (a genuine 1000× units inconsistency in the source), and
+small mezzanine-equity balance gaps (~1%) in 2016-era filings. RTX initially
+quarantined 425 balance-sheet facts until the gate learned the accounting-true
+`Assets = Liabilities + ParentEquity + MinorityInterest` form; it now validates
+2,942/2,942. No current-period golden value was ever quarantined.
+
 ## Appendix A — Spike artifacts (read-only, throwaway)
 
 - `scratch/xbrl_spike.py` — pulls 5 tickers from Company Facts, extracts the v1
