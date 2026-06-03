@@ -54,37 +54,61 @@ def _is_sunday_morning(brief_type: str) -> bool:
     )
 
 
+# Shared run-level degraded state. #302 introduced an ingest-only degraded flag;
+# every step 2-16 (and the [POST] feedback steps) also caught-and-continued but
+# left the run GREEN, so a synthesize / embedding / scoring failure degraded the
+# feed silently -- the same mechanism behind the original 2-day stale feed. Any
+# step that catches a REAL exception now records it here; _finalize_exit_code
+# turns a non-empty list into exit 1. Visibility only: control flow is unchanged,
+# every step still continues-on-failure exactly as before. Benign skips (no
+# exception) must NOT append here.
+_DEGRADED_STEPS = []
+
+
+def _mark_degraded(step_name, exc):
+    """Record a real step failure: log the full traceback at error level (per the
+    #302 ingest convention) and add the step to the shared degraded list. The
+    caller still prints its human-readable FAILED line and continues exactly as
+    today; this only adds visibility."""
+    logger.error("%s failed:\n%s", step_name, traceback.format_exc())
+    _DEGRADED_STEPS.append((step_name, str(exc)))
+
+
 def _run_ingest_guarded():
     """Run [1/16] INGEST with a soft-fail guard, mirroring the try/except shape
     of steps 2-16. An ingest-tail failure (e.g. a downstream per-run query that
     overflows at gnews scale -- run #141's boost_watchlist_relevance 400) must no
-    longer kill the brief: the exception is logged with a full traceback at error
-    level and the pipeline continues to synthesize on whatever was already
-    stored. Returns (ingest_count, degraded, error)."""
+    longer kill the brief: the exception is recorded via _mark_degraded (logged
+    with a full traceback) and the pipeline continues to synthesize on whatever
+    was already stored. Returns the ingest count (0 on failure); degradation is
+    tracked centrally in _DEGRADED_STEPS, so there is no separate ingest flag."""
     _t = time.time()
     try:
         count = run_ingest()
         print(f"  [1/16] INGEST done in {time.time() - _t:.2f}s")
-        return count, False, None
+        return count
     except Exception as e:
-        logger.error("INGEST failed after %.2fs:\n%s", time.time() - _t, traceback.format_exc())
+        _mark_degraded("[1/16] INGEST", e)
         print(
             f"  [1/16] INGEST FAILED in {time.time() - _t:.2f}s "
             f"(continuing to brief on already-stored articles; stored count in ingest logs above): {e}"
         )
-        return 0, True, str(e)
+        return 0
 
 
-def _finalize_exit_code(ingest_degraded: bool, ingest_error) -> int:
-    """Process exit code for the run. A degraded ingest surfaces the run as
-    FAILED (exit 1) AFTER the brief has generated, so the feed still updates but
-    the run is never green-washed. This intentionally goes beyond the steps 2-16
-    soft-fail convention, which exits 0 even on soft-failures; see PR notes."""
-    if ingest_degraded:
+def _finalize_exit_code() -> int:
+    """Process exit code for the run. If ANY step degraded (recorded via
+    _mark_degraded), surface the run as FAILED (exit 1) AFTER the brief has
+    generated, so the feed still updates but the run is never green-washed. This
+    intentionally goes beyond the steps 2-16 soft-fail convention, which exits 0
+    even on soft-failures; see PR notes."""
+    if _DEGRADED_STEPS:
+        names = ", ".join(name for name, _err in _DEGRADED_STEPS)
         print("\n" + "!" * 50)
         print(
-            f"RUN DEGRADED: ingest failed ({ingest_error}); brief generated from "
-            f"already-stored articles. Surfacing the run as failed for visibility."
+            f"RUN DEGRADED: {len(_DEGRADED_STEPS)} step(s) failed ({names}); "
+            f"pipeline continued and the brief generated. Surfacing the run as "
+            f"failed for visibility."
         )
         print("!" * 50)
         return 1
@@ -102,7 +126,7 @@ if __name__ == "__main__":
     pipeline_t0 = time.time()
 
     print("\n[1/16] INGEST")
-    ingest_count, ingest_degraded, ingest_error = _run_ingest_guarded()
+    ingest_count = _run_ingest_guarded()
 
     # Optional backfill: RUN_BACKFILL=true python backend/run.py
     if os.getenv("RUN_BACKFILL", "false").lower() == "true":
@@ -113,6 +137,7 @@ if __name__ == "__main__":
             backfill_content.main()
             print(f"  [1b/16] CONTENT BACKFILL done in {time.time() - _t:.2f}s")
         except Exception as e:
+            _mark_degraded("[1b/16] CONTENT BACKFILL", e)
             print(f"  [1b/16] CONTENT BACKFILL FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
     print("\n[1c/16] USER SIGNAL AGGREGATION")
@@ -121,6 +146,7 @@ if __name__ == "__main__":
         user_signal_aggregator.main()
         print(f"  [1c/16] USER SIGNAL AGGREGATION done in {time.time() - _t:.2f}s")
     except Exception as e:
+        _mark_degraded("[1c/16] USER SIGNAL AGGREGATION", e)
         print(f"  [1c/16] USER SIGNAL AGGREGATION FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
     print("\n[1d/16] SECTOR BACKFILL")
@@ -129,6 +155,7 @@ if __name__ == "__main__":
         n = sector_backfill.run()
         print(f"  [1d/16] SECTOR BACKFILL done in {time.time() - _t:.2f}s (companies={n})")
     except Exception as e:
+        _mark_degraded("[1d/16] SECTOR BACKFILL", e)
         print(f"  [1d/16] SECTOR BACKFILL FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
     # Path B: deal_extractor runs BEFORE synthesize so the Python pre-picker
@@ -147,6 +174,7 @@ if __name__ == "__main__":
     except Exception as e:
         deal_extractor_status["ok"] = False
         deal_extractor_status["error"] = f"deal_extractor raised: {e}"
+        _mark_degraded("[2/16] DEAL EXTRACTION", e)
         print(f"  [2/16] DEAL EXTRACTION FAILED in {time.time() - _t:.2f}s (pipeline continues, lead_preselect may fall back): {e}")
 
     print("\n[3/16] SYNTHESIZE")
@@ -177,6 +205,7 @@ if __name__ == "__main__":
         )
         print(f"  [4/16] OBSERVE done in {time.time() - _t:.2f}s (run_id={run_id})")
     except Exception as e:
+        _mark_degraded("[4/16] OBSERVE", e)
         print(f"  [4/16] OBSERVE FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
     print("\n[5/16] CRITIQUE")
@@ -185,6 +214,7 @@ if __name__ == "__main__":
         critique.score_run(brief_type, started_at, run_id=run_id)
         print(f"  [5/16] CRITIQUE done in {time.time() - _t:.2f}s")
     except Exception as e:
+        _mark_degraded("[5/16] CRITIQUE", e)
         print(f"  [5/16] CRITIQUE FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
     print("\n[6/16] AUDIT")
@@ -193,6 +223,7 @@ if __name__ == "__main__":
         audit.audit_run(brief_type, run_id=run_id)
         print(f"  [6/16] AUDIT done in {time.time() - _t:.2f}s")
     except Exception as e:
+        _mark_degraded("[6/16] AUDIT", e)
         print(f"  [6/16] AUDIT FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
     print("\n[7/16] TREND MAP")
@@ -201,6 +232,7 @@ if __name__ == "__main__":
         trend_mapper.map_trends(brief_type, started_at, run_id=run_id)
         print(f"  [7/16] TREND MAP done in {time.time() - _t:.2f}s")
     except Exception as e:
+        _mark_degraded("[7/16] TREND MAP", e)
         print(f"  [7/16] TREND MAP FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
     print("\n[8/16] SUMMARY")
@@ -209,6 +241,7 @@ if __name__ == "__main__":
         summarize.print_summary(brief_type, run_id=run_id)
         print(f"  [8/16] SUMMARY done in {time.time() - _t:.2f}s")
     except Exception as e:
+        _mark_degraded("[8/16] SUMMARY", e)
         print(f"  [8/16] SUMMARY FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
     print("\n[9/16] THESIS GRADING")
@@ -218,6 +251,7 @@ if __name__ == "__main__":
             thesis_grader.main()
             print(f"  [9/16] THESIS GRADING done in {time.time() - _t:.2f}s")
         except Exception as e:
+            _mark_degraded("[9/16] THESIS GRADING", e)
             print(f"  [9/16] THESIS GRADING FAILED in {time.time() - _t:.2f}s: {e}")
     else:
         print("  [9/16] THESIS GRADING skipped (morning only)")
@@ -229,6 +263,7 @@ if __name__ == "__main__":
             pattern_memory.main()
             print(f"  [10/16] PATTERN MEMORY done in {time.time() - _t:.2f}s")
         except Exception as e:
+            _mark_degraded("[10/16] PATTERN MEMORY", e)
             print(f"  [10/16] PATTERN MEMORY FAILED in {time.time() - _t:.2f}s: {e}")
     else:
         print("  [10/16] PATTERN MEMORY skipped (morning only)")
@@ -240,6 +275,7 @@ if __name__ == "__main__":
             source_credibility.main()
             print(f"  [11/16] SOURCE CREDIBILITY done in {time.time() - _t:.2f}s")
         except Exception as e:
+            _mark_degraded("[11/16] SOURCE CREDIBILITY", e)
             print(f"  [11/16] SOURCE CREDIBILITY FAILED in {time.time() - _t:.2f}s: {e}")
     else:
         print("  [11/16] SOURCE CREDIBILITY skipped (morning only)")
@@ -251,6 +287,7 @@ if __name__ == "__main__":
             adversarial.main()
             print(f"  [12/16] ADVERSARIAL REVIEW done in {time.time() - _t:.2f}s")
         except Exception as e:
+            _mark_degraded("[12/16] ADVERSARIAL REVIEW", e)
             print(f"  [12/16] ADVERSARIAL REVIEW FAILED in {time.time() - _t:.2f}s: {e}")
     else:
         print("  [12/16] ADVERSARIAL REVIEW skipped (Sunday morning only)")
@@ -261,6 +298,7 @@ if __name__ == "__main__":
         watchlist_sync.run_sync()
         print(f"  [13/16] WATCHLIST ARTICLE SYNC done in {time.time() - _t:.2f}s")
     except Exception as e:
+        _mark_degraded("[13/16] WATCHLIST ARTICLE SYNC", e)
         print(f"  [13/16] WATCHLIST ARTICLE SYNC FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
     print("\n[14/16] CONTENT EMBEDDINGS (RAG)")
@@ -269,6 +307,7 @@ if __name__ == "__main__":
         embedding_job.main()
         print(f"  [14/16] CONTENT EMBEDDINGS done in {time.time() - _t:.2f}s")
     except Exception as e:
+        _mark_degraded("[14/16] CONTENT EMBEDDINGS", e)
         print(f"  [14/16] CONTENT EMBEDDINGS FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
     print("\n[15/16] USER-AWARE BRIEF PERSONALIZATION")
@@ -277,6 +316,7 @@ if __name__ == "__main__":
         user_synthesis.run(brief_type)
         print(f"  [15/16] USER-AWARE BRIEF PERSONALIZATION done in {time.time() - _t:.2f}s")
     except Exception as e:
+        _mark_degraded("[15/16] USER-AWARE BRIEF PERSONALIZATION", e)
         print(f"  [15/16] USER-AWARE BRIEF PERSONALIZATION FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
 
     print("\n[16/16] THESIS GENERATION (system, semantic dedup)")
@@ -286,6 +326,7 @@ if __name__ == "__main__":
             thesis_generator.main()
             print(f"  [16/16] THESIS GENERATION done in {time.time() - _t:.2f}s")
         except Exception as e:
+            _mark_degraded("[16/16] THESIS GENERATION", e)
             print(f"  [16/16] THESIS GENERATION FAILED in {time.time() - _t:.2f}s (pipeline unaffected): {e}")
     else:
         print("  [16/16] THESIS GENERATION skipped (morning only)")
@@ -302,6 +343,7 @@ if __name__ == "__main__":
         else:
             print("  [POST] BRIEF SCORING skipped (no brief text available)")
     except Exception as e:
+        _mark_degraded("[POST] BRIEF SCORING", e)
         print(f"  [POST] BRIEF SCORING FAILED in {time.time() - _t:.2f}s: {e}")
 
     # --- Build improvement addenda once daily (morning run only, soft-fail) ---
@@ -331,17 +373,20 @@ if __name__ == "__main__":
                             ).eq("id", latest.data[0]["id"]).execute()
                             logger.info("brief addendum cached: %s (%d chars)", bt, len(addendum))
                     except Exception as e2:
+                        # Peripheral best-effort cache write of an already-built
+                        # addendum; left soft (does not affect today's feed/brief).
                         logger.warning("brief addendum cache write failed for %s: %s", bt, e2)
         except Exception as e:
+            _mark_degraded("[POST] BRIEF IMPROVEMENT ADDENDUM", e)
             logger.warning("brief addendum build skipped: %s", e)
 
     print("\n" + "=" * 50)
     print(f"Pipeline complete in {time.time() - pipeline_t0:.2f}s ({(time.time() - pipeline_t0) / 60:.1f} min)")
     print("=" * 50)
 
-    # Surface a degraded ingest as a failed run AFTER the brief has generated,
+    # Surface any degraded step as a failed run AFTER the brief has generated,
     # so the feed updates but the run is not green-washed.
-    sys.exit(_finalize_exit_code(ingest_degraded, ingest_error))
+    sys.exit(_finalize_exit_code())
 
 # ---------------------------------------------------------------------------
 # STEP MANIFEST — canonical pipeline order (update when adding steps)

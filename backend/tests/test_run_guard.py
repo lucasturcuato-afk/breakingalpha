@@ -47,31 +47,40 @@ import run  # noqa: E402
 
 
 class RunIngestGuardTest(unittest.TestCase):
+    # The ingest-only degraded flag from #302 was unified into the shared
+    # _DEGRADED_STEPS list that every step now uses; _run_ingest_guarded returns
+    # just the count and records degradation centrally, and _finalize_exit_code
+    # reads the shared flag. These tests assert the step-1 path on the new
+    # contract (no regression).
+
+    def setUp(self):
+        run._DEGRADED_STEPS.clear()
 
     def test_guard_success_returns_count(self):
         with unittest.mock.patch.object(run, "run_ingest", return_value=42):
-            count, degraded, err = run._run_ingest_guarded()
+            count = run._run_ingest_guarded()
         self.assertEqual(count, 42)
-        self.assertFalse(degraded)
-        self.assertIsNone(err)
+        self.assertEqual(run._DEGRADED_STEPS, [], "success does not degrade")
 
     def test_guard_swallows_exception_and_flags_degraded(self):
         def _boom():
             raise RuntimeError("postgrest 400 Bad Request (URI too large)")
         with unittest.mock.patch.object(run, "run_ingest", _boom):
             try:
-                count, degraded, err = run._run_ingest_guarded()
+                count = run._run_ingest_guarded()
             except Exception as e:  # must NOT propagate -> steps 2-16 can run
                 self.fail(f"ingest failure propagated past the guard: {e!r}")
         self.assertEqual(count, 0)
-        self.assertTrue(degraded, "degraded flag set so the run surfaces as failed")
-        self.assertIn("400", err)
+        self.assertEqual(len(run._DEGRADED_STEPS), 1, "ingest recorded on the shared flag")
+        self.assertEqual(run._DEGRADED_STEPS[0][0], "[1/16] INGEST")
+        self.assertEqual(run._finalize_exit_code(), 1, "shared flag -> exit 1")
 
     def test_finalize_exit_code_degraded_is_one(self):
-        self.assertEqual(run._finalize_exit_code(True, "ingest boom"), 1)
+        run._mark_degraded("[X] SOME STEP", RuntimeError("boom"))
+        self.assertEqual(run._finalize_exit_code(), 1)
 
     def test_finalize_exit_code_healthy_is_zero(self):
-        self.assertEqual(run._finalize_exit_code(False, None), 0)
+        self.assertEqual(run._finalize_exit_code(), 0)
 
 
 if __name__ == "__main__":
