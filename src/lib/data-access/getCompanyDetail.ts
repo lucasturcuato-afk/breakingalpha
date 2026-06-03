@@ -19,6 +19,9 @@ export type CompanyDetailArticle = {
   sector: string | null;
   summary: string | null;
   relevanceReason: string | null;
+  /** WD49: LLM "why" for the sentiment label. Populated on all rows since the
+   *  2026-05 backfill; null only guards legacy/unscored edge cases. */
+  sentimentReason: string | null;
   ingestedAt: string | null;
   sourceWinRate: number | null;
   sourceSampleSize: number | null;
@@ -59,7 +62,7 @@ const TONE_LOOKBACK_MS = 14 * DAY_MS;
 // the tone windows above and the attention baseline; still a few hundred rows max.
 const ATTENTION_LOOKBACK_MS = 35 * DAY_MS;
 const ARTICLE_COLS =
-  "id, title, source, url, published_at, sentiment, deal_type, relevance_score, sector, summary, relevance_reason, ingested_at";
+  "id, title, source, url, published_at, sentiment, deal_type, relevance_score, sector, summary, relevance_reason, sentiment_reason, ingested_at";
 
 function utcDayMs(d: Date | string): number {
   const x = new Date(d);
@@ -168,7 +171,8 @@ export async function getCompanyDetail(
     id: string; title: string | null; source: string | null; url: string | null;
     published_at: string | null; sentiment: string | null; deal_type: string | null;
     relevance_score: number | null; sector: string | null;
-    summary: string | null; relevance_reason: string | null; ingested_at: string | null;
+    summary: string | null; relevance_reason: string | null;
+    sentiment_reason: string | null; ingested_at: string | null;
   }>;
 
   const sources = Array.from(
@@ -206,6 +210,7 @@ export async function getCompanyDetail(
       sector: r.sector,
       summary: r.summary,
       relevanceReason: r.relevance_reason,
+      sentimentReason: r.sentiment_reason,
       ingestedAt: r.ingested_at,
       sourceWinRate: cred?.win_rate ?? null,
       sourceSampleSize: cred?.n_theses ?? null,
