@@ -54,3 +54,19 @@ FORMS_OF_INTEREST = ["8-K", "8-K/A", "4", "4/A", "10-Q", "10-K", "10-Q/A", "10-K
 FILING_LOOKBACK_DAYS = 14
 
 INSIDER_SALE_THRESHOLD_USD = 1_000_000
+
+# --- 8-K summary self-heal (re-summarize stuck-NULL rows) ------------------
+# The cron summarizes an 8-K only on first ingest; a transient Gemini failure
+# leaves summary NULL forever (dedup never reprocesses the accession). The
+# self-heal pass re-summarizes NULL rows on later runs, bounded so a
+# persistently failing row is not hammered every run:
+#   - only rows filed within RESUMMARIZE_LOOKBACK_DAYS are eligible
+#   - at most MAX_SUMMARY_ATTEMPTS attempts per row, then it is left pending
+#   - exponential backoff between attempts (RESUMMARIZE_BASE_BACKOFF_HOURS * 2**attempts)
+#   - at most RESUMMARIZE_MAX_PER_RUN rows re-summarized per cron run
+RESUMMARIZE_LOOKBACK_DAYS = 7
+MAX_SUMMARY_ATTEMPTS = 4
+RESUMMARIZE_BASE_BACKOFF_HOURS = 3
+RESUMMARIZE_MAX_PER_RUN = 25
+RESUMMARIZE_CANDIDATE_LIMIT = 200
+RESUMMARIZE_SPACING_SEC = 2.0
