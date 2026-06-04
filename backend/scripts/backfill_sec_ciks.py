@@ -93,6 +93,78 @@ def _names_agree(ours: str, sec_title: str) -> tuple[bool, float, bool]:
     return ratio >= RATIO_THRESHOLD, ratio, containment
 
 
+# --- B3 token-set triage -----------------------------------------------------
+# The 0.60 difflib ratio is length-sensitive: it lumps true matches that only
+# differ by legal boilerplate ("Alight, Inc." vs "Alight, Inc. / Delaware")
+# with affiliates ("Bain Capital" vs "Bain Capital Specialty Finance") and
+# pure ticker collisions ("Stran" vs "Astrana Health"). Significant-token
+# sets separate the three.
+
+B3_STOPWORDS = _SUFFIXES | {
+    "and", "of", "class", "common", "stock", "fund", "trust",
+}
+
+# extra-descriptor tokens that signal a DIFFERENT legal entity sharing the
+# brand (BDC/SPAC/fund affiliates): used only for the keep/reject SUGGESTION
+AFFILIATE_MARKERS = {
+    "specialty", "finance", "financial", "acquisition", "acquisitions",
+    "spac", "partners", "insurance", "bancorp", "capital", "income",
+    "convertible", "investment", "investments",
+}
+
+
+def significant_tokens(name: str) -> set[str]:
+    """Lowercase, drop a trailing '/ <state>' qualifier, strip punctuation,
+    remove corporate/legal-form stopwords. What remains is identity."""
+    n = re.sub(r"/.*$", " ", (name or "").lower())  # 'Alight, Inc. / Delaware'
+    n = re.sub(r"[^a-z0-9 ]", " ", n)
+    return {t for t in n.split() if t and t not in B3_STOPWORDS}
+
+
+def _b3_suggestion(ours: set, sec: set) -> tuple[str, str]:
+    shared = ours & sec
+    extras = (ours | sec) - shared
+    if len(shared) == 1 and len(extras) >= 1:
+        return "reject", "single shared brand token only"
+    if ours <= sec or sec <= ours:
+        if extras & AFFILIATE_MARKERS:
+            return "reject", "extra descriptors look like an affiliate entity"
+        if len(extras) <= 1:
+            return "keep", "one side adds at most one non-affiliate token"
+        return "reject", "two or more extra descriptors"
+    return "reject", "both sides carry tokens the other lacks"
+
+
+def classify_b3(b3: list[dict]) -> tuple[list, list, list]:
+    """Split B3 into A (token sets equal), B (overlap, needs judgment),
+    C (zero overlap, pure ticker collision). Multi-CIK-ambiguous rows are
+    capped at B even when a candidate's tokens match exactly."""
+    b3a, b3b, b3c = [], [], []
+    for r in b3:
+        ours = significant_tokens(r["name"])
+        best = None
+        for cik, raw, title in r["candidates"]:
+            sec = significant_tokens(title)
+            overlap = len(ours & sec)
+            cand = {"cik": cik, "sec_ticker": raw, "sec_title": title,
+                    "sec_tokens": sec, "overlap": overlap,
+                    "equal": bool(ours) and ours == sec}
+            if best is None or (cand["equal"], cand["overlap"]) > (best["equal"], best["overlap"]):
+                best = cand
+        ambiguous = len({c for c, _, _ in r["candidates"]}) > 1
+        row = {**r, **best, "our_tokens": ours}
+        if best["equal"] and not ambiguous:
+            b3a.append(row)
+        elif best["overlap"] > 0:
+            sug, why = _b3_suggestion(ours, best["sec_tokens"])
+            if ambiguous:
+                sug, why = "reject", "ticker ambiguous across CIKs"
+            b3b.append({**row, "suggestion": sug, "why": why})
+        else:
+            b3c.append(row)
+    return b3a, b3b, b3c
+
+
 def fetch_sec_tickers() -> tuple[dict, dict]:
     """normalized ticker -> (cik, raw ticker, title); cik -> [raw tickers]."""
     resp = sec_get(COMPANY_TICKERS_URL)
@@ -182,6 +254,19 @@ def emit_artifacts(b1, b2, b3, b4, n_targets):
                 f" (ratio {r['ratio']:.2f}){cls}"
             )
         lines.append("")
+
+    b3a, b3b, b3c = classify_b3(b3)
+    lines.append("-- B3-A: significant-token sets equal after stripping legal "
+                 "suffixes, high-confidence same entity")
+    lines.append(f"-- {len(b3a)} rows; keep or cut this block wholesale")
+    for r in sorted(b3a, key=lambda r: r["ticker"] or ""):
+        lines.append(
+            f"UPDATE companies SET sec_cik = {r['cik']} "
+            f"WHERE id = '{r['id']}' AND sec_cik IS NULL;"
+            f"  -- {r['ticker']} {r['name']!r} -> {r['sec_title']!r}"
+            f" (tokens: {' '.join(sorted(r['our_tokens']))})"
+        )
+    lines.append("")
     lines += ["COMMIT;", ""]
     with open(SQL_PATH, "w") as f:
         f.write("\n".join(lines))
@@ -198,18 +283,48 @@ def emit_artifacts(b1, b2, b3, b4, n_targets):
         f"|---|---|---|",
         f"| B1 clean | {len(b1)} | in SQL, apply-ready |",
         f"| B2 share-class | {len(b2)} | in SQL, apply-ready (class noted) |",
-        f"| B3 suspect | {len(b3)} | EXCLUDED, adjudicate below |",
+        f"| B3-A token-equal | {len(b3a)} | in SQL (labeled block), high confidence |",
+        f"| B3-B judgment | {len(b3b)} | decision table below |",
+        f"| B3-C reject | {len(b3c)} | zero token overlap, pure ticker collision |",
         f"| B4 unmatched | {len(b4)} | expected (foreign/private/delisted) |",
         "",
-        "## B3 suspects (full list, our name vs SEC title)",
+        "B3 sub-classification: significant-token sets (lowercase, punctuation",
+        "stripped, corporate/legal stopwords and trailing '/ state' qualifiers",
+        "removed). A = sets equal. B = overlap but extra descriptor tokens on",
+        "one side (affiliate / same-brand-different-entity risk). C = zero",
+        "overlap (coincidental ticker).",
         "",
-        "| ticker | our name | SEC candidate(s) | ratio | reason |",
-        "|---|---|---|---|---|",
+        "## B3-A: token sets equal (now in the SQL as a labeled block)",
+        "",
+        "| ticker | our name | SEC title | CIK |",
+        "|---|---|---|---|",
     ]
-    for r in sorted(b3, key=lambda r: r["ticker"] or ""):
-        cands = "; ".join(f"CIK {c} {t!r} ({raw})" for c, raw, t in r["candidates"])
-        rep.append(f"| {r['ticker']} | {r['name']} | {cands} "
-                   f"| {r['ratio']:.2f} | {r['reason']} |")
+    for r in sorted(b3a, key=lambda r: r["ticker"] or ""):
+        rep.append(f"| {r['ticker']} | {r['name']} | {r['sec_title']} | {r['cik']} |")
+    rep += [
+        "",
+        "## B3-B: needs judgment (our name | SEC title | shared | extra | suggestion)",
+        "",
+        "| ticker | our name | SEC title | shared tokens | extra tokens | suggestion | UPDATE (commented) |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for r in sorted(b3b, key=lambda r: r["ticker"] or ""):
+        shared = " ".join(sorted(r["our_tokens"] & r["sec_tokens"])) or "-"
+        extra = " ".join(sorted((r["our_tokens"] | r["sec_tokens"])
+                                - (r["our_tokens"] & r["sec_tokens"]))) or "-"
+        upd = (f"`-- UPDATE companies SET sec_cik = {r['cik']} "
+               f"WHERE id = '{r['id']}' AND sec_cik IS NULL;`")
+        rep.append(f"| {r['ticker']} | {r['name']} | {r['sec_title']} "
+                   f"| {shared} | {extra} | {r['suggestion']}: {r['why']} | {upd} |")
+    rep += [
+        "",
+        "## B3-C: rejected, zero significant-token overlap",
+        "",
+        "| ticker | our name | SEC title |",
+        "|---|---|---|",
+    ]
+    for r in sorted(b3c, key=lambda r: r["ticker"] or ""):
+        rep.append(f"| {r['ticker']} | {r['name']} | {r['sec_title']} |")
     rep += [
         "",
         "## B4 unmatched tickers",

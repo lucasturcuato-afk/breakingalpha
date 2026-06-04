@@ -233,4 +233,8 @@ UPDATE companies SET sec_cik = 1913510 WHERE id = '7fabaa05-f465-4f8e-873a-406a5
 UPDATE companies SET sec_cik = 806968 WHERE id = '018ac423-92a1-42b8-bfcd-9b3bda25c392' AND sec_cik IS NULL;  -- WPP 'WPP' -> 'WPP plc' (ratio 1.00) classes=WPP,WPPGF
 UPDATE companies SET sec_cik = 1819493 WHERE id = '2ec51764-0963-4b3e-a4e6-9f701913f068' AND sec_cik IS NULL;  -- XOS 'Xos' -> 'Xos, Inc.' (ratio 1.00) classes=XOS,XOSWW
 
+-- B3-A: significant-token sets equal after stripping legal suffixes, high-confidence same entity
+-- 1 rows; keep or cut this block wholesale
+UPDATE companies SET sec_cik = 1809104 WHERE id = 'abd17073-5969-4b40-ba1d-292ffcfbef9c' AND sec_cik IS NULL;  -- ALIT 'Alight, Inc.' -> 'Alight, Inc. / Delaware' (tokens: alight)
+
 COMMIT;
