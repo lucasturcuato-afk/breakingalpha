@@ -77,6 +77,56 @@ def get_watchlist_ciks(sb: Client) -> list[dict]:
     return results
 
 
+def get_xbrl_ciks(sb: Client) -> list[dict]:
+    """
+    ALL companies with a sec_cik, for the daily XBRL financials refresh.
+    Same {cik, ticker, company_id, company_name} shape as get_watchlist_ciks
+    so the two resolvers are drop-in compatible.
+
+    Dedicated and UNCAPPED on purpose: widening XBRL coverage must not
+    amplify into EDGAR's hourly poll, which keeps using get_watchlist_ciks
+    (watchlist + top-200 by mentions). No watchlist union needed here:
+    watchlist CIKs already carry sec_cik in companies (sync_cik_tickers
+    maintains the column).
+
+    Paged with .range(): PostgREST returns at most 1000 rows per request, so
+    a single .execute() would silently truncate once the sec_cik universe
+    outgrows one page. Secondary order on id keeps pages stable across
+    mention_count ties.
+    """
+    seen: set[int] = set()
+    results = []
+    page, page_size = 0, 1000
+    while True:
+        rows = (
+            sb.table("companies")
+            .select("id, ticker, sec_cik, name")
+            .not_.is_("sec_cik", "null")
+            .order("mention_count", desc=True)
+            .order("id")
+            .range(page * page_size, (page + 1) * page_size - 1)
+            .execute()
+            .data or []
+        )
+        for c in rows:
+            if c["sec_cik"] in seen:
+                continue
+            seen.add(c["sec_cik"])
+            results.append({
+                "cik": c["sec_cik"],
+                "ticker": (c.get("ticker") or "").upper(),
+                "company_id": c["id"],
+                "company_name": c["name"],
+            })
+        if len(rows) < page_size:
+            break
+        page += 1
+
+    logger.info("[xbrl] %d CIKs to refresh (all companies with sec_cik)",
+                len(results))
+    return results
+
+
 def fetch_recent_filings(cik: int) -> Optional[list[dict]]:
     """Fetch recent filings for a CIK from submissions API."""
     padded = str(cik).zfill(10)

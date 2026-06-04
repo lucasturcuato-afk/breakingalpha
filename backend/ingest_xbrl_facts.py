@@ -31,7 +31,7 @@ from typing import Optional
 
 from supabase import create_client
 
-from backend.edgar.submissions import get_watchlist_ciks
+from backend.edgar.submissions import get_xbrl_ciks
 from backend.edgar.xbrl_facts import (
     extract_financial_facts,
     fetch_company_facts,
@@ -65,13 +65,15 @@ def run(*, dry_run: bool = False, max_ciks: Optional[int] = None,
         "errors": 0,
     }
 
-    watchlist = get_watchlist_ciks(sb)
+    # Dedicated uncapped resolver: every company with a sec_cik. EDGAR's
+    # hourly poll stays on get_watchlist_ciks (watchlist + top-200).
+    targets = get_xbrl_ciks(sb)
     if only_cik:
-        watchlist = [w for w in watchlist if w["cik"] == only_cik]
+        targets = [w for w in targets if w["cik"] == only_cik]
     if max_ciks:
-        watchlist = watchlist[:max_ciks]
+        targets = targets[:max_ciks]
 
-    for entry in watchlist:
+    for entry in targets:
         cik = entry["cik"]
         try:
             _process_cik(sb, entry, dry_run, stats)
