@@ -1,11 +1,48 @@
 # WD110 -- Tone surface redesign
 
-**Status:** Spec  
+**Status:** Closed (re-scoped; Element 3 shipped via PR #317, 2026-06-03 -- see status addendum)  
 **Filed:** 2026-05-18  
 **Priority:** P1  
 **Complexity:** M (UI redesign + new components + data dependency on WD49)  
 **Depends on:** WD49 (sentiment_reason field on articles, populated via 2026-05-18 backfill)  
 **Coordination:** src/app/trends/page.tsx currently Lucas-protected per CLAUDE.md as of session start; expected coordination cost minimal based on Lucas's in-flight work being on learning substrate (outputs table, Step 4 evaluator) rather than trends route. Confirm with Lucas before implementation sprint.
+
+## Status addendum (2026-06-03)
+
+Do not build against the "Problem" section below as a description of the current
+surface -- it describes the pre-redesign state and went stale within two weeks of
+filing. Recorded here so the next session does not re-litigate the same recon.
+
+**Already shipped on main before this spec was picked up** (ToneReadout +
+ToneTrendChart + src/lib/tone.ts + /api/company-trend, landed after 2026-05-18):
+
+- Problem 1 ("+0.00 / 0%" delta framing): fixed. ToneReadout renders a
+  plain-language level + week-over-week direction + evidence count and never
+  shows the bare -1..+1 scalar. This superseded Element 1 in a stronger form
+  than spec'd (the spec's "Net bullish (+0.4)" would have re-exposed the scalar).
+- Problem 2 / WD53 (hardcoded-green sparkline): resolved. The sparkline is gone;
+  ToneTrendChart sign-colors the line and markers.
+- Problem 3 (legend-less bar row): gone. SentimentHeat removed from the tab.
+- Problem 4 (three competing readings): addressed by the readout-over-line layout.
+- Element 4 window toggle: a 7D / 30D / 90D range strip exists on ToneTrendChart
+  (component-local state, not URL-persisted; spec wanted 7/14/30 + URL state).
+
+**Shipped via PR #317 (this spec, re-scoped to Element 3 only):**
+
+- getCompanyDetail surfaces WD49 sentiment_reason (verified 100% populated,
+  36,536/36,536 rows at ship time) as CompanyDetailArticle.sentimentReason.
+- ToneEvidenceList: "Behind this tone" rows directly under the ToneReadout on
+  the Price & Tone tab; same trailing 7-day window as the tone level,
+  relevance-desc, capped at 5 with overflow count.
+- ToneArticleDetail: click-through detail (side panel desktop, bottom sheet
+  mobile) with sentiment_reason in a gold callout, summary, sentiment pill,
+  outbound source link, Escape/backdrop close.
+
+**Dropped in the re-scope (file a new WD if wanted later):**
+
+- Element 2 event-dot timeline. The shipped trajectory line stays the default
+  view; events-as-default is a product decision, not a bug fix.
+- Element 4 events/trajectory view toggle and ?view/?window URL state.
 
 ## Problem
 
