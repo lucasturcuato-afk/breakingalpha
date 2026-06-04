@@ -22,6 +22,7 @@ from backend.edgar.submissions import (
     fetch_recent_filings,
     filter_new_filings,
     build_document_url,
+    build_form4_document_url,
 )
 from backend.edgar.forms.form_8k import fetch_8k_content, summarize_8k
 from backend.edgar.forms.form_4 import fetch_form4_xml, parse_form4
@@ -127,7 +128,11 @@ def _process_filing(sb, filing, entry, dry_run, stats):
     if form and form.startswith("8-K"):
         _process_8k(sb, filing, entry, doc_url, dry_run, stats)
     elif form and form.startswith("4"):
-        _process_form4(sb, filing, entry, doc_url, dry_run, stats)
+        # Form 4 primaryDocument is the XSL HTML viewer; derive the raw XML URL.
+        form4_doc_url = build_form4_document_url(
+            cik, accession, filing.get("primary_document", "")
+        )
+        _process_form4(sb, filing, entry, form4_doc_url, dry_run, stats)
     elif form and (form.startswith("10-K") or form.startswith("10-Q")):
         _process_periodic(sb, filing, entry, doc_url, dry_run, stats)
 

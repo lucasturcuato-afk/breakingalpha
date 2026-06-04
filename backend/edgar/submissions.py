@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date, timedelta
 from typing import Optional
 
@@ -170,3 +171,17 @@ def build_document_url(cik: int, accession_number: str, primary_doc: str) -> str
     """Construct full URL for the primary filing document."""
     accession_no_dashes = accession_number.replace("-", "")
     return f"https://www.sec.gov/Archives/edgar/data/{cik}/{accession_no_dashes}/{primary_doc}"
+
+
+# Form 4 primaryDocument points at the XSL-rendered HTML viewer (e.g.
+# "xslF345X06/wk-form4_X.xml"), which returns HTML, not parseable XML. The raw
+# ownershipDocument XML sits in the same accession folder with the leading
+# "xsl.../" path segment removed. Regex-guarded, so it is a no-op when no xsl
+# prefix is present and cannot break filings that already point at raw XML.
+_XSL_PREFIX_RE = re.compile(r"^xsl[^/]*/")
+
+
+def build_form4_document_url(cik: int, accession_number: str, primary_doc: str) -> str:
+    """Construct the raw Form 4 XML URL, stripping any XSL viewer path prefix."""
+    raw_doc = _XSL_PREFIX_RE.sub("", primary_doc or "")
+    return build_document_url(cik, accession_number, raw_doc)
