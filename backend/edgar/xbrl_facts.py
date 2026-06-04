@@ -448,19 +448,27 @@ def _fiscal_windows(facts: list[dict]) -> list[dict]:
         if w["fy"] is None:
             w["fy"] = _d(w["end"]).year
 
-    # sequence repair: adjacent fiscal years (ends < ~500d apart) number +1
+    # sequence repair: adjacent fiscal years (ends < ~500d apart) number +1.
+    # Iterated to convergence: SEC switched its fy-derivation convention
+    # around 2015 (start-year -> end-year), so Jan-FYE retailers (WMT et al)
+    # carry a whole ERA of off-by-one anchors that must cascade, not just the
+    # single pair at the era boundary.
     offsets = [w["fy"] - _d(w["end"]).year for w in windows]
     modal = max(set(offsets), key=offsets.count) if offsets else 0
-    for i in range(len(windows) - 1):
-        a, b = windows[i], windows[i + 1]
-        if (_d(b["end"]) - _d(a["end"])).days >= 500:
-            continue  # true coverage gap (e.g. missing early-XBRL year)
-        if b["fy"] - a["fy"] == 1:
-            continue
-        if a["fy"] - _d(a["end"]).year != modal:
-            a["fy"] = b["fy"] - 1
-        elif b["fy"] - _d(b["end"]).year != modal:
-            b["fy"] = a["fy"] + 1
+    for _ in range(len(windows)):
+        changed = False
+        for i in range(len(windows) - 1):
+            a, b = windows[i], windows[i + 1]
+            if (_d(b["end"]) - _d(a["end"])).days >= 500:
+                continue  # true coverage gap (e.g. missing early-XBRL year)
+            if b["fy"] - a["fy"] == 1:
+                continue
+            if a["fy"] - _d(a["end"]).year != modal:
+                a["fy"], changed = b["fy"] - 1, True
+            elif b["fy"] - _d(b["end"]).year != modal:
+                b["fy"], changed = a["fy"] + 1, True
+        if not changed:
+            break
     return windows
 
 
@@ -611,15 +619,16 @@ def extract_financial_facts(cik: int, company_facts: dict) -> list[dict]:
     # must come last: needs the raw SEC fy/fp for anchoring, then replaces them
     assign_fiscal_labels(all_facts)
 
-    # v1 excludes rolling trailing-12-month figures from the published set
-    # rather than mislabel them as FY (Amazon tags TTM OCF in every 10-Q).
-    # Recognized by the labeler ('TTM'), counted, and skipped.
+    # Rolling trailing-12-month figures (Amazon tags TTM OCF in every 10-Q)
+    # keep their honest 'TTM' label and are QUARANTINED by the validation
+    # gate (reason ttm_not_published) instead of being dropped: writing them
+    # lets the upsert overwrite any previously mislabeled row in place, while
+    # the validated-only view still never publishes them.
     ttm = [f for f in all_facts if f["fiscal_period"] == "TTM"]
     if ttm:
-        logger.info("[xbrl] CIK %d: excluding %d TTM facts (%s)",
+        logger.info("[xbrl] CIK %d: %d TTM facts (kept, never published) (%s)",
                     cik, len(ttm),
                     sorted({f["metric_key"] for f in ttm}))
-        all_facts = [f for f in all_facts if f["fiscal_period"] != "TTM"]
 
     for f in all_facts:
         f["cik"] = cik

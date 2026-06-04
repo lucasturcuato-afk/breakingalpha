@@ -1,8 +1,5 @@
-2026-06-03 17:05:01,827 [WARNING] [xbrl] cik=320193 quarantined 40/3375 facts (['tieout_eps'])
-2026-06-03 17:05:05,794 [WARNING] [xbrl] cik=1045810 quarantined 66/3339 facts (['tieout_balance_sheet', 'tieout_eps'])
-2026-06-03 17:05:10,184 [WARNING] [xbrl] cik=1535527 quarantined 21/1102 facts (['tieout_balance_sheet'])
-2026-06-03 17:05:13,622 [WARNING] [xbrl] cik=1561550 quarantined 11/1149 facts (['tieout_balance_sheet'])
-2026-06-03 17:05:17,657 [WARNING] [xbrl] cik=1640147 quarantined 5/957 facts (['tieout_balance_sheet'])
+2026-06-03 19:41:00,399 [WARNING] [xbrl] cik=320193 quarantined 40/3375 facts (['tieout_eps'])
+2026-06-03 19:41:04,719 [WARNING] [xbrl] cik=1045810 quarantined 66/3339 facts (['tieout_balance_sheet', 'tieout_eps'])
 ========================================================================================
 XBRL GOLDEN-SET EVAL  (live Company Facts, FULL gate incl. cross-endpoint reconciliation)
 ========================================================================================
@@ -10,9 +7,9 @@ XBRL GOLDEN-SET EVAL  (live Company Facts, FULL gate incl. cross-endpoint reconc
 -- dry-run: validated vs quarantined per ticker --
   AAPL  extracted= 3375  validated= 3335  quarantined=  40  reasons=['tieout_eps']
   NVDA  extracted= 3339  validated= 3273  quarantined=  66  reasons=['tieout_balance_sheet', 'tieout_eps']
-  CRWD  extracted= 1102  validated= 1081  quarantined=  21  reasons=['tieout_balance_sheet']
-  DDOG  extracted= 1149  validated= 1138  quarantined=  11  reasons=['tieout_balance_sheet']
-  SNOW  extracted=  957  validated=  952  quarantined=   5  reasons=['tieout_balance_sheet']
+  CRWD  extracted= 1110  validated= 1110  quarantined=   0  reasons=-
+  DDOG  extracted= 1265  validated= 1265  quarantined=   0  reasons=-
+  SNOW  extracted=  987  validated=  987  quarantined=   0  reasons=-
 
 -- golden assertions --
   PASS AAPL revenue@2025-09-27: 416,161,000,000 (RevenueFromContractWithCustomerExcludingAssessedTax, accn=0000320193-25-000079)

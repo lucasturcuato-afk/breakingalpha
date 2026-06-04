@@ -322,9 +322,11 @@ class WindowBuilderHardeningTests(unittest.TestCase):
         return _raw(val, end, accn, start=start, fy=fy, fp="FY",
                     form="10-K", filed=filed)
 
-    def test_ttm_facts_are_excluded_not_mislabeled(self):
+    def test_ttm_facts_labeled_ttm_and_never_published(self):
         # AMZN-style: rolling 12-month spans tagged in 10-Qs alongside real
-        # calendar fiscal years
+        # calendar fiscal years. Kept (so upserts overwrite stale rows) with
+        # an honest TTM label, quarantined by the gate, never published.
+        from backend.edgar.xbrl_validation import validate_facts, validated_only
         cf = _company_facts({
             "NetCashProvidedByUsedInOperatingActivities": {"units": {"USD": [
                 self._annual(500, "2024-01-01", "2024-12-31", "acc-fy24", 2024, "2025-02-01"),
@@ -335,13 +337,40 @@ class WindowBuilderHardeningTests(unittest.TestCase):
             ]}},
         })
         facts = extract_financial_facts(123, cf)
-        spans = {(f["period_start"], f["period_end"]) for f in facts}
-        self.assertNotIn(("2024-04-01", "2025-03-31"), spans)  # TTM gone
-        by_end = {f["period_end"]: f for f in facts if not f["is_derived"]}
-        self.assertEqual((by_end["2024-12-31"]["fiscal_year"],
-                          by_end["2024-12-31"]["fiscal_period"]), (2024, "FY"))
-        self.assertEqual((by_end["2025-12-31"]["fiscal_year"],
-                          by_end["2025-12-31"]["fiscal_period"]), (2025, "FY"))
+        ttm = next(f for f in facts if f["period_start"] == "2024-04-01"
+                   and f["period_end"] == "2025-03-31")
+        self.assertEqual(ttm["fiscal_period"], "TTM")  # kept, honestly labeled
+        validate_facts(facts, 123, concept_fetcher=None)
+        self.assertEqual(ttm["validation_status"], "quarantined")
+        self.assertIn("ttm_not_published", ttm["validation_reason"])
+        published_spans = {(f["period_start"], f["period_end"])
+                          for f in validated_only(facts)}
+        self.assertNotIn(("2024-04-01", "2025-03-31"), published_spans)
+        by_end = {f["period_end"]: f for f in facts
+                  if not f["is_derived"] and f["fiscal_period"] == "FY"}
+        self.assertEqual(by_end["2024-12-31"]["fiscal_year"], 2024)
+        self.assertEqual(by_end["2025-12-31"]["fiscal_year"], 2025)
+
+    def test_era_switched_anchor_convention_cascades(self):
+        # WMT-style: SEC fy metadata used START-year numbering before ~2015
+        # and END-year after. The repair must cascade through the whole old
+        # era, not just the boundary pair: years must number consecutively.
+        cf = _company_facts({
+            "Revenues": {"units": {"USD": [
+                self._annual(100, "2011-02-01", "2012-01-31", "acc-12", 2011, "2012-03-27"),
+                self._annual(110, "2012-02-01", "2013-01-31", "acc-13", 2012, "2013-03-26"),
+                self._annual(120, "2013-02-01", "2014-01-31", "acc-14", 2013, "2014-03-21"),
+                self._annual(130, "2014-02-01", "2015-01-31", "acc-15", 2015, "2015-04-01"),
+                self._annual(140, "2015-02-01", "2016-01-31", "acc-16", 2016, "2016-03-30"),
+                self._annual(150, "2016-02-01", "2017-01-31", "acc-17", 2017, "2017-03-31"),
+            ]}},
+        })
+        facts = extract_financial_facts(123, cf)
+        fy_by_end = {f["period_end"]: f["fiscal_year"] for f in facts}
+        self.assertEqual(fy_by_end, {
+            "2012-01-31": 2012, "2013-01-31": 2013, "2014-01-31": 2014,
+            "2015-01-31": 2015, "2016-01-31": 2016, "2017-01-31": 2017,
+        })
 
     def test_corrupt_anchor_rejected(self):
         # STX-style: SEC metadata says fy=2027 on the year ending 2025-06-27

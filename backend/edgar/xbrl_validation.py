@@ -193,7 +193,8 @@ def _check_cash_flow_roll(idx, cur) -> None:
     ocf = _periods_of(cur, "operating_cash_flow")
     # FY totals: duration spanning ~a year
     for (fy_ps, fy_pe), fy_fact in ocf.items():
-        if fy_fact["is_derived"] or not _is_annual_span(fy_ps, fy_pe):
+        if fy_fact["is_derived"] or not _is_annual_span(fy_ps, fy_pe) \
+                or fy_fact.get("fiscal_period") == "TTM":
             continue
         pieces = [
             f for (ps, pe), f in ocf.items()
@@ -328,6 +329,12 @@ def validate_facts(
     for f in facts:
         f["validation_status"] = VALIDATED
         f["validation_reason"] = None
+
+    # Rolling trailing-12-month figures are stored (so upserts overwrite any
+    # previously mislabeled row) but never published: quarantine on sight.
+    for f in facts:
+        if f.get("fiscal_period") == "TTM":
+            _quarantine(f, "ttm_not_published: rolling twelve-month figure")
 
     idx = _index(facts)
     cur = _current(facts)
