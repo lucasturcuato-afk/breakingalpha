@@ -31,5 +31,5 @@ jobs:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         run: |
           PYTHONPATH=. python3 -m backend.ingest_xbrl_facts \
-            ${{ inputs.dry_run == 'true' && '--dry-run' || '' }} \
+            ${{ inputs.dry_run && '--dry-run' || '' }} \
             ${{ inputs.max_ciks != '' && format('--max-ciks {0}', inputs.max_ciks) || '' }}
