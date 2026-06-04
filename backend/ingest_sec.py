@@ -11,7 +11,8 @@ import argparse
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from supabase import create_client
@@ -30,6 +31,12 @@ from backend.edgar.forms.form_periodic import record_periodic_filing
 from backend.edgar.constants import (
     FORMS_OF_INTEREST,
     MATERIAL_8K_ITEMS,
+    RESUMMARIZE_LOOKBACK_DAYS,
+    MAX_SUMMARY_ATTEMPTS,
+    RESUMMARIZE_BASE_BACKOFF_HOURS,
+    RESUMMARIZE_MAX_PER_RUN,
+    RESUMMARIZE_CANDIDATE_LIMIT,
+    RESUMMARIZE_SPACING_SEC,
 )
 from backend.outputs import record_output
 
@@ -56,6 +63,8 @@ def run(
         "filings_periodic_new": 0,
         "transactions_recorded": 0,
         "outputs_recorded": 0,
+        "filings_8k_resummarized": 0,
+        "resummarize_failed": 0,
         "errors": 0,
     }
 
@@ -91,6 +100,13 @@ def run(
                 )
                 stats["errors"] += 1
 
+    # Self-heal: re-summarize 8-K rows whose summary is stuck NULL (bounded).
+    try:
+        resummarize_null_8k(sb, stats, dry_run=dry_run)
+    except Exception as e:
+        logger.error("[edgar] resummarize pass failed: %s", e, exc_info=True)
+        stats["errors"] += 1
+
     completed_at = datetime.now(timezone.utc)
     if not dry_run:
         try:
@@ -112,6 +128,132 @@ def run(
 
     logger.info("[edgar] complete: %s", stats)
     return stats
+
+
+def _parse_ts(value) -> Optional[datetime]:
+    """Parse a Supabase timestamptz string to an aware datetime, or None."""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    s = str(value).strip().replace(" ", "T")
+    # normalize a trailing "+00" offset to "+00:00" for fromisoformat
+    if len(s) >= 3 and s[-3] in "+-" and s[-2:].isdigit():
+        s = s + ":00"
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        return None
+
+
+def _resummarize_eligible(
+    attempts: int,
+    last_attempt_at: Optional[datetime],
+    now: datetime,
+    *,
+    max_attempts: int,
+    base_backoff_hours: float,
+) -> bool:
+    """Decide whether a stuck-NULL row may be re-summarized this run.
+
+    Pure (no I/O) so it is unit-testable. A row is eligible when it is under the
+    attempt cap AND either was never attempted or has waited out an exponential
+    backoff (base * 2**attempts) since its last attempt.
+    """
+    if attempts >= max_attempts:
+        return False
+    if last_attempt_at is None:
+        return True
+    required = timedelta(hours=base_backoff_hours * (2 ** attempts))
+    return (now - last_attempt_at) >= required
+
+
+def resummarize_null_8k(sb, stats, *, dry_run: bool = False) -> None:
+    """Re-summarize 8-K rows whose summary is stuck NULL, bounded per run.
+
+    Picks up recent NULL-summary rows that have stored raw_content, respects an
+    attempt cap and exponential backoff (so persistently failing rows are not
+    hammered), and re-runs summarize_8k on the stored content. Writes only the
+    summary plus retry-tracking columns; never refetches from SEC.
+    """
+    now = datetime.now(timezone.utc)
+    cutoff = (now.date() - timedelta(days=RESUMMARIZE_LOOKBACK_DAYS)).isoformat()
+
+    rows = (
+        sb.table("sec_filings")
+        .select(
+            "id, accession_number, ticker, company_id, items, raw_content, "
+            "summary_attempts, summary_last_attempt_at"
+        )
+        .like("form_type", "8-K%")
+        .is_("summary", "null")
+        .gte("filing_date", cutoff)
+        .lt("summary_attempts", MAX_SUMMARY_ATTEMPTS)
+        .order("filing_date", desc=True)
+        .limit(RESUMMARIZE_CANDIDATE_LIMIT)
+        .execute()
+        .data
+        or []
+    )
+
+    eligible = []
+    for r in rows:
+        if not (r.get("raw_content") or "").strip():
+            continue
+        if _resummarize_eligible(
+            r.get("summary_attempts") or 0,
+            _parse_ts(r.get("summary_last_attempt_at")),
+            now,
+            max_attempts=MAX_SUMMARY_ATTEMPTS,
+            base_backoff_hours=RESUMMARIZE_BASE_BACKOFF_HOURS,
+        ):
+            eligible.append(r)
+
+    eligible = eligible[:RESUMMARIZE_MAX_PER_RUN]
+    stats["resummarize_candidates"] = len(eligible)
+    if dry_run or not eligible:
+        logger.info(
+            "[edgar] resummarize: %d eligible NULL-summary 8-K rows%s",
+            len(eligible), " (dry run)" if dry_run else "",
+        )
+        return
+
+    cids = sorted({r["company_id"] for r in eligible if r.get("company_id")})
+    name_by_id = {}
+    if cids:
+        cn = sb.table("companies").select("id, name").in_("id", cids).execute().data or []
+        name_by_id = {c["id"]: c["name"] for c in cn}
+
+    for i, r in enumerate(eligible):
+        if i:
+            time.sleep(RESUMMARIZE_SPACING_SEC)
+        ticker = r.get("ticker") or "?"
+        company_name = name_by_id.get(r.get("company_id")) or ticker
+        summary = summarize_8k(
+            r.get("raw_content") or "", r.get("items") or [], ticker, company_name
+        )
+        update = {
+            "summary_attempts": (r.get("summary_attempts") or 0) + 1,
+            "summary_last_attempt_at": now.isoformat(),
+        }
+        if summary:
+            update["summary"] = summary
+            stats["filings_8k_resummarized"] += 1
+        else:
+            stats["resummarize_failed"] += 1
+        try:
+            sb.table("sec_filings").update(update).eq("id", r["id"]).execute()
+        except Exception as e:
+            logger.error(
+                "[edgar] resummarize update failed for %s: %s",
+                r.get("accession_number"), e,
+            )
+            stats["errors"] += 1
+
+    logger.info(
+        "[edgar] resummarize: %d attempted, %d filled, %d still pending",
+        len(eligible), stats["filings_8k_resummarized"], stats["resummarize_failed"],
+    )
 
 
 def _process_filing(sb, filing, entry, dry_run, stats):

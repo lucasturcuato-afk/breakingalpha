@@ -6,10 +6,38 @@ import os
 import re
 from typing import Optional
 
+from google import genai
+
 from backend.edgar.client import sec_get
 from backend.edgar.constants import ITEM_CODE_DESCRIPTIONS
 
 logger = logging.getLogger(__name__)
+
+# Canonical model for this repo (matches summarize.py / synthesize.py).
+GEMINI_MODEL = "gemini-2.5-flash"
+
+# Lazy, import-safe client (mirrors backend/summarize.py). 8-K ingest must import
+# cleanly even when GEMINI_API_KEY is absent; summarize_8k guards on None. This
+# uses the google-genai SDK the rest of the project uses, so 8-K summarize runs
+# under the same interpreter/.venv as everything else (the old google.generativeai
+# package only existed in a separate homebrew interpreter).
+try:
+    _gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+except Exception as e:  # missing key / malformed — non-fatal at import
+    _gemini_client = None
+    logger.warning("[8-K] Gemini client unavailable at import (%s)", e)
+
+
+def _get_gemini_client() -> Optional["genai.Client"]:
+    """Return the module client, lazily initializing if the key arrived late."""
+    global _gemini_client
+    if _gemini_client is None:
+        try:
+            _gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+        except Exception as e:
+            logger.error("[8-K] gemini client init failed: %s", e)
+            return None
+    return _gemini_client
 
 
 def fetch_8k_content(document_url: str) -> Optional[str]:
@@ -54,12 +82,13 @@ def summarize_8k(
         "consensus by $3B. iPhone revenue grew 12% on strong China demand. "
         'Tim Cook flagged ongoing investment in AI infrastructure."'
     )
+    client = _get_gemini_client()
+    if client is None:
+        return None
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-        model = genai.GenerativeModel("gemini-2.5-flash")
-        resp = model.generate_content(prompt)
-        return resp.text.strip()
+        resp = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+        text = (resp.text or "").strip()
+        return text or None
     except Exception as e:
         logger.error("[8-K] gemini summarization failed: %s", e)
         return None
