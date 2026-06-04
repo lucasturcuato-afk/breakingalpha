@@ -118,44 +118,72 @@ def _check_gross_profit_tie(idx, cur) -> None:
 
 
 def _check_balance_equation(idx, cur) -> None:
-    """Assets == Liabilities + Equity. When the resolved equity tag is
-    parent-only and the issuer reports noncontrolling interests (e.g. RTX),
-    the true identity is A == L + E_parent + NCI, so both combinations are
-    accepted. (E including NCI ties on the first form.)"""
+    """Assets == Liabilities + Equity, completed for GAAP balance-sheet
+    slices that sit OUTSIDE both L and E: noncontrolling interests (when the
+    resolved equity tag is parent-only, e.g. RTX) and temporary/mezzanine
+    equity (redeemable preferred / redeemable NCI, e.g. WDC, MicroStrategy).
+    Each reported slice is an optional adder; the identity passes if ANY
+    subset ties at rounding tolerance. Tolerances are unchanged - this
+    completes the identity, it does not loosen it."""
+    from itertools import combinations
+
     assets = _periods_of(cur, "total_assets")
     liab = _periods_of(cur, "total_liabilities")
     eq = _periods_of(cur, "stockholders_equity")
-    nci = _periods_of(cur, "minority_interest")
+    adder_metrics = ("minority_interest", "temporary_equity",
+                     "redeemable_noncontrolling_interest")
+    adders = {m: _periods_of(cur, m) for m in adder_metrics}
     for period in assets.keys() & liab.keys() & eq.keys():
         lhs = assets[period]["value"]
-        rhs = liab[period]["value"] + eq[period]["value"]
-        candidates = [rhs]
-        if period in nci:
-            candidates.append(rhs + nci[period]["value"])
+        base = liab[period]["value"] + eq[period]["value"]
+        present = [adders[m][period]["value"]
+                   for m in adder_metrics if period in adders[m]]
+        candidates = [base]
+        for r in range(1, len(present) + 1):
+            for combo in combinations(present, r):
+                candidates.append(base + sum(combo))
         if not any(_close(lhs, c, abs_tol=TIE_ABS_USD, rel_tol=BALANCE_REL)
                    for c in candidates):
             reason = (f"tieout_balance_sheet: assets={lhs:.0f} "
-                      f"!= liab+equity(+nci)={[f'{c:.0f}' for c in candidates]}")
+                      f"!= liab+equity(+nci/tempeq)="
+                      f"{[f'{c:.0f}' for c in sorted(set(candidates))]}")
             for mk in ("total_assets", "total_liabilities", "stockholders_equity"):
                 _quarantine_period(idx, mk, period[0], period[1], reason)
 
 
 def _check_eps(idx, cur) -> None:
-    for eps_key, shares_key in (("eps_basic", "shares_basic"),
-                                ("eps_diluted", "shares_diluted")):
+    """Reported EPS is on net income available to COMMON. Numerator priority:
+    1. the directly tagged NetIncomeLossAvailableToCommonStockholders*
+    2. NetIncomeLoss minus preferred dividends (when tagged)
+    3. NetIncomeLoss (issuers without preferred/NCI adjustments)
+    Tolerances unchanged - correct identity, not looser bounds."""
+    for eps_key, shares_key, common_key in (
+            ("eps_basic", "shares_basic", "ni_available_to_common_basic"),
+            ("eps_diluted", "shares_diluted", "ni_available_to_common_diluted")):
         eps = _periods_of(cur, eps_key)
         ni = _periods_of(cur, "net_income")
+        ni_common = _periods_of(cur, common_key)
+        pref = _periods_of(cur, "preferred_dividends")
         shares = _periods_of(cur, shares_key)
-        for period in eps.keys() & ni.keys() & shares.keys():
+        for period in eps.keys() & shares.keys():
             n = shares[period]["value"]
             if not n:
                 continue
-            implied = ni[period]["value"] / n
+            if period in ni_common:
+                numerator, basis = ni_common[period]["value"], "ni_common"
+            elif period in ni and period in pref:
+                numerator = ni[period]["value"] - pref[period]["value"]
+                basis = "ni-pref_div"
+            elif period in ni:
+                numerator, basis = ni[period]["value"], "ni"
+            else:
+                continue
+            implied = numerator / n
             if not _close(implied, eps[period]["value"],
                           abs_tol=EPS_ABS, rel_tol=EPS_REL):
                 _quarantine_period(
                     idx, eps_key, period[0], period[1],
-                    f"tieout_eps: ni/shares={implied:.2f} "
+                    f"tieout_eps: {basis}/shares={implied:.2f} "
                     f"!= {eps_key}={eps[period]['value']:.2f}",
                 )
 

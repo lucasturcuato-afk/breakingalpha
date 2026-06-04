@@ -68,6 +68,29 @@ XBRL_CONCEPTS: list[tuple[str, str, list[str]]] = [
     # auxiliary: lets the balance-sheet tie-out reconcile parent-only equity
     # (Assets = Liabilities + ParentEquity + NCI, e.g. RTX)
     ("minority_interest", "instant", ["MinorityInterest"]),
+    # mezzanine (temporary) equity sits between liabilities and equity:
+    # redeemable preferred / redeemable NCI (WDC, MicroStrategy, ...)
+    ("temporary_equity", "instant", [
+        "TemporaryEquityCarryingAmountIncludingPortionAttributableToNoncontrollingInterest",
+        "TemporaryEquityCarryingAmountAttributableToParent",
+    ]),
+    ("redeemable_noncontrolling_interest", "instant", [
+        "RedeemableNoncontrollingInterestEquityCarryingAmount",
+    ]),
+    # EPS numerator: reported EPS is on net income available to COMMON
+    # (NetIncomeLoss minus preferred dividends minus NCI). Most affected
+    # issuers tag it directly (WDC, Boeing, KKR RE, MicroStrategy).
+    ("ni_available_to_common_basic", "duration", [
+        "NetIncomeLossAvailableToCommonStockholdersBasic",
+    ]),
+    ("ni_available_to_common_diluted", "duration", [
+        "NetIncomeLossAvailableToCommonStockholdersDiluted",
+    ]),
+    ("preferred_dividends", "duration", [
+        "PreferredStockDividendsIncomeStatementImpact",
+        "PreferredStockDividendsAndOtherAdjustments",
+        "DividendsPreferredStock",
+    ]),
     ("cash_and_equivalents", "instant", ["CashAndCashEquivalentsAtCarryingValue"]),
 ]
 

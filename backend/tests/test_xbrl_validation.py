@@ -120,6 +120,65 @@ class TieOutTests(unittest.TestCase):
         self.assertEqual(summary["quarantined"], 0)
 
 
+class AccountingCompletenessTests(unittest.TestCase):
+    """Phase-1 hardening: the tie-outs must match GAAP identities (mezzanine
+    equity, NI available to common), recovering facts that genuinely tie -
+    while anything that still does not tie stays quarantined."""
+
+    def test_balance_sheet_reconciles_via_temporary_equity(self):
+        # WDC-style: Assets = L + E_parent + mezzanine (redeemable preferred)
+        facts = clean_company()
+        next(f for f in facts if f["metric_key"] == "stockholders_equity")["value"] = 320_000_000
+        facts.append(instant("temporary_equity", 80_000_000))
+        summary = validate_facts(facts, CIK, concept_fetcher=None)
+        self.assertEqual(summary["quarantined"], 0)
+
+    def test_balance_sheet_reconciles_via_nci_plus_temporary_equity(self):
+        facts = clean_company()
+        next(f for f in facts if f["metric_key"] == "stockholders_equity")["value"] = 310_000_000
+        facts.append(instant("minority_interest", 40_000_000))
+        facts.append(instant("redeemable_noncontrolling_interest", 50_000_000))
+        summary = validate_facts(facts, CIK, concept_fetcher=None)
+        self.assertEqual(summary["quarantined"], 0)
+
+    def test_balance_sheet_still_fails_closed_when_nothing_ties(self):
+        facts = clean_company()
+        next(f for f in facts if f["metric_key"] == "stockholders_equity")["value"] = 310_000_000
+        facts.append(instant("temporary_equity", 5_000_000))  # gap remains 85M
+        validate_facts(facts, CIK, concept_fetcher=None)
+        bad = {f["metric_key"] for f in facts
+               if f["validation_status"] == QUARANTINED}
+        self.assertIn("total_assets", bad)
+
+    def test_eps_uses_directly_tagged_ni_available_to_common(self):
+        # KKR-RE-style: big preferred dividends; EPS only ties on NI-to-common
+        facts = clean_company()
+        # reported EPS reflects 200M NI minus 40M preferred = 160M / 100M sh
+        next(f for f in facts if f["metric_key"] == "eps_basic")["value"] = 1.60
+        next(f for f in facts if f["metric_key"] == "eps_diluted")["value"] = 1.60
+        facts.append(annual("ni_available_to_common_basic", 160_000_000))
+        facts.append(annual("ni_available_to_common_diluted", 160_000_000))
+        summary = validate_facts(facts, CIK, concept_fetcher=None)
+        self.assertEqual(summary["quarantined"], 0)
+
+    def test_eps_falls_back_to_preferred_dividend_subtraction(self):
+        facts = clean_company()
+        next(f for f in facts if f["metric_key"] == "eps_basic")["value"] = 1.60
+        next(f for f in facts if f["metric_key"] == "eps_diluted")["value"] = 1.60
+        facts.append(annual("preferred_dividends", 40_000_000))
+        summary = validate_facts(facts, CIK, concept_fetcher=None)
+        self.assertEqual(summary["quarantined"], 0)
+
+    def test_eps_that_genuinely_does_not_tie_stays_quarantined(self):
+        facts = clean_company()
+        next(f for f in facts if f["metric_key"] == "eps_basic")["value"] = 1.60
+        # no NI-to-common, no preferred dividends tagged: 2.00 vs 1.60 fails
+        validate_facts(facts, CIK, concept_fetcher=None)
+        bad = next(f for f in facts if f["metric_key"] == "eps_basic")
+        self.assertEqual(bad["validation_status"], QUARANTINED)
+        self.assertIn("tieout_eps", bad["validation_reason"])
+
+
 class CashFlowRollTests(unittest.TestCase):
     M = 1_000_000  # realistic magnitudes: the roll tolerance is $5M absolute
 
