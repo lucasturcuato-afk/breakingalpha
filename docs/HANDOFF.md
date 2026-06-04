@@ -1,7 +1,26 @@
 # Signalera/Breaking Alpha -- Claude Chat Handoff
-**Date:** 2026-06-02 (PT)
-**Last session focus:** Five-PR filter cost optimization arc (#305–#310) shipped to main. Gemini relevance filter moved to Flash-Lite, dedup-before-filter, disabled thinking, outlet blocklist, SEC bypass, V3 rubric, and token usage metering all live.
-**Status:** Main is at `e10e992`. PRs #305–#310 all merged. VALIDATION PLAN: confirm meter delta ($5→$1.5/run) on next real cron run via #307 log output.
+**Date:** 2026-06-03 (PT)
+**Last session focus:** WD110 tone surface re-scoped and shipped (PR #317); local-dev OAuth diagnosis completed.
+**Status:** Main is at `1944e42` (PR #317 merge). WD110 recon surfaced that ToneReadout redesign was already live; re-scoped to Element 3 (ToneEvidenceList + ToneArticleDetail). Local-dev OAuth broken due to Supabase Site URL + Redirect URLs allowlist not updated post-domain-migration — fix is dashboard-side.
+
+---
+
+## Recently Completed (2026-06-03) -- WD110 tone surface re-scoped to Element 3 + local-dev OAuth diagnosis
+
+**PR #317 — WD110 (re-scoped): tone evidence list + sentiment_reason article detail — MERGED at 1944e42:**
+- **Recon finding:** WD110 spec (docs/w2-d/tone-surface-redesign.md, filed 2026-05-18) describes stale current-state premises. ToneReadout + ToneTrendChart redesign with 7D/30D/90D window strip was ALREADY shipped on main; "+0.00 up 0%" delta framing and WD53 hardcoded-green sparkline were ALREADY fixed.
+- **Re-scope decision:** Deliver Element 3 only (ToneEvidenceList + ToneArticleDetail). Defer Elements 2 (event-dot timeline) and Element 4 (events/trajectory toggle) as out-of-scope for this session.
+- **Shipped:** `getCompanyDetail` now surfaces WD49 `sentiment_reason` (verified 100% populated in prod: 36,536/36,536 rows) as `CompanyDetailArticle.sentimentReason`. New `ToneEvidenceList` component ("Behind this tone" rows under ToneReadout on Price & Tone tab, trailing 7-day window, relevance-desc, cap 5 articles). New `ToneArticleDetail` side panel (desktop) / bottom sheet (mobile), displays sentiment_reason in gold callout, Escape/backdrop close.
+- **API shape extension:** `CompanyDetailArticle` return shape extended (additive only, backward-compatible). Surfaces: ToneReadout, ArticleList detail, new sentimentReason field.
+- **Heads-up for Lucas:** Schema extension is read-only; his learning-substrate grading (PR #303+) reads this field. No breaking changes.
+- **Docs follow-up:** The WD110 spec doc itself describes stale current-state — flag as small docs cleanup task (not blocking).
+
+**Local-dev OAuth diagnosis (no code changes needed):**
+- **Symptom:** Logging in from localhost dev servers (e.g., `http://localhost:3000/auth/callback`) fails because GoTrue rejects the non-allowlisted localhost redirect_to and falls back to the dashboard Site URL, which is stored scheme-less as literal "signalera.ai" — browser resolves it as a path on the supabase.co domain instead of HTTPS redirect.
+- **Root cause:** Supabase project Auth settings still pinned to old `*.vercel.app` hosts post-domain-migration (2026-05-28). Site URL is scheme-less string "signalera.ai"; Redirect URLs allowlist missing localhost.
+- **App code:** Correct as-is. Both initiation (`src/app/auth/page.tsx`) and callback (`src/app/auth/callback/route.ts`) use `window.location.origin` correctly.
+- **Fix required (Noah's plate, dashboard-side):** (a) Supabase project → Authentication → URL Configuration. Change Site URL from "signalera.ai" (scheme-less) to `https://signalera.ai` (with scheme). (b) Add to Redirect URLs: `http://localhost:*/auth/callback` (for local dev), keep existing `https://*.vercel.app/**` (for preview deploys).
+- **Prod impact:** Production login unaffected (uses `https://signalera.ai` already). Dev-only blocker.
 
 ---
 
@@ -928,11 +947,9 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 
 **Local worktrees — ready for cleanup:** PR #177 was branched off main in main worktree (not a new worktree created). Merged branches: `/Users/noahhanning/ba-w3-webfallback` (PR #176), `/Users/noahhanning/ba-w2-email` (PR #175), `/Users/noahhanning/ba-w2-avatars` (PR #171). Draft branches held in worktrees: `/Users/noahhanning/ba-w2-entityaudit` (PR #173), `/Users/noahhanning/ba-w2-evidenceaudit` (PR #172), `/Users/noahhanning/ba-w2-cintelaudit` (PR #174). Plus three Wave 1: `/Users/noahhanning/ba-w1-mood`, `/Users/noahhanning/ba-w1-trackrec`, `/Users/noahhanning/ba-w1-briefload` (all branches merged). **Total: 9 worktrees pending cleanup.**
 
-**URGENT — OAuth auth redirect broken after domain migration to signalera.ai**
-- **Symptom:** Google OAuth sign-in redirects to landing page (`/`) instead of `/dashboard` after domain switch from `breakingalpha.vercel.app` to `signalera.ai`.
-- **Root cause:** Supabase Auth dashboard Site URL + Redirect URLs allowlist still pinned to old `*.vercel.app` hosts. Full diagnosis in `docs/auth-redirect-diagnosis.md` (just committed, see hypothesis (b) = primary suspect, trace at §Trace of the failing flow).
-- **Manual fix required (Noah — no code changes needed):** (1) Supabase project → Authentication → URL Configuration. Set Site URL to `https://signalera.ai`. Add to Redirect URLs: `https://signalera.ai/**`, `https://www.signalera.ai/**` if applicable, and Vercel preview glob. (2) Vercel prod env: set `NEXT_PUBLIC_SITE_URL=https://signalera.ai` (PDF/print only). Redeploy. (3) No Google Cloud changes needed. See `docs/auth-redirect-diagnosis.md` sections A–E for details + verification steps.
-- **Impact:** Users cannot complete OAuth sign-in on signalera.ai; feature is broken in production. **Do this before next user-facing deployment.**
+**OAuth auth issues (prod + local-dev, both remediated per docs)**
+- **URGENT — PROD OAuth (signalera.ai):** Google OAuth sign-in redirects to landing page (`/`) instead of `/dashboard` after domain switch from `breakingalpha.vercel.app` to `signalera.ai`. Root cause: Supabase Auth dashboard Site URL + Redirect URLs allowlist still pinned to old `*.vercel.app` hosts. Fix: (1) Supabase project → Authentication → URL Configuration. Set Site URL to `https://signalera.ai`. Add to Redirect URLs: `https://signalera.ai/**`, `https://www.signalera.ai/**` if applicable, and Vercel preview glob. (2) Vercel prod env: set `NEXT_PUBLIC_SITE_URL=https://signalera.ai` (PDF/print only). Redeploy. Full diagnosis in `docs/auth-redirect-diagnosis.md` sections A–E. **Impact:** Users cannot complete OAuth sign-in on prod; fix BEFORE next user-facing deployment.
+- **LOCAL-DEV OAuth (localhost):** Logging in from localhost dev servers fails because GoTrue rejects non-allowlisted localhost redirect_to and falls back to scheme-less Site URL "signalera.ai", which browser resolves as a path on supabase.co instead of HTTPS. Fix: same as above PLUS add `http://localhost:*/auth/callback` to Redirect URLs allowlist. App code is correct (window.location.origin on both routes). **Impact:** Dev-only blocker; prod login unaffected.
 
 **Pending DDL and migrations (2026-05-03)**
 - **sql/web_search_cache.sql** — Web-search fallback feature (PR #176, merged) requires manual Supabase DDL apply before flag enable (NOT before merge — flag default off). Adds `web_search_cache` table (6h TTL, keyed on query_hash + fetched_at). Apply when ready to enable `NEXT_PUBLIC_WEB_FALLBACK_ENABLED=true` in Vercel prod.
