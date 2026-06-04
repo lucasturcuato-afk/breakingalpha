@@ -1,0 +1,44 @@
+2026-06-03 19:41:00,399 [WARNING] [xbrl] cik=320193 quarantined 40/3375 facts (['tieout_eps'])
+2026-06-03 19:41:04,719 [WARNING] [xbrl] cik=1045810 quarantined 66/3339 facts (['tieout_balance_sheet', 'tieout_eps'])
+========================================================================================
+XBRL GOLDEN-SET EVAL  (live Company Facts, FULL gate incl. cross-endpoint reconciliation)
+========================================================================================
+
+-- dry-run: validated vs quarantined per ticker --
+  AAPL  extracted= 3375  validated= 3335  quarantined=  40  reasons=['tieout_eps']
+  NVDA  extracted= 3339  validated= 3273  quarantined=  66  reasons=['tieout_balance_sheet', 'tieout_eps']
+  CRWD  extracted= 1110  validated= 1110  quarantined=   0  reasons=-
+  DDOG  extracted= 1265  validated= 1265  quarantined=   0  reasons=-
+  SNOW  extracted=  987  validated=  987  quarantined=   0  reasons=-
+
+-- golden assertions --
+  PASS AAPL revenue@2025-09-27: 416,161,000,000 (RevenueFromContractWithCustomerExcludingAssessedTax, accn=0000320193-25-000079)
+  PASS AAPL net_income@2025-09-27: 112,010,000,000 (NetIncomeLoss, accn=0000320193-25-000079)
+  PASS AAPL eps_diluted@2025-09-27: 7.46 (EarningsPerShareDiluted, accn=0000320193-25-000079)
+  PASS AAPL total_assets@2025-09-27: 359,241,000,000 (Assets, accn=0000320193-26-000013)
+  PASS AAPL operating_cash_flow@2025-09-27: 111,482,000,000 (NetCashProvidedByUsedInOperatingActivities, accn=0000320193-25-000079)
+  PASS NVDA revenue@2026-01-25: 215,938,000,000 (Revenues, accn=0001045810-26-000021)
+  PASS NVDA net_income@2026-01-25: 120,067,000,000 (NetIncomeLoss, accn=0001045810-26-000021)
+  PASS NVDA eps_diluted@2026-01-25: 4.9 (EarningsPerShareDiluted, accn=0001045810-26-000021)
+  PASS NVDA operating_cash_flow@2026-01-25 [derived]: 36,188,000,000 (NetCashProvidedByUsedInOperatingActivities, accn=0001045810-26-000021)
+  PASS CRWD revenue@2026-01-31: 4,812,005,000 (RevenueFromContractWithCustomerIncludingAssessedTax, accn=0001535527-26-000010)
+  PASS CRWD net_income@2026-01-31: -162,502,000 (NetIncomeLoss, accn=0001535527-26-000010)
+  PASS CRWD eps_diluted@2026-01-31: -0.65 (EarningsPerShareDiluted, accn=0001535527-26-000010)
+  PASS DDOG net_income@2025-12-31: 107,741,000 (NetIncomeLoss, accn=0001628280-26-008819)
+  PASS DDOG eps_diluted@2025-12-31: 0.31 (EarningsPerShareDiluted, accn=0001628280-26-008819)
+  PASS DDOG total_assets@2025-12-31: 6,643,844,000 (Assets, accn=0001628280-26-032328)
+  PASS SNOW revenue@2026-01-31: 4,683,946,000 (RevenueFromContractWithCustomerExcludingAssessedTax, accn=0001640147-26-000008)
+  PASS SNOW net_income@2026-01-31: -1,331,616,000 (NetIncomeLoss, accn=0001640147-26-000008)
+  PASS SNOW eps_diluted@2026-01-31: -3.95 (EarningsPerShareDiluted, accn=0001640147-26-000008)
+
+-- fiscal-label assertions (period-derived, not filing fy/fp) --
+  PASS AAPL revenue 2023-10-01->2024-09-28: 391,035,000,000 -> 2024/FY
+  PASS NVDA revenue 2024-01-29->2025-01-26: 130,497,000,000 -> 2025/FY
+  PASS NVDA revenue 2025-01-27->2026-01-25: 215,938,000,000 -> 2026/FY
+  PASS NVDA revenue 2026-01-26->2026-04-26: 81,615,000,000 -> 2027/Q1
+  PASS AAPL net_income 2025-09-28->2026-03-28: 71,675,000,000 -> 2026/6M
+  PASS AAPL net_income 2025-12-28->2026-03-28: 29,578,000,000 -> 2026/Q2
+  PASS AAPL total_assets 2025-09-27->2025-09-27: 359,241,000,000 -> 2025/FY
+
+========================================================================================
+GOLDEN EVAL PASSED: 25/25 assertions exact and validated (18 values, 7 labels)
