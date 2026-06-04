@@ -313,6 +313,110 @@ class FiscalLabelingTests(unittest.TestCase):
                           by_end["2026-04-26"]["fiscal_period"]), (2027, "Q1"))
 
 
+class WindowBuilderHardeningTests(unittest.TestCase):
+    """Phase-2 hardening: spurious TTM windows, corrupt anchors, boundary
+    jitter, and off-by-one anchor sequences must not poison fiscal labels."""
+
+    @staticmethod
+    def _annual(val, start, end, accn, fy, filed):
+        return _raw(val, end, accn, start=start, fy=fy, fp="FY",
+                    form="10-K", filed=filed)
+
+    def test_ttm_facts_are_excluded_not_mislabeled(self):
+        # AMZN-style: rolling 12-month spans tagged in 10-Qs alongside real
+        # calendar fiscal years
+        cf = _company_facts({
+            "NetCashProvidedByUsedInOperatingActivities": {"units": {"USD": [
+                self._annual(500, "2024-01-01", "2024-12-31", "acc-fy24", 2024, "2025-02-01"),
+                self._annual(600, "2025-01-01", "2025-12-31", "acc-fy25", 2025, "2026-02-01"),
+                # TTM: Apr->Mar rolling year inside a 10-Q
+                _raw(550, "2025-03-31", "acc-q1-26", start="2024-04-01",
+                     fy=2025, fp="Q1", form="10-Q", filed="2025-04-30"),
+            ]}},
+        })
+        facts = extract_financial_facts(123, cf)
+        spans = {(f["period_start"], f["period_end"]) for f in facts}
+        self.assertNotIn(("2024-04-01", "2025-03-31"), spans)  # TTM gone
+        by_end = {f["period_end"]: f for f in facts if not f["is_derived"]}
+        self.assertEqual((by_end["2024-12-31"]["fiscal_year"],
+                          by_end["2024-12-31"]["fiscal_period"]), (2024, "FY"))
+        self.assertEqual((by_end["2025-12-31"]["fiscal_year"],
+                          by_end["2025-12-31"]["fiscal_period"]), (2025, "FY"))
+
+    def test_corrupt_anchor_rejected(self):
+        # STX-style: SEC metadata says fy=2027 on the year ending 2025-06-27
+        cf = _company_facts({
+            "Revenues": {"units": {"USD": [
+                self._annual(100, "2023-07-01", "2024-06-28", "acc-24", 2024, "2024-08-10"),
+                self._annual(110, "2024-06-29", "2025-06-27", "acc-25", 2027, "2025-08-10"),
+            ]}},
+        })
+        facts = extract_financial_facts(123, cf)
+        latest = max(facts, key=lambda f: f["period_end"])
+        self.assertEqual((latest["fiscal_year"], latest["fiscal_period"]),
+                         (2025, "FY"))
+
+    def test_jitter_windows_merge(self):
+        # GS-style: the same fiscal year tagged with 2008-11-28 and 2008-11-30
+        # ends in different filings; both facts must label identically
+        cf = _company_facts({
+            "Revenues": {"units": {"USD": [
+                self._annual(90, "2006-12-01", "2007-11-30", "acc-07", 2007, "2008-01-25"),
+                self._annual(100, "2007-12-01", "2008-11-28", "acc-08a", 2008, "2009-01-25"),
+                self._annual(100, "2007-12-01", "2008-11-30", "acc-08b", 2008, "2009-01-27"),
+            ]}},
+        })
+        facts = extract_financial_facts(123, cf)
+        fy08 = [f for f in facts if f["period_end"].startswith("2008-11")]
+        self.assertEqual(len(fy08), 2)
+        for f in fy08:
+            self.assertEqual((f["fiscal_year"], f["fiscal_period"]), (2008, "FY"))
+
+    def test_off_by_one_anchor_sequence_repaired(self):
+        # GS-style: original filing carries fy=2006 for the year ending
+        # 2007-11-30; neighbors + modal offset repair it to 2007
+        cf = _company_facts({
+            "Revenues": {"units": {"USD": [
+                self._annual(80, "2005-11-26", "2006-11-24", "acc-06", 2006, "2007-01-25"),
+                self._annual(90, "2006-11-25", "2007-11-30", "acc-07", 2006, "2008-01-25"),
+                self._annual(100, "2007-12-01", "2008-11-28", "acc-08", 2008, "2009-01-25"),
+            ]}},
+        })
+        facts = extract_financial_facts(123, cf)
+        mid = next(f for f in facts if f["period_end"] == "2007-11-30")
+        self.assertEqual(mid["fiscal_year"], 2007)
+
+    def test_new_year_straddling_53_week_years_survive(self):
+        # FYE "Saturday nearest Dec 31": ends 2019-12-28, 2021-01-01(!),
+        # 2021-12-31 are fiscal 2019, 2020, 2021 - repair must NOT renumber
+        cf = _company_facts({
+            "Revenues": {"units": {"USD": [
+                self._annual(80, "2018-12-30", "2019-12-28", "acc-19", 2019, "2020-02-20"),
+                self._annual(90, "2019-12-29", "2021-01-01", "acc-20", 2020, "2021-02-20"),
+                self._annual(100, "2021-01-02", "2021-12-31", "acc-21", 2021, "2022-02-20"),
+            ]}},
+        })
+        facts = extract_financial_facts(123, cf)
+        by_end = {f["period_end"]: f for f in facts}
+        self.assertEqual(by_end["2019-12-28"]["fiscal_year"], 2019)
+        self.assertEqual(by_end["2021-01-01"]["fiscal_year"], 2020)
+        self.assertEqual(by_end["2021-12-31"]["fiscal_year"], 2021)
+
+    def test_misaligned_six_month_span_stays_unlabeled(self):
+        # a 6-month duration NOT starting at fiscal-year start is not "6M" YTD
+        cf = _company_facts({
+            "Revenues": {"units": {"USD": [
+                self._annual(100, "2025-01-01", "2025-12-31", "acc-fy", 2025, "2026-02-15"),
+                _raw(50, "2025-09-30", "acc-q", start="2025-04-01",
+                     fy=2025, fp="Q3", form="10-Q", filed="2025-11-01"),
+            ]}},
+        })
+        facts = extract_financial_facts(123, cf)
+        mid = next(f for f in facts if f["period_start"] == "2025-04-01")
+        self.assertIsNone(mid["fiscal_period"])
+        self.assertEqual(mid["fiscal_year"], 2025)
+
+
 class ReportedDiscreteQuarterDedupTests(unittest.TestCase):
     """Issuers that tag the discrete quarter ALONGSIDE YTD (Celestica, Reddit)
     must not produce duplicate (accession, tag, period, unit) rows: the

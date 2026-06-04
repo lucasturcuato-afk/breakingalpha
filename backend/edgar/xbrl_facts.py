@@ -323,13 +323,46 @@ def derive_discrete_cash_flow(ocf_facts: list[dict]) -> list[dict]:
 # / filed_date.
 # ---------------------------------------------------------------------------
 
+BOUNDARY_JITTER_DAYS = 10   # period boundaries re-tagged +/- a few days across filings
+WINDOW_OVERLAP_MAX_DAYS = 30  # real fiscal windows tile; more overlap = spurious
+
+# An anchor (SEC fy on the original 10-K) more than 1 off the calendar year of
+# its own period end is metadata corruption (observed: fy=2027 on Seagate's
+# FY2025; fy=2005-2009 on modern GS/MS/103379/1083301/748268 periods).
+ANCHOR_MAX_CALENDAR_DRIFT = 1
+
+
+def _d(iso: str) -> date:
+    return date.fromisoformat(iso)
+
+
+def _overlap_days(a: dict, b: dict) -> int:
+    lo = max(a["start"], b["start"])
+    hi = min(a["end"], b["end"])
+    return (_d(hi) - _d(lo)).days + 1 if lo <= hi else 0
+
+
 def _fiscal_windows(facts: list[dict]) -> list[dict]:
     """
     Issuer fiscal years as [{start, end, fy}], inferred from annual (~365d)
-    duration facts. The fiscal-year NUMBER comes from the ORIGINAL 10-K for
-    that year (earliest instance filed within ~200d of period end, fp=FY) so
-    issuer numbering survives (NVDA's year ending 2026-01-25 is ITS FY2026);
-    unanchored years are filled from neighbors, else calendar year of the end.
+    duration facts, hardened against real-world tagging noise:
+
+      * anchor sanity: the fiscal-year NUMBER comes from the ORIGINAL 10-K
+        (earliest instance filed within ~200d of period end, fp=FY) but is
+        REJECTED when >1 off the calendar year of the period end (corrupt
+        SEC metadata: STX fy=2027 on FY2025, GS-era fy=2005 on 2008 periods)
+      * jitter merge: windows whose ends differ by <=10d are one fiscal year
+        tagged with inconsistent boundaries (GS 2008-11-28 vs 2008-11-30);
+        prefer the anchored variant, then fy == calendar year of end
+      * overlap drop: real fiscal windows tile; unanchored windows that
+        overlap a kept window by >30d are spurious (Amazon tags rolling
+        trailing-12-month spans in every 10-Q - each looked like a "year")
+      * sequence repair: adjacent windows must number +1; when they don't,
+        renumber the side whose fy deviates from the company's modal
+        (fy - calendar_year) offset, so off-by-one anchors (GS fy=2006 on
+        FY2007) heal while New-Year-straddling 52/53-week years survive
+      * neighbor fill + calendar fallback for anything still unnumbered
+
     NOTE: reads the SEC fy/fp still present on freshly extracted rows; must
     run before labels are overwritten.
     """
@@ -340,7 +373,7 @@ def _fiscal_windows(facts: list[dict]) -> list[dict]:
         if FY_SPAN[0] <= _span_days(f) <= FY_SPAN[1]:
             annuals.setdefault((f["period_start"], f["period_end"]), []).append(f)
 
-    windows = []
+    raw = []
     for (ps, pe), group in sorted(annuals.items(), key=lambda kv: kv[0][1]):
         anchor = None
         for g in sorted(group, key=lambda g: g["filed_date"] or "9999-12-31"):
@@ -348,15 +381,63 @@ def _fiscal_windows(facts: list[dict]) -> list[dict]:
                     or not g.get("filed_date"):
                 continue
             try:
-                lag = (date.fromisoformat(g["filed_date"])
-                       - date.fromisoformat(pe)).days
+                lag = (_d(g["filed_date"]) - _d(pe)).days
             except (ValueError, TypeError):
                 continue
-            if 0 <= lag <= ORIGINAL_FILING_MAX_LAG_DAYS:
+            if 0 <= lag <= ORIGINAL_FILING_MAX_LAG_DAYS \
+                    and abs(g["fiscal_year"] - _d(pe).year) <= ANCHOR_MAX_CALENDAR_DRIFT:
                 anchor = g["fiscal_year"]
                 break
-        windows.append({"start": ps, "end": pe, "fy": anchor})
+        raw.append({"start": ps, "end": pe, "fy": anchor})
+    if not raw:
+        return []
 
+    # jitter merge (same fiscal year, boundary variants)
+    def quality(w):
+        return (w["fy"] is not None,
+                w["fy"] == _d(w["end"]).year if w["fy"] is not None else False)
+
+    merged: list[dict] = []
+    for w in raw:  # already sorted by end
+        if merged and (_d(w["end"]) - _d(merged[-1]["end"])).days <= BOUNDARY_JITTER_DAYS:
+            # on equal quality keep the LATER end (w), so the sibling
+            # variant's facts still fall inside the merged window
+            if quality(w) >= quality(merged[-1]):
+                merged[-1] = w
+            continue
+        merged.append(w)
+
+    # overlap drop: anchored windows are fixed; unanchored ones must tile.
+    # Among unanchored, prefer those whose end matches the anchored windows'
+    # month/day pattern (real years share the issuer's FYE; rolling TTM ends
+    # at other quarter-ends).
+    anchored = [w for w in merged if w["fy"] is not None]
+    anchored_ends = {w["end"][5:] for w in anchored}
+
+    def fye_like(w):
+        if not anchored_ends:
+            return True
+        e = _d(w["end"])
+        for md in anchored_ends:
+            month, day = int(md[:2]), int(md[3:])
+            for yr in (e.year - 1, e.year, e.year + 1):
+                try:
+                    cand = date(yr, month, day)
+                except ValueError:
+                    continue
+                if abs((e - cand).days) <= BOUNDARY_JITTER_DAYS:
+                    return True
+        return False
+
+    kept = list(anchored)
+    for w in sorted((w for w in merged if w["fy"] is None),
+                    key=lambda w: (not fye_like(w), w["end"])):
+        if any(_overlap_days(w, k) > WINDOW_OVERLAP_MAX_DAYS for k in kept):
+            continue
+        kept.append(w)
+    windows = sorted(kept, key=lambda w: w["end"])
+
+    # neighbor fill
     for i in range(1, len(windows)):
         if windows[i]["fy"] is None and windows[i - 1]["fy"] is not None:
             windows[i]["fy"] = windows[i - 1]["fy"] + 1
@@ -365,7 +446,21 @@ def _fiscal_windows(facts: list[dict]) -> list[dict]:
             windows[i]["fy"] = windows[i + 1]["fy"] - 1
     for w in windows:
         if w["fy"] is None:
-            w["fy"] = date.fromisoformat(w["end"]).year
+            w["fy"] = _d(w["end"]).year
+
+    # sequence repair: adjacent fiscal years (ends < ~500d apart) number +1
+    offsets = [w["fy"] - _d(w["end"]).year for w in windows]
+    modal = max(set(offsets), key=offsets.count) if offsets else 0
+    for i in range(len(windows) - 1):
+        a, b = windows[i], windows[i + 1]
+        if (_d(b["end"]) - _d(a["end"])).days >= 500:
+            continue  # true coverage gap (e.g. missing early-XBRL year)
+        if b["fy"] - a["fy"] == 1:
+            continue
+        if a["fy"] - _d(a["end"]).year != modal:
+            a["fy"] = b["fy"] - 1
+        elif b["fy"] - _d(b["end"]).year != modal:
+            b["fy"] = a["fy"] + 1
     return windows
 
 
@@ -379,17 +474,30 @@ def _locate_window(pe_iso: str, windows: list[dict]) -> Optional[dict]:
         if w["start"] <= pe_iso <= w["end"]:
             return w
     d = date.fromisoformat(pe_iso)
-    if pe_iso > windows[-1]["end"]:
-        last = windows[-1]
-        length = (date.fromisoformat(last["end"])
-                  - date.fromisoformat(last["start"])).days + 1
-        start = date.fromisoformat(last["end"]) + timedelta(days=1)
-        fy = last["fy"] + 1
+    # boundary jitter: a fact tagged to end a few days past its fiscal window
+    # (e.g. 2008-11-30 vs a merged window ending 2008-11-28) still belongs to it
+    for w in windows:
+        if w["start"] <= pe_iso and \
+                (d - date.fromisoformat(w["end"])).days <= BOUNDARY_JITTER_DAYS:
+            return w
+    # forward-extrapolate from the last window ENDING before this date: covers
+    # both the in-progress fiscal year (prev = newest window) and mid-history
+    # coverage gaps (prev = the window just before the missing year)
+    prev = None
+    for w in windows:
+        if w["end"] < pe_iso:
+            prev = w
+    if prev is not None:
+        length = (date.fromisoformat(prev["end"])
+                  - date.fromisoformat(prev["start"])).days + 1
+        start = date.fromisoformat(prev["end"]) + timedelta(days=1)
+        fy = prev["fy"] + 1
         while True:
             end = start + timedelta(days=length - 1)
             if d <= end:
                 return {"start": start.isoformat(), "end": end.isoformat(), "fy": fy}
             start, fy = end + timedelta(days=1), fy + 1
+    # before the earliest known window: extrapolate backward
     first = windows[0]
     length = (date.fromisoformat(first["end"])
               - date.fromisoformat(first["start"])).days + 1
@@ -415,11 +523,19 @@ def _span_label(span: int, pos: int) -> Optional[str]:
 
 
 def _label_period(f: dict, windows: list[dict]) -> tuple[Optional[int], Optional[str]]:
+    """
+    Alignment rules (WD-XBRL hardening): FY requires the period END aligned to
+    the fiscal window's end; an annual-length span that is NOT aligned is a
+    rolling trailing-twelve-month figure (Amazon tags TTM OCF in every 10-Q)
+    and labels 'TTM' so extraction can exclude it from the published set.
+    6M/9M (cumulative YTD) require the period START aligned to the fiscal
+    year start; misaligned mid-year spans stay unlabeled (dates are truth).
+    """
     pe = f["period_end"]
     w = _locate_window(pe, windows)
     d = date.fromisoformat(pe)
     if w is None:
-        # no annual history at all: calendar fallback
+        # no annual history at all: calendar fallback (cannot detect TTM)
         pos = (d.month - 1) // 3 + 1
         if f["period_type"] == "instant":
             return d.year, f"Q{pos}"
@@ -431,7 +547,18 @@ def _label_period(f: dict, windows: list[dict]) -> tuple[Optional[int], Optional
     if f["period_type"] == "instant":
         # a fiscal-year-end balance is the FY balance sheet, not "Q4"
         return w["fy"], ("FY" if pos == 4 else f"Q{pos}")
-    return w["fy"], _span_label(_span_days(f), pos)
+    span = _span_days(f)
+    label = _span_label(span, pos)
+    if label == "FY":
+        end_aligned = abs((d - date.fromisoformat(w["end"])).days) \
+            <= BOUNDARY_JITTER_DAYS
+        return w["fy"], ("FY" if end_aligned else "TTM")
+    if label in ("6M", "9M"):
+        start_aligned = abs((date.fromisoformat(f["period_start"])
+                             - date.fromisoformat(w["start"])).days) \
+            <= BOUNDARY_JITTER_DAYS
+        return w["fy"], (label if start_aligned else None)
+    return w["fy"], label
 
 
 def assign_fiscal_labels(facts: list[dict]) -> None:
@@ -483,6 +610,16 @@ def extract_financial_facts(cik: int, company_facts: dict) -> list[dict]:
 
     # must come last: needs the raw SEC fy/fp for anchoring, then replaces them
     assign_fiscal_labels(all_facts)
+
+    # v1 excludes rolling trailing-12-month figures from the published set
+    # rather than mislabel them as FY (Amazon tags TTM OCF in every 10-Q).
+    # Recognized by the labeler ('TTM'), counted, and skipped.
+    ttm = [f for f in all_facts if f["fiscal_period"] == "TTM"]
+    if ttm:
+        logger.info("[xbrl] CIK %d: excluding %d TTM facts (%s)",
+                    cik, len(ttm),
+                    sorted({f["metric_key"] for f in ttm}))
+        all_facts = [f for f in all_facts if f["fiscal_period"] != "TTM"]
 
     for f in all_facts:
         f["cik"] = cik
