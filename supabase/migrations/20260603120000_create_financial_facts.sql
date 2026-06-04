@@ -128,7 +128,7 @@ CREATE POLICY "Public read access"
     ON public.financial_facts
     FOR SELECT
     TO public
-    USING (true);
+    USING (validation_status = 'validated');
 
 GRANT SELECT ON public.financial_facts TO anon, authenticated;
 GRANT SELECT ON public.financial_facts_latest TO anon, authenticated;
