@@ -108,12 +108,19 @@ class PeriodHandlingTests(unittest.TestCase):
 
     def test_provenance_fields_present(self):
         cf = _company_facts({
+            # annual fact anchors the fiscal calendar for the instant's label
+            "Revenues": {"units": {"USD": [
+                _raw(1_000_000, "2025-12-31", "0000123-25-000001",
+                     start="2025-01-01", fy=2025, fp="FY", form="10-K",
+                     filed="2026-02-15"),
+            ]}},
             "Assets": {"units": {"USD": [
                 _raw(500_000, "2025-12-31", "0000123-25-000001",
-                     fy=2025, fp="FY", frame="CY2025Q4I"),
+                     fy=2025, fp="FY", frame="CY2025Q4I", filed="2026-02-15"),
             ]}},
         })
-        f = extract_financial_facts(123, cf)[0]
+        f = next(x for x in extract_financial_facts(123, cf)
+                 if x["metric_key"] == "total_assets")
         self.assertEqual(f["accession_number"], "0000123-25-000001")
         self.assertEqual(f["sec_frame"], "CY2025Q4I")
         self.assertEqual(f["fiscal_year"], 2025)
@@ -178,6 +185,132 @@ class YtdDifferencingTests(unittest.TestCase):
         self.assertEqual(q2["value"], 130)  # 230 - 100, not 220 - 100
         q3 = next(f for f in derived if f["period_end"] == "2025-09-30")
         self.assertEqual(q3["value"], 120)  # 350 - 230
+
+
+class FiscalLabelingTests(unittest.TestCase):
+    """fiscal_year/fiscal_period must describe the fact's OWN period, never
+    the filing's fy/fp (which mislabels comparatives and conflates YTD with
+    the discrete quarter)."""
+
+    def setUp(self):
+        # AAPL-like September FYE.
+        # FY2024 annual appears twice: original FY2024 10-K (fy=2024) and as
+        # the comparative inside the FY2025 10-K (fy=2025 - the SEC label that
+        # used to leak through).
+        fy24 = dict(start="2023-10-01", end="2024-09-28")
+        fy25 = dict(start="2024-09-29", end="2025-09-27")
+        self.cf = _company_facts({
+            "Revenues": {"units": {"USD": [
+                _raw(100, fy24["end"], "acc-10k-24", start=fy24["start"],
+                     fy=2024, fp="FY", form="10-K", filed="2024-11-01"),
+                _raw(100, fy24["end"], "acc-10k-25", start=fy24["start"],
+                     fy=2025, fp="FY", form="10-K", filed="2025-10-31"),
+                _raw(120, fy25["end"], "acc-10k-25", start=fy25["start"],
+                     fy=2025, fp="FY", form="10-K", filed="2025-10-31"),
+            ]}},
+            "NetIncomeLoss": {"units": {"USD": [
+                # FY2026 10-Q: discrete Q2 and 6-month YTD share period_end
+                _raw(30, "2026-03-28", "acc-10q-26", start="2025-12-28",
+                     fy=2026, fp="Q2", form="10-Q", filed="2026-05-01"),
+                _raw(70, "2026-03-28", "acc-10q-26", start="2025-09-28",
+                     fy=2026, fp="Q2", form="10-Q", filed="2026-05-01"),
+            ]}},
+            "Assets": {"units": {"USD": [
+                # FYE balance reported in the original 10-K AND re-reported in
+                # next year's Q2 10-Q (SEC labels it fy=2026 fp=Q2 there)
+                _raw(900, "2025-09-27", "acc-10k-25",
+                     fy=2025, fp="FY", form="10-K", filed="2025-10-31"),
+                _raw(900, "2025-09-27", "acc-10q-26",
+                     fy=2026, fp="Q2", form="10-Q", filed="2026-05-01"),
+                # quarter-end balance
+                _raw(910, "2026-03-28", "acc-10q-26",
+                     fy=2026, fp="Q2", form="10-Q", filed="2026-05-01"),
+            ]}},
+        })
+        self.facts = extract_financial_facts(123, self.cf)
+
+    def _one(self, metric, start, end):
+        rows = [f for f in self.facts if f["metric_key"] == metric
+                and f["period_start"] == start and f["period_end"] == end]
+        self.assertTrue(rows, f"no fact {metric} {start}->{end}")
+        return rows
+
+    def test_comparative_annual_labeled_by_its_own_year(self):
+        # both instances of the FY2024 period (incl. the one from the FY2025
+        # 10-K) must read 2024/FY
+        for f in self._one("revenue", "2023-10-01", "2024-09-28"):
+            self.assertEqual((f["fiscal_year"], f["fiscal_period"]), (2024, "FY"),
+                             f"accn={f['accession_number']}")
+
+    def test_current_annual_labeled_correctly(self):
+        for f in self._one("revenue", "2024-09-29", "2025-09-27"):
+            self.assertEqual((f["fiscal_year"], f["fiscal_period"]), (2025, "FY"))
+
+    def test_ytd_and_discrete_quarter_are_distinct(self):
+        (q,) = self._one("net_income", "2025-12-28", "2026-03-28")
+        (ytd,) = self._one("net_income", "2025-09-28", "2026-03-28")
+        self.assertEqual((q["fiscal_year"], q["fiscal_period"]), (2026, "Q2"))
+        self.assertEqual((ytd["fiscal_year"], ytd["fiscal_period"]), (2026, "6M"))
+        self.assertNotEqual(q["fiscal_period"], ytd["fiscal_period"])
+
+    def test_fye_balance_is_fy_even_when_rereported_in_a_10q(self):
+        for f in self._one("total_assets", "2025-09-27", "2025-09-27"):
+            self.assertEqual((f["fiscal_year"], f["fiscal_period"]), (2025, "FY"),
+                             f"accn={f['accession_number']}")
+
+    def test_quarter_end_balance_labeled_by_quarter(self):
+        (f,) = self._one("total_assets", "2026-03-28", "2026-03-28")
+        self.assertEqual((f["fiscal_year"], f["fiscal_period"]), (2026, "Q2"))
+
+    def test_forward_extrapolation_beyond_latest_annual(self):
+        # the Q2 facts end 2026-03-28, inside the not-yet-filed FY2026 -> the
+        # fiscal window is extrapolated from FY2025 and numbered fy+1
+        (q,) = self._one("net_income", "2025-12-28", "2026-03-28")
+        self.assertEqual(q["fiscal_year"], 2026)
+
+    def test_derived_q4_ocf_labeled_q4(self):
+        cf = _company_facts({
+            "Revenues": {"units": {"USD": [
+                _raw(1_000, "2025-12-31", "acc-fy", start="2025-01-01",
+                     fy=2025, fp="FY", form="10-K", filed="2026-02-15"),
+            ]}},
+            "NetCashProvidedByUsedInOperatingActivities": {"units": {"USD": [
+                _raw(350, "2025-09-30", "acc-q3", start="2025-01-01",
+                     fy=2025, fp="Q3", form="10-Q", filed="2025-11-01"),
+                _raw(500, "2025-12-31", "acc-fy", start="2025-01-01",
+                     fy=2025, fp="FY", form="10-K", filed="2026-02-15"),
+            ]}},
+        })
+        facts = extract_financial_facts(123, cf)
+        (q4,) = [f for f in facts if f["is_derived"]]
+        self.assertEqual(q4["value"], 150)
+        self.assertEqual((q4["fiscal_year"], q4["fiscal_period"]), (2025, "Q4"))
+        # and the 9-month YTD source fact is 9M, not Q3
+        (ytd,) = [f for f in facts if f["metric_key"] == "operating_cash_flow"
+                  and f["period_end"] == "2025-09-30" and not f["is_derived"]]
+        self.assertEqual(ytd["fiscal_period"], "9M")
+
+    def test_issuer_numbering_survives_january_fye(self):
+        # NVDA-like: year ending Jan 2026 is the issuer's FY2026, not FY2025
+        cf = _company_facts({
+            "Revenues": {"units": {"USD": [
+                _raw(100, "2025-01-26", "acc-25", start="2024-01-29",
+                     fy=2025, fp="FY", form="10-K", filed="2025-02-26"),
+                _raw(200, "2026-01-25", "acc-26", start="2025-01-27",
+                     fy=2026, fp="FY", form="10-K", filed="2026-02-25"),
+                # Q1 of the in-progress FY2027
+                _raw(80, "2026-04-26", "acc-q1", start="2026-01-26",
+                     fy=2027, fp="Q1", form="10-Q", filed="2026-05-20"),
+            ]}},
+        })
+        facts = extract_financial_facts(123, cf)
+        by_end = {f["period_end"]: f for f in facts}
+        self.assertEqual((by_end["2025-01-26"]["fiscal_year"],
+                          by_end["2025-01-26"]["fiscal_period"]), (2025, "FY"))
+        self.assertEqual((by_end["2026-01-25"]["fiscal_year"],
+                          by_end["2026-01-25"]["fiscal_period"]), (2026, "FY"))
+        self.assertEqual((by_end["2026-04-26"]["fiscal_year"],
+                          by_end["2026-04-26"]["fiscal_period"]), (2027, "Q1"))
 
 
 class RestatementHookTests(unittest.TestCase):

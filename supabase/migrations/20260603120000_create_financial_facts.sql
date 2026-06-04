@@ -63,8 +63,12 @@ CREATE TABLE IF NOT EXISTS public.financial_facts (
     period_type       text NOT NULL CHECK (period_type IN ('duration', 'instant')),
     period_start      date NOT NULL,
     period_end        date NOT NULL,
-    fiscal_year       integer,           -- issuer fiscal year (NOT calendar)
-    fiscal_period     text,              -- FY | Q1 | Q2 | Q3 | Q4
+    -- Period-derived labels describing THIS ROW's period (never the filing's
+    -- SEC fy/fp, which would mislabel comparatives): issuer fiscal year (NOT
+    -- calendar; NVDA's year ending Jan 2026 is its FY2026) and
+    -- FY | Q1..Q4 (discrete) | 6M | 9M (cumulative YTD).
+    fiscal_year       integer,
+    fiscal_period     text,
     sec_frame         text,              -- e.g. CY2026Q1 / CY2026Q1I; NULL if off-calendar
 
     -- source filing meta

@@ -75,6 +75,24 @@ GOLDEN = [
     ("SNOW", 1640147, "eps_diluted", "2026-01-31", -3.95, None, False),
 ]
 
+# Fiscal-LABEL golden set: fiscal_year/fiscal_period must describe the row's
+# OWN period (period-derived), not the filing it was extracted from.
+# (ticker, metric_key, period_start, period_end, expected_value,
+#  expected_fiscal_year, expected_fiscal_period)
+LABEL_GOLDEN = [
+    # comparative annuals must keep their own year, not the filing's
+    ("AAPL", "revenue", "2023-10-01", "2024-09-28", 391_035_000_000, 2024, "FY"),
+    ("NVDA", "revenue", "2024-01-29", "2025-01-26", 130_497_000_000, 2025, "FY"),
+    ("NVDA", "revenue", "2025-01-27", "2026-01-25", 215_938_000_000, 2026, "FY"),
+    # in-progress fiscal year (no FY2027 10-K exists yet): extrapolated window
+    ("NVDA", "revenue", "2026-01-26", "2026-04-26", 81_615_000_000, 2027, "Q1"),
+    # YTD vs discrete sharing one period_end must NOT both read Q2
+    ("AAPL", "net_income", "2025-09-28", "2026-03-28", 71_675_000_000, 2026, "6M"),
+    ("AAPL", "net_income", "2025-12-28", "2026-03-28", 29_578_000_000, 2026, "Q2"),
+    # FYE balance re-reported in next year's 10-Q stays the FY balance
+    ("AAPL", "total_assets", "2025-09-27", "2025-09-27", 359_241_000_000, 2025, "FY"),
+]
+
 EPS_EXACT_TOL = 1e-9  # XBRL values are exact decimals; this is float noise only
 
 
@@ -144,12 +162,40 @@ def run() -> int:
                 print(f"  FAIL {label}: resolved tag {f['concept_tag']}, "
                       f"expected {expected_tag}")
 
+    print("\n-- fiscal-label assertions (period-derived, not filing fy/fp) --")
+    label_failures = 0
+    for ticker, metric_key, ps, pe, exp_val, exp_fy, exp_fp in LABEL_GOLDEN:
+        validated = validated_by_ticker.get(ticker, [])
+        rows = [f for f in validated
+                if f["metric_key"] == metric_key
+                and f["period_start"] == ps and f["period_end"] == pe
+                and not f["is_derived"]]
+        label = f"{ticker} {metric_key} {ps}->{pe}"
+        if not rows:
+            print(f"  FAIL {label}: no VALIDATED fact found")
+            label_failures += 1
+            continue
+        f = max(rows, key=lambda r: r["filed_date"] or "")
+        ok_val = f["value"] == exp_val
+        ok_lbl = (f["fiscal_year"], f["fiscal_period"]) == (exp_fy, exp_fp)
+        if ok_val and ok_lbl:
+            print(f"  PASS {label}: {f['value']:,} -> {exp_fy}/{exp_fp}")
+        else:
+            label_failures += 1
+            if not ok_val:
+                print(f"  FAIL {label}: value {f['value']:,} != {exp_val:,}")
+            if not ok_lbl:
+                print(f"  FAIL {label}: labeled {f['fiscal_year']}/"
+                      f"{f['fiscal_period']}, expected {exp_fy}/{exp_fp}")
+
     print("\n" + "=" * 88)
-    if failures:
-        print(f"GOLDEN EVAL FAILED: {failures}/{len(GOLDEN)} assertions failed")
+    total = len(GOLDEN) + len(LABEL_GOLDEN)
+    if failures or label_failures:
+        print(f"GOLDEN EVAL FAILED: {failures + label_failures}/{total} "
+              "assertions failed")
         return 1
-    print(f"GOLDEN EVAL PASSED: {len(GOLDEN)}/{len(GOLDEN)} assertions exact "
-          "and validated")
+    print(f"GOLDEN EVAL PASSED: {total}/{total} assertions exact and validated "
+          f"({len(GOLDEN)} values, {len(LABEL_GOLDEN)} labels)")
     return 0
 
 

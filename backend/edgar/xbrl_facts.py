@@ -76,6 +76,17 @@ XBRL_CONCEPTS: list[tuple[str, str, list[str]]] = [
 QUARTER_SPAN_MIN_DAYS = 60
 QUARTER_SPAN_MAX_DAYS = 120
 
+# Duration-span bands (days) for period classification. 53-week years and
+# 14-week quarters stay inside their band.
+FY_SPAN = (330, 400)
+QTR_SPAN = (QUARTER_SPAN_MIN_DAYS, QUARTER_SPAN_MAX_DAYS)
+H1_SPAN = (150, 215)     # 6-month cumulative (10-Q Q2 YTD)
+M9_SPAN = (240, 310)     # 9-month cumulative (10-Q Q3 YTD)
+
+# An original 10-K is accepted/filed within this many days of its fiscal year
+# end; comparative re-reports in later filings are filed far outside it.
+ORIGINAL_FILING_MAX_LAG_DAYS = 200
+
 
 def fetch_company_facts(cik: int) -> Optional[dict]:
     """Fetch the full Company Facts JSON for a CIK. None on failure."""
@@ -275,12 +286,146 @@ def derive_discrete_cash_flow(ocf_facts: list[dict]) -> list[dict]:
     return derived
 
 
+# ---------------------------------------------------------------------------
+# Fiscal labeling: fiscal_year/fiscal_period describe each fact's OWN period,
+# never the filing it came from.
+#
+# SEC fy/fp are the FILING's fiscal context. Because value selection keeps the
+# latest-filed instance of each period (correct for restatements), carrying
+# fy/fp through would mislabel every comparative: Apple's true-FY2024 revenue
+# re-reported in the FY2025 10-K arrives with fy=2025, and a 6-month YTD and
+# the discrete quarter sharing its end date both arrive as "Q2". Instead we
+# infer the issuer's fiscal calendar from its annual facts and label every
+# period by its own dates. Filing provenance stays in accession_number / form
+# / filed_date.
+# ---------------------------------------------------------------------------
+
+def _fiscal_windows(facts: list[dict]) -> list[dict]:
+    """
+    Issuer fiscal years as [{start, end, fy}], inferred from annual (~365d)
+    duration facts. The fiscal-year NUMBER comes from the ORIGINAL 10-K for
+    that year (earliest instance filed within ~200d of period end, fp=FY) so
+    issuer numbering survives (NVDA's year ending 2026-01-25 is ITS FY2026);
+    unanchored years are filled from neighbors, else calendar year of the end.
+    NOTE: reads the SEC fy/fp still present on freshly extracted rows; must
+    run before labels are overwritten.
+    """
+    annuals: dict[tuple, list[dict]] = {}
+    for f in facts:
+        if f["is_derived"] or f["period_type"] != "duration":
+            continue
+        if FY_SPAN[0] <= _span_days(f) <= FY_SPAN[1]:
+            annuals.setdefault((f["period_start"], f["period_end"]), []).append(f)
+
+    windows = []
+    for (ps, pe), group in sorted(annuals.items(), key=lambda kv: kv[0][1]):
+        anchor = None
+        for g in sorted(group, key=lambda g: g["filed_date"] or "9999-12-31"):
+            if g.get("fiscal_period") != "FY" or not g.get("fiscal_year") \
+                    or not g.get("filed_date"):
+                continue
+            try:
+                lag = (date.fromisoformat(g["filed_date"])
+                       - date.fromisoformat(pe)).days
+            except (ValueError, TypeError):
+                continue
+            if 0 <= lag <= ORIGINAL_FILING_MAX_LAG_DAYS:
+                anchor = g["fiscal_year"]
+                break
+        windows.append({"start": ps, "end": pe, "fy": anchor})
+
+    for i in range(1, len(windows)):
+        if windows[i]["fy"] is None and windows[i - 1]["fy"] is not None:
+            windows[i]["fy"] = windows[i - 1]["fy"] + 1
+    for i in range(len(windows) - 2, -1, -1):
+        if windows[i]["fy"] is None and windows[i + 1]["fy"] is not None:
+            windows[i]["fy"] = windows[i + 1]["fy"] - 1
+    for w in windows:
+        if w["fy"] is None:
+            w["fy"] = date.fromisoformat(w["end"]).year
+    return windows
+
+
+def _locate_window(pe_iso: str, windows: list[dict]) -> Optional[dict]:
+    """Window containing the date; extrapolates beyond known annuals (e.g. the
+    in-progress fiscal year: NVDA files Q1 FY2027 a year before any FY2027
+    10-K exists)."""
+    if not windows:
+        return None
+    for w in windows:
+        if w["start"] <= pe_iso <= w["end"]:
+            return w
+    d = date.fromisoformat(pe_iso)
+    if pe_iso > windows[-1]["end"]:
+        last = windows[-1]
+        length = (date.fromisoformat(last["end"])
+                  - date.fromisoformat(last["start"])).days + 1
+        start = date.fromisoformat(last["end"]) + timedelta(days=1)
+        fy = last["fy"] + 1
+        while True:
+            end = start + timedelta(days=length - 1)
+            if d <= end:
+                return {"start": start.isoformat(), "end": end.isoformat(), "fy": fy}
+            start, fy = end + timedelta(days=1), fy + 1
+    first = windows[0]
+    length = (date.fromisoformat(first["end"])
+              - date.fromisoformat(first["start"])).days + 1
+    end = date.fromisoformat(first["start"]) - timedelta(days=1)
+    fy = first["fy"] - 1
+    while True:
+        start = end - timedelta(days=length - 1)
+        if d >= start:
+            return {"start": start.isoformat(), "end": end.isoformat(), "fy": fy}
+        end, fy = start - timedelta(days=1), fy - 1
+
+
+def _span_label(span: int, pos: int) -> Optional[str]:
+    if FY_SPAN[0] <= span <= FY_SPAN[1]:
+        return "FY"
+    if QTR_SPAN[0] <= span <= QTR_SPAN[1]:
+        return f"Q{pos}"
+    if H1_SPAN[0] <= span <= H1_SPAN[1]:
+        return "6M"
+    if M9_SPAN[0] <= span <= M9_SPAN[1]:
+        return "9M"
+    return None  # odd span (e.g. FYE-transition stub): dates remain the truth
+
+
+def _label_period(f: dict, windows: list[dict]) -> tuple[Optional[int], Optional[str]]:
+    pe = f["period_end"]
+    w = _locate_window(pe, windows)
+    d = date.fromisoformat(pe)
+    if w is None:
+        # no annual history at all: calendar fallback
+        pos = (d.month - 1) // 3 + 1
+        if f["period_type"] == "instant":
+            return d.year, f"Q{pos}"
+        return d.year, _span_label(_span_days(f), pos)
+    wlen = (date.fromisoformat(w["end"])
+            - date.fromisoformat(w["start"])).days + 1
+    days_in = (d - date.fromisoformat(w["start"])).days + 1
+    pos = min(4, max(1, round(days_in / (wlen / 4))))
+    if f["period_type"] == "instant":
+        # a fiscal-year-end balance is the FY balance sheet, not "Q4"
+        return w["fy"], ("FY" if pos == 4 else f"Q{pos}")
+    return w["fy"], _span_label(_span_days(f), pos)
+
+
+def assign_fiscal_labels(facts: list[dict]) -> None:
+    """Overwrite fiscal_year/fiscal_period IN PLACE with period-derived
+    labels: FY / Q1..Q4 (discrete) / 6M / 9M (cumulative YTD)."""
+    windows = _fiscal_windows(facts)
+    for f in facts:
+        f["fiscal_year"], f["fiscal_period"] = _label_period(f, windows)
+
+
 def extract_financial_facts(cik: int, company_facts: dict) -> list[dict]:
     """
     Extract the full v1 fact history for one company.
 
     Returns UNVALIDATED fact rows (see xbrl_validation.validate_facts);
     includes raw facts for every metric plus derived discrete-quarter OCF.
+    fiscal_year/fiscal_period are period-derived labels (assign_fiscal_labels).
     """
     us_gaap = (company_facts or {}).get("facts", {}).get("us-gaap", {})
     if not us_gaap:
@@ -293,6 +438,9 @@ def extract_financial_facts(cik: int, company_facts: dict) -> list[dict]:
 
     ocf = [f for f in all_facts if f["metric_key"] == "operating_cash_flow"]
     all_facts.extend(derive_discrete_cash_flow(ocf))
+
+    # must come last: needs the raw SEC fy/fp for anchoring, then replaces them
+    assign_fiscal_labels(all_facts)
 
     for f in all_facts:
         f["cik"] = cik

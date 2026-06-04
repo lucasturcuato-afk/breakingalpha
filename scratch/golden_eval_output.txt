@@ -1,8 +1,8 @@
-2026-06-03 12:03:08,496 [WARNING] [xbrl] cik=320193 quarantined 40/3375 facts (['tieout_eps'])
-2026-06-03 12:03:12,462 [WARNING] [xbrl] cik=1045810 quarantined 66/3339 facts (['tieout_balance_sheet', 'tieout_eps'])
-2026-06-03 12:03:16,561 [WARNING] [xbrl] cik=1535527 quarantined 21/1102 facts (['tieout_balance_sheet'])
-2026-06-03 12:03:20,034 [WARNING] [xbrl] cik=1561550 quarantined 11/1149 facts (['tieout_balance_sheet'])
-2026-06-03 12:03:24,248 [WARNING] [xbrl] cik=1640147 quarantined 5/957 facts (['tieout_balance_sheet'])
+2026-06-03 17:05:01,827 [WARNING] [xbrl] cik=320193 quarantined 40/3375 facts (['tieout_eps'])
+2026-06-03 17:05:05,794 [WARNING] [xbrl] cik=1045810 quarantined 66/3339 facts (['tieout_balance_sheet', 'tieout_eps'])
+2026-06-03 17:05:10,184 [WARNING] [xbrl] cik=1535527 quarantined 21/1102 facts (['tieout_balance_sheet'])
+2026-06-03 17:05:13,622 [WARNING] [xbrl] cik=1561550 quarantined 11/1149 facts (['tieout_balance_sheet'])
+2026-06-03 17:05:17,657 [WARNING] [xbrl] cik=1640147 quarantined 5/957 facts (['tieout_balance_sheet'])
 ========================================================================================
 XBRL GOLDEN-SET EVAL  (live Company Facts, FULL gate incl. cross-endpoint reconciliation)
 ========================================================================================
@@ -34,5 +34,14 @@ XBRL GOLDEN-SET EVAL  (live Company Facts, FULL gate incl. cross-endpoint reconc
   PASS SNOW net_income@2026-01-31: -1,331,616,000 (NetIncomeLoss, accn=0001640147-26-000008)
   PASS SNOW eps_diluted@2026-01-31: -3.95 (EarningsPerShareDiluted, accn=0001640147-26-000008)
 
+-- fiscal-label assertions (period-derived, not filing fy/fp) --
+  PASS AAPL revenue 2023-10-01->2024-09-28: 391,035,000,000 -> 2024/FY
+  PASS NVDA revenue 2024-01-29->2025-01-26: 130,497,000,000 -> 2025/FY
+  PASS NVDA revenue 2025-01-27->2026-01-25: 215,938,000,000 -> 2026/FY
+  PASS NVDA revenue 2026-01-26->2026-04-26: 81,615,000,000 -> 2027/Q1
+  PASS AAPL net_income 2025-09-28->2026-03-28: 71,675,000,000 -> 2026/6M
+  PASS AAPL net_income 2025-12-28->2026-03-28: 29,578,000,000 -> 2026/Q2
+  PASS AAPL total_assets 2025-09-27->2025-09-27: 359,241,000,000 -> 2025/FY
+
 ========================================================================================
-GOLDEN EVAL PASSED: 18/18 assertions exact and validated
+GOLDEN EVAL PASSED: 25/25 assertions exact and validated (18 values, 7 labels)

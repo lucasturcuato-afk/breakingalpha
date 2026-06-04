@@ -187,6 +187,19 @@ Findings below are grounded in the spike output (`scratch/xbrl_spike_output.txt`
    calendar-normalized key for cross-company alignment. Never assume
    `fiscal_year == calendar_year`.
 
+   **Refinement (2026-06-03): labels are PERIOD-derived, not copied from the
+   filing.** SEC `fy`/`fp` describe the *filing's* fiscal context, so a
+   prior-year comparative kept under latest-filed-wins inherits the wrong year
+   (Apple's true-FY2024 revenue arrived labeled fy=2025 from the FY2025 10-K),
+   and a 6-month YTD and the discrete quarter sharing its `period_end` both
+   arrive as "Q2". The extractor now infers each issuer's fiscal calendar from
+   its annual facts (year **numbering** anchored to each year's *original*
+   10-K, so NVDA's Jan-FYE numbering survives; the in-progress year is
+   extrapolated forward) and labels every fact from its own dates:
+   `FY` / `Q1..Q4` (discrete) / `6M` / `9M` (cumulative YTD); fiscal-year-end
+   balances are `FY`. Filing provenance stays in `accession_number` / `form` /
+   `filed_date`.
+
 5. **Amendments & restatements.** Company Facts includes the *original* and any
    *restated* fact for the same period, distinguished by `accn` + `filed` (and
    `form`, e.g. `10-K/A`). v1 **keeps all facts** (keyed by accession) so history
