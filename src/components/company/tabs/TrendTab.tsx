@@ -18,6 +18,8 @@ import type { CSSProperties } from "react";
 import { CompanyStockChart } from "@/components/company/CompanyStockChart";
 import { ToneReadout } from "@/components/company/ToneReadout";
 import { ToneTrendChart } from "@/components/company/ToneTrendChart";
+import { ToneEvidenceList } from "@/components/company/tone/ToneEvidenceList";
+import type { CompanyDetailArticle } from "@/lib/data-access/getCompanyDetail";
 import type { ToneSummary } from "@/lib/tone";
 
 const SERIF = "var(--font-display), serif";
@@ -57,9 +59,12 @@ export interface TrendTabProps {
   /** Canonical identifier the tone-trend endpoint resolves against. */
   company: string;
   tone: ToneSummary;
+  /** Company articles (relevance-desc); the tone-window slice renders as the
+   *  "Behind this tone" evidence list (WD110 Element 3). */
+  articles?: CompanyDetailArticle[];
 }
 
-export function TrendTab({ ticker, companyName, company, tone }: TrendTabProps) {
+export function TrendTab({ ticker, companyName, company, tone, articles }: TrendTabProps) {
   return (
     <section
       data-testid="trend-tab"
@@ -89,6 +94,7 @@ export function TrendTab({ ticker, companyName, company, tone }: TrendTabProps) 
         </div>
         <div style={{ padding: "12px 14px" }}>
           <ToneReadout tone={tone} scale="panel" />
+          {articles && articles.length > 0 ? <ToneEvidenceList articles={articles} /> : null}
           <div style={{ marginTop: 12 }}>
             <ToneTrendChart company={company} defaultRange="30d" />
           </div>
