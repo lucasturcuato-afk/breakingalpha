@@ -313,6 +313,46 @@ class FiscalLabelingTests(unittest.TestCase):
                           by_end["2026-04-26"]["fiscal_period"]), (2027, "Q1"))
 
 
+class ReportedDiscreteQuarterDedupTests(unittest.TestCase):
+    """Issuers that tag the discrete quarter ALONGSIDE YTD (Celestica, Reddit)
+    must not produce duplicate (accession, tag, period, unit) rows: the
+    reported fact wins over the identical ytd_diff derivation."""
+
+    def setUp(self):
+        ocf = "NetCashProvidedByUsedInOperatingActivities"
+        self.cf = _company_facts({
+            "Revenues": {"units": {"USD": [
+                _raw(1_000, "2025-12-31", "acc-fy", start="2025-01-01",
+                     fy=2025, fp="FY", form="10-K", filed="2026-02-15"),
+            ]}},
+            ocf: {"units": {"USD": [
+                # YTD series
+                _raw(100, "2025-03-31", "acc-q1", start="2025-01-01",
+                     fy=2025, fp="Q1", form="10-Q", filed="2025-05-01"),
+                _raw(220, "2025-06-30", "acc-q2", start="2025-01-01",
+                     fy=2025, fp="Q2", form="10-Q", filed="2025-08-01"),
+                # the SAME filing also reports the discrete quarter
+                _raw(120, "2025-06-30", "acc-q2", start="2025-04-01",
+                     fy=2025, fp="Q2", form="10-Q", filed="2025-08-01"),
+            ]}},
+        })
+        self.facts = extract_financial_facts(123, self.cf)
+
+    def test_no_duplicate_storage_keys(self):
+        keys = [(f["accession_number"], f["concept_tag"], f["period_start"],
+                 f["period_end"], f["unit"]) for f in self.facts]
+        self.assertEqual(len(keys), len(set(keys)))
+
+    def test_reported_fact_wins_over_derivation(self):
+        (q2,) = [f for f in self.facts
+                 if f["metric_key"] == "operating_cash_flow"
+                 and f["period_start"] == "2025-04-01"
+                 and f["period_end"] == "2025-06-30"]
+        self.assertFalse(q2["is_derived"])
+        self.assertEqual(q2["value"], 120)
+        self.assertEqual(q2["fiscal_period"], "Q2")
+
+
 class RestatementHookTests(unittest.TestCase):
     def test_restatement_detected_across_accessions(self):
         cf = _company_facts({

@@ -439,6 +439,25 @@ def extract_financial_facts(cik: int, company_facts: dict) -> list[dict]:
     ocf = [f for f in all_facts if f["metric_key"] == "operating_cash_flow"]
     all_facts.extend(derive_discrete_cash_flow(ocf))
 
+    # Dedup on the storage key (accession, tag, period, unit), REPORTED beats
+    # DERIVED: some issuers (e.g. Celestica, Reddit) tag the discrete quarter
+    # alongside YTD, so the ytd_diff row duplicates a reported fact from the
+    # same filing and the batch upsert rejects the double-hit.
+    by_key: dict[tuple, dict] = {}
+    for f in sorted(all_facts, key=lambda f: f["is_derived"]):
+        key = (f["accession_number"], f["concept_tag"],
+               f["period_start"], f["period_end"], f["unit"])
+        if key in by_key:
+            if f["is_derived"] and by_key[key]["value"] != f["value"]:
+                logger.warning(
+                    "[xbrl] derived OCF %s disagrees with reported fact for %s: "
+                    "%s vs %s", f["period_end"], key[0],
+                    f["value"], by_key[key]["value"],
+                )
+            continue
+        by_key[key] = f
+    all_facts = list(by_key.values())
+
     # must come last: needs the raw SEC fy/fp for anchoring, then replaces them
     assign_fiscal_labels(all_facts)
 
