@@ -336,6 +336,14 @@ def validate_facts(
         if f.get("fiscal_period") == "TTM":
             _quarantine(f, "ttm_not_published: rolling twelve-month figure")
 
+    # Dual-tag divergence (Cheniere class): a BROADER family concept (e.g.
+    # us-gaap:Revenues, the statement total) reported the same period with a
+    # diverging value, so publishing this narrower fact would understate the
+    # total. Extraction annotates (see _broader_divergence); fail closed.
+    for f in facts:
+        if f.get("dual_tag_conflict"):
+            _quarantine(f, f["dual_tag_conflict"])
+
     idx = _index(facts)
     cur = _current(facts)
 

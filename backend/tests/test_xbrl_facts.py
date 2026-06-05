@@ -486,6 +486,84 @@ class ReportedDiscreteQuarterDedupTests(unittest.TestCase):
         self.assertEqual(q2["fiscal_period"], "Q2")
 
 
+class BreadthPreferenceTests(unittest.TestCase):
+    """Cheniere class: a filer tags BOTH the statement total (Revenues) and
+    the narrower ASC-606 contract subtotal for the SAME period. The broadest
+    reporting tag must win that period; narrower tags fill only uncovered
+    periods. Same for the cost family."""
+
+    def _annual(self, val, year, accn):
+        return _raw(val, f"{year}-12-31", accn, start=f"{year}-01-01",
+                    fy=year, fp="FY", form="10-K", filed=f"{year + 1}-02-20")
+
+    def test_statement_total_beats_contract_subtotal_per_period(self):
+        cf = _company_facts({
+            # narrower contract tag: FY2024 + FY2025 (diverging from total)
+            "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
+                self._annual(15_414, 2024, "acc-25"),
+                self._annual(19_464, 2025, "acc-26"),
+            ]}},
+            # statement total: FY2025 only (FY2024 not tagged under Revenues)
+            "Revenues": {"units": {"USD": [
+                self._annual(19_976, 2025, "acc-26"),
+            ]}},
+        })
+        facts = extract_financial_facts(123, cf)
+        rev = {f["period_end"]: f for f in facts if f["metric_key"] == "revenue"}
+        self.assertEqual(rev["2025-12-31"]["concept_tag"], "Revenues")
+        self.assertEqual(rev["2025-12-31"]["value"], 19_976)
+        # uncovered period falls back to the narrower tag
+        self.assertEqual(
+            rev["2024-12-31"]["concept_tag"],
+            "RevenueFromContractWithCustomerExcludingAssessedTax",
+        )
+        self.assertEqual(rev["2024-12-31"]["value"], 15_414)
+        # the published total carries no conflict annotation
+        self.assertNotIn("dual_tag_conflict", rev["2025-12-31"])
+
+    def test_cost_family_breadth(self):
+        cf = _company_facts({
+            "CostOfGoodsAndServicesSold": {"units": {"USD": [
+                self._annual(9_000, 2025, "acc-26"),
+            ]}},
+            "CostOfRevenue": {"units": {"USD": [
+                self._annual(9_900, 2025, "acc-26"),
+            ]}},
+        })
+        facts = extract_financial_facts(123, cf)
+        (cor,) = [f for f in facts if f["metric_key"] == "cost_of_revenue"]
+        self.assertEqual(cor["concept_tag"], "CostOfRevenue")
+        self.assertEqual(cor["value"], 9_900)
+
+    def test_broader_divergence_annotation_fires_for_regressions(self):
+        # direct unit test of the armor: a chosen NARROWER fact whose period
+        # is also reported by a diverging broader tag must annotate
+        from backend.edgar.xbrl_facts import (_broader_divergence,
+                                              BREADTH_PRIORITY)
+        per_tag = {
+            "Revenues": [{"tag": "Revenues", "unit": "USD",
+                          "val": 19_976_000_000, "start": "2025-01-01",
+                          "end": "2025-12-31"}],
+            "RevenueFromContractWithCustomerExcludingAssessedTax": [
+                {"tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+                 "unit": "USD", "val": 19_464_000_000,
+                 "start": "2025-01-01", "end": "2025-12-31"}],
+        }
+        f = per_tag["RevenueFromContractWithCustomerExcludingAssessedTax"][0]
+        reason = _broader_divergence(
+            per_tag, BREADTH_PRIORITY["revenue"],
+            "RevenueFromContractWithCustomerExcludingAssessedTax",
+            "duration", f)
+        self.assertIsNotNone(reason)
+        self.assertIn("dual_tag_divergence", reason)
+        # equal values (mere co-tagging) do not annotate
+        per_tag["Revenues"][0]["val"] = 19_464_000_000
+        self.assertIsNone(_broader_divergence(
+            per_tag, BREADTH_PRIORITY["revenue"],
+            "RevenueFromContractWithCustomerExcludingAssessedTax",
+            "duration", f))
+
+
 class RestatementHookTests(unittest.TestCase):
     def test_restatement_detected_across_accessions(self):
         cf = _company_facts({

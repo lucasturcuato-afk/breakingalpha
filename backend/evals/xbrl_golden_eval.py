@@ -73,6 +73,13 @@ GOLDEN = [
     ("SNOW", 1640147, "revenue", "2026-01-31", 4_683_946_000, None, False),
     ("SNOW", 1640147, "net_income", "2026-01-31", -1_331_616_000, None, False),
     ("SNOW", 1640147, "eps_diluted", "2026-01-31", -3.95, None, False),
+
+    # Cheniere FY2025 10-K: dual-tag breadth sentinel. The issuer tags BOTH
+    # us-gaap:Revenues (income-statement Total revenues, 19,976M) and the
+    # narrower RevenueFromContractWithCustomerExcludingAssessedTax (19,464M,
+    # ASC-606 portion only) for the same period; revenue must resolve from
+    # the BROADER Revenues tag. expected_tag pins the regression.
+    ("LNG", 3570, "revenue", "2025-12-31", 19_976_000_000, "Revenues", False),
 ]
 
 # Fiscal-LABEL golden set: fiscal_year/fiscal_period must describe the row's
