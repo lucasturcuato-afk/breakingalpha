@@ -307,8 +307,9 @@ export function FinancialsTab({ financials, hasCik }: FinancialsTabProps) {
       </div>
       <p className="mt-2 text-[11px] text-text-muted">
         Validated XBRL facts from SEC filings. Missing cells were not reported
-        or did not pass validation. Quarterly income lines have no Q4 column
-        for most filers (annual figures are reported in the 10-K).
+        or did not pass validation. In the quarterly view, fiscal year-end
+        columns (FY labels) carry the year-end balance sheet; income lines
+        dash there because full-year figures live in the Annual view.
       </p>
     </div>
   );

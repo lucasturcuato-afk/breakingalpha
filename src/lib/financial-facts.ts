@@ -12,11 +12,13 @@
  * metric accepts exactly one unit and other rows are dropped.
  *
  * Period model (labels are period-derived by the backend, never the filing's
- * fiscal context): Annual = fiscal_period 'FY', latest 5 by fiscal_year;
- * Quarterly = Q1..Q4, latest 8 by period end. 6M/9M cumulative YTD rows are
- * excluded. Q4 income-statement cells are absent for most filers (there is
- * no Q4 10-Q; only operating cash flow carries a derived Q4) -- the tab
- * renders those as em-dashes.
+ * fiscal context): Annual = fiscal_period 'FY', latest 5. Quarterly = the
+ * latest 8 DISTINCT period_end dates drawn from all instant rows (balance
+ * sheets, including FY-labeled fiscal year-ends) plus discrete-quarter
+ * (Q1..Q4) durations; FY full-year durations never populate a quarterly
+ * column. 6M/9M cumulative YTD rows are excluded everywhere. Year-end
+ * quarterly columns therefore show balance-sheet values with dashed income
+ * (no Q4 10-Q exists; only operating cash flow carries a derived Q4).
  *
  * Consumption-side only: no writes, no memo-pool involvement.
  */
@@ -88,6 +90,7 @@ const FACT_COLS =
 
 interface FactRow {
   metric_key: string;
+  period_type: string;
   fiscal_year: number | null;
   fiscal_period: string | null;
   period_end: string;
@@ -132,6 +135,10 @@ function buildView(rows: FactRow[], keep: number): FinancialView {
   const periods = [...periodsByKey.values()]
     .sort((a, b) => (a.periodEnd < b.periodEnd ? 1 : -1))
     .slice(0, keep);
+  return { periods, grid: pruneGrid(grid, periods) };
+}
+
+function pruneGrid(grid: FinancialGrid, periods: FinancialPeriod[]): FinancialGrid {
   const keptKeys = new Set(periods.map((p) => p.key));
   for (const metric of Object.keys(grid)) {
     for (const k of Object.keys(grid[metric])) {
@@ -139,7 +146,49 @@ function buildView(rows: FactRow[], keep: number): FinancialView {
     }
     if (Object.keys(grid[metric]).length === 0) delete grid[metric];
   }
-  return { periods, grid };
+  return grid;
+}
+
+/**
+ * Quarterly view, keyed by DISTINCT period_end dates so the fiscal year-end
+ * balance sheet is a real column. Inputs: ALL instant rows (the FY-labeled
+ * instant IS the year-end balance sheet; hiding it dropped a 10-K-latest
+ * filer's most recent balance sheet entirely) + duration rows labeled Q1-Q4
+ * (discrete quarters; FY full-year durations NEVER populate a quarterly
+ * column, so income cells dash at year-end columns -- the truthful shape).
+ * A year-end column is headed by its FY label (e.g. "FY2025"), not a fake Q4.
+ */
+function buildQuarterlyView(rows: FactRow[], keep: number): FinancialView {
+  const periodsByEnd = new Map<string, FinancialPeriod>();
+  const grid: FinancialGrid = {};
+
+  for (const r of rows) {
+    if (r.fiscal_year == null || !r.fiscal_period) continue;
+    const key = r.period_end;
+    const isYearEndInstant = r.period_type === "instant" && r.fiscal_period === "FY";
+    const existing = periodsByEnd.get(key);
+    if (!existing || (isYearEndInstant && existing.fiscalPeriod !== "FY")) {
+      periodsByEnd.set(key, {
+        key,
+        label: periodLabel(r.fiscal_period, r.fiscal_year),
+        fiscalYear: r.fiscal_year,
+        fiscalPeriod: r.fiscal_period,
+        periodEnd: r.period_end,
+      });
+    }
+    const metricCells = (grid[r.metric_key] ??= {});
+    if (!metricCells[key]) {
+      metricCells[key] = {
+        value: typeof r.value === "string" ? parseFloat(r.value) : r.value,
+        filingUrl: r.filing_url ?? null,
+      };
+    }
+  }
+
+  const periods = [...periodsByEnd.values()]
+    .sort((a, b) => (a.periodEnd < b.periodEnd ? 1 : -1))
+    .slice(0, keep);
+  return { periods, grid: pruneGrid(grid, periods) };
 }
 
 /**
@@ -172,11 +221,15 @@ export async function fetchCompanyFinancials(
       (r) => UNIT_BY_METRIC[r.metric_key] === r.unit,
     );
     const annualRows = rows.filter((r) => r.fiscal_period === "FY");
-    const quarterlyRows = rows.filter((r) => r.fiscal_period !== "FY");
+    // Quarterly takes every INSTANT row (balance sheets, including FY-labeled
+    // year-ends) but only DISCRETE-QUARTER durations; FY durations stay out.
+    const quarterlyRows = rows.filter(
+      (r) => r.period_type === "instant" || r.fiscal_period !== "FY",
+    );
     return {
       cik: res.cik,
       annual: buildView(annualRows, ANNUAL_PERIODS),
-      quarterly: buildView(quarterlyRows, QUARTERLY_PERIODS),
+      quarterly: buildQuarterlyView(quarterlyRows, QUARTERLY_PERIODS),
     };
   } catch (e) {
     console.error("[financial-facts] fetchCompanyFinancials exception:", e);
