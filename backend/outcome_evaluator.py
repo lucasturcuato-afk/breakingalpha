@@ -137,7 +137,6 @@ def write_grade(sb, result) -> bool:
 
         if result.window_days >= current_window:
             sb.table("outputs").update({
-                "outcome_score": result.score,
                 "outcome_window_days": result.window_days,
                 "outcome_evidence": result.evidence_data,
                 "outcome_checked_at": result.graded_at,
