@@ -281,6 +281,23 @@ class CrossEndpointTests(unittest.TestCase):
         self.assertEqual(summary["quarantined"], 0)
 
 
+class DualTagQuarantineTests(unittest.TestCase):
+    def test_annotated_fact_is_quarantined_fail_closed(self):
+        facts = [annual("revenue", 19_464_000_000)]
+        facts[0]["dual_tag_conflict"] = (
+            "dual_tag_divergence: Revenues=19976000000 vs "
+            "RevenueFromContractWithCustomerExcludingAssessedTax=19464000000 "
+            "for 2025-12-31")
+        validate_facts(facts, CIK, concept_fetcher=None)
+        self.assertEqual(facts[0]["validation_status"], QUARANTINED)
+        self.assertIn("dual_tag_divergence", facts[0]["validation_reason"])
+
+    def test_unannotated_fact_unaffected(self):
+        facts = [annual("revenue", 19_976_000_000)]
+        summary = validate_facts(facts, CIK, concept_fetcher=None)
+        self.assertEqual(summary["quarantined"], 0)
+
+
 class FailClosedTests(unittest.TestCase):
     def test_validated_only_excludes_quarantined(self):
         facts = clean_company()
