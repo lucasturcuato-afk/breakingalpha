@@ -121,7 +121,11 @@ export function FinancialsTab({ financials, hasCik }: FinancialsTabProps) {
       const rev = grid.revenue?.[p.key];
       const gp = grid.gross_profit?.[p.key];
       if (rev && gp && rev.value !== 0) {
-        grossMargin[p.key] = { value: gp.value / rev.value, filingUrl: gp.filingUrl };
+        grossMargin[p.key] = {
+          value: gp.value / rev.value,
+          filingUrl: gp.filingUrl,
+          accession: gp.accession,
+        };
       }
       const parent = grid.stockholders_equity?.[p.key];
       if (parent) {
@@ -130,7 +134,11 @@ export function FinancialsTab({ financials, hasCik }: FinancialsTabProps) {
           const cell = grid[c.key]?.[p.key];
           if (cell) total += cell.value;
         }
-        totalEquity[p.key] = { value: total, filingUrl: parent.filingUrl };
+        totalEquity[p.key] = {
+          value: total,
+          filingUrl: parent.filingUrl,
+          accession: parent.accession,
+        };
       }
     }
     return { grossMargin, totalEquity };

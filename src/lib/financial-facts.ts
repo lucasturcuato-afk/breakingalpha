@@ -40,6 +40,8 @@ export interface FinancialPeriod {
 export interface FinancialCell {
   value: number;
   filingUrl: string | null;
+  /** Source accession; used server-side to upgrade filingUrl to the primary document. */
+  accession: string | null;
 }
 
 /** metric_key -> period key -> cell. Missing entries render as em-dashes. */
@@ -138,6 +140,7 @@ function buildView(rows: FactRow[], keep: number): FinancialView {
     const cell: FinancialCell = {
       value: typeof r.value === "string" ? parseFloat(r.value) : r.value,
       filingUrl: r.filing_url ?? null,
+      accession: r.accession_number ?? null,
     };
     const metricCells = (grid[r.metric_key] ??= {});
     // Boundary-jitter twins share a label; keep the later-ending instance.
@@ -196,6 +199,7 @@ function buildQuarterlyView(rows: FactRow[], keep: number): FinancialView {
       metricCells[key] = {
         value: typeof r.value === "string" ? parseFloat(r.value) : r.value,
         filingUrl: r.filing_url ?? null,
+        accession: r.accession_number ?? null,
       };
     }
   }
@@ -204,6 +208,76 @@ function buildQuarterlyView(rows: FactRow[], keep: number): FinancialView {
     .sort((a, b) => (a.periodEnd < b.periodEnd ? 1 : -1))
     .slice(0, keep);
   return { periods, grid: pruneGrid(grid, periods) };
+}
+
+// Mirrors the backend SEC client's default UA (backend/edgar/client.py);
+// the SEC 403s header-less requests.
+const SEC_USER_AGENT = "Signalera lucas@signalera.ai";
+
+/**
+ * Resolve accessions to their primary filing DOCUMENT (the readable 10-K/10-Q
+ * .htm), so View opens the filing itself rather than the index page.
+ *
+ * Cheapest source first: sec_filings.primary_doc_url joins on
+ * accession_number with zero SEC fetches (it only covers cron-era filings, so
+ * hit rate is partial). Anything unresolved falls back to ONE submissions-API
+ * fetch for the company (cached an hour via Next), never per-fact fetches.
+ * Note the padding asymmetry: the submissions FILENAME takes the 10-digit
+ * zero-padded CIK; the Archives doc path takes the unpadded CIK.
+ * Failures return a partial (or empty) map; callers keep the filing-index URL
+ * as the fallback so the link never breaks.
+ */
+async function resolvePrimaryDocUrls(
+  supabase: SupabaseClient,
+  cik: number,
+  accessions: string[],
+): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  if (accessions.length === 0) return out;
+  try {
+    const { data } = await supabase
+      .from("sec_filings")
+      .select("accession_number, primary_doc_url")
+      .in("accession_number", accessions);
+    for (const r of data ?? []) {
+      if (r.primary_doc_url) out[r.accession_number as string] = r.primary_doc_url as string;
+    }
+  } catch (e) {
+    console.error("[financial-facts] sec_filings doc join failed:", e);
+  }
+
+  const unresolved = new Set(accessions.filter((a) => !out[a]));
+  if (unresolved.size === 0) return out;
+  try {
+    const padded = String(cik).padStart(10, "0");
+    const resp = await fetch(`https://data.sec.gov/submissions/CIK${padded}.json`, {
+      headers: { "User-Agent": SEC_USER_AGENT, "Accept-Encoding": "gzip, deflate" },
+      next: { revalidate: 3600 },
+    } as RequestInit);
+    if (!resp.ok) return out;
+    const recent = (await resp.json())?.filings?.recent ?? {};
+    const accns: string[] = recent.accessionNumber ?? [];
+    const docs: string[] = recent.primaryDocument ?? [];
+    for (let i = 0; i < accns.length; i++) {
+      if (unresolved.has(accns[i]) && docs[i]) {
+        out[accns[i]] =
+          `https://www.sec.gov/Archives/edgar/data/${cik}/${accns[i].replace(/-/g, "")}/${docs[i]}`;
+      }
+    }
+  } catch (e) {
+    console.error("[financial-facts] submissions doc lookup failed:", e);
+  }
+  return out;
+}
+
+function upgradeFilingUrls(view: FinancialView, docByAccession: Record<string, string>): void {
+  for (const metric of Object.values(view.grid)) {
+    for (const cell of Object.values(metric)) {
+      if (cell.accession && docByAccession[cell.accession]) {
+        cell.filingUrl = docByAccession[cell.accession];
+      }
+    }
+  }
 }
 
 /**
@@ -245,11 +319,28 @@ export async function fetchCompanyFinancials(
     const quarterlyRows = rows.filter(
       (r) => r.period_type === "instant" || r.fiscal_period !== "FY",
     );
-    return {
-      cik: res.cik,
-      annual: buildView(annualRows, ANNUAL_PERIODS),
-      quarterly: buildQuarterlyView(quarterlyRows, QUARTERLY_PERIODS),
-    };
+    const annual = buildView(annualRows, ANNUAL_PERIODS);
+    const quarterly = buildQuarterlyView(quarterlyRows, QUARTERLY_PERIODS);
+
+    // Upgrade View links to the primary filing document where resolvable;
+    // unresolved cells keep the filing-index URL (the fallback never breaks).
+    const visibleAccessions = new Set<string>();
+    for (const view of [annual, quarterly]) {
+      for (const metric of Object.values(view.grid)) {
+        for (const cell of Object.values(metric)) {
+          if (cell.accession) visibleAccessions.add(cell.accession);
+        }
+      }
+    }
+    const docByAccession = await resolvePrimaryDocUrls(
+      supabase,
+      res.cik,
+      [...visibleAccessions],
+    );
+    upgradeFilingUrls(annual, docByAccession);
+    upgradeFilingUrls(quarterly, docByAccession);
+
+    return { cik: res.cik, annual, quarterly };
   } catch (e) {
     console.error("[financial-facts] fetchCompanyFinancials exception:", e);
     return { cik: res.cik, annual: EMPTY_VIEW, quarterly: EMPTY_VIEW };
