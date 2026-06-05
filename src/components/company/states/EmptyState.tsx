@@ -90,7 +90,7 @@ export function EmptyState({ canonical }: Props) {
             color: "var(--espresso)",
           }}
         >
-          {canonical} isn&apos;t on Breaking Alpha yet.
+          {canonical} isn&apos;t on Signalera yet.
         </h1>
         <p
           style={{

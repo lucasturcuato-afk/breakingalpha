@@ -51,6 +51,13 @@ function slugToCompanyName(slug: string): string {
   return decoded.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// Escape LIKE metacharacters so `ilike` performs a case-insensitive EXACT
+// match: backslash first (the default LIKE escape char), then % and _.
+// Without this, a name containing % or _ would wildcard-match other rows.
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
 function rankCluster(rows: ResolverRow[]): ResolverRow[] {
   return [...rows].sort((a, b) => {
     const am = a.mention_count ?? -1;
@@ -93,12 +100,22 @@ export async function resolveAlias(
   }
   if (!anchor) {
     const canonicalName = canonicalize(slugToCompanyName(input));
+    // Case-insensitive exact match. The slug round-trip title-cases function
+    // words ("bank-of-america" -> "Bank Of America") while rows are stored
+    // with natural casing ("Bank of America"), so a case-sensitive .eq()
+    // missed ~26% of companies (916 of 3,516 are case-only misses). The
+    // escaped pattern contains no wildcards, so ilike stays an exact match.
+    // A CI match can return several rows (e.g. "eBay" / "EBay"); take the
+    // highest-mention row, tie-broken by id for determinism, mirroring
+    // rankCluster's primary ordering.
     const { data } = await supabase
       .from("companies")
       .select(RESOLVER_COLS)
-      .eq("name", canonicalName)
-      .maybeSingle();
-    anchor = (data as ResolverRow | null) ?? null;
+      .ilike("name", escapeLikePattern(canonicalName))
+      .order("mention_count", { ascending: false, nullsFirst: false })
+      .order("id", { ascending: true })
+      .limit(1);
+    anchor = ((data as ResolverRow[] | null)?.[0] as ResolverRow | undefined) ?? null;
   }
   if (!anchor) return null;
 

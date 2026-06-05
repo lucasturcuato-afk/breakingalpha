@@ -22,6 +22,12 @@
   --gold-dark: #a88542;
   --gold-muted: rgba(212, 168, 75, 0.10);
   --gold-border: rgba(212, 168, 75, 0.32);
+  /* WD91(b): DirectionD aliases consumed by EmptyState / EmptyStateCTA.
+     D.goldDeep == --gold-dark and D.goldFaint == --gold-muted (DirectionD.jsx:25-26).
+     Referenced since PR-E1 but never defined, so the primary CTA rendered
+     cream-on-cream. */
+  --gold-deep: #a88542;
+  --gold-faint: rgba(212, 168, 75, 0.10);
 
   /* ── Border system ── */
   /* PR-A0: rebased to D.border (#ede4d3) and D.borderSoft (#f0e8d6); add D.borderHi. */
@@ -207,6 +213,10 @@ html.dark {
   --gold-dark: #a8873a;
   --gold-muted: rgba(201, 168, 76, 0.15);
   --gold-border: rgba(201, 168, 76, 0.35);
+  /* WD91(b): dark-mode values for --gold-deep / --gold-faint, mirroring the
+     light-mode aliasing (deep == --gold-dark, faint == --gold-muted). */
+  --gold-deep: #a8873a;
+  --gold-faint: rgba(201, 168, 76, 0.15);
 
   --border-base: rgba(255, 255, 255, 0.14);
   --border-subtle: rgba(255, 255, 255, 0.08);
