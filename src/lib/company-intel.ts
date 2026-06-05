@@ -1123,9 +1123,9 @@ function buildSignalLabel(
     if (effectiveCtxArts.length === 0) return `No articles found for ${companyName} in current window`;
     const plural = effectiveCtxArts.length === 1 ? "article" : "articles";
     if (titleNamed >= 1) {
-      return `No direct events — ${effectiveCtxArts.length} context ${plural}, ${titleNamed} with ${companyName} in title`;
+      return `No direct events - ${effectiveCtxArts.length} context ${plural}, ${titleNamed} with ${companyName} in title`;
     }
-    return `No direct events — ${effectiveCtxArts.length} context ${plural}, ${companyName} mentioned incidentally`;
+    return `No direct events - ${effectiveCtxArts.length} context ${plural}, ${companyName} mentioned incidentally`;
   }
 
   const types = [
@@ -1134,7 +1134,7 @@ function buildSignalLabel(
   const typeStr = types.length > 0 ? ` (${types.join(", ")})` : "";
   const plural = effectiveDevArts.length === 1 ? "event" : "events";
   if (effectiveDevArts.length >= 2) return `${effectiveDevArts.length} direct company ${plural}${typeStr}`;
-  return `1 direct company ${plural}${typeStr} — limited direct evidence`;
+  return `1 direct company ${plural}${typeStr} - limited direct evidence`;
 }
 
 export function buildMemoContent(
