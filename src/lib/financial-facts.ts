@@ -86,7 +86,7 @@ const UNIT_BY_METRIC: Record<string, string> = {
 };
 
 const FACT_COLS =
-  "metric_key, period_type, fiscal_year, fiscal_period, period_end, unit, value, filing_url";
+  "metric_key, period_type, fiscal_year, fiscal_period, period_end, unit, value, filing_url, accession_number";
 
 interface FactRow {
   metric_key: string;
@@ -97,6 +97,21 @@ interface FactRow {
   unit: string;
   value: number | string;
   filing_url: string | null;
+  accession_number: string | null;
+}
+
+/**
+ * EDGAR filing INDEX page for an accession. The stored filing_url is the bare
+ * accession DIRECTORY (a raw file list); the index page is the human filing
+ * view: .../data/{cik}/{accession_no_dashes}/{accession-with-dashes}-index.htm
+ * The cik is unpadded, matching the form EDGAR serves in directory URLs.
+ * Falls back to null when the accession does not normalize to 18 digits.
+ */
+function edgarFilingIndexUrl(cik: number, accession: string | null): string | null {
+  const digits = (accession ?? "").replace(/-/g, "");
+  if (!/^\d{18}$/.test(digits)) return null;
+  const dashed = `${digits.slice(0, 10)}-${digits.slice(10, 12)}-${digits.slice(12)}`;
+  return `https://www.sec.gov/Archives/edgar/data/${cik}/${digits}/${dashed}-index.htm`;
 }
 
 function periodLabel(fiscalPeriod: string, fiscalYear: number): string {
@@ -217,9 +232,13 @@ export async function fetchCompanyFinancials(
       console.error("[financial-facts] fetch failed:", error.message);
       return { cik: res.cik, annual: EMPTY_VIEW, quarterly: EMPTY_VIEW };
     }
-    const rows = ((data ?? []) as unknown as FactRow[]).filter(
-      (r) => UNIT_BY_METRIC[r.metric_key] === r.unit,
-    );
+    const rows = ((data ?? []) as unknown as FactRow[])
+      .filter((r) => UNIT_BY_METRIC[r.metric_key] === r.unit)
+      // Source links open the filing index page, not the raw directory.
+      .map((r) => ({
+        ...r,
+        filing_url: edgarFilingIndexUrl(res.cik as number, r.accession_number) ?? r.filing_url,
+      }));
     const annualRows = rows.filter((r) => r.fiscal_period === "FY");
     // Quarterly takes every INSTANT row (balance sheets, including FY-labeled
     // year-ends) but only DISCRETE-QUARTER durations; FY durations stay out.
