@@ -150,7 +150,15 @@ function formatDatePretty(d: Date): string {
   return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 }
 function formatTimePretty(d: Date): string {
-  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) + " ET";
+  // Client component: renders in the viewer's own timezone, with the zone
+  // abbreviation derived from the SAME format call as the time so the label
+  // can never disagree with the displayed clock (was a hardcoded " ET").
+  return d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+  });
 }
 
 export default function MorningBriefPage() {
