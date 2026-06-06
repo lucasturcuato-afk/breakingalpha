@@ -1,0 +1,21 @@
+{
+  "_comment": "Shared regime-ladder case table. Consumed by BOTH backend/tests/test_market_tape.py (compute_regime) and tests/unit/market-regime.test.mjs (computeRegime). The two implementations must produce identical output for every row; add a row here whenever a threshold or branch changes in either language.",
+  "cases": [
+    { "note": "Friday 2026-06-05 actual tape: VIX 21.5 spiking +39.7%, SPX -2.64 (elevated band + spike)", "vix_level": 21.51, "vix_pct_change": 39.68, "spx_pct_change": -2.64, "expected": "risk-off" },
+    { "note": "VIX extreme band", "vix_level": 26.4, "vix_pct_change": 33.9, "spx_pct_change": -2.64, "expected": "risk-off" },
+    { "note": "exact 25.0 boundary is extreme, overrides falling VIX and green SPX", "vix_level": 25.0, "vix_pct_change": -10.0, "spx_pct_change": 2.0, "expected": "risk-off" },
+    { "note": "elevated band without a spike stays neutral even with green SPX", "vix_level": 22.0, "vix_pct_change": 2.9, "spx_pct_change": 1.5, "expected": "neutral" },
+    { "note": "exact 20.0 boundary enters elevated band; spike of exactly +3.0 is NOT a spike (strict >)", "vix_level": 20.0, "vix_pct_change": 3.0, "spx_pct_change": -1.0, "expected": "neutral" },
+    { "note": "spike just over +3 in elevated band", "vix_level": 20.0, "vix_pct_change": 3.01, "spx_pct_change": 0.0, "expected": "risk-off" },
+    { "note": "elevated band ignores the SPX tiebreaker entirely", "vix_level": 20.0, "vix_pct_change": 0.0, "spx_pct_change": 5.0, "expected": "neutral" },
+    { "note": "clear calm up day", "vix_level": 12.5, "vix_pct_change": -4.2, "spx_pct_change": 1.1, "expected": "risk-on" },
+    { "note": "calm band wins regardless of VIX spike or red SPX", "vix_level": 14.99, "vix_pct_change": 50.0, "spx_pct_change": -3.0, "expected": "risk-on" },
+    { "note": "exact 15.0 is NOT calm (strict <), lands in tiebreak band, flat SPX", "vix_level": 15.0, "vix_pct_change": 0.0, "spx_pct_change": 0.0, "expected": "neutral" },
+    { "note": "tiebreak band, SPX above +0.3", "vix_level": 17.0, "vix_pct_change": 1.0, "spx_pct_change": 0.5, "expected": "risk-on" },
+    { "note": "tiebreak band, SPX below -0.3", "vix_level": 17.0, "vix_pct_change": 1.0, "spx_pct_change": -0.5, "expected": "risk-off" },
+    { "note": "tiebreak boundary: exactly +0.3 is neutral (strict >)", "vix_level": 17.0, "vix_pct_change": 0.0, "spx_pct_change": 0.3, "expected": "neutral" },
+    { "note": "tiebreak boundary: exactly -0.3 is neutral (strict <)", "vix_level": 17.0, "vix_pct_change": 0.0, "spx_pct_change": -0.3, "expected": "neutral" },
+    { "note": "top of tiebreak band, flat SPX", "vix_level": 19.99, "vix_pct_change": -2.0, "spx_pct_change": 0.0, "expected": "neutral" },
+    { "note": "just under extreme with a spike: elevated branch fires risk-off", "vix_level": 24.99, "vix_pct_change": 3.5, "spx_pct_change": 0.0, "expected": "risk-off" }
+  ]
+}

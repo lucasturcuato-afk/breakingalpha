@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { fetchYahooDaily } from "@/lib/yahoo-daily";
 
 function fmt(price: number) {
   if (!price || isNaN(price)) return "—";
@@ -28,28 +29,14 @@ async function fetchFinnhub(symbol: string, apiKey: string): Promise<Quote | nul
 // them. Yahoo Finance's public v8 chart endpoint fills the gap and is
 // keyless. Used both as a primary for ^/= symbols and as a fallback for
 // anything Finnhub blanks on.
+//
+// Prior-close derivation lives in the shared lib/yahoo-daily helper: Yahoo's
+// meta.chartPreviousClose can anchor two sessions back for caret symbols, so
+// the helper derives prev from the actual last two daily bars instead.
 async function fetchYahoo(symbol: string): Promise<Quote | null> {
-  // Yahoo Finance v8 uses hyphens for US class shares (BRK-B, BF-B, CWEN-A);
-  // a period-form symbol returns "symbol may be delisted". Substitute at the
-  // boundary only; the original form is preserved in the caller's response.
-  const yahooSymbol = symbol.replace(/\./g, "-");
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-    yahooSymbol,
-  )}?interval=1d&range=1d`;
-  const res = await fetch(url, {
-    signal: AbortSignal.timeout(5000),
-    // Yahoo 403s plain server fetches — a browser UA is enough to pass.
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; Signalera/1.0)" },
-  });
-  if (!res.ok) return null;
-  const d = await res.json();
-  const meta = d?.chart?.result?.[0]?.meta;
-  if (!meta) return null;
-  const price = Number(meta.regularMarketPrice ?? meta.previousClose);
-  const prev = Number(meta.chartPreviousClose ?? meta.previousClose);
-  if (!price || isNaN(price)) return null;
-  const pct = prev > 0 ? ((price - prev) / prev) * 100 : 0;
-  return { price: fmt(price), pct: parseFloat(pct.toFixed(2)) };
+  const q = await fetchYahooDaily(symbol, { timeoutMs: 5000 });
+  if (!q) return null;
+  return { price: fmt(q.price), pct: q.pct };
 }
 
 function isYahooFirst(symbol: string): boolean {

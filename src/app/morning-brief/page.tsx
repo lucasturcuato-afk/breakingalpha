@@ -88,7 +88,7 @@ interface BriefingData {
   top_stories?: StoryData[];
   created_at?: string;
   market_pulse?: {
-    sentiment_word: string;
+    sentiment_word: string | null;
     narrative: string;
     headlines?: Array<{ title: string; href?: string }>;
   } | null;
@@ -489,10 +489,11 @@ export default function MorningBriefPage() {
 
   const moodWord = briefing?.market_pulse?.sentiment_word || briefing?.market_tone || "—";
 
-  // Market Pulse fallbacks — the hero card must always render. Pull a
-  // sentiment word and narrative body whether or not the backend delivered
-  // the structured market_pulse block.
-  const pulseWord = briefing?.market_pulse?.sentiment_word || briefing?.market_tone || "mixed";
+  // Market Pulse fallbacks: the hero card must always render, but never
+  // with a fabricated verdict. When neither the grounded sentiment word nor
+  // market_tone is present, the hero drops the highlighted-word treatment
+  // instead of asserting "mixed".
+  const pulseWord = briefing?.market_pulse?.sentiment_word || briefing?.market_tone || null;
   const pulseBody =
     briefing?.market_pulse?.narrative
     || (briefing?.summary ? stripHtml(briefing.summary) : "")
@@ -758,8 +759,9 @@ export default function MorningBriefPage() {
                 literals so the card stays dark in both light and dark
                 themes (the token --espresso flips to a near-white in dark
                 mode and would otherwise invert this card). Always renders:
-                sentiment word falls back to market_tone → "mixed", body
-                falls back to briefing.summary, driver chips fall back to
+                sentiment word falls back to market_tone and then to a
+                no-verdict headline (never a fabricated word), body falls
+                back to briefing.summary, driver chips fall back to
                 top_deals when backend-supplied headlines are absent. ── */}
             <section style={{ marginBottom: 36 }}>
               <div
@@ -809,21 +811,27 @@ export default function MorningBriefPage() {
                     position: "relative",
                   }}
                 >
-                  Today the market is{" "}
-                  <span
-                    style={{
-                      background: HERITAGE_GOLD,
-                      color: DC_ESPRESSO,
-                      padding: "2px 14px",
-                      borderRadius: 8,
-                      display: "inline-block",
-                      transform: "rotate(-1deg)",
-                      boxShadow: "0 4px 0 rgba(0,0,0,0.15)",
-                    }}
-                  >
-                    {pulseWord}
-                  </span>
-                  .
+                  {pulseWord ? (
+                    <>
+                      Today the market is{" "}
+                      <span
+                        style={{
+                          background: HERITAGE_GOLD,
+                          color: DC_ESPRESSO,
+                          padding: "2px 14px",
+                          borderRadius: 8,
+                          display: "inline-block",
+                          transform: "rotate(-1deg)",
+                          boxShadow: "0 4px 0 rgba(0,0,0,0.15)",
+                        }}
+                      >
+                        {pulseWord}
+                      </span>
+                      .
+                    </>
+                  ) : (
+                    <>Today in the markets.</>
+                  )}
                 </h2>
                 <p
                   className="font-sans"

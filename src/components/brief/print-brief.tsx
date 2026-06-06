@@ -330,7 +330,9 @@ function MarketPulseSection({
 }) {
   const heroPrefix =
     kind === "evening" ? "The session closed" : "Today the market is";
-  const cleanWord = (moodWord || "mixed").toString().trim().toLowerCase();
+  // No fabricated fallback: when the backend shipped no grounded sentiment
+  // word, render the hero without a verdict instead of asserting "mixed".
+  const cleanWord = (moodWord || "").toString().trim().toLowerCase();
 
   return (
     <section
@@ -361,7 +363,11 @@ function MarketPulseSection({
           margin: 0,
         }}
       >
-        {heroPrefix} {cleanWord}.
+        {cleanWord
+          ? `${heroPrefix} ${cleanWord}.`
+          : kind === "evening"
+            ? "The session has closed."
+            : "Today in the markets."}
       </h2>
       {narrative ? (
         <p
@@ -1096,11 +1102,12 @@ export function PrintBrief({
     formatLabel ||
     (kind === "evening" ? "Evening Wrap" : "Morning Market Brief");
 
-  // Pulse hero data prep
+  // Pulse hero data prep. No "mixed" terminal fallback: a null grounded
+  // sentiment word renders the hero without a verdict (see MarketPulseSection).
   const moodWord =
     briefing.market_pulse?.sentiment_word ||
     briefing.market_tone ||
-    "mixed";
+    "";
   const narrative =
     (briefing.market_pulse?.narrative &&
       stripHtml(briefing.market_pulse.narrative).trim()) ||
