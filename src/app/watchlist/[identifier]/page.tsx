@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { ArrowLeft, Sparkles, ExternalLink, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 import { MemoModal } from "@/components/memo/MemoModal";
+import { withCompanyLine } from "@/lib/memo-company-line";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import { buildArticleOrFilter } from "@/lib/watchlist-utils";
 import { clusterArticles, type ArticleCluster } from "@/lib/clustering-utils";
@@ -83,6 +84,7 @@ interface WatchlistArticle {
   title: string;
   source?: string;
   url?: string;
+  primary_company?: string;
   industry_verticals?: string[];
   activity_types?: string[];
   published_at?: string;
@@ -265,6 +267,7 @@ export default function WatchlistIdentifierPage({
         title: a.title as string,
         source: a.source as string | undefined,
         url: a.url as string | undefined,
+        primary_company: a.primary_company as string | undefined,
         industry_verticals: (a.industry_verticals as string[] | null) ?? [],
         activity_types: (a.activity_types as string[] | null) ?? [],
         published_at: (a.published_at as string | null) || (a.ingested_at as string | null) || undefined,
@@ -1323,7 +1326,10 @@ Constraints:
           isOpen={true}
           onClose={() => setArticleMemoEntry(null)}
           title={articleMemoEntry.title}
-          content={`${articleMemoEntry.title}\n${articleMemoEntry.source ?? ""}\n\n${articleMemoEntry.summary ?? ""}`}
+          content={withCompanyLine(
+            `${articleMemoEntry.title}\n${articleMemoEntry.source ?? ""}\n\n${articleMemoEntry.summary ?? ""}`,
+            articleMemoEntry.primary_company,
+          )}
           type="article"
         />
       )}

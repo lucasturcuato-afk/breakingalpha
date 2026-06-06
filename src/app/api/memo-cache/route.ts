@@ -36,12 +36,20 @@ interface CacheRow {
   } | null;
 }
 
-// Memo types eligible for the BriefTab cache. BriefTab itself writes
-// 'company'; modal-driven flows (MemoModal, CompanyIntelMemoModal,
-// thesis-detail-panel) default to 'article'. Unrelated memo types like
-// 'deal', 'thesis', 'brief' are excluded so the company-scoped cache does
-// not surface, for example, a deal memo as the cached company brief.
-const ELIGIBLE_MEMO_TYPES = new Set(["company", "article"]);
+// Memo types eligible for the BriefTab cache. BriefTab writes 'company';
+// only those rows are real company briefs.
+//
+// 'article' was previously eligible as a defensive catch for modal-driven
+// flows that defaulted to 'article'. That catch is vestigial: the only
+// company-anchored modal (CompanyIntelMemoModal) has no live hosts, and no
+// memo_type='article' row has ever carried content->>'target_company' (all
+// article memos persisted target_company=null), so 'article' eligibility has
+// never matched a row. It must be dropped now because article surfaces
+// (story cards, feed rows, watchlist article modals) are starting to thread
+// their subject company through a COMPANY: content line for outcome grading;
+// without this narrowing, a story memo about NVIDIA would surface as the
+// user's cached NVIDIA company brief within the 24h TTL.
+const ELIGIBLE_MEMO_TYPES = new Set(["company"]);
 
 function todayUtcMidnightISO(): string {
   const d = new Date();

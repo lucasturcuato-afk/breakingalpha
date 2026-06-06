@@ -40,6 +40,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { createBrowserClient } from "@supabase/ssr";
 import { MemoModal } from "@/components/memo/MemoModal";
+import { withCompanyLine } from "@/lib/memo-company-line";
 import { WatchlistAddInput, type AddType } from "@/components/watchlist/WatchlistAddInput";
 import { buildArticleOrFilter } from "@/lib/watchlist-utils";
 import { trackClientEvent } from "@/lib/track-event";
@@ -1405,7 +1406,10 @@ export default function WatchlistPage() {
           isOpen={true}
           onClose={() => setArticleMemoEntry(null)}
           title={articleMemoEntry.title}
-          content={`${articleMemoEntry.title}\n${articleMemoEntry.source ?? ""}`}
+          content={withCompanyLine(
+            `${articleMemoEntry.title}\n${articleMemoEntry.source ?? ""}`,
+            articleMemoEntry.primary_company,
+          )}
           type="article"
         />
       )}
