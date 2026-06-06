@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { DisplayUnit } from "@/lib/format-change";
+import { fetchYahooDaily } from "@/lib/yahoo-daily";
 
 // How the card should be formatted for display.
 type Format =
@@ -59,25 +60,13 @@ interface YahooResult {
   ts: number | null;
 }
 
+// Prior-close derivation lives in the shared lib/yahoo-daily helper: Yahoo's
+// meta.chartPreviousClose can anchor two sessions back for caret symbols, so
+// the helper derives prev from the actual last two daily bars instead.
 async function fetchYahoo(symbol: string): Promise<YahooResult | null> {
-  // Defensive: Yahoo uses hyphens for class shares (BRK-B not BRK.B). No-op
-  // for current indices but closes the bug class against future additions.
-  const encoded = encodeURIComponent(symbol.replace(/\./g, "-"));
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`;
-  const res = await fetch(url, {
-    headers: { "User-Agent": "Mozilla/5.0" },
-    signal: AbortSignal.timeout(6000),
-  });
-  if (!res.ok) return null;
-  const data = await res.json();
-  const meta = data?.chart?.result?.[0]?.meta;
-  if (!meta?.regularMarketPrice) return null;
-  const price: number = meta.regularMarketPrice;
-  const prev: number = meta.chartPreviousClose ?? meta.previousClose ?? 0;
-  const pct = prev > 0 ? ((price - prev) / prev) * 100 : 0;
-  const ts =
-    typeof meta.regularMarketTime === "number" ? meta.regularMarketTime : null;
-  return { raw: price, prev, pct, ts };
+  const q = await fetchYahooDaily(symbol);
+  if (!q) return null;
+  return { raw: q.price, prev: q.prev, pct: q.pct, ts: q.ts };
 }
 
 // Stooq is more reliable for ^spx than Yahoo on some days.

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import type { MoodType } from "@/components/shell";
 import { formatChange, type DisplayUnit } from "@/lib/format-change";
+import { computeRegime, type RegimeResult } from "@/lib/market-regime";
 
 /**
  * Single source of truth for the global mood bar.
@@ -178,6 +179,25 @@ function subscribe(symbols: readonly string[], cb: () => void): () => void {
   };
 }
 
+// Banner narrative per regime-ladder branch. The wording is display-only and
+// intentionally NOT part of the shared regime SSOT.
+function narrativeFor({ regime, branch }: RegimeResult): string {
+  switch (branch) {
+    case "vix-extreme":
+      return "Risk-Off regime";
+    case "vix-elevated":
+      return regime === "risk-off" ? "Elevated volatility" : "Cautious markets";
+    case "vix-calm":
+      return "Risk-On regime";
+    case "spx-tiebreak":
+      return regime === "risk-on"
+        ? "Markets advancing"
+        : regime === "risk-off"
+          ? "Markets pulling back"
+          : "Markets steady";
+  }
+}
+
 function deriveBanner(cards: Record<string, MarketCardData | null>): MoodBanner {
   const vixCard = cards["VIX"];
   const spyCard = cards["SPY"];
@@ -194,24 +214,16 @@ function deriveBanner(cards: Record<string, MarketCardData | null>): MoodBanner 
   if (vixVal !== null && !isNaN(vixVal)) {
     details.push(`VIX ${vixVal.toFixed(1)} ${vixPct >= 0 ? "+" : ""}${vixPct.toFixed(1)}%`);
 
-    if (vixVal >= 25) {
-      moodTerm = "risk-off";
-      narrative = "Risk-Off regime";
-    } else if (vixVal >= 20) {
-      moodTerm = vixPct > 3 ? "risk-off" : "neutral";
-      narrative = vixPct > 3 ? "Elevated volatility" : "Cautious markets";
-    } else if (vixVal < 15) {
-      moodTerm = "risk-on";
-      narrative = "Risk-On regime";
-    } else {
-      moodTerm = spyPct > 0.3 ? "risk-on" : spyPct < -0.3 ? "risk-off" : "neutral";
-      narrative =
-        spyPct > 0.3
-          ? "Markets advancing"
-          : spyPct < -0.3
-            ? "Markets pulling back"
-            : "Markets steady";
-    }
+    // The regime ladder itself lives in src/lib/market-regime.ts (shared with
+    // the Python synthesis grounding); this function only maps the resulting
+    // branch + regime onto the banner narrative strings.
+    const result: RegimeResult = computeRegime({
+      vixLevel: vixVal,
+      vixPctChange: vixPct,
+      spxPctChange: spyPct,
+    });
+    moodTerm = result.regime;
+    narrative = narrativeFor(result);
   }
 
   if (tnxCard && tnxCard.value !== "—") {
