@@ -1,0 +1,298 @@
+"""
+Unit tests for backend/market_tape.py: regime ladder parity, baseline-correct
+prior close, the sentiment_word/market_tone enforcement backstop, and the
+prompt de-bias assertions on synthesize.py.
+
+Parity: regime cases load from backend/tests/regime_parity_cases.json, the
+SAME table consumed by src/lib/market-regime.test.mjs. Both implementations
+must produce identical output for every row.
+
+Run from repo root: python3 -m unittest backend.tests.test_market_tape
+"""
+import json
+import unittest
+from pathlib import Path
+
+from backend.market_tape import (
+    REGIME_DEFAULT_WORD,
+    REGIME_VOCAB,
+    build_tape_directive,
+    compute_regime,
+    enforce_tape_consistency,
+    parse_yahoo_daily,
+)
+
+HERE = Path(__file__).resolve().parent
+CASES_PATH = HERE / "regime_parity_cases.json"
+SYNTHESIZE_PATH = HERE.parent / "synthesize.py"
+
+# 2026-06-05 was a Friday; 13:30 UTC is the regular 09:30 ET daily-bar stamp.
+_DAY = 86400
+_JUN1 = 1780320600  # 2026-06-01 13:30 UTC
+_BAR_TS = [_JUN1 + i * _DAY for i in range(5)]  # Jun 1..5 daily bars
+_NYSE_GMTOFF = -14400  # EDT
+
+
+def chart(meta=None, timestamps=None, closes=None):
+    """Build a minimal Yahoo v8 chart payload."""
+    return {
+        "chart": {
+            "result": [
+                {
+                    "meta": meta or {},
+                    "timestamp": timestamps or [],
+                    "indicators": {"quote": [{"close": closes or []}]},
+                }
+            ]
+        }
+    }
+
+
+class RegimeParityTests(unittest.TestCase):
+    """Every row of the shared case table, against the Python ladder."""
+
+    def test_all_cases(self):
+        cases = json.loads(CASES_PATH.read_text())["cases"]
+        self.assertGreaterEqual(len(cases), 14, "case table unexpectedly small")
+        for c in cases:
+            with self.subTest(note=c["note"]):
+                got = compute_regime(
+                    vix_level=c["vix_level"],
+                    vix_pct_change=c["vix_pct_change"],
+                    spx_pct_change=c["spx_pct_change"],
+                )
+                self.assertEqual(got, c["expected"])
+
+
+class ParseYahooDailyTests(unittest.TestCase):
+    def test_russell_2026_06_05(self):
+        """
+        The bug this module exists for. Real ^RUT data from 2026-06-05:
+        Yahoo's range=1d meta.chartPreviousClose said 2893.51 (the Jun 3
+        close, two sessions back) while the true prior close was 2935.33.
+        The bar-derived baseline must yield -3.47%, not -2.07%.
+        """
+        payload = chart(
+            meta={
+                "regularMarketPrice": 2833.50,
+                "regularMarketTime": _BAR_TS[4] + 6 * 3600 + 53 * 60,  # Fri 16:23 ET
+                "gmtoffset": _NYSE_GMTOFF,
+                "chartPreviousClose": 2893.51,  # the wrong anchor, must be ignored
+            },
+            timestamps=_BAR_TS,
+            closes=[2905.76, 2931.96, 2893.51, 2935.33, 2833.50],
+        )
+        q = parse_yahoo_daily(payload)
+        self.assertIsNotNone(q)
+        self.assertAlmostEqual(q["prev"], 2935.33, places=2)
+        self.assertEqual(q["pct"], -3.47)
+        # Document the failure mode being fixed: the old meta-anchored
+        # arithmetic produced the -2.07% the card showed.
+        old_pct = round((2833.50 - 2893.51) / 2893.51 * 100, 2)
+        self.assertEqual(old_pct, -2.07)
+
+    def test_two_bar_series(self):
+        payload = chart(
+            meta={
+                "regularMarketPrice": 103.0,
+                "regularMarketTime": _BAR_TS[1] + 6 * 3600,
+                "gmtoffset": _NYSE_GMTOFF,
+            },
+            timestamps=_BAR_TS[:2],
+            closes=[100.0, 103.0],
+        )
+        q = parse_yahoo_daily(payload)
+        self.assertEqual(q["prev"], 100.0)
+        self.assertEqual(q["pct"], 3.0)
+
+    def test_one_bar_no_meta_baseline(self):
+        """Fresh listing: a single bar and no meta prev. No baseline, pct 0."""
+        payload = chart(
+            meta={
+                "regularMarketPrice": 50.0,
+                "regularMarketTime": _BAR_TS[0] + 6 * 3600,
+                "gmtoffset": _NYSE_GMTOFF,
+            },
+            timestamps=_BAR_TS[:1],
+            closes=[50.0],
+        )
+        q = parse_yahoo_daily(payload)
+        self.assertEqual(q["prev"], 0.0)
+        self.assertEqual(q["pct"], 0.0)
+        self.assertEqual(q["change"], 0.0)
+
+    def test_one_bar_falls_back_to_meta(self):
+        """Holiday-shortened window: bars cannot supply prev, meta can."""
+        payload = chart(
+            meta={
+                "regularMarketPrice": 101.0,
+                "regularMarketTime": _BAR_TS[0] + 6 * 3600,
+                "gmtoffset": _NYSE_GMTOFF,
+                "chartPreviousClose": 99.0,
+            },
+            timestamps=_BAR_TS[:1],
+            closes=[101.0],
+        )
+        q = parse_yahoo_daily(payload)
+        self.assertEqual(q["prev"], 99.0)
+        self.assertEqual(q["pct"], 2.02)
+
+    def test_null_padded_closes_are_filtered(self):
+        payload = chart(
+            meta={
+                "regularMarketPrice": 110.0,
+                "regularMarketTime": _BAR_TS[4] + 6 * 3600,
+                "gmtoffset": _NYSE_GMTOFF,
+            },
+            timestamps=_BAR_TS,
+            closes=[100.0, None, 105.0, None, 110.0],
+        )
+        q = parse_yahoo_daily(payload)
+        self.assertEqual(q["prev"], 105.0)
+
+    def test_weekend_quote_uses_prior_session(self):
+        """
+        After Friday's close (and all weekend) regularMarketTime stays at
+        Friday, so the baseline is Thursday's close: Friday's day move.
+        """
+        payload = chart(
+            meta={
+                "regularMarketPrice": 2833.50,
+                "regularMarketTime": _BAR_TS[4] + 6 * 3600 + 53 * 60,
+                "gmtoffset": _NYSE_GMTOFF,
+            },
+            timestamps=_BAR_TS,
+            closes=[2905.76, 2931.96, 2893.51, 2935.33, 2833.50],
+        )
+        q = parse_yahoo_daily(payload)
+        self.assertAlmostEqual(q["prev"], 2935.33, places=2)
+
+    def test_missing_price_returns_none(self):
+        self.assertIsNone(parse_yahoo_daily(chart(meta={}, timestamps=[], closes=[])))
+
+    def test_garbage_payloads_return_none(self):
+        self.assertIsNone(parse_yahoo_daily(None))
+        self.assertIsNone(parse_yahoo_daily({}))
+        self.assertIsNone(parse_yahoo_daily({"chart": {"result": None}}))
+
+
+def _tape(regime="risk-off"):
+    """Stub tape mirroring fetch_tape() output, Friday-shaped by default."""
+    return {
+        "quotes": {
+            "^GSPC": {"price": 7383.74, "prev": 7584.31, "pct": -2.64, "change": -200.57, "ts": 1},
+            "^IXIC": {"price": 25709.43, "prev": 26830.96, "pct": -4.18, "change": -1121.53, "ts": 1},
+            "^RUT": {"price": 2833.50, "prev": 2935.33, "pct": -3.47, "change": -101.83, "ts": 1},
+            "^VIX": {"price": 21.51, "prev": 15.40, "pct": 39.68, "change": 6.11, "ts": 1},
+        },
+        "regime": regime,
+        "vix_level": 21.51,
+    }
+
+
+class TapeDirectiveTests(unittest.TestCase):
+    """Prompt-construction assertions: no LLM call, pure string checks."""
+
+    def test_directive_contains_tape_and_regime_subset(self):
+        d = build_tape_directive(_tape("risk-off"))
+        self.assertIn("[TAPE FACTS", d)
+        self.assertIn("S&P 500: -2.64%", d)
+        self.assertIn("Nasdaq Composite: -4.18%", d)
+        self.assertIn("Russell 2000: -3.47%", d)
+        self.assertIn("VIX: 21.5 (+39.7% vs prior close)", d)
+        self.assertIn("Computed regime: RISK-OFF", d)
+        self.assertIn("market_tone MUST be RISK-OFF", d)
+        # The vocabulary line carries the full risk-off subset and no
+        # cross-regime word. ("mixed" may appear in the prose rule that
+        # forbids describing a red tape as mixed; only the allowed-words
+        # line matters here.)
+        vocab_line = next(l for l in d.splitlines() if "sentiment_word MUST" in l)
+        self.assertIn(", ".join(REGIME_VOCAB["risk-off"]), vocab_line)
+        self.assertNotIn("buoyant", vocab_line)
+        self.assertNotIn("mixed", vocab_line)
+
+    def test_directive_neutral_regime_allows_mixed_tone(self):
+        d = build_tape_directive(_tape("neutral"))
+        self.assertIn("market_tone MUST be NEUTRAL", d)
+        self.assertIn("MIXED is also acceptable", d)
+        self.assertIn(", ".join(REGIME_VOCAB["neutral"]), d)
+
+    def test_directive_survives_partial_tape(self):
+        t = _tape("risk-off")
+        del t["quotes"]["^IXIC"]
+        del t["quotes"]["^RUT"]
+        d = build_tape_directive(t)
+        self.assertIn("S&P 500: -2.64%", d)
+        self.assertNotIn("Nasdaq", d)
+
+    def test_synthesize_prompt_is_debiased(self):
+        """
+        The static system prompts must no longer model 'mixed' as the answer:
+        no '(sentiment: mixed)' worked example and no mixed-first vocabulary
+        ordering. Source-text assertion so the test never imports synthesize
+        (module import requires Supabase env vars).
+        """
+        src = SYNTHESIZE_PATH.read_text()
+        self.assertNotIn("(sentiment: mixed)", src)
+        self.assertNotIn("sentiment: mixed", src)
+        self.assertNotIn(
+            "mixed, divided, split, conflicted, cautious", src,
+            "old mixed-first vocabulary ordering is back",
+        )
+        # New alphabetical ordering present (mixed lands mid-list).
+        self.assertIn("buoyant, cautious, choppy, conflicted", src)
+        # Both grounding hooks are wired.
+        self.assertIn("build_tape_directive", src)
+        self.assertIn("enforce_tape_consistency", src)
+
+
+class EnforceTapeConsistencyTests(unittest.TestCase):
+    def test_mixed_under_risk_off_overrides_to_heavy(self):
+        data = {"market_tone": "RISK-OFF", "market_pulse": {"sentiment_word": "mixed", "narrative": "x"}}
+        warnings = enforce_tape_consistency(data, "risk-off")
+        self.assertEqual(data["market_pulse"]["sentiment_word"], "heavy")
+        self.assertTrue(any("overriding" in w for w in warnings))
+
+    def test_heavy_under_risk_off_passes_through(self):
+        data = {"market_tone": "RISK-OFF", "market_pulse": {"sentiment_word": "heavy", "narrative": "x"}}
+        warnings = enforce_tape_consistency(data, "risk-off")
+        self.assertEqual(data["market_pulse"]["sentiment_word"], "heavy")
+        self.assertEqual(warnings, [])
+
+    def test_word_is_normalized_lowercase(self):
+        data = {"market_tone": "RISK-OFF", "market_pulse": {"sentiment_word": " Heavy ", "narrative": "x"}}
+        enforce_tape_consistency(data, "risk-off")
+        self.assertEqual(data["market_pulse"]["sentiment_word"], "heavy")
+
+    def test_no_regime_nulls_the_word(self):
+        data = {"market_tone": "MIXED", "market_pulse": {"sentiment_word": "mixed", "narrative": "x"}}
+        warnings = enforce_tape_consistency(data, None)
+        self.assertIsNone(data["market_pulse"]["sentiment_word"])
+        self.assertTrue(any("ungrounded" in w for w in warnings))
+        # Without a regime there is no basis to rewrite market_tone.
+        self.assertEqual(data["market_tone"], "MIXED")
+
+    def test_inconsistent_tone_is_corrected(self):
+        data = {"market_tone": "MIXED", "market_pulse": {"sentiment_word": "heavy", "narrative": "x"}}
+        enforce_tape_consistency(data, "risk-off")
+        self.assertEqual(data["market_tone"], "RISK-OFF")
+
+    def test_neutral_regime_accepts_mixed_tone_and_word(self):
+        data = {"market_tone": "MIXED", "market_pulse": {"sentiment_word": "choppy", "narrative": "x"}}
+        warnings = enforce_tape_consistency(data, "neutral")
+        self.assertEqual(data["market_tone"], "MIXED")
+        self.assertEqual(data["market_pulse"]["sentiment_word"], "choppy")
+        self.assertEqual(warnings, [])
+
+    def test_missing_pulse_still_corrects_tone(self):
+        data = {"market_tone": "RISK-ON"}
+        enforce_tape_consistency(data, "risk-off")
+        self.assertEqual(data["market_tone"], "RISK-OFF")
+
+    def test_defaults_cover_every_regime(self):
+        for regime, default in REGIME_DEFAULT_WORD.items():
+            self.assertIn(default, REGIME_VOCAB[regime])
+
+
+if __name__ == "__main__":
+    unittest.main()

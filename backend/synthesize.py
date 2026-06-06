@@ -12,6 +12,7 @@ from google.genai import types
 from ingest import INDUSTRY_VERTICALS
 from outputs import record_output, record_outputs_batch
 from output_constants import BRIEF_PROMPT_VERSION
+import market_tape
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 # Admin client for writes that must bypass RLS (e.g. morning_brief_calls).
@@ -138,8 +139,8 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
   "summary": "Optional. If provided, 3-4 sentences with the same rules that each sentence covers ONE story or ONE data point. Banned phrases: 'mix of', 'ongoing activity', 'investment landscape', 'markets reacted to', 'could also', 'highlight', 'alongside', 'coupled with'. If omitted, it will be synthesized from the three structured fields above.",
   "market_tone": "One of: RISK-ON | RISK-OFF | MIXED | NEUTRAL",
   "market_pulse": {
-    "sentiment_word": "One plain-English ADJECTIVE describing the market's psychological posture today. The word MUST grammatically complete the sentence 'Today the market is ___.' as a natural English adjective. MUST come from this exact list: mixed, divided, split, conflicted, cautious, defensive, jittery, steady, buoyant, heavy, choppy, uneasy, guarded, resilient, fragile, restrained. BANNED — do NOT use any of: crosscurrents, risk-on, risk-off, multifaceted, bifurcated, dichotomous, schizophrenic, paradoxical, asymmetric, nonlinear, numb, or any noun or hyphenated phrase that does not read as an adjective. If you want to convey 'crosscurrents', pick 'mixed' or 'conflicted' or 'choppy' and let the narrative explain the cross-currents. One word. Lower-case. No punctuation.",
-    "narrative": "2-3 short paragraphs (separated by \\n\\n) written in an editorial voice. The Market Pulse is the panoramic top-of-day read, NOT a preview of the lead. State the dominant emotional posture of capital markets today, then the two or three concrete catalysts driving that posture. Name specific companies, prints, or policy actions — no vague prose. Read it like a Stratechery opener, not a bank research note. MULTIPLICITY RULE: if you chose a sentiment_word that implies multiple forces in tension (mixed, divided, split, conflicted, choppy, uneasy), the body MUST name at least three DISTINCT stories or themes that create that tension — not three angles on the lead. GOOD (sentiment: mixed): 'Strategic dealmaking is back — AIP's carve-out of Honeywell's warehouse business signals private equity's return to industrial tech. But tech sentiment is heavier: Infosys guided below estimates and Tesla's $25B AI commitment is drawing capital allocation scrutiny. Geopolitically, the Iran leadership shift adds an oil-price overhang.' BAD (sentiment: mixed, body only reinforces lead): 'Capital markets are mixed today, driven by strategic M&A activity. Private equity continues to deploy capital, as seen with AIP's acquisition of Honeywell's warehouse solutions business.'",
+    "sentiment_word": "One plain-English ADJECTIVE describing the market's psychological posture today. The word MUST grammatically complete the sentence 'Today the market is ___.' as a natural English adjective. MUST come from this exact list (alphabetical; no word is a default and none is preferred): buoyant, cautious, choppy, conflicted, defensive, divided, fragile, guarded, heavy, jittery, mixed, resilient, restrained, split, steady, uneasy. Pick the word the evidence supports, never a hedge. BANNED: do NOT use any of: crosscurrents, risk-on, risk-off, multifaceted, bifurcated, dichotomous, schizophrenic, paradoxical, asymmetric, nonlinear, numb, or any noun or hyphenated phrase that does not read as an adjective. If you want to convey crosscurrents, pick a genuine-tension adjective such as 'conflicted' or 'choppy' and let the narrative explain the cross-currents. One word. Lower-case. No punctuation.",
+    "narrative": "2-3 short paragraphs (separated by \\n\\n) written in an editorial voice. The Market Pulse is the panoramic top-of-day read, NOT a preview of the lead. State the dominant emotional posture of capital markets today, then the two or three concrete catalysts driving that posture. Name specific companies, prints, or policy actions; no vague prose. Read it like a Stratechery opener, not a bank research note. MULTIPLICITY RULE: if you chose a sentiment_word that implies multiple forces in tension (mixed, divided, split, conflicted, choppy, uneasy), the body MUST name at least three DISTINCT stories or themes that create that tension, not three angles on the lead. GOOD (a genuine-tension day): 'Strategic dealmaking is back: AIP's carve-out of Honeywell's warehouse business signals private equity's return to industrial tech. But tech sentiment is heavier: Infosys guided below estimates and Tesla's $25B AI commitment is drawing capital allocation scrutiny. Geopolitically, the Iran leadership shift adds an oil-price overhang.' BAD (body only reinforces the lead): 'Capital markets are mixed today, driven by strategic M&A activity. Private equity continues to deploy capital, as seen with AIP's acquisition of Honeywell's warehouse solutions business.'",
     "headlines": "Array of 3-5 short driver chips — each an object with `title` (6-12 word phrase naming one specific story, company, or theme from a DIFFERENT article than the lead where possible) and optional `href` (source URL if available). These are the chips that render at the bottom of the Market Pulse card. When the sentiment_word implies tension (mixed, divided, split, conflicted, choppy, uneasy), at least 3 chips MUST represent distinct stories or themes pulling in different directions — not variants of the same deal or sector. If you cannot produce 3 genuinely distinct drivers from the corpus, omit this field rather than pad with near-duplicates."
   },
   "sections": {
@@ -286,8 +287,8 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
   "summary": "Optional. If provided, 3-4 sentences. Each sentence must cover ONE story or ONE data point — never blend two unrelated topics into a single sentence with 'while', 'as', 'amid', or 'even as'. Every sentence must contain a specific company name, dollar figure, rate level, or index move. Banned phrases: 'mix of', 'ongoing activity', 'investment landscape', 'markets reacted to', 'could also', 'highlight', 'alongside', 'coupled with'. If omitted, it will be synthesized from the three structured fields above.",
   "market_tone": "One of: RISK-ON | RISK-OFF | MIXED | NEUTRAL",
   "market_pulse": {
-    "sentiment_word": "One plain-English ADJECTIVE describing the closing psychological posture of the tape. The word MUST grammatically complete the sentence 'Today the market is ___.' as a natural English adjective. MUST come from this exact list: mixed, divided, split, conflicted, cautious, defensive, jittery, steady, buoyant, heavy, choppy, uneasy, guarded, resilient, fragile, restrained. BANNED — do NOT use any of: crosscurrents, risk-on, risk-off, multifaceted, bifurcated, dichotomous, schizophrenic, paradoxical, asymmetric, nonlinear, numb, or any noun or hyphenated phrase that does not read as an adjective. If you want to convey 'crosscurrents', pick 'mixed' or 'conflicted' or 'choppy' and let the narrative explain the cross-currents. One word. Lower-case. No punctuation.",
-    "narrative": "2-3 short paragraphs (separated by \\n\\n) written in an editorial voice. The Market Pulse is the panoramic close-of-day read, NOT a preview of the lead. Lead with the dominant emotional posture of the tape at the close, then the two or three concrete drivers — named earnings prints, Fed signal, sector moves. No hedging prose. Read it like a Stratechery close-of-day column, not a bank wrap. MULTIPLICITY RULE: if you chose a sentiment_word that implies multiple forces in tension (mixed, divided, split, conflicted, choppy, uneasy), the body MUST name at least three DISTINCT stories or themes that create that tension — not three angles on the lead. GOOD (sentiment: mixed): 'Strategic dealmaking is back — AIP's carve-out of Honeywell's warehouse business signals private equity's return to industrial tech. But tech sentiment is heavier: Infosys guided below estimates and Tesla's $25B AI commitment is drawing capital allocation scrutiny. Geopolitically, the Iran leadership shift adds an oil-price overhang.' BAD (sentiment: mixed, body only reinforces lead): 'Capital markets are mixed today, driven by strategic M&A activity. Private equity continues to deploy capital, as seen with AIP's acquisition of Honeywell's warehouse solutions business.'",
+    "sentiment_word": "One plain-English ADJECTIVE describing the closing psychological posture of the tape. The word MUST grammatically complete the sentence 'Today the market is ___.' as a natural English adjective. MUST come from this exact list (alphabetical; no word is a default and none is preferred): buoyant, cautious, choppy, conflicted, defensive, divided, fragile, guarded, heavy, jittery, mixed, resilient, restrained, split, steady, uneasy. When TAPE FACTS are present above, the regime subset there narrows this list and is binding. Pick the word the evidence supports, never a hedge. BANNED: do NOT use any of: crosscurrents, risk-on, risk-off, multifaceted, bifurcated, dichotomous, schizophrenic, paradoxical, asymmetric, nonlinear, numb, or any noun or hyphenated phrase that does not read as an adjective. If you want to convey crosscurrents, pick a genuine-tension adjective such as 'conflicted' or 'choppy' and let the narrative explain the cross-currents. One word. Lower-case. No punctuation.",
+    "narrative": "2-3 short paragraphs (separated by \\n\\n) written in an editorial voice. The Market Pulse is the panoramic close-of-day read, NOT a preview of the lead. Lead with the dominant emotional posture of the tape at the close, then the two or three concrete drivers: named earnings prints, Fed signal, sector moves. No hedging prose. Read it like a Stratechery close-of-day column, not a bank wrap. When TAPE FACTS are present above, the posture you describe MUST match those index moves. MULTIPLICITY RULE: if you chose a sentiment_word that implies multiple forces in tension (mixed, divided, split, conflicted, choppy, uneasy), the body MUST name at least three DISTINCT stories or themes that create that tension, not three angles on the lead. GOOD (a genuine-tension day): 'Strategic dealmaking is back: AIP's carve-out of Honeywell's warehouse business signals private equity's return to industrial tech. But tech sentiment is heavier: Infosys guided below estimates and Tesla's $25B AI commitment is drawing capital allocation scrutiny. Geopolitically, the Iran leadership shift adds an oil-price overhang.' BAD (body only reinforces the lead): 'Capital markets are mixed today, driven by strategic M&A activity. Private equity continues to deploy capital, as seen with AIP's acquisition of Honeywell's warehouse solutions business.'",
     "headlines": "Array of 3-5 short driver chips — each an object with `title` (6-12 word phrase naming one specific story, company, or theme from a DIFFERENT article than the lead where possible) and optional `href` (source URL if available). These are the chips that render at the bottom of the Market Pulse card. When the sentiment_word implies tension (mixed, divided, split, conflicted, choppy, uneasy), at least 3 chips MUST represent distinct stories or themes pulling in different directions — not variants of the same deal or sector. If you cannot produce 3 genuinely distinct drivers from the corpus, omit this field rather than pad with near-duplicates."
   },
   "sections": {
@@ -1259,6 +1260,30 @@ def run(brief_type="morning"):
         except Exception as e:
             print(f"  ⚠ morning-brief dedup lookup failed (non-fatal): {e}")
 
+    # --- Evening: deterministic tape grounding -----------------------------
+    # Fetch close-of-day index + VIX quotes (baseline-correct prior close via
+    # market_tape.parse_yahoo_daily) and compute the regime with the shared
+    # ladder that also drives the frontend banner (src/lib/market-regime.ts).
+    # The TAPE FACTS directive binds the market_pulse narrative, the
+    # sentiment_word vocabulary, and market_tone to those numbers, so the
+    # Close hero can no longer call a broad sell-off "mixed" while the banner
+    # says RISK-OFF. Soft-fail: with no tape, synthesis runs ungrounded and
+    # the post-parse backstop below nulls sentiment_word instead of shipping
+    # an unverifiable word. Never defaults to "mixed".
+    tape_regime = None
+    if brief_type == "evening":
+        tape = None
+        try:
+            tape = market_tape.fetch_tape()
+        except Exception as e:
+            print(f"  ⚠ tape fetch failed (non-fatal): {e}")
+        if tape:
+            tape_regime = tape["regime"]
+            system = market_tape.build_tape_directive(tape) + system
+            print(f"  📊 Injected tape facts (regime: {tape_regime}, vix: {tape['vix_level']:.1f})")
+        else:
+            print("  ⚠ tape unavailable - evening synthesis runs ungrounded; sentiment_word will be nulled")
+
     # --- Feedback loop: prepend cached brief improvement addendum ----------
     brief_addendum_used = None
     try:
@@ -1314,6 +1339,19 @@ def run(brief_type="morning"):
             raise ValueError(f"Could not parse Gemini response as JSON. Raw: {raw[:200]}")
     except Exception as e:
         print(f"  ✗ Gemini error: {e} — raw response: {repr(raw[:200])} — falling back to stub briefing")
+
+    # Post-parse tape-consistency backstop (evening only). With a known
+    # regime, an out-of-subset sentiment_word is overridden to the regime
+    # default and an inconsistent market_tone is corrected; with no regime
+    # (tape fetch failed), sentiment_word is forced to None. Runs before the
+    # stub fallback so a failed parse never reaches enforcement.
+    if data is not None and brief_type == "evening":
+        try:
+            tape_warnings = market_tape.enforce_tape_consistency(data, tape_regime)
+            for w in tape_warnings:
+                print(f"  ⚠ tape consistency: {w}")
+        except Exception as e:
+            print(f"  ⚠ tape consistency enforcement failed (non-fatal): {e}")
 
     if data is None:
         data = {
@@ -1379,11 +1417,10 @@ def run(brief_type="morning"):
     # exist yet on older DBs, so we try with them first and fall back to the
     # base row on schema errors — same pattern as market_pulse.
     mp_raw = data.get("market_pulse")
-    has_pulse = (
-        isinstance(mp_raw, dict)
-        and mp_raw.get("sentiment_word")
-        and mp_raw.get("narrative")
-    )
+    # Narrative is the gate. sentiment_word may legitimately be None when the
+    # evening tape was unavailable (the clients render a no-verdict hero);
+    # dropping the whole pulse block would silently lose the narrative too.
+    has_pulse = isinstance(mp_raw, dict) and mp_raw.get("narrative")
 
     extras: dict = {}
     if has_pulse:
@@ -1402,7 +1439,7 @@ def run(brief_type="morning"):
         try:
             insert_resp = supabase.table("briefings").insert(row_with_extras).execute()
             if has_pulse:
-                print(f"  ✨ market_pulse saved: {mp_raw.get('sentiment_word', '')[:30]}")
+                print(f"  ✨ market_pulse saved: {(mp_raw.get('sentiment_word') or '(no word)')[:30]}")
             if has_structured_body:
                 print(f"  ✨ structured body saved (lead/context/watch)")
         except Exception as ext_err:

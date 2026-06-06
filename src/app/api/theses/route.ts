@@ -420,6 +420,7 @@ QUALITY RULES:
 - Never generate generic market commentary. Every thesis must name specific companies, sectors, or macro events.
 - Prioritize clusters with higher strength_score and source_count — these have the most corroborating evidence.
 - supporting_article_ids must contain the EXACT article IDs from the cluster data (the id= values shown). Minimum 2 IDs per thesis.
+- VOICE REGISTER (institutional, never personal): first-person singular is banned -- never "I", "me", "my", "I believe", "I think", "in my view". State the position in active third person or the institutional "we"; attribute stance to evidence where possible. Passive-voice hedging ("it is believed", "it is expected that") is banned with the same force. This rule governs pronouns and stance ownership only; it does not relax any existing structure or requirement.
 
 Return a JSON array only. Each object must have exactly these fields:
 {

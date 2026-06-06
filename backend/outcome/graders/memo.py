@@ -6,13 +6,13 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
+from typing import Optional
 
 from supabase import Client
 
 from backend.outcome.types import GradeResult, Verdict, soft_fail_grade
 from backend.outcome.evidence import (
     fetch_subsequent_articles,
-    extract_ticker_from_output,
     extract_sector_from_output,
     parse_created_at,
     build_evidence_context,
@@ -22,7 +22,7 @@ from backend.market_data import fetch_historical_candle
 
 logger = logging.getLogger(__name__)
 
-GRADER_VERSION = "memo_v0.1.0"
+GRADER_VERSION = "memo_v0.2.0"
 
 _PROMPT_MAP = {
     "deal": "memo_deal",
@@ -32,6 +32,45 @@ _PROMPT_MAP = {
     "company": "memo_company",
     "company-web": "memo_company",
 }
+
+
+def _extract_company_name(output: dict) -> Optional[str]:
+    """Extract company name from memo content.
+
+    Memos store company names in content.target_company (not tickers).
+    Falls back to generation_context.company / ticker if available.
+    """
+    content = output.get("content") or {}
+    ctx = output.get("generation_context") or {}
+    return (
+        content.get("target_company")
+        or content.get("ticker")
+        or ctx.get("company")
+        or ctx.get("ticker")
+        or None
+    )
+
+
+def _fetch_articles_for_company(
+    sb: Client,
+    company_name: str,
+    after,
+    before,
+    limit: int = 15,
+) -> list[dict]:
+    """Search subsequent articles by company name with case-insensitive matching.
+
+    articles.companies is a text[] array. Postgres @> is case-sensitive, so
+    we try the name as-is first, then title-cased, to handle mismatches like
+    "NVIDIA" vs "Nvidia".
+    """
+    for variant in [company_name, company_name.title()]:
+        results = fetch_subsequent_articles(
+            sb, ticker=variant, after=after, before=before, limit=limit,
+        )
+        if results:
+            return results
+    return []
 
 
 def grade(sb: Client, output: dict, window_days: int) -> GradeResult:
@@ -53,27 +92,25 @@ def grade(sb: Client, output: dict, window_days: int) -> GradeResult:
 
     created_at = parse_created_at(output)
     window_end = created_at + timedelta(days=window_days)
-    ticker = extract_ticker_from_output(output)
+    company_name = _extract_company_name(output)
     sector = extract_sector_from_output(output)
 
-    # Gather evidence
-    articles = fetch_subsequent_articles(
-        sb, ticker=ticker, sector=sector, after=created_at, before=window_end
-    )
-    price_data = fetch_historical_candle(ticker, created_at, window_end) if ticker else None
+    # Gather evidence — try company name first, then sector
+    articles: list[dict] = []
+    if company_name:
+        articles = _fetch_articles_for_company(sb, company_name, after=created_at, before=window_end)
+    if not articles and sector:
+        articles = fetch_subsequent_articles(
+            sb, sector=sector, after=created_at, before=window_end,
+        )
+
+    price_data = fetch_historical_candle(company_name, created_at, window_end) if company_name else None
 
     if not articles and not price_data:
-        return GradeResult(
-            output_id=output_id,
-            window_days=window_days,
-            score=None,
-            verdict=Verdict.UNGRADABLE.value,
-            evidence_summary="No subsequent articles or price data available",
-            evidence_data=build_evidence_context(
-                output=output, window_days=window_days, articles=[], price_data=None,
-            ),
-            grader_model="deterministic",
-            grader_version=GRADER_VERSION,
+        logger.info(
+            "memo_grader: %s (type=%s) has no external evidence (company=%s, sector=%s) — "
+            "grading on memo content alone",
+            output_id[:8], memo_type, company_name, sector,
         )
 
     # Build prompt
@@ -91,17 +128,29 @@ def grade(sb: Client, output: dict, window_days: int) -> GradeResult:
     price_text = ""
     if price_data:
         price_text = (
-            f"\nPRICE DATA ({ticker}): "
+            f"\nPRICE DATA ({company_name}): "
             f"${price_data['open_price']} → ${price_data['close_price']} "
             f"({price_data['pct_change']:+.1f}%) over {price_data['candle_count']} trading days"
+        )
+
+    evidence_block = ""
+    if articles or price_data:
+        evidence_block = (
+            f"SUBSEQUENT EVIDENCE ({len(articles)} articles, {window_days}d window):\n"
+            f"{articles_text}\n"
+            f"{price_text}"
+        )
+    else:
+        evidence_block = (
+            f"SUBSEQUENT EVIDENCE: None available for this {window_days}d window.\n"
+            "Grade the memo on internal quality: coherence, specificity of claims, "
+            "and whether predictions are falsifiable. Use lower confidence."
         )
 
     user_prompt = (
         f"MEMO (written {created_at.strftime('%Y-%m-%d')}, type={memo_type}):\n"
         f"{memo_text[:3000]}\n\n"
-        f"SUBSEQUENT EVIDENCE ({len(articles)} articles, {window_days}d window):\n"
-        f"{articles_text}\n"
-        f"{price_text}"
+        f"{evidence_block}"
     )
 
     parsed, cost = call_gemini_json(system, user_prompt)

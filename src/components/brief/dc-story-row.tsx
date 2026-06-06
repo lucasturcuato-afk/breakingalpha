@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import { Sparkles, Plus, MessageSquare, Loader2 } from "lucide-react";
 import { stripHtml } from "@/lib/strip-html";
+import { withCompanyLine } from "@/lib/memo-company-line";
 import { cn } from "@/lib/utils";
 import { BookmarkButton } from "@/components/ui/bookmark";
 import { MemoModal } from "@/components/memo/MemoModal";
@@ -460,7 +461,7 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
         isOpen={memoOpen}
         onClose={() => setMemoOpen(false)}
         title={story.title}
-        content={[story.title, stripHtml(story.summary)].join("\n\n")}
+        content={withCompanyLine([story.title, stripHtml(story.summary)].join("\n\n"), story.companies?.[0])}
         type="article"
       />
     </div>

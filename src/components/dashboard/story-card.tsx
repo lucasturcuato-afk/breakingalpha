@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/strip-html";
+import { withCompanyLine } from "@/lib/memo-company-line";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
@@ -59,6 +60,13 @@ export interface StoryData {
   activity_types?: string[];
   summary?: string;
   tags?: string[];
+  /**
+   * Company names from articles.companies, unsliced. Distinct from `tags`
+   * (display-capped at 3) so memo grading metadata does not depend on a
+   * display concern. companies[0] is threaded into memo prompts as a
+   * COMPANY: line, persisted to outputs.content.target_company.
+   */
+  companies?: string[];
   url?: string;
   read?: boolean;
   saved?: boolean;
@@ -304,7 +312,7 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
         isOpen={memoOpen}
         onClose={() => setMemoOpen(false)}
         title={story.title}
-        content={[story.title, stripHtml(story.summary)].join("\n\n")}
+        content={withCompanyLine([story.title, stripHtml(story.summary)].join("\n\n"), story.companies?.[0])}
         type="article"
       />
     </div>
@@ -527,7 +535,7 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
         isOpen={memoOpen}
         onClose={() => setMemoOpen(false)}
         title={story.title}
-        content={[story.title, stripHtml(story.summary)].join("\n\n")}
+        content={withCompanyLine([story.title, stripHtml(story.summary)].join("\n\n"), story.companies?.[0])}
         type="article"
       />
     </div>

@@ -179,15 +179,50 @@ def _period_key(kind: str, f: dict) -> tuple:
     return (start, f["end"], f["unit"])
 
 
+# Statement-total concepts vs their component/subtotal concepts, broadest
+# first. Filers can tag BOTH for the same period (Cheniere FY2025: Revenues
+# 19,976M is the income-statement total; RevenueFromContractWithCustomer...
+# 19,464M is only the ASC-606 contract portion). For these families the
+# period winner must be the BROADEST tag reporting that period; the global
+# activity rank below was set for tag MIGRATION (NVDA) and picks wrong here.
+BREADTH_PRIORITY: dict[str, list[str]] = {
+    "revenue": [
+        "Revenues",
+        "RevenueFromContractWithCustomerIncludingAssessedTax",
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "SalesRevenueNet",
+    ],
+    "cost_of_revenue": [
+        "CostOfRevenue",
+        "CostOfGoodsAndServicesSold",
+    ],
+}
+
+# Divergence tolerance for the dual-tag quarantine annotation (rounding-scale,
+# mirrors the gate's tie-out slack).
+DUAL_TAG_ABS_USD = 2_000_000
+DUAL_TAG_REL = 0.005
+
+
 def _resolve_metric(us_gaap: dict, metric_key: str, kind: str,
                     candidates: list[str]) -> list[dict]:
     """
     Resolve one metric across its candidate tags.
 
-    For each distinct period, exactly one tag wins: the candidate whose own
-    facts reach the latest period_end overall (the issuer's currently active
-    tag), tie-broken by candidate order. All accessions for the winning
-    tag+period are kept (restatement history).
+    Default rule: for each distinct period, the candidate whose own facts
+    reach the latest period_end overall wins (the issuer's currently active
+    tag, for tag MIGRATIONS like NVDA), tie-broken by candidate order.
+
+    Breadth families (BREADTH_PRIORITY): per period, the BROADEST tag
+    reporting that period wins (Revenues is the statement total by
+    definition); narrower contract/component tags fill only the periods the
+    total does not cover. Per-period, so migration histories stay intact.
+
+    All accessions for the winning tag+period are kept (restatement history).
+    Belt-and-suspenders: any emitted breadth-family fact whose period is ALSO
+    reported by a BROADER tag with a diverging value is annotated
+    dual_tag_conflict for the validation gate to quarantine (unreachable when
+    selection is correct; armor against regressions).
     """
     per_tag: dict[str, list[dict]] = {}
     for tag in candidates:
@@ -197,24 +232,58 @@ def _resolve_metric(us_gaap: dict, metric_key: str, kind: str,
     if not per_tag:
         return []
 
-    # Activity rank: latest end date seen under each tag; candidate order breaks ties.
-    def activity(tag: str) -> tuple:
-        latest = max(f["end"] for f in per_tag[tag])
-        return (latest, -candidates.index(tag))
-
-    ranked = sorted(per_tag, key=activity, reverse=True)
-
+    breadth = BREADTH_PRIORITY.get(metric_key)
     chosen: dict[tuple, str] = {}  # period key -> winning tag
-    for tag in ranked:
-        for f in per_tag[tag]:
-            chosen.setdefault(_period_key(kind, f), tag)
+    if breadth:
+        rank = {t: i for i, t in enumerate(breadth)}
+        for tag, facts in per_tag.items():
+            for f in facts:
+                k = _period_key(kind, f)
+                cur = chosen.get(k)
+                if cur is None or rank.get(tag, len(breadth)) < rank.get(cur, len(breadth)):
+                    chosen[k] = tag
+    else:
+        # Activity rank: latest end date per tag; candidate order breaks ties.
+        def activity(tag: str) -> tuple:
+            latest = max(f["end"] for f in per_tag[tag])
+            return (latest, -candidates.index(tag))
+
+        for tag in sorted(per_tag, key=activity, reverse=True):
+            for f in per_tag[tag]:
+                chosen.setdefault(_period_key(kind, f), tag)
 
     out = []
     for tag, facts in per_tag.items():
         for f in facts:
             if chosen[_period_key(kind, f)] == tag:
-                out.append(_to_fact_row(metric_key, kind, f))
+                row = _to_fact_row(metric_key, kind, f)
+                if breadth:
+                    conflict = _broader_divergence(
+                        per_tag, breadth, tag, kind, f)
+                    if conflict:
+                        row["dual_tag_conflict"] = conflict
+                out.append(row)
     return out
+
+
+def _broader_divergence(per_tag: dict, breadth: list[str], chosen_tag: str,
+                        kind: str, f: dict) -> Optional[str]:
+    """A BROADER family member reports the same period with a diverging value:
+    the published fact would understate the statement total. Returns the
+    quarantine reason, or None."""
+    rank = {t: i for i, t in enumerate(breadth)}
+    k = _period_key(kind, f)
+    for tag in breadth:
+        if rank[tag] >= rank.get(chosen_tag, len(breadth)):
+            break
+        for g in per_tag.get(tag, []):
+            if _period_key(kind, g) != k:
+                continue
+            diff = abs(g["val"] - f["val"])
+            if diff > max(DUAL_TAG_ABS_USD, DUAL_TAG_REL * max(abs(g["val"]), abs(f["val"]))):
+                return (f"dual_tag_divergence: {tag}={g['val']:.0f} vs "
+                        f"{chosen_tag}={f['val']:.0f} for {f['end']}")
+    return None
 
 
 def _to_fact_row(metric_key: str, kind: str, f: dict) -> dict:

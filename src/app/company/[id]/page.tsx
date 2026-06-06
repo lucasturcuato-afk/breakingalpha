@@ -14,9 +14,11 @@ import { BriefTab } from "@/components/company/tabs/BriefTab";
 import { ArticlesTab } from "@/components/company/tabs/ArticlesTab";
 import { TrendTab } from "@/components/company/tabs/TrendTab";
 import { FilingsTab } from "@/components/company/tabs/FilingsTab";
+import { FinancialsTab } from "@/components/company/tabs/FinancialsTab";
 import { ComingSoonTab } from "@/components/company/tabs/ComingSoonTab";
 import { getCompanyDetail } from "@/lib/data-access/getCompanyDetail";
 import { fetchCompanyFilings } from "@/lib/sec-filings";
+import { fetchCompanyFinancials } from "@/lib/financial-facts";
 import {
   CANONICAL,
   canonicalize,
@@ -74,23 +76,34 @@ export default async function CompanyDetailPage({
     );
   }
 
-  const { articles: rawArticles } = await fetchCompanyArticles(
-    supabase,
-    canonicalize(companyName),
-  );
-  const classified = filterAndClassifyArticles(rawArticles, companyName);
+  // Brief inputs are keyed on the RESOLVED row name (companyDetail.canonical
+  // == resolveAlias head.name), the same identity the Trend/Attention panel
+  // already filters on. The slug-derived companyName title-cases function
+  // words ("bank-of-america" -> "Bank Of America"), and Postgres array
+  // containment on articles.companies is case-sensitive, so keying the brief
+  // on it returned 0 articles while the panel showed dozens. Side effect:
+  // memo-cache entries keyed under old slug-cased names miss and regenerate
+  // once.
+  const canonical = companyDetail.canonical;
+
+  const { articles: rawArticles } = await fetchCompanyArticles(supabase, canonical);
+  const classified = filterAndClassifyArticles(rawArticles, canonical);
   const developmentArticles = classified.filter((a) => a._isDevelopment);
   const contextArticles = classified.filter((a) => !a._isDevelopment);
-  const memoContent = buildMemoContent(companyName, developmentArticles, contextArticles);
-  const systemPrompt = buildMemoSystemPrompt(companyName);
+  const memoContent = buildMemoContent(canonical, developmentArticles, contextArticles);
+  const systemPrompt = buildMemoSystemPrompt(canonical);
 
   // SEC filings (read-only). Resolves by name to a CIK; private/pre-IPO names
   // resolve to a null CIK and an empty list, which FilingsTab renders as the
   // empty state. See src/lib/sec-filings.ts.
   const filingsResult = await fetchCompanyFilings(supabase, { name: companyName }, 25);
 
+  // Validated XBRL financials (read-only). Same name -> CIK resolution as
+  // filings; companies without a CIK render the tab's empty state.
+  const financialsResult = await fetchCompanyFinancials(supabase, { name: companyName });
+
   const tabContent = {
-    brief: <BriefTab company={companyName} content={memoContent} systemPrompt={systemPrompt} />,
+    brief: <BriefTab company={canonical} content={memoContent} systemPrompt={systemPrompt} />,
     articles: <ArticlesTab articles={companyDetail.articles} />,
     trend: (
       <TrendTab
@@ -102,6 +115,9 @@ export default async function CompanyDetailPage({
       />
     ),
     filings: <FilingsTab filings={filingsResult.filings} hasCik={filingsResult.cik != null} />,
+    financials: (
+      <FinancialsTab financials={financialsResult} hasCik={financialsResult.cik != null} />
+    ),
     insider: <ComingSoonTab tabId="insider" />,
     comps: <ComingSoonTab tabId="comps" />,
   };
@@ -128,7 +144,7 @@ export default async function CompanyDetailPage({
         }
       />
       <CompanyMemoModalListener
-        companyName={companyName}
+        companyName={canonical}
         memoContent={memoContent}
         systemPrompt={systemPrompt}
       />

@@ -97,7 +97,7 @@ interface BriefingData {
   sector_breakdown?: Record<string, string>;
   created_at?: string;
   market_pulse?: {
-    sentiment_word: string;
+    sentiment_word: string | null;
     narrative: string;
     headlines?: Array<{ title: string; href?: string }>;
   } | null;
@@ -160,7 +160,15 @@ function formatDatePretty(d: Date): string {
   return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 }
 function formatTimePretty(d: Date): string {
-  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) + " ET";
+  // Client component: renders in the viewer's own timezone, with the zone
+  // abbreviation derived from the SAME format call as the time so the label
+  // can never disagree with the displayed clock (was a hardcoded " ET").
+  return d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+  });
 }
 
 export default function EveningWrapPage() {
@@ -186,9 +194,11 @@ export default function EveningWrapPage() {
   const router = useRouter();
 
   // Banner mood comes from the global SSOT — same numbers + canonical 5-term
-  // pill as every other route. The wrap body still reads
-  // `briefing.market_tone` and `briefing.market_pulse.sentiment_word` for its
-  // own hero card; that prose vocabulary is intentionally separate.
+  // pill as every other route. The wrap hero reads
+  // `briefing.market_pulse.sentiment_word`, which the backend now grounds in
+  // the SAME deterministic regime ladder (backend/market_tape.py mirrors
+  // src/lib/market-regime.ts), so the prose vocabulary differs but the
+  // direction cannot contradict the banner on a grounded day.
   const liveMood = useLiveMood();
 
   useEffect(() => {
@@ -313,6 +323,7 @@ export default function EveningWrapPage() {
 
           setStories(articles.map((a) => {
             const completeness = getCompleteness(a.content, a.summary);
+            const companies = parseCompanies(a.companies);
             return {
               id: a.id,
               title: a.title || "Untitled",
@@ -321,7 +332,8 @@ export default function EveningWrapPage() {
               sentiment: sentimentFromDb(a.sentiment),
               sector: a.sector || undefined,
               summary: a.summary || undefined,
-              tags: parseCompanies(a.companies).slice(0, 3),
+              tags: companies.slice(0, 3),
+              companies,
               url: a.url || undefined,
               read: false,
               saved: false,
@@ -411,7 +423,11 @@ export default function EveningWrapPage() {
   const dateStr = formatDatePretty(now);
   const timeStr = formatTimePretty(now);
 
-  const closeWord = briefing?.market_pulse?.sentiment_word || briefing?.market_tone || "mixed";
+  // Close verdict comes ONLY from the tape-grounded sentiment_word. When the
+  // backend could not ground the word (tape fetch failed), it ships null and
+  // the hero renders without a verdict rather than asserting a fabricated
+  // tone. Never default to "mixed" or to the LLM market_tone here.
+  const closeWord = briefing?.market_pulse?.sentiment_word || null;
   const closeBody =
     briefing?.market_pulse?.narrative
     || briefing?.summary
@@ -580,7 +596,7 @@ export default function EveningWrapPage() {
         }}
       >
         {[
-          { k: "CLOSE", v: String(closeWord).toUpperCase(), c: tone === "BEARISH" ? "var(--signal-dn)" : tone === "BULLISH" ? "var(--signal-up)" : "var(--signal-warn)" },
+          { k: "CLOSE", v: closeWord ? closeWord.toUpperCase() : "–", c: closeWord ? (tone === "BEARISH" ? "var(--signal-dn)" : tone === "BULLISH" ? "var(--signal-up)" : "var(--signal-warn)") : undefined },
           { k: "MOVERS", v: String(stories.length || "—") },
           { k: "THESES", v: thesesCount !== null ? `${thesesCount} active` : "—" },
           {
@@ -726,21 +742,27 @@ export default function EveningWrapPage() {
                     position: "relative",
                   }}
                 >
-                  The market closed{" "}
-                  <span
-                    style={{
-                      background: HERITAGE_GOLD,
-                      color: DC_ESPRESSO,
-                      padding: "2px 14px",
-                      borderRadius: 8,
-                      display: "inline-block",
-                      transform: "rotate(-1deg)",
-                      boxShadow: "0 4px 0 rgba(0,0,0,0.15)",
-                    }}
-                  >
-                    {closeWord}
-                  </span>
-                  .
+                  {closeWord ? (
+                    <>
+                      The market closed{" "}
+                      <span
+                        style={{
+                          background: HERITAGE_GOLD,
+                          color: DC_ESPRESSO,
+                          padding: "2px 14px",
+                          borderRadius: 8,
+                          display: "inline-block",
+                          transform: "rotate(-1deg)",
+                          boxShadow: "0 4px 0 rgba(0,0,0,0.15)",
+                        }}
+                      >
+                        {closeWord}
+                      </span>
+                      .
+                    </>
+                  ) : (
+                    <>The market closed.</>
+                  )}
                 </h2>
                 <p
                   className="font-sans"
@@ -775,7 +797,13 @@ export default function EveningWrapPage() {
                     const q = scorecard[s.sym];
                     const pct = q?.pct ?? 0;
                     const isLast = i === SCORECARD_SYMBOLS.length - 1;
-                    const positive = "invert" in s && s.invert ? pct < 0 : pct >= 0;
+                    // Direction and sentiment are separate axes. The glyph
+                    // always reflects the raw sign of the move; the color
+                    // keeps the invert semantics (a rising yield is bad for
+                    // risk assets and renders red, but it is still an up
+                    // move and gets an up arrow).
+                    const up = pct >= 0;
+                    const favorable = "invert" in s && s.invert ? pct < 0 : pct >= 0;
                     // ^TNX on Yahoo's chart API has historically been quoted
                     // as the yield × 10 (42.50 = 4.25%). The API currently
                     // returns the yield directly, but the guard defends
@@ -820,12 +848,12 @@ export default function EveningWrapPage() {
                           style={{
                             fontSize: 10,
                             fontWeight: 600,
-                            color: q ? (positive ? "#4ade80" : "#f87171") : "rgba(255,253,249,0.35)",
+                            color: q ? (favorable ? "#4ade80" : "#f87171") : "rgba(255,253,249,0.35)",
                             margin: 0,
                             fontVariantNumeric: "tabular-nums",
                           }}
                         >
-                          {q ? `${positive ? "▲" : "▼"} ${Math.abs(pct).toFixed(2)}%` : "—"}
+                          {q ? `${up ? "▲" : "▼"} ${Math.abs(pct).toFixed(2)}%` : "–"}
                         </p>
                       </div>
                     );

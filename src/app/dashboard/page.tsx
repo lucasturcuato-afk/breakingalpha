@@ -253,6 +253,13 @@ export default function DashboardPage() {
             data.map((a) => {
               const completeness = getCompleteness(a.content, a.summary);
               const adjustedScore = getAdjustedScore(a.relevance_score, completeness);
+              const companies = (() => {
+                if (!a.companies) return undefined;
+                try {
+                  const parsed = typeof a.companies === "string" ? JSON.parse(a.companies) : a.companies;
+                  return Array.isArray(parsed) ? parsed : undefined;
+                } catch { return undefined; }
+              })();
               return {
                 id: a.id,
                 title: a.title || "Untitled",
@@ -263,13 +270,8 @@ export default function DashboardPage() {
                 industry_verticals: a.industry_verticals ?? [],
                 activity_types: a.activity_types ?? [],
                 summary: a.summary || undefined,
-                tags: (() => {
-                  if (!a.companies) return undefined;
-                  try {
-                    const parsed = typeof a.companies === "string" ? JSON.parse(a.companies) : a.companies;
-                    return Array.isArray(parsed) ? parsed.slice(0, 3) : undefined;
-                  } catch { return undefined; }
-                })(),
+                tags: companies?.slice(0, 3),
+                companies,
                 url: a.url || undefined,
                 read: false,
                 saved: false,

@@ -1123,9 +1123,9 @@ function buildSignalLabel(
     if (effectiveCtxArts.length === 0) return `No articles found for ${companyName} in current window`;
     const plural = effectiveCtxArts.length === 1 ? "article" : "articles";
     if (titleNamed >= 1) {
-      return `No direct events — ${effectiveCtxArts.length} context ${plural}, ${titleNamed} with ${companyName} in title`;
+      return `No direct events - ${effectiveCtxArts.length} context ${plural}, ${titleNamed} with ${companyName} in title`;
     }
-    return `No direct events — ${effectiveCtxArts.length} context ${plural}, ${companyName} mentioned incidentally`;
+    return `No direct events - ${effectiveCtxArts.length} context ${plural}, ${companyName} mentioned incidentally`;
   }
 
   const types = [
@@ -1134,7 +1134,7 @@ function buildSignalLabel(
   const typeStr = types.length > 0 ? ` (${types.join(", ")})` : "";
   const plural = effectiveDevArts.length === 1 ? "event" : "events";
   if (effectiveDevArts.length >= 2) return `${effectiveDevArts.length} direct company ${plural}${typeStr}`;
-  return `1 direct company ${plural}${typeStr} — limited direct evidence`;
+  return `1 direct company ${plural}${typeStr} - limited direct evidence`;
 }
 
 export function buildMemoContent(
@@ -1294,6 +1294,7 @@ Analyst voice:
 - Never summarize an article headline as if the headline itself is the insight: the insight is what the headline implies
 - Every section must contain at least one non-obvious implication that a smart reader could not have derived from the source articles alone
 - Write with the confidence of an analyst who has a view, not the caution of someone covering their downside
+- VOICE REGISTER (institutional, never personal): first-person singular is banned everywhere in the memo -- never "I", "me", "my", "I believe", "I think", "in my view". Default to active third person with a named actor, filing, metric, or event as the grammatical subject ("The order book points to...", "A delayed review weakens the thesis."). Where a stance verb needs an owner, use the institutional "we" ("We see...", "We expect...", "We recommend...") or attribute the stance to sourced evidence ("The filing argues for..."). Passive-voice hedging ("it is believed", "it is expected that", "the thesis will be confirmed" with no named confirmer) is banned with the same force: every stance is owned by "we" or by a named piece of evidence. This rule governs pronouns and stance ownership only; it does not relax the opening rules, the banned-phrase list, or the unhedged verdict and probability formats.
 
 Hard banned phrases: "may benefit" / "stands to benefit" / "is poised to" / "faces exposure to" / "could potentially" / "investors are watching" / "remains to be seen" / "it is worth noting" / "this could have implications" / "the company continues to" / "in the current environment" / "amid uncertainty" / "as the market evolves" / "perceived [X] leadership" / "brand recognition" / "market position" as a standalone analytical claim / "the competitive landscape is". These are consensus observations, not analyst framing. If the opening observation of any section could appear in a sell-side initiation boilerplate, rewrite it.
 
@@ -1454,6 +1455,7 @@ Analyst voice:
 - Never summarize an article headline as if the headline itself is the insight: the insight is what the headline implies
 - Every section must contain at least one non-obvious implication that a smart reader could not have derived from the source results alone
 - Write with the confidence of an analyst who has a view, not the caution of someone covering their downside
+- VOICE REGISTER (institutional, never personal): first-person singular is banned everywhere in the memo -- never "I", "me", "my", "I believe", "I think", "in my view". Default to active third person with a named actor, filing, metric, or event as the grammatical subject ("The order book points to...", "A delayed review weakens the thesis."). Where a stance verb needs an owner, use the institutional "we" ("We see...", "We expect...", "We recommend...") or attribute the stance to sourced evidence ("The filing argues for..."). Passive-voice hedging ("it is believed", "it is expected that", "the thesis will be confirmed" with no named confirmer) is banned with the same force: every stance is owned by "we" or by a named piece of evidence. This rule governs pronouns and stance ownership only; it does not relax the opening rules, the banned-phrase list, or the unhedged verdict and probability formats.
 
 Hard banned phrases: "may benefit" / "stands to benefit" / "is poised to" / "faces exposure to" / "could potentially" / "investors are watching" / "remains to be seen" / "it is worth noting" / "this could have implications" / "the company continues to" / "in the current environment" / "amid uncertainty" / "as the market evolves" / "perceived [X] leadership" / "brand recognition" / "market position" as a standalone analytical claim / "the competitive landscape is". These are consensus observations, not analyst framing. If the opening observation of any section could appear in a sell-side initiation boilerplate, rewrite it.
 

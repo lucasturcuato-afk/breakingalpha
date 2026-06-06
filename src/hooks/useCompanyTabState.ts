@@ -19,8 +19,10 @@
  * w2-c-phase-1-recon-synthesis.md Section 8) so a stale ?tab=themes /
  * ?tab=sources / ?tab=transcripts deep-link still validates and falls back
  * cleanly. TAB_ORDER -- the array that actually renders the tab bar -- is the
- * shipped set: Brief, Articles, Price & Tone, Filings, Insider, Comps. Themes
- * and Sources were cut; Transcripts is dropped from the bar (no button).
+ * shipped set: Brief, Articles, Price & Tone, Filings, Financials, Insider,
+ * Comps. Themes and Sources were cut; Transcripts is dropped from the bar
+ * (no button). 'financials' extends the Section 8 vocabulary (approved
+ * 2026-06-04): validated XBRL facts via financial_facts_latest.
  */
 
 import { useCallback, useSyncExternalStore } from "react";
@@ -32,6 +34,7 @@ export type CompanyTabId =
   | "trend"
   | "sources"
   | "filings"
+  | "financials"
   | "transcripts"
   | "insider"
   | "comps";
@@ -41,6 +44,7 @@ export const TAB_ORDER: readonly CompanyTabId[] = [
   "articles",
   "trend",
   "filings",
+  "financials",
   "insider",
   "comps",
 ] as const;
