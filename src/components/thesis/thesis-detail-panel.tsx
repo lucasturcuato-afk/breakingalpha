@@ -265,6 +265,10 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "thesis",
+          // Theses carry a ticker but no company name. /api/memo resolves the
+          // ticker to a canonical company name server-side so the memo row
+          // persists content.target_company for outcome grading.
+          ...(thesis.ticker ? { ticker: thesis.ticker } : {}),
           systemPrompt: `You are a senior buy-side equity research analyst writing a formal investment thesis memo. Use professional language. Structure with these exact sections:\n\n**INVESTMENT THESIS**\nState the core thesis in 2-3 sentences.\n\n**MARKET CONTEXT & RATIONALE**\nExplain the macro and sector backdrop.\n\n**EVIDENCE BASE**\nList supporting evidence from recent market developments.\n\n**RISK FACTORS**\nWhat could invalidate this thesis? List 2-3 key risks.\n\n**CATALYST TIMELINE**\nWhat events will confirm or deny this thesis?\n\n**RECOMMENDATION**\nBull/Bear/Watch with conviction level and suggested position sizing guidance.`,
           content: `THESIS: ${thesis.title}\n\nANALYSIS: ${thesis.summary}\n\nSECTOR: ${thesis.sector}\nSENTIMENT: ${sentiment}\nCONVICTION: ${thesis.conviction ?? "UNKNOWN"}\nADVERSARIAL SCORE: ${adversarialScoreStr}\nCATALYST: ${thesis.catalyst || thesis.catalyst_note || "Not specified"}\n\nEVIDENCE FROM LIVE FEED:\n${evidenceText}`,
         }),
