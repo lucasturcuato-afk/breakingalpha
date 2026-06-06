@@ -6,6 +6,10 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { isAdmin } from "@/lib/admin-emails";
 import { recordOutput } from "@/lib/outputs";
 import { MEMO_PROMPT_VERSION } from "@/lib/output-constants";
+import {
+  resolveMemoCompanyIdentifiers,
+  supabaseCompanyLookup,
+} from "@/lib/memo-company-canonical";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -357,6 +361,13 @@ export async function POST(request: NextRequest) {
 
   let body: {
     company?: string;
+    /**
+     * Optional ticker for surfaces that hold no company name (the thesis
+     * panel sends thesis.ticker). Resolved server-side to a canonical
+     * companies.name for content.target_company; fail-open (see
+     * src/lib/memo-company-canonical.ts).
+     */
+    ticker?: string;
     acquirer?: string;
     deal_type?: string;
     value?: string;
@@ -374,6 +385,7 @@ export async function POST(request: NextRequest) {
 
   const {
     company,
+    ticker,
     acquirer,
     deal_type,
     value,
@@ -530,13 +542,26 @@ export async function POST(request: NextRequest) {
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       );
+
+      // Canonical identifier enrichment (fail-open, src/lib/memo-company-canonical):
+      // attaches content.ticker when the companies table maps the name to exactly
+      // one ticker, and fills target_company from a caller-supplied ticker (thesis
+      // panel) when no name was resolvable. Never rewrites a non-null
+      // resolvedCompany: /api/memo-cache matches content->>'target_company'
+      // exactly, so a rewrite would break the BriefTab cache.
+      const canonical = await resolveMemoCompanyIdentifiers(
+        { company: resolvedCompany, ticker: typeof ticker === "string" ? ticker : null },
+        supabaseCompanyLookup(svcSupabase),
+      );
+
       const outputId = await recordOutput(svcSupabase, {
         output_type: 'memo',
         content: {
           memo_text: memo,
           memo_type: type ?? 'article',
-          target_company: resolvedCompany,
+          target_company: canonical.targetCompany,
           target_sector: sector ?? null,
+          ...(canonical.ticker ? { ticker: canonical.ticker } : {}),
         },
         generation_context: {
           model: 'gemini-2.5-flash',
