@@ -14,9 +14,11 @@ import { BriefTab } from "@/components/company/tabs/BriefTab";
 import { ArticlesTab } from "@/components/company/tabs/ArticlesTab";
 import { TrendTab } from "@/components/company/tabs/TrendTab";
 import { FilingsTab } from "@/components/company/tabs/FilingsTab";
+import { FinancialsTab } from "@/components/company/tabs/FinancialsTab";
 import { ComingSoonTab } from "@/components/company/tabs/ComingSoonTab";
 import { getCompanyDetail } from "@/lib/data-access/getCompanyDetail";
 import { fetchCompanyFilings } from "@/lib/sec-filings";
+import { fetchCompanyFinancials } from "@/lib/financial-facts";
 import {
   CANONICAL,
   canonicalize,
@@ -89,6 +91,10 @@ export default async function CompanyDetailPage({
   // empty state. See src/lib/sec-filings.ts.
   const filingsResult = await fetchCompanyFilings(supabase, { name: companyName }, 25);
 
+  // Validated XBRL financials (read-only). Same name -> CIK resolution as
+  // filings; companies without a CIK render the tab's empty state.
+  const financialsResult = await fetchCompanyFinancials(supabase, { name: companyName });
+
   const tabContent = {
     brief: <BriefTab company={companyName} content={memoContent} systemPrompt={systemPrompt} />,
     articles: <ArticlesTab articles={companyDetail.articles} />,
@@ -102,6 +108,9 @@ export default async function CompanyDetailPage({
       />
     ),
     filings: <FilingsTab filings={filingsResult.filings} hasCik={filingsResult.cik != null} />,
+    financials: (
+      <FinancialsTab financials={financialsResult} hasCik={financialsResult.cik != null} />
+    ),
     insider: <ComingSoonTab tabId="insider" />,
     comps: <ComingSoonTab tabId="comps" />,
   };
