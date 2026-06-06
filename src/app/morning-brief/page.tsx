@@ -376,6 +376,7 @@ export default function MorningBriefPage() {
           if (cancelled) return;
           setStories(articles.map((a) => {
             const completeness = getCompleteness(a.content, a.summary);
+            const companies = parseCompanies(a.companies);
             return {
               id: a.id,
               title: a.title || "Untitled",
@@ -384,7 +385,8 @@ export default function MorningBriefPage() {
               sentiment: sentimentFromDb(a.sentiment),
               sector: a.sector || undefined,
               summary: a.summary || undefined,
-              tags: parseCompanies(a.companies).slice(0, 3),
+              tags: companies.slice(0, 3),
+              companies,
               url: a.url || undefined,
               read: false,
               saved: false,

@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/strip-html";
+import { withCompanyLine } from "@/lib/memo-company-line";
 import { getSectorStyle, getTagPillStyle } from "@/lib/sector-colors";
 import { memo, useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -298,7 +299,7 @@ function FeedRowInner({ story, saved: savedProp, onBookmark }: FeedRowProps) {
           isOpen={memoOpen}
           onClose={() => setMemoOpen(false)}
           title={story.title}
-          content={[story.title, cleanSummary].join("\n\n")}
+          content={withCompanyLine([story.title, cleanSummary].join("\n\n"), story.companies?.[0])}
           type="article"
         />
       )}

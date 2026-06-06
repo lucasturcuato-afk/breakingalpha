@@ -182,6 +182,13 @@ export default function LiveFeedPage() {
 
       const stories: LiveStory[] = data.map((a) => {
         const completeness = getCompleteness(a.content, a.summary);
+        const companies = (() => {
+          let cos = a.companies;
+          if (typeof cos === "string") {
+            try { cos = JSON.parse(cos); } catch { cos = []; }
+          }
+          return Array.isArray(cos) ? cos : [];
+        })();
         return {
           id: a.id,
           title: a.title || "Untitled",
@@ -192,13 +199,8 @@ export default function LiveFeedPage() {
           industry_verticals: a.industry_verticals ?? [],
           activity_types: a.activity_types ?? [],
           summary: a.summary || undefined,
-          tags: (() => {
-            let cos = a.companies;
-            if (typeof cos === "string") {
-              try { cos = JSON.parse(cos); } catch { cos = []; }
-            }
-            return Array.isArray(cos) ? cos.slice(0, 3) : [];
-          })(),
+          tags: companies.slice(0, 3),
+          companies,
           url: a.url || undefined,
           read: false,
           saved: false,

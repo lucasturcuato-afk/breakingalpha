@@ -21,6 +21,7 @@ import {
   Bookmark,
 } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
+import { withCompanyLine } from "@/lib/memo-company-line";
 import { DealFlowSidebar } from "@/components/deal-flow/DealFlowSidebar";
 import { useSavedDeals } from "@/hooks/useSavedDeals";
 import { createBrowserClient } from "@supabase/ssr";
@@ -964,16 +965,19 @@ function DealFlowContent() {
           isOpen={true}
           onClose={() => setMemoDeal(null)}
           title={memoDeal.company}
-          content={[
-            `TARGET: ${memoDeal.company}`,
-            `ACQUIRER: ${memoDeal.acquirer || "Undisclosed"}`,
-            `TYPE: ${memoDeal.deal_type || "Undisclosed"}`,
-            `VALUE: ${memoDeal.value || memoDeal.valuation || "Undisclosed"}`,
-            `STATUS: ${memoDeal.stage || memoDeal.status || "Undisclosed"}`,
-            `SECTOR: ${memoDeal.sector || "Undisclosed"}`,
-            memoDeal.notes ? `NOTES: ${memoDeal.notes}` : null,
-            memoDeal.summary ? `CONTEXT: ${memoDeal.summary}` : null,
-          ].filter(Boolean).join("\n")}
+          content={withCompanyLine(
+            [
+              `TARGET: ${memoDeal.company}`,
+              `ACQUIRER: ${memoDeal.acquirer || "Undisclosed"}`,
+              `TYPE: ${memoDeal.deal_type || "Undisclosed"}`,
+              `VALUE: ${memoDeal.value || memoDeal.valuation || "Undisclosed"}`,
+              `STATUS: ${memoDeal.stage || memoDeal.status || "Undisclosed"}`,
+              `SECTOR: ${memoDeal.sector || "Undisclosed"}`,
+              memoDeal.notes ? `NOTES: ${memoDeal.notes}` : null,
+              memoDeal.summary ? `CONTEXT: ${memoDeal.summary}` : null,
+            ].filter(Boolean).join("\n"),
+            memoDeal.company,
+          )}
           type="deal"
         />
       )}
