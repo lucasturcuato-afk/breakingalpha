@@ -17,6 +17,7 @@ import { FilingsTab } from "@/components/company/tabs/FilingsTab";
 import { FinancialsTab } from "@/components/company/tabs/FinancialsTab";
 import { ComingSoonTab } from "@/components/company/tabs/ComingSoonTab";
 import { getCompanyDetail } from "@/lib/data-access/getCompanyDetail";
+import { resolveAlias } from "@/lib/data-access/aliasResolver";
 import { fetchCompanyFilings } from "@/lib/sec-filings";
 import { fetchCompanyFinancials } from "@/lib/financial-facts";
 import {
@@ -44,7 +45,21 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const name = slugToCompanyName(id);
+  // Prefer the resolved companies-row name over the slug reconstruction:
+  // slugToCompanyName title-cases function words ("bank-of-america" ->
+  // "Bank Of America"), which leaked into the <title>. Falls back to the
+  // slug-derived name for unauthenticated requests (middleware redirects
+  // those before any page HTML is served) and unindexed companies.
+  let name = slugToCompanyName(id);
+  try {
+    const { supabase, user } = await getSupabaseWithUser();
+    if (user) {
+      const resolved = await resolveAlias(supabase, id);
+      if (resolved) name = resolved.canonical.name;
+    }
+  } catch {
+    // Resolver failures must never break metadata; keep the slug fallback.
+  }
   return { title: `${name} — Company Intel` };
 }
 

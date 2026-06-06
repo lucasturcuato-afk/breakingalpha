@@ -90,7 +90,10 @@ export function EmptyState({ canonical }: Props) {
             color: "var(--espresso)",
           }}
         >
-          {canonical} isn&apos;t on Breaking Alpha yet.
+          {/* The {" "} is load-bearing: this repo's SWC strips the leading
+              space of JSX text that follows an expression container, which
+              rendered "Coca Colaisn't ..." in production. */}
+          {canonical}{" "}isn&apos;t on Signalera yet.
         </h1>
         <p
           style={{
