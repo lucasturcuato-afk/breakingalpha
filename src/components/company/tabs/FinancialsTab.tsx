@@ -30,14 +30,13 @@ import type {
   FinancialCell,
   FinancialView,
 } from "@/lib/financial-facts";
+import { formatValue, type Fmt } from "./financials-format";
 
 export interface FinancialsTabProps {
   financials: CompanyFinancialsResult;
   /** True when the company resolved to a SEC CIK. */
   hasCik: boolean;
 }
-
-type Fmt = "usd" | "eps" | "shares" | "pct";
 
 interface RowDef {
   key: string;
@@ -71,27 +70,6 @@ const EQUITY_COMPONENTS: RowDef[] = [
   },
   { key: "temporary_equity", label: "+ Temporary equity", fmt: "usd", sub: true },
 ];
-
-function formatValue(v: number, fmt: Fmt): string {
-  switch (fmt) {
-    case "pct":
-      return `${(v * 100).toFixed(1)}%`;
-    case "eps":
-      return v < 0 ? `($${Math.abs(v).toFixed(2)})` : `$${v.toFixed(2)}`;
-    case "shares":
-      return `${(v / 1e6).toLocaleString("en-US", { maximumFractionDigits: 0 })}M`;
-    case "usd": {
-      const a = Math.abs(v);
-      const s =
-        a >= 1e9
-          ? `$${(a / 1e9).toFixed(2)}B`
-          : a >= 1e6
-            ? `$${(a / 1e6).toFixed(1)}M`
-            : `$${(a / 1e3).toFixed(0)}K`;
-      return v < 0 ? `(${s})` : s;
-    }
-  }
-}
 
 const TH = "px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-text-muted";
 const SECTION_TH =
