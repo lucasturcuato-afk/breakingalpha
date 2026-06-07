@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
-import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { thesisDedupKey, thesisFuzzyKey } from "@/lib/thesis-mapper";
 
 export const dynamic = "force-dynamic";
@@ -29,13 +28,22 @@ const SECTOR_ETF_MAP: Record<string, string> = {
  * One-time: backfill null tickers via Gemini, then clean up duplicates.
  */
 export async function POST(request: NextRequest) {
-  // Internal key bypass for CLI / cron usage
-  const internalKey = request.headers.get("x-internal-key");
-  if (internalKey && internalKey === process.env.INTERNAL_API_KEY) {
-    // Authorized via internal key — skip session auth
-  } else {
-    const { user } = await getSupabaseWithUser();
-    if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  // Internal-key only. This route runs a global, destructive dedup-delete
+  // across ALL users' theses with a service-role client, so it MUST NOT be
+  // reachable by a normal logged-in user session. Same shared-secret pattern
+  // as /api/grading/trigger and /api/grading/grade-brief.
+  const internalKey = process.env.INTERNAL_API_KEY;
+  if (!internalKey) {
+    // Do NOT leak whether the header matched.
+    return NextResponse.json(
+      { error: "INTERNAL_API_KEY not configured" },
+      { status: 500 },
+    );
+  }
+
+  const providedKey = request.headers.get("x-internal-key");
+  if (providedKey !== internalKey) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   const adminSupabase = createClient(
