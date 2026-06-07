@@ -12,23 +12,29 @@ export function SparklineChart({ ticker, size = "sm" }: SparklineChartProps) {
   const [pctChange, setPctChange] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
 
-  const key = typeof window !== "undefined" ? process.env.NEXT_PUBLIC_FINNHUB_API_KEY : null;
-
   useEffect(() => {
-    if (!ticker || !key) {
+    if (!ticker) {
       setLoaded(true);
       return;
     }
 
     let cancelled = false;
 
-    fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${key}`)
-      .then((r) => r.json())
+    // Quote is proxied server-side via /api/stock-chart so the paid market-data
+    // key never ships in the client bundle. We request range=1d (smallest
+    // payload) and read the current price plus prior close to derive the daily
+    // percent change the same way the previous Finnhub `dp` field provided it.
+    fetch(`/api/stock-chart?ticker=${encodeURIComponent(ticker)}&range=1d`)
+      .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled) return;
-        if (data && typeof data.c === "number" && data.c > 0) {
-          setPrice(data.c);
-          setPctChange(typeof data.dp === "number" ? data.dp : null);
+        const current = data && typeof data.price === "number" ? data.price : null;
+        const prev = data && typeof data.prevClose === "number" ? data.prevClose : null;
+        if (current !== null && current > 0) {
+          setPrice(current);
+          setPctChange(
+            prev !== null && prev > 0 ? ((current - prev) / prev) * 100 : null,
+          );
         }
         setLoaded(true);
       })
@@ -37,7 +43,7 @@ export function SparklineChart({ ticker, size = "sm" }: SparklineChartProps) {
       });
 
     return () => { cancelled = true; };
-  }, [ticker, key]);
+  }, [ticker]);
 
   if (!ticker) return null;
   if (!loaded) {
