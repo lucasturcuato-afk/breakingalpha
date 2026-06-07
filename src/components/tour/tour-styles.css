@@ -1,0 +1,91 @@
+/* Signalera tour popover overrides — co-located with SignaleraTour.tsx */
+
+.signalera-tour-popover {
+  --font-sans: var(--font-inter), Inter, system-ui, sans-serif;
+  background: var(--color-elevated, #fffdf9);
+  border: 1px solid var(--color-border-base, #e8e2d8);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  font-family: var(--font-sans);
+}
+
+.signalera-tour-popover .driver-popover-title {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text-primary, #1a1208);
+  margin-bottom: 4px;
+}
+
+.signalera-tour-popover .driver-popover-description {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-text-secondary, #5c5344);
+}
+
+.signalera-tour-popover .driver-popover-progress-text {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--color-text-faint, #9c9486);
+}
+
+.signalera-tour-popover .driver-popover-navigation-btns button {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.signalera-tour-popover .driver-popover-next-btn,
+.signalera-tour-popover .driver-popover-close-btn {
+  background: #1a1208;
+  color: #fffdf9;
+  border: none;
+}
+
+.signalera-tour-popover .driver-popover-next-btn:hover,
+.signalera-tour-popover .driver-popover-close-btn:hover {
+  background: #d4a84b;
+  color: #fffdf9;
+}
+
+.signalera-tour-popover .driver-popover-prev-btn {
+  background: transparent;
+  color: var(--color-text-muted, #7a7164);
+  border: 1px solid var(--color-border-base, #e8e2d8);
+}
+
+.signalera-tour-popover .driver-popover-prev-btn:hover {
+  background: var(--color-parchment-mid, #f5f0e8);
+  color: var(--color-text-primary, #1a1208);
+}
+
+/* Dark mode */
+html.dark .signalera-tour-popover {
+  background: var(--color-elevated, #1a1a1a);
+  border-color: var(--color-border-base, #2a2a2a);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+html.dark .signalera-tour-popover .driver-popover-title {
+  color: var(--color-text-primary, #f5f5f5);
+}
+
+html.dark .signalera-tour-popover .driver-popover-description {
+  color: var(--color-text-secondary, #a0a0a0);
+}
+
+html.dark .signalera-tour-popover .driver-popover-next-btn,
+html.dark .signalera-tour-popover .driver-popover-close-btn {
+  background: #d4a84b;
+  color: #1a1208;
+}
+
+html.dark .signalera-tour-popover .driver-popover-prev-btn {
+  border-color: var(--color-border-base, #2a2a2a);
+  color: var(--color-text-muted, #888);
+}
