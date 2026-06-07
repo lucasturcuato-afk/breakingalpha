@@ -9,9 +9,23 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { user } = await getSupabaseWithUser();
-  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  // Auth: accept either an internal-key (CLI / cron / system path) reusing the
+  // exact pattern from theses/backfill-tickers/route.ts, or a logged-in user.
+  // The internal key path is treated as an admin and may update any thesis,
+  // including global/system rows whose user_id is NULL.
+  const internalKey = request.headers.get("x-internal-key");
+  const isInternal = Boolean(internalKey) && internalKey === process.env.INTERNAL_API_KEY;
 
+  let userId: string | null = null;
+  if (!isInternal) {
+    const { user } = await getSupabaseWithUser();
+    if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    userId = user.id;
+  }
+
+  // Service-role client: bypasses RLS so the write succeeds even though the
+  // theses table currently has no UPDATE policy. Ownership is enforced in code
+  // below (see the ownership guard) rather than via RLS.
   const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -32,11 +46,39 @@ export async function PATCH(
     );
   }
 
+  // Ownership guard (IDOR fix): fetch the target thesis first and confirm the
+  // caller is allowed to mutate it. Internal-key callers are admins and skip
+  // this check. A logged-in user may only update a thesis they own; rows owned
+  // by another user OR global/system rows (user_id NULL) are rejected with 403
+  // so normal users cannot mutate theses that are not theirs.
+  if (!isInternal) {
+    const { data: existing, error: lookupError } = await supabaseAdmin
+      .from("theses")
+      .select("id, user_id")
+      .eq("id", id)
+      .single();
+
+    if (lookupError || !existing) {
+      return Response.json({ error: "Thesis not found" }, { status: 404 });
+    }
+
+    if (existing.user_id !== userId) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
+
   try {
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from("theses")
       .update(updateData)
-      .eq("id", id)
+      .eq("id", id);
+    // Defense in depth: for user callers also scope the write to their own
+    // user_id so a concurrent ownership change cannot widen the blast radius.
+    if (!isInternal) {
+      query = query.eq("user_id", userId as string);
+    }
+
+    const { data, error } = await query
       .select()
       .single();
 
