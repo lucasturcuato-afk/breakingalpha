@@ -49,11 +49,15 @@ function Tooltip({ content, children, side = "top", wrap, className }: TooltipPr
         <div
           role="tooltip"
           className={cn(
-            "absolute z-50 px-2.5 py-1.5 rounded-md",
-            "bg-espresso text-cream text-[11px] font-sans font-medium",
-            "shadow-lg pointer-events-none",
+            "absolute z-50 px-4 py-3 rounded-xl",
+            "font-sans text-[13px] leading-[1.5] font-normal normal-case tracking-normal",
+            "bg-cream text-text-primary border border-border-base",
+            "dark:bg-elevated dark:text-foreground dark:border-border-default",
+            "shadow-[0_4px_20px_rgba(26,18,8,0.08),0_1px_3px_rgba(26,18,8,0.04)]",
+            "dark:shadow-[0_4px_20px_rgba(0,0,0,0.4),0_1px_3px_rgba(0,0,0,0.2)]",
+            "pointer-events-none",
             "animate-in fade-in-0 zoom-in-95",
-            wrap ? "max-w-[280px] whitespace-normal" : "whitespace-nowrap",
+            wrap ? "min-w-[240px] max-w-[320px] whitespace-normal" : "whitespace-nowrap",
             side === "top" && "bottom-full left-1/2 -translate-x-1/2 mb-1.5",
             side === "bottom" && "top-full left-1/2 -translate-x-1/2 mt-1.5",
             side === "left" && "right-full top-1/2 -translate-y-1/2 mr-1.5",
