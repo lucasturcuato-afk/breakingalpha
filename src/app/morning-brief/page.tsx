@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { stripHtml } from "@/lib/strip-html";
 import { FileText } from "lucide-react";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { useRouter } from "next/navigation";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
@@ -669,18 +670,21 @@ export default function MorningBriefPage() {
             v: String(moodWord).toUpperCase(),
             c: tone === "BEARISH" ? "var(--signal-dn)" : tone === "BULLISH" ? "var(--signal-up)" : "var(--signal-warn)",
             skeletonW: 60,
+            tip: "Today's overall market sentiment, derived from VIX levels and price action.",
           },
           {
             k: "STORIES",
             loading: storiesLoading,
             v: String(stories.length),
             skeletonW: 28,
+            tip: "Total articles ingested and analyzed by Signalera's pipeline today.",
           },
           {
             k: "THESES",
             loading: thesesLoading,
             v: thesesCount !== null ? `${thesesCount} active` : "0 active",
             skeletonW: 56,
+            tip: "Investment theses currently being tracked and validated by Signalera.",
           },
           {
             k: "VIX",
@@ -688,14 +692,13 @@ export default function MorningBriefPage() {
             v: vixQuote ? `${vixQuote.price} ${vixQuote.pct >= 0 ? "▲" : "▼"}${Math.abs(vixQuote.pct).toFixed(2)}%` : "—",
             c: vixQuote ? (vixQuote.pct >= 0 ? "var(--signal-dn)" : "var(--signal-up)") : undefined,
             skeletonW: 72,
+            tip: "CBOE Volatility Index — higher means more market fear, lower means lower expected volatility.",
           },
-        ] as Array<{ k: string; v: string; loading: boolean; c?: string; skeletonW: number }>).map((x, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-            <span
-              className="font-sans"
-              style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.16em", color: "var(--text-muted)" }}
-            >
+        ] as Array<{ k: string; v: string; loading: boolean; c?: string; skeletonW: number; tip: string }>).map((x, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span className="font-sans" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, letterSpacing: "0.16em", color: "var(--text-muted)" }}>
               {x.k}
+              <InfoTooltip content={x.tip} side="bottom" iconSize={10} />
             </span>
             {x.loading ? (
               <Skeleton
@@ -800,6 +803,7 @@ export default function MorningBriefPage() {
                   }}
                 >
                   Market Pulse · {timeStr}
+                  {" "}<InfoTooltip content="AI-generated snapshot of where markets stand right now, based on today's full signal tape." side="right" iconSize={12} className="text-gold/40 hover:text-gold/70" />
                 </p>
                 <h2
                   className="font-[family-name:var(--font-playfair-display)]"
@@ -955,6 +959,7 @@ export default function MorningBriefPage() {
                 >
                   ★ Today&rsquo;s Lead
                 </span>
+                <InfoTooltip content="The most important market story today, selected and summarized by Signalera's AI." side="bottom" iconSize={12} />
                 <SentimentPill tone={tone} />
                 <span className="font-sans" style={{ fontSize: 11, color: "var(--text-secondary)" }}>
                   Signalera Desk · 4 min
@@ -1297,6 +1302,7 @@ export default function MorningBriefPage() {
                   }}
                 >
                   Analyst Briefing
+                  {" "}<InfoTooltip content="AI-written analysis sections covering key market themes, each grounded in today's articles." side="right" iconSize={12} />
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {analystSections.map((section) => (
@@ -1354,6 +1360,7 @@ export default function MorningBriefPage() {
                   style={{ fontSize: 26, fontWeight: 800, color: "var(--espresso)", margin: "0 0 18px", letterSpacing: "-0.015em" }}
                 >
                   {storiesLabel}
+                  {" "}<InfoTooltip content="Articles ranked by relevance score — a composite of recency, source credibility, and topic importance." side="right" iconSize={12} />
                 </h3>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
                   {(user === null ? rankedStories.slice(0, 3) : rankedStories).map((s, i) => (

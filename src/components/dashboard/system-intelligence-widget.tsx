@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 
 interface IntelligenceData {
   lastRun: string | null;
@@ -51,6 +52,7 @@ export function SystemIntelligenceWidget() {
         <span className="text-gold">{"\u2726"} </span>
         Signalera Intelligence
       </span>
+      <InfoTooltip content="Meta-analysis of Signalera's prediction accuracy, pattern recognition, and source reliability." side="bottom" iconSize={10} />
 
       <span className="border-l border-border-base h-3" aria-hidden="true" />
       <span className="font-sans text-[10px] text-text-secondary whitespace-nowrap">

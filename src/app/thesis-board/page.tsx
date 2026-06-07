@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { FileText, Archive, RefreshCw, ChevronDown, ChevronUp, LayoutList, LayoutGrid } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 import { cn } from "@/lib/utils";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 import type { ThesisItem, ThesisStatus, WeeklyDigest, PatternRow, SourceCredibilityRow } from "@/components/thesis";
 import { mapThesisRow } from "@/lib/thesis-mapper";
 
@@ -91,13 +92,15 @@ function SystemIntelligencePanel({
       >
         {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
         System Intelligence
+        <InfoTooltip content="How Signalera learns from outcomes — weekly learning, pattern library, and source credibility scores." side="right" iconSize={10} />
       </button>
       {open && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 animate-in fade-in-0 slide-in-from-top-2 border-t-2 border-gold pt-3">
           {/* This Week's Learning */}
           <div className="bg-cream border border-gold-border rounded-xl p-3">
-            <h4 className="font-sans text-[10px] font-semibold text-gold-dark uppercase tracking-wider mb-2">
+            <h4 className="font-sans text-[10px] font-semibold text-gold-dark uppercase tracking-wider mb-2 inline-flex items-center gap-1">
               This Week&apos;s Learning
+              <InfoTooltip content="Insights Signalera surfaces from the past week's signal patterns and outcomes." side="right" iconSize={10} />
             </h4>
             {digest?.thesis_prompt_addendum ? (
               <p className="font-sans text-[11px] text-text-secondary leading-relaxed">
@@ -112,8 +115,9 @@ function SystemIntelligencePanel({
 
           {/* Pattern Library */}
           <div className="bg-cream border border-gold-border rounded-xl p-3">
-            <h4 className="font-sans text-[10px] font-semibold text-gold-dark uppercase tracking-wider mb-2">
+            <h4 className="font-sans text-[10px] font-semibold text-gold-dark uppercase tracking-wider mb-2 inline-flex items-center gap-1">
               Pattern Library
+              <InfoTooltip content="Recurring market patterns Signalera tracks across briefs and memos." side="right" iconSize={10} />
             </h4>
             {patternsLoading ? (
               <div className="space-y-2">
@@ -141,8 +145,9 @@ function SystemIntelligencePanel({
 
           {/* Source Credibility */}
           <div className="bg-cream border border-gold-border rounded-xl p-3">
-            <h4 className="font-sans text-[10px] font-semibold text-gold-dark uppercase tracking-wider mb-2">
+            <h4 className="font-sans text-[10px] font-semibold text-gold-dark uppercase tracking-wider mb-2 inline-flex items-center gap-1">
               Source Credibility
+              <InfoTooltip content="How Signalera weights each news source based on reliability and historical signal quality." side="right" iconSize={10} />
             </h4>
             {sourcesLoading ? (
               <div className="space-y-2">
@@ -516,13 +521,13 @@ function ThesisBoardContent() {
               <div className="flex gap-2">
                 {(
                   [
-                    { key: "recommended" as const, label: "Recommended", count: theses.filter((t) => !userArchivedIds.has(t.id) && (t.conviction === "HIGH" || t.conviction === "BULLISH" || t.conviction === "MEDIUM")).length },
-                    { key: "HIGH" as const, label: "HIGH", count: convictionCounts.HIGH },
-                    { key: "MEDIUM" as const, label: "MEDIUM", count: convictionCounts.MEDIUM },
-                    { key: "WATCH" as const, label: "WATCH", count: convictionCounts.WATCH },
+                    { key: "recommended" as const, label: "Recommended", count: theses.filter((t) => !userArchivedIds.has(t.id) && (t.conviction === "HIGH" || t.conviction === "BULLISH" || t.conviction === "MEDIUM")).length, tip: "Theses Signalera thinks matter most to you, based on your sectors and watchlist." },
+                    { key: "HIGH" as const, label: "HIGH", count: convictionCounts.HIGH, tip: "Highest-confidence theses — strong directional signal with multiple supporting sources." },
+                    { key: "MEDIUM" as const, label: "MEDIUM", count: convictionCounts.MEDIUM, tip: "Moderate-confidence theses — clear signal but fewer supporting data points." },
+                    { key: "WATCH" as const, label: "WATCH", count: convictionCounts.WATCH, tip: "Early-stage signals worth monitoring — not yet strong enough for a directional call." },
                     { key: "all" as const, label: "All Theses", count: theses.filter((t) => !userArchivedIds.has(t.id)).length },
                     { key: "archived" as const, label: "Archived", count: userArchivedIds.size },
-                    { key: "pending_review" as const, label: "Pending Review", count: convictionCounts.pending_review },
+                    { key: "pending_review" as const, label: "Pending Review", count: convictionCounts.pending_review, tip: "Newly generated theses awaiting your review — approve, archive, or adjust conviction." },
                   ]
                 ).map((tab) => (
                   <button
@@ -543,6 +548,9 @@ function ThesisBoardContent() {
                     {tab.key === "archived" && <Archive size={10} />}
                     {tab.label}
                     <span className="font-data text-[9px] opacity-70">{tab.count}</span>
+                    {"tip" in tab && (tab as { tip?: string }).tip && (
+                      <InfoTooltip content={(tab as { tip: string }).tip} side="bottom" iconSize={9} className={convictionFilter === tab.key ? "text-cream/30 hover:text-cream/50" : ""} />
+                    )}
                   </button>
                 ))}
               </div>

@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { Sparkles } from "lucide-react";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { sectorMatchesProfile } from "@/lib/personalization";
 
@@ -59,6 +60,7 @@ export function AISignalBar({
       <div className="w-8 h-8 rounded-lg bg-gold-muted border border-gold-border flex items-center justify-center flex-shrink-0">
         <Sparkles size={13} className="text-gold" />
       </div>
+      <InfoTooltip content="Today's intelligence headline — a one-sentence summary of the most important market signal." side="bottom" iconSize={12} className="text-cream/30 hover:text-cream/50 flex-shrink-0" />
 
       {/* Content */}
       <div className="flex-1 min-w-0">

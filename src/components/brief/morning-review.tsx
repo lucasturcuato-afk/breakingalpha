@@ -1,5 +1,6 @@
 "use client";
 import { cn } from "@/lib/utils";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 
 interface SectorReflection {
   sector: string;
@@ -54,6 +55,7 @@ function ReviewHeader() {
       >
         Morning Brief Review
       </span>
+      <InfoTooltip content="Recap of the morning brief's key calls, ahead of close." side="right" iconSize={12} />
       <div className="flex-1 h-px bg-gold/15" />
     </div>
   );

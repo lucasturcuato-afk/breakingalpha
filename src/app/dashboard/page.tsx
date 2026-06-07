@@ -47,6 +47,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { FileText, Pencil, Plus, Check } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
 import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
 import type { ContentDescriptor } from "@/lib/personalization";
@@ -647,8 +648,9 @@ export default function DashboardPage() {
         <div className="mt-4">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
-              <h2 className="font-sans text-[10px] font-medium uppercase tracking-wider text-text-muted">
+              <h2 className="font-sans text-[10px] font-medium uppercase tracking-wider text-text-muted inline-flex items-center gap-1.5">
                 Top Stories — hover to expand
+                <InfoTooltip content="The highest-signal articles today, ranked by Signalera's relevance algorithm." side="bottom" iconSize={10} />
               </h2>
               {/* Tab bar */}
               <div className="flex gap-3">
@@ -662,7 +664,7 @@ export default function DashboardPage() {
                       : "border-transparent text-text-muted hover:text-text-secondary",
                   )}
                 >
-                  For You
+                  For You <InfoTooltip content="Stories ranked by relevance to your watchlist and sectors. Set up in Settings." side="bottom" iconSize={10} />
                 </button>
                 <button
                   type="button"
