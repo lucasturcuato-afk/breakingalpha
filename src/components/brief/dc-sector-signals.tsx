@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 
 const HERITAGE_GOLD = "#d4a84b";
 const DC_ESPRESSO = "#1a1208";
@@ -83,6 +84,7 @@ export function DCSectorSignals({ breakdown }: DCSectorSignalsProps) {
           }}
         >
           Sector Signals
+          {" "}<InfoTooltip content="How each sector is positioned today based on article volume and sentiment direction." side="right" iconSize={12} />
         </h3>
         {sectors.length > 1 && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

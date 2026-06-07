@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { ExternalLink, Eye } from "lucide-react";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 
 interface WatchlistArticle {
   article_id: string;
@@ -65,8 +66,9 @@ export function WatchlistFeed() {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Eye size={14} className="text-gold" />
-          <h3 className="font-display text-[15px] font-bold text-espresso">
+          <h3 className="font-display text-[15px] font-bold text-espresso inline-flex items-center gap-1.5">
             Watchlist Feed
+            <InfoTooltip content="Real-time articles mentioning companies on your watchlist." side="right" iconSize={12} />
           </h3>
         </div>
         <span className="font-data text-[9px] uppercase tracking-widest text-text-muted">

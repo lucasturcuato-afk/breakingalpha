@@ -14,6 +14,7 @@
 
 import type { CompanyTabId } from "@/hooks/useCompanyTabState";
 import { TAB_ORDER } from "@/hooks/useCompanyTabState";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 
 const TAB_LABELS: Record<CompanyTabId, string> = {
   brief: "Brief",
@@ -26,6 +27,13 @@ const TAB_LABELS: Record<CompanyTabId, string> = {
   transcripts: "Transcripts",
   insider: "Insider",
   comps: "Comps",
+};
+
+const TAB_TIPS: Partial<Record<CompanyTabId, string>> = {
+  brief: "AI-generated company brief synthesized from recent articles and filings.",
+  articles: "All indexed articles mentioning this company, sorted by recency.",
+  filings: "SEC filings (10-K, 10-Q, 8-K) pulled from EDGAR for this company.",
+  financials: "Key financial metrics extracted from validated XBRL filings.",
 };
 
 interface CompanyDetailTabsProps {
@@ -83,6 +91,9 @@ export function CompanyDetailTabs({
             >
               {TAB_LABELS[id]}
             </span>
+            {TAB_TIPS[id] && (
+              <InfoTooltip content={TAB_TIPS[id]} side="bottom" iconSize={10} />
+            )}
           </button>
         );
       })}

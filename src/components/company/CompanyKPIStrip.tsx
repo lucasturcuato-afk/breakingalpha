@@ -183,7 +183,8 @@ export function CompanyKPIStrip({ companyDetail }: CompanyKPIStripProps) {
         value={isPrivate ? "--" : formatMarketCap(kpi.marketCap)}
         sub={isPrivate ? "private" : null} />
       <Cell label="Mentions · 30d" valueTestId="kpi-card-mentions"
-        value={companyDetail.mentions.toLocaleString("en-US")} />
+        value={companyDetail.mentions.toLocaleString("en-US")}
+        tooltip="How many times this company appeared in indexed articles over the last 30 days." />
       <Cell label="Article tone" valueTestId="kpi-card-sentiment"
         value={
           <SentimentPill

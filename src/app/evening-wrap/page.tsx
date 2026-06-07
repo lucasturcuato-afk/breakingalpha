@@ -17,6 +17,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { stripHtml } from "@/lib/strip-html";
 import { Moon } from "lucide-react";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { useRouter } from "next/navigation";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
@@ -595,22 +596,21 @@ export default function EveningWrapPage() {
           flexWrap: "wrap",
         }}
       >
-        {[
-          { k: "CLOSE", v: closeWord ? closeWord.toUpperCase() : "–", c: closeWord ? (tone === "BEARISH" ? "var(--signal-dn)" : tone === "BULLISH" ? "var(--signal-up)" : "var(--signal-warn)") : undefined },
-          { k: "MOVERS", v: String(stories.length || "—") },
-          { k: "THESES", v: thesesCount !== null ? `${thesesCount} active` : "—" },
+        {([
+          { k: "CLOSE", v: closeWord ? closeWord.toUpperCase() : "–", c: closeWord ? (tone === "BEARISH" ? "var(--signal-dn)" : tone === "BULLISH" ? "var(--signal-up)" : "var(--signal-warn)") : undefined, tip: "AI's verdict on how the day closed, grounded in actual index and futures data." },
+          { k: "MOVERS", v: String(stories.length || "—"), tip: "Number of significant market-moving stories identified in today's session." },
+          { k: "THESES", v: thesesCount !== null ? `${thesesCount} active` : "—", tip: "Investment theses currently being tracked and validated by Signalera." },
           {
             k: "VIX",
             v: vixQuote ? `${vixQuote.price} ${vixQuote.pct >= 0 ? "▲" : "▼"}${Math.abs(vixQuote.pct).toFixed(2)}%` : "—",
             c: vixQuote ? (vixQuote.pct >= 0 ? "var(--signal-dn)" : "var(--signal-up)") : undefined,
+            tip: "CBOE Volatility Index — higher means more market fear, lower means lower expected volatility.",
           },
-        ].map((x, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-            <span
-              className="font-sans"
-              style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.16em", color: "var(--text-muted)" }}
-            >
+        ] as Array<{ k: string; v: string; c?: string; tip: string }>).map((x, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span className="font-sans" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, letterSpacing: "0.16em", color: "var(--text-muted)" }}>
               {x.k}
+              <InfoTooltip content={x.tip} side="bottom" iconSize={10} />
             </span>
             <span
               className="font-data"
@@ -729,6 +729,7 @@ export default function EveningWrapPage() {
                   }}
                 >
                   The Close · {timeStr}
+                  {" "}<InfoTooltip content="End-of-day market verdict with a scorecard of major indices, grounded in closing prices." side="right" iconSize={12} className="text-gold/40 hover:text-gold/70" />
                 </p>
                 <h2
                   className="font-[family-name:var(--font-playfair-display)]"

@@ -1,16 +1,18 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { useState, useRef, useCallback, type ReactNode } from "react";
+import { useState, useRef, useCallback, useEffect, type ReactNode } from "react";
 
 interface TooltipProps {
   content: ReactNode;
   children: ReactNode;
-  side?: "top" | "bottom";
+  side?: "top" | "bottom" | "left" | "right";
+  /** Allow text to wrap (for longer tooltip content). */
+  wrap?: boolean;
   className?: string;
 }
 
-function Tooltip({ content, children, side = "top", className }: TooltipProps) {
+function Tooltip({ content, children, side = "top", wrap, className }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -24,11 +26,23 @@ function Tooltip({ content, children, side = "top", className }: TooltipProps) {
     setOpen(false);
   }, []);
 
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+
   return (
     <div
       className="relative inline-flex"
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
+      onFocus={handleEnter}
+      onBlur={handleLeave}
     >
       {children}
       {open && (
@@ -37,10 +51,13 @@ function Tooltip({ content, children, side = "top", className }: TooltipProps) {
           className={cn(
             "absolute z-50 px-2.5 py-1.5 rounded-md",
             "bg-espresso text-cream text-[11px] font-sans font-medium",
-            "whitespace-nowrap shadow-lg",
+            "shadow-lg pointer-events-none",
             "animate-in fade-in-0 zoom-in-95",
+            wrap ? "max-w-[280px] whitespace-normal" : "whitespace-nowrap",
             side === "top" && "bottom-full left-1/2 -translate-x-1/2 mb-1.5",
             side === "bottom" && "top-full left-1/2 -translate-x-1/2 mt-1.5",
+            side === "left" && "right-full top-1/2 -translate-y-1/2 mr-1.5",
+            side === "right" && "left-full top-1/2 -translate-y-1/2 ml-1.5",
             className,
           )}
         >
