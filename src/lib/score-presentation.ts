@@ -30,6 +30,10 @@ interface PresentationContext {
   latestConfidence?: number | null;
   /** Latest verdict string */
   latestVerdict?: string | null;
+  /** Raw weighted_sentiment_alignment from latest verdict (null = no data, 0 = balanced) */
+  rawSentimentAlignment?: number | null;
+  /** Raw supporting_vs_contradicting_ratio from latest verdict (null = no data, 1 = balanced) */
+  rawSupportingRatio?: number | null;
 }
 
 export interface ComponentSentence {
@@ -79,7 +83,7 @@ export function priceToSentence(value: number, ctx: PresentationContext): Compon
   };
 }
 
-export function sentimentToSentence(value: number): ComponentSentence {
+export function sentimentToSentence(value: number, ctx: PresentationContext): ComponentSentence {
   let sentence: string;
   if (value > 10) {
     sentence = "News sentiment strongly supports the thesis direction";
@@ -89,8 +93,10 @@ export function sentimentToSentence(value: number): ComponentSentence {
     sentence = "News sentiment contradicts the thesis direction";
   } else if (value < -3) {
     sentence = "Slight negative sentiment lean in supporting coverage";
+  } else if (ctx.rawSentimentAlignment === null || ctx.rawSentimentAlignment === undefined) {
+    sentence = "No supporting articles cited yet for sentiment analysis";
   } else {
-    sentence = "No supporting articles found yet for sentiment analysis";
+    sentence = "Net sentiment balanced after weighting articles by stance direction";
   }
 
   return {
@@ -101,16 +107,20 @@ export function sentimentToSentence(value: number): ComponentSentence {
   };
 }
 
-export function ratioToSentence(value: number): ComponentSentence {
+export function ratioToSentence(value: number, ctx: PresentationContext): ComponentSentence {
   let sentence: string;
   if (value > 5) {
     sentence = "Supporting articles clearly outnumber contradicting ones";
   } else if (value > 0) {
-    sentence = "Slightly more supporting than contradicting articles found";
-  } else if (value === 0) {
-    sentence = "No supporting or contradicting articles found at last grading";
+    sentence = "More supporting articles than contradicting at last grading";
+  } else if (value < 0) {
+    sentence = "More contradicting articles than supporting at last grading";
+  } else if (ctx.rawSupportingRatio === null || ctx.rawSupportingRatio === undefined) {
+    sentence = "No articles cited yet at last grading";
+  } else if (ctx.rawSupportingRatio === 1) {
+    sentence = "Supporting and contradicting articles balanced — no directional signal";
   } else {
-    sentence = "Contradicting articles outweigh supporting ones";
+    sentence = "No supporting or contradicting articles found at last grading";
   }
 
   return {
@@ -171,8 +181,8 @@ export function componentBreakdown(
 ): ComponentSentence[] {
   return [
     priceToSentence(components.price, ctx),
-    sentimentToSentence(components.sentiment),
-    ratioToSentence(components.ratio),
+    sentimentToSentence(components.sentiment, ctx),
+    ratioToSentence(components.ratio, ctx),
     confidenceToSentence(components.confidence, ctx),
     timeDecayToSentence(components.timeDecay, ctx),
   ];

@@ -277,7 +277,7 @@ export default function ThesisDetailPage() {
             {/* Plain-language breakdown */}
             <div>
               <h3 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold mb-2">What we&apos;re seeing</h3>
-              <SignalBreakdown live={live} thesis={thesis} />
+              <SignalBreakdown live={live} thesis={thesis} verdicts={verdicts} />
             </div>
 
             {/* What we're watching for */}
@@ -340,16 +340,19 @@ export default function ThesisDetailPage() {
 
 /* ── Helpers ── */
 
-function SignalBreakdown({ live, thesis }: { live: LiveScoreResult; thesis: ThesisRow }) {
+function SignalBreakdown({ live, thesis, verdicts }: { live: LiveScoreResult; thesis: ThesisRow; verdicts: VerdictRow[] }) {
   const signalBreakdown = (thesis.signal_breakdown || {}) as Record<string, unknown>;
+  const latest = verdicts[verdicts.length - 1] ?? null;
   const sentences = componentBreakdown(live.components, {
     priceChangePct: typeof signalBreakdown.price_change_pct === "number" ? signalBreakdown.price_change_pct : null,
     ticker: thesis.ticker,
     conviction: thesis.conviction,
     ageDays: live.ageDays,
     horizonDays: live.horizonDays,
-    latestConfidence: null, // from verdicts — we don't have it inline here
+    latestConfidence: latest?.confidence ?? null,
     latestVerdict: live.terminal,
+    rawSentimentAlignment: latest?.weighted_sentiment_alignment ?? null,
+    rawSupportingRatio: latest?.supporting_vs_contradicting_ratio ?? null,
   });
 
   return (
