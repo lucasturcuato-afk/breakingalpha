@@ -7,7 +7,6 @@ import Link from "next/link";
 import { Trophy, Clock, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { EmptyState } from "@/components/ui/empty-state";
-import AnimatedNumber from "@/components/ui/animated-number";
 import { VerdictEvolution } from "@/components/track-record/verdict-evolution";
 import {
   computeLiveScore,
@@ -230,11 +229,14 @@ export default function TrackRecordPage() {
       ).length,
     [scored],
   );
-  const confirmationRate = useMemo(() => {
-    const denom = trackingConfirmed + trackingInvalidated;
-    if (denom === 0) return null;
-    return Math.round((trackingConfirmed / denom) * 100);
-  }, [trackingConfirmed, trackingInvalidated]);
+  const confirmedExamples = useMemo(
+    () => scored.filter((t) => t.live.verdict === "Confirmed" || t.live.verdict === "Tracking confirmed").slice(0, 2),
+    [scored],
+  );
+  const invalidatedExamples = useMemo(
+    () => scored.filter((t) => t.live.verdict === "Invalidated" || t.live.verdict === "Tracking invalidated").slice(0, 2),
+    [scored],
+  );
 
   const sectorGroups = useMemo<SectorGroup[]>(() => {
     const map = new Map<
@@ -387,28 +389,28 @@ export default function TrackRecordPage() {
           </div>
         ) : (
           <>
-            {/* SUMMARY STATS */}
-            <div className="grid grid-cols-4 gap-3">
-              <StatCard label="Total" value={totalCount} loading={loading} />
-              <StatCard
-                label="Tracking Confirmed"
-                value={trackingConfirmed}
+            {/* STATUS SCOREBOARD */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <StatusCard
+                label="Making calls"
                 loading={loading}
-                trend="up"
+                headline={`${totalCount} active ${totalCount === 1 ? "thesis" : "theses"}`}
+                subline={awaitingCount > 0 ? `${awaitingCount} awaiting first grading run${overdueCount > 0 ? ` · ${overdueCount} overdue` : ""}` : undefined}
+                footer="Daily updates at 8:10 PM PT"
               />
-              <StatCard
-                label="Tracking Invalidated"
-                value={trackingInvalidated}
+              <StatusCard
+                label="How we've been right"
                 loading={loading}
-                trend="down"
+                headline={trackingConfirmed > 0 ? `${trackingConfirmed} ${trackingConfirmed === 1 ? "call" : "calls"} confirmed` : "No confirmed calls yet"}
+                subline={confirmedExamples.length > 0 ? confirmedExamples.map(t => t.title).join(" · ") : undefined}
+                tint="positive"
               />
-              <StatCard
-                label="Confirmation Rate"
-                value={confirmationRate}
-                suffix="%"
-                placeholder="--"
-                gold
+              <StatusCard
+                label="How we've been wrong"
                 loading={loading}
+                headline={trackingInvalidated > 0 ? `${trackingInvalidated} ${trackingInvalidated === 1 ? "call" : "calls"} invalidated` : "No losses recorded yet"}
+                subline={invalidatedExamples.length > 0 ? invalidatedExamples.map(t => t.title).join(" · ") : undefined}
+                tint={trackingInvalidated > 0 ? "negative" : undefined}
               />
             </div>
 
@@ -421,14 +423,7 @@ export default function TrackRecordPage() {
                   <table className="w-full font-sans text-[12px]">
                     <thead>
                       <tr className="border-b border-border-base">
-                        {[
-                          "Sector",
-                          "Theses",
-                          "Tracking ↑",
-                          "Tracking ↓",
-                          "Win Rate",
-                          "Avg Score",
-                        ].map((h) => (
+                        {["Sector", "Status", "Count"].map((h) => (
                           <th
                             key={h}
                             className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold py-2 px-2 text-left"
@@ -442,9 +437,9 @@ export default function TrackRecordPage() {
                       {sectorGroups.map((g, i) => (
                         <tr
                           key={g.sector}
-                          className={`card-hover-lift border-b border-border-base last:border-b-0 ${i === 0 ? "bg-gold/5" : ""}`}
+                          className={`border-b border-border-base last:border-b-0 ${i === 0 ? "bg-gold/5" : ""}`}
                         >
-                          <td className="py-2 px-2">
+                          <td className="py-2.5 px-2">
                             <span
                               style={getSectorStyle(g.sector)}
                               className="font-sans text-[10px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
@@ -452,26 +447,11 @@ export default function TrackRecordPage() {
                               {g.sector}
                             </span>
                           </td>
-                          <td className="py-2 px-2 font-data">{g.total}</td>
-                          <td className="py-2 px-2 font-data text-signal-up">
-                            {g.trackingConfirmed}
+                          <td className="py-2.5 px-2">
+                            <SectorStatus group={g} />
                           </td>
-                          <td className="py-2 px-2 font-data text-signal-dn">
-                            {g.trackingInvalidated}
-                          </td>
-                          <td className="py-2 px-2">
-                            <div className="flex items-center gap-2">
-                              <span className="font-data font-semibold">{g.winRate}%</span>
-                              <div className="flex-1 h-1.5 rounded-full bg-gold/20 max-w-[80px]">
-                                <div
-                                  className="bar-sweep-in h-full rounded-full bg-gold"
-                                  style={{ width: `${g.winRate}%` }}
-                                />
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-2 px-2 font-data">
-                            <ScoreBadge score={g.avgScore} />
+                          <td className="py-2.5 px-2 font-data text-text-secondary">
+                            {g.total} {g.total === 1 ? "thesis" : "theses"}
                           </td>
                         </tr>
                       ))}
@@ -482,7 +462,9 @@ export default function TrackRecordPage() {
             </Section>
 
             {/* VERDICT EVOLUTION — avg live_score sparkline (last 30d) */}
-            <VerdictEvolution scored={scored} />
+            {trackingConfirmed + trackingInvalidated >= 20 && (
+              <VerdictEvolution scored={scored} />
+            )}
 
             {/* WHAT'S BEEN WORKING */}
             <Section title="What's Been Working">
@@ -558,7 +540,7 @@ export default function TrackRecordPage() {
                   {recentScored.map((t) => (
                     <Link
                       key={t.id}
-                      href={`/thesis-board?thesis=${t.id}`}
+                      href={`/track-record/${t.id}`}
                       className="card-hover-lift block bg-white rounded-xl border border-border-base p-3 hover:border-gold/40 transition-colors"
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -575,12 +557,11 @@ export default function TrackRecordPage() {
                                 {t.sector}
                               </span>
                             )}
-                            <LiveVerdictBadge live={t.live} />
                             <TickerOrPrivate title={t.title} ticker={t.ticker} />
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                          <ScoreBadge score={t.live.score} />
+                          <LiveVerdictBadge live={t.live} size="prominent" />
                           {t.generated_at && (
                             <span className="font-data text-[10px] text-text-faint">
                               {formatDate(t.generated_at)}
@@ -602,46 +583,44 @@ export default function TrackRecordPage() {
 
 /* ── Sub-components ── */
 
-function StatCard({
+function StatusCard({
   label,
-  value,
-  suffix,
-  placeholder = "--",
-  gold,
+  headline,
+  subline,
+  footer,
+  tint,
   loading,
-  trend,
 }: {
   label: string;
-  value: number | null;
-  suffix?: string;
-  placeholder?: string;
-  gold?: boolean;
+  headline: string;
+  subline?: string;
+  footer?: string;
+  tint?: "positive" | "negative";
   loading?: boolean;
-  trend?: "up" | "down";
 }) {
-  const trendColor =
-    trend === "up" ? "text-signal-up" : trend === "down" ? "text-signal-dn" : "";
+  const borderAccent =
+    tint === "positive" ? "border-l-signal-up" :
+    tint === "negative" ? "border-l-signal-dn" :
+    "border-l-gold";
   return (
-    <div className="card-hover-lift bg-white rounded-xl border border-border-base p-4">
-      <div className="font-sans text-[10px] uppercase tracking-widest text-text-muted mb-1 inline-flex items-center gap-1">
-        {trend === "up" && <TrendingUp size={10} className="text-signal-up" />}
-        {trend === "down" && <TrendingDown size={10} className="text-signal-dn" />}
-        <span>{label}</span>
+    <div className={`bg-white rounded-xl border border-border-base border-l-[3px] ${borderAccent} p-4`}>
+      <div className="font-sans text-[10px] uppercase tracking-widest text-text-muted mb-1.5">
+        {label}
       </div>
       {loading ? (
-        <div className="skeleton-shimmer h-8 w-16 rounded" />
-      ) : value === null ? (
-        <div className={`font-data text-2xl font-bold ${gold ? "text-gold" : "text-espresso"}`}>
-          {placeholder}
-        </div>
+        <div className="skeleton-shimmer h-5 w-40 rounded" />
       ) : (
-        <div
-          className={`font-data text-2xl font-bold ${
-            gold ? "text-gold" : trendColor || "text-espresso"
-          }`}
-        >
-          <AnimatedNumber value={value} format={(n) => `${Math.round(n)}${suffix ?? ""}`} />
+        <div className="font-sans text-[13px] font-semibold text-espresso leading-snug">
+          {headline}
         </div>
+      )}
+      {subline && (
+        <div className="font-sans text-[11px] text-text-muted mt-1 leading-snug line-clamp-2">
+          {subline}
+        </div>
+      )}
+      {footer && (
+        <div className="font-data text-[10px] text-text-faint mt-2">{footer}</div>
       )}
     </div>
   );
@@ -658,16 +637,20 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function LiveVerdictBadge({ live }: { live: LiveScoreResult }) {
+function LiveVerdictBadge({ live, size = "default" }: { live: LiveScoreResult; size?: "default" | "prominent" }) {
+  const isProminent = size === "prominent";
+  const chipClasses = liveScoreChipClasses(live.verdict);
+  // Strip italic for prominent badges — they should look assertive, not tentative
+  const classes = isProminent ? chipClasses.replace(" italic", "") : chipClasses;
   return (
     <span
-      className={`font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded ${liveScoreChipClasses(
-        live.verdict,
-      )}`}
+      className={`font-sans font-semibold rounded ${
+        isProminent ? "text-[11px] px-2 py-1" : "text-[10px] px-1.5 py-0.5"
+      } ${classes}`}
       title={
         TERMINAL_LABELS.includes(live.verdict)
-          ? `Terminal verdict (score ${live.score})`
-          : `In-flight verdict (score ${live.score})`
+          ? `Terminal verdict (score ${live.score} of ±100)`
+          : `In-flight verdict (score ${live.score} of ±100)`
       }
     >
       {live.verdict}
@@ -675,21 +658,26 @@ function LiveVerdictBadge({ live }: { live: LiveScoreResult }) {
   );
 }
 
-function ScoreBadge({ score }: { score: number }) {
-  const rounded = Math.round(score);
-  const sign = rounded > 0 ? "+" : "";
-  const color =
-    rounded >= 35
-      ? "bg-signal-up/10 text-signal-up"
-      : rounded <= -35
-        ? "bg-signal-dn/10 text-signal-dn"
-        : "bg-text-faint/10 text-text-secondary";
-  return (
-    <span className={`font-data text-[11px] font-semibold px-1.5 py-0.5 rounded ${color}`}>
-      {sign}
-      {rounded}
-    </span>
-  );
+function SectorStatus({ group }: { group: SectorGroup }) {
+  if (group.trackingConfirmed > 0 && group.trackingInvalidated === 0) {
+    return <span className="font-sans text-[11px] text-signal-up">All calls tracking positively</span>;
+  }
+  if (group.trackingInvalidated > 0 && group.trackingConfirmed === 0) {
+    return <span className="font-sans text-[11px] text-signal-dn">Calls facing headwinds</span>;
+  }
+  if (group.trackingConfirmed > 0 && group.trackingInvalidated > 0) {
+    return <span className="font-sans text-[11px] text-text-secondary">Mixed signals — {group.trackingConfirmed} up, {group.trackingInvalidated} down</span>;
+  }
+  return <span className="font-sans text-[11px] text-text-muted">Awaiting enough data to assess</span>;
+}
+
+function scoreToDescriptor(live: LiveScoreResult): string {
+  if (live.verdict === "Confirmed") return "Call confirmed by evidence";
+  if (live.verdict === "Invalidated") return "Call contradicted by evidence";
+  if (live.verdict === "Tracking confirmed") return "Evidence building in favor";
+  if (live.verdict === "Tracking invalidated") return "Evidence building against";
+  if (live.verdict.startsWith("Inconclusive")) return "Ran out of time, unclear";
+  return "Monitoring — too early to tell";
 }
 
 function ThesisRankCard({
@@ -703,7 +691,7 @@ function ThesisRankCard({
   const iconColor = positive ? "text-signal-up" : "text-signal-dn";
   return (
     <Link
-      href={`/thesis-board?thesis=${thesis.id}`}
+      href={`/track-record/${thesis.id}`}
       className="card-hover-lift block bg-white rounded-xl border border-border-base p-3 hover:border-gold/40 transition-colors"
     >
       <div className="flex items-start gap-2">
@@ -721,8 +709,8 @@ function ThesisRankCard({
                 {thesis.sector}
               </span>
             )}
-            <ScoreBadge score={thesis.live.score} />
-            <LiveVerdictBadge live={thesis.live} />
+            <LiveVerdictBadge live={thesis.live} size="prominent" />
+            <span className="font-sans text-[10px] text-text-muted">{scoreToDescriptor(thesis.live)}</span>
           </div>
         </div>
       </div>

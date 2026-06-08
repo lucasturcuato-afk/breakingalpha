@@ -22,6 +22,7 @@ import { createElement } from "react";
 import { getSiteUrl } from "@/lib/email/site-url";
 import { ensureIssueNumber } from "@/lib/email/issue-number";
 import { makeUnsubscribeToken } from "@/lib/email/unsubscribe-token";
+import { isAdmin } from "@/lib/admin-emails";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,6 +80,21 @@ export async function POST(request: NextRequest) {
       { error: `Invalid email address(es): ${invalid.join(", ")}` },
       { status: 400 },
     );
+  }
+
+  // Recipient guard: a non-admin caller may only send the brief to their own
+  // verified email. Admins (ADMIN_EMAILS) may send to any recipient. Without
+  // this, any authenticated user could send mail to arbitrary external
+  // addresses from our domain, an outbound-spam and reputation risk.
+  if (!isAdmin(user.email)) {
+    const own = (user.email ?? "").toLowerCase();
+    const foreign = to.filter((e) => e.toLowerCase() !== own);
+    if (!own || foreign.length > 0) {
+      return NextResponse.json(
+        { error: "You can only send this brief to your own account email." },
+        { status: 403 },
+      );
+    }
   }
 
   const briefingId = typeof body.briefing_id === "string" ? body.briefing_id : null;

@@ -22,10 +22,40 @@ interface FinnhubNewsItem {
   datetime: number;
 }
 
+type NewsArticle = {
+  id: string;
+  title: string;
+  source: string;
+  url: string;
+  summary: string;
+  published_at: string;
+  ingested_at: string;
+  sector: null;
+  primary_company: null;
+  industry_verticals: null;
+  activity_types: null;
+  relevance_score: null;
+};
+
+// Per-symbol module cache (survives warm invocations). Cuts repeat Finnhub
+// company-news fan-out when many users hold the same ticker. 90s TTL matches
+// /api/quotes and /api/market-indices.
+const newsCache = new Map<string, { articles: NewsArticle[]; ts: number }>();
+const CACHE_MS = 90_000;
+
 export async function GET(request: NextRequest) {
   const symbol = request.nextUrl.searchParams.get("symbol");
   if (!symbol)
     return NextResponse.json({ error: "symbol required" }, { status: 400 });
+
+  const cacheKey = symbol.toUpperCase();
+  const cached = newsCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_MS) {
+    return NextResponse.json(
+      { articles: cached.articles },
+      { headers: { "X-Cache": "HIT" } },
+    );
+  }
 
   const FINNHUB_KEY = process.env.FINNHUB_API_KEY;
   if (!FINNHUB_KEY)
@@ -45,7 +75,7 @@ export async function GET(request: NextRequest) {
     if (!Array.isArray(data) || data.length === 0) return NextResponse.json({ articles: [] });
 
     const now = new Date().toISOString();
-    const articles = data.map((item) => ({
+    const articles: NewsArticle[] = data.map((item) => ({
       id: `finnhub-${String(item.id)}`,
       title: item.headline,
       source: item.source,
@@ -60,7 +90,9 @@ export async function GET(request: NextRequest) {
       relevance_score: null,
     }));
 
-    return NextResponse.json({ articles });
+    newsCache.set(cacheKey, { articles, ts: Date.now() });
+
+    return NextResponse.json({ articles }, { headers: { "X-Cache": "MISS" } });
   } catch {
     return NextResponse.json({ articles: [] });
   }
