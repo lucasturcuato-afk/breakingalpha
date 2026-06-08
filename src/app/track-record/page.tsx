@@ -569,7 +569,7 @@ export default function TrackRecordPage() {
                   {recentScored.map((t) => (
                     <Link
                       key={t.id}
-                      href={`/thesis-board?thesis=${t.id}`}
+                      href={`/track-record/${t.id}`}
                       className="card-hover-lift block bg-white rounded-xl border border-border-base p-3 hover:border-gold/40 transition-colors"
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -719,7 +719,7 @@ function ThesisRankCard({
   const iconColor = positive ? "text-signal-up" : "text-signal-dn";
   return (
     <Link
-      href={`/thesis-board?thesis=${thesis.id}`}
+      href={`/track-record/${thesis.id}`}
       className="card-hover-lift block bg-white rounded-xl border border-border-base p-3 hover:border-gold/40 transition-colors"
     >
       <div className="flex items-start gap-2">
