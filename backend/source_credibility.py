@@ -28,11 +28,12 @@ from datetime import datetime, timezone
 
 from supabase import create_client
 
+from supabase_client import get_service_client
 
 logger = logging.getLogger(__name__)
 
 
-supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
+supabase = get_service_client()
 
 
 # ==========================================================================
