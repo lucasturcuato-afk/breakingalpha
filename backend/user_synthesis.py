@@ -26,8 +26,9 @@ from google.genai import types
 
 from outputs import record_output
 from output_constants import ADDENDUM_PROMPT_VERSION
+from supabase_client import get_service_client
 
-supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
+supabase = get_service_client()
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 GEMINI_MODEL = "gemini-2.5-flash"
 

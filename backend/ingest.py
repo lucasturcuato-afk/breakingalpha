@@ -18,6 +18,7 @@ from watchlist import boost_watchlist_relevance
 from wikidata import is_valid_company
 from fulltext import fetch_full_text, SCRAPEABLE_SOURCES
 from entity_resolver import resolve_entity, increment_mention_counts
+from supabase_client import get_service_client
 
 load_dotenv()
 
@@ -34,7 +35,7 @@ socket.setdefaulttimeout(30)
 RSS_USER_AGENT = "BreakingAlpha pipeline (noahhanning03@gmail.com)"
 RSS_FETCH_TIMEOUT_SEC = 20
 
-supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
+supabase = get_service_client()
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 GEMINI_MODEL = "gemini-2.5-flash"
 # Filter step ONLY: the per-article relevance/sentiment classifier runs on the
