@@ -33,6 +33,13 @@ function unixNow(): number {
   return Math.floor(Date.now() / 1000);
 }
 
+// Per-request module cache (survives warm invocations). Each request makes up
+// to 6 Finnhub calls, so caching the assembled result for 90s sharply cuts
+// fan-out under cohort load. The key includes thesis_created_at because
+// momentum_vs_thesis depends on it. 90s TTL matches /api/quotes.
+const contextCache = new Map<string, { data: TickerContextResponse; ts: number }>();
+const CACHE_MS = 90_000;
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const ticker = searchParams.get("ticker");
@@ -40,6 +47,17 @@ export async function GET(request: NextRequest) {
 
   if (!ticker) {
     return NextResponse.json({ error: "ticker required" }, { status: 400 });
+  }
+
+  const cacheKey = `${ticker.toUpperCase()}|${thesisCreatedAt ?? ""}`;
+  const cachedCtx = contextCache.get(cacheKey);
+  if (cachedCtx && Date.now() - cachedCtx.ts < CACHE_MS) {
+    return NextResponse.json(cachedCtx.data, {
+      headers: {
+        "Cache-Control": "s-maxage=60, stale-while-revalidate=120",
+        "X-Cache": "HIT",
+      },
+    });
   }
 
   const apiKey = process.env.FINNHUB_API_KEY;
@@ -218,9 +236,12 @@ export async function GET(request: NextRequest) {
     // field stays null
   }
 
+  contextCache.set(cacheKey, { data: result, ts: Date.now() });
+
   return NextResponse.json(result, {
     headers: {
       "Cache-Control": "s-maxage=60, stale-while-revalidate=120",
+      "X-Cache": "MISS",
     },
   });
 }

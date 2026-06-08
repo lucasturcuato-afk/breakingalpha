@@ -45,6 +45,40 @@ function isYahooFirst(symbol: string): boolean {
   return symbol.startsWith("^") || symbol.includes("=");
 }
 
+// Per-symbol module cache (survives warm invocations). Keyed by symbol, NOT by
+// the requested symbol-set, so distinct watchlists share entries: when 50 users
+// hold AAPL, the first request fetches it and the rest hit cache. 90s TTL
+// matches /api/quotes and /api/market-indices. Only successful quotes are
+// cached, so transient failures retry.
+const quoteCache = new Map<string, { data: Quote; ts: number }>();
+const CACHE_MS = 90_000;
+
+async function getQuoteCached(
+  symbol: string,
+  finnhubKey: string | undefined,
+): Promise<Quote | null> {
+  const cached = quoteCache.get(symbol);
+  if (cached && Date.now() - cached.ts < CACHE_MS) return cached.data;
+
+  let data: Quote | null = null;
+  if (isYahooFirst(symbol)) {
+    data = await fetchYahoo(symbol).catch(() => null);
+    if (!data && finnhubKey) {
+      data = await fetchFinnhub(symbol, finnhubKey).catch(() => null);
+    }
+  } else {
+    if (finnhubKey) {
+      data = await fetchFinnhub(symbol, finnhubKey).catch(() => null);
+    }
+    if (!data) {
+      data = await fetchYahoo(symbol).catch(() => null);
+    }
+  }
+
+  if (data) quoteCache.set(symbol, { data, ts: Date.now() });
+  return data;
+}
+
 export async function GET(request: NextRequest) {
   const symbols = request.nextUrl.searchParams.get("symbols");
   if (!symbols)
@@ -60,20 +94,7 @@ export async function GET(request: NextRequest) {
 
   const results = await Promise.allSettled(
     symbolList.map(async (symbol) => {
-      let data: Quote | null = null;
-      if (isYahooFirst(symbol)) {
-        data = await fetchYahoo(symbol).catch(() => null);
-        if (!data && FINNHUB_KEY) {
-          data = await fetchFinnhub(symbol, FINNHUB_KEY).catch(() => null);
-        }
-      } else {
-        if (FINNHUB_KEY) {
-          data = await fetchFinnhub(symbol, FINNHUB_KEY).catch(() => null);
-        }
-        if (!data) {
-          data = await fetchYahoo(symbol).catch(() => null);
-        }
-      }
+      const data = await getQuoteCached(symbol, FINNHUB_KEY);
       return { symbol, data };
     }),
   );
