@@ -49,6 +49,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
+import { fetchTopStories, TOP_STORIES_MAX_AGE_DAYS } from "@/lib/top-stories";
 import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
 import type { ContentDescriptor } from "@/lib/personalization";
 import { useLiveMood } from "@/hooks/useLiveMood";
@@ -221,18 +222,9 @@ export default function DashboardPage() {
           if (b.market_tone) setMarketTone(b.market_tone);
         }
 
-        // Get top 4 stories
-        const { data, error } = await supabase
-          .from("articles")
-          .select("id, title, source, summary, content, sector, industry_verticals, activity_types, sentiment, published_at, ingested_at, url, companies, relevance_score")
-          .order("relevance_score", { ascending: false })
-          .order("ingested_at", { ascending: false })
-          .limit(4);
-
-        if (error) {
-          console.error("Dashboard stories query error:", error.message);
-          return;
-        }
+        // Top Stories: highest relevance within the shared recency window.
+        // See src/lib/top-stories.ts for the single-source-of-truth windows.
+        const data = await fetchTopStories(supabase);
 
         if (data) {
           // Fetch source credibility in one batched query
@@ -278,7 +270,7 @@ export default function DashboardPage() {
                 saved: false,
                 completeness,
                 adjustedScore,
-                sourceWinRate: credMap.get(a.source) ?? null,
+                sourceWinRate: a.source ? credMap.get(a.source) ?? null : null,
               };
             }),
           );
@@ -650,7 +642,7 @@ export default function DashboardPage() {
             <div className="flex items-center gap-3">
               <h2 className="font-sans text-[10px] font-medium uppercase tracking-wider text-text-muted inline-flex items-center gap-1.5">
                 Top Stories — hover to expand
-                <InfoTooltip content="The highest-signal articles today, ranked by Signalera's relevance algorithm." side="bottom" iconSize={10} />
+                <InfoTooltip content={`The highest-signal stories from the last ${TOP_STORIES_MAX_AGE_DAYS} days, ranked by Signalera's relevance algorithm.`} side="bottom" iconSize={10} />
               </h2>
               {/* Tab bar */}
               <div className="flex gap-3">

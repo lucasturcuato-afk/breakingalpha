@@ -17,6 +17,7 @@ import { SignInModal } from "@/components/auth/sign-in-modal";
 import { FileText } from "lucide-react";
 import Link from "next/link";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
+import { fetchTopStories } from "@/lib/top-stories";
 import { useLiveMood } from "@/hooks/useLiveMood";
 
 function getSupabase() {
@@ -63,18 +64,9 @@ export default function PreviewPage() {
           .gte("ingested_at", todayMidnight.toISOString());
         setStoryCount(count ?? 0);
 
-        // Get top 4 stories
-        const { data, error } = await supabase
-          .from("articles")
-          .select("id, title, source, summary, content, sector, industry_verticals, activity_types, sentiment, published_at, ingested_at, url, companies, relevance_score")
-          .order("relevance_score", { ascending: false })
-          .order("ingested_at", { ascending: false })
-          .limit(4);
-
-        if (error) {
-          console.error("Preview stories query error:", error.message);
-          return;
-        }
+        // Top Stories: highest relevance within the shared recency window.
+        // See src/lib/top-stories.ts for the single-source-of-truth windows.
+        const data = await fetchTopStories(supabase);
 
         if (data) {
           // Fetch source credibility in one batched query
@@ -118,7 +110,7 @@ export default function PreviewPage() {
                 saved: false,
                 completeness,
                 adjustedScore,
-                sourceWinRate: credMap.get(a.source) ?? null,
+                sourceWinRate: a.source ? credMap.get(a.source) ?? null : null,
               };
             }),
           );
