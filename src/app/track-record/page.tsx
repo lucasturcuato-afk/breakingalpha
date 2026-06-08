@@ -479,8 +479,8 @@ export default function TrackRecordPage() {
                               <span className="font-data text-text-muted" title="Needs ≥3 resolved theses">—</span>
                             )}
                           </td>
-                          <td className="py-2 px-2 font-data">
-                            <ScoreBadge score={g.avgScore} />
+                          <td className="py-2 px-2">
+                            <ScoreMuted score={g.avgScore} />
                           </td>
                         </tr>
                       ))}
@@ -586,12 +586,12 @@ export default function TrackRecordPage() {
                                 {t.sector}
                               </span>
                             )}
-                            <LiveVerdictBadge live={t.live} />
                             <TickerOrPrivate title={t.title} ticker={t.ticker} />
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                          <ScoreBadge score={t.live.score} />
+                          <LiveVerdictBadge live={t.live} size="prominent" />
+                          <ScoreMuted score={t.live.score} />
                           {t.generated_at && (
                             <span className="font-data text-[10px] text-text-faint">
                               {formatDate(t.generated_at)}
@@ -674,16 +674,20 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function LiveVerdictBadge({ live }: { live: LiveScoreResult }) {
+function LiveVerdictBadge({ live, size = "default" }: { live: LiveScoreResult; size?: "default" | "prominent" }) {
+  const isProminent = size === "prominent";
+  const chipClasses = liveScoreChipClasses(live.verdict);
+  // Strip italic for prominent badges — they should look assertive, not tentative
+  const classes = isProminent ? chipClasses.replace(" italic", "") : chipClasses;
   return (
     <span
-      className={`font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded ${liveScoreChipClasses(
-        live.verdict,
-      )}`}
+      className={`font-sans font-semibold rounded ${
+        isProminent ? "text-[11px] px-2 py-1" : "text-[10px] px-1.5 py-0.5"
+      } ${classes}`}
       title={
         TERMINAL_LABELS.includes(live.verdict)
-          ? `Terminal verdict (score ${live.score})`
-          : `In-flight verdict (score ${live.score})`
+          ? `Terminal verdict (score ${live.score} of ±100)`
+          : `In-flight verdict (score ${live.score} of ±100)`
       }
     >
       {live.verdict}
@@ -691,19 +695,12 @@ function LiveVerdictBadge({ live }: { live: LiveScoreResult }) {
   );
 }
 
-function ScoreBadge({ score }: { score: number }) {
+function ScoreMuted({ score }: { score: number }) {
   const rounded = Math.round(score);
   const sign = rounded > 0 ? "+" : "";
-  const color =
-    rounded >= 35
-      ? "bg-signal-up/10 text-signal-up"
-      : rounded <= -35
-        ? "bg-signal-dn/10 text-signal-dn"
-        : "bg-text-faint/10 text-text-secondary";
   return (
-    <span className={`font-data text-[11px] font-semibold px-1.5 py-0.5 rounded ${color}`}>
-      {sign}
-      {rounded}
+    <span className="font-data text-[10px] text-text-faint">
+      {sign}{rounded} of ±100
     </span>
   );
 }
@@ -737,8 +734,8 @@ function ThesisRankCard({
                 {thesis.sector}
               </span>
             )}
-            <ScoreBadge score={thesis.live.score} />
-            <LiveVerdictBadge live={thesis.live} />
+            <LiveVerdictBadge live={thesis.live} size="prominent" />
+            <ScoreMuted score={thesis.live.score} />
           </div>
         </div>
       </div>

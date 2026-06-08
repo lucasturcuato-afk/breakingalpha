@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
-import { ArrowLeft, Clock, TrendingUp, TrendingDown } from "lucide-react";
+import { ArrowLeft, ChevronDown, Clock, TrendingUp, TrendingDown } from "lucide-react";
 import { getSectorStyle } from "@/lib/sector-colors";
 import {
   computeLiveScore,
@@ -14,6 +14,7 @@ import {
   type TerminalVerdict,
 } from "@/lib/track-record-live-score";
 import { useLiveMood } from "@/hooks/useLiveMood";
+import { componentBreakdown, SCORE_SCALE } from "@/lib/score-presentation";
 
 function getSupabase() {
   return createBrowserClient(
@@ -232,25 +233,33 @@ export default function ThesisDetailPage() {
           )}
         </section>
 
-        {/* SECTION 2: Live Score Summary */}
+        {/* SECTION 2: Current Signal */}
         {live && (
-          <section className="bg-white rounded-xl border border-border-base p-5">
-            <h2 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold mb-3">Current Score</h2>
-            <div className="flex items-center gap-4">
-              <div className={`font-data text-3xl font-bold ${live.score >= 0 ? "text-signal-up" : "text-signal-dn"}`}>
-                {live.score > 0 ? "+" : ""}{live.score}
-              </div>
-              <div className="flex-1 space-y-1 text-[11px] font-data text-text-secondary">
-                <ScoreRow label="Price" value={live.components.price} max={50} />
-                <ScoreRow label="Sentiment" value={live.components.sentiment} max={25} />
-                <ScoreRow label="Ratio" value={live.components.ratio} max={15} />
-                <ScoreRow label="Confidence" value={live.components.confidence} max={10} />
-                <ScoreRow label="Time decay" value={live.components.timeDecay} max={10} />
+          <section className="bg-white rounded-xl border border-border-base p-5 space-y-4">
+            <div>
+              <h2 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold mb-2">Current Signal</h2>
+              <div className="flex items-center gap-3">
+                <span className={`font-sans text-[12px] font-semibold px-2.5 py-1 rounded ${liveScoreChipClasses(live.verdict).replace(" italic", "")}`}>
+                  {live.verdict}
+                </span>
+                <span className="font-data text-[12px] text-text-secondary">
+                  {live.score > 0 ? "+" : ""}{live.score} of ±{SCORE_SCALE}
+                </span>
               </div>
             </div>
-            <div className="mt-2 font-data text-[10px] text-text-muted">
-              Age: {live.ageDays}d · Horizon: {live.horizonDays}d · Source: {live.source}
+
+            {/* Plain-language breakdown */}
+            <div>
+              <h3 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold mb-2">What we&apos;re seeing</h3>
+              <SignalBreakdown live={live} thesis={thesis} />
             </div>
+
+            <div className="font-data text-[10px] text-text-faint">
+              Age: {live.ageDays}d · Horizon: {live.horizonDays}d
+            </div>
+
+            {/* About this score — collapsible */}
+            <ScoreExplainer />
           </section>
         )}
 
@@ -302,21 +311,62 @@ export default function ThesisDetailPage() {
 
 /* ── Helpers ── */
 
-function ScoreRow({ label, value, max }: { label: string; value: number; max: number }) {
-  const pct = Math.abs(value) / max * 100;
-  const positive = value >= 0;
+function SignalBreakdown({ live, thesis }: { live: LiveScoreResult; thesis: ThesisRow }) {
+  const signalBreakdown = (thesis.signal_breakdown || {}) as Record<string, unknown>;
+  const sentences = componentBreakdown(live.components, {
+    priceChangePct: typeof signalBreakdown.price_change_pct === "number" ? signalBreakdown.price_change_pct : null,
+    ticker: thesis.ticker,
+    conviction: thesis.conviction,
+    ageDays: live.ageDays,
+    horizonDays: live.horizonDays,
+    latestConfidence: null, // from verdicts — we don't have it inline here
+    latestVerdict: live.terminal,
+  });
+
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-16 text-text-muted">{label}</span>
-      <div className="flex-1 h-1.5 rounded-full bg-border-base max-w-[100px] relative">
-        <div
-          className={`h-full rounded-full ${positive ? "bg-signal-up" : "bg-signal-dn"}`}
-          style={{ width: `${Math.min(pct, 100)}%` }}
-        />
-      </div>
-      <span className={`w-8 text-right ${positive ? "text-signal-up" : "text-signal-dn"}`}>
-        {value > 0 ? "+" : ""}{Math.round(value)}
-      </span>
+    <ul className="space-y-2">
+      {sentences.map((s) => (
+        <li key={s.label} className="flex items-start gap-2">
+          <span className={`mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+            s.sentiment === "positive" ? "bg-signal-up" :
+            s.sentiment === "negative" ? "bg-signal-dn" :
+            "bg-text-faint"
+          }`} />
+          <div>
+            <span className="font-sans text-[12px] text-text-primary leading-snug">
+              {s.sentence}
+            </span>
+            <span className="font-data text-[10px] text-text-faint ml-1.5">
+              ({s.value > 0 ? "+" : ""}{Math.round(s.value)})
+            </span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ScoreExplainer() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-t border-border-base pt-3">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1 font-sans text-[11px] text-text-muted hover:text-text-secondary transition-colors"
+      >
+        <ChevronDown size={12} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        About this score
+      </button>
+      {open && (
+        <p className="font-sans text-[11px] text-text-secondary leading-relaxed mt-2 max-w-[540px]">
+          Signalera scores each thesis daily on a scale from -100 to +100, combining
+          price action, news sentiment, coverage balance, grading model confidence, and time
+          elapsed against the call&apos;s horizon. Positive scores indicate market behavior
+          is tracking the call. Negative scores indicate the call may be invalidated.
+          Final verdicts (Confirmed / Invalidated) are assigned when sufficient time
+          has passed and evidence is strong enough.
+        </p>
+      )}
     </div>
   );
 }
