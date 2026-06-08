@@ -406,6 +406,11 @@ export default function TrackRecordPage() {
                 label="Confirmation Rate"
                 value={confirmationRate}
                 suffix="%"
+                subtext={
+                  trackingConfirmed + trackingInvalidated > 0
+                    ? `${trackingConfirmed} of ${trackingConfirmed + trackingInvalidated} resolved`
+                    : undefined
+                }
                 placeholder="--"
                 gold
                 loading={loading}
@@ -460,15 +465,19 @@ export default function TrackRecordPage() {
                             {g.trackingInvalidated}
                           </td>
                           <td className="py-2 px-2">
-                            <div className="flex items-center gap-2">
-                              <span className="font-data font-semibold">{g.winRate}%</span>
-                              <div className="flex-1 h-1.5 rounded-full bg-gold/20 max-w-[80px]">
-                                <div
-                                  className="bar-sweep-in h-full rounded-full bg-gold"
-                                  style={{ width: `${g.winRate}%` }}
-                                />
+                            {g.trackingConfirmed + g.trackingInvalidated >= 3 ? (
+                              <div className="flex items-center gap-2">
+                                <span className="font-data font-semibold">{g.winRate}%</span>
+                                <div className="flex-1 h-1.5 rounded-full bg-gold/20 max-w-[80px]">
+                                  <div
+                                    className="bar-sweep-in h-full rounded-full bg-gold"
+                                    style={{ width: `${g.winRate}%` }}
+                                  />
+                                </div>
                               </div>
-                            </div>
+                            ) : (
+                              <span className="font-data text-text-muted" title="Needs ≥3 resolved theses">—</span>
+                            )}
                           </td>
                           <td className="py-2 px-2 font-data">
                             <ScoreBadge score={g.avgScore} />
@@ -482,7 +491,9 @@ export default function TrackRecordPage() {
             </Section>
 
             {/* VERDICT EVOLUTION — avg live_score sparkline (last 30d) */}
-            <VerdictEvolution scored={scored} />
+            {trackingConfirmed + trackingInvalidated >= 20 && (
+              <VerdictEvolution scored={scored} />
+            )}
 
             {/* WHAT'S BEEN WORKING */}
             <Section title="What's Been Working">
@@ -606,6 +617,7 @@ function StatCard({
   label,
   value,
   suffix,
+  subtext,
   placeholder = "--",
   gold,
   loading,
@@ -614,6 +626,7 @@ function StatCard({
   label: string;
   value: number | null;
   suffix?: string;
+  subtext?: string;
   placeholder?: string;
   gold?: boolean;
   loading?: boolean;
@@ -642,6 +655,9 @@ function StatCard({
         >
           <AnimatedNumber value={value} format={(n) => `${Math.round(n)}${suffix ?? ""}`} />
         </div>
+      )}
+      {subtext && (
+        <div className="font-data text-[10px] text-text-muted mt-0.5">{subtext}</div>
       )}
     </div>
   );
