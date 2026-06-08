@@ -49,6 +49,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
+import { fetchTopStories, TOP_STORIES_MAX_AGE_DAYS } from "@/lib/top-stories";
 import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
 import type { ContentDescriptor } from "@/lib/personalization";
 import { useLiveMood } from "@/hooks/useLiveMood";
@@ -70,21 +71,6 @@ function timeAgo(dateStr: string): string {
 }
 
 const SPARK_DAYS = 12;
-
-// Top Stories recency window. relevance_score is computed once at ingest and
-// never decayed, so ordering by it alone surfaces stale high-score rows. We
-// order relevance inside a recency window (matching evening-wrap, morning-brief,
-// and backend/synthesize.py) so Top Stories stays both high-signal AND recent.
-// Filter on BOTH date columns: ingested_at catches articles surfaced long ago,
-// published_at catches RSS items republished with a fresh ingest but a stale
-// publish date (the "100+ days old" path noted in backend/synthesize.py).
-const TOP_STORIES_INGESTED_WINDOW_HOURS = 24;
-const TOP_STORIES_PUBLISHED_WINDOW_HOURS = 48;
-// Widen-on-thin-results window (7 days), applied to both columns. Bounds the
-// worst case at one week so Top Stories never goes fully unbounded.
-const TOP_STORIES_FALLBACK_WINDOW_HOURS = 168;
-// If the primary window returns fewer rows than this, run the widened fallback.
-const TOP_STORIES_MIN_RESULTS = 3;
 
 interface MarketCardData {
   symbol: string;
@@ -236,45 +222,9 @@ export default function DashboardPage() {
           if (b.market_tone) setMarketTone(b.market_tone);
         }
 
-        // Get top 4 stories: highest relevance INSIDE a recency window so a
-        // stale high-score article cannot outrank fresh ones (see the
-        // TOP_STORIES_* constants for the rationale and tunable windows).
-        const hoursAgo = (h: number) => new Date(Date.now() - h * 60 * 60 * 1000).toISOString();
-        const STORY_COLUMNS = "id, title, source, summary, content, sector, industry_verticals, activity_types, sentiment, published_at, ingested_at, url, companies, relevance_score";
-
-        const { data: primary, error } = await supabase
-          .from("articles")
-          .select(STORY_COLUMNS)
-          .gte("ingested_at", hoursAgo(TOP_STORIES_INGESTED_WINDOW_HOURS))
-          .gte("published_at", hoursAgo(TOP_STORIES_PUBLISHED_WINDOW_HOURS))
-          .order("relevance_score", { ascending: false })
-          .order("ingested_at", { ascending: false })
-          .limit(4);
-
-        if (error) {
-          console.error("Dashboard stories query error:", error.message);
-          return;
-        }
-
-        // Thin primary window (quiet day): widen both columns to the fallback
-        // window rather than show a near-empty module. Still bounded, never
-        // unbounded, so we cannot regress to surfacing months-old stories.
-        let data = primary;
-        if ((primary?.length ?? 0) < TOP_STORIES_MIN_RESULTS) {
-          const { data: fallback, error: fallbackError } = await supabase
-            .from("articles")
-            .select(STORY_COLUMNS)
-            .gte("ingested_at", hoursAgo(TOP_STORIES_FALLBACK_WINDOW_HOURS))
-            .gte("published_at", hoursAgo(TOP_STORIES_FALLBACK_WINDOW_HOURS))
-            .order("relevance_score", { ascending: false })
-            .order("ingested_at", { ascending: false })
-            .limit(4);
-          if (fallbackError) {
-            console.error("Dashboard stories fallback query error:", fallbackError.message);
-          } else if (fallback) {
-            data = fallback;
-          }
-        }
+        // Top Stories: highest relevance within the shared recency window.
+        // See src/lib/top-stories.ts for the single-source-of-truth windows.
+        const data = await fetchTopStories(supabase);
 
         if (data) {
           // Fetch source credibility in one batched query
@@ -320,7 +270,7 @@ export default function DashboardPage() {
                 saved: false,
                 completeness,
                 adjustedScore,
-                sourceWinRate: credMap.get(a.source) ?? null,
+                sourceWinRate: a.source ? credMap.get(a.source) ?? null : null,
               };
             }),
           );
@@ -692,7 +642,7 @@ export default function DashboardPage() {
             <div className="flex items-center gap-3">
               <h2 className="font-sans text-[10px] font-medium uppercase tracking-wider text-text-muted inline-flex items-center gap-1.5">
                 Top Stories — hover to expand
-                <InfoTooltip content="The highest-signal articles today, ranked by Signalera's relevance algorithm." side="bottom" iconSize={10} />
+                <InfoTooltip content={`The highest-signal stories from the last ${TOP_STORIES_MAX_AGE_DAYS} days, ranked by Signalera's relevance algorithm.`} side="bottom" iconSize={10} />
               </h2>
               {/* Tab bar */}
               <div className="flex gap-3">
