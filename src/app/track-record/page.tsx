@@ -7,7 +7,6 @@ import Link from "next/link";
 import { Trophy, Clock, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { EmptyState } from "@/components/ui/empty-state";
-import AnimatedNumber from "@/components/ui/animated-number";
 import { VerdictEvolution } from "@/components/track-record/verdict-evolution";
 import {
   computeLiveScore,
@@ -230,11 +229,14 @@ export default function TrackRecordPage() {
       ).length,
     [scored],
   );
-  const confirmationRate = useMemo(() => {
-    const denom = trackingConfirmed + trackingInvalidated;
-    if (denom === 0) return null;
-    return Math.round((trackingConfirmed / denom) * 100);
-  }, [trackingConfirmed, trackingInvalidated]);
+  const confirmedExamples = useMemo(
+    () => scored.filter((t) => t.live.verdict === "Confirmed" || t.live.verdict === "Tracking confirmed").slice(0, 2),
+    [scored],
+  );
+  const invalidatedExamples = useMemo(
+    () => scored.filter((t) => t.live.verdict === "Invalidated" || t.live.verdict === "Tracking invalidated").slice(0, 2),
+    [scored],
+  );
 
   const sectorGroups = useMemo<SectorGroup[]>(() => {
     const map = new Map<
@@ -387,33 +389,28 @@ export default function TrackRecordPage() {
           </div>
         ) : (
           <>
-            {/* SUMMARY STATS */}
-            <div className="grid grid-cols-4 gap-3">
-              <StatCard label="Total" value={totalCount} loading={loading} />
-              <StatCard
-                label="Tracking Confirmed"
-                value={trackingConfirmed}
+            {/* STATUS SCOREBOARD */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <StatusCard
+                label="Making calls"
                 loading={loading}
-                trend="up"
+                headline={`${totalCount} active ${totalCount === 1 ? "thesis" : "theses"}`}
+                subline={awaitingCount > 0 ? `${awaitingCount} awaiting first grading run${overdueCount > 0 ? ` · ${overdueCount} overdue` : ""}` : undefined}
+                footer="Daily updates at 8:10 PM PT"
               />
-              <StatCard
-                label="Tracking Invalidated"
-                value={trackingInvalidated}
+              <StatusCard
+                label="How we've been right"
                 loading={loading}
-                trend="down"
+                headline={trackingConfirmed > 0 ? `${trackingConfirmed} ${trackingConfirmed === 1 ? "call" : "calls"} confirmed` : "No confirmed calls yet"}
+                subline={confirmedExamples.length > 0 ? confirmedExamples.map(t => t.title).join(" · ") : undefined}
+                tint="positive"
               />
-              <StatCard
-                label="Confirmation Rate"
-                value={confirmationRate}
-                suffix="%"
-                subtext={
-                  trackingConfirmed + trackingInvalidated > 0
-                    ? `${trackingConfirmed} of ${trackingConfirmed + trackingInvalidated} resolved`
-                    : undefined
-                }
-                placeholder="--"
-                gold
+              <StatusCard
+                label="How we've been wrong"
                 loading={loading}
+                headline={trackingInvalidated > 0 ? `${trackingInvalidated} ${trackingInvalidated === 1 ? "call" : "calls"} invalidated` : "No losses recorded yet"}
+                subline={invalidatedExamples.length > 0 ? invalidatedExamples.map(t => t.title).join(" · ") : undefined}
+                tint={trackingInvalidated > 0 ? "negative" : undefined}
               />
             </div>
 
@@ -426,14 +423,7 @@ export default function TrackRecordPage() {
                   <table className="w-full font-sans text-[12px]">
                     <thead>
                       <tr className="border-b border-border-base">
-                        {[
-                          "Sector",
-                          "Theses",
-                          "Tracking ↑",
-                          "Tracking ↓",
-                          "Win Rate",
-                          "Avg Score",
-                        ].map((h) => (
+                        {["Sector", "Status", "Count"].map((h) => (
                           <th
                             key={h}
                             className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold py-2 px-2 text-left"
@@ -447,9 +437,9 @@ export default function TrackRecordPage() {
                       {sectorGroups.map((g, i) => (
                         <tr
                           key={g.sector}
-                          className={`card-hover-lift border-b border-border-base last:border-b-0 ${i === 0 ? "bg-gold/5" : ""}`}
+                          className={`border-b border-border-base last:border-b-0 ${i === 0 ? "bg-gold/5" : ""}`}
                         >
-                          <td className="py-2 px-2">
+                          <td className="py-2.5 px-2">
                             <span
                               style={getSectorStyle(g.sector)}
                               className="font-sans text-[10px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
@@ -457,30 +447,11 @@ export default function TrackRecordPage() {
                               {g.sector}
                             </span>
                           </td>
-                          <td className="py-2 px-2 font-data">{g.total}</td>
-                          <td className="py-2 px-2 font-data text-signal-up">
-                            {g.trackingConfirmed}
+                          <td className="py-2.5 px-2">
+                            <SectorStatus group={g} />
                           </td>
-                          <td className="py-2 px-2 font-data text-signal-dn">
-                            {g.trackingInvalidated}
-                          </td>
-                          <td className="py-2 px-2">
-                            {g.trackingConfirmed + g.trackingInvalidated >= 3 ? (
-                              <div className="flex items-center gap-2">
-                                <span className="font-data font-semibold">{g.winRate}%</span>
-                                <div className="flex-1 h-1.5 rounded-full bg-gold/20 max-w-[80px]">
-                                  <div
-                                    className="bar-sweep-in h-full rounded-full bg-gold"
-                                    style={{ width: `${g.winRate}%` }}
-                                  />
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="font-data text-text-muted" title="Needs ≥3 resolved theses">—</span>
-                            )}
-                          </td>
-                          <td className="py-2 px-2">
-                            <ScoreMuted score={g.avgScore} />
+                          <td className="py-2.5 px-2 font-data text-text-secondary">
+                            {g.total} {g.total === 1 ? "thesis" : "theses"}
                           </td>
                         </tr>
                       ))}
@@ -591,7 +562,6 @@ export default function TrackRecordPage() {
                         </div>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
                           <LiveVerdictBadge live={t.live} size="prominent" />
-                          <ScoreMuted score={t.live.score} />
                           {t.generated_at && (
                             <span className="font-data text-[10px] text-text-faint">
                               {formatDate(t.generated_at)}
@@ -613,51 +583,44 @@ export default function TrackRecordPage() {
 
 /* ── Sub-components ── */
 
-function StatCard({
+function StatusCard({
   label,
-  value,
-  suffix,
-  subtext,
-  placeholder = "--",
-  gold,
+  headline,
+  subline,
+  footer,
+  tint,
   loading,
-  trend,
 }: {
   label: string;
-  value: number | null;
-  suffix?: string;
-  subtext?: string;
-  placeholder?: string;
-  gold?: boolean;
+  headline: string;
+  subline?: string;
+  footer?: string;
+  tint?: "positive" | "negative";
   loading?: boolean;
-  trend?: "up" | "down";
 }) {
-  const trendColor =
-    trend === "up" ? "text-signal-up" : trend === "down" ? "text-signal-dn" : "";
+  const borderAccent =
+    tint === "positive" ? "border-l-signal-up" :
+    tint === "negative" ? "border-l-signal-dn" :
+    "border-l-gold";
   return (
-    <div className="card-hover-lift bg-white rounded-xl border border-border-base p-4">
-      <div className="font-sans text-[10px] uppercase tracking-widest text-text-muted mb-1 inline-flex items-center gap-1">
-        {trend === "up" && <TrendingUp size={10} className="text-signal-up" />}
-        {trend === "down" && <TrendingDown size={10} className="text-signal-dn" />}
-        <span>{label}</span>
+    <div className={`bg-white rounded-xl border border-border-base border-l-[3px] ${borderAccent} p-4`}>
+      <div className="font-sans text-[10px] uppercase tracking-widest text-text-muted mb-1.5">
+        {label}
       </div>
       {loading ? (
-        <div className="skeleton-shimmer h-8 w-16 rounded" />
-      ) : value === null ? (
-        <div className={`font-data text-2xl font-bold ${gold ? "text-gold" : "text-espresso"}`}>
-          {placeholder}
-        </div>
+        <div className="skeleton-shimmer h-5 w-40 rounded" />
       ) : (
-        <div
-          className={`font-data text-2xl font-bold ${
-            gold ? "text-gold" : trendColor || "text-espresso"
-          }`}
-        >
-          <AnimatedNumber value={value} format={(n) => `${Math.round(n)}${suffix ?? ""}`} />
+        <div className="font-sans text-[13px] font-semibold text-espresso leading-snug">
+          {headline}
         </div>
       )}
-      {subtext && (
-        <div className="font-data text-[10px] text-text-muted mt-0.5">{subtext}</div>
+      {subline && (
+        <div className="font-sans text-[11px] text-text-muted mt-1 leading-snug line-clamp-2">
+          {subline}
+        </div>
+      )}
+      {footer && (
+        <div className="font-data text-[10px] text-text-faint mt-2">{footer}</div>
       )}
     </div>
   );
@@ -695,14 +658,26 @@ function LiveVerdictBadge({ live, size = "default" }: { live: LiveScoreResult; s
   );
 }
 
-function ScoreMuted({ score }: { score: number }) {
-  const rounded = Math.round(score);
-  const sign = rounded > 0 ? "+" : "";
-  return (
-    <span className="font-data text-[10px] text-text-faint">
-      {sign}{rounded} of ±100
-    </span>
-  );
+function SectorStatus({ group }: { group: SectorGroup }) {
+  if (group.trackingConfirmed > 0 && group.trackingInvalidated === 0) {
+    return <span className="font-sans text-[11px] text-signal-up">All calls tracking positively</span>;
+  }
+  if (group.trackingInvalidated > 0 && group.trackingConfirmed === 0) {
+    return <span className="font-sans text-[11px] text-signal-dn">Calls facing headwinds</span>;
+  }
+  if (group.trackingConfirmed > 0 && group.trackingInvalidated > 0) {
+    return <span className="font-sans text-[11px] text-text-secondary">Mixed signals — {group.trackingConfirmed} up, {group.trackingInvalidated} down</span>;
+  }
+  return <span className="font-sans text-[11px] text-text-muted">Awaiting enough data to assess</span>;
+}
+
+function scoreToDescriptor(live: LiveScoreResult): string {
+  if (live.verdict === "Confirmed") return "Call confirmed by evidence";
+  if (live.verdict === "Invalidated") return "Call contradicted by evidence";
+  if (live.verdict === "Tracking confirmed") return "Evidence building in favor";
+  if (live.verdict === "Tracking invalidated") return "Evidence building against";
+  if (live.verdict.startsWith("Inconclusive")) return "Ran out of time, unclear";
+  return "Monitoring — too early to tell";
 }
 
 function ThesisRankCard({
@@ -735,7 +710,7 @@ function ThesisRankCard({
               </span>
             )}
             <LiveVerdictBadge live={thesis.live} size="prominent" />
-            <ScoreMuted score={thesis.live.score} />
+            <span className="font-sans text-[10px] text-text-muted">{scoreToDescriptor(thesis.live)}</span>
           </div>
         </div>
       </div>
