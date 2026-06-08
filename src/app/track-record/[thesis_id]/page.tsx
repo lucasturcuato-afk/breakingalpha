@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
-import { ArrowLeft, ChevronDown, Clock, TrendingUp, TrendingDown } from "lucide-react";
+import { ArrowLeft, ChevronDown, Clock } from "lucide-react";
 import { getSectorStyle } from "@/lib/sector-colors";
 import {
   computeLiveScore,
@@ -51,7 +51,7 @@ interface VerdictRow {
   confidence: number | null;
   weighted_sentiment_alignment: number | null;
   supporting_vs_contradicting_ratio: number | null;
-  evidence_summary: string | null;
+  notes: string | null;
   grader_version: string | null;
 }
 
@@ -83,7 +83,7 @@ export default function ThesisDetailPage() {
             .select(
               "id, thesis_id, graded_at, verdict, confidence, " +
               "weighted_sentiment_alignment, supporting_vs_contradicting_ratio, " +
-              "evidence_summary, grader_version",
+              "notes, grader_version",
             )
             .eq("thesis_id", thesisId)
             .order("graded_at", { ascending: true }),
@@ -127,7 +127,7 @@ export default function ThesisDetailPage() {
   if (loading) {
     return (
       <AppShell pageTitle="Thesis Detail" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
-        <div className="p-6 max-w-[720px] space-y-4">
+        <div className="p-6 max-w-[960px] space-y-4">
           <div className="skeleton-shimmer h-6 w-48 rounded" />
           <div className="skeleton-shimmer h-32 w-full rounded-xl" />
           <div className="skeleton-shimmer h-48 w-full rounded-xl" />
@@ -139,7 +139,7 @@ export default function ThesisDetailPage() {
   if (!thesis) {
     return (
       <AppShell pageTitle="Thesis Detail" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
-        <div className="p-6 max-w-[720px]">
+        <div className="p-6 max-w-[960px]">
           <Link href="/track-record" className="inline-flex items-center gap-1 text-text-muted hover:text-espresso text-[12px] mb-4">
             <ArrowLeft size={12} /> Back to Track Record
           </Link>
@@ -151,7 +151,7 @@ export default function ThesisDetailPage() {
 
   return (
     <AppShell pageTitle={thesis.title ?? "Thesis Detail"} mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
-      <div className="p-6 max-w-[720px] space-y-6">
+      <div className="p-6 max-w-[960px] space-y-6">
         {/* Back link */}
         <Link href="/track-record" className="inline-flex items-center gap-1 text-text-muted hover:text-espresso text-[12px]">
           <ArrowLeft size={12} /> Back to Track Record
@@ -233,7 +233,33 @@ export default function ThesisDetailPage() {
           )}
         </section>
 
-        {/* SECTION 2: Current Signal */}
+        {/* SECTION 2: What Signalera monitors */}
+        <section className="bg-white rounded-xl border border-border-base p-5 space-y-3">
+          <h2 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold">
+            What Signalera monitors for this thesis
+          </h2>
+          <p className="font-sans text-[12px] text-text-secondary leading-relaxed">
+            Signalera grades this thesis daily on these dimensions:
+          </p>
+          <ol className="font-sans text-[12px] text-text-primary leading-relaxed space-y-1.5 list-decimal list-inside">
+            <li><span className="font-semibold">Price action</span> — daily price movement of {thesis.ticker || "the asset"} at each grading check</li>
+            <li><span className="font-semibold">News sentiment</span> — directional lean across supporting articles</li>
+            <li><span className="font-semibold">Supporting evidence</span> — count of articles supporting vs contradicting the thesis</li>
+            <li><span className="font-semibold">Grader confidence</span> — computed only when a terminal verdict is reached</li>
+            <li><span className="font-semibold">Time elapsed</span> — proximity to the {thesis.horizon || "30d"} horizon</li>
+          </ol>
+          <p className="font-sans text-[11px] text-text-muted leading-relaxed">
+            Each contributes to a daily composite score (-100 to +100).
+            Terminal verdicts (Confirmed/Invalidated) are made by Signalera&apos;s grader using
+            its judgment of accumulated evidence — they are not triggered by the score crossing
+            a fixed threshold.
+          </p>
+        </section>
+
+        {/* SECTION 3: Verdict Reasoning (terminal only) */}
+        {live && <VerdictReasoning live={live} verdicts={verdicts} />}
+
+        {/* SECTION 4: Current Signal */}
         {live && (
           <section className="bg-white rounded-xl border border-border-base p-5 space-y-4">
             <div>
@@ -254,6 +280,9 @@ export default function ThesisDetailPage() {
               <SignalBreakdown live={live} thesis={thesis} />
             </div>
 
+            {/* What we're watching for */}
+            <WatchingFor live={live} thesis={thesis} verdicts={verdicts} />
+
             <div className="font-data text-[10px] text-text-faint">
               Age: {live.ageDays}d · Horizon: {live.horizonDays}d
             </div>
@@ -263,7 +292,7 @@ export default function ThesisDetailPage() {
           </section>
         )}
 
-        {/* SECTION 3: Grading Timeline */}
+        {/* SECTION 5: Grading Timeline */}
         <section className="bg-white rounded-xl border border-border-base p-5">
           <h2 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold mb-3">
             Grading Timeline
@@ -291,9 +320,9 @@ export default function ThesisDetailPage() {
                       </span>
                     )}
                   </div>
-                  {v.evidence_summary && (
+                  {v.notes && (
                     <p className="font-sans text-[11.5px] text-text-secondary leading-snug mt-0.5">
-                      {v.evidence_summary}
+                      {v.notes}
                     </p>
                   )}
                   {v.grader_version && (
@@ -358,15 +387,127 @@ function ScoreExplainer() {
         About this score
       </button>
       {open && (
-        <p className="font-sans text-[11px] text-text-secondary leading-relaxed mt-2 max-w-[540px]">
+        <p className="font-sans text-[11px] text-text-secondary leading-relaxed mt-2 max-w-[640px]">
           Signalera scores each thesis daily on a scale from -100 to +100, combining
-          price action, news sentiment, coverage balance, grading model confidence, and time
-          elapsed against the call&apos;s horizon. Positive scores indicate market behavior
-          is tracking the call. Negative scores indicate the call may be invalidated.
-          Final verdicts (Confirmed / Invalidated) are assigned when sufficient time
-          has passed and evidence is strong enough.
+          daily price action, news sentiment across supporting articles, supporting-vs-contradicting
+          article ratio, grader confidence (terminal only), and time elapsed against the
+          call&apos;s horizon. Positive scores indicate market behavior is tracking the call.
+          Negative scores indicate the call may be invalidated.
+          Final verdicts (Confirmed / Invalidated) are made by Signalera&apos;s grader
+          based on accumulated evidence — they reflect judgment, not a fixed score threshold.
         </p>
       )}
+    </div>
+  );
+}
+
+function VerdictReasoning({ live, verdicts }: { live: LiveScoreResult; verdicts: VerdictRow[] }) {
+  if (live.terminal !== "confirmed" && live.terminal !== "invalidated") return null;
+
+  // Find the terminal verdict row (the one with verdict matching terminal state)
+  const terminalRow = [...verdicts].reverse().find(
+    (v) => v.verdict === live.terminal,
+  );
+  const notes = terminalRow?.notes;
+  const gradedAt = terminalRow?.graded_at;
+  const isConfirmed = live.terminal === "confirmed";
+  const label = isConfirmed ? "Why this was confirmed" : "Why this was invalidated";
+  const borderColor = isConfirmed ? "border-l-signal-up" : "border-l-signal-dn";
+  const bgColor = isConfirmed ? "bg-signal-up/5" : "bg-signal-dn/5";
+
+  return (
+    <section className={`rounded-xl border border-border-base border-l-[3px] ${borderColor} ${bgColor} p-5 space-y-2`}>
+      <h2 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold">
+        {label}
+      </h2>
+      {notes ? (
+        <p className="font-sans text-[13px] text-text-primary leading-relaxed">
+          {notes}
+        </p>
+      ) : (
+        <p className="font-sans text-[12px] text-text-muted leading-relaxed">
+          This thesis reached a terminal verdict{gradedAt ? ` on ${formatDateTime(gradedAt)}` : ""}.
+        </p>
+      )}
+      {gradedAt && notes && (
+        <p className="font-data text-[10px] text-text-faint">
+          — {isConfirmed ? "Confirmed" : "Invalidated"} by Signalera&apos;s grader on {formatDateTime(gradedAt)}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function WatchingFor({ live, thesis, verdicts }: { live: LiveScoreResult; thesis: ThesisRow; verdicts: VerdictRow[] }) {
+  const isTerminal = live.terminal === "confirmed" || live.terminal === "invalidated";
+
+  if (isTerminal) {
+    const terminalRow = [...verdicts].reverse().find(
+      (v) => v.verdict === live.terminal,
+    );
+    const gradedAt = terminalRow?.graded_at;
+    const daysAtVerdict = terminalRow?.graded_at && thesis.generated_at
+      ? Math.floor((new Date(terminalRow.graded_at).getTime() - new Date(thesis.generated_at).getTime()) / 86_400_000)
+      : null;
+
+    return (
+      <div className="border-t border-border-base pt-3 space-y-1.5">
+        <h3 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold">
+          This thesis has reached a terminal verdict
+        </h3>
+        <ul className="font-sans text-[12px] text-text-secondary leading-relaxed space-y-1">
+          <li className="flex items-start gap-2">
+            <span className="text-text-faint mt-0.5">•</span>
+            <span>
+              {capitalize(live.terminal!)}
+              {gradedAt ? ` on ${formatDateTime(gradedAt)}` : ""}
+              {daysAtVerdict !== null ? ` · ${daysAtVerdict} days into the ${live.horizonDays}d horizon` : ""}
+            </span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-text-faint mt-0.5">•</span>
+            <span>Score at verdict: {live.score > 0 ? "+" : ""}{live.score} of ±{SCORE_SCALE}</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-text-faint mt-0.5">•</span>
+            <span>Will remain on the track record permanently</span>
+          </li>
+        </ul>
+      </div>
+    );
+  }
+
+  // Active thesis
+  const daysRemaining = Math.max(0, live.horizonDays - live.ageDays);
+  const pastHorizon = live.ageDays > live.horizonDays;
+
+  return (
+    <div className="border-t border-border-base pt-3 space-y-1.5">
+      <h3 className="font-sans text-[10px] uppercase tracking-widest text-gold font-semibold">
+        What we&apos;re watching for
+      </h3>
+      <ul className="font-sans text-[12px] text-text-secondary leading-relaxed space-y-1">
+        <li className="flex items-start gap-2">
+          <span className="text-text-faint mt-0.5">•</span>
+          <span>
+            {pastHorizon
+              ? `${live.ageDays - live.horizonDays} days past the ${live.horizonDays}d horizon`
+              : `${daysRemaining} days remaining on the ${live.horizonDays}d horizon`}
+          </span>
+        </li>
+        <li className="flex items-start gap-2">
+          <span className="text-text-faint mt-0.5">•</span>
+          <span>Next grading run: tonight at 8:10 PM PT (global daily run)</span>
+        </li>
+        <li className="flex items-start gap-2">
+          <span className="text-text-faint mt-0.5">•</span>
+          <span>
+            Signalera&apos;s grader reaches a terminal verdict (Confirmed or Invalidated) when
+            it has accumulated sufficient evidence — typically requires multiple supporting
+            articles and consistent price action across grading runs
+          </span>
+        </li>
+      </ul>
     </div>
   );
 }
