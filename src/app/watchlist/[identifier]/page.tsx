@@ -178,18 +178,18 @@ export default function WatchlistIdentifierPage({
     setCachedBriefText(text);
     setCachedBriefGeneratedAt(new Date());
     try {
-      await getSupabase()
-        .from("watchlist_briefs")
-        .upsert(
-          {
-            identifier: decoded,
-            brief_text: text,
-            article_count: articles.length,
-            generated_at: new Date().toISOString(),
-            model: "gemini-2.5-flash",
-          },
-          { onConflict: "identifier" },
-        );
+      // Write the brief cache server-side (service-role) so the upsert keeps
+      // working after watchlist_briefs writes are locked to service-role-only.
+      await fetch("/api/watchlist-briefs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          identifier: decoded,
+          brief_text: text,
+          article_count: articles.length,
+          model: "gemini-2.5-flash",
+        }),
+      });
     } catch (err) {
       console.warn("Brief cache write failed (non-critical):", err);
     }
