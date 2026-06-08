@@ -159,7 +159,7 @@ export function deriveLiveVerdict(
   if (ageDays >= hDays && Math.abs(score) <= NEUTRAL_BAND) {
     return `Inconclusive after ${ageDays}d`;
   }
-  return "Tracking neutral";
+  return "Awaiting verdict";
 }
 
 export function computeLiveScore(input: LiveScoreInput, now: Date = new Date()): LiveScoreResult {
