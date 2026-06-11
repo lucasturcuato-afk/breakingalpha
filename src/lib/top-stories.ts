@@ -26,6 +26,27 @@ export const TOP_STORIES_MIN_RESULTS = 3;
 
 export const TOP_STORIES_LIMIT = 4;
 
+// Over-fetch this many candidates before same-event collapse so that removing a
+// duplicate can pull the next distinct story up and the rendered list still
+// fills to TOP_STORIES_LIMIT. With no duplicates present, the first
+// TOP_STORIES_LIMIT survivors equal the previous top rows, so the common path is
+// unchanged. Sized well above LIMIT because the top relevance band is saturated
+// (a large block ties at the max score) and same-event syndications cluster
+// inside it. See docs/recon/top-stories-dedup.md.
+export const TOP_STORIES_CANDIDATE_LIMIT = 24;
+
+// Same-event near-duplicate collapse (render-time). Two candidates are the same
+// event when they share a parsed source-ticker, were published within
+// SAME_EVENT_WINDOW_HOURS of each other, and their titles have a token Jaccard
+// >= SAME_EVENT_TITLE_SIMILARITY. The 0.50 threshold is measured: 93.6% of
+// same-ticker pairs score < 0.3 (distinct stories sharing only the company
+// name), while genuine syndications of one event begin around 0.5 (the
+// canonical VCTR AUM pair computes to exactly 0.50). See
+// docs/recon/top-stories-dedup.md for the distribution and false-collapse
+// analysis. The tokeniser mirrors src/lib/clustering-utils.ts.
+export const SAME_EVENT_TITLE_SIMILARITY = 0.5;
+export const SAME_EVENT_WINDOW_HOURS = 48;
+
 export const TOP_STORIES_COLUMNS =
   "id, title, source, summary, content, sector, industry_verticals, activity_types, sentiment, published_at, ingested_at, url, companies, relevance_score";
 
@@ -47,6 +68,104 @@ export interface TopStoryRow {
 }
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 60 * 60 * 1000).toISOString();
+
+// Ticker embedded in the Google News source label, e.g. "Google News (VCTR)".
+// Null for non-gnews sources, which then never cluster and pass through as-is.
+const parseSourceTicker = (source: string | null): string | null => {
+  if (!source) return null;
+  const m = source.match(/Google News \(([^)]+)\)/);
+  return m ? m[1] : null;
+};
+
+// Tokeniser matches src/lib/clustering-utils.ts: lowercase, split on non-word
+// runs, keep tokens of length >= 3, set semantics.
+const titleTokens = (title: string | null): Set<string> =>
+  new Set((title ?? "").toLowerCase().split(/\W+/).filter((w) => w.length >= 3));
+
+const jaccard = (a: Set<string>, b: Set<string>): number => {
+  if (a.size === 0 || b.size === 0) return 0;
+  let inter = 0;
+  for (const w of a) if (b.has(w)) inter++;
+  const union = a.size + b.size - inter;
+  return union === 0 ? 0 : inter / union;
+};
+
+const withinSameEventWindow = (a: TopStoryRow, b: TopStoryRow): boolean => {
+  if (!a.published_at || !b.published_at) return false;
+  const ta = new Date(a.published_at).getTime();
+  const tb = new Date(b.published_at).getTime();
+  if (Number.isNaN(ta) || Number.isNaN(tb)) return false;
+  return Math.abs(ta - tb) <= SAME_EVENT_WINDOW_HOURS * 60 * 60 * 1000;
+};
+
+// Title with the trailing " - Outlet" suffix removed, used as a completeness
+// proxy in the keep-which rule (the more specific headline is the longer one).
+const cleanedTitleLength = (title: string | null): number =>
+  (title ?? "").replace(/\s+-\s+[^-]+$/, "").trim().length;
+
+interface DecoratedRow {
+  row: TopStoryRow;
+  ticker: string | null;
+  toks: Set<string>;
+  idx: number;
+}
+
+// Deterministic keep-which: highest relevance_score, then the more complete
+// headline, then earliest published, then lowest id as a total-order tiebreak.
+const keepWhichReplaces = (candidate: TopStoryRow, current: TopStoryRow): boolean => {
+  const rc = candidate.relevance_score ?? -Infinity;
+  const rk = current.relevance_score ?? -Infinity;
+  if (rc !== rk) return rc > rk;
+  const lc = cleanedTitleLength(candidate.title);
+  const lk = cleanedTitleLength(current.title);
+  if (lc !== lk) return lc > lk;
+  const pc = candidate.published_at ? new Date(candidate.published_at).getTime() : Infinity;
+  const pk = current.published_at ? new Date(current.published_at).getTime() : Infinity;
+  if (pc !== pk) return pc < pk;
+  return candidate.id < current.id;
+};
+
+/**
+ * Collapse same-event near-duplicates (same source-ticker, published within
+ * SAME_EVENT_WINDOW_HOURS, title Jaccard >= SAME_EVENT_TITLE_SIMILARITY) into a
+ * single surviving row, preserving input ranking. Single-linkage greedy
+ * clustering over the candidate list; each cluster renders its keep-which
+ * survivor at the rank of its best-placed member. Rows with no parsed ticker
+ * never cluster. See docs/recon/top-stories-dedup.md.
+ */
+function collapseSameEvent(rows: TopStoryRow[]): TopStoryRow[] {
+  const decorated: DecoratedRow[] = rows.map((row, idx) => ({
+    row,
+    idx,
+    ticker: parseSourceTicker(row.source),
+    toks: titleTokens(row.title),
+  }));
+
+  const clusters: DecoratedRow[][] = [];
+  for (const d of decorated) {
+    const target = clusters.find((cluster) =>
+      cluster.some(
+        (m) =>
+          m.ticker !== null &&
+          m.ticker === d.ticker &&
+          withinSameEventWindow(m.row, d.row) &&
+          jaccard(m.toks, d.toks) >= SAME_EVENT_TITLE_SIMILARITY,
+      ),
+    );
+    if (target) target.push(d);
+    else clusters.push([d]);
+  }
+
+  return clusters
+    .map((cluster) => ({
+      firstIdx: Math.min(...cluster.map((m) => m.idx)),
+      survivor: cluster.reduce((best, curr) =>
+        keepWhichReplaces(curr.row, best.row) ? curr : best,
+      ).row,
+    }))
+    .sort((a, b) => a.firstIdx - b.firstIdx)
+    .map((c) => c.survivor);
+}
 
 /**
  * Fetch the Top Stories list: highest relevance_score within a recency window.
@@ -72,15 +191,20 @@ export async function fetchTopStories(supabase: SupabaseClient): Promise<TopStor
     .gte("published_at", publishedCeiling)
     .order("relevance_score", { ascending: false })
     .order("ingested_at", { ascending: false })
-    .limit(TOP_STORIES_LIMIT);
+    .limit(TOP_STORIES_CANDIDATE_LIMIT);
 
   if (primary.error) {
     console.error("Top Stories primary query error:", primary.error.message);
     return [];
   }
 
-  const primaryRows = (primary.data ?? []) as TopStoryRow[];
-  if (primaryRows.length >= TOP_STORIES_MIN_RESULTS) return primaryRows;
+  // Collapse same-event near-duplicates, then trim to the rendered count. The
+  // over-fetch above means removing a duplicate backfills the next distinct
+  // story rather than shortening the list. The MIN_RESULTS gate now checks the
+  // count of distinct stories, so a primary window thinned by collapse widens to
+  // the fallback the same way an ingest drought does.
+  const primaryRows = collapseSameEvent((primary.data ?? []) as TopStoryRow[]);
+  if (primaryRows.length >= TOP_STORIES_MIN_RESULTS) return primaryRows.slice(0, TOP_STORIES_LIMIT);
 
   // Thin primary window (ingest drought longer than the surfacing window):
   // widen the ingested_at floor to the ceiling. published_at stays pinned to the
@@ -92,15 +216,17 @@ export async function fetchTopStories(supabase: SupabaseClient): Promise<TopStor
     .gte("published_at", publishedCeiling)
     .order("relevance_score", { ascending: false })
     .order("ingested_at", { ascending: false })
-    .limit(TOP_STORIES_LIMIT);
+    .limit(TOP_STORIES_CANDIDATE_LIMIT);
 
   if (fallback.error) {
     console.error("Top Stories fallback query error:", fallback.error.message);
-    return primaryRows;
+    return primaryRows.slice(0, TOP_STORIES_LIMIT);
   }
 
-  const fallbackRows = (fallback.data ?? []) as TopStoryRow[];
-  // The fallback window is a superset of the primary, so it returns at least as
-  // many rows; prefer it when it does.
-  return fallbackRows.length >= primaryRows.length ? fallbackRows : primaryRows;
+  const fallbackRows = collapseSameEvent((fallback.data ?? []) as TopStoryRow[]);
+  // The fallback window is a superset of the primary, so after the identical
+  // collapse it returns at least as many distinct stories; prefer it when it
+  // does.
+  const chosen = fallbackRows.length >= primaryRows.length ? fallbackRows : primaryRows;
+  return chosen.slice(0, TOP_STORIES_LIMIT);
 }
