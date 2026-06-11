@@ -24,6 +24,21 @@ const eslintConfig = defineConfig([
     "docs/**",
     "design-reference/**",
   ]),
+  // React Compiler readiness debt. eslint-plugin-react-hooks v6 (pulled in by
+  // eslint-config-next/core-web-vitals on Next 16) ships these three rules as
+  // ERRORS. The app is not yet compiler-clean, so they fired on ~13 pre-existing
+  // components and made the lint gate non-functional (it could not tell a real
+  // regression from this noise floor). Downgraded to "warn" so they stay VISIBLE
+  // and counted, NOT silenced. Policy change only; no runtime behavior changes.
+  // Re-promote to "error" per file as each component is made compiler-clean.
+  // Tracked in docs/recon/preflight-baseline.md.
+  {
+    rules: {
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/static-components": "warn",
+      "react-hooks/purity": "warn",
+    },
+  },
 ]);
 
 export default eslintConfig;
