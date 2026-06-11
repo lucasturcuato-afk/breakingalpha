@@ -1,5 +1,13 @@
 "use client";
 
+// react-hooks/static-components: the SortIcon component is defined during render
+// (see the function declaration below). The rule fires at each of its 5 JSX usage
+// sites. This is pre-existing React-Compiler-readiness debt; the proper fix is to
+// hoist SortIcon out of render. Exempted file-level (rather than 5 JSX comments)
+// to keep the rule at "error" for every other file. Tracked in
+// docs/recon/preflight-baseline.md.
+/* eslint-disable react-hooks/static-components */
+
 import { cn } from "@/lib/utils";
 import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";

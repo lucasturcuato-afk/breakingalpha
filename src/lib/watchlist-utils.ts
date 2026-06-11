@@ -31,7 +31,7 @@ export function getCompanySearchTerms(
     // Strip common formal corporate suffixes to produce a shorter "core" name.
     // Apply replacements in descending length order so multi-word suffixes are
     // removed before single-word ones (e.g. "Group Inc" before "Inc").
-    let stripped = full
+    const stripped = full
       // Multi-word suffixes
       .replace(/\s+Group\s+Inc\.?\s*$/i, "")
       .replace(/\s+Holdings\s+Inc\.?\s*$/i, "")

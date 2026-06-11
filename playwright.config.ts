@@ -12,6 +12,37 @@ const AUTH_FILE = path.join(__dirname, "e2e", ".auth", "user.json");
 // state — the smoke-prod project signs in fresh against the remote URL.
 const isRemoteTarget = !!process.env.E2E_BASE_URL?.startsWith("https://");
 
+// Gating vs non-gating project separation.
+//
+// The auth-smoke and prod-smoke-5route specs are PROD-TARGET specs: they are
+// documented to run against the live signalera.ai site (E2E_BASE_URL=https://...
+// from .env.playwright) and they hard-fail by design when E2E_BASE_URL is unset
+// (`Missing required env vars: E2E_BASE_URL`). Running them in the LOCAL gate
+// produced 8 false failures that had nothing to do with the code under test.
+//
+// So: the local gate (default, no remote target) runs setup + chromium only.
+// The smoke-prod project runs ONLY against a remote target. This is project
+// separation, not deletion: both suites stay runnable for their intended target.
+// See docs/recon/preflight-baseline.md (e2e section).
+const setupProject = {
+  name: "setup",
+  testMatch: /auth\.setup\.ts/,
+};
+const chromiumProject = {
+  name: "chromium",
+  use: {
+    ...devices["Desktop Chrome"],
+    storageState: AUTH_FILE,
+  },
+  dependencies: ["setup"],
+  testIgnore: /(auth-smoke|prod-smoke-5route)\.spec\.ts/,
+};
+const smokeProdProject = {
+  name: "smoke-prod",
+  testMatch: /(auth-smoke|prod-smoke-5route)\.spec\.ts/,
+  use: { ...devices["Desktop Chrome"] },
+};
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
@@ -25,26 +56,9 @@ export default defineConfig({
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },
-  projects: [
-    {
-      name: "setup",
-      testMatch: /auth\.setup\.ts/,
-    },
-    {
-      name: "chromium",
-      use: {
-        ...devices["Desktop Chrome"],
-        storageState: AUTH_FILE,
-      },
-      dependencies: ["setup"],
-      testIgnore: /(auth-smoke|prod-smoke-5route)\.spec\.ts/,
-    },
-    {
-      name: "smoke-prod",
-      testMatch: /(auth-smoke|prod-smoke-5route)\.spec\.ts/,
-      use: { ...devices["Desktop Chrome"] },
-    },
-  ],
+  projects: isRemoteTarget
+    ? [smokeProdProject]
+    : [setupProject, chromiumProject],
   webServer: isRemoteTarget
     ? undefined
     : {

@@ -855,7 +855,7 @@ Constraints:
                 <>
                   {briefGeneratedAt === null && !loading && articles.length > 0 && (
                     <div className="bg-parchment-mid border border-border-base rounded-xl p-4 mb-4">
-                      <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1">What you'll get</p>
+                      <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1">What you&apos;ll get</p>
                       <p className="font-sans text-[12px] text-text-secondary leading-relaxed">
                         An AI-generated research brief grounded in {articles.length} recent {articles.length === 1 ? "article" : "articles"} — structured like a bulge bracket equity research note with company snapshot, key developments, investment considerations, and a signal.
                       </p>
