@@ -88,12 +88,27 @@ eslint-plugin-react-hooks v6 upgrade, not by any code change on this branch.
 - react-hooks/static-components (5): src/components/thesis/thesis-table.tsx
   76:25, 81:29, 86:25, 91:25, 98:26.
 
-Decision: downgrade these three rules from error to warn in eslint.config.mjs,
-with a comment that they are tracked React-Compiler-readiness debt, NOT silenced.
-This is a CONFIG/policy change, not a logic change, and it does not alter any
-runtime behavior. It converts 18 blocking errors into 18 counted warnings so the
-gate signal is restored. Per-file re-promotion to error is the follow-up as each
-component is made compiler-clean. Surfaced, not hidden.
+Decision (mixed per-rule, ratified by Noah on the supervised run):
+
+- static-components (5) and purity (3) stay at "error" GLOBALLY so any NEW
+  violation still blocks the gate. Their known pre-existing sites are exempted at
+  the source with targeted disable directives, NOT by relaxing the rule:
+  - thesis-table.tsx: one file-level `/* eslint-disable react-hooks/static-components */`
+    (the 5 reports are all SortIcon usages stemming from one in-render function
+    definition; a file-level exemption is cleaner than 5 JSX comments and still
+    gates every other file).
+  - DealFlowSidebar.tsx:126, thesis-card.tsx:126 and :190: per-line
+    `// eslint-disable-next-line react-hooks/purity` on each Date.now()-in-render.
+  New static-components/purity violations anywhere else (and new ones in these
+  files, for the per-line cases) still fail the gate.
+- set-state-in-effect (10) is downgraded to "warn" in eslint.config.mjs. It fired
+  on 10 components, mostly intentional state-sync patterns, and per-line exemption
+  across all 10 would be noise. Stays VISIBLE and counted, NOT silenced; re-promote
+  to "error" per file as each component is made compiler-clean.
+
+No logic changes, no runtime behavior change. This restores the gate signal while
+keeping the two genuinely-anti-pattern rules blocking for new code. Surfaced, not
+hidden.
 
 ### Protected file (1 error) - propose-only diff, NOT applied
 
@@ -170,11 +185,13 @@ Will FIX (mechanical, non-protected, zero behavior change):
   waitlist/page.tsx x2, watchlist/[identifier]/page.tsx) + 1
   `no-empty-object-type` (input.tsx empty interface to type alias).
 
-Will RECLASSIFY via CONFIG (no logic change, stays visible as warnings):
-- eslint.config.mjs: downgrade `react-hooks/set-state-in-effect`,
-  `react-hooks/static-components`, `react-hooks/purity` from error to warn, with a
-  comment tagging them React-Compiler-readiness debt. Converts 18 blocking errors
-  to 18 counted warnings.
+Will REMEDIATE per-rule (no logic change; see Decision above):
+- eslint.config.mjs: downgrade only `react-hooks/set-state-in-effect` (10) to
+  warn. Keep `react-hooks/static-components` and `react-hooks/purity` at error
+  globally; exempt their 8 known sites with targeted source disable directives
+  (thesis-table.tsx file-level; DealFlowSidebar.tsx and thesis-card.tsx per-line).
+  Converts 10 blocking errors to counted warnings and exempts 8 at the source,
+  while keeping the two anti-pattern rules blocking for new code.
 
 Will MOVE OUT of the gating run (config separation, NOT deletion, NOT spec edits):
 - playwright.config.ts: run the `smoke-prod` project only when E2E_BASE_URL is a
@@ -182,7 +199,8 @@ Will MOVE OUT of the gating run (config separation, NOT deletion, NOT spec edits
   prod-target specs are preserved and still runnable against prod.
 
 Will SURFACE untouched (real bugs / out-of-scope this run):
-- 18 behavior-risk react-hooks findings (now warnings) for proper per-file fixes.
+- 18 behavior-risk react-hooks findings (10 now warnings; 8 exempted at source but
+  the rule still blocks new code) for proper per-file compiler-readiness fixes.
 - 14 deterministic chromium failures: 5 selector-brittleness (follow-up selector
   tightening) + the hydration app bug and its downstream visibility/timeout
   failures (follow-up app fix). None quarantined.
@@ -205,10 +223,12 @@ Will PROPOSE-ONLY (protected file, NOT applied):
 - Does the project split drop coverage I want gating? No. `chromium` keeps every
   local-capable spec. `smoke-prod` was never meant to gate locally (it needs the
   prod target); it remains available for its intended remote run.
-- Is downgrading the three react-hooks rules "hiding" bugs? They stay visible as
-  warnings and are listed here by file and line. The alternative (logic changes
-  across 13 components) is explicitly forbidden this run. This restores gate
-  signal without masking the debt.
+- Is the react-hooks remediation "hiding" bugs? No. set-state-in-effect stays a
+  visible counted warning. static-components and purity stay at error globally and
+  are exempted only at named pre-existing sites with a tracked comment, so new
+  violations still block. All 18 are listed here by file and line. The alternative
+  (logic changes across 13 components) is explicitly forbidden this run. This
+  restores gate signal without masking the debt.
 
 ## PHASE 2: implementation results
 
@@ -217,7 +237,11 @@ Changed files (none protected):
 - src/app/not-found.tsx, src/app/waitlist/page.tsx,
   src/app/watchlist/[identifier]/page.tsx: `'` to `&apos;` in JSX text.
 - src/components/ui/input.tsx: empty interface to type alias.
-- eslint.config.mjs: 3 react-hooks React Compiler rules error to warn.
+- eslint.config.mjs: react-hooks/set-state-in-effect error to warn (the other two
+  React Compiler rules stay at error, exempted at known sites below).
+- src/components/thesis/thesis-table.tsx: file-level static-components disable.
+- src/components/deal-flow/DealFlowSidebar.tsx, src/components/thesis/thesis-card.tsx:
+  per-line purity disables (3 sites).
 - playwright.config.ts: smoke-prod project runs only against a remote target;
   local gate is setup + chromium.
 
@@ -225,11 +249,12 @@ Changed files (none protected):
 
 tsc: `rm -rf .next && npx tsc --noEmit` -> 0 errors (was 4). Exit 0.
 
-lint: `npm run lint` -> 1 error, 56 warnings (was 25 errors, 38 warnings). The
+lint: `npm run lint` -> 1 error, 48 warnings (was 25 errors, 38 warnings). The
 single remaining error is `prefer-const` in the protected src/lib/watchlist-utils.ts
-(propose-only diff below). The 56 warnings = 38 pre-existing + 18 react-hooks
-rules now downgraded and counted. After the propose-only one-liner is applied,
-lint errors reach 0.
+(propose-only diff below). The 48 warnings = 38 pre-existing + 10 set-state-in-effect
+now downgraded and counted; static-components (5) and purity (3) are exempted at
+their known sites and report neither error nor warning, while staying at error for
+new code elsewhere. After the propose-only one-liner is applied, lint errors reach 0.
 
 build: `npm run build` -> Compiled successfully, 46/46 static pages. Exit 0.
 
@@ -254,8 +279,9 @@ Will `/preflight` exit clean after this PR plus the propose-only diff are applie
 
 - tsc: YES. 0 errors.
 - lint: YES. 0 errors once the watchlist-utils.ts `let`->`const` one-liner is
-  applied (this PR brings it to 1 error, all others fixed or reclassified). 56
-  warnings remain and are counted (38 pre-existing + 18 react-hooks debt).
+  applied (this PR brings it to 1 error, all others fixed, exempted, or
+  reclassified). 48 warnings remain and are counted (38 pre-existing + 10
+  set-state-in-effect debt; static-components and purity exempted at source).
 - e2e: NO, not yet. The local gate is now functional and differential: 8
   wrong-target failures are removed, and the remaining 14 are deterministic real
   bugs, surfaced not hidden. They need two follow-up PRs that are out of scope

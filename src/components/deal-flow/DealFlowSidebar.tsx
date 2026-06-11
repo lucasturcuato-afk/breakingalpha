@@ -123,6 +123,7 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
     largestDeals,
     highRelevanceCount,
   } = useMemo(() => {
+    // eslint-disable-next-line react-hooks/purity -- pre-existing Date.now() in render; tracked in docs/recon/preflight-baseline.md
     const now = Date.now();
     const WEEK = 7 * 24 * 60 * 60 * 1000;
 

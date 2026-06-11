@@ -123,6 +123,7 @@ function OutcomeIcon({
 
 function StalenessIndicator({ generatedAt, outcome }: { generatedAt?: string | null; outcome?: string | null }) {
   if (!generatedAt || outcome) return null;
+  // eslint-disable-next-line react-hooks/purity -- pre-existing Date.now() in render; tracked in docs/recon/preflight-baseline.md
   const age = Date.now() - new Date(generatedAt).getTime();
   const days14 = 14 * 24 * 60 * 60 * 1000;
   if (age < days14) return null;
@@ -187,6 +188,7 @@ export function ThesisCard({ thesis, isSelected }: ThesisCardProps) {
             {/* Age indicator */}
             {(() => {
               if (!thesis.generated_at) return null;
+              // eslint-disable-next-line react-hooks/purity -- pre-existing Date.now() in render; tracked in docs/recon/preflight-baseline.md
               const diffMs = Date.now() - new Date(thesis.generated_at).getTime();
               const ageDays = Math.floor(diffMs / 86400000);
               const ageHours = Math.floor(diffMs / 3600000);
