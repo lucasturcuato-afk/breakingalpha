@@ -48,7 +48,7 @@ export const SAME_EVENT_TITLE_SIMILARITY = 0.5;
 export const SAME_EVENT_WINDOW_HOURS = 48;
 
 export const TOP_STORIES_COLUMNS =
-  "id, title, source, summary, content, sector, industry_verticals, activity_types, sentiment, published_at, ingested_at, url, companies, relevance_score";
+  "id, title, source, summary, content, sector, industry_verticals, activity_types, sentiment, published_at, ingested_at, url, companies, primary_company, relevance_score";
 
 export interface TopStoryRow {
   id: string;
@@ -64,6 +64,7 @@ export interface TopStoryRow {
   ingested_at: string; // NOT NULL in the articles schema (DEFAULT now())
   url: string | null;
   companies: unknown;
+  primary_company: string | null; // the subject company an article is ABOUT
   relevance_score: number | null;
 }
 
@@ -103,9 +104,23 @@ const withinSameEventWindow = (a: TopStoryRow, b: TopStoryRow): boolean => {
 const cleanedTitleLength = (title: string | null): number =>
   (title ?? "").replace(/\s+-\s+[^-]+$/, "").trim().length;
 
+// Normalised subject company an article is ABOUT (the primary_company column),
+// used as the cluster key alongside the feed ticker. Lowercased and stripped to
+// alphanumerics so "Yum! Brands" and "Yum Brands" match. Null/empty subjects are
+// non-clusterable: two rows collapse only when they share the SAME non-null
+// subject, so different companies can never merge even when they arrive through
+// the same broker/aggregator feed. See docs/recon/top-stories-dedup.md. This is
+// a strict tightening; it can only prevent collapses, never create them.
+const subjectKey = (primaryCompany: string | null): string | null => {
+  if (!primaryCompany) return null;
+  const k = primaryCompany.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return k.length > 0 ? k : null;
+};
+
 interface DecoratedRow {
   row: TopStoryRow;
   ticker: string | null;
+  subject: string | null;
   toks: Set<string>;
   idx: number;
 }
@@ -126,18 +141,22 @@ const keepWhichReplaces = (candidate: TopStoryRow, current: TopStoryRow): boolea
 };
 
 /**
- * Collapse same-event near-duplicates (same source-ticker, published within
- * SAME_EVENT_WINDOW_HOURS, title Jaccard >= SAME_EVENT_TITLE_SIMILARITY) into a
- * single surviving row, preserving input ranking. Single-linkage greedy
- * clustering over the candidate list; each cluster renders its keep-which
- * survivor at the rank of its best-placed member. Rows with no parsed ticker
- * never cluster. See docs/recon/top-stories-dedup.md.
+ * Collapse same-event near-duplicates into a single surviving row, preserving
+ * input ranking. Two rows are the same event when they share the same parsed
+ * feed ticker AND the same non-null subject company (primary_company), were
+ * published within SAME_EVENT_WINDOW_HOURS, and have title Jaccard >=
+ * SAME_EVENT_TITLE_SIMILARITY. Single-linkage greedy clustering; each cluster
+ * renders its keep-which survivor at the rank of its best-placed member. Rows
+ * with no parsed ticker, or no subject, never cluster, so different companies
+ * arriving through one broker/aggregator feed can never merge. See
+ * docs/recon/top-stories-dedup.md.
  */
 function collapseSameEvent(rows: TopStoryRow[]): TopStoryRow[] {
   const decorated: DecoratedRow[] = rows.map((row, idx) => ({
     row,
     idx,
     ticker: parseSourceTicker(row.source),
+    subject: subjectKey(row.primary_company),
     toks: titleTokens(row.title),
   }));
 
@@ -148,6 +167,8 @@ function collapseSameEvent(rows: TopStoryRow[]): TopStoryRow[] {
         (m) =>
           m.ticker !== null &&
           m.ticker === d.ticker &&
+          m.subject !== null &&
+          m.subject === d.subject &&
           withinSameEventWindow(m.row, d.row) &&
           jaccard(m.toks, d.toks) >= SAME_EVENT_TITLE_SIMILARITY,
       ),

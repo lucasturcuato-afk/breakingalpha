@@ -368,3 +368,133 @@ so preview is a faithful proxy for both surfaces.
    margin. A future tuning pass should revisit whether 0.50 is the right value or
    whether a second signal (subject-company match) should supplement it to lift
    the bank/broker-feed cross-company false collapses (RBC/UBS/MUFG).
+
+---
+
+## FOLLOW-UP (PR #345): closing the cross-company false-collapse risk
+
+### Phase 1 recon - is there a reliable SUBJECT-company signal?
+
+**1. Candidate fields.** `articles` carries, besides `source` (the feed) and
+`companies text[]`, a single `primary_company text` column that names the
+company an article is ABOUT (the subject), plus `themes text[]`. `primary_company`
+is the subject signal; `companies[]` was already shown too sparse (empty for one
+member in 69% of high-Jaccard pairs).
+
+**2. Coverage and divergence (30 days, gnews, relevance >= 9).** 10,747 top-tier
+rows, 10,013 with a non-null `primary_company` = **93.2% coverage**. Of the 1,258
+pairs the current rule (same feed + 48h + Jaccard >= 0.50) would collapse:
+
+| subject relationship | pairs | share |
+|---|---|---|
+| both non-null, same subject | 1,091 | 86.7% |
+| both non-null, different subject | 111 | 8.8% |
+| at least one null | 56 | 4.5% |
+
+**3. Known cases.** For the VCTR AUM pair (Stock Titan + GuruFocus) both rows
+carry `primary_company = "Victory Capital"` (exact match), while the distinct
+Janus Henderson bid article correctly carries `primary_company = "Janus
+Henderson"` even though its `companies[]` still lists Victory Capital -- so
+`primary_company` is a better subject signal than `companies[]`. For broker
+feeds the subject correctly diverges: `Google News (RBC)` -> `Wealthfront` vs
+`Walmart`; `Google News (MUFG)` -> `Delfin LNG` / `CocaCola Company (The)` /
+`Brown & Brown, Inc.` (all different from the feed and from each other).
+
+**4. Null behavior.** ~6.8% of top-tier rows have no `primary_company`. The
+collapse rule treats a null subject as non-clusterable (it never matches another
+row), so null rows can never over-collapse.
+
+**Two imperfections, both measured:**
+- *Surface-form variance.* The 111 different-subject pairs are mostly the SAME
+  company in two forms (`Palo Alto Networks`/`PANW`, `Rivian`/`RIVN`,
+  `Honeywell`/`HON`, `Yum!`/`Yum`, `O'Reilly` curly vs straight apostrophe). An
+  exact/normalized-equality key therefore under-collapses these legit variants
+  (reconciling name vs ticker would need the entity-alias system, which is
+  entity resolution we will not hack in). Under-collapse is the safe failure
+  (an occasional visible dupe), and on the rendered surface it does not occur
+  (see below).
+- *Filer mislabeling.* Some 13F rows get `primary_company` = the filer
+  (`MUFG Securities EMEA plc`) instead of the held company, so two of that
+  filer's disclosures in different targets still share a subject and still
+  collapse. This collapses benign same-filer low-value cards, never two distinct
+  important companies.
+
+### DECISION GATE: CLEAN -> proceed
+
+A real subject field exists (93.2% coverage), is already in the data (no NER),
+and correctly diverges from the feed ticker on the RBC/UBS/MUFG cross-company
+cases. Requiring the same subject can only PREVENT collapses, never create new
+ones, so it is a strict tightening of the shipped rule. It provably blocks the
+111 different-subject pairs (which include the genuine cross-company class such
+as RBC `GitLab` vs RBC `USA Compression`). The residual is the benign
+same-filer-disclosure case above, which is not a distinct-company loss. Rendered
+surface evidence below shows zero recall loss on the proven collapses.
+
+### Phase 2 - implementation (subject requirement)
+
+`src/lib/top-stories.ts`: added `primary_company` to `TOP_STORIES_COLUMNS` and
+the `TopStoryRow` interface, a `subjectKey` helper (lowercase, strip to
+alphanumerics so "Yum! Brands" == "Yum Brands"), a `subject` field on
+`DecoratedRow`, and one extra clause in the cluster predicate: two rows collapse
+only when `m.subject !== null && m.subject === d.subject` in addition to the
+existing same-feed-ticker + 48h + Jaccard checks. A null subject is
+non-clusterable. No threshold or window changed. This is a strict tightening: it
+can only remove collapses, never add them.
+
+### Self-critique + verification (follow-up)
+
+**Diff re-read / protected files.** The only code change is
+`src/lib/top-stories.ts`; the rest are recon artifacts under `docs/recon/`. No
+Propose-only file (MemoModal.tsx, api/memo/route.ts, api/briefing/route.ts,
+trends/page.tsx, watchlist-utils.ts, WatchlistAddInput.tsx) is touched. The
+implementation matches the plan: subject-company required, null handled as
+non-clusterable, 48h and Jaccard 0.50 unchanged, named constants retained.
+
+**Cross-company now 0 by construction.** A collapse now requires both rows to
+carry the SAME non-null `primary_company`, so two articles about different
+subject companies can never merge, regardless of the feed they arrived through.
+At population scale (30 days, relevance >= 9) this drops the 111 different-subject
+pairs the old rule would have collapsed (the genuine cross-company class, e.g.
+RBC `GitLab` vs RBC `USA Compression`) and the 56 null-subject pairs, while
+keeping the 1,091 same-subject collapses. The one residual is benign: a 13F row
+mislabeled with the filer (e.g. `MUFG Securities EMEA plc`) can still group two
+of that filer's disclosures, which is a same-filer low-value collapse, never two
+distinct important companies.
+
+**Rendered surface, 14-day replay (real top-24 pool).** Collapses under the new
+rule: **5** (unchanged from the shipped rule). Cross-company collapses: **0**.
+Null-subject collapses: 0. The VCTR pair STILL collapses (both subjects
+normalise to `victorycapital`), keeping the Stock Titan headline. Zero recall
+loss on the proven collapses.
+
+**Deterministic harness (`docs/recon/verify-dedup-visual.mjs`, real /preview,
+fixtures injected via request interception).**
+- `dedup-collapse-preview.png` - VCTR same-event pair collapses to one; Nvidia,
+  Apple, Microsoft backfill.
+- `dedup-control-distinct-preview.png` - two distinct VCTR stories (subjects
+  Victory Capital vs Janus Henderson) both render.
+- `dedup-crosscompany-preview.png` - two RBC-feed articles with subjects GitLab
+  vs USA Compression Partners and Jaccard >= 0.50 both render: the cross-company
+  merge the old rule allowed is now prevented.
+
+**Gates.** `npx tsc --noEmit`: 0 errors in `top-stories.ts` (4 pre-existing
+unrelated test-import errors). `npm run lint`: clean. `npm run build`: success,
+`/preview` prerenders static. Full `npm run test:e2e` remains outstanding for
+Noah's pre-merge `/preflight`.
+
+### Updated limitations
+
+1. **Recall on subject surface-variants.** Same-company name/ticker/suffix
+   variants (`Palo Alto Networks` vs `PANW`) no longer collapse, because
+   reconciling them needs the entity-alias system. This is under-collapse (an
+   occasional visible dupe), the safe failure, and does not occur on the rendered
+   surface across 14 days. Could be improved later by resolving subjects through
+   the alias/HARD_TICKER_OVERRIDES system.
+2. **Filer-mislabeled 13F rows** can still collapse two of one filer's
+   disclosures (benign, never two distinct important companies).
+3. **Subject coverage 93.2%**; the ~6.8% null-subject rows never collapse, so
+   they may show an occasional same-event dupe. Safe by design.
+4. **Saturated relevance_score** (up to ~3,692 rows tie at 10) is still the
+   underlying ranking gap; dedup does not fix it. Separate sprint.
+5. **VCTR sits at exactly Jaccard 0.50**; still caught by the smallest margin
+   (now also gated by the subject match).

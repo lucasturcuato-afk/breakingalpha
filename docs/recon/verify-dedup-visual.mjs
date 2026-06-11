@@ -17,27 +17,42 @@ const row = (o) => ({
   ingested_at: o.ingested_at ?? o.published_at,
   url: o.url ?? "https://example.com/" + o.id,
   companies: o.companies ?? [],
+  primary_company: o.primary_company ?? null,
   relevance_score: o.relevance_score,
 });
 
 // CASE A - collapse: the real VCTR same-event pair (Stock Titan + GuruFocus),
-// both score 10, adjacent at the top, then three distinct fillers.
+// same subject "Victory Capital", both score 10, adjacent at the top, then three
+// distinct fillers.
 const FIXTURE_COLLAPSE = [
-  row({ id: "vctr-stocktitan", title: "Victory Capital (NASDAQ: VCTR) reports $338.9B May assets under management - Stock Titan", source: "Google News (VCTR)", relevance_score: 10, published_at: "2026-06-09T12:22:32Z", companies: ["Victory Capital"] }),
-  row({ id: "vctr-gurufocus", title: "Victory Capital (VCTR) Reports Strong Assets Under Management - GuruFocus", source: "Google News (VCTR)", relevance_score: 10, published_at: "2026-06-09T12:03:30Z", companies: ["Victory Capital"] }),
-  row({ id: "nvda-1", title: "Nvidia (NVDA) Unveils Next-Gen Data Center GPU at Computex - Reuters", source: "Google News (NVDA)", relevance_score: 10, published_at: "2026-06-09T11:40:00Z", companies: ["Nvidia"] }),
-  row({ id: "aapl-1", title: "Apple (AAPL) Opens WWDC With On-Device AI Push - Bloomberg", source: "Google News (AAPL)", relevance_score: 10, published_at: "2026-06-09T11:10:00Z", companies: ["Apple"] }),
-  row({ id: "msft-1", title: "Microsoft (MSFT) Lands $10B Government Cloud Contract - CNBC", source: "Google News (MSFT)", relevance_score: 10, published_at: "2026-06-09T10:30:00Z", companies: ["Microsoft"] }),
-  row({ id: "amzn-1", title: "Amazon (AMZN) Expands Same-Day Pharmacy to 20 Cities - WSJ", source: "Google News (AMZN)", relevance_score: 9, published_at: "2026-06-09T09:50:00Z", companies: ["Amazon"] }),
+  row({ id: "vctr-stocktitan", title: "Victory Capital (NASDAQ: VCTR) reports $338.9B May assets under management - Stock Titan", source: "Google News (VCTR)", primary_company: "Victory Capital", relevance_score: 10, published_at: "2026-06-09T12:22:32Z", companies: ["Victory Capital"] }),
+  row({ id: "vctr-gurufocus", title: "Victory Capital (VCTR) Reports Strong Assets Under Management - GuruFocus", source: "Google News (VCTR)", primary_company: "Victory Capital", relevance_score: 10, published_at: "2026-06-09T12:03:30Z", companies: ["Victory Capital"] }),
+  row({ id: "nvda-1", title: "Nvidia (NVDA) Unveils Next-Gen Data Center GPU at Computex - Reuters", source: "Google News (NVDA)", primary_company: "Nvidia", relevance_score: 10, published_at: "2026-06-09T11:40:00Z", companies: ["Nvidia"] }),
+  row({ id: "aapl-1", title: "Apple (AAPL) Opens WWDC With On-Device AI Push - Bloomberg", source: "Google News (AAPL)", primary_company: "Apple", relevance_score: 10, published_at: "2026-06-09T11:10:00Z", companies: ["Apple"] }),
+  row({ id: "msft-1", title: "Microsoft (MSFT) Lands $10B Government Cloud Contract - CNBC", source: "Google News (MSFT)", primary_company: "Microsoft", relevance_score: 10, published_at: "2026-06-09T10:30:00Z", companies: ["Microsoft"] }),
+  row({ id: "amzn-1", title: "Amazon (AMZN) Expands Same-Day Pharmacy to 20 Cities - WSJ", source: "Google News (AMZN)", primary_company: "Amazon", relevance_score: 9, published_at: "2026-06-09T09:50:00Z", companies: ["Amazon"] }),
 ];
 
 // CASE B - control: two DISTINCT VCTR stories (May AUM report vs the Janus
-// Henderson bid, Jaccard ~0.1) plus fillers. These must BOTH survive.
+// Henderson bid), different subjects "Victory Capital" vs "Janus Henderson",
+// plus fillers. These must BOTH survive.
 const FIXTURE_CONTROL = [
-  row({ id: "vctr-aum", title: "Victory Capital (NASDAQ: VCTR) reports $338.9B May assets under management - Stock Titan", source: "Google News (VCTR)", relevance_score: 10, published_at: "2026-06-09T12:22:32Z", companies: ["Victory Capital"] }),
-  row({ id: "vctr-janus", title: "Is Victory Capital's New Bid a Game Changer for Janus Henderson - Kavout", source: "Google News (VCTR)", relevance_score: 10, published_at: "2026-06-09T10:03:26Z", companies: ["Victory Capital"] }),
-  row({ id: "nvda-2", title: "Nvidia (NVDA) Unveils Next-Gen Data Center GPU at Computex - Reuters", source: "Google News (NVDA)", relevance_score: 10, published_at: "2026-06-09T11:40:00Z", companies: ["Nvidia"] }),
-  row({ id: "aapl-2", title: "Apple (AAPL) Opens WWDC With On-Device AI Push - Bloomberg", source: "Google News (AAPL)", relevance_score: 9, published_at: "2026-06-09T11:10:00Z", companies: ["Apple"] }),
+  row({ id: "vctr-aum", title: "Victory Capital (NASDAQ: VCTR) reports $338.9B May assets under management - Stock Titan", source: "Google News (VCTR)", primary_company: "Victory Capital", relevance_score: 10, published_at: "2026-06-09T12:22:32Z", companies: ["Victory Capital"] }),
+  row({ id: "vctr-janus", title: "Is Victory Capital's New Bid a Game Changer for Janus Henderson - Kavout", source: "Google News (VCTR)", primary_company: "Janus Henderson", relevance_score: 10, published_at: "2026-06-09T10:03:26Z", companies: ["Victory Capital"] }),
+  row({ id: "nvda-2", title: "Nvidia (NVDA) Unveils Next-Gen Data Center GPU at Computex - Reuters", source: "Google News (NVDA)", primary_company: "Nvidia", relevance_score: 10, published_at: "2026-06-09T11:40:00Z", companies: ["Nvidia"] }),
+  row({ id: "aapl-2", title: "Apple (AAPL) Opens WWDC With On-Device AI Push - Bloomberg", source: "Google News (AAPL)", primary_company: "Apple", relevance_score: 9, published_at: "2026-06-09T11:10:00Z", companies: ["Apple"] }),
+];
+
+// CASE C - cross-company broker feed: two articles arriving through the same
+// feed ticker (RBC) whose template headlines clear Jaccard 0.50 but are about
+// DIFFERENT subject companies (GitLab vs USA Compression Partners). Old rule
+// (feed ticker + Jaccard) would have merged them; the subject requirement keeps
+// them apart. Both must survive.
+const FIXTURE_CROSSCOMPANY = [
+  row({ id: "rbc-gitlab", title: "RBC Capital raises GitLab stock price target on revenue beat - Investing.com", source: "Google News (RBC)", primary_company: "GitLab", relevance_score: 10, published_at: "2026-06-09T12:20:00Z", companies: ["GitLab"] }),
+  row({ id: "rbc-usac", title: "RBC Capital raises USA Compression stock price target on tight market - Investing.com", source: "Google News (RBC)", primary_company: "USA Compression Partners", relevance_score: 10, published_at: "2026-06-09T11:50:00Z", companies: ["USA Compression Partners"] }),
+  row({ id: "nvda-3", title: "Nvidia (NVDA) Unveils Next-Gen Data Center GPU at Computex - Reuters", source: "Google News (NVDA)", primary_company: "Nvidia", relevance_score: 10, published_at: "2026-06-09T11:40:00Z", companies: ["Nvidia"] }),
+  row({ id: "aapl-3", title: "Apple (AAPL) Opens WWDC With On-Device AI Push - Bloomberg", source: "Google News (AAPL)", primary_company: "Apple", relevance_score: 9, published_at: "2026-06-09T11:10:00Z", companies: ["Apple"] }),
 ];
 
 async function shoot(fixture, outfile, label) {
@@ -78,4 +93,5 @@ async function shoot(fixture, outfile, label) {
 
 await shoot(FIXTURE_COLLAPSE, "docs/recon/dedup-collapse-preview.png", "CASE A (collapse)");
 await shoot(FIXTURE_CONTROL, "docs/recon/dedup-control-distinct-preview.png", "CASE B (control)");
+await shoot(FIXTURE_CROSSCOMPANY, "docs/recon/dedup-crosscompany-preview.png", "CASE C (cross-company broker feed)");
 console.log("\nDONE");
