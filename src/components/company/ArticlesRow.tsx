@@ -153,7 +153,16 @@ export function ArticlesRow({
         >
           <span className="inline-flex items-center gap-1.5">
             <span className="truncate">{article.source ?? ""}</span>
-            {article.source != null ? (
+            {article.isWebSourced ? (
+              <span
+                data-testid="articles-row-web-badge"
+                title="Web-sourced (not yet in corpus)"
+                className="inline-block rounded-[2px] border border-border-subtle bg-[var(--row-alt)] px-[5px] py-[1px] text-[8px] font-bold uppercase tracking-wider text-text-muted"
+              >
+                Web
+              </span>
+            ) : null}
+            {article.source != null && !article.isWebSourced ? (
               <SourceCredibilityBadge
                 winRate={article.sourceWinRate}
                 sampleSize={article.sourceSampleSize}

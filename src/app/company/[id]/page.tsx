@@ -18,6 +18,7 @@ import { FinancialsTab } from "@/components/company/tabs/FinancialsTab";
 import { ComingSoonTab } from "@/components/company/tabs/ComingSoonTab";
 import { getCompanyDetail } from "@/lib/data-access/getCompanyDetail";
 import { resolveAlias } from "@/lib/data-access/aliasResolver";
+import { getArticleFallback } from "@/lib/data-access/getArticleFallback";
 import { fetchCompanyFilings } from "@/lib/sec-filings";
 import { fetchCompanyFinancials } from "@/lib/financial-facts";
 import {
@@ -101,6 +102,25 @@ export default async function CompanyDetailPage({
   // once.
   const canonical = companyDetail.canonical;
 
+  // Read-only ArticlesTab fallback (ships dark behind the
+  // NEXT_PUBLIC_ARTICLES_WEB_FALLBACK_ENABLED flag, default off). When an
+  // indexed company has fewer than ARTICLE_FALLBACK_MIN in-tab articles, this
+  // appends own-DB text-match rows (Layer 1, real relevance_score) and, only if
+  // still short, synthetic Exa rows (Layer 2, badged web-sourced). It writes
+  // nothing to articles, companies, or mention_count. Returns [] when the flag
+  // is off or coverage already meets the threshold, so the merged list equals
+  // companyDetail.articles in every prod path today. See getArticleFallback.ts.
+  const fallbackArticles = await getArticleFallback(
+    supabase,
+    canonical,
+    companyDetail.articles,
+    companyDetail.display,
+  );
+  const articlesForTab =
+    fallbackArticles.length > 0
+      ? [...companyDetail.articles, ...fallbackArticles]
+      : companyDetail.articles;
+
   const { articles: rawArticles } = await fetchCompanyArticles(supabase, canonical);
   const classified = filterAndClassifyArticles(rawArticles, canonical);
   const developmentArticles = classified.filter((a) => a._isDevelopment);
@@ -119,7 +139,7 @@ export default async function CompanyDetailPage({
 
   const tabContent = {
     brief: <BriefTab company={canonical} content={memoContent} systemPrompt={systemPrompt} />,
-    articles: <ArticlesTab articles={companyDetail.articles} />,
+    articles: <ArticlesTab articles={articlesForTab} />,
     trend: (
       <TrendTab
         ticker={companyDetail.ticker}
