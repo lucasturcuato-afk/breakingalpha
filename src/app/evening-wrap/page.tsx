@@ -189,6 +189,7 @@ export default function EveningWrapPage() {
   const [formatLabel, setFormatLabel] = useState<string | null>(null);
   const [userAddendum, setUserAddendum] = useState<string | null>(null);
   const [watchlistSection, setWatchlistSection] = useState<WatchlistSectionData | null>(null);
+  const [watchlistStatus, setWatchlistStatus] = useState<"loading" | "loaded" | "error">("loading");
   const [briefOutputId, setBriefOutputId] = useState<string | null>(null);
   const [sectionOutputIds, setSectionOutputIds] = useState<Record<string, string>>({});
   const [user, setUser] = useState<{ id: string; email?: string | null } | null>(null);
@@ -397,32 +398,58 @@ export default function EveningWrapPage() {
     load();
   }, []);
 
-  // Watchlist section — independent, fail-soft fetch. Errors, slowness, or a
-  // signed-out user all resolve to no section; the wrap never blocks on it.
+  // Watchlist section — independent, fail-soft fetch. Mirrors the briefing
+  // fetch: resolve the session opportunistically but NEVER block on it, and
+  // ALWAYS hit the API with credentials:"include" so the server resolves the
+  // user from cookies if getSession loses the race. Reports an explicit status
+  // so an error is distinct from "no news"; the wrap never blocks on it.
   useEffect(() => {
     let cancelled = false;
+    setWatchlistStatus("loading");
     (async () => {
-      try {
-        const session = await Promise.race([
-          getSupabase().auth.getSession().then((r) => r.data.session ?? null).catch(() => null),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
-        ]);
-        if (!session?.access_token) return;
-        const res = await fetch("/api/watchlist-brief?type=evening", {
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
+      const session = await Promise.race([
+        getSupabase().auth.getSession().then((r) => r.data.session ?? null).catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
+      ]);
+      const headers: HeadersInit = { Accept: "application/json" };
+      if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+
+      const doFetch = () =>
+        fetch("/api/watchlist-brief?type=evening", {
+          headers,
           credentials: "include",
           cache: "no-store",
         });
-        if (!res.ok) return;
-        const data = (await res.json()) as WatchlistSectionData;
-        if (!cancelled && data && typeof data.state === "string") {
-          setWatchlistSection(data);
+
+      try {
+        let res: Response;
+        try {
+          res = await doFetch();
+          if (res.status >= 500) throw new Error(`HTTP ${res.status}`);
+        } catch {
+          // One bounded retry on a network error or 5xx (transient cold start).
+          await new Promise((r) => setTimeout(r, 400));
+          res = await doFetch();
         }
-      } catch {
-        // fail soft
+        if (cancelled) return;
+        if (res.status === 401) {
+          setWatchlistStatus("loaded");
+          return;
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as WatchlistSectionData;
+        if (cancelled) return;
+        if (data && typeof data.state === "string") {
+          setWatchlistSection(data);
+          setWatchlistStatus("loaded");
+        } else {
+          setWatchlistStatus("error");
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.warn("[watchlist-brief] section fetch failed:", e);
+          setWatchlistStatus("error");
+        }
       }
     })();
     return () => {
@@ -933,7 +960,11 @@ export default function EveningWrapPage() {
             )}
 
             {/* ── Your Watchlist (per-user, sits above the lead) ── */}
-            <WatchlistBriefSection section={watchlistSection} briefType="evening" />
+            <WatchlistBriefSection
+              section={watchlistSection}
+              status={watchlistStatus}
+              briefType="evening"
+            />
 
             {/* ── Today's Story ── */}
             <section style={{ marginBottom: 40 }}>

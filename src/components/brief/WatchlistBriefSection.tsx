@@ -29,19 +29,31 @@ import type {
   WatchlistBullet,
 } from "@/lib/watchlist-brief";
 
+/**
+ * Fetch lifecycle status, distinct from the section's data state:
+ *  - loading: fetch in flight (render nothing, no flash above the lead)
+ *  - loaded : fetch resolved (render per section.state; null section = signed out)
+ *  - error  : fetch failed after a bounded retry (render a quiet fallback, NOT
+ *             the empty-watchlist nudge, so a failure is no longer silent and
+ *             indistinguishable from "no watchlist news")
+ */
+export type WatchlistFetchStatus = "loading" | "loaded" | "error";
+
 interface Props {
   section: SectionData | null;
+  status?: WatchlistFetchStatus;
   briefType: "morning" | "evening";
 }
 
 const GOLD_DARK = "var(--gold-dark)";
 
-export default function WatchlistBriefSection({ section, briefType }: Props) {
+export default function WatchlistBriefSection({
+  section,
+  status = "loaded",
+  briefType,
+}: Props) {
   // The bullet whose memo modal is open (null = closed). One modal at a time.
   const [memoBullet, setMemoBullet] = useState<WatchlistBullet | null>(null);
-
-  // Fail-soft: nothing to show until the fetch resolves.
-  if (!section) return null;
 
   const eyebrow = (
     <p
@@ -58,6 +70,24 @@ export default function WatchlistBriefSection({ section, briefType }: Props) {
       Your Watchlist
     </p>
   );
+
+  // Loading: render nothing (avoids a skeleton flash above the lead).
+  if (status === "loading") return null;
+
+  // Error: a quiet, distinct fallback. Never the onboarding nudge, never blank.
+  if (status === "error") {
+    return (
+      <section style={wrapStyle} aria-label="Your watchlist">
+        {eyebrow}
+        <p className="font-sans" style={{ ...bodyStyle, color: "var(--text-secondary)" }}>
+          Your watchlist couldn&rsquo;t load right now. Refresh to try again.
+        </p>
+      </section>
+    );
+  }
+
+  // Loaded but no section (e.g. signed out): show nothing, not an error.
+  if (!section) return null;
 
   if (section.state === "empty") {
     return (
