@@ -4,6 +4,7 @@ import { buildCompanyContainsOr, getCompanyVariants } from "@/lib/company-intel"
 import type { Completeness } from "@/lib/article-signal";
 import { computeTone, type SentimentLabel, type ToneSummary } from "@/lib/tone";
 import { computeAttention, type AttentionSummary } from "@/lib/attention";
+import { deriveTickerPrivacy } from "@/lib/company-privacy";
 
 export type AliasMention = { name: string; n: number };
 
@@ -98,10 +99,9 @@ export async function getCompanyDetail(
 
   const { canonical: head, siblings, aliasMentions } = resolved;
   const cluster = [head, ...siblings];
-  const ticker =
-    typeof head.ticker === "string" && head.ticker.trim()
-      ? head.ticker.trim().toUpperCase()
-      : null;
+  // Privacy SOT: a company is private iff no ticker resolves on the canonical
+  // row. Derivation extracted to company-privacy.ts so it stays unit-tested.
+  const { ticker, isPrivate } = deriveTickerPrivacy(head.ticker);
   const ids = cluster.map((r) => r.id);
 
   const sinceDay = utcDayMs(new Date(Date.now() - (DAYS - 1) * DAY_MS));
@@ -241,6 +241,6 @@ export async function getCompanyDetail(
     articles,
     themes: (head.key_themes ?? []) as string[],
     memo: null,
-    isPrivate: ticker === null,
+    isPrivate,
   };
 }

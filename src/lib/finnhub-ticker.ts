@@ -49,6 +49,13 @@ const HARD_TICKER_OVERRIDES: Record<string, string> = {
   // CANONICAL map has no Raytheon entry so aliasResolver could not
   // cluster the two rows by ticker. Added per WD64-adjacent recon.
   "raytheon": "RTX",
+  // SpaceX -> SPCX (Nasdaq, IPO 2026-06-12). Finnhub /search will not return
+  // a stable match on listing day, so pin it. NOTE: this map is currently
+  // unreferenced on the frontend render path (getCompanyDetail reads
+  // companies.ticker straight from Supabase); kept in parity with the Python
+  // twin so the backfill/entity write path resolves SPCX without trusting
+  // Finnhub's fresh-listing index.
+  "spacex": "SPCX",
 };
 
 // Patch J (f): brands where camelCase IS the canonical spelling -- skip

@@ -12,6 +12,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Delta, Eyebrow, SentimentPill, type SentimentTone } from "@/components/ui";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { CompanyDetail } from "@/lib/data-access/getCompanyDetail";
+import { shouldRenderPrivate } from "@/lib/company-privacy";
 import {
   directionVerb,
   formatEvidence,
@@ -153,7 +154,13 @@ export function CompanyKPIStrip({ companyDetail }: CompanyKPIStripProps) {
     return () => ctrl.abort();
   }, [ticker]);
 
-  const isPrivate = kpi.status === "private" || companyDetail.isPrivate;
+  // Privacy SOT is the resolved ticker (companyDetail.isPrivate), NOT the
+  // Yahoo quote status. A ticker'd company that Yahoo 404s (e.g. a brand-new
+  // listing not yet indexed) returns kpi.status === "private", but that means
+  // the quote is pending, not that the company is private: it must render a
+  // neutral "--" with no PRIVATE badge. shouldRenderPrivate takes only the SOT
+  // so kpi.status can never flip the badge.
+  const isPrivate = shouldRenderPrivate(companyDetail.isPrivate);
   const changePct = kpi.change !== null ? kpi.change * 100 : null;
   const m = companyDetail.mentions7d;
   const todayN = m.length > 0 ? m[m.length - 1] : 0;
