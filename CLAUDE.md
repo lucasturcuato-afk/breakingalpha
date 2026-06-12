@@ -57,9 +57,27 @@ No unit-test runner is wired. Playwright e2e is the only test layer.
 - Use isolated git worktrees when running 2+ write subagents in parallel
   (shared .git/refs collide otherwise).
 - A visual smoke test is required before every PR merge.
-- Before opening a PR, run /preflight and confirm all checks pass.
+- Before opening a PR, run /preflight; the hard gates (tsc, lint, build) must
+  pass. e2e is advisory, not a blocking gate. See the Preflight gate section.
 - Agents never merge to main, apply migrations, or dispatch production pipeline
   runs. Surface these for a human.
+
+## Preflight gate
+Hard gates, must pass before any PR: tsc (0 errors), lint (0 errors), build
+(success). e2e is NOT a required gate.
+- e2e is advisory and conditional. Run it only for changes that touch
+  interactive UI flows or user-facing rendering. For isolated data-access,
+  backend, or logic changes, deterministic verification (unit, data-layer
+  replay, or rendered-fixture proof) substitutes for e2e.
+- When e2e is run, the bar is differential, not absolute: no NEW failure beyond
+  the known floor (currently 14 deterministic failures: 5 selector brittleness
+  + 9 hydration). Absolute green is not required while that floor exists.
+- The e2e suite contains mutating specs and the only configured target is the
+  prod Supabase. Agents must NEVER run the mutating e2e suite unattended or
+  against the prod ref. Supervised manual runs as the dedicated test user are
+  acceptable (RLS sandboxes that user to its own rows).
+- Re-promote e2e to a required, automated gate ONLY once it runs in CI against a
+  dedicated non-prod target. Until then it stays advisory.
 
 ## Propose-only files
 High-blast-radius or actively-iterated files. Do not rewrite these
