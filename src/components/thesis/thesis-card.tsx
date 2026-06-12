@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   MoreHorizontal,
@@ -122,15 +122,57 @@ function OutcomeIcon({
 // ── Staleness indicator ──
 
 function StalenessIndicator({ generatedAt, outcome }: { generatedAt?: string | null; outcome?: string | null }) {
-  if (!generatedAt || outcome) return null;
-  // eslint-disable-next-line react-hooks/purity -- pre-existing Date.now() in render; tracked in docs/recon/preflight-baseline.md
-  const age = Date.now() - new Date(generatedAt).getTime();
-  const days14 = 14 * 24 * 60 * 60 * 1000;
-  if (age < days14) return null;
+  // Staleness depends on the current time, so it is computed after mount (never in
+  // render) to keep render pure and avoid any server/client hydration divergence.
+  const [isStale, setIsStale] = useState(false);
+  useEffect(() => {
+    if (!generatedAt || outcome) {
+      setIsStale(false);
+      return;
+    }
+    const age = Date.now() - new Date(generatedAt).getTime();
+    const days14 = 14 * 24 * 60 * 60 * 1000;
+    setIsStale(age >= days14);
+  }, [generatedAt, outcome]);
+  if (!isStale) return null;
   return (
     <Tooltip content="Stale — awaiting outcome">
       <Clock size={10} className="text-signal-warn flex-shrink-0" />
     </Tooltip>
+  );
+}
+
+// ── Age indicator ──
+
+function AgeIndicator({ generatedAt, outcome }: { generatedAt?: string | null; outcome?: string | null }) {
+  // Relative age depends on the current time, so it is computed after mount (never in
+  // render) to keep render pure and avoid any server/client hydration divergence.
+  const [label, setLabel] = useState<string | null>(null);
+  const [isStale, setIsStale] = useState(false);
+  useEffect(() => {
+    if (!generatedAt) {
+      setLabel(null);
+      return;
+    }
+    const diffMs = Date.now() - new Date(generatedAt).getTime();
+    const ageDays = Math.floor(diffMs / 86400000);
+    const ageHours = Math.floor(diffMs / 3600000);
+    const stale = ageDays >= 14 && !outcome;
+    let next: string;
+    if (ageHours < 24) next = "Today";
+    else if (ageDays < 7) next = `${ageDays}d ago`;
+    else next = `${Math.floor(ageDays / 7)}w ago`;
+    if (stale) next += " ⚠";
+    setLabel(next);
+    setIsStale(stale);
+  }, [generatedAt, outcome]);
+  if (!label) return null;
+  return (
+    <span className={`font-mono text-[10px] mt-0.5 inline-block ${
+      isStale ? "text-amber-500" : "text-[var(--text-muted)]"
+    }`}>
+      {label}
+    </span>
   );
 }
 
@@ -186,26 +228,7 @@ export function ThesisCard({ thesis, isSelected }: ThesisCardProps) {
               {thesis.title}
             </h4>
             {/* Age indicator */}
-            {(() => {
-              if (!thesis.generated_at) return null;
-              // eslint-disable-next-line react-hooks/purity -- pre-existing Date.now() in render; tracked in docs/recon/preflight-baseline.md
-              const diffMs = Date.now() - new Date(thesis.generated_at).getTime();
-              const ageDays = Math.floor(diffMs / 86400000);
-              const ageHours = Math.floor(diffMs / 3600000);
-              const isStale = ageDays >= 14 && !thesis.outcome;
-              let label: string;
-              if (ageHours < 24) label = "Today";
-              else if (ageDays < 7) label = `${ageDays}d ago`;
-              else label = `${Math.floor(ageDays / 7)}w ago`;
-              if (isStale) label += " \u26A0";
-              return (
-                <span className={`font-mono text-[10px] mt-0.5 inline-block ${
-                  isStale ? "text-amber-500" : "text-[var(--text-muted)]"
-                }`}>
-                  {label}
-                </span>
-              );
-            })()}
+            <AgeIndicator generatedAt={thesis.generated_at} outcome={thesis.outcome} />
             {/* Ticker context */}
             {thesis.ticker && (
               <TickerContext ticker={thesis.ticker} thesisCreatedAt={thesis.generated_at} variant="compact" />
