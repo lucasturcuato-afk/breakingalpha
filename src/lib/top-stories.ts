@@ -196,8 +196,15 @@ function collapseSameEvent(rows: TopStoryRow[]): TopStoryRow[] {
  * primary is thin and widens the ingested_at floor to the ceiling. The
  * published_at ceiling (TOP_STORIES_MAX_AGE_DAYS) is identical in both tiers, so
  * the oldest story ever returned is bounded by that one value no matter which
- * tier serves. Both tiers order relevance_score desc with ingested_at desc as
- * the tiebreaker so fresher items win at equal score.
+ * tier serves. Both tiers order relevance_score desc, then ingested_at desc, so
+ * fresher items win at equal score. relevance_score is saturated (a large block
+ * ties at the max), and ingested_at is the transaction timestamp, so a whole
+ * ingest batch shares one value and cannot break ties inside the batch. Two
+ * further keys de-arbitrate that within-batch block deterministically:
+ * published_at desc (the publication-freshness signal; nullsFirst:false, though
+ * the published_at ceiling filter already excludes nulls) and finally id asc, a
+ * unique total order that makes the result identical across repeated runs. See
+ * docs/recon/top-stories-freshness.md.
  *
  * Never throws: on a query error it logs and returns whatever it has (possibly
  * an empty array), so callers degrade to their EmptyState rather than crashing.
@@ -212,6 +219,8 @@ export async function fetchTopStories(supabase: SupabaseClient): Promise<TopStor
     .gte("published_at", publishedCeiling)
     .order("relevance_score", { ascending: false })
     .order("ingested_at", { ascending: false })
+    .order("published_at", { ascending: false, nullsFirst: false })
+    .order("id", { ascending: true })
     .limit(TOP_STORIES_CANDIDATE_LIMIT);
 
   if (primary.error) {
@@ -237,6 +246,8 @@ export async function fetchTopStories(supabase: SupabaseClient): Promise<TopStor
     .gte("published_at", publishedCeiling)
     .order("relevance_score", { ascending: false })
     .order("ingested_at", { ascending: false })
+    .order("published_at", { ascending: false, nullsFirst: false })
+    .order("id", { ascending: true })
     .limit(TOP_STORIES_CANDIDATE_LIMIT);
 
   if (fallback.error) {
