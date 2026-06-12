@@ -47,4 +47,12 @@ jobs:
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+          # Feature flag read at backend/ingest.py:1167. Folds primary_company into
+          # articles.companies[] at ingest (companies[] match field only;
+          # company_mentions and mention_count stay frozen). Repo VARIABLE, not a
+          # secret (it is a non-sensitive boolean). Off-safe: when the variable is
+          # unset this renders an empty string, so the os.getenv check stays false
+          # and the fold stays off. Set vars.TAGGING_PRIMARY_FOLD_ENABLED to true to
+          # enable it on the next run.
+          TAGGING_PRIMARY_FOLD_ENABLED: ${{ vars.TAGGING_PRIMARY_FOLD_ENABLED }}
         run: python run.py ${{ steps.mode.outputs.mode }}
