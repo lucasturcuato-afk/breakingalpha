@@ -28,6 +28,13 @@ const RANGES: RangeDef[] = [
   { key: "5y", label: "5Y" },
 ];
 
+// Default range on first paint. Also the only range we auto-retry away from
+// when it comes back empty (see the fetch handler): a stock listed hours ago
+// has no daily history, so 3mo/1y/5y are blank but 1d (5-minute candles) has
+// data. Auto-falling-back to 1d keeps a brand-new listing from rendering a
+// dead "unavailable" panel on load.
+const DEFAULT_RANGE: RangeKey = "3mo";
+
 interface ChartPoint {
   t: number;
   c: number;
@@ -57,7 +64,11 @@ interface HoverState {
 type FetchState =
   | { status: "loading" }
   | { status: "ready"; data: ChartResponse }
-  | { status: "error" };
+  // <2 plottable points. hasQuote distinguishes a newly-listed company (Yahoo
+  // returned a live regularMarketPrice but no usable series yet) from a true
+  // failure (bad ticker, upstream error), so the UI can say "newly listed,
+  // limited history" instead of the generic "unavailable" string.
+  | { status: "empty"; hasQuote: boolean };
 
 // Chart geometry. Width is responsive via SVG viewBox; height stays fixed so
 // the surface lands at a predictable spot above the article list.
@@ -102,10 +113,26 @@ function formatDate(unixSec: number, range: RangeKey): string {
 }
 
 export function CompanyStockChart({ ticker, companyName }: CompanyStockChartProps) {
-  const [range, setRange] = useState<RangeKey>("3mo");
+  const [range, setRange] = useState<RangeKey>(DEFAULT_RANGE);
   const [fetchState, setFetchState] = useState<FetchState>({ status: "loading" });
   const [hover, setHover] = useState<HoverState | null>(null);
+  // Ranges this ticker has returned <2 points for, so their toggles can be
+  // greyed/disabled rather than flashing the error panel when clicked.
+  const [emptyRanges, setEmptyRanges] = useState<RangeKey[]>([]);
+  // One-shot guard so the default-range auto-fallback to 1d fires at most once
+  // per ticker (no fallback ping-pong if 1d is also empty).
+  const [autoRetried, setAutoRetried] = useState(false);
   const svgRef = useRef<SVGSVGElement | null>(null);
+
+  // Reset ticker-scoped state when the company changes (component is reused
+  // across tickers). React 19 permits this derived-from-props setState during
+  // render; it self-heals on the immediate re-render.
+  const [activeTicker, setActiveTicker] = useState(ticker);
+  if (activeTicker !== ticker) {
+    setActiveTicker(ticker);
+    setEmptyRanges([]);
+    setAutoRetried(false);
+  }
 
   // Track the request key directly in state. When ticker or range changes
   // the component sets state during render (allowed by React 19) so the
@@ -133,23 +160,39 @@ export function CompanyStockChart({ ticker, companyName }: CompanyStockChartProp
       .then((body) => {
         if (cancelled) return;
         if (!body.points || body.points.length < 2) {
-          setFetchState({ status: "error" });
+          // hasQuote: Yahoo gave us a live price but no plottable series. That
+          // is the signature of a brand-new listing, not a broken ticker.
+          const hasQuote = typeof body.price === "number" && Number.isFinite(body.price);
+          setEmptyRanges((prev) => (prev.includes(range) ? prev : [...prev, range]));
+          // Auto-fallback: a hours-old listing has no daily history, so the
+          // default 3mo is empty while 1d (intraday) has data. Switch once.
+          if (range === DEFAULT_RANGE && !autoRetried) {
+            setAutoRetried(true);
+            setRange("1d");
+            return;
+          }
+          setFetchState({ status: "empty", hasQuote });
         } else {
           setFetchState({ status: "ready", data: body });
         }
       })
       .catch(() => {
         if (cancelled) return;
-        setFetchState({ status: "error" });
+        // Network/timeout/upstream failure: no quote to show, generic message.
+        setFetchState({ status: "empty", hasQuote: false });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [ticker, range]);
+  }, [ticker, range, autoRetried]);
 
   const loading = fetchState.status === "loading";
-  const error = fetchState.status === "error";
+  const empty = fetchState.status === "empty";
+  const newlyListed = fetchState.status === "empty" && fetchState.hasQuote;
+  const unavailableMsg = newlyListed
+    ? "Newly listed, limited history"
+    : `Stock data unavailable for ${companyName}`;
   const data = fetchState.status === "ready" ? fetchState.data : null;
 
   // Geometry derived once per data change. Memo prevents expensive recompute
@@ -270,9 +313,9 @@ export function CompanyStockChart({ ticker, companyName }: CompanyStockChartProp
             <span className="font-display text-[18px] font-bold text-text-muted">
               Loading...
             </span>
-          ) : error || !geometry || headerPrice == null ? (
+          ) : empty || !geometry || headerPrice == null ? (
             <span className="font-sans text-[12px] text-text-muted">
-              Stock data unavailable for {companyName}
+              {unavailableMsg}
             </span>
           ) : (
             <>
@@ -298,16 +341,26 @@ export function CompanyStockChart({ ticker, companyName }: CompanyStockChartProp
         <div className="flex items-center gap-1 flex-shrink-0">
           {RANGES.map((r) => {
             const active = r.key === range;
+            // Grey/disable ranges known to have no data for this ticker (a
+            // newly-listed stock has empty 1y/5y). The active range stays
+            // enabled so the user can always re-select where they are.
+            const disabledRange = emptyRanges.includes(r.key) && !active;
             return (
               <button
                 key={r.key}
                 type="button"
                 onClick={() => setRange(r.key)}
+                disabled={disabledRange}
                 className={
-                  "font-data text-[10px] font-semibold px-2 py-1 rounded transition-colors cursor-pointer " +
+                  "font-data text-[10px] font-semibold px-2 py-1 rounded transition-colors " +
+                  (disabledRange
+                    ? "text-text-faint border border-transparent opacity-40 cursor-not-allowed "
+                    : "cursor-pointer ") +
                   (active
                     ? "bg-gold-muted text-gold border border-gold-border"
-                    : "text-text-secondary hover:bg-parchment-mid border border-transparent")
+                    : disabledRange
+                      ? ""
+                      : "text-text-secondary hover:bg-parchment-mid border border-transparent")
                 }
                 aria-pressed={active}
               >
@@ -326,13 +379,13 @@ export function CompanyStockChart({ ticker, companyName }: CompanyStockChartProp
             style={{ width: "100%", height: VIEW_H }}
             aria-label="Loading chart"
           />
-        ) : error || !geometry ? (
+        ) : empty || !geometry ? (
           <div
             className="rounded-md border border-dashed border-border-base flex items-center justify-center"
             style={{ width: "100%", height: VIEW_H }}
           >
             <p className="font-sans text-[11px] text-text-muted">
-              Stock data unavailable for {companyName}
+              {unavailableMsg}
             </p>
           </div>
         ) : (

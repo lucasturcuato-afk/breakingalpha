@@ -57,6 +57,11 @@ _CLASS_SHARE_RE = re.compile(r"^[A-Z]{1,5}\.(A|B)$")
 # is reachable only by direct symbol query. Keys are lowercase post-canonicalize.
 HARD_TICKER_OVERRIDES = {
     "berkshire hathaway": "BRK.B",
+    # SpaceX -> SPCX (Nasdaq, IPO 2026-06-12). Pinned so the bulk backfill /
+    # entity-creation write path resolves SPCX without trusting Finnhub's
+    # fresh-listing index, which is unreliable on listing day. Parity with the
+    # TS twin in src/lib/finnhub-ticker.ts.
+    "spacex": "SPCX",
 }
 
 # Patch J (e): canonical-name overrides mirror the brand-substitution
