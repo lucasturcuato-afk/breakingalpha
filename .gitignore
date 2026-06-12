@@ -74,3 +74,6 @@ ORCHESTRATOR_SUMMARY.md
 WATCHLIST_INGESTION_DIAGNOSIS.md
 auth-state.json
 .auth/
+
+# Backfill tool generated artifacts
+scripts/out/
