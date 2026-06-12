@@ -6,6 +6,11 @@
  * Re-sorts articles client-side by publishedAt DESC (server returns by
  * relevance_score DESC). Renders ArticlesTable with the sorted list, or
  * an empty state when no articles are present.
+ *
+ * Web-sourced fallback rows (isWebSourced, from getArticleFallback) always sort
+ * BELOW real in-corpus rows, then by publishedAt DESC within each group. With
+ * the fallback flag off, no row carries isWebSourced, so this is identical to
+ * the prior pure-recency sort.
  */
 
 import { useMemo } from "react";
@@ -26,7 +31,13 @@ function ms(value: string | null): number {
 
 export function ArticlesTab({ articles }: ArticlesTabProps) {
   const sorted = useMemo(
-    () => [...articles].sort((a, b) => ms(b.publishedAt) - ms(a.publishedAt)),
+    () =>
+      [...articles].sort((a, b) => {
+        const aw = a.isWebSourced ? 1 : 0;
+        const bw = b.isWebSourced ? 1 : 0;
+        if (aw !== bw) return aw - bw; // real rows first, web rows last
+        return ms(b.publishedAt) - ms(a.publishedAt);
+      }),
     [articles],
   );
 

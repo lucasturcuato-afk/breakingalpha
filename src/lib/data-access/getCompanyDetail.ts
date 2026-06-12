@@ -26,6 +26,12 @@ export type CompanyDetailArticle = {
   sourceWinRate: number | null;
   sourceSampleSize: number | null;
   completeness: Completeness;
+  // Read-only fallback provenance (see getArticleFallback.ts). Optional so the
+  // primary getCompanyDetail path and every existing caller are unaffected.
+  // isWebSourced marks a synthetic Exa row so the tab can badge it; provenanceUrl
+  // is the source URL (mirrors `url` for web rows).
+  isWebSourced?: boolean;
+  provenanceUrl?: string | null;
 };
 
 export interface CompanyDetail {
