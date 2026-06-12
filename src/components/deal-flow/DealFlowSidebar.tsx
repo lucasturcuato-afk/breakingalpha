@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Bookmark, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -112,6 +112,13 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
   );
   const hasUserSectors = userSectors.length > 0;
 
+  // Time-derived velocity is computed client-side after mount so Date.now() never
+  // runs during render (keeps the render pure and hydration-stable). null until mounted.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+  }, []);
+
   const {
     thisWeek,
     delta,
@@ -123,23 +130,26 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
     largestDeals,
     highRelevanceCount,
   } = useMemo(() => {
-    // eslint-disable-next-line react-hooks/purity -- pre-existing Date.now() in render; tracked in docs/recon/preflight-baseline.md
-    const now = Date.now();
     const WEEK = 7 * 24 * 60 * 60 * 1000;
 
-    const thisWeek = deals.filter((d) => {
-      const ts = d.updated_at || d.ingested_at;
-      return ts ? now - new Date(ts).getTime() < WEEK : false;
-    }).length;
+    let thisWeek: number | null = null;
+    let delta: number | null = null;
+    if (now !== null) {
+      const tw = deals.filter((d) => {
+        const ts = d.updated_at || d.ingested_at;
+        return ts ? now - new Date(ts).getTime() < WEEK : false;
+      }).length;
 
-    const lastWeek = deals.filter((d) => {
-      const ts = d.updated_at || d.ingested_at;
-      if (!ts) return false;
-      const age = now - new Date(ts).getTime();
-      return age >= WEEK && age < 2 * WEEK;
-    }).length;
+      const lastWeek = deals.filter((d) => {
+        const ts = d.updated_at || d.ingested_at;
+        if (!ts) return false;
+        const age = now - new Date(ts).getTime();
+        return age >= WEEK && age < 2 * WEEK;
+      }).length;
 
-    const delta = thisWeek - lastWeek;
+      thisWeek = tw;
+      delta = tw - lastWeek;
+    }
 
     // In-sector count: deals whose normalized sector matches any user sector
     const inSectorCount = hasUserSectors
@@ -219,7 +229,7 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
       largestDeals,
       highRelevanceCount,
     };
-  }, [deals, hasUserSectors, userSectors, userProfile]);
+  }, [deals, hasUserSectors, userSectors, userProfile, now]);
 
   return (
     <aside className="w-[268px] shrink-0 border-l border-border-base overflow-y-auto [scrollbar-gutter:stable] bg-cream dark:bg-sidebar-bg">
@@ -273,21 +283,21 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
         <div className="flex items-end gap-3">
           <div>
             <span className="text-[26px] font-medium text-text-primary leading-none">
-              {thisWeek}
+              {thisWeek ?? "—"}
             </span>
             <p className="text-[11px] text-text-muted mt-0.5">deals this week</p>
           </div>
           <span
             className={cn(
               "rounded-full px-2 py-1 text-[11px] font-medium mb-1",
-              delta > 0
+              delta !== null && delta > 0
                 ? "bg-green-500/10 text-green-600 dark:text-green-400"
-                : delta < 0
+                : delta !== null && delta < 0
                   ? "bg-red-500/10 text-red-500 dark:text-red-400"
                   : "bg-border-base text-text-muted",
             )}
           >
-            {delta > 0 ? `+${delta}` : delta === 0 ? "—" : String(delta)} vs last wk
+            {delta === null ? "—" : delta > 0 ? `+${delta}` : delta === 0 ? "—" : String(delta)} vs last wk
           </span>
         </div>
         {hasUserSectors && inSectorCount > 0 && (
