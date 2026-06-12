@@ -189,8 +189,18 @@ export async function getArticleFallback(
 
   // Layer 1: own-DB text match (real rows, real relevance_score).
   try {
-    const orExpr = buildTextMatchOr(getCompanyVariants(canonicalName));
+    const variants = getCompanyVariants(canonicalName);
+    const orExpr = buildTextMatchOr(variants);
     if (orExpr) {
+      // Title-match needles: the (tightened) variants, lowercased. A row qualifies
+      // only when one appears in the TITLE, not body-only. This drops the
+      // thin-coverage pollution where a high-relevance article about another
+      // company merely names this one in its body. Combined with the
+      // common-word guard in getCompanyVariants, it also blocks wrong-entity
+      // matches. See docs/recon/fallback-validation.md (options 1 + 2).
+      const titleNeedles = variants
+        .map((v) => v.toLowerCase())
+        .filter((v) => v.length > 0);
       const cutoff = new Date(Date.now() - FALLBACK_WINDOW_DAYS * DAY_MS).toISOString();
       const { data, error } = await supabase
         .from("articles")
@@ -207,6 +217,8 @@ export async function getArticleFallback(
         for (const row of (data ?? []) as ArticleRow[]) {
           if (seenIds.has(row.id)) continue;
           if (row.url && seenUrls.has(row.url)) continue;
+          const title = (row.title ?? "").toLowerCase();
+          if (!titleNeedles.some((n) => title.includes(n))) continue;
           seenIds.add(row.id);
           if (row.url) seenUrls.add(row.url);
           result.push(mapDbRow(row));

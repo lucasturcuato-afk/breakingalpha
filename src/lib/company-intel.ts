@@ -472,20 +472,54 @@ export function canonicalize(name: string): string {
  * Deterministic, dedupe-preserving order so callers can rely on the first
  * element for logging / cache-key purposes.
  */
+// Common English words that appear as the FIRST token of multi-word company
+// names. When a name's first token is one of these, do NOT emit it as a bare
+// standalone variant: matching the bare word against article title/content (or
+// even against a companies[] array element) produces wrong-entity false matches.
+// This blocks first-token expansion ONLY; the full multi-word canonical name is
+// always kept as a variant. Single-word company names (Apple, Snowflake) are
+// unaffected because their first token equals the canonical. Proper-noun first
+// tokens (JPMorgan, Goldman, Berkshire) are deliberately absent so they keep
+// expanding. Extend as new common-word company names appear.
+const COMMON_WORD_FIRST_TOKENS = new Set<string>([
+  "match", "comfort", "chord", "alamo", "general", "american", "united",
+  "national", "global", "standard", "capital", "premier", "advance", "paramount",
+  "first", "target", "open", "block", "square", "beyond", "northern", "southern",
+  "eastern", "western", "central", "atlantic", "pacific", "summit", "peak",
+  "core", "edge", "frontier", "liberty", "freedom", "victory", "vital",
+  "vital", "marathon", "phoenix", "diamond", "crown", "empire", "legacy",
+  "horizon", "compass", "anchor", "beacon", "harvest", "century", "allied",
+  "national", "general", "modern", "future", "global", "prime", "select",
+]);
+
 export function getCompanyVariants(canonical: string): string[] {
   const variants = new Set<string>();
   variants.add(canonical);
 
-  // Also expand each whitespace-separated token of the canonical name into a
-  // standalone variant when the token itself is a distinctive multi-letter
-  // word. This catches abbreviated surface forms commonly written by ingest,
-  // e.g. canonical "JPMorgan Chase" -> first-token variant "JPMorgan", which
-  // is the way ~30 rows are stored even though CANONICAL keys are lowercased
-  // and never reproduce that internal capital. Only the first token is
-  // expanded (and only when length >= 5) to avoid expanding generic words
-  // like "Inc", "Corp", "Group", "The", etc.
+  // Also expand the FIRST whitespace-separated token of a multi-word canonical
+  // name into a standalone variant when it is a DISTINCTIVE proper noun. This
+  // catches abbreviated surface forms commonly written by ingest, e.g. canonical
+  // "JPMorgan Chase" -> first-token variant "JPMorgan", which is the way ~30 rows
+  // are stored even though CANONICAL keys are lowercased and never reproduce that
+  // internal capital.
+  //
+  // Guard: do NOT expand when the first token is a common English word. A bare
+  // common word (Match from "Match Group", Comfort from "Comfort Systems USA",
+  // Chord from "Chord Energy") is catastrophic in the text-match fallback: ILIKE
+  // %Match% matches "earnings to match" and "matching dividend" in unrelated
+  // articles, and even in companies[] containment it can collide with an unrelated
+  // array element. See docs/recon/fallback-validation.md. Proper-noun first tokens
+  // (JPMorgan, Goldman, Berkshire) are not in the stoplist and keep expanding, so
+  // the WD136 abbreviation recall is preserved. The stoplist is intentionally
+  // conservative and extensible; the fallback also requires a title match as a
+  // second defense for any common word that slips through.
   const firstToken = canonical.split(/\s+/)[0];
-  if (firstToken && firstToken.length >= 5 && firstToken !== canonical) {
+  if (
+    firstToken &&
+    firstToken.length >= 5 &&
+    firstToken !== canonical &&
+    !COMMON_WORD_FIRST_TOKENS.has(firstToken.toLowerCase())
+  ) {
     variants.add(firstToken);
   }
 
