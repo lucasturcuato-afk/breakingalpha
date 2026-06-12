@@ -50,6 +50,8 @@ export interface WatchlistBullet {
   whyTag: string;
   /** Source article id, for click-through / dedup downstream. */
   articleId: string;
+  /** Source permalink (articles.url). May be null; render plain text if so. */
+  url: string | null;
 }
 
 export interface WatchlistBriefSection {
@@ -276,6 +278,7 @@ export function bulletsFromPool(
       headline: cleanHeadline(a.title),
       whyTag: (a.relevance_reason ?? "").trim(),
       articleId: a.id,
+      url: a.url ?? null,
     }));
 
     return bullets.length > 0
