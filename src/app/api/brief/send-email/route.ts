@@ -15,9 +15,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { render } from "@react-email/render";
 import { Resend } from "resend";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { BriefEmail, type BriefEmailPayload } from "@/components/brief/brief-email";
+import {
+  fetchWatchlistArticlePool,
+  resolveUserWatchlist,
+  bulletsFromPool,
+  getWatchlistBullets,
+  type WatchlistPoolRow,
+  type WatchlistBriefSection,
+} from "@/lib/watchlist-brief";
 import { createElement } from "react";
 import { getSiteUrl } from "@/lib/email/site-url";
 import { ensureIssueNumber } from "@/lib/email/issue-number";
@@ -28,6 +36,21 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Service-role Supabase client for cross-user reads (watchlist + profiles are
+ * RLS-locked to the owner; the sender's session cannot read a recipient's
+ * watchlist). Falls back to anon if the service key is absent, in which case
+ * RLS yields an empty watchlist and the section soft-fails to nothing.
+ */
+function makeAdminClient(): SupabaseClient | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key, { auth: { persistSession: false } });
+}
 
 function safeParseJSON(val: unknown) {
   if (!val) return null;
@@ -198,6 +221,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Watchlist section: fetch the 72h score>=8 article pool ONCE per send, then
+  // filter it per recipient in memory inside the loop. Service-role client so
+  // we can read each recipient's own watchlist (RLS-locked). All soft-fail: a
+  // null pool/admin just means no recipient gets a section.
+  const wlAdmin = makeAdminClient();
+  let watchlistPool: WatchlistPoolRow[] = [];
+  try {
+    if (wlAdmin) watchlistPool = await fetchWatchlistArticlePool(wlAdmin);
+  } catch (e) {
+    console.warn("[send-email] watchlist pool fetch failed; sending without section:", e);
+    watchlistPool = [];
+  }
+  const ownEmail = (user.email ?? "").toLowerCase();
+
   const from = process.env.EMAIL_FROM_ADDRESS ?? "briefs@signalera.ai";
   const defaultSubject =
     payload.briefing_type === "evening"
@@ -232,10 +269,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Per-recipient watchlist section. Fail-soft: any error here must not abort
+    // the batch and the recipient still gets their brief without a section.
+    // Only attach when we resolved a real account for THIS recipient, so the
+    // sender's watchlist never leaks to an unresolved address (resolveUserId
+    // falls back to the sender's id on a miss).
+    let watchlistSection: WatchlistBriefSection | null = null;
+    try {
+      const isThisRecipient =
+        userIdForToken !== user.id || recipient.toLowerCase() === ownEmail;
+      if (wlAdmin && isThisRecipient) {
+        const tickers = await resolveUserWatchlist(wlAdmin, userIdForToken);
+        watchlistSection = bulletsFromPool(watchlistPool, tickers);
+      }
+    } catch (e) {
+      console.warn("[send-email] watchlist section failed for recipient; sending without it:", e);
+      watchlistSection = null;
+    }
+
     let html: string;
     try {
       const element = createElement(BriefEmail, {
         briefing: payload,
+        watchlistSection,
         viewInBrowserUrl,
         unsubscribeUrl,
       });
@@ -467,9 +523,22 @@ export async function GET(request: NextRequest) {
     unsubscribeUrl = undefined;
   }
 
+  // Preview the requester's own watchlist section. Fail-soft to no section.
+  let previewWatchlist: WatchlistBriefSection | null = null;
+  try {
+    const wlAdmin = makeAdminClient();
+    if (wlAdmin) {
+      previewWatchlist = await getWatchlistBullets(wlAdmin, user.id, briefingType);
+    }
+  } catch (e) {
+    console.warn("[send-email GET] watchlist preview failed:", e);
+    previewWatchlist = null;
+  }
+
   try {
     const element = createElement(BriefEmail, {
       briefing: payload,
+      watchlistSection: previewWatchlist,
       viewInBrowserUrl,
       unsubscribeUrl,
     });

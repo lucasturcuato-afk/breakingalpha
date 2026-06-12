@@ -7,6 +7,8 @@ import { TickerStrip } from "@/components/brief/ticker-strip";
 import { ExportMenu } from "@/components/brief/export-menu";
 import { ShareButton } from "@/components/brief/share-button";
 import { DCStoryRow } from "@/components/brief/dc-story-row";
+import WatchlistBriefSection from "@/components/brief/WatchlistBriefSection";
+import type { WatchlistBriefSection as WatchlistSectionData } from "@/lib/watchlist-brief";
 import { DCAnalystSection } from "@/components/brief/dc-analyst-section";
 import { DCSectorSignals } from "@/components/brief/dc-sector-signals";
 import { ActiveThesesWidget } from "@/components/dashboard/active-theses-widget";
@@ -181,6 +183,7 @@ export default function MorningBriefPage() {
   const [showSignIn, setShowSignIn] = useState(false);
   const [formatLabel, setFormatLabel] = useState<string | null>(null);
   const [userAddendum, setUserAddendum] = useState<string | null>(null);
+  const [watchlistSection, setWatchlistSection] = useState<WatchlistSectionData | null>(null);
   const [briefOutputId, setBriefOutputId] = useState<string | null>(null);
   const [sectionOutputIds, setSectionOutputIds] = useState<Record<string, string>>({});
   const [thesesCount, setThesesCount] = useState<number | null>(null);
@@ -322,6 +325,41 @@ export default function MorningBriefPage() {
       }
     })();
 
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
+
+  // Watchlist section — independent, fail-soft fetch. If it errors, is slow, or
+  // the user is signed out, we simply render no section and never block the
+  // brief. Authed via cookie session (Bearer attached when available).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const session = await Promise.race([
+          getSupabase().auth.getSession().then((r) => r.data.session ?? null).catch(() => null),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
+        ]);
+        if (!session?.access_token) return; // signed out -> no section
+        const headers: HeadersInit = {
+          Accept: "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        };
+        const res = await fetch("/api/watchlist-brief?type=morning", {
+          headers,
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as WatchlistSectionData;
+        if (!cancelled && data && typeof data.state === "string") {
+          setWatchlistSection(data);
+        }
+      } catch {
+        // fail soft: leave the section unset
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -937,6 +975,9 @@ export default function MorningBriefPage() {
                 </span>
               </p>
             </section>
+
+            {/* ── Your Watchlist (per-user, sits above the lead) ── */}
+            <WatchlistBriefSection section={watchlistSection} briefType="morning" />
 
             {/* ── Today's Lead ── */}
             <section style={{ marginBottom: 40 }}>
