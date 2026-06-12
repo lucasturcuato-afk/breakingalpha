@@ -1138,6 +1138,85 @@ def _tally_mention(canonical_id, alias_id) -> None:
 STORE_CHUNK_SIZE = int(os.getenv("STORE_CHUNK_SIZE", "500"))
 
 
+# ---------------------------------------------------------------------------
+# primary_company fold into companies[] (dark, go-forward, mention_count frozen)
+# ---------------------------------------------------------------------------
+# Source of truth: docs/recon/tagging-coverage.md (Option A2 + Phase A6).
+#
+# Why: companies[] is the field the ArticlesTab and most Company Intel surfaces
+# filter on. It is written only from the Gemini `companies` array filtered by the
+# blocklist and the Wikidata gate. Common-word company names (for example
+# "Snowflake", whose bare Wikidata hit is a Kate Bush song) get dropped by the
+# gate, so an article whose primary_company the model correctly identified as
+# Snowflake lands with companies[] empty or holding only co-mentions, and the
+# company page looks empty. Gemini reliably sets primary_company; this folds that
+# vetted single main actor into the article's companies[] when it resolves to an
+# already-indexed company.
+#
+# HARD FREEZE: this widens the article.companies[] MATCH FIELD ONLY. It is applied
+# inside _article_row, which builds the article-insert row. It is deliberately NOT
+# used to build company_mentions or to increment companies.mention_count or
+# aliases.mention_count: both store paths iterate the ORIGINAL clean_companies for
+# those (store_articles_batch carries clean_companies in its `stored` tuple;
+# store_article loops clean_companies inline). So the longitudinal attention and
+# trend moat signals are unchanged by this flag; only the read-side
+# article-to-company match widens.
+#
+# Default OFF. When off, _fold_primary_into_companies returns clean_companies
+# unchanged and behavior is byte-identical to today.
+TAGGING_PRIMARY_FOLD_ENABLED = os.getenv("TAGGING_PRIMARY_FOLD_ENABLED", "false").strip().lower() == "true"
+
+# Process-level memo of "does this primary_company name resolve to an indexed
+# companies row". Read-only SELECTs only; populated lazily.
+_PRIMARY_INDEXED_CACHE: dict[str, bool] = {}
+
+
+def _primary_resolves_to_indexed(name: str) -> bool:
+    """SELECT-only: does `name` resolve to an existing companies row (exact name,
+    else case-insensitive name match)? Memoized per process. Fail-closed: on any
+    error return False so a name we could not confirm is indexed is never folded.
+    Writes nothing."""
+    cached = _PRIMARY_INDEXED_CACHE.get(name)
+    if cached is not None:
+        return cached
+    result = False
+    try:
+        r = supabase.table("companies").select("id").eq("name", name).limit(1).execute()
+        if r.data:
+            result = True
+        else:
+            r2 = supabase.table("companies").select("id").ilike("name", name).limit(1).execute()
+            result = bool(r2.data)
+    except Exception as ex:
+        print(f"  primary-fold: indexed check error [{name!r}]: {ex}")
+        result = False
+    _PRIMARY_INDEXED_CACHE[name] = result
+    return result
+
+
+def _fold_primary_into_companies(clean_companies, analysis):
+    """Return the companies[] list to write ON THE ARTICLE ROW.
+
+    Flag off (default): returns clean_companies unchanged.
+    Flag on: returns a NEW list = clean_companies plus primary_company, when
+    primary_company is non-empty, not a blocked entity, resolves to an indexed
+    company, and is not already present (case-insensitive). Never mutates
+    clean_companies. See the HARD FREEZE note above: this does not feed
+    company_mentions or mention_count."""
+    if not TAGGING_PRIMARY_FOLD_ENABLED:
+        return clean_companies
+    primary = (analysis.get("primary_company") or "").strip()
+    if not primary:
+        return clean_companies
+    if is_blocked_entity(primary):
+        return clean_companies
+    if primary.lower() in {c.lower() for c in clean_companies}:
+        return clean_companies
+    if not _primary_resolves_to_indexed(primary):
+        return clean_companies
+    return [*clean_companies, primary]
+
+
 def _article_row(article, analysis, clean_companies):
     """Build the articles-table insert row. Shared by store_article (legacy) and
     store_articles_batch so the column shape can never drift between them."""
@@ -1154,7 +1233,11 @@ def _article_row(article, analysis, clean_companies):
         "published_at": article["published_at"],
         "relevance_score": analysis["relevance_score"],
         "relevance_reason": analysis.get("relevance_reason", ""),
-        "companies": clean_companies,
+        # companies[] is the article-to-company MATCH FIELD. Fold in primary_company
+        # when the flag is on (dark by default). This widens the match field ONLY;
+        # company_mentions and mention_count keep iterating the original
+        # clean_companies in both store paths. See _fold_primary_into_companies.
+        "companies": _fold_primary_into_companies(clean_companies, analysis),
         "themes": analysis.get("themes", []),
         "sentiment": analysis.get("sentiment", "neutral"),
         "sentiment_reason": analysis.get("sentiment_reason"),
