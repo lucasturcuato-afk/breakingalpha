@@ -275,12 +275,25 @@ export function bulletsFromPool(
 
     if (matched.length === 0) return { state: "quiet", bullets: [] };
 
-    // Rank, take the candidate window, collapse same-event near-dupes, THEN cap
-    // so the four slots stay full after collapsing.
+    // Rank, take the candidate window, collapse same-event near-dupes, then
+    // collapse to one bullet per ticker, THEN cap so the four slots stay full.
     matched.sort(rankCompare);
     const candidates = matched.slice(0, TOP_STORIES_CANDIDATE_LIMIT);
     const collapsed = collapseSameEvent(candidates) as WatchlistPoolRow[];
-    const top = collapsed.slice(0, TOP_STORIES_LIMIT);
+
+    // One bullet per ticker: `collapsed` is in rankCompare order, so the first
+    // row seen for each normalized source-ticker is that ticker's highest-ranked
+    // story. Keep it, drop the ticker's other stories, then take the top 4
+    // DISTINCT tickers -> up to 4 different companies, no ticker twice.
+    const seenTickers = new Set<string>();
+    const perTicker: WatchlistPoolRow[] = [];
+    for (const a of collapsed) {
+      const core = normalizeTicker(parseSourceTicker(a.source));
+      if (core === null || seenTickers.has(core)) continue;
+      seenTickers.add(core);
+      perTicker.push(a);
+    }
+    const top = perTicker.slice(0, TOP_STORIES_LIMIT);
 
     const bullets: WatchlistBullet[] = top.map((a) => ({
       ticker: (parseSourceTicker(a.source) ?? "").toUpperCase(),
