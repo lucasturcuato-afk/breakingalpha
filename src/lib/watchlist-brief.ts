@@ -12,7 +12,9 @@
  *    and match it against the user's watchlist tickers. companies[] and
  *    primary_company are NOT used to match (they are names; matching them adds
  *    co-mention false positives). Tickers are normalized on both sides.
- *  - Floor: relevance_score >= 8. Recency: ingested within 72h.
+ *  - Floor: relevance_score >= 8. Recency: ingested within 72h AND published
+ *    within 7 days (TOP_STORIES_MAX_AGE_DAYS), so a recently-ingested but
+ *    stale-published article never surfaces in a brief dated today.
  *  - Candidate set then cap: top ~24 matched by
  *    (relevance_score desc, ingested_at desc, published_at desc, id asc),
  *    collapseSameEvent, THEN take 4 so the cap stays full after collapsing.
@@ -34,6 +36,7 @@ import {
   TOP_STORIES_CANDIDATE_LIMIT,
   TOP_STORIES_LIMIT,
   TOP_STORIES_PRIMARY_WINDOW_HOURS,
+  TOP_STORIES_MAX_AGE_DAYS,
   type TopStoryRow,
 } from "@/lib/top-stories";
 
@@ -174,6 +177,7 @@ export async function fetchWatchlistArticlePool(
   supabase: SupabaseClient,
 ): Promise<WatchlistPoolRow[]> {
   const since = hoursAgoIso(TOP_STORIES_PRIMARY_WINDOW_HOURS);
+  const publishedCeiling = hoursAgoIso(TOP_STORIES_MAX_AGE_DAYS * 24);
   const rows: WatchlistPoolRow[] = [];
   const page = 1000;
   const MAX_ROWS = 8000; // safety backstop
@@ -184,6 +188,7 @@ export async function fetchWatchlistArticlePool(
         .from("articles")
         .select(POOL_COLUMNS)
         .gte("ingested_at", since)
+        .gte("published_at", publishedCeiling)
         .gte("relevance_score", WATCHLIST_BRIEF_FLOOR)
         .ilike("source", "%Google News (%")
         .order("id", { ascending: true })
@@ -215,6 +220,7 @@ export async function fetchMatchedArticles(
 ): Promise<WatchlistPoolRow[]> {
   if (!tickers || tickers.length === 0) return [];
   const since = hoursAgoIso(TOP_STORIES_PRIMARY_WINDOW_HOURS);
+  const publishedCeiling = hoursAgoIso(TOP_STORIES_MAX_AGE_DAYS * 24);
   // Coarse OR of source ilike on the normalized core; exact match confirmed
   // later in memory. Tickers are alphanumeric (+ surviving class dot), no
   // commas, so the PostgREST or() value list is safe.
@@ -232,6 +238,7 @@ export async function fetchMatchedArticles(
       .from("articles")
       .select(POOL_COLUMNS)
       .gte("ingested_at", since)
+      .gte("published_at", publishedCeiling)
       .gte("relevance_score", WATCHLIST_BRIEF_FLOOR)
       .or(orExpr)
       .order("relevance_score", { ascending: false })
