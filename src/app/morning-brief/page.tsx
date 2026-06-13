@@ -7,6 +7,8 @@ import { TickerStrip } from "@/components/brief/ticker-strip";
 import { ExportMenu } from "@/components/brief/export-menu";
 import { ShareButton } from "@/components/brief/share-button";
 import { DCStoryRow } from "@/components/brief/dc-story-row";
+import WatchlistBriefSection from "@/components/brief/WatchlistBriefSection";
+import type { WatchlistBriefSection as WatchlistSectionData } from "@/lib/watchlist-brief";
 import { DCAnalystSection } from "@/components/brief/dc-analyst-section";
 import { DCSectorSignals } from "@/components/brief/dc-sector-signals";
 import { ActiveThesesWidget } from "@/components/dashboard/active-theses-widget";
@@ -181,6 +183,8 @@ export default function MorningBriefPage() {
   const [showSignIn, setShowSignIn] = useState(false);
   const [formatLabel, setFormatLabel] = useState<string | null>(null);
   const [userAddendum, setUserAddendum] = useState<string | null>(null);
+  const [watchlistSection, setWatchlistSection] = useState<WatchlistSectionData | null>(null);
+  const [watchlistStatus, setWatchlistStatus] = useState<"loading" | "loaded" | "error">("loading");
   const [briefOutputId, setBriefOutputId] = useState<string | null>(null);
   const [sectionOutputIds, setSectionOutputIds] = useState<Record<string, string>>({});
   const [thesesCount, setThesesCount] = useState<number | null>(null);
@@ -322,6 +326,67 @@ export default function MorningBriefPage() {
       }
     })();
 
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
+
+  // Watchlist section — independent, fail-soft fetch. Mirrors the briefing
+  // fetch above: resolve the session opportunistically but NEVER block on it,
+  // and ALWAYS hit the API with credentials:"include" so the server resolves
+  // the user from cookies if getSession loses the race. Brief-level fail-soft
+  // is preserved (a section failure never breaks the brief), but the section
+  // now reports an explicit status so an error is distinct from "no news".
+  useEffect(() => {
+    let cancelled = false;
+    setWatchlistStatus("loading");
+    (async () => {
+      const session = await Promise.race([
+        getSupabase().auth.getSession().then((r) => r.data.session ?? null).catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
+      ]);
+      const headers: HeadersInit = { Accept: "application/json" };
+      if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+
+      const doFetch = () =>
+        fetch("/api/watchlist-brief?type=morning", {
+          headers,
+          credentials: "include",
+          cache: "no-store",
+        });
+
+      try {
+        let res: Response;
+        try {
+          res = await doFetch();
+          if (res.status >= 500) throw new Error(`HTTP ${res.status}`);
+        } catch {
+          // One bounded retry on a network error or 5xx (transient cold start).
+          await new Promise((r) => setTimeout(r, 400));
+          res = await doFetch();
+        }
+        if (cancelled) return;
+        if (res.status === 401) {
+          // Signed out / session not established: no section, not an error.
+          setWatchlistStatus("loaded");
+          return;
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as WatchlistSectionData;
+        if (cancelled) return;
+        if (data && typeof data.state === "string") {
+          setWatchlistSection(data);
+          setWatchlistStatus("loaded");
+        } else {
+          setWatchlistStatus("error");
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.warn("[watchlist-brief] section fetch failed:", e);
+          setWatchlistStatus("error");
+        }
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -937,6 +1002,13 @@ export default function MorningBriefPage() {
                 </span>
               </p>
             </section>
+
+            {/* ── Your Watchlist (per-user, sits above the lead) ── */}
+            <WatchlistBriefSection
+              section={watchlistSection}
+              status={watchlistStatus}
+              briefType="morning"
+            />
 
             {/* ── Today's Lead ── */}
             <section style={{ marginBottom: 40 }}>

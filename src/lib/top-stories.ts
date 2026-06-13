@@ -151,7 +151,7 @@ const keepWhichReplaces = (candidate: TopStoryRow, current: TopStoryRow): boolea
  * arriving through one broker/aggregator feed can never merge. See
  * docs/recon/top-stories-dedup.md.
  */
-function collapseSameEvent(rows: TopStoryRow[]): TopStoryRow[] {
+export function collapseSameEvent(rows: TopStoryRow[]): TopStoryRow[] {
   const decorated: DecoratedRow[] = rows.map((row, idx) => ({
     row,
     idx,

@@ -48,9 +48,24 @@ export interface BriefEmailPayload {
   issue_number?: number | null;
 }
 
+/** Minimal local shape for the per-user watchlist block (kept local so the
+ * email path stays free of server-only imports). Mirrors the lib's
+ * WatchlistBriefSection. */
+export interface EmailWatchlistBullet {
+  ticker: string;
+  headline: string;
+  whyTag: string;
+}
+export interface EmailWatchlistSection {
+  state: "populated" | "quiet" | "empty";
+  bullets: EmailWatchlistBullet[];
+}
+
 interface BriefEmailProps {
   briefing: BriefEmailPayload;
   recipientName?: string;
+  /** Per-user watchlist bullets, rendered at the top above Market Pulse. */
+  watchlistSection?: EmailWatchlistSection | null;
   /** Absolute URL that opens this brief in a browser (signalera.ai/share/brief/...). */
   viewInBrowserUrl?: string;
   /** Absolute URL that one-click unsubscribes the recipient. */
@@ -138,6 +153,7 @@ function formatIssueDate(iso?: string): string {
 export function BriefEmail({
   briefing,
   recipientName,
+  watchlistSection,
   viewInBrowserUrl,
   unsubscribeUrl,
 }: BriefEmailProps) {
@@ -288,6 +304,48 @@ export function BriefEmail({
             >
               Hi {recipientName},
             </Text>
+          ) : null}
+
+          {/* Your Watchlist (per-user, sits above Market Pulse / the lead) */}
+          {watchlistSection && watchlistSection.state !== "empty" ? (
+            <Section style={{ marginBottom: "24px" }}>
+              <Text style={labelStyle}>YOUR WATCHLIST</Text>
+              {watchlistSection.state === "quiet" ? (
+                <Text style={{ ...paraStyle, color: MUTED }}>
+                  {label === "EVENING WRAP"
+                    ? "Quiet session for your watchlist."
+                    : "Quiet morning for your watchlist."}
+                </Text>
+              ) : (
+                watchlistSection.bullets.map((b, i) => (
+                  <Section
+                    key={i}
+                    style={{ padding: "8px 0", borderBottom: `1px solid ${RULE}` }}
+                  >
+                    <Text
+                      style={{
+                        fontFamily: 'Georgia, "Times New Roman", serif',
+                        fontSize: "14px",
+                        fontWeight: 700,
+                        color: INK,
+                        margin: 0,
+                      }}
+                    >
+                      <span style={{ color: GOLD, fontFamily: "Arial, sans-serif", fontSize: "12px", fontWeight: 700 }}>
+                        {b.ticker}
+                      </span>
+                      {"  "}
+                      {b.headline}
+                    </Text>
+                    {b.whyTag ? (
+                      <Text style={{ ...paraStyle, color: MUTED, fontSize: "12px", margin: "4px 0 0 0" }}>
+                        {b.whyTag}
+                      </Text>
+                    ) : null}
+                  </Section>
+                ))
+              )}
+            </Section>
           ) : null}
 
           {/* Market Pulse */}
