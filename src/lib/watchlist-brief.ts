@@ -220,6 +220,12 @@ export async function fetchMatchedArticles(
     .map((t) => `source.ilike.%${t}%`)
     .join(",");
   try {
+    // Full composite ORDER BY BEFORE the limit so the DB returns the TRUE
+    // top-200 by the locked rank order, stably. relevance_score is saturated
+    // (most matches tie at 8-10), so ordering on it alone lets the limit cut an
+    // arbitrary subset of the ties, which differs call-to-call and churns the
+    // bullets. The keys here mirror bulletsFromPool's rankCompare exactly, so
+    // the DB-side top-200 already contains the true top-4 after dedup.
     const { data, error } = await supabase
       .from("articles")
       .select(POOL_COLUMNS)
@@ -227,6 +233,9 @@ export async function fetchMatchedArticles(
       .gte("relevance_score", WATCHLIST_BRIEF_FLOOR)
       .or(orExpr)
       .order("relevance_score", { ascending: false })
+      .order("ingested_at", { ascending: false })
+      .order("published_at", { ascending: false })
+      .order("id", { ascending: true })
       .limit(200);
     if (error) {
       console.warn("[watchlist-brief] matched fetch error:", error.message);
