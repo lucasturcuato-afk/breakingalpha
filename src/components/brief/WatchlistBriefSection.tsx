@@ -47,6 +47,28 @@ interface Props {
 
 const GOLD_DARK = "var(--gold-dark)";
 
+/**
+ * Relative article age within the 72h window. Same Date.now() computation as the
+ * page-level timeAgo helpers, but renders "yesterday" / a short date for older
+ * items so a day-old story is not mistaken for today's news in a brief dated
+ * today. Empty string on a missing/unparseable date (caller renders nothing).
+ */
+function relativeTime(iso: string | null): string {
+  if (!iso) return "";
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "";
+  const mins = Math.floor((Date.now() - t) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (new Date(iso).toDateString() === yesterday.toDateString()) return "yesterday";
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 export default function WatchlistBriefSection({
   section,
   status = "loaded",
@@ -183,6 +205,22 @@ export default function WatchlistBriefSection({
                   {b.headline}
                 </span>
               )}
+              {/* Subtle article age so a day-old story is not read as today's. */}
+              {relativeTime(b.publishedAt) ? (
+                <span
+                  className="font-data"
+                  style={{
+                    display: "block",
+                    fontSize: 10.5,
+                    lineHeight: 1.4,
+                    color: "var(--text-faint)",
+                    marginTop: 2,
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  {relativeTime(b.publishedAt)}
+                </span>
+              ) : null}
               {b.whyTag ? (
                 <span
                   className="font-sans"

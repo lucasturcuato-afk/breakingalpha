@@ -52,6 +52,8 @@ export interface WatchlistBullet {
   articleId: string;
   /** Source permalink (articles.url). May be null; render plain text if so. */
   url: string | null;
+  /** Article publish time (articles.published_at) for a relative timestamp. */
+  publishedAt: string | null;
 }
 
 export interface WatchlistBriefSection {
@@ -301,6 +303,7 @@ export function bulletsFromPool(
       whyTag: (a.relevance_reason ?? "").trim(),
       articleId: a.id,
       url: a.url ?? null,
+      publishedAt: a.published_at ?? null,
     }));
 
     return bullets.length > 0
