@@ -36,10 +36,10 @@ import sys
 from datetime import datetime, timezone
 from typing import Any
 
-# TODO: thesis_grader.py, pattern_memory.py, and source_credibility.py
-# read SUPABASE_ANON_KEY at module level. New code in this file uses
-# SUPABASE_SERVICE_ROLE_KEY (best practice). Migration of existing
-# modules deferred to a separate PR.
+# TODO: pattern_memory.py and source_credibility.py read SUPABASE_ANON_KEY
+# at module level. New code in this file uses SUPABASE_SERVICE_ROLE_KEY
+# (best practice). Migration of these remaining modules deferred to a
+# separate PR. (thesis_grader.py now uses get_service_client.)
 
 # --- Path + env bootstrap --------------------------------------------------
 # Make sibling backend modules importable regardless of cwd. The workflow
