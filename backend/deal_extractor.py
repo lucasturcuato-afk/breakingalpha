@@ -12,6 +12,10 @@ from google.genai import types
 
 from outputs import record_output
 from output_constants import DEAL_PROMPT_VERSION
+# Reused (not modified) for the strongest-anchor dedup magnitude check. This is
+# a valuation parser, not lead_preselect's A2 predicate — strength stays
+# decoupled from the lead-eligibility logic.
+from lead_preselect import parse_valuation_to_usd_b
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
@@ -185,6 +189,67 @@ def stage_label(stage):
     return mapping.get(stage, "rumored")
 
 
+# Stage confirmation rank for strongest-anchor dedup. Higher = more confirmed.
+# Operates on the STORED stage vocabulary emitted by stage_label() above
+# (closed/signed/loi/diligence/announced/rumored). Closed and signed are the
+# top, confirmed tier; #359 maps a priced/trading IPO to "closed".
+_STAGE_RANK = {
+    "closed": 4, "signed": 4,
+    "loi": 3, "diligence": 3,
+    "announced": 2,
+    "rumored": 1,
+}
+
+
+def _stage_rank(stage):
+    return _STAGE_RANK.get((stage or "").lower(), 0)
+
+
+def deal_strength(stage, valuation):
+    """Total-order completeness/confirmation key for a deal_flow representation.
+
+    Higher tuple = a more complete and more confirmed anchor. Ordering:
+      1. a parseable valuation present beats null/unparseable,
+      2. then stage confirmation rank (closed/signed > announced > rumored > unknown),
+      3. then larger USD-normalized magnitude.
+    Compared with strict ">" by the caller, so an exact tie keeps the existing
+    row (no churn). This ranks COMPLETENESS only; it deliberately does NOT
+    replicate lead_preselect/A2's lead-eligibility predicate.
+    """
+    mag = parse_valuation_to_usd_b(valuation)
+    has_val = 1 if mag is not None else 0
+    return (has_val, _stage_rank(stage), mag if mag is not None else 0.0)
+
+
+def dedup_update_fields(row, existing_stage, existing_valuation):
+    """Decide what to write when a matching (company, deal_type) article lands.
+
+    Recency and strength are SEPARATE concerns:
+      - `updated_at` (last-seen / recency) ALWAYS advances, so every qualifying
+        mention keeps the row inside lead_preselect's updated_at window.
+      - the strength-bearing anchor fields (source_url, stage, valuation, thesis,
+        sentiment) move ONLY when the new article is strictly stronger
+        (deal_strength), so the anchor never downgrades and a null-valuation
+        sibling cannot clobber a priced one.
+    Pure and DB-free so the decision is unit-testable. Returns
+    (fields_to_update, is_stronger). `created_at` is never touched here.
+    """
+    fields = {"updated_at": row["updated_at"]}
+    is_stronger = (
+        deal_strength(row["stage"], row["valuation"])
+        > deal_strength(existing_stage, existing_valuation)
+    )
+    if is_stronger:
+        fields.update({
+            "stage":      row["stage"],
+            "thesis":     row["thesis"],
+            "valuation":  row["valuation"],
+            "sentiment":  row["sentiment"],
+            "source_url": row["source_url"],
+        })
+    return fields, is_stronger
+
+
 def run():
     print("🔍 Deal Extractor starting...")
 
@@ -246,22 +311,31 @@ def run():
 
         try:
             existing = supabase.table("deal_flow")\
-                .select("id, stage")\
+                .select("id, stage, valuation, source_url")\
                 .eq("company", row["company"])\
                 .eq("deal_type", row["deal_type"])\
                 .execute()
 
             if existing.data:
                 deal_id = existing.data[0]["id"]
-                supabase.table("deal_flow").update({
-                    "stage":      row["stage"],
-                    "thesis":     row["thesis"],
-                    "valuation":  row["valuation"],
-                    "sentiment":  row["sentiment"],
-                    "source_url": row["source_url"],
-                    "updated_at": row["updated_at"],
-                }).eq("id", deal_id).execute()
-                print(f"    → Updated existing deal (id: {deal_id})")
+                # Strongest-anchor dedup with decoupled recency: every matching
+                # article advances updated_at (last-seen), but the anchor fields
+                # (source_url, stage, valuation, thesis, sentiment) move only to a
+                # STRICTLY stronger article, so the row keeps its most complete +
+                # confirmed anchor and a null-valuation sibling cannot clobber a
+                # priced one. One UPDATE per matching article (same write volume
+                # as the original pre-strength behavior), just conditional content.
+                update_fields, is_stronger = dedup_update_fields(
+                    row,
+                    existing.data[0].get("stage"),
+                    existing.data[0].get("valuation"),
+                )
+                supabase.table("deal_flow").update(update_fields)\
+                    .eq("id", deal_id).execute()
+                if is_stronger:
+                    print(f"    → Updated existing deal (stronger anchor) (id: {deal_id})")
+                else:
+                    print(f"    → Refreshed recency, kept anchor (id: {deal_id})")
             else:
                 row["created_at"] = datetime.now(timezone.utc).isoformat()
                 ins_resp = supabase.table("deal_flow").insert(row).execute()
