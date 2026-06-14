@@ -12,6 +12,10 @@ from google.genai import types
 
 from outputs import record_output
 from output_constants import DEAL_PROMPT_VERSION
+# Reused (not modified) for the strongest-anchor dedup magnitude check. This is
+# a valuation parser, not lead_preselect's A2 predicate — strength stays
+# decoupled from the lead-eligibility logic.
+from lead_preselect import parse_valuation_to_usd_b
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
@@ -185,6 +189,38 @@ def stage_label(stage):
     return mapping.get(stage, "rumored")
 
 
+# Stage confirmation rank for strongest-anchor dedup. Higher = more confirmed.
+# Operates on the STORED stage vocabulary emitted by stage_label() above
+# (closed/signed/loi/diligence/announced/rumored). Closed and signed are the
+# top, confirmed tier; #359 maps a priced/trading IPO to "closed".
+_STAGE_RANK = {
+    "closed": 4, "signed": 4,
+    "loi": 3, "diligence": 3,
+    "announced": 2,
+    "rumored": 1,
+}
+
+
+def _stage_rank(stage):
+    return _STAGE_RANK.get((stage or "").lower(), 0)
+
+
+def deal_strength(stage, valuation):
+    """Total-order completeness/confirmation key for a deal_flow representation.
+
+    Higher tuple = a more complete and more confirmed anchor. Ordering:
+      1. a parseable valuation present beats null/unparseable,
+      2. then stage confirmation rank (closed/signed > announced > rumored > unknown),
+      3. then larger USD-normalized magnitude.
+    Compared with strict ">" by the caller, so an exact tie keeps the existing
+    row (no churn). This ranks COMPLETENESS only; it deliberately does NOT
+    replicate lead_preselect/A2's lead-eligibility predicate.
+    """
+    mag = parse_valuation_to_usd_b(valuation)
+    has_val = 1 if mag is not None else 0
+    return (has_val, _stage_rank(stage), mag if mag is not None else 0.0)
+
+
 def run():
     print("🔍 Deal Extractor starting...")
 
@@ -246,22 +282,39 @@ def run():
 
         try:
             existing = supabase.table("deal_flow")\
-                .select("id, stage")\
+                .select("id, stage, valuation, source_url")\
                 .eq("company", row["company"])\
                 .eq("deal_type", row["deal_type"])\
                 .execute()
 
             if existing.data:
                 deal_id = existing.data[0]["id"]
-                supabase.table("deal_flow").update({
-                    "stage":      row["stage"],
-                    "thesis":     row["thesis"],
-                    "valuation":  row["valuation"],
-                    "sentiment":  row["sentiment"],
-                    "source_url": row["source_url"],
-                    "updated_at": row["updated_at"],
-                }).eq("id", deal_id).execute()
-                print(f"    → Updated existing deal (id: {deal_id})")
+                # Strongest-anchor dedup: only let a STRICTLY stronger article
+                # overwrite the row, so the surviving source_url/stage/valuation
+                # come from the most complete + confirmed anchor instead of
+                # whichever sibling happened to write last. On a tie or a weaker
+                # article this is a no-op (the existing row is left untouched),
+                # which prevents a null-valuation sibling from clobbering a
+                # priced one. The overwrite replaces source_url + stage +
+                # valuation + thesis + sentiment together, so the row always
+                # stays sourced from one coherent anchor (never a mix).
+                existing_strength = deal_strength(
+                    existing.data[0].get("stage"),
+                    existing.data[0].get("valuation"),
+                )
+                new_strength = deal_strength(row["stage"], row["valuation"])
+                if new_strength > existing_strength:
+                    supabase.table("deal_flow").update({
+                        "stage":      row["stage"],
+                        "thesis":     row["thesis"],
+                        "valuation":  row["valuation"],
+                        "sentiment":  row["sentiment"],
+                        "source_url": row["source_url"],
+                        "updated_at": row["updated_at"],
+                    }).eq("id", deal_id).execute()
+                    print(f"    → Updated existing deal (stronger anchor) (id: {deal_id})")
+                else:
+                    print(f"    → Kept existing deal (anchor not weaker) (id: {deal_id})")
             else:
                 row["created_at"] = datetime.now(timezone.utc).isoformat()
                 ins_resp = supabase.table("deal_flow").insert(row).execute()
