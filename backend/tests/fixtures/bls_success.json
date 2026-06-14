@@ -1,0 +1,134 @@
+{
+  "status": "REQUEST_SUCCEEDED",
+  "responseTime": 123,
+  "message": [],
+  "Results": {
+    "series": [
+      {
+        "seriesID": "CUSR0000SA0",
+        "data": [
+          {
+            "year": "2026", "period": "M04", "periodName": "April", "value": "319.400",
+            "footnotes": [{"code": "R", "text": "Revised"}],
+            "calculations": {"net_changes": {"1": "1.0"}, "pct_changes": {"1": "0.3", "12": "9.9"}}
+          },
+          {
+            "year": "2026", "period": "M05", "periodName": "May", "value": "320.000",
+            "footnotes": [{}],
+            "calculations": {"net_changes": {"1": "0.6"}, "pct_changes": {"1": "0.2", "12": "9.9"}}
+          },
+          {
+            "year": "2026", "period": "M13", "periodName": "Annual", "value": "318.000",
+            "footnotes": [{}],
+            "calculations": {"net_changes": {"1": "0.0"}, "pct_changes": {"1": "0.0", "12": "0.0"}}
+          }
+        ]
+      },
+      {
+        "seriesID": "CUUR0000SA0",
+        "data": [
+          {
+            "year": "2026", "period": "M05", "periodName": "May", "value": "315.000",
+            "footnotes": [{}],
+            "calculations": {"net_changes": {"1": "1.5"}, "pct_changes": {"1": "5.5", "12": "3.4"}}
+          },
+          {
+            "year": "2026", "period": "M04", "periodName": "April", "value": "313.500",
+            "footnotes": [{}],
+            "calculations": {"net_changes": {"1": "1.2"}, "pct_changes": {"1": "5.1", "12": "3.2"}}
+          }
+        ]
+      },
+      {
+        "seriesID": "CUSR0000SA0L1E",
+        "data": [
+          {
+            "year": "2026", "period": "M05", "periodName": "May", "value": "330.000",
+            "footnotes": [{}],
+            "calculations": {"net_changes": {"1": "1.0"}, "pct_changes": {"1": "0.3", "12": "8.0"}}
+          },
+          {
+            "year": "2026", "period": "M04", "periodName": "April", "value": "329.000",
+            "footnotes": [{}],
+            "calculations": {"net_changes": {"1": "0.9"}, "pct_changes": {"1": "0.4", "12": "8.0"}}
+          }
+        ]
+      },
+      {
+        "seriesID": "CUUR0000SA0L1E",
+        "data": [
+          {
+            "year": "2026", "period": "M05", "periodName": "May", "value": "325.000",
+            "footnotes": [{}],
+            "calculations": {"net_changes": {"1": "1.4"}, "pct_changes": {"1": "4.0", "12": "3.8"}}
+          },
+          {
+            "year": "2026", "period": "M04", "periodName": "April", "value": "323.600",
+            "footnotes": [{}],
+            "calculations": {"net_changes": {"1": "1.1"}, "pct_changes": {"1": "3.9", "12": "3.6"}}
+          }
+        ]
+      },
+      {
+        "seriesID": "CES0000000001",
+        "data": [
+          {
+            "year": "2026", "period": "M05", "periodName": "May", "value": "159000",
+            "footnotes": [{"code": "P", "text": "Preliminary"}],
+            "calculations": {"net_changes": {"1": "175", "3": "510"}, "pct_changes": {"1": "0.1"}}
+          },
+          {
+            "year": "2026", "period": "M04", "periodName": "April", "value": "158825",
+            "footnotes": [{}],
+            "calculations": {"net_changes": {"1": "160", "3": "480"}, "pct_changes": {"1": "0.1"}}
+          }
+        ]
+      },
+      {
+        "seriesID": "LNS14000000",
+        "data": [
+          {
+            "year": "2026", "period": "M05", "periodName": "May", "value": "4.1",
+            "footnotes": [{}],
+            "calculations": {"net_changes": {"1": "0.1"}, "pct_changes": {"1": "2.5"}}
+          },
+          {
+            "year": "2026", "period": "M04", "periodName": "April", "value": "4.0",
+            "footnotes": [{}],
+            "calculations": {"net_changes": {"1": "0.0"}, "pct_changes": {"1": "0.0"}}
+          }
+        ]
+      },
+      {
+        "seriesID": "WPSFD4",
+        "data": [
+          {
+            "year": "2026", "period": "M05", "periodName": "May", "value": "145.000",
+            "footnotes": [{}],
+            "calculations": {"net_changes": {"1": "0.2"}, "pct_changes": {"1": "0.1", "12": "7.0"}}
+          },
+          {
+            "year": "2026", "period": "M04", "periodName": "April", "value": "144.800",
+            "footnotes": [{}],
+            "calculations": {"net_changes": {"1": "0.1"}, "pct_changes": {"1": "0.0", "12": "6.8"}}
+          }
+        ]
+      },
+      {
+        "seriesID": "WPUFD4",
+        "data": [
+          {
+            "year": "2026", "period": "M05", "periodName": "May", "value": "144.500",
+            "footnotes": [{}],
+            "calculations": {"net_changes": {"1": "0.4"}, "pct_changes": {"1": "0.3", "12": "2.6"}}
+          },
+          {
+            "year": "2026", "period": "M04", "periodName": "April", "value": "144.100",
+            "footnotes": [{}],
+            "calculations": {"net_changes": {"1": "0.3"}, "pct_changes": {"1": "0.2", "12": "2.4"}}
+          }
+        ]
+      }
+    ]
+  }
+}

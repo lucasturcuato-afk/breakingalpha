@@ -1,0 +1,6 @@
+{
+  "status": "REQUEST_FAILED",
+  "responseTime": 0,
+  "message": ["Invalid registration key.  For more information see: https://www.bls.gov/developers/"],
+  "Results": {}
+}
