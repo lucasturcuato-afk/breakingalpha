@@ -22,8 +22,9 @@ Also honours the env var ``DAILY_GRADING_FORCE=true`` so the workflow
 can pass the flag through the environment if preferred.
 
 Each stage is wrapped in its own try/except so a failure in one module
-never prevents the next from running. The script always exits 0 — the
-goal is observability, not halting CI.
+never prevents the next from running. Infrastructure failures (DB
+unreachable, missing env var) exit non-zero to trigger GitHub workflow
+notifications; per-thesis errors are soft-fail (exit 0).
 """
 
 from __future__ import annotations
@@ -32,8 +33,13 @@ import argparse
 import logging
 import os
 import sys
+from datetime import datetime, timezone
 from typing import Any
 
+# TODO: thesis_grader.py, pattern_memory.py, and source_credibility.py
+# read SUPABASE_ANON_KEY at module level. New code in this file uses
+# SUPABASE_SERVICE_ROLE_KEY (best practice). Migration of existing
+# modules deferred to a separate PR.
 
 # --- Path + env bootstrap --------------------------------------------------
 # Make sibling backend modules importable regardless of cwd. The workflow
@@ -76,10 +82,42 @@ def _run_step(name: str, fn) -> Any:
         return None
 
 
+def _log_pipeline_run(started_at: datetime, summary: dict, status: str) -> None:
+    """Record this run in pipeline_runs (mirrors outcome_evaluator.py pattern)."""
+    try:
+        from supabase import create_client
+
+        sb = create_client(
+            os.environ["SUPABASE_URL"],
+            os.environ["SUPABASE_SERVICE_ROLE_KEY"],
+        )
+        completed_at = datetime.now(timezone.utc)
+        grader_summary = summary.get("grader") or {}
+        graded = 0
+        if isinstance(grader_summary, dict):
+            try:
+                graded = int(grader_summary.get("graded") or 0)
+            except Exception:
+                pass
+
+        sb.table("pipeline_runs").insert({
+            "brief_type": "daily_grading",
+            "started_at": started_at.isoformat(),
+            "completed_at": completed_at.isoformat(),
+            "duration_s": (completed_at - started_at).total_seconds(),
+            "status": status,
+            "selected_count": graded,
+            "error_notes": str(summary),
+        }).execute()
+    except Exception as e:
+        logger.error("daily_grading: pipeline_runs logging failed: %s", e)
+
+
 def main(force: bool = False) -> dict:
     """Run grader → patterns → credibility and return a summary dict."""
     logging.basicConfig(level=logging.INFO)
     print(f"  [daily_grading] starting (force={force})")
+    started_at = datetime.now(timezone.utc)
 
     grader_summary = _run_step(
         "thesis_grader",
@@ -139,6 +177,8 @@ def main(force: bool = False) -> dict:
         sources_summary,
         live_score_summary,
     )
+
+    _log_pipeline_run(started_at, summary, status="success")
     return summary
 
 
@@ -162,6 +202,18 @@ if __name__ == "__main__":
         "yes",
         "on",
     )
-    main(force=args.force or env_force)
-    # Always exit 0 — the point is observability, not halting CI.
+    _started = datetime.now(timezone.utc)
+    try:
+        main(force=args.force or env_force)
+    except Exception as exc:
+        # Infrastructure failure (DB unreachable, missing env var, import error).
+        # Log to pipeline_runs and exit non-zero so the GitHub notification fires.
+        logger.exception("daily_grading: infrastructure failure: %s", exc)
+        _log_pipeline_run(
+            _started,
+            {"error": str(exc)},
+            status="failed",
+        )
+        sys.exit(1)
+    # Per-thesis errors are logged inside _run_step and don't crash the run.
     sys.exit(0)

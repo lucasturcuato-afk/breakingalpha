@@ -66,7 +66,7 @@ def grade(sb: Client, output: dict, window_days: int) -> GradeResult:
     negative = sum(1 for a in articles if (a.get("sentiment") or "").lower() in ("negative", "bearish"))
     total = len(articles)
 
-    expected_direction = "positive" if tx_code == "P" else "negative"
+    expected_direction = "positive" if (tx_code or "").upper() == "P" else "negative"
     actual_lean = "positive" if positive > negative else ("negative" if negative > positive else "neutral")
 
     if actual_lean == expected_direction and total >= 3:

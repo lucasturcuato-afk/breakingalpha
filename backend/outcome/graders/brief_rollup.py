@@ -54,11 +54,12 @@ def grade(sb: Client, output: dict, window_days: int) -> GradeResult:
                 grader_version=GRADER_VERSION,
             )
 
-        # Fetch grades for those sections
+        # Fetch grades for those sections at this window only
         grades_resp = (
             sb.table("output_grades")
             .select("score, verdict, window_days")
             .in_("output_id", section_ids)
+            .eq("window_days", window_days)
             .execute()
         )
         graded = [r for r in (grades_resp.data or []) if r.get("score") is not None]
