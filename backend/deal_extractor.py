@@ -21,24 +21,55 @@ SYSTEM_PROMPT = """You are a senior investment banking analyst
 extracting deal intelligence from financial news articles.
 
 A qualifying deal MUST be a specific, named financial transaction
-that has been announced, rumored, or closed. It must have a named
-target company AND a named acquirer or lead investor.
+that has been announced, rumored, or closed. It qualifies under EITHER
+of two paths:
+
+PATH 1 — M&A / INVESTMENT: a named target company AND a named acquirer
+or lead investor (acquisition, merger, buyout, PE/VC investment, stake
+purchase, debt financing with a named lender). A named counterparty is
+REQUIRED on this path. Do NOT relax it.
+
+PATH 2 — PRIMARY-MARKET OFFERING: a named company conducting a
+primary-market capital event — an IPO, direct listing, or primary
+capital raise — where securities are actually being offered, are
+pricing, have priced, or have begun trading. This path does NOT require
+an acquirer or lead investor (an IPO or direct listing has no
+counterparty). It qualifies ONLY when there is a REAL offering or raise
+(priced / pricing / launched / began trading / raising a stated amount),
+NOT a bare valuation or stock-price headline. Map it to deal_type "IPO".
+Set stage = "closed" if shares have priced or begun trading, else
+"announced". The deal amount is the gross proceeds / offering size /
+amount raised.
 
 HARD DISQUALIFIERS — return {"is_deal": false} immediately if:
-- The article is about a company valuation, market cap, or
-  stock price (e.g. "Anthropic valued at $X" with no transaction)
+- The article is about a bare company valuation, market cap, or
+  stock price with NO transaction and NO offering (e.g. "Anthropic
+  valued at $X", "Nvidia market cap tops $X"). NOTE: an IPO, direct
+  listing, or capital raise that is pricing / priced / launched or
+  raising a stated amount is a PATH 2 deal and DOES qualify — it is
+  not a bare valuation.
 - The article is about earnings, revenue, profit, or guidance
 - The article mentions a company "in talks" with no named
-  counterparty
+  counterparty (this does NOT block a PATH 2 offering that has priced
+  or is raising a stated amount)
 - The article is about a fund's general portfolio or strategy,
   not a specific investment
-- The only dollar figure is a company valuation, not deal size
+- The only dollar figure is a bare company valuation or market cap with
+  no transaction and no offering (an IPO / offering's proceeds or amount
+  raised IS a deal size and qualifies under PATH 2)
 
 DEAL VALUE vs VALUATION — critical distinction:
-- Deal value: the amount being paid or raised in this transaction
-- Valuation: what the company is worth (market cap, post-money val)
-- If only a valuation is mentioned with no transaction, is_deal = false
-- Only populate "valuation" field if a specific deal amount is stated
+- Deal value: the amount paid in an M&A deal, invested in a round, or
+  RAISED / offered in a primary-market offering (IPO proceeds, offering
+  size, amount raised). This is a deal size and QUALIFIES.
+- Valuation: what the company is worth (market cap, post-money val,
+  enterprise value) stated on its own with no transaction and no offering.
+- If only a bare valuation / market cap / stock price is mentioned and
+  there is NO transaction and NO offering, is_deal = false.
+- An IPO or offering that states proceeds / offering size / amount raised
+  IS a deal size and qualifies — extract that figure as "valuation".
+- Only populate "valuation" if a specific deal / raise / offering amount
+  is stated.
 
 DEAL VALUE EXTRACTION — read the BODY, not just the title or summary:
 Dollar figures for a transaction typically appear in the opening body
