@@ -103,6 +103,44 @@ def main():
               f"(surviving strength == max == {max_strength} for every order)")
         print()
 
+    # C5 — recency decoupled from strength: a weaker/no-op sibling arriving
+    # AFTER the strongest article must leave the anchor fields intact but still
+    # advance updated_at. Exercises the pure decision helper, no DB.
+    print("=" * 88)
+    print("C5 recency-vs-strength: weaker sibling after strongest -> anchor kept, updated_at advanced")
+    strongest = {"stage": "closed", "valuation": "$75B", "source_url": "u_75",
+                 "thesis": "t75", "sentiment": "BULLISH", "updated_at": "T1"}
+    weaker = {"stage": "announced", "valuation": None, "source_url": "u_none",
+              "thesis": "tNone", "sentiment": "NEUTRAL", "updated_at": "T2"}
+    # existing row = the strongest anchor (stage/valuation), then the weaker
+    # sibling lands with a newer updated_at (T2).
+    fields, is_stronger = dx.dedup_update_fields(
+        weaker, existing_stage=strongest["stage"], existing_valuation=strongest["valuation"])
+    recency_ok = (
+        is_stronger is False
+        and fields.get("updated_at") == "T2"          # recency advanced
+        and "source_url" not in fields                # anchor NOT overwritten
+        and "stage" not in fields
+        and "valuation" not in fields
+    )
+    # And the reverse: a stronger sibling DOES move the anchor and recency.
+    fields2, is_stronger2 = dx.dedup_update_fields(
+        strongest, existing_stage=weaker["stage"], existing_valuation=weaker["valuation"])
+    upgrade_ok = (
+        is_stronger2 is True
+        and fields2.get("updated_at") == "T1"
+        and fields2.get("source_url") == "u_75"
+        and fields2.get("valuation") == "$75B"
+        and fields2.get("stage") == "closed"
+    )
+    c5_ok = recency_ok and upgrade_ok
+    all_ok = all_ok and c5_ok
+    print(f"  weaker-after-strongest: stronger={is_stronger} fields_written={sorted(fields.keys())}")
+    print(f"    -> anchor kept + updated_at advanced : {'PASS' if recency_ok else 'FAIL'}")
+    print(f"  stronger-sibling       : stronger={is_stronger2} fields_written={sorted(fields2.keys())}")
+    print(f"    -> anchor moved + updated_at advanced: {'PASS' if upgrade_ok else 'FAIL'}")
+    print()
+
     print("=" * 88)
     print(f"RESULT: {'ALL PASS' if all_ok else 'FAILURES PRESENT'}")
     sys.exit(0 if all_ok else 1)

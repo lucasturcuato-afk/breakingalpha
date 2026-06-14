@@ -221,6 +221,35 @@ def deal_strength(stage, valuation):
     return (has_val, _stage_rank(stage), mag if mag is not None else 0.0)
 
 
+def dedup_update_fields(row, existing_stage, existing_valuation):
+    """Decide what to write when a matching (company, deal_type) article lands.
+
+    Recency and strength are SEPARATE concerns:
+      - `updated_at` (last-seen / recency) ALWAYS advances, so every qualifying
+        mention keeps the row inside lead_preselect's updated_at window.
+      - the strength-bearing anchor fields (source_url, stage, valuation, thesis,
+        sentiment) move ONLY when the new article is strictly stronger
+        (deal_strength), so the anchor never downgrades and a null-valuation
+        sibling cannot clobber a priced one.
+    Pure and DB-free so the decision is unit-testable. Returns
+    (fields_to_update, is_stronger). `created_at` is never touched here.
+    """
+    fields = {"updated_at": row["updated_at"]}
+    is_stronger = (
+        deal_strength(row["stage"], row["valuation"])
+        > deal_strength(existing_stage, existing_valuation)
+    )
+    if is_stronger:
+        fields.update({
+            "stage":      row["stage"],
+            "thesis":     row["thesis"],
+            "valuation":  row["valuation"],
+            "sentiment":  row["sentiment"],
+            "source_url": row["source_url"],
+        })
+    return fields, is_stronger
+
+
 def run():
     print("🔍 Deal Extractor starting...")
 
@@ -289,32 +318,24 @@ def run():
 
             if existing.data:
                 deal_id = existing.data[0]["id"]
-                # Strongest-anchor dedup: only let a STRICTLY stronger article
-                # overwrite the row, so the surviving source_url/stage/valuation
-                # come from the most complete + confirmed anchor instead of
-                # whichever sibling happened to write last. On a tie or a weaker
-                # article this is a no-op (the existing row is left untouched),
-                # which prevents a null-valuation sibling from clobbering a
-                # priced one. The overwrite replaces source_url + stage +
-                # valuation + thesis + sentiment together, so the row always
-                # stays sourced from one coherent anchor (never a mix).
-                existing_strength = deal_strength(
+                # Strongest-anchor dedup with decoupled recency: every matching
+                # article advances updated_at (last-seen), but the anchor fields
+                # (source_url, stage, valuation, thesis, sentiment) move only to a
+                # STRICTLY stronger article, so the row keeps its most complete +
+                # confirmed anchor and a null-valuation sibling cannot clobber a
+                # priced one. One UPDATE per matching article (same write volume
+                # as the original pre-strength behavior), just conditional content.
+                update_fields, is_stronger = dedup_update_fields(
+                    row,
                     existing.data[0].get("stage"),
                     existing.data[0].get("valuation"),
                 )
-                new_strength = deal_strength(row["stage"], row["valuation"])
-                if new_strength > existing_strength:
-                    supabase.table("deal_flow").update({
-                        "stage":      row["stage"],
-                        "thesis":     row["thesis"],
-                        "valuation":  row["valuation"],
-                        "sentiment":  row["sentiment"],
-                        "source_url": row["source_url"],
-                        "updated_at": row["updated_at"],
-                    }).eq("id", deal_id).execute()
+                supabase.table("deal_flow").update(update_fields)\
+                    .eq("id", deal_id).execute()
+                if is_stronger:
                     print(f"    → Updated existing deal (stronger anchor) (id: {deal_id})")
                 else:
-                    print(f"    → Kept existing deal (anchor not weaker) (id: {deal_id})")
+                    print(f"    → Refreshed recency, kept anchor (id: {deal_id})")
             else:
                 row["created_at"] = datetime.now(timezone.utc).isoformat()
                 ins_resp = supabase.table("deal_flow").insert(row).execute()
