@@ -13,6 +13,9 @@ from ingest import INDUSTRY_VERTICALS
 from outputs import record_output, record_outputs_batch
 from output_constants import BRIEF_PROMPT_VERSION
 import market_tape
+import macro_calendar
+import bea_calendar
+from dataclasses import asdict
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 # Admin client for writes that must bypass RLS (e.g. morning_brief_calls).
@@ -1550,6 +1553,32 @@ def run(brief_type="morning"):
                 print("  ⚠ Generated morning_review but no brief_id returned from insert")
         except Exception as e:
             print(f"[synthesize] morning review attach failed: {e}")  # non-fatal
+
+    # ── Morning brief: attach the deterministic macro panel (slice 1: numbers) ──
+    # Numbers come straight from the BLS + BEA data layers and NEVER pass through
+    # Gemini. Written as its OWN brief_id update (not the shared extras insert) so a
+    # missing macro_panel column (migration not yet applied) degrades ONLY this field
+    # and never regresses market_pulse via the base-row fallback. Fully soft-fail:
+    # empty data layers skip the write; a schema/undefined-column error is caught and
+    # logged. The pipeline never breaks from this code, and it is safe to ship before
+    # the migration is applied.
+    if brief_type == "morning" and brief_id:
+        try:
+            releases = [
+                asdict(r)
+                for r in (macro_calendar.fetch_macro_releases() + bea_calendar.fetch_bea_releases())
+            ]
+            if releases:
+                periods = {r["key"]: r["period"] for r in releases}
+                macro_panel = {"releases": releases, "periods": periods}
+                supabase.table("briefings").update(
+                    {"macro_panel": macro_panel}
+                ).eq("id", brief_id).execute()
+                print(f"  📊 Attached macro_panel ({len(releases)} releases) to morning brief {brief_id}")
+            else:
+                print("  ⚠ macro_panel skipped: data layers returned no releases")
+        except Exception as e:
+            print(f"[synthesize] macro_panel attach failed (non-fatal): {e}")
 
     # Return brief text and addendum metadata for downstream consumers
     # (e.g. brief_feedback_loop.score_brief in run.py)

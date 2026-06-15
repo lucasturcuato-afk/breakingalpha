@@ -11,6 +11,7 @@ import WatchlistBriefSection from "@/components/brief/WatchlistBriefSection";
 import type { WatchlistBriefSection as WatchlistSectionData } from "@/lib/watchlist-brief";
 import { DCAnalystSection } from "@/components/brief/dc-analyst-section";
 import { DCSectorSignals } from "@/components/brief/dc-sector-signals";
+import MacroPanel, { type MacroPanelData } from "@/components/brief/MacroPanel";
 import { ActiveThesesWidget } from "@/components/dashboard/active-theses-widget";
 import { WatchlistWidget } from "@/components/dashboard/watchlist-widget";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
@@ -95,6 +96,7 @@ interface BriefingData {
     narrative: string;
     headlines?: Array<{ title: string; href?: string }>;
   } | null;
+  macro_panel?: MacroPanelData | null;
 }
 
 function storyToContent(story: StoryData): ContentDescriptor {
@@ -291,6 +293,12 @@ export default function MorningBriefPage() {
             if (typeof mp === "string") { try { return JSON.parse(mp); } catch { return null; } }
             return mp;
           })();
+          const macroPanel = (() => {
+            const m = b.macro_panel;
+            if (!m) return null;
+            if (typeof m === "string") { try { return JSON.parse(m); } catch { return null; } }
+            return m;
+          })();
 
           setBriefing({
             id: b.id,
@@ -306,6 +314,7 @@ export default function MorningBriefPage() {
             deals: b.deals || [],
             created_at: b.created_at,
             market_pulse: marketPulse,
+            macro_panel: macroPanel,
           });
           setIsStale(data.is_stale === true);
           if (data.last_attempt_status) setLastRunStatus(data.last_attempt_status);
@@ -1357,6 +1366,14 @@ export default function MorningBriefPage() {
                 </div>
               </section>
             )}
+
+            {/* ── Macro snapshot (deterministic, numbers only; slice 1 compact
+                strip). Renders nothing when macro_panel is absent or empty. ── */}
+            {briefing.macro_panel?.releases?.length ? (
+              <section style={{ marginBottom: 28 }}>
+                <MacroPanel panel={briefing.macro_panel} />
+              </section>
+            ) : null}
 
             {/* ── Analyst Briefing — one card per section, each with
                 USEFUL? thumbs for Lucas's feedback-loop signal
