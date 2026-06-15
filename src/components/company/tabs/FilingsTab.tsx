@@ -18,13 +18,15 @@
 
 import { useMemo } from "react";
 
-import type { CompanyFiling } from "@/lib/sec-filings";
+import { edgarFilingsUrl, type CompanyFiling } from "@/lib/sec-filings";
 import { filingsEmptyCopy } from "./empty-state-copy";
 
 export interface FilingsTabProps {
   filings: CompanyFiling[];
   /** True when the company resolved to a SEC CIK. */
   hasCik: boolean;
+  /** The resolved SEC CIK, or null for private / pre-IPO / unmapped names. */
+  cik: number | null;
 }
 
 const MONTHS = [
@@ -51,7 +53,7 @@ function ms(value: string | null): number {
 
 const TH = "px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-text-muted";
 
-export function FilingsTab({ filings, hasCik }: FilingsTabProps) {
+export function FilingsTab({ filings, hasCik, cik }: FilingsTabProps) {
   const sorted = useMemo(
     () => [...filings].sort((a, b) => ms(b.filingDate) - ms(a.filingDate)),
     [filings],
@@ -66,6 +68,19 @@ export function FilingsTab({ filings, hasCik }: FilingsTabProps) {
         <p data-testid="filings-empty-state" className="text-sm text-text-muted">
           {filingsEmptyCopy(hasCik)}
         </p>
+        {/* EDGAR deep link only for public filers (hasCik). Never shown in the
+            private / pre-IPO branch, where no CIK exists. */}
+        {hasCik && cik != null && (
+          <a
+            data-testid="filings-edgar-link"
+            href={edgarFilingsUrl(cik)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-block text-[12px] font-medium text-gold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold rounded-sm"
+          >
+            View all filings on SEC EDGAR
+          </a>
+        )}
       </div>
     );
   }

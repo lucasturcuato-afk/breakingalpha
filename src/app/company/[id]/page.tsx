@@ -149,7 +149,13 @@ export default async function CompanyDetailPage({
         articles={companyDetail.articles}
       />
     ),
-    filings: <FilingsTab filings={filingsResult.filings} hasCik={filingsResult.cik != null} />,
+    filings: (
+      <FilingsTab
+        filings={filingsResult.filings}
+        hasCik={filingsResult.cik != null}
+        cik={filingsResult.cik}
+      />
+    ),
     financials: (
       <FinancialsTab financials={financialsResult} hasCik={financialsResult.cik != null} />
     ),

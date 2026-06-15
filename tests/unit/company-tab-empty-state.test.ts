@@ -17,6 +17,9 @@ import {
   filingsEmptyCopy,
   financialsEmptyCopy,
 } from "../../src/components/company/tabs/empty-state-copy.ts";
+// edgarFilingsUrl is imported from the leaf module (sec-filings.ts re-exports it
+// but pulls in a "@/" alias that node:test cannot resolve).
+import { edgarFilingsUrl } from "../../src/lib/edgar-url.ts";
 
 const PRIVATE = /private|pre-?IPO/i;
 
@@ -42,4 +45,19 @@ test("Financials: no CIK still renders the private/pre-IPO copy", () => {
   const copy = financialsEmptyCopy(false);
   assert.match(copy, PRIVATE);
   assert.match(copy, /private, pre-IPO/);
+});
+
+test("edgarFilingsUrl points at the SEC browse-edgar getcompany index", () => {
+  const url = edgarFilingsUrl(1181412);
+  const parsed = new URL(url);
+  assert.equal(parsed.hostname, "www.sec.gov");
+  assert.equal(parsed.pathname, "/cgi-bin/browse-edgar");
+  assert.equal(parsed.searchParams.get("action"), "getcompany");
+});
+
+test("edgarFilingsUrl zero-pads the CIK to 10 digits", () => {
+  const url = edgarFilingsUrl(1181412);
+  // SpaceX CIK 1181412 -> 0001181412
+  assert.match(url, /CIK=0001181412/);
+  assert.equal(new URL(url).searchParams.get("CIK"), "0001181412");
 });

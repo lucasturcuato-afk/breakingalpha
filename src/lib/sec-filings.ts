@@ -13,6 +13,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { canonicalize } from "@/lib/company-intel";
 
+// EDGAR filing-index URL builder. Defined in a leaf module so it stays
+// importable under node:test (this module's "@/" import is not resolvable
+// there); re-exported here so callers import it from "@/lib/sec-filings".
+export { edgarFilingsUrl } from "./edgar-url";
+
 export interface CompanyRef {
   id?: string | null;
   name?: string | null;
