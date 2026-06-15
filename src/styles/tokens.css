@@ -247,6 +247,17 @@ html.dark {
   --elevated: #1e1e1e;
   --overlay: #252525;
 
+  /* ── Row interaction (dark) ──
+     Light-only in :root (warm cream tints). Without dark values the Company
+     Intel data-table zebra rendered light rows on the dark #1e1e1e table
+     container, hiding every other row. Neutral grays stepped off the card
+     surface so striping stays subtle, not solid blocks: alt #252525 (== the
+     --overlay step), hover #2e2e2e one step lighter, active #333333 strongest.
+     Background-only fix; row text tokens already flip. */
+  --row-hover: #2e2e2e;
+  --row-alt: #252525;
+  --row-active: #333333;
+
   /* ── Semantic layout tokens ── */
   --foreground: #f5e6d3;
   --border-default: rgba(255, 255, 255, 0.14);
