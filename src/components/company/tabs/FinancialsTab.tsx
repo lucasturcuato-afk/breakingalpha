@@ -31,6 +31,7 @@ import type {
   FinancialView,
 } from "@/lib/financial-facts";
 import { formatValue, type Fmt } from "./financials-format";
+import { financialsEmptyCopy } from "./empty-state-copy";
 
 export interface FinancialsTabProps {
   financials: CompanyFinancialsResult;
@@ -177,9 +178,7 @@ export function FinancialsTab({ financials, hasCik }: FinancialsTabProps) {
         className="rounded-md border border-border-subtle bg-cream-hi p-6"
       >
         <p data-testid="financials-empty-state" className="text-sm text-text-muted">
-          {hasCik
-            ? "Financials not available. No validated XBRL facts for this company yet."
-            : "Financials not available. This company is private, pre-IPO, or not an SEC filer."}
+          {financialsEmptyCopy(hasCik)}
         </p>
       </div>
     );

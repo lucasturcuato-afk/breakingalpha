@@ -19,6 +19,7 @@
 import { useMemo } from "react";
 
 import type { CompanyFiling } from "@/lib/sec-filings";
+import { filingsEmptyCopy } from "./empty-state-copy";
 
 export interface FilingsTabProps {
   filings: CompanyFiling[];
@@ -63,9 +64,7 @@ export function FilingsTab({ filings, hasCik }: FilingsTabProps) {
         className="rounded-md border border-border-subtle bg-cream-hi p-6"
       >
         <p data-testid="filings-empty-state" className="text-sm text-text-muted">
-          {hasCik
-            ? "No SEC filings in the coverage window."
-            : "No SEC filings. This company is private, pre-IPO, or not in the EDGAR coverage list."}
+          {filingsEmptyCopy(hasCik)}
         </p>
       </div>
     );
