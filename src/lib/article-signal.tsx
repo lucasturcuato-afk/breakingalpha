@@ -29,7 +29,11 @@ export function CompletenessBadge({ completeness }: { completeness?: Completenes
   const styles: Record<Completeness, { bg: string; label: string }> = {
     full: { bg: "bg-signal-up/10 text-signal-up", label: "Full text \u2713" },
     summary: { bg: "bg-gold/10 text-gold-dark", label: "Summary" },
-    headline: { bg: "bg-parchment-mid text-text-muted", label: "Headline only" },
+    // Light: solid bg-parchment-mid. Dark: parchment-mid resolves to #252525,
+    // which collides with the --row-alt zebra value, so the badge vanishes on
+    // alt rows. Layer a translucent tint in dark (like the summary/full
+    // variants) so it reads on any row background. Light value unchanged.
+    headline: { bg: "bg-parchment-mid dark:bg-white/10 text-text-muted", label: "Headline only" },
   };
 
   const s = styles[completeness];
