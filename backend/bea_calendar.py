@@ -38,8 +38,13 @@ from typing import Optional
 import requests
 
 # Reuse the BLS layer's dataclasses so the later render treats BLS and BEA
-# releases uniformly (do not redefine them).
-from backend.macro_calendar import MacroFigure, MacroRelease
+# releases uniformly (do not redefine them). Dual-context import: the pipeline
+# runs run.py with cwd=backend/ (bare imports, no `backend` package on sys.path),
+# while the harness/tests run as `python -m backend.bea_calendar` from repo root.
+try:
+    from macro_calendar import MacroFigure, MacroRelease
+except ModuleNotFoundError:
+    from backend.macro_calendar import MacroFigure, MacroRelease
 
 logger = logging.getLogger(__name__)
 
