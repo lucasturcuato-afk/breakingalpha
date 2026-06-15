@@ -178,7 +178,7 @@ export function CompanyKPIStrip({ companyDetail }: CompanyKPIStripProps) {
       className="overflow-x-auto"
       style={{
         background: "var(--cream-hi, #f5ede0)",
-        border: "1px solid var(--border, #d8cfc1)",
+        border: "1px solid var(--border-base)",
         borderRadius: 8, display: "grid",
         gridTemplateColumns: "repeat(6, minmax(120px, 1fr))",
       }}

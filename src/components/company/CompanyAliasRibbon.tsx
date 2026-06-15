@@ -33,7 +33,7 @@ export function CompanyAliasRibbon({ canonical, aliasMentions, maxBeforeCollapse
       aria-label="Canonical name and aliases"
       style={{
         display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
-        fontFamily: MONO, fontSize: 11, color: "var(--text-soft)",
+        fontFamily: MONO, fontSize: 11, color: "var(--text-muted)",
       }}
     >
       <Eyebrow as="span" color="var(--gold-deep)" testId="alias-ribbon-canonical-label">
@@ -73,7 +73,7 @@ export function CompanyAliasRibbon({ canonical, aliasMentions, maxBeforeCollapse
           onClick={() => setExpanded(true)}
           className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold rounded-sm"
           style={{
-            fontFamily: MONO, fontSize: 11, color: "var(--text-soft)",
+            fontFamily: MONO, fontSize: 11, color: "var(--text-muted)",
             background: "transparent", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline",
           }}
         >

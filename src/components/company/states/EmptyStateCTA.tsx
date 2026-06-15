@@ -29,7 +29,7 @@ const btnBase = {
 const btnSecondary = {
   ...btnBase,
   background: "var(--cream)",
-  border: "1px solid var(--border)",
+  border: "1px solid var(--border-base)",
   color: "var(--espresso)",
   textDecoration: "none",
   display: "inline-flex",
