@@ -41,7 +41,7 @@ from typing import Any
 
 import requests
 from pydantic import BaseModel, Field, ValidationError
-from supabase import create_client
+from supabase_client import get_service_client
 from google import genai
 from google.genai.types import GenerateContentConfig, ThinkingConfig
 
@@ -70,7 +70,7 @@ logger = logging.getLogger(__name__)
 
 # --- Clients ---------------------------------------------------------------
 
-supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
+supabase = get_service_client()
 
 try:
     gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
