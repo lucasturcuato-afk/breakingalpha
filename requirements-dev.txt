@@ -1,0 +1,10 @@
+# Dev/verification tooling for the backend Python gate.
+#
+# Interpreter: Python 3.11 (matches CI and run.py; see .github/workflows/*.yml).
+# scripts/verify-py.sh builds .venv from python3.11 explicitly; use a 3.11.x
+# interpreter to reproduce exactly.
+#
+# Pinned so the gate is byte-for-byte reproducible from a clean checkout.
+# These are the ONLY dev deps; runtime deps come from backend/requirements.txt.
+ruff==0.14.5
+pytest==8.4.2
