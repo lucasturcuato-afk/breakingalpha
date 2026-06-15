@@ -822,7 +822,7 @@ export default function CompanyIntelPage() {
           <div className="relative bg-white border border-border-base rounded-xl overflow-x-auto">
             <table className="w-full table-fixed text-left border-collapse min-w-[900px]">
               <thead className="bg-parchment-mid border-b border-border-base">
-                <tr className="font-data text-[9px] uppercase tracking-widest text-text-muted">
+                <tr className="font-data text-[9px] uppercase tracking-widest text-text-muted dark:text-text-secondary">
                   <th className="w-8 px-2 py-2"></th>
                   <SortHeader label="Ticker" k="ticker" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="w-20 px-2 py-2" />
                   <SortHeader label="Name" k="name" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="px-2 py-2 min-w-[200px]" />
@@ -902,7 +902,7 @@ export default function CompanyIntelPage() {
                           {row.themes.slice(0, 2).map((t) => (
                             <span
                               key={t}
-                              className="font-data text-[9px] text-text-muted bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded whitespace-nowrap"
+                              className="font-data text-[9px] text-text-muted dark:text-text-secondary bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded whitespace-nowrap"
                             >
                               {t}
                             </span>
