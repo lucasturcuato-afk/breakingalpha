@@ -87,7 +87,7 @@ function ToneCellMeta({ tone }: { tone: ToneSummary }) {
 }
 
 const cellBase: CSSProperties = { padding: "11px 14px", minWidth: 0 };
-const cellRight: CSSProperties = { ...cellBase, borderRight: "1px solid var(--border-soft, #e6dccd)" };
+const cellRight: CSSProperties = { ...cellBase, borderRight: "1px solid var(--border-subtle)" };
 const valueStyle: CSSProperties = {
   fontFamily: "var(--font-mono)", fontSize: 19, fontWeight: 700,
   color: "var(--espresso, #2a1f15)", marginTop: 3,
@@ -101,7 +101,7 @@ const privateBadgeStyle: CSSProperties = {
   fontFamily: "var(--font-mono)", fontSize: 9, fontWeight: 700,
   letterSpacing: "0.08em", textTransform: "uppercase",
   color: "var(--text-faint, #8a7a68)",
-  border: "1px solid var(--border, #d8cfc1)", borderRadius: 3, verticalAlign: "middle",
+  border: "1px solid var(--border-base)", borderRadius: 3, verticalAlign: "middle",
 };
 
 interface CellProps {

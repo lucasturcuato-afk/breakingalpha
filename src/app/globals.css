@@ -16,6 +16,7 @@
 
   /* ── Core palette ── */
   --color-cream: var(--cream);
+  --color-cream-hi: var(--cream-hi);
   --color-parchment: var(--parchment);
   --color-parchment-mid: var(--parchment-mid);
   --color-espresso: var(--espresso);
@@ -31,6 +32,7 @@
   /* ── Borders ── */
   --color-border-base: var(--border-base);
   --color-border-subtle: var(--border-subtle);
+  --color-border-hi: var(--border-hi);
   --color-border-hover: var(--border-hover);
 
   /* ── Text ── */

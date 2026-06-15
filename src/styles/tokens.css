@@ -203,6 +203,12 @@
 /* ── Dark mode overrides ── */
 html.dark {
   --cream: #0f0f0f;
+  /* Company Intel cards (header, KPI strip, Signal Trend, Brief, tabs) paint
+     their surface with --cream-hi. It was defined only in :root, so in dark
+     mode the surface stayed near-white while text tokens flipped to light,
+     leaving washed-out near-invisible text. Mirror --elevated so cards sit
+     one step above the #0f0f0f page. */
+  --cream-hi: #1e1e1e;
   --parchment: #0f0f0f;
   --parchment-mid: #252525;
   --espresso: #e8e8e4;
@@ -221,6 +227,9 @@ html.dark {
   --border-base: rgba(255, 255, 255, 0.14);
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-hover: rgba(255, 255, 255, 0.22);
+  /* Tab-hover emphasis border (border-border-hi). Same gap as --cream-hi:
+     defined only in :root, so the hover border stayed light-tan in dark. */
+  --border-hi: rgba(255, 255, 255, 0.22);
 
   --text-primary: #f5e6d3;
   --text-secondary: #9a9a94;
