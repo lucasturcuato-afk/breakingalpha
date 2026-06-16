@@ -1,0 +1,15 @@
+# Ruff config for the backend/ Python verification gate.
+# Scope is deliberately narrow: the MUST-FIX tier only (real defects, not style).
+#   E9   syntax errors / IndentationError
+#   F63  invalid comparison / assertion constructs (e.g. `is` with a literal)
+#   F7   statement-level syntax errors (break outside loop, etc.)
+#   F82  undefined names (typos, missing imports)
+# This tier passes on the current tree, so the gate is green and meaningful on
+# day one. The broad ruleset (style, imports, pyupgrade) is intentionally NOT
+# enabled here; see the PR body for the follow-up cleanup scope.
+
+target-version = "py311"
+line-length = 100
+
+[lint]
+select = ["E9", "F63", "F7", "F82"]

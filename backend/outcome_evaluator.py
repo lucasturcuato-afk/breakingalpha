@@ -96,7 +96,7 @@ def _window_cutoff(window_days: int) -> str:
 
 # ── Grade one output ──────────────────────────────────────────────────
 
-def grade_one(sb, output: dict, output_type: str, window_days: int, cost_tracker) -> 'GradeResult | None':
+def grade_one(sb, output: dict, output_type: str, window_days: int, cost_tracker) -> 'GradeResult | None':  # noqa: F821  forward-ref only; never evaluated under `from __future__ import annotations`
     grader = GRADER_REGISTRY.get(output_type)
     if not grader:
         logger.warning("outcome_evaluator: no grader for %s, skipping", output_type)
