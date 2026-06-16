@@ -3,7 +3,7 @@ synthesize.py — BreakingAlpha
 Generates a detailed analyst-style morning/evening briefing using Google Gemini.
 """
 
-import os, json, re, uuid
+import os, json, re, uuid, time
 from datetime import datetime, timezone, timedelta, date
 from supabase import create_client
 from google import genai
@@ -1191,6 +1191,72 @@ def _generate_macro_read(fired_keys, releases, tape):
         return None
 
 
+# ── Brief synthesis retry (stub-prevention) ──────────────────────────────────
+# A single transient Gemini error or rate limit must NOT silently degrade the
+# whole brief to a stub. Incident 2026-06-16 (run #165): one un-retried failure
+# stubbed the morning brief, the GitHub job still went green, and the frontend
+# (which filters stubs) kept serving the prior day. Retries are bounded and
+# backed off; the stub fallback in run() stays as the last resort after every
+# attempt fails.
+BRIEF_SYNTH_MAX_ATTEMPTS = 3
+BRIEF_SYNTH_RETRY_BACKOFF_S = 5
+
+
+def _parse_brief_json(raw):
+    """Parse a Gemini brief response into a dict, or None. Strips code fences,
+    tries a whole-string json.loads, then falls back to the first {...} block.
+    Pure: no network, no retry, no side effects."""
+    raw = re.sub(r"^```json|^```|```$", "", raw or "", flags=re.MULTILINE).strip()
+    try:
+        return json.loads(raw)
+    except Exception:
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group())
+            except Exception:
+                return None
+    return None
+
+
+def _generate_brief_json(
+    system,
+    user_content,
+    max_attempts=BRIEF_SYNTH_MAX_ATTEMPTS,
+    backoff_s=BRIEF_SYNTH_RETRY_BACKOFF_S,
+):
+    """Call gemini_generate for the main brief and parse it, retrying on a raised
+    error OR an unparseable response. Returns the parsed dict, or None when every
+    attempt fails (the caller then writes the stub). Most synthesis stubs were a
+    single transient blip, so a bounded retry recovers the brief without a
+    re-dispatch."""
+    last_err = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            raw = gemini_generate(
+                system=system,
+                user_content=user_content,
+                temperature=0.3,
+                max_tokens=4096,
+            )
+            data = _parse_brief_json(raw)
+            if data is not None:
+                if attempt > 1:
+                    print(f"  ✓ Brief synthesis recovered on attempt {attempt}/{max_attempts}")
+                return data
+            last_err = f"unparseable response (raw: {(raw or '')[:200]!r})"
+        except Exception as e:
+            last_err = str(e)
+        print(f"  ⚠ Brief synthesis attempt {attempt}/{max_attempts} failed: {last_err}")
+        if attempt < max_attempts and backoff_s:
+            time.sleep(backoff_s)
+    print(
+        f"  ✗ Brief synthesis failed after {max_attempts} attempts "
+        f"({last_err}): falling back to stub briefing"
+    )
+    return None
+
+
 def run(brief_type="morning"):
     print(f"📝 Synthesizing {brief_type} briefing...")
 
@@ -1449,30 +1515,10 @@ def run(brief_type="morning"):
         system = engagement_ctx + "\n\n" + system
         print(f"  📈 Injected {len(engagement_ctx)}-char user engagement context")
 
-    data = None
-    raw = ""
-    try:
-        raw = gemini_generate(
-            system=system,
-            user_content=f"Today's articles:\n\n{article_text}",
-            temperature=0.3,
-            max_tokens=4096,
-        )
-        raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
-        try:
-            data = json.loads(raw)
-        except Exception:
-            # tier 2: extract first {...} block
-            match = re.search(r'\{.*\}', raw, re.DOTALL)
-            if match:
-                try:
-                    data = json.loads(match.group())
-                except Exception:
-                    pass
-        if data is None:
-            raise ValueError(f"Could not parse Gemini response as JSON. Raw: {raw[:200]}")
-    except Exception as e:
-        print(f"  ✗ Gemini error: {e} — raw response: {repr(raw[:200])} — falling back to stub briefing")
+    # Bounded retry: a single transient model error or rate limit no longer
+    # stubs the whole brief (see _generate_brief_json). Returns None only after
+    # every attempt fails, which the stub fallback below then handles.
+    data = _generate_brief_json(system, f"Today's articles:\n\n{article_text}")
 
     # Post-parse tape-consistency backstop (evening only). With a known
     # regime, an out-of-subset sentiment_word is overridden to the regime
@@ -1487,6 +1533,10 @@ def run(brief_type="morning"):
         except Exception as e:
             print(f"  ⚠ tape consistency enforcement failed (non-fatal): {e}")
 
+    # Stub = synthesis exhausted every retry. The brief did NOT generate; the
+    # frontend filters this headline and serves the prior day. run() returns the
+    # flag so run.py can surface the run as failed instead of green-washing it.
+    brief_is_stub = data is None
     if data is None:
         data = {
             "headline": "Market Intelligence Unavailable",
@@ -1755,7 +1805,11 @@ def run(brief_type="morning"):
     # Return brief text and addendum metadata for downstream consumers
     # (e.g. brief_feedback_loop.score_brief in run.py)
     brief_text = json.dumps(data, indent=2)
-    return {"brief_text": brief_text, "brief_addendum_used": brief_addendum_used}
+    return {
+        "brief_text": brief_text,
+        "brief_addendum_used": brief_addendum_used,
+        "stub": brief_is_stub,
+    }
 
 if __name__ == "__main__":
     import sys
