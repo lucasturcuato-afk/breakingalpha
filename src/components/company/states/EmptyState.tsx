@@ -48,7 +48,7 @@ export function EmptyState({ canonical }: Props) {
         style={{
           padding: "48px 56px",
           background: "var(--cream-hi)",
-          border: "1px solid var(--border)",
+          border: "1px solid var(--border-base)",
           borderRadius: 10,
           display: "flex",
           flexDirection: "column",
@@ -100,7 +100,7 @@ export function EmptyState({ canonical }: Props) {
             fontFamily: SANS,
             fontSize: 14,
             lineHeight: 1.6,
-            color: "var(--text-soft)",
+            color: "var(--text-muted)",
             margin: 0,
             maxWidth: 480,
           }}

@@ -157,7 +157,7 @@ export function ArticlesRow({
               <span
                 data-testid="articles-row-web-badge"
                 title="Web-sourced (not yet in corpus)"
-                className="inline-block rounded-[2px] border border-border-subtle bg-[var(--row-alt)] px-[5px] py-[1px] text-[8px] font-bold uppercase tracking-wider text-text-muted"
+                className="inline-block rounded-[2px] border border-border-subtle bg-[var(--row-alt)] px-[5px] py-[1px] text-[8px] font-bold uppercase tracking-wider text-text-muted dark:text-text-secondary"
               >
                 Web
               </span>

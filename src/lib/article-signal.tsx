@@ -29,7 +29,13 @@ export function CompletenessBadge({ completeness }: { completeness?: Completenes
   const styles: Record<Completeness, { bg: string; label: string }> = {
     full: { bg: "bg-signal-up/10 text-signal-up", label: "Full text \u2713" },
     summary: { bg: "bg-gold/10 text-gold-dark", label: "Summary" },
-    headline: { bg: "bg-parchment-mid text-text-muted", label: "Headline only" },
+    // Light: solid bg-parchment-mid + text-muted (unchanged). Dark: the faint
+    // white/10 fill reads as a near-invisible lift and text-muted is sub-AA on
+    // it, so define the pill with a border (the same border-subtle token the
+    // sibling Web badge uses on this surface) and lift the label to
+    // text-primary, the next neutral up that clears 4.5:1. Kept neutral, not
+    // gold, so it stays the visually-lesser badge vs the gold Summary.
+    headline: { bg: "bg-parchment-mid dark:bg-white/10 text-text-muted dark:text-text-primary dark:border dark:border-border-subtle", label: "Headline only" },
   };
 
   const s = styles[completeness];

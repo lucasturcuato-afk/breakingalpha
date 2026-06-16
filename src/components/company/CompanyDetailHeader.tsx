@@ -17,7 +17,7 @@ const SANS = "var(--font-inter), Inter, sans-serif";
 const MONO = "var(--font-mono), ui-monospace, monospace";
 
 const btnBase = { fontFamily: SANS, fontSize: 12, fontWeight: 600, padding: "5px 10px", borderRadius: 6 } as const;
-const btnSecondary = { ...btnBase, background: "var(--cream)", border: "1px solid var(--border)", color: "var(--espresso)" } as const;
+const btnSecondary = { ...btnBase, background: "var(--cream)", border: "1px solid var(--border-base)", color: "var(--espresso)" } as const;
 const btnPrimary = { ...btnBase, background: "var(--gold-deep)", border: "1px solid var(--gold-deep)", color: "var(--cream)", cursor: "pointer" } as const;
 
 interface Props { detail: CompanyDetail }
@@ -101,7 +101,7 @@ export function CompanyDetailHeader({ detail }: Props) {
     <header
       data-testid="company-header"
       className="rounded-md"
-      style={{ background: "var(--cream-hi)", border: "1px solid var(--border)", padding: "16px 18px" }}
+      style={{ background: "var(--cream-hi)", border: "1px solid var(--border-base)", padding: "16px 18px" }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
         <div
@@ -139,7 +139,7 @@ export function CompanyDetailHeader({ detail }: Props) {
             ) : null}
             <span
               data-testid="company-header-subtitle"
-              style={{ fontFamily: SANS, fontSize: 12, color: "var(--text-soft)" }}
+              style={{ fontFamily: SANS, fontSize: 12, color: "var(--text-muted)" }}
             >
               {formatSubtitle(detail)}
             </span>
