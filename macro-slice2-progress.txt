@@ -34,14 +34,21 @@ PHASE STATUS
   - Existing macro/bea tests: 40 -> OK.
   - Committed.
 
-[TODO] PHASE 2 - Morning tape + gated read
-  - Add soft-fail morning market_tape fetch on the morning path (tape is currently
-    evening-only near the tape block).
-  - When fired_today is non-empty: ONE gemini_generate call returning {"read": "..."}
-    grounded on the fired releases + tape; store as macro_panel["read"]. When empty,
-    NO read call. Read is prose only; no macro number from Gemini.
-  - Soft-fail: a read failure leaves the panel intact, omits read.
-  - Test (mock gemini): read only when fired non-empty; read exception does not break.
+[DONE] PHASE 2 - Morning tape + gated read
+  - Added module-level _generate_macro_read(fired_keys, releases, tape) +
+    _format_release_for_read + _format_tape_for_read in synthesize.py. The read is
+    PROSE ONLY: the model is given the exact prints and returns {"read": "..."};
+    only data.get("read") (a string) is consumed. Makes NO model call when
+    fired_keys is empty; soft-fails to None on any error.
+  - Wired into the macro block inside `if fired_today:`: soft-fail morning
+    market_tape.fetch_tape() (the existing tape block is evening-only), then the
+    gated read; macro_panel["read"] set only when a read returns. All inside the
+    outer macro try/except; evening path untouched.
+  - Determinism: grep shows 0 direct gemini calls in the macro block and the read
+    helper consumes only data.get("read"); no panel number is sourced from Gemini.
+  - Tests (mock gemini): read only when fired non-empty; no call when empty;
+    exception/malformed/empty -> None; tape reaches the prompt. 20 tests total OK.
+  - Import check clean. Committed.
 
 [TODO] PHASE 3 - Full panel + read block (frontend)
   - MacroPanel.tsx: full mode grouped Inflation/Labor/Growth (m/m, y/y, prior),

@@ -12,6 +12,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 # Dummy env so importing synthesize does not raise on missing keys. These never
 # leave the process; no client makes a network call at construction.
@@ -112,6 +113,80 @@ class DetectFiredReleases(unittest.TestCase):
         self.assertIsNone(synthesize._macro_period_ordinal("May"))
         self.assertIsNone(synthesize._macro_period_ordinal(""))
         self.assertIsNone(synthesize._macro_period_ordinal(None))
+
+
+_CPI_RELEASE = {
+    "key": "cpi",
+    "name": "CPI",
+    "period": "May 2026",
+    "figures": [
+        {"label": "m/m (SA)", "value": 0.5, "unit": "%", "prior": 0.6},
+        {"label": "y/y (NSA)", "value": 4.2, "unit": "%", "prior": 3.8},
+    ],
+}
+_GDP_RELEASE = {
+    "key": "gdp",
+    "name": "Real GDP",
+    "period": "Q1 2026",
+    "figures": [{"label": "q/q annualized", "value": 1.6, "unit": "%", "prior": 0.5}],
+}
+
+
+class GatedMacroRead(unittest.TestCase):
+    def test_read_produced_when_fired_nonempty(self):
+        with mock.patch.object(
+            synthesize, "gemini_generate",
+            return_value='{"read": "Sticky inflation keeps the Fed on hold; fade rate-cut bets."}',
+        ) as g:
+            out = synthesize._generate_macro_read(["cpi"], [_CPI_RELEASE, _GDP_RELEASE], None)
+        self.assertEqual(out, "Sticky inflation keeps the Fed on hold; fade rate-cut bets.")
+        g.assert_called_once()
+
+    def test_no_call_and_no_read_when_fired_empty(self):
+        with mock.patch.object(synthesize, "gemini_generate") as g:
+            out = synthesize._generate_macro_read([], [_CPI_RELEASE], None)
+        self.assertIsNone(out)
+        g.assert_not_called()  # no read call when nothing fired
+
+    def test_read_exception_does_not_raise(self):
+        with mock.patch.object(synthesize, "gemini_generate", side_effect=RuntimeError("boom")):
+            out = synthesize._generate_macro_read(["cpi"], [_CPI_RELEASE], None)
+        self.assertIsNone(out)
+
+    def test_fired_key_not_in_releases_returns_none_without_call(self):
+        with mock.patch.object(synthesize, "gemini_generate") as g:
+            out = synthesize._generate_macro_read(["ppi"], [_CPI_RELEASE], None)
+        self.assertIsNone(out)
+        g.assert_not_called()
+
+    def test_malformed_model_output_returns_none(self):
+        with mock.patch.object(synthesize, "gemini_generate", return_value="not json at all"):
+            out = synthesize._generate_macro_read(["cpi"], [_CPI_RELEASE], None)
+        self.assertIsNone(out)
+
+    def test_empty_read_string_returns_none(self):
+        with mock.patch.object(synthesize, "gemini_generate", return_value='{"read": "   "}'):
+            out = synthesize._generate_macro_read(["cpi"], [_CPI_RELEASE], None)
+        self.assertIsNone(out)
+
+    def test_read_grounds_on_tape_when_present(self):
+        tape = {"regime": "risk-off", "vix_level": 22.5, "quotes": {}}
+        captured = {}
+
+        def fake_gen(system, user_content, **kwargs):
+            captured["user"] = user_content
+            return '{"read": "Risk-off tape amplifies the hot print."}'
+
+        with mock.patch.object(synthesize, "gemini_generate", side_effect=fake_gen):
+            out = synthesize._generate_macro_read(["cpi"], [_CPI_RELEASE], tape)
+        self.assertTrue(out)
+        # the deterministic prints and the tape both reach the prompt
+        self.assertIn("CPI (May 2026)", captured["user"])
+        self.assertIn("risk-off", captured["user"])
+
+    def test_tape_formatting(self):
+        self.assertEqual(synthesize._format_tape_for_read(None), "Market tape unavailable.")
+        self.assertIn("regime", synthesize._format_tape_for_read({"regime": "neutral", "vix_level": 15.0}))
 
 
 if __name__ == "__main__":
