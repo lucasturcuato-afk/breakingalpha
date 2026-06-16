@@ -12,6 +12,7 @@ import {
   computeLiveScore,
   liveScoreChipClasses,
   neutralizeThesisTitle,
+  verdictDisplayLabel,
   type LiveScoreResult,
   type TerminalVerdict,
 } from "@/lib/track-record-live-score";
@@ -370,7 +371,7 @@ export default function TrackRecordPage() {
             <EmptyState
               icon={<LineChart size={32} />}
               title="No theses yet"
-              description="Track Record will populate as soon as the thesis pipeline emits its first row."
+              description="Thesis Tracker will populate as soon as the thesis pipeline emits its first row."
             />
           </div>
         ) : (
@@ -452,8 +453,8 @@ export default function TrackRecordPage() {
               <VerdictEvolution scored={scored} />
             )}
 
-            {/* WHAT'S BEEN WORKING */}
-            <Section title="What's Been Working">
+            {/* WHERE EVIDENCE SUPPORTS THE THESIS */}
+            <Section title="Where evidence supports the thesis">
               {top3Working.length === 0 ? (
                 <EmptyInflightState />
               ) : (
@@ -465,8 +466,8 @@ export default function TrackRecordPage() {
               )}
             </Section>
 
-            {/* WHAT'S NOT */}
-            <Section title="What's Not">
+            {/* WHERE EVIDENCE IS MIXED OR AGAINST */}
+            <Section title="Where evidence is mixed or against">
               {bottom3NotWorking.length === 0 ? (
                 <EmptyInflightState />
               ) : (
@@ -600,7 +601,7 @@ function LiveVerdictBadge({ live, size = "default" }: { live: LiveScoreResult; s
           : `In-flight verdict (score ${live.score} of ±100)`
       }
     >
-      {live.verdict}
+      {verdictDisplayLabel(live.verdict)}
     </span>
   );
 }

@@ -34,7 +34,7 @@ import {
   Search,
   TrendingUp,
   Star,
-  Trophy,
+  LineChart,
   Sparkles,
   Settings,
   LogOut,
@@ -71,7 +71,7 @@ const DEFAULT_SECTIONS: NavItem[] = [
   { id: "deal-flow", label: "Deal Flow", href: "/deal-flow", icon: <Briefcase size={16} />, kind: "research" },
   { id: "company", label: "Company Intel", href: "/company", icon: <Search size={16} />, kind: "research" },
   { id: "trends", label: "Trends", href: "/trends", icon: <TrendingUp size={16} />, kind: "research" },
-  { id: "track-record", label: "Track Record", href: "/track-record", icon: <Trophy size={16} />, kind: "research" },
+  { id: "track-record", label: "Thesis Tracker", href: "/track-record", icon: <LineChart size={16} />, kind: "research" },
   { id: "watchlist", label: "Watchlist", href: "/watchlist", icon: <Star size={16} />, kind: "research" },
   { id: "intelligence", label: "Intelligence", href: "/intelligence", icon: <Sparkles size={16} />, kind: "research" },
 ];

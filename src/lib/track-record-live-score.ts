@@ -234,6 +234,22 @@ export function liveScoreChipClasses(verdict: string): string {
 }
 
 /**
+ * Display-only short label for a verdict chip. Maps deriveLiveVerdict's logic
+ * output to neutral evidence wording for rendering ONLY. The raw verdict string
+ * is still what drives counting, palette selection, and descriptor lookup, so
+ * this never feeds back into logic. Defaults to "Developing" for any unmapped
+ * or persisted live_verdict value.
+ */
+export function verdictDisplayLabel(verdict: string): string {
+  if (verdict === "Confirmed") return "Supported";
+  if (verdict === "Invalidated") return "Challenged";
+  if (verdict === "Tracking confirmed") return "Leaning supportive";
+  if (verdict === "Tracking invalidated") return "Leaning against";
+  if (verdict.startsWith("Inconclusive")) return "Inconclusive";
+  return "Developing";
+}
+
+/**
  * Display-only neutraliser for thesis titles. Strips a single leading stance
  * word (Long, Short, Buy, Sell, Avoid) plus its trailing space so the tracker
  * reads as informational rather than as a recommendation. Leaves Watch,
