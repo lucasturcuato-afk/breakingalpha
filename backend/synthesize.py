@@ -1060,6 +1060,69 @@ def generate_morning_review_for_evening(today_date, sb):
         return None
 
 
+# ── Macro release detection (slice 2, pure logic) ────────────────────────────
+_MACRO_MONTHS = {
+    m: i
+    for i, m in enumerate(
+        [
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December",
+        ],
+        start=1,
+    )
+}
+
+
+def _macro_period_ordinal(period):
+    """Parse a macro period ('Month YYYY' or 'Qn YYYY') to a comparable
+    (year, sub) tuple, or None when it cannot be parsed. A given release key
+    keeps one frequency, so monthly and quarterly tuples are only ever compared
+    within the same key."""
+    if not period or not isinstance(period, str):
+        return None
+    parts = period.strip().split()
+    if len(parts) != 2:
+        return None
+    head, year_s = parts
+    try:
+        year = int(year_s)
+    except ValueError:
+        return None
+    if head in _MACRO_MONTHS:
+        return (year, _MACRO_MONTHS[head])
+    if len(head) == 2 and head[0] == "Q" and head[1] in "1234":
+        return (year, int(head[1]))
+    return None
+
+
+def detect_fired_releases(previous_periods, current_periods):
+    """Pure: keys whose period ADVANCED versus the previous run.
+
+    Fires only when a key is present in BOTH dicts and the current period parses
+    to a strictly newer (year, sub) than the previous. Does NOT fire on: a key
+    missing from previous (cold start / new release), an unchanged period, a
+    period that did not advance, or an unparseable period. Returns a sorted list.
+    Detection is on PERIODS only, so a value change without a period change can
+    never fire.
+    """
+    fired = []
+    prev = previous_periods or {}
+    cur = current_periods or {}
+    for key, cur_period in cur.items():
+        prev_period = prev.get(key)
+        if prev_period is None:
+            continue  # cold start / key absent from previous run
+        if cur_period == prev_period:
+            continue  # unchanged period
+        co = _macro_period_ordinal(cur_period)
+        po = _macro_period_ordinal(prev_period)
+        if co is None or po is None:
+            continue  # cannot determine direction -> do not fire
+        if co > po:
+            fired.append(key)
+    return sorted(fired)
+
+
 def run(brief_type="morning"):
     print(f"📝 Synthesizing {brief_type} briefing...")
 
@@ -1570,11 +1633,38 @@ def run(brief_type="morning"):
             ]
             if releases:
                 periods = {r["key"]: r["period"] for r in releases}
-                macro_panel = {"releases": releases, "periods": periods}
+                # Detection: compare against the PREVIOUS morning brief's periods,
+                # i.e. the row BEFORE this run. The current run's row already exists
+                # (brief_id was inserted earlier), so exclude it with neq("id",
+                # brief_id) and take the most recent remaining morning row. Cold
+                # start (no prior row) fires nothing.
+                previous_periods = {}
+                prev_resp = (
+                    supabase.table("briefings")
+                    .select("macro_panel")
+                    .eq("briefing_type", "morning")
+                    .neq("id", brief_id)
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                if prev_resp.data:
+                    prev_mp = prev_resp.data[0].get("macro_panel") or {}
+                    if isinstance(prev_mp, dict):
+                        previous_periods = prev_mp.get("periods") or {}
+                fired_today = detect_fired_releases(previous_periods, periods)
+                macro_panel = {
+                    "releases": releases,
+                    "periods": periods,
+                    "fired_today": fired_today,
+                }
                 supabase.table("briefings").update(
                     {"macro_panel": macro_panel}
                 ).eq("id", brief_id).execute()
-                print(f"  📊 Attached macro_panel ({len(releases)} releases) to morning brief {brief_id}")
+                print(
+                    f"  📊 Attached macro_panel ({len(releases)} releases, "
+                    f"fired={fired_today}) to morning brief {brief_id}"
+                )
             else:
                 print("  ⚠ macro_panel skipped: data layers returned no releases")
         except Exception as e:

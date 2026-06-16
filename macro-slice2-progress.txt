@@ -1,0 +1,60 @@
+MACRO RENDER SLICE 2 - PROGRESS
+
+Branch: feat/macro-panel-slice2 (off origin/main)
+Worktree: /Users/noahhanning/breakingalpha-wt/macro-slice2
+Allowed edits: backend/synthesize.py, src/components/brief/MacroPanel.tsx,
+  src/app/morning-brief/page.tsx. Allowed new: backend/tests/test_macro_slice2.py,
+  macro-slice2-progress.txt. No migration (macro_panel jsonb column already exists;
+  slice 2 only adds keys fired_today and read inside it).
+Safety: draft PR only; no merge/push-to-main/migration/DB/run.py/workflow/live API.
+  Tests mock all external deps. Guarded imports only.
+
+KEY CONTEXT
+- Slice-1 macro block lives in synthesize.run() (morning path), an isolated
+  soft-fail try/except that updates briefings.macro_panel by brief_id.
+- synthesize.py uses BARE sibling imports (from ingest, ...), so it imports only
+  with backend/ on sys.path (cwd=backend/). The test inserts backend/ on sys.path
+  and imports `synthesize` bare, with dummy env vars set first (offline, no API).
+
+PHASE STATUS
+
+[DONE] PHASE 1 - Release detection
+  - Added pure helpers detect_fired_releases(prev, cur) and _macro_period_ordinal
+    in backend/synthesize.py (module level, before run()).
+    Rules: advance fires; same does not; missing-from-prev (cold start) does not;
+    backward does not; unparseable does not; detection is on PERIODS only so a
+    value-only change never fires. Returns a sorted list.
+  - Wired into the morning macro block: previous-morning-row lookup that EXCLUDES
+    the current run via neq("id", brief_id), order created_at desc, limit 1; read
+    its macro_panel.periods; compute fired_today; add fired_today to the payload.
+    Entire block (lookup + detection + update) is inside the existing try/except.
+  - Tests: backend/tests/test_macro_slice2.py (12 cases) -> OK.
+  - Import check: cd backend && python -c "import synthesize" -> past imports
+    (env-only error, no ModuleNotFoundError).
+  - Existing macro/bea tests: 40 -> OK.
+  - Committed.
+
+[TODO] PHASE 2 - Morning tape + gated read
+  - Add soft-fail morning market_tape fetch on the morning path (tape is currently
+    evening-only near the tape block).
+  - When fired_today is non-empty: ONE gemini_generate call returning {"read": "..."}
+    grounded on the fired releases + tape; store as macro_panel["read"]. When empty,
+    NO read call. Read is prose only; no macro number from Gemini.
+  - Soft-fail: a read failure leaves the panel intact, omits read.
+  - Test (mock gemini): read only when fired non-empty; read exception does not break.
+
+[TODO] PHASE 3 - Full panel + read block (frontend)
+  - MacroPanel.tsx: full mode grouped Inflation/Labor/Growth (m/m, y/y, prior),
+    data-driven; render macro_panel.read below when present. Branch on fired_today:
+    non-empty -> full + read; empty -> slice-1 compact strip; absent -> nothing.
+  - morning-brief/page.tsx: ensure fired_today + read flow through the existing parse.
+  - tsc / lint / build clean; visual smoke both states + null.
+
+[TODO] PHASE 4 - Fresh-eyes review + draft PR
+  - Verify isolation, no macro number via Gemini, no protected/data-layer edits,
+    no migration, no DB/live-API in test path, guarded imports, null-degrade.
+  - Finalize this file; open DRAFT PR; HARD HALT.
+
+VERIFICATION LOG
+- Phase 1: `python -m unittest backend.tests.test_macro_slice2` -> Ran 12 tests, OK.
+- Phase 1: macro+bea baseline -> Ran 40 tests, OK.
