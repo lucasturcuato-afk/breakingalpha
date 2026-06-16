@@ -50,12 +50,23 @@ PHASE STATUS
     exception/malformed/empty -> None; tape reaches the prompt. 20 tests total OK.
   - Import check clean. Committed.
 
-[TODO] PHASE 3 - Full panel + read block (frontend)
-  - MacroPanel.tsx: full mode grouped Inflation/Labor/Growth (m/m, y/y, prior),
-    data-driven; render macro_panel.read below when present. Branch on fired_today:
-    non-empty -> full + read; empty -> slice-1 compact strip; absent -> nothing.
-  - morning-brief/page.tsx: ensure fired_today + read flow through the existing parse.
-  - tsc / lint / build clean; visual smoke both states + null.
+[DONE] PHASE 3 - Full panel + read block (frontend)
+  - MacroPanel.tsx: extended MacroPanelData (fired_today, read). Added FullPanel
+    grouped Inflation (cpi, core_cpi, pce, core_pce, ppi) / Labor (payrolls,
+    unemployment) / Growth (gdp), data-driven over releases -> figures (m/m, y/y,
+    prior), plus a "The Read" block when macro_panel.read is present. Branch in the
+    entry component on fired_today: non-empty -> full + read; empty -> slice-1
+    compact strip; absent/empty releases -> render nothing. mode prop kept as an
+    optional override (used by the smoke).
+  - morning-brief/page.tsx: NO change needed. The existing parse (parse-or-
+    passthrough of the whole macro_panel object) carries fired_today + read; the
+    extended MacroPanelData type flows via the existing import. route.ts untouched.
+  - Preflight: tsc exit 0; lint 0 errors (52 pre-existing warnings); next build exit 0.
+  - Visual smoke (real component via react-dom/server):
+      quiet (fired_today=[])  -> compact strip
+      release (fired_today=[cpi]) -> full grouped panel + The Read
+      null / empty releases   -> renders nothing
+  - Committed.
 
 [TODO] PHASE 4 - Fresh-eyes review + draft PR
   - Verify isolation, no macro number via Gemini, no protected/data-layer edits,
