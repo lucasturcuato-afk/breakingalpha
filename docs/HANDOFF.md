@@ -14,7 +14,7 @@
 - **#362 (2026-06-14):** thesis_grader uses service-role client (Phase 1 lockdown gate coordination).
 - **#365–#372 (2026-06-14–16):** Macro panel slice 1 (BLS/BEA data-only) + slice 2 (detection + gated read + full panel). Stage 1a = standing data panel (PCE, core PCE, real GDP); macro panel renders compact/full modes + reads `macro_snapshot.json` from brief; bright-line feature gate.
 - **#356 (2026-06-12):** Per-user watchlist section at top of brief (reads `user_profiles.personalized_watchlist_ids`).
-- **#354 (2026-06-12):** Backfill tool for companies[]-only primary_company (dry-run complete, execute pending review).
+- **#354 (2026-06-12):** Backfill tool for companies[]-only primary_company. EXECUTED 2026-06-12 ~21:00 UTC: 10,669 changes applied across 742 companies, confirmed live in the DB (audit log `backfill_audit_20260612T205944Z.jsonl`). Back-catalog fold complete.
 - **#352 (2026-06-12):** Primary_company tagging fold into companies[] array (dark, go-forward, mention_count frozen).
 - **#322 (2026-06-06):** Financials tab on Company Intel (validated XBRL via `financial_facts_latest` endpoint).
 - **#340 (2026-06-07):** Track-record polish — 9-part suite (methodology transparency, words-first redesign, score-presentation clarity, thesis detail pages, credibility at small N, grading fixes). Pages live at `/track-record` + clickable detail pages `/track-record/[thesis_id]`.
@@ -25,8 +25,9 @@
 - **#328–#331 (2026-06-06):** Memo grading + brief inputs (subject company threading, canonical resolution, tape Close sentiment, Yahoo baseline fixes).
 - **#333–#336, #339, #342–#343 (2026-06-07–08):** Misc fixes (landing Yahoo vix+spy+10y, theses security, watchlist_briefs upsert route, top-stories recency window, market route cache).
 
-**Known gap — backfill tool verification pending:**
-- **PR #354** (companies[]-only primary_company backfill) ready-for-review. Dry-run complete. Needs Noah manual trigger + validation on next cron. Expected impact: ~30 rows get backfilled from `companies` ARRAY field, zero schema changes (read-only).
+**PR #354 backfill — DONE (verified 2026-06-16):**
+- `--execute` ran 2026-06-12 20:59→21:21 UTC and applied 10,669 of the 10,670 dry-run change set (audit log `backfill_audit_20260612T205944Z.jsonl`). Spot-checks against prod confirm the writes landed; the original change set is fully drained.
+- Residual today is ~2,755 articles, all expected drift, NOT a missed backfill: 52 ingested after the run + 2,703 mapping to 264 companies whose `first_seen` is after the run (zero indexed before it). This is the structural consequence of a one-shot backfill plus the go-forward-only #352 fold; the entity index keeps growing, so older articles retroactively become resolvable. Optional follow-up: schedule a periodic re-run if zero-drift is wanted. No action required on the 06-12 execute.
 
 ---
 
@@ -949,8 +950,9 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 
 ## Pending / Known Issues
 
-**Primary_company backfill validation (2026-06-12) — PR #354 ready-for-review**
-- **PR #354 (feat/backfill): companies[]-only primary_company backfill tool** — Dry-run complete, safe to execute. Dry-run result: ~30 rows backfilled from `companies[]` ARRAY field (no schema write, read-only extraction). Backfill tool itself is dark (one-shot script, frontend unaffected). Noah needs to: (1) review PR #354; (2) trigger manual execution on next safe window; (3) validate row count matches dry-run expectation. No risk to brief/pipeline (tagging fold in PR #352 already live and dark).
+**Primary_company backfill (2026-06-12) — PR #354 EXECUTED + verified, no action needed**
+- **PR #354 (feat/backfill): companies[]-only primary_company backfill tool** — `--execute` ran 2026-06-12 20:59→21:21 UTC and applied 10,669 of the 10,670 dry-run change set across 742 companies (audit log `backfill_audit_20260612T205944Z.jsonl`). Verified live in prod 2026-06-16: spot-checked audited article_ids all carry their `add_company` in `companies[]`; the original change set is fully drained. No schema change (companies[] ARRAY extraction only). The earlier "~30 rows" estimate in this doc was wrong; real change set was 10,670.
+- Residual today ~2,755 rows is expected drift, not a missed backfill: 52 ingested post-run + 2,703 mapping to 264 companies first_seen after the run. One-shot backfill + go-forward #352 fold means the back-catalog drifts as the entity index grows. Optional: schedule a periodic re-run for zero-drift. Nothing blocking.
 
 **Filter cost optimization (2026-06-02) — VALIDATION PLAN PENDING FIRST RUN**
 - **PRs #305–#310 merged to main, AWAITING FIRST REAL CRON RUN** — Five-PR arc shipped end-to-end; no code issues found in dev testing. Meter delta on next live run should confirm ~$5→$1.5/run. Key validation checkpoints: (1) #307 log `[filter:usage]` line emits per run with token breakdown + estimated cost; (2) run-over-run article count stable (no flood/collapse); (3) relevance_score distribution unchanged (rubric working as expected); (4) SEC article count unchanged via deterministic bypass; (5) brief headline + pool quality visually acceptable. FLASHLITE SCOPE: filter call only (backend/ingest.py:44 FILTER_MODEL); all 14 other Gemini steps stay on gemini-2.5-flash. INGEST GATE: both `relevant==true` AND `relevance_score>=6` must independently pass. Throwaway analysis scripts (backend/scripts/) untracked, safe to delete.
