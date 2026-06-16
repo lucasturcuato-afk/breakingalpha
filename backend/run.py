@@ -182,6 +182,19 @@ if __name__ == "__main__":
     synth_result = run_synthesize(brief_type) or {}
     print(f"  [3/16] SYNTHESIZE done in {time.time() - _t:.2f}s")
 
+    # A stub briefing means synthesize exhausted its retries: the brief did NOT
+    # generate. The frontend filters stubs (src/app/api/briefing/route.ts:
+    # neq headline 'Market Intelligence Unavailable'), so the site keeps serving
+    # the prior day. Mark the run degraded so the job exits non-zero instead of
+    # green-washing a missing brief (incident 2026-06-16, run #165: stub brief,
+    # green job, stale site). The brief row and downstream steps still proceed.
+    if synth_result.get("stub"):
+        try:
+            raise RuntimeError("synthesize produced a stub briefing (brief did not generate)")
+        except Exception as e:
+            _mark_degraded("[3/16] SYNTHESIZE", e)
+        print("  [3/16] SYNTHESIZE produced a STUB briefing: run will be surfaced as FAILED")
+
     # Snapshot lead_preselect's per-run decision log for observability.
     # Populated inside synthesize.run() via preselect_primary_story();
     # threaded into pipeline_runs so v2 calibration has empirical data.
