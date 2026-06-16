@@ -1060,6 +1060,137 @@ def generate_morning_review_for_evening(today_date, sb):
         return None
 
 
+# ── Macro release detection (slice 2, pure logic) ────────────────────────────
+_MACRO_MONTHS = {
+    m: i
+    for i, m in enumerate(
+        [
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December",
+        ],
+        start=1,
+    )
+}
+
+
+def _macro_period_ordinal(period):
+    """Parse a macro period ('Month YYYY' or 'Qn YYYY') to a comparable
+    (year, sub) tuple, or None when it cannot be parsed. A given release key
+    keeps one frequency, so monthly and quarterly tuples are only ever compared
+    within the same key."""
+    if not period or not isinstance(period, str):
+        return None
+    parts = period.strip().split()
+    if len(parts) != 2:
+        return None
+    head, year_s = parts
+    try:
+        year = int(year_s)
+    except ValueError:
+        return None
+    if head in _MACRO_MONTHS:
+        return (year, _MACRO_MONTHS[head])
+    if len(head) == 2 and head[0] == "Q" and head[1] in "1234":
+        return (year, int(head[1]))
+    return None
+
+
+def detect_fired_releases(previous_periods, current_periods):
+    """Pure: keys whose period ADVANCED versus the previous run.
+
+    Fires only when a key is present in BOTH dicts and the current period parses
+    to a strictly newer (year, sub) than the previous. Does NOT fire on: a key
+    missing from previous (cold start / new release), an unchanged period, a
+    period that did not advance, or an unparseable period. Returns a sorted list.
+    Detection is on PERIODS only, so a value change without a period change can
+    never fire.
+    """
+    fired = []
+    prev = previous_periods or {}
+    cur = current_periods or {}
+    for key, cur_period in cur.items():
+        prev_period = prev.get(key)
+        if prev_period is None:
+            continue  # cold start / key absent from previous run
+        if cur_period == prev_period:
+            continue  # unchanged period
+        co = _macro_period_ordinal(cur_period)
+        po = _macro_period_ordinal(prev_period)
+        if co is None or po is None:
+            continue  # cannot determine direction -> do not fire
+        if co > po:
+            fired.append(key)
+    return sorted(fired)
+
+
+# ── Gated macro read (slice 2, prose only; numbers are GIVEN, never generated) ─
+def _format_release_for_read(r):
+    """One deterministic line per fired release for the read prompt."""
+    figs = []
+    for f in r.get("figures") or []:
+        val = f.get("value")
+        if val is None:
+            continue
+        unit = f.get("unit") or ""
+        prior = f.get("prior")
+        prior_s = "" if prior is None else f" (prior {prior}{unit})"
+        figs.append(f"{f.get('label')} {val}{unit}{prior_s}")
+    return f"{r.get('name')} ({r.get('period')}): " + "; ".join(figs)
+
+
+def _format_tape_for_read(tape):
+    if not isinstance(tape, dict):
+        return "Market tape unavailable."
+    bits = []
+    if tape.get("regime"):
+        bits.append(f"regime {tape.get('regime')}")
+    if tape.get("vix_level") is not None:
+        bits.append(f"VIX {tape.get('vix_level')}")
+    return ("Market tape: " + ", ".join(bits) + ".") if bits else "Market tape unavailable."
+
+
+def _generate_macro_read(fired_keys, releases, tape):
+    """Gated LLM read for a release day. PROSE ONLY: the model is given the exact
+    prints and asked for a short interpretation; no panel number is ever sourced
+    from the model output (only the returned 'read' string is used). Returns the
+    read string, or None when nothing fired, no fired release matched, or on any
+    failure (soft-fail). Makes NO model call when fired_keys is empty.
+    """
+    if not fired_keys:
+        return None
+    try:
+        fired_set = set(fired_keys)
+        fired = [r for r in releases if r.get("key") in fired_set]
+        if not fired:
+            return None
+        releases_block = "\n".join(_format_release_for_read(r) for r in fired)
+        tape_block = _format_tape_for_read(tape)
+        system = (
+            "You are a buy-side macro analyst writing ONE tight paragraph for a "
+            "morning brief. You are GIVEN today's exact economic prints below. Do "
+            "not invent, change, or add any number; do not restate every figure. In "
+            "2 to 3 sentences say what today's release(s) mean for rates, risk "
+            "appetite, and positioning, consistent with the market tape. Return "
+            'JSON only: {"read": "..."}.'
+        )
+        user_content = (
+            "TODAY'S RELEASES (deterministic, do not alter):\n"
+            f"{releases_block}\n\n{tape_block}"
+        )
+        raw = gemini_generate(
+            system=system, user_content=user_content, temperature=0.3, max_tokens=512
+        )
+        raw = re.sub(r"^```json|^```|```$", "", raw or "", flags=re.MULTILINE).strip()
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            read = (data.get("read") or "").strip()
+            return read or None
+        return None
+    except Exception as e:
+        print(f"[synthesize] macro read generation failed (non-fatal): {e}")
+        return None
+
+
 def run(brief_type="morning"):
     print(f"📝 Synthesizing {brief_type} briefing...")
 
@@ -1570,11 +1701,52 @@ def run(brief_type="morning"):
             ]
             if releases:
                 periods = {r["key"]: r["period"] for r in releases}
-                macro_panel = {"releases": releases, "periods": periods}
+                # Detection: compare against the PREVIOUS morning brief's periods,
+                # i.e. the row BEFORE this run. The current run's row already exists
+                # (brief_id was inserted earlier), so exclude it with neq("id",
+                # brief_id) and take the most recent remaining morning row. Cold
+                # start (no prior row) fires nothing.
+                previous_periods = {}
+                prev_resp = (
+                    supabase.table("briefings")
+                    .select("macro_panel")
+                    .eq("briefing_type", "morning")
+                    .neq("id", brief_id)
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                if prev_resp.data:
+                    prev_mp = prev_resp.data[0].get("macro_panel") or {}
+                    if isinstance(prev_mp, dict):
+                        previous_periods = prev_mp.get("periods") or {}
+                fired_today = detect_fired_releases(previous_periods, periods)
+                macro_panel = {
+                    "releases": releases,
+                    "periods": periods,
+                    "fired_today": fired_today,
+                }
+                # Gated read: only on a release day. The tape block above is
+                # evening-only, so fetch the morning tape here (soft-fail), then
+                # generate ONE prose read grounded on the fired prints + tape.
+                # Prose only: panel numbers always come from `releases`, never the
+                # model. A read or tape failure leaves the panel intact, no read.
+                if fired_today:
+                    tape = None
+                    try:
+                        tape = market_tape.fetch_tape()
+                    except Exception as te:
+                        print(f"  ⚠ macro read: morning tape fetch failed (non-fatal): {te}")
+                    read_text = _generate_macro_read(fired_today, releases, tape)
+                    if read_text:
+                        macro_panel["read"] = read_text
                 supabase.table("briefings").update(
                     {"macro_panel": macro_panel}
                 ).eq("id", brief_id).execute()
-                print(f"  📊 Attached macro_panel ({len(releases)} releases) to morning brief {brief_id}")
+                print(
+                    f"  📊 Attached macro_panel ({len(releases)} releases, "
+                    f"fired={fired_today}) to morning brief {brief_id}"
+                )
             else:
                 print("  ⚠ macro_panel skipped: data layers returned no releases")
         except Exception as e:
