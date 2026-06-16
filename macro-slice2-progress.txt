@@ -68,11 +68,25 @@ PHASE STATUS
       null / empty releases   -> renders nothing
   - Committed.
 
-[TODO] PHASE 4 - Fresh-eyes review + draft PR
-  - Verify isolation, no macro number via Gemini, no protected/data-layer edits,
-    no migration, no DB/live-API in test path, guarded imports, null-degrade.
-  - Finalize this file; open DRAFT PR; HARD HALT.
+[DONE] PHASE 4 - Fresh-eyes review + draft PR
+  - Branch diff = 4 files: backend/synthesize.py (M), backend/tests/test_macro_slice2.py
+    (A), macro-slice2-progress.txt (A), src/components/brief/MacroPanel.tsx (M).
+    morning-brief/page.tsx NOT changed (passthrough). No protected file, no data
+    layer, no migration, no sql/.
+  - Macro block fully inside the soft-fail try/except (lookup .execute, detection,
+    gated read + morning tape with nested try, update .execute). Evening untouched.
+  - Determinism: only data.get("read") (a string) consumed from Gemini; 0 panel
+    numbers from the model.
+  - No new cross-module import added (uses already-imported macro_calendar,
+    bea_calendar, market_tape); synthesize imports clean from backend/.
+  - Tests mock Gemini, use dummy env, no network; build is static. Render degrades
+    to nothing on null/empty.
+  - Draft PR opened. HARD HALT.
 
 VERIFICATION LOG
-- Phase 1: `python -m unittest backend.tests.test_macro_slice2` -> Ran 12 tests, OK.
-- Phase 1: macro+bea baseline -> Ran 40 tests, OK.
+- Phase 1: detection tests -> Ran 12, OK; macro+bea baseline -> 40, OK; import past.
+- Phase 2: +8 read-gating tests (mock Gemini) -> 20 total, OK; 0 gemini calls in
+  macro block; import past.
+- Phase 3: tsc 0, lint 0 errors, build 0; visual smoke compact/full/null all correct.
+- Phase 4: full suite (slice2 + macro + bea) OK; import past; scope + determinism +
+  isolation confirmed.
