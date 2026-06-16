@@ -897,18 +897,18 @@ export default function CompanyIntelPage() {
                         )}
                       </td>
                       {/* Themes (multi-chip cluster, 2 visible + overflow) */}
-                      <td className="px-2 py-2">
-                        <div className="flex items-center gap-1">
+                      <td className="px-2 py-2 overflow-hidden">
+                        <div className="flex items-center gap-1 min-w-0">
                           {row.themes.slice(0, 2).map((t) => (
                             <span
                               key={t}
-                              className="font-data text-[9px] text-text-muted dark:text-text-secondary bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded whitespace-nowrap"
+                              className="font-data text-[9px] text-text-muted dark:text-text-secondary bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded min-w-0 truncate"
                             >
                               {t}
                             </span>
                           ))}
                           {row.themes.length > 2 && (
-                            <span className="font-data text-[9px] text-text-faint">
+                            <span className="font-data text-[9px] text-text-faint shrink-0">
                               +{row.themes.length - 2}
                             </span>
                           )}

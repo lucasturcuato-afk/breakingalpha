@@ -151,8 +151,8 @@ export function ArticlesRow({
           data-testid="articles-row-source"
           className={`${TD} text-xs text-text-muted`}
         >
-          <span className="inline-flex items-center gap-1.5">
-            <span className="truncate">{article.source ?? ""}</span>
+          <span className="flex items-center gap-1.5 min-w-0">
+            <span className="truncate min-w-0">{article.source ?? ""}</span>
             {article.isWebSourced ? (
               <span
                 data-testid="articles-row-web-badge"
