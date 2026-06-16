@@ -22,6 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import { createBrowserClient } from "@supabase/ssr";
 import { getSectorStyle } from "@/lib/sector-colors";
+import { ThemeTags } from "@/components/company/ThemeTags";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import {
@@ -896,26 +897,10 @@ export default function CompanyIntelPage() {
                           <span className="font-data text-[10px] text-text-faint">--</span>
                         )}
                       </td>
-                      {/* Themes (multi-chip cluster, 2 visible + overflow) */}
+                      {/* Themes: width-measured cluster -- whole tags that fit,
+                          remainder collapses into "+N". See ThemeTags. */}
                       <td className="px-2 py-2 overflow-hidden">
-                        <div className="flex items-center gap-1 min-w-0">
-                          {row.themes.slice(0, 2).map((t) => (
-                            <span
-                              key={t}
-                              className="font-data text-[9px] text-text-muted dark:text-text-secondary bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded min-w-0 truncate"
-                            >
-                              {t}
-                            </span>
-                          ))}
-                          {row.themes.length > 2 && (
-                            <span className="font-data text-[9px] text-text-faint shrink-0">
-                              +{row.themes.length - 2}
-                            </span>
-                          )}
-                          {row.themes.length === 0 && (
-                            <span className="font-data text-[10px] text-text-faint">--</span>
-                          )}
-                        </div>
+                        <ThemeTags themes={row.themes} />
                       </td>
                       {/* Mentions */}
                       <td className="px-2 py-2">
