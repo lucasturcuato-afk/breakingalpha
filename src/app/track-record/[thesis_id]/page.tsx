@@ -10,6 +10,7 @@ import { getSectorStyle } from "@/lib/sector-colors";
 import {
   computeLiveScore,
   liveScoreChipClasses,
+  neutralizeThesisTitle,
   type LiveScoreResult,
   type TerminalVerdict,
 } from "@/lib/track-record-live-score";
@@ -141,7 +142,7 @@ export default function ThesisDetailPage() {
       <AppShell pageTitle="Thesis Detail" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
         <div className="p-6 max-w-[960px]">
           <Link href="/track-record" className="inline-flex items-center gap-1 text-text-muted hover:text-espresso text-[12px] mb-4">
-            <ArrowLeft size={12} /> Back to Track Record
+            <ArrowLeft size={12} /> Back to Thesis Tracker
           </Link>
           <p className="text-text-secondary">Thesis not found.</p>
         </div>
@@ -150,18 +151,18 @@ export default function ThesisDetailPage() {
   }
 
   return (
-    <AppShell pageTitle={thesis.title ?? "Thesis Detail"} mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
+    <AppShell pageTitle={thesis.title ? neutralizeThesisTitle(thesis.title) : "Thesis Detail"} mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
       <div className="p-6 max-w-[960px] space-y-6">
         {/* Back link */}
         <Link href="/track-record" className="inline-flex items-center gap-1 text-text-muted hover:text-espresso text-[12px]">
-          <ArrowLeft size={12} /> Back to Track Record
+          <ArrowLeft size={12} /> Back to Thesis Tracker
         </Link>
 
-        {/* SECTION 1: Original Call */}
+        {/* SECTION 1: Original Thesis */}
         <section className="bg-white rounded-xl border border-border-base p-5 space-y-3">
           <div className="flex items-start justify-between gap-3">
             <h1 className="font-display text-[20px] font-bold text-espresso leading-tight">
-              {thesis.title}
+              {neutralizeThesisTitle(thesis.title)}
             </h1>
             {live && (
               <span className={`flex-shrink-0 font-data text-[11px] font-semibold px-2 py-0.5 rounded ${liveScoreChipClasses(live.verdict)}`}>
@@ -242,16 +243,16 @@ export default function ThesisDetailPage() {
             Signalera grades this thesis daily on these dimensions:
           </p>
           <ol className="font-sans text-[12px] text-text-primary leading-relaxed space-y-1.5 list-decimal list-inside">
-            <li><span className="font-semibold">Price action</span> — daily price movement of {thesis.ticker || "the asset"} at each grading check</li>
-            <li><span className="font-semibold">News sentiment</span> — directional lean across supporting articles</li>
-            <li><span className="font-semibold">Supporting evidence</span> — count of articles supporting vs contradicting the thesis</li>
-            <li><span className="font-semibold">Grader confidence</span> — computed only when a terminal verdict is reached</li>
-            <li><span className="font-semibold">Time elapsed</span> — proximity to the {thesis.horizon || "30d"} horizon</li>
+            <li><span className="font-semibold">Price action</span>: daily price movement of {thesis.ticker || "the asset"} at each grading check</li>
+            <li><span className="font-semibold">News sentiment</span>: directional lean across supporting articles</li>
+            <li><span className="font-semibold">Supporting evidence</span>: count of articles supporting vs contradicting the thesis</li>
+            <li><span className="font-semibold">Grader confidence</span>: computed only when a terminal verdict is reached</li>
+            <li><span className="font-semibold">Time elapsed</span>: proximity to the {thesis.horizon || "30d"} horizon</li>
           </ol>
           <p className="font-sans text-[11px] text-text-muted leading-relaxed">
             Each contributes to a daily composite score (-100 to +100).
             Terminal verdicts (Confirmed/Invalidated) are made by Signalera&apos;s grader using
-            its judgment of accumulated evidence — they are not triggered by the score crossing
+            its judgment of accumulated evidence; they are not triggered by the score crossing
             a fixed threshold.
           </p>
         </section>
@@ -287,7 +288,7 @@ export default function ThesisDetailPage() {
               Age: {live.ageDays}d · Horizon: {live.horizonDays}d
             </div>
 
-            {/* About this score — collapsible */}
+            {/* About this score (collapsible) */}
             <ScoreExplainer />
           </section>
         )}
@@ -299,7 +300,7 @@ export default function ThesisDetailPage() {
           </h2>
           {verdicts.length === 0 ? (
             <p className="font-sans text-[12px] text-text-muted">
-              No verdicts yet — awaiting first grading run.
+              No verdicts yet, awaiting first grading run.
             </p>
           ) : (
             <div className="space-y-3">
@@ -394,10 +395,10 @@ function ScoreExplainer() {
           Signalera scores each thesis daily on a scale from -100 to +100, combining
           daily price action, news sentiment across supporting articles, supporting-vs-contradicting
           article ratio, grader confidence (terminal only), and time elapsed against the
-          call&apos;s horizon. Positive scores indicate market behavior is tracking the call.
-          Negative scores indicate the call may be invalidated.
+          thesis horizon. Positive scores indicate market behavior is tracking the thesis.
+          Negative scores indicate the thesis may be invalidated.
           Final verdicts (Confirmed / Invalidated) are made by Signalera&apos;s grader
-          based on accumulated evidence — they reflect judgment, not a fixed score threshold.
+          based on accumulated evidence; they reflect judgment, not a fixed score threshold.
         </p>
       )}
     </div>
@@ -434,7 +435,7 @@ function VerdictReasoning({ live, verdicts }: { live: LiveScoreResult; verdicts:
       )}
       {gradedAt && notes && (
         <p className="font-data text-[10px] text-text-faint">
-          — {isConfirmed ? "Confirmed" : "Invalidated"} by Signalera&apos;s grader on {formatDateTime(gradedAt)}
+          {isConfirmed ? "Confirmed" : "Invalidated"} by Signalera&apos;s grader on {formatDateTime(gradedAt)}
         </p>
       )}
     </section>
@@ -506,7 +507,7 @@ function WatchingFor({ live, thesis, verdicts }: { live: LiveScoreResult; thesis
           <span className="text-text-faint mt-0.5">•</span>
           <span>
             Signalera&apos;s grader reaches a terminal verdict (Confirmed or Invalidated) when
-            it has accumulated sufficient evidence — typically requires multiple supporting
+            it has accumulated sufficient evidence, typically requires multiple supporting
             articles and consistent price action across grading runs
           </span>
         </li>

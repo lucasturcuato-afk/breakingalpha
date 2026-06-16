@@ -4,13 +4,14 @@ import { useState, useEffect, useMemo } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
 import Link from "next/link";
-import { Trophy, Clock, TrendingUp, TrendingDown, Activity } from "lucide-react";
+import { LineChart, Clock, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { EmptyState } from "@/components/ui/empty-state";
 import { VerdictEvolution } from "@/components/track-record/verdict-evolution";
 import {
   computeLiveScore,
   liveScoreChipClasses,
+  neutralizeThesisTitle,
   type LiveScoreResult,
   type TerminalVerdict,
 } from "@/lib/track-record-live-score";
@@ -50,12 +51,6 @@ interface ThesisMeta {
   live_score_updated_at?: string | null;
 }
 
-interface SourceRow {
-  source: string | null;
-  win_rate: number | null;
-  n_theses: number | null;
-}
-
 interface ScoredThesis {
   id: string;
   title: string;
@@ -74,14 +69,14 @@ interface SectorGroup {
   trackingInvalidated: number;
   trackingNeutral: number;
   avgScore: number;
-  winRate: number;
+  supportRate: number;
 }
 
 const TERMINAL_LABELS: ReadonlyArray<string> = ["Confirmed", "Invalidated"];
 
 /**
  * Detect SpaceX-themed theses (ticker incorrectly resolves to SPCE upstream
- * because SpaceX is private — Wave 2 will fix entity resolution; for now we
+ * because SpaceX is private; Wave 2 will fix entity resolution; for now we
  * intercept here and render "SpaceX (private)" with no ticker chip).
  */
 function isSpaceXThesis(meta: { title?: string | null; ticker?: string | null }): boolean {
@@ -92,7 +87,6 @@ export default function TrackRecordPage() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [scored, setScored] = useState<ScoredThesis[]>([]);
-  const [sources, setSources] = useState<SourceRow[]>([]);
   const [overdueCount, setOverdueCount] = useState<number>(0);
   const [awaitingCount, setAwaitingCount] = useState<number>(0);
 
@@ -128,19 +122,12 @@ export default function TrackRecordPage() {
           thesesMeta = (tryFull.data as unknown as ThesisMeta[] | null) ?? [];
         }
 
-        const [verdictsAllRes, sourcesRes] = await Promise.all([
-          supabase
-            .from("thesis_verdicts")
-            .select(
-              "thesis_id, graded_at, verdict, confidence, weighted_sentiment_alignment, supporting_vs_contradicting_ratio",
-            )
-            .order("graded_at", { ascending: false }),
-          supabase
-            .from("source_credibility")
-            .select("source, win_rate, n_theses")
-            .order("win_rate", { ascending: false })
-            .limit(10),
-        ]);
+        const verdictsAllRes = await supabase
+          .from("thesis_verdicts")
+          .select(
+            "thesis_id, graded_at, verdict, confidence, weighted_sentiment_alignment, supporting_vs_contradicting_ratio",
+          )
+          .order("graded_at", { ascending: false });
 
         const rawVerdicts = (verdictsAllRes.data as RawVerdict[] | null) ?? [];
         const latestByThesis = new Map<string, RawVerdict>();
@@ -199,7 +186,6 @@ export default function TrackRecordPage() {
         }
 
         setScored(scoredAll);
-        setSources((sourcesRes.data as SourceRow[]) ?? []);
         setLastUpdated(rawVerdicts[0]?.graded_at ?? null);
         setOverdueCount(overdue);
         setAwaitingCount(awaiting);
@@ -264,10 +250,10 @@ export default function TrackRecordPage() {
         trackingInvalidated: d.ti,
         trackingNeutral: d.tn,
         avgScore: d.scores.length ? d.scores.reduce((a, b) => a + b, 0) / d.scores.length : 0,
-        winRate: denom > 0 ? Math.round((d.tc / denom) * 100) : 0,
+        supportRate: denom > 0 ? Math.round((d.tc / denom) * 100) : 0,
       });
     }
-    groups.sort((a, b) => b.winRate - a.winRate || b.avgScore - a.avgScore);
+    groups.sort((a, b) => b.supportRate - a.supportRate || b.avgScore - a.avgScore);
     return groups;
   }, [scored]);
 
@@ -322,7 +308,7 @@ export default function TrackRecordPage() {
 
   return (
     <AppShell
-      pageTitle="Track Record"
+      pageTitle="Thesis Tracker"
       mood={mood}
       moodHeadline={moodHeadline}
       moodDetails={moodDetails}
@@ -331,10 +317,10 @@ export default function TrackRecordPage() {
         {/* HEADER */}
         <div>
           <h1 className="font-display text-[28px] font-bold text-espresso leading-tight">
-            Signal Track Record
+            Thesis Tracker
           </h1>
           <p className="font-sans text-[13px] text-text-secondary mt-1">
-            How Signalera&apos;s thesis intelligence performs over time.
+            How market theses are developing as events unfold.
           </p>
           {showGradingHeader && (
             <p className="font-data text-text-muted text-[11px] mt-1.5 inline-flex items-center gap-2 flex-wrap">
@@ -382,7 +368,7 @@ export default function TrackRecordPage() {
           // Only the literally-empty case keeps the legacy "check back" copy.
           <div className="relative rounded-2xl bg-gradient-to-b from-gold-muted/40 to-transparent border border-gold-border/60">
             <EmptyState
-              icon={<Trophy size={32} />}
+              icon={<LineChart size={32} />}
               title="No theses yet"
               description="Track Record will populate as soon as the thesis pipeline emits its first row."
             />
@@ -392,30 +378,30 @@ export default function TrackRecordPage() {
             {/* STATUS SCOREBOARD */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <StatusCard
-                label="Making calls"
+                label="Theses tracked"
                 loading={loading}
                 headline={`${totalCount} active ${totalCount === 1 ? "thesis" : "theses"}`}
                 subline={awaitingCount > 0 ? `${awaitingCount} awaiting first grading run${overdueCount > 0 ? ` · ${overdueCount} overdue` : ""}` : undefined}
                 footer="Daily updates at 8:10 PM PT"
               />
               <StatusCard
-                label="How we've been right"
+                label="Where evidence supports"
                 loading={loading}
-                headline={trackingConfirmed > 0 ? `${trackingConfirmed} ${trackingConfirmed === 1 ? "call" : "calls"} confirmed` : "No confirmed calls yet"}
-                subline={confirmedExamples.length > 0 ? confirmedExamples.map(t => t.title).join(" · ") : undefined}
+                headline={trackingConfirmed > 0 ? `${trackingConfirmed} with supporting evidence` : "None with supporting evidence yet"}
+                subline={confirmedExamples.length > 0 ? confirmedExamples.map(t => neutralizeThesisTitle(t.title)).join(" · ") : undefined}
                 tint="positive"
               />
               <StatusCard
-                label="How we've been wrong"
+                label="Where evidence is mixed or against"
                 loading={loading}
-                headline={trackingInvalidated > 0 ? `${trackingInvalidated} ${trackingInvalidated === 1 ? "call" : "calls"} invalidated` : "No losses recorded yet"}
-                subline={invalidatedExamples.length > 0 ? invalidatedExamples.map(t => t.title).join(" · ") : undefined}
+                headline={trackingInvalidated > 0 ? `${trackingInvalidated} with evidence against` : "None with evidence against yet"}
+                subline={invalidatedExamples.length > 0 ? invalidatedExamples.map(t => neutralizeThesisTitle(t.title)).join(" · ") : undefined}
                 tint={trackingInvalidated > 0 ? "negative" : undefined}
               />
             </div>
 
-            {/* SECTOR PERFORMANCE TABLE */}
-            <Section title="Sector Performance">
+            {/* THESES BY SECTOR TABLE */}
+            <Section title="Theses by sector">
               {sectorGroups.length === 0 ? (
                 <EmptyInflightState />
               ) : (
@@ -461,7 +447,7 @@ export default function TrackRecordPage() {
               )}
             </Section>
 
-            {/* VERDICT EVOLUTION — avg live_score sparkline (last 30d) */}
+            {/* VERDICT EVOLUTION: avg live_score sparkline (last 30d) */}
             {trackingConfirmed + trackingInvalidated >= 20 && (
               <VerdictEvolution scored={scored} />
             )}
@@ -492,45 +478,6 @@ export default function TrackRecordPage() {
               )}
             </Section>
 
-            {/* SOURCE CREDIBILITY */}
-            <Section title="Most Reliable Sources">
-              {sources.length === 0 ? (
-                <EmptyInflightState />
-              ) : (
-                <div className="space-y-1.5">
-                  {sources.map((s, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-3 bg-white rounded-xl border border-border-base px-3 py-2"
-                    >
-                      <span className="font-data text-text-faint text-[12px] w-5 text-right">
-                        #{i + 1}
-                      </span>
-                      <span className="font-sans font-medium text-[12px] text-espresso flex-1 min-w-0 truncate">
-                        {s.source || "Unknown"}
-                      </span>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <div className="w-[60px] h-1.5 rounded-full bg-gold/20">
-                          <div
-                            className="bar-sweep-in h-full rounded-full bg-gold"
-                            style={{
-                              width: `${s.win_rate !== null ? Math.round(s.win_rate * 100) : 0}%`,
-                            }}
-                          />
-                        </div>
-                        <span className="font-data text-[11px] text-text-secondary w-8 text-right">
-                          {s.win_rate !== null ? `${Math.round(s.win_rate * 100)}%` : "--"}
-                        </span>
-                      </div>
-                      <span className="font-data text-[10px] text-text-muted flex-shrink-0">
-                        {s.n_theses ?? 0} theses
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Section>
-
             {/* RECENT THESES */}
             <Section title="Recent Theses">
               {recentScored.length === 0 ? (
@@ -546,7 +493,7 @@ export default function TrackRecordPage() {
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
                           <div className="font-sans font-semibold text-[13px] text-espresso leading-snug">
-                            {t.title}
+                            {neutralizeThesisTitle(t.title)}
                           </div>
                           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                             {t.sector && (
@@ -640,7 +587,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function LiveVerdictBadge({ live, size = "default" }: { live: LiveScoreResult; size?: "default" | "prominent" }) {
   const isProminent = size === "prominent";
   const chipClasses = liveScoreChipClasses(live.verdict);
-  // Strip italic for prominent badges — they should look assertive, not tentative
+  // Strip italic for prominent badges; they should look assertive, not tentative
   const classes = isProminent ? chipClasses.replace(" italic", "") : chipClasses;
   return (
     <span
@@ -660,24 +607,24 @@ function LiveVerdictBadge({ live, size = "default" }: { live: LiveScoreResult; s
 
 function SectorStatus({ group }: { group: SectorGroup }) {
   if (group.trackingConfirmed > 0 && group.trackingInvalidated === 0) {
-    return <span className="font-sans text-[11px] text-signal-up">All calls tracking positively</span>;
+    return <span className="font-sans text-[11px] text-signal-up">Evidence currently supportive</span>;
   }
   if (group.trackingInvalidated > 0 && group.trackingConfirmed === 0) {
-    return <span className="font-sans text-[11px] text-signal-dn">Calls facing headwinds</span>;
+    return <span className="font-sans text-[11px] text-signal-dn">Evidence currently against</span>;
   }
   if (group.trackingConfirmed > 0 && group.trackingInvalidated > 0) {
-    return <span className="font-sans text-[11px] text-text-secondary">Mixed signals — {group.trackingConfirmed} up, {group.trackingInvalidated} down</span>;
+    return <span className="font-sans text-[11px] text-text-secondary">Mixed evidence, {group.trackingConfirmed} supportive, {group.trackingInvalidated} against</span>;
   }
   return <span className="font-sans text-[11px] text-text-muted">Awaiting enough data to assess</span>;
 }
 
 function scoreToDescriptor(live: LiveScoreResult): string {
-  if (live.verdict === "Confirmed") return "Call confirmed by evidence";
-  if (live.verdict === "Invalidated") return "Call contradicted by evidence";
-  if (live.verdict === "Tracking confirmed") return "Evidence building in favor";
-  if (live.verdict === "Tracking invalidated") return "Evidence building against";
-  if (live.verdict.startsWith("Inconclusive")) return "Ran out of time, unclear";
-  return "Monitoring — too early to tell";
+  if (live.verdict === "Confirmed") return "Evidence supports the thesis";
+  if (live.verdict === "Invalidated") return "Evidence cuts against the thesis";
+  if (live.verdict === "Tracking confirmed") return "Evidence leaning supportive";
+  if (live.verdict === "Tracking invalidated") return "Evidence leaning against";
+  if (live.verdict.startsWith("Inconclusive")) return "Inconclusive so far";
+  return "Still developing";
 }
 
 function ThesisRankCard({
@@ -698,7 +645,7 @@ function ThesisRankCard({
         <Icon size={14} className={`${iconColor} mt-0.5 flex-shrink-0`} />
         <div className="min-w-0 flex-1">
           <div className="font-sans font-semibold text-[12.5px] text-espresso leading-snug">
-            {thesis.title}
+            {neutralizeThesisTitle(thesis.title)}
           </div>
           <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
             {thesis.sector && (
@@ -741,8 +688,8 @@ function TickerOrPrivate({
 }
 
 function EmptyInflightState() {
-  // Used when a primary surface has zero rows for it specifically (e.g.
-  // sources_credibility hasn't materialised yet) — but the page itself has
+  // Used when a primary surface has zero rows for it specifically (e.g. a
+  // sector group hasn't materialised yet), but the page itself has
   // theses, so we DO NOT use the legacy "check back later" copy.
   return (
     <div className="relative flex items-center gap-3 bg-white dark:bg-elevated rounded-xl border border-border-base p-5 overflow-hidden">
@@ -751,7 +698,7 @@ function EmptyInflightState() {
         <Activity size={13} className="text-gold" />
       </div>
       <span className="font-sans text-[12.5px] text-text-primary leading-snug">
-        Scores are in flight — refreshes nightly at 8:10 PM PT.
+        Scores are in flight, refreshes nightly at 8:10 PM PT.
       </span>
     </div>
   );
@@ -770,7 +717,7 @@ function formatDate(dateStr: string | null): string {
 }
 
 /**
- * Returns the next time the daily grading cron will fire — next 8:10 PM in
+ * Returns the next time the daily grading cron will fire, the next 8:10 PM in
  * America/Los_Angeles. Handles PST/PDT transitions correctly by resolving
  * LA-local "YYYY-MM-DD HH:MM" components first, then converting to UTC using
  * the LA offset at the target instant.
