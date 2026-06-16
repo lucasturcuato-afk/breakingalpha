@@ -10,6 +10,11 @@ const TAG =
 
 const GAP = 4; // gap-1 (0.25rem)
 const PLUS_RESERVE = 24; // px reserved for the "+N" chip while more tags remain
+// Upper bound on tags we render+measure. The THEMES column only ever fits a
+// couple of whole tags, so anything past this always collapses into "+N"
+// regardless -- measuring it is wasted DOM. Companies here carry 30-56 themes;
+// capping keeps the hidden measurement layer at <=MEASURE_CAP nodes per row.
+const MEASURE_CAP = 8;
 
 /**
  * Theme tag cluster for the /company directory THEMES column.
@@ -40,8 +45,9 @@ export function ThemeTags({ themes }: { themes: string[] }) {
       let n = 0;
       for (let i = 0; i < tags.length; i++) {
         const w = tags[i].getBoundingClientRect().width + (i > 0 ? GAP : 0);
-        // Reserve room for the "+N" chip whenever tags remain after this one.
-        const reserve = i < tags.length - 1 ? GAP + PLUS_RESERVE : 0;
+        // Reserve room for the "+N" chip whenever ANY theme remains after this
+        // one -- including themes past MEASURE_CAP that are never rendered here.
+        const reserve = i < themes.length - 1 ? GAP + PLUS_RESERVE : 0;
         if (used + w + reserve <= avail) {
           used += w;
           n++;
@@ -91,13 +97,14 @@ export function ThemeTags({ themes }: { themes: string[] }) {
           </span>
         )}
       </div>
-      {/* Off-flow, invisible measurement layer: every tag at natural width. */}
+      {/* Off-flow, invisible measurement layer: candidate tags at natural
+          width, capped at MEASURE_CAP (more than ever fit the column). */}
       <div
         ref={measureRef}
         aria-hidden
         className="pointer-events-none invisible absolute left-0 top-0 flex gap-1"
       >
-        {themes.map((t) => (
+        {themes.slice(0, MEASURE_CAP).map((t) => (
           <span key={t} data-measure-tag className={`${TAG} whitespace-nowrap`}>
             {t}
           </span>
