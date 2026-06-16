@@ -50,6 +50,8 @@ next-env.d.ts
 __pycache__/
 *.pyc
 .venv/
+.coverage
+.pytest_cache/
 
 # WD49 backfill artifacts (transient output, never committed)
 scripts/wd49-backfill-log.txt
