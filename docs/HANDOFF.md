@@ -1,7 +1,32 @@
 # Signalera/Breaking Alpha -- Claude Chat Handoff
-**Date:** 2026-06-03 (PT)
-**Last session focus:** WD110 tone surface re-scoped and shipped (PR #317); local-dev OAuth diagnosis completed.
-**Status:** Main is at `1944e42` (PR #317 merge). WD110 recon surfaced that ToneReadout redesign was already live; re-scoped to Element 3 (ToneEvidenceList + ToneArticleDetail). Local-dev OAuth broken due to Supabase Site URL + Redirect URLs allowlist not updated post-domain-migration — fix is dashboard-side.
+**Date:** 2026-06-16 (PT)
+**Last session focus:** Macro panel (macro-economics dashboard + brief surface), Company Intel overhaul (Financials tab, primary_company tagging, dark-mode fallback), grading substrate hardening, track-record polish, security lockdown (service-role client), e2e-to-advisory demotion.
+**Status:** Main is at `2bb2fa22`. ~40 PRs merged since last handoff (2026-06-03). Macro panel slice 2 + grading fixes + BLS/BEA data layers + primary_company tagging all landed. Lucas throttled back, small windows for recon/fixes now.
+
+---
+
+## Recently Completed (2026-06-16) -- Lucas feature sprint arc + macro brief panel + Company Intel + grading
+
+**High-level:** 40 commits + 13 feature PRs + 15 fix/chore PRs merged to main (2026-06-03 through 2026-06-16). Key themes: (1) Macro economic data layer + brief panel (BLS Stage 1a + BEA data-only, macro panel slice 1/2), (2) Company Intel operational readiness (Financials tab XBRL, primary_company tagging dark, fallback ArticlesTab for unindexed companies), (3) Grading substrate hardening (service-role client lockdown, window filters, brief_rollup reliability), (4) Track-record redesign (words-first score hiding, methodology transparency, clickable thesis detail pages), (5) Infra + security (tooltips across 6 pages, theses ownership IDOR close, Finnhub key drop from bundle, e2e demotion to advisory). All constraint compliance maintained (zero em-dashes, zero Lucas-protected files rewritten).
+
+**PR arc breakdown:**
+
+- **#362 (2026-06-14):** thesis_grader uses service-role client (Phase 1 lockdown gate coordination).
+- **#365–#372 (2026-06-14–16):** Macro panel slice 1 (BLS/BEA data-only) + slice 2 (detection + gated read + full panel). Stage 1a = standing data panel (PCE, core PCE, real GDP); macro panel renders compact/full modes + reads `macro_snapshot.json` from brief; bright-line feature gate.
+- **#356 (2026-06-12):** Per-user watchlist section at top of brief (reads `user_profiles.personalized_watchlist_ids`).
+- **#354 (2026-06-12):** Backfill tool for companies[]-only primary_company (dry-run complete, execute pending review).
+- **#352 (2026-06-12):** Primary_company tagging fold into companies[] array (dark, go-forward, mention_count frozen).
+- **#322 (2026-06-06):** Financials tab on Company Intel (validated XBRL via `financial_facts_latest` endpoint).
+- **#340 (2026-06-07):** Track-record polish — 9-part suite (methodology transparency, words-first redesign, score-presentation clarity, thesis detail pages, credibility at small N, grading fixes). Pages live at `/track-record` + clickable detail pages `/track-record/[thesis_id]`.
+- **#337–#342 (2026-06-06–08):** Tooltips (34 across 6 pages) + theses security fixes (require internal key, drop Finnhub NEXT_PUBLIC, IDOR close on PATCH, ownership enforce), landing page Yahoo v8 swap.
+- **#348 (2026-06-11):** E2E demotion to advisory (no longer blocks preflight).
+- **#345–#350 (2026-06-11):** Top-stories de-arbitration (publish freshness tiebreaker), near-duplicate collapse at render, Date.now() hydration fix.
+- **#346 (2026-06-11):** Company Intel read-only two-layer ArticlesTab fallback (dark; users see company-extracted articles even if no IndexNow ping).
+- **#328–#331 (2026-06-06):** Memo grading + brief inputs (subject company threading, canonical resolution, tape Close sentiment, Yahoo baseline fixes).
+- **#333–#336, #339, #342–#343 (2026-06-07–08):** Misc fixes (landing Yahoo vix+spy+10y, theses security, watchlist_briefs upsert route, top-stories recency window, market route cache).
+
+**Known gap — backfill tool verification pending:**
+- **PR #354** (companies[]-only primary_company backfill) ready-for-review. Dry-run complete. Needs Noah manual trigger + validation on next cron. Expected impact: ~30 rows get backfilled from `companies` ARRAY field, zero schema changes (read-only).
 
 ---
 
@@ -924,6 +949,9 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 
 ## Pending / Known Issues
 
+**Primary_company backfill validation (2026-06-12) — PR #354 ready-for-review**
+- **PR #354 (feat/backfill): companies[]-only primary_company backfill tool** — Dry-run complete, safe to execute. Dry-run result: ~30 rows backfilled from `companies[]` ARRAY field (no schema write, read-only extraction). Backfill tool itself is dark (one-shot script, frontend unaffected). Noah needs to: (1) review PR #354; (2) trigger manual execution on next safe window; (3) validate row count matches dry-run expectation. No risk to brief/pipeline (tagging fold in PR #352 already live and dark).
+
 **Filter cost optimization (2026-06-02) — VALIDATION PLAN PENDING FIRST RUN**
 - **PRs #305–#310 merged to main, AWAITING FIRST REAL CRON RUN** — Five-PR arc shipped end-to-end; no code issues found in dev testing. Meter delta on next live run should confirm ~$5→$1.5/run. Key validation checkpoints: (1) #307 log `[filter:usage]` line emits per run with token breakdown + estimated cost; (2) run-over-run article count stable (no flood/collapse); (3) relevance_score distribution unchanged (rubric working as expected); (4) SEC article count unchanged via deterministic bypass; (5) brief headline + pool quality visually acceptable. FLASHLITE SCOPE: filter call only (backend/ingest.py:44 FILTER_MODEL); all 14 other Gemini steps stay on gemini-2.5-flash. INGEST GATE: both `relevant==true` AND `relevance_score>=6` must independently pass. Throwaway analysis scripts (backend/scripts/) untracked, safe to delete.
 
@@ -947,23 +975,21 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 
 **Local worktrees — ready for cleanup:** PR #177 was branched off main in main worktree (not a new worktree created). Merged branches: `/Users/noahhanning/ba-w3-webfallback` (PR #176), `/Users/noahhanning/ba-w2-email` (PR #175), `/Users/noahhanning/ba-w2-avatars` (PR #171). Draft branches held in worktrees: `/Users/noahhanning/ba-w2-entityaudit` (PR #173), `/Users/noahhanning/ba-w2-evidenceaudit` (PR #172), `/Users/noahhanning/ba-w2-cintelaudit` (PR #174). Plus three Wave 1: `/Users/noahhanning/ba-w1-mood`, `/Users/noahhanning/ba-w1-trackrec`, `/Users/noahhanning/ba-w1-briefload` (all branches merged). **Total: 9 worktrees pending cleanup.**
 
-**OAuth auth issues (prod + local-dev, both remediated per docs)**
-- **URGENT — PROD OAuth (signalera.ai):** Google OAuth sign-in redirects to landing page (`/`) instead of `/dashboard` after domain switch from `breakingalpha.vercel.app` to `signalera.ai`. Root cause: Supabase Auth dashboard Site URL + Redirect URLs allowlist still pinned to old `*.vercel.app` hosts. Fix: (1) Supabase project → Authentication → URL Configuration. Set Site URL to `https://signalera.ai`. Add to Redirect URLs: `https://signalera.ai/**`, `https://www.signalera.ai/**` if applicable, and Vercel preview glob. (2) Vercel prod env: set `NEXT_PUBLIC_SITE_URL=https://signalera.ai` (PDF/print only). Redeploy. Full diagnosis in `docs/auth-redirect-diagnosis.md` sections A–E. **Impact:** Users cannot complete OAuth sign-in on prod; fix BEFORE next user-facing deployment.
-- **LOCAL-DEV OAuth (localhost):** Logging in from localhost dev servers fails because GoTrue rejects non-allowlisted localhost redirect_to and falls back to scheme-less Site URL "signalera.ai", which browser resolves as a path on supabase.co instead of HTTPS. Fix: same as above PLUS add `http://localhost:*/auth/callback` to Redirect URLs allowlist. App code is correct (window.location.origin on both routes). **Impact:** Dev-only blocker; prod login unaffected.
+**Local-dev OAuth setup (2026-06-03) — requires manual Supabase config**
+- **Symptom:** Logging in from localhost dev servers (e.g., `http://localhost:3000/auth/callback`) fails because GoTrue rejects non-allowlisted localhost redirect_to and falls back to scheme-less Site URL "signalera.ai", which browser resolves as a path on supabase.co.
+- **Fix (Noah's plate, dashboard-side):** Supabase project → Authentication → URL Configuration. (1) Verify Site URL is `https://signalera.ai` (with scheme). (2) Add to Redirect URLs: `http://localhost:*/auth/callback` (for local dev), keep existing `https://*.vercel.app/**` (for preview deploys).
+- **Impact:** Dev-only blocker; prod login unaffected.
 
 **Pending DDL and migrations (2026-05-03)**
 - **sql/web_search_cache.sql** — Web-search fallback feature (PR #176, merged) requires manual Supabase DDL apply before flag enable (NOT before merge — flag default off). Adds `web_search_cache` table (6h TTL, keyed on query_hash + fetched_at). Apply when ready to enable `NEXT_PUBLIC_WEB_FALLBACK_ENABLED=true` in Vercel prod.
 - **sql/brief_email_unsubscribe.sql** — Email feature (PR #175, merged). Migration APPLIED to prod Supabase. Adds `briefings.issue_number int`, `user_profiles.brief_email_subscribed bool default true`. Idempotent.
 - **sql/live_score_columns.sql** — Track-record live-score feature requires manual Supabase DDL apply: adds `live_score`, `live_verdict`, `confidence_score` (nullable) columns + ranking indexes. Frontend renders correctly without it (TS fallback), but backend persistence won't write until applied. Apply at your convenience (not blocking, but enables backend-driven data persistence).
 
-**Wave 2 Next Steps — Product Decisions Surfaced by Audits**
-- **W2-A: Entity resolution strategy** — Alias table + canonical_id FK swap (PR #173 audit) recommended as reversible path. Unblocks W2-B/C/H. Requires Lucas coordination on synthesize.py, ingest.py, wikidata.py, company-intel.ts before starting. 2-3 eng days + 1-2 weeks observation. Decision: approve strategy or explore alternatives?
-- **W2-I: Track-record evidence "why" panel** — PR #172 audit surfaces five open questions (voice/schema/LLM/placement/scope). thesis_verdicts already has notes + key_evidence_ids written nightly; no new ingestion/LLM spend needed. Answer questions in PR #172 doc before sprint planning.
-- **Company Intel direction: Strategy A/B/C choice** — PR #174 audit. Strategy A (web-search fallback for un-indexed companies, closest to "better than Google"). Strategy B/C deferred (memo persistence + directory depth). Pick A / A+cleanup / or revisit B/C first?
-- **Manual Supabase and Vercel config still pending**
-- OAuth auth redirect broken after domain migration — Supabase Auth Site URL + Redirect URLs allowlist still pinned to old `*.vercel.app` hosts. Fix: update Supabase project Site URL to `https://signalera.ai`, add redirect glob. See `docs/auth-redirect-diagnosis.md` for full diagnosis.
-- Vercel env: `NEXT_PUBLIC_SITE_URL=https://signalera.ai` (for email/PDF links).
-- Wave 3 flag enable: `NEXT_PUBLIC_WEB_FALLBACK_ENABLED=true` in Vercel prod env when ready to activate web-fallback feature (after `sql/web_search_cache.sql` applied to Supabase).
+**Macro panel flag gating + deployment checklist**
+- **Macro panel feature gates:** Both `#365` (BLS data) and `#372` (macro panel UI) deploy under dark mode. No user-facing switch yet. When ready to ship: (1) Enable BLS_API_KEY + BEA_API_KEY in Vercel prod env (CI already wired in PR #366); (2) Set flag in brief synthesizer to include `macro_snapshot.json` in output; (3) Uncomment macro panel render blocks in next.js brief route. Rollout is bright-line gated; no incremental discovery needed.
+
+**Company Intel Financials tab — XBRL read-only**
+- **PR #322** shipped Financials tab (validated XBRL via `financial_facts_latest` endpoint). Tab is live and read-only; no user writes. Sparkline rendering deferred (Phase 2). No schema changes needed.
 
 **From prior three-PR session (2026-04-28) — deferred**
 - **ENV loading in replay scripts** — .session-artifacts/2026-04-28/run_synth.py doesn't auto-load backend/.env. Add `load_dotenv("backend/.env")` for future replays.
