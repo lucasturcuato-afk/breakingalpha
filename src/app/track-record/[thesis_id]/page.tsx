@@ -11,6 +11,7 @@ import {
   computeLiveScore,
   liveScoreChipClasses,
   neutralizeThesisTitle,
+  verdictDisplayLabel,
   type LiveScoreResult,
   type TerminalVerdict,
 } from "@/lib/track-record-live-score";
@@ -166,7 +167,7 @@ export default function ThesisDetailPage() {
             </h1>
             {live && (
               <span className={`flex-shrink-0 font-data text-[11px] font-semibold px-2 py-0.5 rounded ${liveScoreChipClasses(live.verdict)}`}>
-                {live.verdict}
+                {verdictDisplayLabel(live.verdict)}
               </span>
             )}
           </div>
@@ -251,7 +252,7 @@ export default function ThesisDetailPage() {
           </ol>
           <p className="font-sans text-[11px] text-text-muted leading-relaxed">
             Each contributes to a daily composite score (-100 to +100).
-            Terminal verdicts (Confirmed/Invalidated) are made by Signalera&apos;s grader using
+            Terminal verdicts (Supported/Challenged) are made by Signalera&apos;s grader using
             its judgment of accumulated evidence; they are not triggered by the score crossing
             a fixed threshold.
           </p>
@@ -267,7 +268,7 @@ export default function ThesisDetailPage() {
               <h2 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold mb-2">Current Signal</h2>
               <div className="flex items-center gap-3">
                 <span className={`font-sans text-[12px] font-semibold px-2.5 py-1 rounded ${liveScoreChipClasses(live.verdict).replace(" italic", "")}`}>
-                  {live.verdict}
+                  {verdictDisplayLabel(live.verdict)}
                 </span>
                 <span className="font-data text-[12px] text-text-secondary">
                   {live.score > 0 ? "+" : ""}{live.score} of ±{SCORE_SCALE}
@@ -310,7 +311,7 @@ export default function ThesisDetailPage() {
                   <div className={`absolute -left-[5px] top-1 w-2 h-2 rounded-full ${verdictDotColor(v.verdict)}`} />
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className={`font-sans text-[11px] font-semibold ${verdictTextColor(v.verdict)}`}>
-                      {capitalize(v.verdict)}
+                      {verdictDisplayLabel(capitalize(v.verdict))}
                     </span>
                     <span className="font-data text-[10px] text-text-muted">
                       {formatDateTime(v.graded_at)}
@@ -396,8 +397,8 @@ function ScoreExplainer() {
           daily price action, news sentiment across supporting articles, supporting-vs-contradicting
           article ratio, grader confidence (terminal only), and time elapsed against the
           thesis horizon. Positive scores indicate market behavior is tracking the thesis.
-          Negative scores indicate the thesis may be invalidated.
-          Final verdicts (Confirmed / Invalidated) are made by Signalera&apos;s grader
+          Negative scores indicate the evidence may be turning against the thesis.
+          Final verdicts (Supported / Challenged) are made by Signalera&apos;s grader
           based on accumulated evidence; they reflect judgment, not a fixed score threshold.
         </p>
       )}
@@ -415,7 +416,7 @@ function VerdictReasoning({ live, verdicts }: { live: LiveScoreResult; verdicts:
   const notes = terminalRow?.notes;
   const gradedAt = terminalRow?.graded_at;
   const isConfirmed = live.terminal === "confirmed";
-  const label = isConfirmed ? "Why this was confirmed" : "Why this was invalidated";
+  const label = isConfirmed ? "Why evidence supports this" : "Why evidence challenges this";
   const borderColor = isConfirmed ? "border-l-signal-up" : "border-l-signal-dn";
   const bgColor = isConfirmed ? "bg-signal-up/5" : "bg-signal-dn/5";
 
@@ -435,7 +436,7 @@ function VerdictReasoning({ live, verdicts }: { live: LiveScoreResult; verdicts:
       )}
       {gradedAt && notes && (
         <p className="font-data text-[10px] text-text-faint">
-          {isConfirmed ? "Confirmed" : "Invalidated"} by Signalera&apos;s grader on {formatDateTime(gradedAt)}
+          {verdictDisplayLabel(isConfirmed ? "Confirmed" : "Invalidated")} by Signalera&apos;s grader on {formatDateTime(gradedAt)}
         </p>
       )}
     </section>
@@ -463,7 +464,7 @@ function WatchingFor({ live, thesis, verdicts }: { live: LiveScoreResult; thesis
           <li className="flex items-start gap-2">
             <span className="text-text-faint mt-0.5">•</span>
             <span>
-              {capitalize(live.terminal!)}
+              {verdictDisplayLabel(capitalize(live.terminal!))}
               {gradedAt ? ` on ${formatDateTime(gradedAt)}` : ""}
               {daysAtVerdict !== null ? ` · ${daysAtVerdict} days into the ${live.horizonDays}d horizon` : ""}
             </span>
@@ -506,7 +507,7 @@ function WatchingFor({ live, thesis, verdicts }: { live: LiveScoreResult; thesis
         <li className="flex items-start gap-2">
           <span className="text-text-faint mt-0.5">•</span>
           <span>
-            Signalera&apos;s grader reaches a terminal verdict (Confirmed or Invalidated) when
+            Signalera&apos;s grader reaches a terminal verdict (Supported or Challenged) when
             it has accumulated sufficient evidence, typically requires multiple supporting
             articles and consistent price action across grading runs
           </span>
