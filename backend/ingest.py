@@ -516,26 +516,58 @@ _INGEST_KEYWORD_BLOCKLIST = (
     "filing deadline",
 )
 
+# Pruned/tightened phrase set used by the "new" matcher. Derived from the #379
+# skip-log attribution (14 pipeline runs, 99 unique blocked titles, solo-match
+# analysis where solo means removing the phrase would unblock the article):
+#   - "loss recovery": 0 fires, 0 solo -> REMOVED (over-broad, no demonstrated value).
+#   - "filing deadline": 1 solo, and it was a LEGITIMATE article ("A warrant
+#     accounting issue pushes AMC Robotics past its SEC filing deadline") -> REMOVED.
+#     Lawsuit-deadline spam stays caught by "lead plaintiff deadline" / the
+#     "securities class action" family.
+#   - "announces investigation into": 1 solo, a law-firm merger-objection PR
+#     ("Kaskela Law Firm Announces Investigation into Fairness of ...") -> TIGHTENED
+#     to "announces investigation into fairness" so legitimate corporate
+#     "announces investigation into <incident>" disclosures are no longer blocked.
+# Every other phrase is unchanged. The tightened phrase is a superstring of the
+# legacy one and word-boundary is a subset of substring, so the new matcher stays
+# a strict subset of legacy at the article level: newly-blocked is still zero, and
+# a shadow divergence is exactly an article the pruning RESCUES.
+_INGEST_KEYWORD_BLOCKLIST_PRUNED = (
+    "securities class action",
+    "class action lawsuit",
+    "shareholder lawsuit",
+    "lead plaintiff deadline",
+    "lead plaintiff",
+    "remind investors",
+    "encourages investors to contact",
+    "securities fraud investigation",
+    "no cost to investors",
+    "announces investigation into fairness",
+)
+
 
 # Matching mode for the keyword pre-filter (INGEST_BLOCKLIST_MODE):
-#   legacy -> substring match over the lowercased title+" "+summary seam-join
-#             (original behavior; over-matches inside words and across the seam).
-#   new    -> per-field, word-boundary phrase match (title and summary checked
-#             independently; "filing deadline" no longer hits "refiling deadline",
-#             and a title-tail/summary-head seam can no longer fabricate a phrase).
-#   shadow -> ACTIVE decision stays legacy (prod unchanged), but the new decision
-#             is also computed and every divergence is logged with the greppable
-#             tag BLOCKLIST_SHADOW_DIVERGENCE for read-only blast-radius capture.
-# The new matcher is a strict subset of legacy (word-boundary subset of substring,
-# per-field subset of seam-join), so the only possible divergence is
-# legacy-blocks / new-passes; newly-blocked is provably zero.
+#   legacy -> substring match over the lowercased title+" "+summary seam-join,
+#             against the CURRENT (unpruned) phrase set (original prod behavior).
+#   new    -> per-field, word-boundary phrase match against the PRUNED set above
+#             (the precision matching from #379 AND the pruned/tightened phrases).
+#   shadow -> ACTIVE decision stays legacy/current (prod unchanged on deploy), but
+#             the new (pruned) decision is also computed and every divergence is
+#             logged with the greppable tag BLOCKLIST_SHADOW_DIVERGENCE. Because
+#             new is a strict subset of legacy, each divergence is exactly an
+#             article the precision+pruning would RESCUE; newly-blocked is zero.
 _INGEST_BLOCKLIST_MODE = os.environ.get("INGEST_BLOCKLIST_MODE", "shadow").strip().lower()
 
 # Word-boundary patterns for the new matcher, compiled once at import (not per
-# call). Internal whitespace stays literal; \b anchors both ends.
+# call), from the PRUNED set. The LEADING \b is kept so the substring-in-word fix
+# holds ("class action" never matches inside "subclass action"). The trailing
+# boundary tolerates an optional plural "s" on the final word, so "class action
+# lawsuit" also blocks "class action lawsuits" and "securities class action" also
+# blocks "...class actions" -- closing the inflection-evasion the bare trailing \b
+# opened (legacy substring already caught plurals). Internal whitespace is literal.
 _INGEST_BLOCKLIST_PATTERNS = tuple(
-    (phrase, re.compile(r"\b" + re.escape(phrase) + r"\b", re.IGNORECASE))
-    for phrase in _INGEST_KEYWORD_BLOCKLIST
+    (phrase, re.compile(r"\b" + re.escape(phrase) + r"s?\b", re.IGNORECASE))
+    for phrase in _INGEST_KEYWORD_BLOCKLIST_PRUNED
 )
 
 

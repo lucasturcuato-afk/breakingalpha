@@ -478,10 +478,10 @@ class IngestBlocklistPrecisionTest(unittest.TestCase):
             self.assertTrue(ingest.matches_ingest_blocklist(art))
 
     def test_every_phrase_is_a_true_positive_under_new(self):
-        # Each blocklist phrase, embedded contiguously in one field, still blocks
-        # under the precision matcher and reports itself.
-        for phrase in ingest._INGEST_KEYWORD_BLOCKLIST:
-            title = f"Firm release: {phrase} per the filing."
+        # Each phrase in the PRUNED set (the set the new matcher actually uses),
+        # embedded contiguously in one field, still blocks and reports itself.
+        for phrase in ingest._INGEST_KEYWORD_BLOCKLIST_PRUNED:
+            title = f"Firm release: {phrase} per the latest update."
             self.assertEqual(
                 ingest._new_blocklist_phrase(title, ""),
                 phrase,
@@ -500,6 +500,136 @@ class IngestBlocklistPrecisionTest(unittest.TestCase):
     def test_legacy_mode_blocks_seam(self):
         art = {"title": "Acme takes commanding lead", "summary": "Plaintiff dropped from case"}
         with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "legacy"):
+            self.assertTrue(ingest.matches_ingest_blocklist(art))
+
+
+# ---------------------------------------------------------------------------
+# 3d-ter. Blocklist phrase pruning (over-broad phrases removed/tightened).
+# Attribution: #379 skip-log replay, 14 pipeline runs / 99 unique blocked titles,
+# solo-match analysis. "new" mode uses the pruned set; "shadow" (default) keeps
+# the current set active so a deploy changes nothing and each divergence is an
+# article the pruning rescues.
+# ---------------------------------------------------------------------------
+class IngestBlocklistPruningTest(unittest.TestCase):
+    def test_removed_and_tightened_phrases(self):
+        pruned = ingest._INGEST_KEYWORD_BLOCKLIST_PRUNED
+        # Removed / tightened out of the new set...
+        self.assertNotIn("filing deadline", pruned)
+        self.assertNotIn("loss recovery", pruned)
+        self.assertNotIn("announces investigation into", pruned)
+        self.assertIn("announces investigation into fairness", pruned)
+        # ...but the current (legacy) set still carries them, so shadow is neutral.
+        self.assertIn("filing deadline", ingest._INGEST_KEYWORD_BLOCKLIST)
+        self.assertIn("loss recovery", ingest._INGEST_KEYWORD_BLOCKLIST)
+        self.assertIn("announces investigation into", ingest._INGEST_KEYWORD_BLOCKLIST)
+
+    def test_new_is_subset_of_legacy_so_newly_blocked_is_zero(self):
+        # Every pruned phrase contiguous in a field is also caught by legacy.
+        for phrase in ingest._INGEST_KEYWORD_BLOCKLIST_PRUNED:
+            self.assertIsNotNone(
+                ingest._legacy_blocklist_phrase(f"News: {phrase} reported.", ""),
+                msg=f"legacy must also catch {phrase!r} (subset guarantee)",
+            )
+
+    # filing deadline: REMOVED (the only solo match was the AMC-style legit story)
+    def test_legit_sec_filing_deadline_passes_under_new(self):
+        art = {"title": "A warrant accounting issue pushes AMC Robotics past its SEC filing deadline",
+               "summary": "The restatement delayed the quarterly report."}
+        with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "new"):
+            self.assertFalse(ingest.matches_ingest_blocklist(art))
+
+    def test_legit_sec_filing_deadline_still_blocked_under_default_shadow(self):
+        # Deploy-neutral: default shadow still actively blocks via the legacy set.
+        self.assertEqual(ingest._INGEST_BLOCKLIST_MODE, "shadow")
+        art = {"title": "A warrant accounting issue pushes AMC Robotics past its SEC filing deadline",
+               "summary": ""}
+        self.assertTrue(ingest.matches_ingest_blocklist(art))
+
+    # loss recovery: REMOVED (0 fires in the retained universe)
+    def test_legit_loss_recovery_passes_under_new(self):
+        art = {"title": "Insurer reports strong loss recovery on catastrophe claims", "summary": ""}
+        with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "new"):
+            self.assertFalse(ingest.matches_ingest_blocklist(art))
+
+    # announces investigation into: TIGHTENED to require "fairness"
+    def test_legit_corporate_investigation_disclosure_passes_under_new(self):
+        art = {"title": "Acme Corp announces investigation into data breach", "summary": ""}
+        with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "new"):
+            self.assertFalse(ingest.matches_ingest_blocklist(art))
+
+    def test_law_firm_fairness_investigation_still_blocked_under_new(self):
+        art = {"title": "Kaskela Law Firm Announces Investigation into Fairness of European Wax Center",
+               "summary": ""}
+        with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "new"):
+            self.assertTrue(ingest.matches_ingest_blocklist(art))
+
+    # surviving phrases still catch representative real spam under new
+    def test_representative_lawsuit_spam_still_blocked_under_new(self):
+        for title in (
+            "GLOB Shareholder Alert: Globant S.A. Securities Class Action Lawsuit",
+            "The Gross Law Firm Reminds Shareholders of a Lead Plaintiff Deadline of August 7",
+            "Rosen Law Firm Encourages TruBridge Investors to Inquire About Securities Class Action",
+        ):
+            with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "new"):
+                self.assertTrue(
+                    ingest.matches_ingest_blocklist({"title": title, "summary": ""}),
+                    msg=f"spam should still block under new: {title!r}",
+                )
+
+
+# ---------------------------------------------------------------------------
+# 3d-quater. Plural / inflection tolerance under "new".
+# The word-boundary matcher must still catch the plural spam form (the bare \b
+# let "class action lawsuits" evade "class action lawsuit"), while keeping the
+# leading \b so the substring-in-word fix holds.
+# ---------------------------------------------------------------------------
+class IngestBlocklistInflectionTest(unittest.TestCase):
+    # (phrase as listed, singular surface form, plural surface form)
+    AFFECTED = (
+        ("securities class action", "securities class action", "securities class actions"),
+        ("class action lawsuit", "class action lawsuit", "class action lawsuits"),
+        ("shareholder lawsuit", "shareholder lawsuit", "shareholder lawsuits"),
+        ("lead plaintiff deadline", "lead plaintiff deadline", "lead plaintiff deadlines"),
+        ("lead plaintiff", "lead plaintiff", "lead plaintiffs"),
+        ("securities fraud investigation", "securities fraud investigation",
+         "securities fraud investigations"),
+    )
+
+    def test_singular_and_plural_both_block_under_new(self):
+        for canonical, singular, plural in self.AFFECTED:
+            self.assertIn(canonical, ingest._INGEST_KEYWORD_BLOCKLIST_PRUNED)
+            for form in (singular, plural):
+                self.assertIsNotNone(
+                    ingest._new_blocklist_phrase(f"Stock alert: {form} filed today", ""),
+                    msg=f"new matcher must block {form!r}",
+                )
+
+    def test_plural_phrase_reports_canonical_phrase(self):
+        # The function returns the canonical tuple phrase, not the matched surface.
+        self.assertEqual(
+            ingest._new_blocklist_phrase("New class action lawsuits filed", ""),
+            "class action lawsuit",
+        )
+
+    def test_leading_boundary_preserved_no_substring_in_word(self):
+        # The plural "s?" must NOT relax the LEADING boundary: a phrase inside a
+        # larger leading word still does not match.
+        self.assertIsNone(
+            ingest._new_blocklist_phrase("A subclass action lawsuit framework", "")
+        )
+
+    def test_trailing_boundary_not_overgreedy(self):
+        # "s?" tolerates only a single trailing plural s, then a boundary; it must
+        # not match a longer different word ("lawsuited", "investigationary").
+        self.assertIsNone(ingest._new_blocklist_phrase("class action lawsuited nonsense", ""))
+        self.assertIsNone(
+            ingest._new_blocklist_phrase("securities fraud investigationary memo", "")
+        )
+
+    def test_plural_spam_blocks_under_new_real_form(self):
+        art = {"title": "Zillow faces multiple securities class actions and shareholder lawsuits",
+               "summary": ""}
+        with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "new"):
             self.assertTrue(ingest.matches_ingest_blocklist(art))
 
 
