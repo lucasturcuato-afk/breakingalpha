@@ -142,8 +142,8 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
   "summary": "Optional. If provided, 3-4 sentences with the same rules that each sentence covers ONE story or ONE data point. Banned phrases: 'mix of', 'ongoing activity', 'investment landscape', 'markets reacted to', 'could also', 'highlight', 'alongside', 'coupled with'. If omitted, it will be synthesized from the three structured fields above.",
   "market_tone": "One of: RISK-ON | RISK-OFF | MIXED | NEUTRAL",
   "market_pulse": {
-    "sentiment_word": "One plain-English ADJECTIVE describing the market's psychological posture today. The word MUST grammatically complete the sentence 'Today the market is ___.' as a natural English adjective. MUST come from this exact list (alphabetical; no word is a default and none is preferred): buoyant, cautious, choppy, conflicted, defensive, divided, fragile, guarded, heavy, jittery, mixed, resilient, restrained, split, steady, uneasy. Pick the word the evidence supports, never a hedge. BANNED: do NOT use any of: crosscurrents, risk-on, risk-off, multifaceted, bifurcated, dichotomous, schizophrenic, paradoxical, asymmetric, nonlinear, numb, or any noun or hyphenated phrase that does not read as an adjective. If you want to convey crosscurrents, pick a genuine-tension adjective such as 'conflicted' or 'choppy' and let the narrative explain the cross-currents. One word. Lower-case. No punctuation.",
-    "narrative": "2-3 short paragraphs (separated by \\n\\n) written in an editorial voice. The Market Pulse is the panoramic top-of-day read, NOT a preview of the lead. State the dominant emotional posture of capital markets today, then the two or three concrete catalysts driving that posture. Name specific companies, prints, or policy actions; no vague prose. Read it like a Stratechery opener, not a bank research note. MULTIPLICITY RULE: if you chose a sentiment_word that implies multiple forces in tension (mixed, divided, split, conflicted, choppy, uneasy), the body MUST name at least three DISTINCT stories or themes that create that tension, not three angles on the lead. GOOD (a genuine-tension day): 'Strategic dealmaking is back: AIP's carve-out of Honeywell's warehouse business signals private equity's return to industrial tech. But tech sentiment is heavier: Infosys guided below estimates and Tesla's $25B AI commitment is drawing capital allocation scrutiny. Geopolitically, the Iran leadership shift adds an oil-price overhang.' BAD (body only reinforces the lead): 'Capital markets are mixed today, driven by strategic M&A activity. Private equity continues to deploy capital, as seen with AIP's acquisition of Honeywell's warehouse solutions business.'",
+    "sentiment_word": "One plain-English ADJECTIVE describing the market's psychological posture today. The word MUST grammatically complete the sentence 'Today the market is ___.' as a natural English adjective. MUST come from this exact list (alphabetical; no word is a default and none is preferred): buoyant, cautious, choppy, conflicted, defensive, divided, fragile, guarded, heavy, jittery, mixed, resilient, restrained, split, steady, uneasy. When a PRIOR SESSION CLOSE block is present above, the regime subset there narrows this list and is binding for the prior-close anchor. Pick the word the evidence supports, never a hedge. BANNED: do NOT use any of: crosscurrents, risk-on, risk-off, multifaceted, bifurcated, dichotomous, schizophrenic, paradoxical, asymmetric, nonlinear, numb, or any noun or hyphenated phrase that does not read as an adjective. If you want to convey crosscurrents, pick a genuine-tension adjective such as 'conflicted' or 'choppy' and let the narrative explain the cross-currents. One word. Lower-case. No punctuation.",
+    "narrative": "2-3 short paragraphs (separated by \\n\\n) written in an editorial voice. The Market Pulse is the panoramic top-of-day read, NOT a preview of the lead. State the dominant emotional posture of capital markets today, then the two or three concrete catalysts driving that posture. Name specific companies, prints, or policy actions; no vague prose. Read it like a Stratechery opener, not a bank research note. When a PRIOR SESSION CLOSE block is present above, your BACKWARD-looking posture (where we closed and the tone heading into the open) MUST match those index moves; your FORWARD-looking setup (what to watch into the session) is free to diverge when overnight catalysts or futures point the other way. MULTIPLICITY RULE: if you chose a sentiment_word that implies multiple forces in tension (mixed, divided, split, conflicted, choppy, uneasy), the body MUST name at least three DISTINCT stories or themes that create that tension, not three angles on the lead. GOOD (a genuine-tension day): 'Strategic dealmaking is back: AIP's carve-out of Honeywell's warehouse business signals private equity's return to industrial tech. But tech sentiment is heavier: Infosys guided below estimates and Tesla's $25B AI commitment is drawing capital allocation scrutiny. Geopolitically, the Iran leadership shift adds an oil-price overhang.' BAD (body only reinforces the lead): 'Capital markets are mixed today, driven by strategic M&A activity. Private equity continues to deploy capital, as seen with AIP's acquisition of Honeywell's warehouse solutions business.'",
     "headlines": "Array of 3-5 short driver chips — each an object with `title` (6-12 word phrase naming one specific story, company, or theme from a DIFFERENT article than the lead where possible) and optional `href` (source URL if available). These are the chips that render at the bottom of the Market Pulse card. When the sentiment_word implies tension (mixed, divided, split, conflicted, choppy, uneasy), at least 3 chips MUST represent distinct stories or themes pulling in different directions — not variants of the same deal or sector. If you cannot produce 3 genuinely distinct drivers from the corpus, omit this field rather than pad with near-duplicates."
   },
   "sections": {
@@ -1257,6 +1257,98 @@ def _generate_brief_json(
     return None
 
 
+def _build_morning_tape_directive(tape: dict) -> str:
+    """Morning-adapted tape grounding block (prior-session-close framing).
+
+    The morning brief generates pre-open, so market_tape.fetch_tape() returns
+    the latest COMPLETED session close plus VIX (the same values the frontend
+    RISK-OFF / RISK-ON banner reads pre-open). This block is therefore labeled
+    PRIOR SESSION CLOSE, never "today's tape" or "how markets closed": a morning
+    brief must not narrate a close that has not happened yet.
+
+    Binding is split (the MORNING_SYSTEM sentiment_word / narrative clauses say
+    the same):
+      - BACKWARD-bound: sentiment_word, market_tone, and any "where we closed /
+        posture into the open" statement must match the prior-close regime.
+      - FORWARD-free: what_to_watch and the day's setup may diverge, because
+        overnight catalysts and futures can point the other way.
+
+    Reuses the same regime / vocabulary / tone constants as
+    market_tape.build_tape_directive (no compute_regime duplication); only the
+    framing label and the backward / forward split differ from the evening block.
+    """
+    quotes = tape["quotes"]
+    regime = tape["regime"]
+    vocab = market_tape.REGIME_VOCAB[regime]
+
+    index_bits = []
+    for sym, label in market_tape.TAPE_SYMBOLS.items():
+        if sym == "^VIX":
+            continue
+        q = quotes.get(sym)
+        if q:
+            index_bits.append(f"{label}: {q['pct']:+.2f}%")
+    vix = quotes["^VIX"]
+
+    lines = [
+        "[PRIOR SESSION CLOSE - deterministic latest-completed-session market data]",
+        " | ".join(index_bits) if index_bits else "(index data unavailable)",
+        f"VIX: {vix['price']:.1f} ({vix['pct']:+.1f}% vs prior close)",
+        f"Computed regime at prior close: {regime.upper()}",
+        "These figures are the latest completed session close, where the tape "
+        "stands heading into today's open. They are NOT today's intraday trading "
+        "and NOT a close that has already happened today. Use them to anchor "
+        "backward-looking posture only.",
+        "",
+        "GROUNDING RULES (absolute, supersede any conflicting guidance below):",
+        "- BACKWARD-looking (where we closed, the posture heading into the open): "
+        "your market_pulse sentiment_word, market_tone, and every backward-looking "
+        "market-direction claim MUST be consistent with the prior-close regime "
+        "above. Never call the prior close resilient or rallying when the indices "
+        "above are broadly negative, or heavy or defensive when they are broadly "
+        "positive.",
+        f"- sentiment_word MUST be one of exactly: {', '.join(vocab)}. No word "
+        "outside this list is valid for the prior-close anchor.",
+        f"- market_tone MUST be {market_tape.REGIME_MARKET_TONE[regime]}."
+        + (" (MIXED is also acceptable.)" if regime == "neutral" else ""),
+        "- FORWARD-looking (what_to_watch and the day's setup): you are FREE to "
+        "diverge from the prior-close regime. Overnight catalysts, futures, and "
+        "scheduled events can point the other way; make the forward call on its "
+        "own evidence and do NOT force it to match where we closed.",
+    ]
+    return "\n".join(lines) + "\n\n"
+
+
+def _maybe_inject_tape_directive(brief_type, system):
+    """Fetch the latest tape and prepend the surface-appropriate grounding block.
+
+    Returns (system, tape_regime). Both morning and evening are grounded:
+      - evening uses market_tape.build_tape_directive (close-of-day framing),
+      - morning uses _build_morning_tape_directive (prior-session-close framing,
+        backward-bound word / tone, forward-free what_to_watch).
+
+    Soft-fail (identical to the original evening path): on a fetch error or an
+    unusable tape, the system is returned UNCHANGED and tape_regime is None, so
+    the post-parse enforce_tape_consistency backstop nulls sentiment_word rather
+    than shipping a biased default. Never injects a block without a tape.
+    """
+    tape = None
+    try:
+        tape = market_tape.fetch_tape()
+    except Exception as e:
+        print(f"  ⚠ tape fetch failed (non-fatal): {e}")
+    if not tape:
+        print(f"  ⚠ tape unavailable - {brief_type} synthesis runs ungrounded; sentiment_word will be nulled")
+        return system, None
+    directive = (
+        market_tape.build_tape_directive(tape)
+        if brief_type == "evening"
+        else _build_morning_tape_directive(tape)
+    )
+    print(f"  📊 Injected tape facts (regime: {tape['regime']}, vix: {tape['vix_level']:.1f})")
+    return directive + system, tape["regime"]
+
+
 def run(brief_type="morning"):
     print(f"📝 Synthesizing {brief_type} briefing...")
 
@@ -1460,29 +1552,24 @@ def run(brief_type="morning"):
         except Exception as e:
             print(f"  ⚠ morning-brief dedup lookup failed (non-fatal): {e}")
 
-    # --- Evening: deterministic tape grounding -----------------------------
-    # Fetch close-of-day index + VIX quotes (baseline-correct prior close via
+    # --- Deterministic tape grounding (morning + evening) ------------------
+    # Fetch index + VIX quotes (baseline-correct prior close via
     # market_tape.parse_yahoo_daily) and compute the regime with the shared
     # ladder that also drives the frontend banner (src/lib/market-regime.ts).
-    # The TAPE FACTS directive binds the market_pulse narrative, the
-    # sentiment_word vocabulary, and market_tone to those numbers, so the
-    # Close hero can no longer call a broad sell-off "mixed" while the banner
-    # says RISK-OFF. Soft-fail: with no tape, synthesis runs ungrounded and
-    # the post-parse backstop below nulls sentiment_word instead of shipping
-    # an unverifiable word. Never defaults to "mixed".
+    # EVENING: close-of-day framing; the directive binds the whole market_pulse
+    # narrative, the sentiment_word vocabulary, and market_tone to those numbers.
+    # MORNING: the brief generates pre-open, so fetch_tape returns the latest
+    # completed session close (the same values the banner reads pre-open). The
+    # prior-session-close directive binds sentiment_word, market_tone, and the
+    # BACKWARD-looking posture to that regime while leaving the FORWARD call
+    # (what_to_watch, the day's setup) free to diverge on overnight catalysts, so
+    # the morning hero stops writing "risk-on surge" under a RISK-OFF banner.
+    # Soft-fail (both surfaces): with no tape, synthesis runs ungrounded and the
+    # post-parse backstop below nulls sentiment_word instead of shipping an
+    # unverifiable word. Never defaults to a biased word.
     tape_regime = None
-    if brief_type == "evening":
-        tape = None
-        try:
-            tape = market_tape.fetch_tape()
-        except Exception as e:
-            print(f"  ⚠ tape fetch failed (non-fatal): {e}")
-        if tape:
-            tape_regime = tape["regime"]
-            system = market_tape.build_tape_directive(tape) + system
-            print(f"  📊 Injected tape facts (regime: {tape_regime}, vix: {tape['vix_level']:.1f})")
-        else:
-            print("  ⚠ tape unavailable - evening synthesis runs ungrounded; sentiment_word will be nulled")
+    if brief_type in ("morning", "evening"):
+        system, tape_regime = _maybe_inject_tape_directive(brief_type, system)
 
     # --- Feedback loop: prepend cached brief improvement addendum ----------
     brief_addendum_used = None
@@ -1520,12 +1607,14 @@ def run(brief_type="morning"):
     # every attempt fails, which the stub fallback below then handles.
     data = _generate_brief_json(system, f"Today's articles:\n\n{article_text}")
 
-    # Post-parse tape-consistency backstop (evening only). With a known
+    # Post-parse tape-consistency backstop (morning + evening). With a known
     # regime, an out-of-subset sentiment_word is overridden to the regime
     # default and an inconsistent market_tone is corrected; with no regime
-    # (tape fetch failed), sentiment_word is forced to None. Runs before the
-    # stub fallback so a failed parse never reaches enforcement.
-    if data is not None and brief_type == "evening":
+    # (tape fetch failed), sentiment_word is forced to None. enforce only
+    # rewrites market_tone and market_pulse.sentiment_word, never what_to_watch,
+    # so the morning FORWARD call stays free. Runs before the stub fallback so a
+    # failed parse never reaches enforcement.
+    if data is not None and brief_type in ("morning", "evening"):
         try:
             tape_warnings = market_tape.enforce_tape_consistency(data, tape_regime)
             for w in tape_warnings:
