@@ -250,6 +250,19 @@ export function verdictDisplayLabel(verdict: string): string {
 }
 
 /**
+ * Evidence lean of a verdict, for bucketing into the directional columns.
+ * Supportive = {Confirmed, Tracking confirmed}; against = {Invalidated,
+ * Tracking invalidated}; everything else (Inconclusive, Awaiting verdict, any
+ * persisted Tracking neutral) is neutral and belongs in neither column.
+ * Pure read of the raw verdict string; does not feed deriveLiveVerdict.
+ */
+export function verdictLean(verdict: string): "supportive" | "against" | "neutral" {
+  if (verdict === "Confirmed" || verdict === "Tracking confirmed") return "supportive";
+  if (verdict === "Invalidated" || verdict === "Tracking invalidated") return "against";
+  return "neutral";
+}
+
+/**
  * Display-only neutraliser for thesis titles. Strips a single leading stance
  * word (Long, Short, Buy, Sell, Avoid) plus its trailing space so the tracker
  * reads as informational rather than as a recommendation. Leaves Watch,

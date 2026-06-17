@@ -13,6 +13,7 @@ import {
   liveScoreChipClasses,
   neutralizeThesisTitle,
   verdictDisplayLabel,
+  verdictLean,
   type LiveScoreResult,
   type TerminalVerdict,
 } from "@/lib/track-record-live-score";
@@ -259,11 +260,19 @@ export default function TrackRecordPage() {
   }, [scored]);
 
   const top3Working = useMemo(
-    () => [...scored].sort((a, b) => b.live.score - a.live.score).slice(0, 3),
+    () =>
+      scored
+        .filter((t) => verdictLean(t.live.verdict) === "supportive")
+        .sort((a, b) => b.live.score - a.live.score)
+        .slice(0, 3),
     [scored],
   );
   const bottom3NotWorking = useMemo(
-    () => [...scored].sort((a, b) => a.live.score - b.live.score).slice(0, 3),
+    () =>
+      scored
+        .filter((t) => verdictLean(t.live.verdict) === "against")
+        .sort((a, b) => a.live.score - b.live.score)
+        .slice(0, 3),
     [scored],
   );
 
@@ -456,7 +465,9 @@ export default function TrackRecordPage() {
             {/* WHERE EVIDENCE SUPPORTS THE THESIS */}
             <Section title="Where evidence supports the thesis">
               {top3Working.length === 0 ? (
-                <EmptyInflightState />
+                <div className="bg-white rounded-xl border border-border-base p-4 font-sans text-[12px] text-text-muted leading-snug">
+                  No theses with evidence leaning supportive yet. This builds as coverage accumulates.
+                </div>
               ) : (
                 <div className="grid gap-2 md:grid-cols-3">
                   {top3Working.map((t) => (
@@ -469,7 +480,9 @@ export default function TrackRecordPage() {
             {/* WHERE EVIDENCE IS MIXED OR AGAINST */}
             <Section title="Where evidence is mixed or against">
               {bottom3NotWorking.length === 0 ? (
-                <EmptyInflightState />
+                <div className="bg-white rounded-xl border border-border-base p-4 font-sans text-[12px] text-text-muted leading-snug">
+                  No theses with evidence leaning against yet. This builds as coverage accumulates.
+                </div>
               ) : (
                 <div className="grid gap-2 md:grid-cols-3">
                   {bottom3NotWorking.map((t) => (
