@@ -1,7 +1,13 @@
 # Signalera/Breaking Alpha -- Claude Chat Handoff
 **Date:** 2026-06-16 (PT)
 **Last session focus:** Macro panel (macro-economics dashboard + brief surface), Company Intel overhaul (Financials tab, primary_company tagging, dark-mode fallback), grading substrate hardening, track-record polish, security lockdown (service-role client), e2e-to-advisory demotion.
-**Status:** Main is at `2bb2fa22`. ~40 PRs merged since last handoff (2026-06-03). Macro panel slice 2 + grading fixes + BLS/BEA data layers + primary_company tagging all landed. Lucas throttled back, small windows for recon/fixes now.
+**Status:** Main is at `33957755`. ~41 PRs merged since last handoff (2026-06-03). Macro panel slice 2 + grading fixes + BLS/BEA data layers + primary_company tagging + Track Record reframe all landed. Lucas throttled back, small windows for recon/fixes now.
+
+---
+
+## Recently Completed (2026-06-16) -- Track Record reframe to Thesis Tracker (presentation-only)
+
+PR #373: Track Record surface reframed as informational Thesis Tracker. Vocabulary swept (removed call/recommendation/win/loss/grade language), H1 renamed to "Thesis Tracker", verdict chips mapped to neutral display labels (Confirmed->Supported, Invalidated->Challenged, etc.), thesis titles strip leading stance word at render only, evidence columns bucketed by verdict lean, "Most Reliable Sources" section dropped (cron + source_credibility table stay live). Backend, schema, grading pipeline untouched. Helper additions in track-record-live-score.ts: verdictDisplayLabel, neutralizeThesisTitle, verdictLean.
 
 ---
 
