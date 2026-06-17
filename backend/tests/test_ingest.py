@@ -415,6 +415,95 @@ class IngestBlocklistTest(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# 3d-bis. Blocklist precision: word-boundary + per-field matching (new mode).
+# These pin the FIX, not the legacy behavior. They are additive: every test in
+# IngestBlocklistTest above still passes unchanged under the default shadow mode
+# (which actively blocks on the legacy decision).
+# ---------------------------------------------------------------------------
+class IngestBlocklistPrecisionTest(unittest.TestCase):
+    # --- helper-level, mode-independent: legacy over-matches, new does not -----
+
+    def test_substring_in_word_legacy_overblocks(self):
+        # "refiling deadline" contains "filing deadline" as a substring of a word.
+        self.assertEqual(
+            ingest._legacy_blocklist_phrase("Acme completes refiling deadline", ""),
+            "filing deadline",
+        )
+
+    def test_substring_in_word_new_passes(self):
+        self.assertIsNone(
+            ingest._new_blocklist_phrase("Acme completes refiling deadline", "")
+        )
+
+    def test_gloss_recovery_substring_legacy_vs_new(self):
+        # "gloss recovery" embeds "loss recovery"; legacy blocks, new does not.
+        self.assertEqual(
+            ingest._legacy_blocklist_phrase("New lip gloss recovery line", ""),
+            "loss recovery",
+        )
+        self.assertIsNone(ingest._new_blocklist_phrase("New lip gloss recovery line", ""))
+
+    def test_seam_phantom_legacy_vs_new(self):
+        # Neither field contains "lead plaintiff"; the title+summary seam fabricates
+        # it. Legacy blocks across the seam; new (per-field) does not.
+        title, summary = "Acme takes commanding lead", "Plaintiff dropped from case"
+        self.assertEqual(ingest._legacy_blocklist_phrase(title, summary), "lead plaintiff")
+        self.assertIsNone(ingest._new_blocklist_phrase(title, summary))
+
+    # --- integration via matches_ingest_blocklist in explicit modes -----------
+
+    def test_new_mode_passes_substring_in_word(self):
+        art = {"title": "Acme completes refiling deadline", "summary": ""}
+        with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "new"):
+            self.assertFalse(ingest.matches_ingest_blocklist(art))
+
+    def test_new_mode_passes_seam_phantom(self):
+        art = {"title": "Acme takes commanding lead", "summary": "Plaintiff dropped from case"}
+        with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "new"):
+            self.assertFalse(ingest.matches_ingest_blocklist(art))
+
+    def test_new_mode_blocks_real_phrase_in_title(self):
+        art = {"title": "Securities class action filed against Acme", "summary": ""}
+        with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "new"):
+            self.assertTrue(ingest.matches_ingest_blocklist(art))
+
+    def test_new_mode_blocks_real_phrase_in_summary_only(self):
+        art = {"title": "Acme update", "summary": "A securities class action was filed today"}
+        with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "new"):
+            self.assertTrue(ingest.matches_ingest_blocklist(art))
+
+    def test_new_mode_is_case_insensitive(self):
+        art = {"title": "LEAD PLAINTIFF DEADLINE APPROACHING", "summary": ""}
+        with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "new"):
+            self.assertTrue(ingest.matches_ingest_blocklist(art))
+
+    def test_every_phrase_is_a_true_positive_under_new(self):
+        # Each blocklist phrase, embedded contiguously in one field, still blocks
+        # under the precision matcher and reports itself.
+        for phrase in ingest._INGEST_KEYWORD_BLOCKLIST:
+            title = f"Firm release: {phrase} per the filing."
+            self.assertEqual(
+                ingest._new_blocklist_phrase(title, ""),
+                phrase,
+                msg=f"new matcher failed to catch contiguous phrase {phrase!r}",
+            )
+
+    # --- shadow (default) is prod-safe: active decision stays legacy ----------
+
+    def test_shadow_default_still_blocks_seam_like_legacy(self):
+        # Under the default shadow mode the seam phantom is STILL blocked (active
+        # decision is legacy), proving a deploy changes no production behavior.
+        self.assertEqual(ingest._INGEST_BLOCKLIST_MODE, "shadow")
+        art = {"title": "Acme takes commanding lead", "summary": "Plaintiff dropped from case"}
+        self.assertTrue(ingest.matches_ingest_blocklist(art))
+
+    def test_legacy_mode_blocks_seam(self):
+        art = {"title": "Acme takes commanding lead", "summary": "Plaintiff dropped from case"}
+        with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "legacy"):
+            self.assertTrue(ingest.matches_ingest_blocklist(art))
+
+
+# ---------------------------------------------------------------------------
 # 3e. HTML stripping (strip_html)
 # ---------------------------------------------------------------------------
 class StripHtmlTest(unittest.TestCase):

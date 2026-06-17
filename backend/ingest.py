@@ -517,14 +517,79 @@ _INGEST_KEYWORD_BLOCKLIST = (
 )
 
 
-def matches_ingest_blocklist(article: dict) -> bool:
-    """Return True if the article's title or summary matches any blocked phrase.
-    Logs the matched phrase and article title for audit purposes."""
-    text = ((article.get("title") or "") + " " + (article.get("summary") or "")).lower()
+# Matching mode for the keyword pre-filter (INGEST_BLOCKLIST_MODE):
+#   legacy -> substring match over the lowercased title+" "+summary seam-join
+#             (original behavior; over-matches inside words and across the seam).
+#   new    -> per-field, word-boundary phrase match (title and summary checked
+#             independently; "filing deadline" no longer hits "refiling deadline",
+#             and a title-tail/summary-head seam can no longer fabricate a phrase).
+#   shadow -> ACTIVE decision stays legacy (prod unchanged), but the new decision
+#             is also computed and every divergence is logged with the greppable
+#             tag BLOCKLIST_SHADOW_DIVERGENCE for read-only blast-radius capture.
+# The new matcher is a strict subset of legacy (word-boundary subset of substring,
+# per-field subset of seam-join), so the only possible divergence is
+# legacy-blocks / new-passes; newly-blocked is provably zero.
+_INGEST_BLOCKLIST_MODE = os.environ.get("INGEST_BLOCKLIST_MODE", "shadow").strip().lower()
+
+# Word-boundary patterns for the new matcher, compiled once at import (not per
+# call). Internal whitespace stays literal; \b anchors both ends.
+_INGEST_BLOCKLIST_PATTERNS = tuple(
+    (phrase, re.compile(r"\b" + re.escape(phrase) + r"\b", re.IGNORECASE))
+    for phrase in _INGEST_KEYWORD_BLOCKLIST
+)
+
+
+def _legacy_blocklist_phrase(title: str, summary: str) -> Optional[str]:
+    """Original logic: first phrase that is a substring of the lowercased
+    title+" "+summary seam-join, or None."""
+    text = (title + " " + summary).lower()
     for phrase in _INGEST_KEYWORD_BLOCKLIST:
         if phrase in text:
-            print(f"  ⊘ Blocklist skip [{phrase!r}]: {article.get('title', '')[:80]}")
+            return phrase
+    return None
+
+
+def _new_blocklist_phrase(title: str, summary: str) -> Optional[str]:
+    """Precision logic: first phrase that word-boundary matches the title OR the
+    summary independently (no seam join), or None."""
+    for phrase, pattern in _INGEST_BLOCKLIST_PATTERNS:
+        if pattern.search(title) or pattern.search(summary):
+            return phrase
+    return None
+
+
+def matches_ingest_blocklist(article: dict) -> bool:
+    """Return True if the article's title or summary matches any blocked phrase.
+
+    Mode is set by INGEST_BLOCKLIST_MODE (legacy|shadow|new), default shadow.
+    Shadow actively blocks on the legacy decision (so deploying changes nothing)
+    while logging where the new per-field word-boundary matcher would diverge.
+    Logs the matched phrase and article title for audit purposes."""
+    title = article.get("title") or ""
+    summary = article.get("summary") or ""
+
+    if _INGEST_BLOCKLIST_MODE == "new":
+        phrase = _new_blocklist_phrase(title, summary)
+        if phrase:
+            print(f"  ⊘ Blocklist skip [{phrase!r}]: {title[:80]}")
             return True
+        return False
+
+    # legacy and shadow both ACTIVELY block on the legacy decision.
+    legacy_phrase = _legacy_blocklist_phrase(title, summary)
+
+    if _INGEST_BLOCKLIST_MODE == "shadow":
+        new_phrase = _new_blocklist_phrase(title, summary)
+        if (legacy_phrase is None) != (new_phrase is None):
+            print(
+                "  BLOCKLIST_SHADOW_DIVERGENCE "
+                f"legacy={legacy_phrase!r} new={new_phrase!r} "
+                f"title={title[:120]!r} summary={summary[:160]!r}"
+            )
+
+    if legacy_phrase is not None:
+        print(f"  ⊘ Blocklist skip [{legacy_phrase!r}]: {title[:80]}")
+        return True
     return False
 
 
