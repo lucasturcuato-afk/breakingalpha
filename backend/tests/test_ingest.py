@@ -478,10 +478,10 @@ class IngestBlocklistPrecisionTest(unittest.TestCase):
             self.assertTrue(ingest.matches_ingest_blocklist(art))
 
     def test_every_phrase_is_a_true_positive_under_new(self):
-        # Each blocklist phrase, embedded contiguously in one field, still blocks
-        # under the precision matcher and reports itself.
-        for phrase in ingest._INGEST_KEYWORD_BLOCKLIST:
-            title = f"Firm release: {phrase} per the filing."
+        # Each phrase in the PRUNED set (the set the new matcher actually uses),
+        # embedded contiguously in one field, still blocks and reports itself.
+        for phrase in ingest._INGEST_KEYWORD_BLOCKLIST_PRUNED:
+            title = f"Firm release: {phrase} per the latest update."
             self.assertEqual(
                 ingest._new_blocklist_phrase(title, ""),
                 phrase,
@@ -501,6 +501,80 @@ class IngestBlocklistPrecisionTest(unittest.TestCase):
         art = {"title": "Acme takes commanding lead", "summary": "Plaintiff dropped from case"}
         with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "legacy"):
             self.assertTrue(ingest.matches_ingest_blocklist(art))
+
+
+# ---------------------------------------------------------------------------
+# 3d-ter. Blocklist phrase pruning (over-broad phrases removed/tightened).
+# Attribution: #379 skip-log replay, 14 pipeline runs / 99 unique blocked titles,
+# solo-match analysis. "new" mode uses the pruned set; "shadow" (default) keeps
+# the current set active so a deploy changes nothing and each divergence is an
+# article the pruning rescues.
+# ---------------------------------------------------------------------------
+class IngestBlocklistPruningTest(unittest.TestCase):
+    def test_removed_and_tightened_phrases(self):
+        pruned = ingest._INGEST_KEYWORD_BLOCKLIST_PRUNED
+        # Removed / tightened out of the new set...
+        self.assertNotIn("filing deadline", pruned)
+        self.assertNotIn("loss recovery", pruned)
+        self.assertNotIn("announces investigation into", pruned)
+        self.assertIn("announces investigation into fairness", pruned)
+        # ...but the current (legacy) set still carries them, so shadow is neutral.
+        self.assertIn("filing deadline", ingest._INGEST_KEYWORD_BLOCKLIST)
+        self.assertIn("loss recovery", ingest._INGEST_KEYWORD_BLOCKLIST)
+        self.assertIn("announces investigation into", ingest._INGEST_KEYWORD_BLOCKLIST)
+
+    def test_new_is_subset_of_legacy_so_newly_blocked_is_zero(self):
+        # Every pruned phrase contiguous in a field is also caught by legacy.
+        for phrase in ingest._INGEST_KEYWORD_BLOCKLIST_PRUNED:
+            self.assertIsNotNone(
+                ingest._legacy_blocklist_phrase(f"News: {phrase} reported.", ""),
+                msg=f"legacy must also catch {phrase!r} (subset guarantee)",
+            )
+
+    # filing deadline: REMOVED (the only solo match was the AMC-style legit story)
+    def test_legit_sec_filing_deadline_passes_under_new(self):
+        art = {"title": "A warrant accounting issue pushes AMC Robotics past its SEC filing deadline",
+               "summary": "The restatement delayed the quarterly report."}
+        with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "new"):
+            self.assertFalse(ingest.matches_ingest_blocklist(art))
+
+    def test_legit_sec_filing_deadline_still_blocked_under_default_shadow(self):
+        # Deploy-neutral: default shadow still actively blocks via the legacy set.
+        self.assertEqual(ingest._INGEST_BLOCKLIST_MODE, "shadow")
+        art = {"title": "A warrant accounting issue pushes AMC Robotics past its SEC filing deadline",
+               "summary": ""}
+        self.assertTrue(ingest.matches_ingest_blocklist(art))
+
+    # loss recovery: REMOVED (0 fires in the retained universe)
+    def test_legit_loss_recovery_passes_under_new(self):
+        art = {"title": "Insurer reports strong loss recovery on catastrophe claims", "summary": ""}
+        with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "new"):
+            self.assertFalse(ingest.matches_ingest_blocklist(art))
+
+    # announces investigation into: TIGHTENED to require "fairness"
+    def test_legit_corporate_investigation_disclosure_passes_under_new(self):
+        art = {"title": "Acme Corp announces investigation into data breach", "summary": ""}
+        with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "new"):
+            self.assertFalse(ingest.matches_ingest_blocklist(art))
+
+    def test_law_firm_fairness_investigation_still_blocked_under_new(self):
+        art = {"title": "Kaskela Law Firm Announces Investigation into Fairness of European Wax Center",
+               "summary": ""}
+        with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "new"):
+            self.assertTrue(ingest.matches_ingest_blocklist(art))
+
+    # surviving phrases still catch representative real spam under new
+    def test_representative_lawsuit_spam_still_blocked_under_new(self):
+        for title in (
+            "GLOB Shareholder Alert: Globant S.A. Securities Class Action Lawsuit",
+            "The Gross Law Firm Reminds Shareholders of a Lead Plaintiff Deadline of August 7",
+            "Rosen Law Firm Encourages TruBridge Investors to Inquire About Securities Class Action",
+        ):
+            with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "new"):
+                self.assertTrue(
+                    ingest.matches_ingest_blocklist({"title": title, "summary": ""}),
+                    msg=f"spam should still block under new: {title!r}",
+                )
 
 
 # ---------------------------------------------------------------------------
