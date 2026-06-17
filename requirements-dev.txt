@@ -8,3 +8,4 @@
 # These are the ONLY dev deps; runtime deps come from backend/requirements.txt.
 ruff==0.14.5
 pytest==8.4.2
+pytest-cov==7.0.0
