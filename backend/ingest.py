@@ -559,10 +559,14 @@ _INGEST_KEYWORD_BLOCKLIST_PRUNED = (
 _INGEST_BLOCKLIST_MODE = os.environ.get("INGEST_BLOCKLIST_MODE", "shadow").strip().lower()
 
 # Word-boundary patterns for the new matcher, compiled once at import (not per
-# call), from the PRUNED set. Internal whitespace stays literal; \b anchors both
-# ends.
+# call), from the PRUNED set. The LEADING \b is kept so the substring-in-word fix
+# holds ("class action" never matches inside "subclass action"). The trailing
+# boundary tolerates an optional plural "s" on the final word, so "class action
+# lawsuit" also blocks "class action lawsuits" and "securities class action" also
+# blocks "...class actions" -- closing the inflection-evasion the bare trailing \b
+# opened (legacy substring already caught plurals). Internal whitespace is literal.
 _INGEST_BLOCKLIST_PATTERNS = tuple(
-    (phrase, re.compile(r"\b" + re.escape(phrase) + r"\b", re.IGNORECASE))
+    (phrase, re.compile(r"\b" + re.escape(phrase) + r"s?\b", re.IGNORECASE))
     for phrase in _INGEST_KEYWORD_BLOCKLIST_PRUNED
 )
 

@@ -578,6 +578,62 @@ class IngestBlocklistPruningTest(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# 3d-quater. Plural / inflection tolerance under "new".
+# The word-boundary matcher must still catch the plural spam form (the bare \b
+# let "class action lawsuits" evade "class action lawsuit"), while keeping the
+# leading \b so the substring-in-word fix holds.
+# ---------------------------------------------------------------------------
+class IngestBlocklistInflectionTest(unittest.TestCase):
+    # (phrase as listed, singular surface form, plural surface form)
+    AFFECTED = (
+        ("securities class action", "securities class action", "securities class actions"),
+        ("class action lawsuit", "class action lawsuit", "class action lawsuits"),
+        ("shareholder lawsuit", "shareholder lawsuit", "shareholder lawsuits"),
+        ("lead plaintiff deadline", "lead plaintiff deadline", "lead plaintiff deadlines"),
+        ("lead plaintiff", "lead plaintiff", "lead plaintiffs"),
+        ("securities fraud investigation", "securities fraud investigation",
+         "securities fraud investigations"),
+    )
+
+    def test_singular_and_plural_both_block_under_new(self):
+        for canonical, singular, plural in self.AFFECTED:
+            self.assertIn(canonical, ingest._INGEST_KEYWORD_BLOCKLIST_PRUNED)
+            for form in (singular, plural):
+                self.assertIsNotNone(
+                    ingest._new_blocklist_phrase(f"Stock alert: {form} filed today", ""),
+                    msg=f"new matcher must block {form!r}",
+                )
+
+    def test_plural_phrase_reports_canonical_phrase(self):
+        # The function returns the canonical tuple phrase, not the matched surface.
+        self.assertEqual(
+            ingest._new_blocklist_phrase("New class action lawsuits filed", ""),
+            "class action lawsuit",
+        )
+
+    def test_leading_boundary_preserved_no_substring_in_word(self):
+        # The plural "s?" must NOT relax the LEADING boundary: a phrase inside a
+        # larger leading word still does not match.
+        self.assertIsNone(
+            ingest._new_blocklist_phrase("A subclass action lawsuit framework", "")
+        )
+
+    def test_trailing_boundary_not_overgreedy(self):
+        # "s?" tolerates only a single trailing plural s, then a boundary; it must
+        # not match a longer different word ("lawsuited", "investigationary").
+        self.assertIsNone(ingest._new_blocklist_phrase("class action lawsuited nonsense", ""))
+        self.assertIsNone(
+            ingest._new_blocklist_phrase("securities fraud investigationary memo", "")
+        )
+
+    def test_plural_spam_blocks_under_new_real_form(self):
+        art = {"title": "Zillow faces multiple securities class actions and shareholder lawsuits",
+               "summary": ""}
+        with patch.object(ingest, "_INGEST_BLOCKLIST_MODE", "new"):
+            self.assertTrue(ingest.matches_ingest_blocklist(art))
+
+
+# ---------------------------------------------------------------------------
 # 3e. HTML stripping (strip_html)
 # ---------------------------------------------------------------------------
 class StripHtmlTest(unittest.TestCase):
