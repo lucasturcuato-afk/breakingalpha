@@ -1,0 +1,45 @@
+name: Verify Python (backend)
+
+# Runs the SAME gate as local `scripts/verify-py.sh`: ruff must-fix tier plus the
+# pytest import smoke, on Python 3.11 (the interpreter CI and run.py use). This is
+# lint + tests ONLY. No secrets, no env, no deploy, and it never invokes run.py or
+# the pipeline. The script builds its own .venv and pip-installs pinned deps; the
+# only egress is pypi.
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'requirements*.txt'
+      - 'ruff.toml'
+      - 'scripts/verify-py.sh'
+      - '.github/workflows/verify-py.yml'
+
+# Cancel superseded runs on the same PR branch so only the latest commit's gate
+# keeps running.
+concurrency:
+  group: verify-py-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: the gate only reads the checked-out code.
+permissions:
+  contents: read
+
+jobs:
+  verify-py:
+    name: ruff + pytest smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            requirements-dev.txt
+
+      - name: Run verify-py gate
+        run: bash scripts/verify-py.sh
