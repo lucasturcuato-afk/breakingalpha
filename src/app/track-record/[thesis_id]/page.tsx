@@ -241,10 +241,10 @@ export default function ThesisDetailPage() {
             What Signalera monitors for this thesis
           </h2>
           <p className="font-sans text-[12px] text-text-secondary leading-relaxed">
-            Signalera grades this thesis daily on these dimensions:
+            Signalera reviews this thesis daily on these dimensions:
           </p>
           <ol className="font-sans text-[12px] text-text-primary leading-relaxed space-y-1.5 list-decimal list-inside">
-            <li><span className="font-semibold">Price action</span>: daily price movement of {thesis.ticker || "the asset"} at each grading check</li>
+            <li><span className="font-semibold">Price action</span>: daily price movement of {thesis.ticker || "the asset"} at each review</li>
             <li><span className="font-semibold">News sentiment</span>: directional lean across supporting articles</li>
             <li><span className="font-semibold">Supporting evidence</span>: count of articles supporting vs contradicting the thesis</li>
             <li><span className="font-semibold">Grader confidence</span>: computed only when a terminal verdict is reached</li>
@@ -294,14 +294,14 @@ export default function ThesisDetailPage() {
           </section>
         )}
 
-        {/* SECTION 5: Grading Timeline */}
+        {/* SECTION 5: Review Timeline */}
         <section className="bg-white rounded-xl border border-border-base p-5">
           <h2 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold mb-3">
-            Grading Timeline
+            Review Timeline
           </h2>
           {verdicts.length === 0 ? (
             <p className="font-sans text-[12px] text-text-muted">
-              No verdicts yet, awaiting first grading run.
+              No verdicts yet, awaiting first review.
             </p>
           ) : (
             <div className="space-y-3">
@@ -502,14 +502,14 @@ function WatchingFor({ live, thesis, verdicts }: { live: LiveScoreResult; thesis
         </li>
         <li className="flex items-start gap-2">
           <span className="text-text-faint mt-0.5">•</span>
-          <span>Next grading run: tonight at 8:10 PM PT (global daily run)</span>
+          <span>Next review: tonight at 8:10 PM PT (global daily run)</span>
         </li>
         <li className="flex items-start gap-2">
           <span className="text-text-faint mt-0.5">•</span>
           <span>
             Signalera&apos;s grader reaches a terminal verdict (Supported or Challenged) when
             it has accumulated sufficient evidence, typically requires multiple supporting
-            articles and consistent price action across grading runs
+            articles and consistent price action across reviews
           </span>
         </li>
       </ul>

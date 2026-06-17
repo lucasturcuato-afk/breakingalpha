@@ -332,13 +332,13 @@ export default function TrackRecordPage() {
               {formattedLastUpdated && (
                 <>
                   <span className="text-text-faint">·</span>
-                  <span>Last graded {formattedLastUpdated}</span>
+                  <span>Last reviewed against evidence {formattedLastUpdated}</span>
                 </>
               )}
               <span className="text-text-faint">·</span>
               <span className="inline-flex items-center gap-1 text-gold">
                 <Clock size={11} className="text-gold" />
-                Next run 8:10 PM PT daily
+                Next review 8:10 PM PT daily
               </span>
             </p>
           )}
@@ -353,7 +353,7 @@ export default function TrackRecordPage() {
               <div className="flex items-center gap-3">
                 <span className="font-sans text-[11px] text-text-primary">
                   <span className="font-data font-semibold">{awaitingCount}</span>{" "}
-                  {awaitingCount === 1 ? "thesis" : "theses"} awaiting first grading run
+                  {awaitingCount === 1 ? "thesis" : "theses"} awaiting first review
                   {overdueCount > 0 ? ` · ${overdueCount} overdue` : ""}
                 </span>
                 <span className="text-text-muted">|</span>
@@ -382,7 +382,7 @@ export default function TrackRecordPage() {
                 label="Theses tracked"
                 loading={loading}
                 headline={`${totalCount} active ${totalCount === 1 ? "thesis" : "theses"}`}
-                subline={awaitingCount > 0 ? `${awaitingCount} awaiting first grading run${overdueCount > 0 ? ` · ${overdueCount} overdue` : ""}` : undefined}
+                subline={awaitingCount > 0 ? `${awaitingCount} awaiting first review${overdueCount > 0 ? ` · ${overdueCount} overdue` : ""}` : undefined}
                 footer="Daily updates at 8:10 PM PT"
               />
               <StatusCard
