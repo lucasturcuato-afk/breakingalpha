@@ -1,5 +1,5 @@
 /**
- * score-presentation.ts — Plain-language conversion of live_score components.
+ * score-presentation.ts: Plain-language conversion of live_score components.
  *
  * Converts numeric component values into human-readable sentences for the
  * thesis detail page. Uses actual data from signal_breakdown where available.
@@ -59,17 +59,17 @@ export function priceToSentence(value: number, ctx: PresentationContext): Compon
     const pctFormatted = `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`;
     const ticker = ctx.ticker || "stock";
     if (value > 5) {
-      sentence = `${ticker} moved ${pctFormatted} on day of last grading — aligned with ${stance} call`;
+      sentence = `${ticker} moved ${pctFormatted} at last review, aligned with the ${stance} thesis`;
     } else if (value < -5) {
-      sentence = `${ticker} moved ${pctFormatted} on day of last grading — against the ${stance} call`;
+      sentence = `${ticker} moved ${pctFormatted} at last review, against the ${stance} thesis`;
     } else if (Math.abs(value) <= 5 && pct !== 0) {
-      sentence = `${ticker} moved ${pctFormatted} on day of last grading — muted signal either way`;
+      sentence = `${ticker} moved ${pctFormatted} at last review, muted signal either way`;
     } else {
-      sentence = `No significant daily move for ${ticker} at last grading`;
+      sentence = `No significant daily move for ${ticker} at last review`;
     }
   } else {
     if (stance === "neutral") {
-      sentence = "No directional stance — price component inactive";
+      sentence = "No directional stance, price component inactive";
     } else {
       sentence = "Price data unavailable for this thesis";
     }
@@ -112,15 +112,15 @@ export function ratioToSentence(value: number, ctx: PresentationContext): Compon
   if (value > 5) {
     sentence = "Supporting articles clearly outnumber contradicting ones";
   } else if (value > 0) {
-    sentence = "More supporting articles than contradicting at last grading";
+    sentence = "More supporting articles than contradicting at last review";
   } else if (value < 0) {
-    sentence = "More contradicting articles than supporting at last grading";
+    sentence = "More contradicting articles than supporting at last review";
   } else if (ctx.rawSupportingRatio === null || ctx.rawSupportingRatio === undefined) {
-    sentence = "No articles cited yet at last grading";
+    sentence = "No articles cited yet at last review";
   } else if (ctx.rawSupportingRatio === 1) {
-    sentence = "Supporting and contradicting articles balanced — no directional signal";
+    sentence = "Supporting and contradicting articles balanced, no directional signal";
   } else {
-    sentence = "No supporting or contradicting articles found at last grading";
+    sentence = "No supporting or contradicting articles found at last review";
   }
 
   return {
@@ -140,7 +140,7 @@ export function confidenceToSentence(value: number, ctx: PresentationContext): C
     const confPct = ctx.latestConfidence ? `${Math.round(ctx.latestConfidence * 100)}%` : "high";
     sentence = `Grader is ${confPct} confident in invalidation`;
   } else {
-    sentence = "Grader confidence: computed only at terminal verdict — not yet applicable";
+    sentence = "Grader confidence: computed only at terminal verdict, not yet applicable";
   }
 
   return {
@@ -156,15 +156,15 @@ export function timeDecayToSentence(value: number, ctx: PresentationContext): Co
   const pct = ctx.horizonDays > 0 ? Math.round((ctx.ageDays / ctx.horizonDays) * 100) : 0;
 
   if (value === 0) {
-    sentence = "Terminal verdict reached — no time penalty applied";
+    sentence = "Terminal verdict reached, no time penalty applied";
   } else if (ctx.ageDays > ctx.horizonDays) {
-    sentence = `Call is ${ctx.ageDays}d old against ${ctx.horizonDays}d horizon — past expiration, late penalty applied`;
+    sentence = `Thesis is ${ctx.ageDays}d old against ${ctx.horizonDays}d horizon, past expiration, late penalty applied`;
   } else if (pct >= 90) {
-    sentence = `Call is ${ctx.ageDays}d old against ${ctx.horizonDays}d horizon — nearing expiry`;
+    sentence = `Thesis is ${ctx.ageDays}d old against ${ctx.horizonDays}d horizon, nearing expiry`;
   } else if (pct >= 50) {
-    sentence = `Call is ${ctx.ageDays}d into ${ctx.horizonDays}d horizon — midway through`;
+    sentence = `Thesis is ${ctx.ageDays}d into ${ctx.horizonDays}d horizon, midway through`;
   } else {
-    sentence = `Call is fresh — ${ctx.ageDays}d of ${ctx.horizonDays}d horizon`;
+    sentence = `Thesis is fresh, ${ctx.ageDays}d of ${ctx.horizonDays}d horizon`;
   }
 
   return {

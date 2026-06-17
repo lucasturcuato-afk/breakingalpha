@@ -11,7 +11,7 @@ import {
   TrendingUp,
   Search,
   FileText,
-  Trophy,
+  LineChart,
   Clock,
   Globe,
 } from "lucide-react";
@@ -24,7 +24,7 @@ interface MobileNavItem {
 }
 
 // 5 primary items fit the 375px bottom nav comfortably. Secondary destinations
-// (Morning Brief, Evening Wrap, Company Intel, Thesis Board, Track Record) live
+// (Morning Brief, Evening Wrap, Company Intel, Thesis Board, Thesis Tracker) live
 // in the More overflow menu so every desktop nav target is reachable on mobile.
 const MOBILE_NAV: MobileNavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: <LayoutGrid size={18} /> },
@@ -39,7 +39,7 @@ const MORE_NAV: MobileNavItem[] = [
   { label: "Evening Wrap", href: "/evening-wrap", icon: <Globe size={16} /> },
   { label: "Company Intel", href: "/company", icon: <Search size={16} /> },
   { label: "Thesis Board", href: "/thesis-board", icon: <FileText size={16} /> },
-  { label: "Track Record", href: "/track-record", icon: <Trophy size={16} /> },
+  { label: "Thesis Tracker", href: "/track-record", icon: <LineChart size={16} /> },
 ];
 
 /**

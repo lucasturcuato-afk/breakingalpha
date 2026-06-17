@@ -1,5 +1,5 @@
 /**
- * Continuous in-flight thesis grading — TypeScript mirror of
+ * Continuous in-flight thesis grading, the TypeScript mirror of
  * ``backend/grading/live_score.py``. Used by the Track Record page so it
  * renders meaningful data the moment it loads, even if the
  * ``theses.live_score`` column hasn't been populated yet (or doesn't exist).
@@ -12,7 +12,7 @@
  *     Confidence boost      : -10 ..  10  (verdict-aligned: +c×10 confirmed, -c×10 invalidated)
  *     Time decay            : -10 ..   0  (only when no terminal verdict)
  *
- * Keep the constants and signs in lock-step with the Python module — the
+ * Keep the constants and signs in lock-step with the Python module. The
  * Track Record page falls back to client compute when the persisted column
  * is null, so divergence would render two different scores for the same
  * thesis.
@@ -42,7 +42,7 @@ export interface LiveScoreInput {
   generated_at?: string | null;
   signal_breakdown?: Record<string, unknown> | null;
   outcome?: TerminalVerdict;
-  // From latest thesis_verdicts row (optional — degrades gracefully).
+  // From latest thesis_verdicts row (optional, degrades gracefully).
   latest_weighted_sentiment_alignment?: number | null;
   latest_supporting_vs_contradicting_ratio?: number | null;
   latest_confidence?: number | null;
@@ -231,4 +231,46 @@ export function liveScoreChipClasses(verdict: string): string {
   if (verdict === "Tracking invalidated") return "bg-signal-dn/8 text-signal-dn italic";
   if (verdict.startsWith("Inconclusive")) return "bg-signal-warn/10 text-signal-warn italic";
   return "bg-text-faint/10 text-text-muted italic";
+}
+
+/**
+ * Display-only short label for a verdict chip. Maps deriveLiveVerdict's logic
+ * output to neutral evidence wording for rendering ONLY. The raw verdict string
+ * is still what drives counting, palette selection, and descriptor lookup, so
+ * this never feeds back into logic. Defaults to "Developing" for any unmapped
+ * or persisted live_verdict value.
+ */
+export function verdictDisplayLabel(verdict: string): string {
+  if (verdict === "Confirmed") return "Supported";
+  if (verdict === "Invalidated") return "Challenged";
+  if (verdict === "Tracking confirmed") return "Leaning supportive";
+  if (verdict === "Tracking invalidated") return "Leaning against";
+  if (verdict.startsWith("Inconclusive")) return "Inconclusive";
+  return "Developing";
+}
+
+/**
+ * Evidence lean of a verdict, for bucketing into the directional columns.
+ * Supportive = {Confirmed, Tracking confirmed}; against = {Invalidated,
+ * Tracking invalidated}; everything else (Inconclusive, Awaiting verdict, any
+ * persisted Tracking neutral) is neutral and belongs in neither column.
+ * Pure read of the raw verdict string; does not feed deriveLiveVerdict.
+ */
+export function verdictLean(verdict: string): "supportive" | "against" | "neutral" {
+  if (verdict === "Confirmed" || verdict === "Tracking confirmed") return "supportive";
+  if (verdict === "Invalidated" || verdict === "Tracking invalidated") return "against";
+  return "neutral";
+}
+
+/**
+ * Display-only neutraliser for thesis titles. Strips a single leading stance
+ * word (Long, Short, Buy, Sell, Avoid) plus its trailing space so the tracker
+ * reads as informational rather than as a recommendation. Leaves Watch,
+ * "X Re-rates", and verb-less titles untouched. Never mutates stored data;
+ * apply at render time only.
+ */
+export function neutralizeThesisTitle(title: string | null | undefined): string {
+  const s = (title ?? "").trim();
+  if (!s) return s;
+  return s.replace(/^(?:long|short|buy|sell|avoid)\b\s/i, "");
 }
