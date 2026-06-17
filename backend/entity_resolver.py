@@ -50,6 +50,11 @@ try:
 except ImportError:
     from backend.finnhub_helper import search_finnhub_ticker  # test/dev context: cwd=repo-root
 
+try:
+    from supabase_client import execute_with_retry  # cron context: cwd=backend/
+except ImportError:
+    from backend.supabase_client import execute_with_retry  # test/dev context: cwd=repo-root
+
 
 # Cap recursion in the rare hot-race case where two workers keep
 # colliding. Three attempts is extremely conservative; in practice the
@@ -262,26 +267,34 @@ def _touch_existing(
     docstring for the spec-vs-existing-behavior note).
     """
     company_rows = (
-        supabase.table("companies")
-        .select("id, key_themes")
-        .eq("id", canonical_id)
-        .execute()
-        .data
+        execute_with_retry(
+            lambda: supabase.table("companies")
+            .select("id, key_themes")
+            .eq("id", canonical_id)
+            .execute(),
+            what="companies touch select",
+        ).data
         or []
     )
     if company_rows:
         existing_themes = company_rows[0].get("key_themes") or []
         merged_themes = list(set(existing_themes + (themes or [])))
-        supabase.table("companies").update(
-            {
-                "last_updated": now_iso,
-                "key_themes": merged_themes,
-            }
-        ).eq("id", canonical_id).execute()
+        execute_with_retry(
+            lambda: supabase.table("companies").update(
+                {
+                    "last_updated": now_iso,
+                    "key_themes": merged_themes,
+                }
+            ).eq("id", canonical_id).execute(),
+            what="companies touch update",
+        )
 
-    supabase.table("aliases").update(
-        {"last_seen_at": now_iso}
-    ).eq("id", alias_id).execute()
+    execute_with_retry(
+        lambda: supabase.table("aliases").update(
+            {"last_seen_at": now_iso}
+        ).eq("id", alias_id).execute(),
+        what="aliases touch update",
+    )
 
 
 def register_entity(
@@ -322,18 +335,26 @@ def increment_mention_counts(supabase, table: str, id_to_delta: dict) -> None:
     for i in range(0, len(ids), 200):
         chunk = ids[i:i + 200]
         rows = (
-            supabase.table(table)
-            .select("id, mention_count")
-            .in_("id", chunk)
-            .execute()
-            .data
+            execute_with_retry(
+                lambda: supabase.table(table)
+                .select("id, mention_count")
+                .in_("id", chunk)
+                .execute(),
+                what=f"{table} mention-count select",
+            ).data
             or []
         )
         for r in rows:
             current[r["id"]] = r.get("mention_count") or 0
     for _id in ids:
         new_val = current.get(_id, 0) + id_to_delta[_id]
-        supabase.table(table).update({"mention_count": new_val}).eq("id", _id).execute()
+        execute_with_retry(
+            lambda _id=_id, new_val=new_val: supabase.table(table)
+            .update({"mention_count": new_val})
+            .eq("id", _id)
+            .execute(),
+            what=f"{table} mention-count update",
+        )
 
 
 def _try_insert_canonical(
