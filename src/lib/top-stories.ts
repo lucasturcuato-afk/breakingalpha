@@ -45,7 +45,18 @@ export const TOP_STORIES_CANDIDATE_LIMIT = 24;
 // docs/recon/top-stories-dedup.md for the distribution and false-collapse
 // analysis. The tokeniser mirrors src/lib/clustering-utils.ts.
 export const SAME_EVENT_TITLE_SIMILARITY = 0.5;
-export const SAME_EVENT_WINDOW_HOURS = 48;
+// A1 republish fix: widened from 48h to the content-age ceiling. The 0.5 Jaccard
+// gate is the real same-event discriminator (distinct same-ticker stories score
+// < 0.3; only syndications of ONE event reach 0.5). The old 48h window let a
+// stale event re-emitted with a fresh feed pubDate days later escape collapse and
+// surface as a separate "today" card. Since every candidate is already bounded to
+// the published_at ceiling, "within the ceiling" means any two same-ticker,
+// same-subject, title-similar rows in the pool collapse regardless of the
+// intra-window gap. FORK (morning review): this trades a slightly larger
+// false-merge exposure window (two genuinely distinct same-company events < 7d
+// apart that also clear 0.5 Jaccard) for closing the republish-staleness vector.
+// Reversible by restoring 48. See docs/recon/dashboard-display-fix.md.
+export const SAME_EVENT_WINDOW_HOURS = TOP_STORIES_MAX_AGE_DAYS * 24;
 
 export const TOP_STORIES_COLUMNS =
   "id, title, source, summary, content, sector, industry_verticals, activity_types, sentiment, published_at, ingested_at, url, companies, primary_company, relevance_score";
@@ -178,14 +189,55 @@ export function collapseSameEvent(rows: TopStoryRow[]): TopStoryRow[] {
   }
 
   return clusters
-    .map((cluster) => ({
-      firstIdx: Math.min(...cluster.map((m) => m.idx)),
-      survivor: cluster.reduce((best, curr) =>
+    .map((cluster) => {
+      const survivor = cluster.reduce((best, curr) =>
         keepWhichReplaces(curr.row, best.row) ? curr : best,
-      ).row,
-    }))
+      ).row;
+      // A1: the representative's DISPLAYED recency must reflect the EVENT age,
+      // not the freshest republish. Stamp the survivor with the earliest
+      // published_at across the cluster so timeAgo(published_at) shows when the
+      // event first broke. A singleton cluster is unchanged (its own date).
+      const eventPublishedAt = cluster
+        .map((m) => m.row.published_at)
+        .filter((p): p is string => !!p)
+        .reduce<string | null>(
+          (min, p) =>
+            min === null || new Date(p).getTime() < new Date(min).getTime() ? p : min,
+          null,
+        );
+      return {
+        firstIdx: Math.min(...cluster.map((m) => m.idx)),
+        survivor:
+          eventPublishedAt && eventPublishedAt !== survivor.published_at
+            ? { ...survivor, published_at: eventPublishedAt }
+            : survivor,
+      };
+    })
     .sort((a, b) => a.firstIdx - b.firstIdx)
     .map((c) => c.survivor);
+}
+
+// A1 freshness rank: relevance_score with an event-age penalty, so a stale event
+// cannot pin to the top tier and the top is no longer a flat block of
+// relevance-10. Event age is read from published_at, which collapseSameEvent has
+// already set to the cluster's earliest (the true event date), so a fresh-dated
+// republish is penalised by the real event age. FORK (morning review): the
+// 0.5/day penalty is a first cut (a same-day relevance-9 beats a 6-day
+// relevance-10: 9 > 10 - 6*0.5); tune against a live top set. Reversible.
+export const FRESHNESS_AGE_PENALTY_PER_DAY = 0.5;
+
+const eventAgeDays = (publishedAt: string | null): number => {
+  if (!publishedAt) return 0;
+  const days = (Date.now() - new Date(publishedAt).getTime()) / (24 * 60 * 60 * 1000);
+  return Number.isFinite(days) && days > 0 ? days : 0;
+};
+
+export function rankByFreshness(rows: TopStoryRow[]): TopStoryRow[] {
+  const score = (r: TopStoryRow): number =>
+    (r.relevance_score ?? 0) - FRESHNESS_AGE_PENALTY_PER_DAY * eventAgeDays(r.published_at);
+  // Array.prototype.sort is stable, so equal-score rows keep the collapse order
+  // (best-placed member first). Sort a copy to avoid mutating the input.
+  return [...rows].sort((a, b) => score(b) - score(a));
 }
 
 /**
@@ -233,7 +285,7 @@ export async function fetchTopStories(supabase: SupabaseClient): Promise<TopStor
   // story rather than shortening the list. The MIN_RESULTS gate now checks the
   // count of distinct stories, so a primary window thinned by collapse widens to
   // the fallback the same way an ingest drought does.
-  const primaryRows = collapseSameEvent((primary.data ?? []) as TopStoryRow[]);
+  const primaryRows = rankByFreshness(collapseSameEvent((primary.data ?? []) as TopStoryRow[]));
   if (primaryRows.length >= TOP_STORIES_MIN_RESULTS) return primaryRows.slice(0, TOP_STORIES_LIMIT);
 
   // Thin primary window (ingest drought longer than the surfacing window):
@@ -255,7 +307,7 @@ export async function fetchTopStories(supabase: SupabaseClient): Promise<TopStor
     return primaryRows.slice(0, TOP_STORIES_LIMIT);
   }
 
-  const fallbackRows = collapseSameEvent((fallback.data ?? []) as TopStoryRow[]);
+  const fallbackRows = rankByFreshness(collapseSameEvent((fallback.data ?? []) as TopStoryRow[]));
   // The fallback window is a superset of the primary, so after the identical
   // collapse it returns at least as many distinct stories; prefer it when it
   // does.

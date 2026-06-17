@@ -1,0 +1,31 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+  body{margin:0;background:#0f0f12;color:#e8e6e1;font-family:ui-sans-serif,system-ui,sans-serif;padding:24px}
+  h1{font-size:15px;margin:0 0 4px} .sub{font-size:11px;color:#9a978f;margin:0 0 18px}
+  .cols{display:flex;gap:28px} .col{flex:1}
+  .col h2{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#9a978f;margin:0 0 10px}
+  .card{background:#17171c;border:1px solid #2a2a31;border-radius:8px;padding:10px 12px;margin-bottom:8px;position:relative}
+  .rank{position:absolute;left:-18px;top:12px;font-size:10px;color:#6a6760}
+  .ttl{font-size:12px;font-weight:600;margin:0 0 6px}
+  .row{display:flex;align-items:center;gap:8px}
+  .sig{font-family:ui-monospace,monospace;font-size:10px;font-weight:700;color:#d9b25b}
+  .ts{font-family:ui-monospace,monospace;font-size:9px;color:#9a978f;margin-left:auto}
+  .flag{font-size:10px;color:#e0675a;margin-top:3px} .ok{color:#5ac878}
+</style></head><body>
+<h1>A1: republish staleness in Top Stories</h1>
+<p class="sub">Same candidate pool (one YYGH event that broke 6 days ago, re-emitted today by a fresh feed; two genuinely fresh stories). Left = current. Right = fix (event-age collapse + freshness rank).</p>
+<div class="cols">
+  <div class="col">
+    <h2>BEFORE (current main)</h2>
+    <div class="card"><span class="rank">1</span><p class="ttl">Why Is YYGH Stock Soaring Nearly 60% Premarket Today?</p><div class="row"><span class="sig">Signal: 10.0</span><span class="ts">today</span></div><p class="flag">6-day-old event, dated "today" off the republish pubDate, pinned to #1</p></div>
+    <div class="card"><span class="rank">2</span><p class="ttl">Nvidia announces record data center revenue</p><div class="row"><span class="sig">Signal: 10.0</span><span class="ts">2h ago</span></div></div>
+    <div class="card"><span class="rank">3</span><p class="ttl">Apple unveils new accelerator chip at fall event</p><div class="row"><span class="sig">Signal: 9.0</span><span class="ts">3h ago</span></div></div>
+    <div class="card"><span class="rank">4</span><p class="ttl">Why Is YYGH Stock Soaring 60%? (TradingView)</p><div class="row"><span class="sig">Signal: 9.0</span><span class="ts">today</span></div><p class="flag">syndicated duplicate of the same event not collapsed (over 48h apart)</p></div>
+  </div>
+  <div class="col">
+    <h2>AFTER (fix/republish-staleness-rank)</h2>
+    <div class="card"><span class="rank">1</span><p class="ttl">Nvidia announces record data center revenue</p><div class="row"><span class="sig">Signal: 10.0</span><span class="ts">2h ago</span></div></div>
+    <div class="card"><span class="rank">2</span><p class="ttl">Apple unveils new accelerator chip at fall event</p><div class="row"><span class="sig">Signal: 9.0</span><span class="ts">3h ago</span></div></div>
+    <div class="card"><span class="rank">3</span><p class="ttl">Why Is YYGH Stock Soaring Nearly 60% Premarket Today?</p><div class="row"><span class="sig">Signal: 10.0</span><span class="ts">6d ago</span></div><p class="flag ok">collapsed to one card, shows true event age (6d), demoted off the top tier</p></div>
+  </div>
+</div>
+</body></html>
