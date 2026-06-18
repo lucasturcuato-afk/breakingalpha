@@ -44,6 +44,70 @@ GEMINI_MODEL = "gemini-2.5-flash"
 # Flash-Lite; see the temp-0.2 confirmation in the PR.
 FILTER_MODEL = "gemini-2.5-flash-lite"
 
+# ---------------------------------------------------------------------------
+# RE-ANCHORED RELEVANCE GRADER (RELEVANCE_GRADE_MODE) -- LUCAS-REVIEWED CORE SCORER.
+#
+# The legacy relevance_score (Flash-Lite, FILTER_PROMPT rubric) saturates: 34% of
+# the stored corpus sits at exactly 10 and 94% at >=8, so the score cannot sort
+# the top band. The re-anchored grader (format-first template demotion + concrete
+# corpus-drawn bands + a true 0 floor, run on gemini-2.5-flash) spreads the
+# distribution hard (offline: stdev 1.04 -> 2.92, >=8 share 96% -> 15%, exact-10
+# 41% -> 0.8%) while keeping genuine first-order news high. Full diagnosis +
+# offline proof: docs/recon/relevance-recalibration.md.
+#
+# This is shipped behind a three-state mode modeled on INGEST_BLOCKLIST_MODE so
+# that DEFAULT (shadow) is PROD-NEUTRAL: deploying changes nothing about the
+# stored score or the >=6 ingest gate. Flipping to `new` is a human decision (it
+# changes the ingest gate semantics and the stored distribution). See the
+# flip-readiness checklist in the PR.
+#
+#   legacy -> current Flash-Lite grade is authoritative and the only one computed.
+#             >=6 ingest gate unchanged. Identical to pre-change behavior.
+#   shadow -> Flash-Lite grade STAYS authoritative (stored relevance_score and the
+#             >=6 gate are unchanged, so prod is untouched). The new Flash grade is
+#             ALSO computed for a SAMPLED fraction of LLM-graded articles and logged
+#             with the greppable tag RELEVANCE_GRADE_SHADOW (article id/title +
+#             legacy score + new score + band). Writes NOTHING new to the DB.
+#   new    -> the new Flash grade REPLACES relevance_score and the ingest gate
+#             switches to RELEVANCE_NEW_GATE (data-derived, see below).
+RELEVANCE_GRADE_MODE = os.environ.get("RELEVANCE_GRADE_MODE", "shadow").strip().lower()
+
+# The new grader runs on full Flash (not Flash-Lite): Flash-Lite is the proximate
+# cause of the high-clustering (it ignored the existing detailed LOW override at a
+# measured 0% hit rate). thinking_budget=0 keeps the cost/latency delta small.
+RELEVANCE_GRADE_MODEL = os.environ.get("RELEVANCE_GRADE_MODEL", "gemini-2.5-flash").strip()
+
+# Ingest gate UNDER `new` MODE ONLY. Data-derived from the offline distribution
+# (docs/recon/relevance-recalibration.md): the new grader's own bands map tightly
+# to score ranges -- material_first_order -> 9-10, secondary_partial (analyst
+# actions, index recaps) -> 6-7, weak (routine PR/procedural) -> 3-4, template/junk
+# -> 0-2. Genuine first-order news NEVER lands below 6 in the offline sample; a 0
+# is reserved for pure non-market news, AI-fabricated headlines, IPO recap
+# explainers, and tenuous/incidental ticker ties. Gate >=1 drops ONLY that true-0
+# floor (16/360 = 4.4% of the sample, 0 of them real news) and RETAINS everything
+# with any signal for downstream relevance RANKING (it does not drop junk at
+# ingest; junk lands low and is sorted down by the synthesis floor, the top-stories
+# ORDER BY relevance_score, and the watchlist boost). Under legacy/shadow this
+# constant is NOT consulted -- the gate stays >=6, hardcoded at the gate site.
+RELEVANCE_NEW_GATE = int(os.environ.get("RELEVANCE_NEW_GATE", "1"))
+
+# Shadow-window sampling: shadow mode pays for BOTH models (legacy Flash-Lite stays
+# authoritative AND the new Flash grade is computed). To bound that cost during the
+# observation window, the new grade is computed for only a SAMPLED fraction of
+# LLM-graded articles (default 0.10 = 10%). Set to 1.0 to dual-score every article,
+# or lower to spend less. SEC-bypassed articles are never shadow-graded (they never
+# touch the LLM). Has no effect under legacy/new.
+RELEVANCE_GRADE_SHADOW_SAMPLE_RATE = float(
+    os.environ.get("RELEVANCE_GRADE_SHADOW_SAMPLE_RATE", "0.10")
+)
+
+if RELEVANCE_GRADE_MODE not in ("legacy", "shadow", "new"):
+    print(
+        f"  [relevance-grade] unknown RELEVANCE_GRADE_MODE={RELEVANCE_GRADE_MODE!r}, "
+        "falling back to 'shadow' (prod-neutral default)"
+    )
+    RELEVANCE_GRADE_MODE = "shadow"
+
 # Per-article filter parallelism. Smoke test 3 (run 25538358541) proved that
 # Gemini response_schema constrains single-object output reliably (5 errors
 # of ~600 calls = 0.83%) but does not constrain list[Model] array output
@@ -101,7 +165,10 @@ class CompanyEntity(BaseModel):
 
 class FilterDecision(BaseModel):
     relevant: bool
-    relevance_score: int = Field(ge=1, le=10)
+    # Floor widened ge=1 -> ge=0 so the re-anchored grader (RELEVANCE_GRADE_MODE)
+    # has a true 0 anchor for pure non-market junk. Legacy Flash-Lite never emits 0
+    # (its rubric floors at 1), so this widening is behavior-neutral under legacy.
+    relevance_score: int = Field(ge=0, le=10)
     relevance_reason: str
     industry_verticals: list[str]
     activity_types: list[str]
@@ -394,6 +461,181 @@ Respond ONLY in valid JSON:
   "deal_type": "Classify as exactly one of these — apply the first definition that matches: M&A (a named buyer and a named target are identified for a single specific transaction. Sector-level deal-volume reports, league tables, and 'deals are up/down X%' stories are Macro or Other, not M&A.), IPO (a specific named operating company is going public via a primary listing. ETF launches, fund registrations, closed-end fund IPOs, secondary offerings, and SPAC over-allotment exercises after the initial listing are Other, not IPO. SPAC initial listings are IPO; subsequent de-SPAC merger announcements are M&A.), Funding (a named company is receiving investment capital — a venture round, private equity investment, debt financing, or fundraising raise; the company receiving the money determines the type), Joint-venture disambiguator (a JV is NOT its own deal_type value — always remap to one of Funding, M&A, or Other based on framing): if the article frames the JV as an investment INTO a named company that will operate as a new entity (capital flowing into a new joint vehicle), use Funding. If the article frames it as a combination of operating businesses, use M&A. If purely a commercial / sales partnership with no equity, use Other. Default to Funding when ambiguous. Earnings (ONLY a company's own officially reported financial results: revenue figures, EPS, net income, or forward guidance issued as part of a formal results announcement that has already happened. Hard exclusions, all of which map to Other: (a) pre-earnings previews, expectations, 'What's in the Offing', 'What to expect from Q__', 'Q__ Earnings: What Key Metrics Have to Say'; (b) earnings-date scheduling press releases such as 'to Report Q__ Earnings on [date]'; (c) analyst recommendations, price-target changes, upgrades, downgrades, ratings reiterations, listicles such as 'Best ___ Stocks to Buy'; (d) post-earnings opinion or thesis pieces from SeekingAlpha-style outlets that argue a buy / sell case rather than report fresh results. If the article is dated AFTER the company's most recent results and contains specific quoted EPS, revenue, or guidance numbers, label Earnings. Otherwise label Other.), Macro (central bank decisions, interest rate policy, inflation data, GDP, tariff or trade policy affecting broad markets — not specific to one company), Geopolitical (wars, sanctions, elections, cross-border disputes with market impact), Other (regulatory action, product launch, contract award, partnership announcement, legal settlement, personnel change, analyst note, market commentary — use this as a catch-all for anything that does not clearly fit the above). Return null only if the article is so general it fits none of these. Default to Other over null.",
   "primary_company": "The single company that is the MAIN ACTOR of the event this article covers — the company doing the action, not a company that is merely named or mentioned. Apply these rules in order: (1) Funding/IPO: primary_company is the company RECEIVING the investment or going public — not the investor, not a chip or technology supplier the article mentions, not a competitor named for comparison. Example: 'Mistral raises $830M to house Nvidia chips' → primary_company is Mistral, not Nvidia. (2) M&A: primary_company is the acquirer or the acquisition target — whichever is the article's central subject. Example: 'Goldman leads buyout of PortfolioCo' → primary_company is PortfolioCo (the target), not Goldman (the advisor). (3) Earnings: primary_company is the company that issued the results. (4) Commentary or market opinion: if a company's employee, analyst, or executive is quoted giving views on markets, sectors, or other companies — but the article is NOT about that company's own named event — return null. Example: 'Goldman's analyst recommends semiconductors' → null. (5) When one company is clearly driving the event and others are mentioned incidentally as suppliers, partners, advisors, or comparisons, always name the driving company. Return null only when two or more companies are genuinely co-equal actors with no single driver (e.g. a true joint venture announced by both parties equally). Never invent a name not present in the companies array. Reject and return null if the candidate primary_company is: (a) a descriptive phrase such as 'one AI chip stock', 'the company behind X', 'a Saudi delivery app'; (b) a placeholder such as 'NewCo', 'TargetCo', 'Company A'; (c) a possessive descriptor such as 'Kevin Hart's media company'; (d) a number-plus-noun headline pattern such as '1 AI Stock'; (e) a name composed only of a generic noun and an industry word."
 }}"""
+
+
+# ---------------------------------------------------------------------------
+# Re-anchored relevance grader (RELEVANCE_GRADE_MODE). Single-axis 0-10 grade with
+# format-first template demotion + concrete corpus-drawn bands + a true 0 floor.
+# Validated offline on gemini-2.5-flash (docs/recon/relevance-recalibration.md):
+# stdev 1.04 -> 2.92, >=8 share 96% -> 15%, exact-10 41% -> 0.8% (10 stays RARE,
+# reserved for exceptional first-order news), genuine first-order news retained at
+# 6-10. Returns {score, band, reason}; the other FilterDecision fields (sentiment,
+# companies, deal_type, etc.) are produced by the legacy FILTER_PROMPT and are NOT
+# re-graded here. Keep this text in sync with the offline harness NEW_PROMPT.
+# ---------------------------------------------------------------------------
+RELEVANCE_GRADE_PROMPT = """You are a buy-side analyst triaging a firehose of financial news. Score how much GENUINE, FIRST-ORDER, MARKET-MOVING SIGNAL this single article carries. A high score must be EARNED by substance and materiality, not by merely naming a real company or a real ticker. Headline-only is NOT disqualifying; a terse wire headline that reports a concrete material event still scores high. The discriminator is SUBSTANCE, not completeness.
+
+Article Title: {title}
+Source: {source}
+Summary: {summary}
+
+Score on a 0-10 integer scale using these BANDS. Walk them top-down and assign the FIRST band the article clearly fits.
+
+STEP 1 - TEMPLATE / AGGREGATOR DEMOTION (check FIRST). If the article is any of the following, it scores 0-2 NO MATTER WHAT company, deal, or figure it names. These are SEO/aggregator/opinion formats with near-zero independent signal:
+- Price-move recaps that exist only to narrate a move: "Why X stock is up/down/trading up/popped/surged/crashed/rocketing today", "Why X outpaced the market today", "Why did X just crash".
+- Buy/sell/hold listicles and screeners: "Is X a good stock to buy now", "Should you buy/sell/hold X", "N reasons to buy/sell X", "Best <sector> stocks to buy", "X is a trending stock", "Prediction: ...".
+- Named-pundit opinion / hot takes (Cramer, "Chamath flags ...", "8 stocks to watch").
+- 13D/13F/13G stake-disclosure rehashes, insider RSU/Rule 10b5-1 grant notices, AUM-update blurbs ("X's May AUM increases").
+- Algorithmic / technical-analysis content (pivot points, price forecasts, "trading systems reacting").
+- ETF/index "is it a buy" or "ETF up/down X% today" commentary with no first-order event.
+- Law-firm class-action solicitation, autocallable/structured-note notices, filing-rehash/historical-price pages.
+Even if such an article mentions a real event (e.g. "Why X popped today - on an Eli Lilly partnership"), the FORMAT is an aggregator recap, so it stays 0-2. The underlying event, if material, will arrive as its own first-order wire story which is what we want to score high.
+
+STEP 2 - if NOT demoted by Step 1, score by first-order materiality:
+9-10 = MATERIAL, NOVEL, COMPANY-SPECIFIC FIRST-ORDER EVENT reported as news: M&A with a named acquirer AND target ("LongRange to acquire Pizza Hut for $1.2bn"), IPO pricing/filing/debut with named size (a CONFIRMED IPO that has PRICED, is imminently pricing, or has set a record size is real first-order news even if the listing has not opened yet - "Applied A&D to raise $650M in US IPO", "Company prices $75bn IPO, largest of all time"), earnings RESULT with named figures or a record/miss ("Nvidia posts record quarter, reveals $43B holdings"), a named financing round into a named company ("Boyne Capital backs Local Boys Outfitters"), guidance raise/cut with figures, a named regulatory action against the company, a named major contract/product launch with revenue or contract value, a market-structurally significant macro/geopolitical shock with concrete levels ("oil drops below $108 after Trump Iran remarks").
+RESERVE 10 for the genuinely EXCEPTIONAL and unambiguous: a major M&A or financing with hard figures, a record print or record-setting raise, a clearly market-moving macro or geopolitical shock with concrete levels. 10 must stay RARE - if the item is material but routine-material, or its figures/parties are partial, score 9, not 10.
+6-8 = REAL BUT SECONDARY or PARTIAL signal: a genuine analyst ACTION by a named firm (initiation, upgrade, downgrade, price-target change - "UBS raises Oracle PT") scores 6-7 and NEVER higher; a first-order event named but missing concrete figures/parties scores 7-8; a factual daily market/index session recap ("Dow and Nasdaq closed higher") scores 6; a sector trend citing the company as a named exemplar scores 7.
+3-5 = WEAK signal: a real but routine/procedural item (earnings-date scheduling, routine partnership with no figures, minor personnel move), or a first-order event so thinly sourced or tangential the market would not act on it.
+0-2 = Step-1 template/aggregator/opinion content, OR pure non-market news, OR a tenuous/mis-tagged company tie where the ticker is incidental.
+
+Do NOT cluster on round numbers. Use the full range. Most aggregator and gnews-outlet items SHOULD land 0-5; reserve 9-10 for genuinely material first-order news and 10 for the exceptional. Score signal, not headline excitement.
+
+Return JSON: {{"score": <int 0-10>, "band": "<one of: material_first_order|secondary_partial|weak|template_demoted>", "reason": "<max 20 words: name the concrete event you scored on, or the template pattern you demoted on>"}}"""
+
+
+_RELEVANCE_BANDS = (
+    "material_first_order",
+    "secondary_partial",
+    "weak",
+    "template_demoted",
+)
+
+
+class RelevanceGrade(BaseModel):
+    score: int = Field(ge=0, le=10)
+    band: Literal["material_first_order", "secondary_partial", "weak", "template_demoted"]
+    reason: str
+
+
+def _clamp_relevance_score(value) -> Optional[int]:
+    """Coerce a model-returned score to an int in [0, 10], or None if unparseable.
+
+    Guards the re-anchored grader against out-of-range or non-integer output the
+    response_schema did not fully constrain (e.g. a float, a numeric string, or a
+    value past the ceiling). Returns None on anything that is not a finite number
+    so the caller can fall back to the legacy grade rather than store garbage."""
+    try:
+        n = int(round(float(value)))
+    except (TypeError, ValueError):
+        return None
+    return max(0, min(10, n))
+
+
+def grade_relevance(article):
+    """Run the re-anchored relevance grader on one article (gemini-2.5-flash,
+    thinking_budget=0). Returns {"score": int, "band": str, "reason": str} with the
+    score clamped to [0, 10], or None on failure (caller falls back to legacy).
+
+    This is intentionally SEPARATE from filter_article: it re-grades ONLY the
+    relevance number; sentiment/companies/deal_type stay on the legacy classifier."""
+    prompt = RELEVANCE_GRADE_PROMPT.format(
+        title=article["title"],
+        summary=(article.get("summary") or "")[:600],
+        source=article["source"],
+    )
+
+    def _call():
+        return gemini_client.models.generate_content(
+            model=RELEVANCE_GRADE_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.2,
+                max_output_tokens=2048,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                response_mime_type="application/json",
+                response_schema=RelevanceGrade,
+            ),
+        )
+
+    delay = 1.0
+    for attempt in range(FILTER_MAX_RATE_RETRIES + 1):
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
+                response = _ex.submit(_call).result(timeout=30)
+            _accumulate_filter_usage(response)
+            text = (response.text or "").strip()
+            if text.startswith("```"):
+                text = text.split("```")[1]
+                if text.startswith("json"):
+                    text = text[4:]
+            parsed = json.loads(text.strip())
+            score = _clamp_relevance_score(parsed.get("score"))
+            if score is None:
+                print(f"  [relevance-grade] unparseable score {parsed.get('score')!r}, dropping")
+                return None
+            band = parsed.get("band")
+            if band not in _RELEVANCE_BANDS:
+                band = "unknown"
+            return {"score": score, "band": band, "reason": (parsed.get("reason") or "")[:200]}
+        except Exception as ex:
+            if _is_rate_limit_error(ex) and attempt < FILTER_MAX_RATE_RETRIES:
+                sleep_s = min(delay, 30.0) + random.uniform(0, 0.5)
+                print(
+                    f"  [relevance-grade:rate-limit] backoff {sleep_s:.1f}s "
+                    f"(attempt {attempt + 1}/{FILTER_MAX_RATE_RETRIES})"
+                )
+                time.sleep(sleep_s)
+                delay *= 2
+                continue
+            print(f"  [relevance-grade] error: {ex}")
+            return None
+
+
+def apply_relevance_grade(article, result):
+    """Apply RELEVANCE_GRADE_MODE to one (article, legacy_result) pair IN PLACE.
+
+    Called once per article AFTER the legacy filter decision is known and BEFORE
+    the ingest gate. `result` is the legacy FilterDecision dict (or None). Behavior
+    by mode:
+      legacy -> no-op. Legacy relevance_score is authoritative.
+      shadow -> legacy score STAYS authoritative; for a sampled fraction of
+                LLM-graded (non-SEC) articles, also compute the new grade and log
+                RELEVANCE_GRADE_SHADOW. Mutates nothing on `result`.
+      new    -> overwrite result["relevance_score"] with the new grade (falls back
+                to the legacy score if the grader fails).
+
+    Returns `result` (possibly mutated under `new`). SEC-bypassed results carry a
+    deterministic relevance_reason marker and are never re-graded (they never hit
+    the LLM and their scores are pinned by item code)."""
+    if result is None or RELEVANCE_GRADE_MODE == "legacy":
+        return result
+
+    is_sec = "deterministic SEC bypass" in (result.get("relevance_reason") or "")
+
+    if RELEVANCE_GRADE_MODE == "shadow":
+        if is_sec:
+            return result
+        if random.random() >= RELEVANCE_GRADE_SHADOW_SAMPLE_RATE:
+            return result
+        grade = grade_relevance(article)
+        if grade is not None:
+            print(
+                "  RELEVANCE_GRADE_SHADOW "
+                f"id={article.get('url', '')[:80]!r} "
+                f"legacy={result.get('relevance_score')} new={grade['score']} "
+                f"band={grade['band']} "
+                f"title={(article.get('title') or '')[:100]!r}"
+            )
+        return result
+
+    # new: the re-anchored grade becomes authoritative. SEC stays deterministic.
+    if is_sec:
+        return result
+    grade = grade_relevance(article)
+    if grade is not None:
+        result["relevance_score"] = grade["score"]
+        result["relevance_band"] = grade["band"]
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1736,9 +1978,31 @@ def run_ingestion():
     results, n_sec, n_llm = _apply_filter_with_sec_bypass(fresh, filter_articles)
     print(f"  [3/4] DONE: {n_sec} SEC pinned (no Gemini), Gemini filter on {n_llm} "
           f"in {time.time() - t:.2f}s")
+
+    # Re-anchored relevance grader (RELEVANCE_GRADE_MODE). DEFAULT shadow is
+    # prod-neutral: it leaves relevance_score and the >=6 gate untouched and only
+    # logs RELEVANCE_GRADE_SHADOW divergence on a sampled fraction. `new` replaces
+    # the score and switches the gate to RELEVANCE_NEW_GATE. `legacy` is a no-op.
+    # Runs across the same shared parallel pool as the filter so the extra Flash
+    # calls do not serialize. SEC-bypassed and None results are skipped inside
+    # apply_relevance_grade. The gate below reads the (possibly-updated) score.
+    if RELEVANCE_GRADE_MODE != "legacy":
+        tg = time.time()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=FILTER_PARALLEL_WORKERS) as _gpool:
+            list(_gpool.map(lambda pair: apply_relevance_grade(pair[0], pair[1]),
+                            list(zip(fresh, results))))
+        print(f"  [3/4] relevance-grade mode={RELEVANCE_GRADE_MODE} "
+              f"(shadow_sample_rate={RELEVANCE_GRADE_SHADOW_SAMPLE_RATE}) "
+              f"applied in {time.time() - tg:.2f}s")
+
+    # Ingest gate. Under legacy/shadow it is the unchanged >=6 (so deploying the
+    # shadow default changes nothing in prod). Under `new` it switches to the
+    # data-derived RELEVANCE_NEW_GATE (>=1: drop only the true-0 junk floor, retain
+    # everything with any signal for downstream relevance ranking).
+    ingest_gate = RELEVANCE_NEW_GATE if RELEVANCE_GRADE_MODE == "new" else 6
     relevant = []
     for a, result in zip(fresh, results):
-        if result and result.get("relevant") and result.get("relevance_score", 0) >= 6:
+        if result and result.get("relevant") and result.get("relevance_score", 0) >= ingest_gate:
             relevant.append((a, result))
             print(f"  ✓ [{result['relevance_score']}/10] [{result.get('sector','?')[:20]}] {a['title'][:60]}...")
 
