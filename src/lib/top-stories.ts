@@ -1,4 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  type StaleRepublishMode,
+  type StaleVerdict,
+  resolveStaleRepublishMode,
+} from "./stale-republish.ts";
 
 // Single source of truth for the dashboard and preview "Top Stories" modules.
 // relevance_score is computed once at ingest and never decayed, so ordering by
@@ -261,4 +266,73 @@ export async function fetchTopStories(supabase: SupabaseClient): Promise<TopStor
   // does.
   const chosen = fallbackRows.length >= primaryRows.length ? fallbackRows : primaryRows;
   return chosen.slice(0, TOP_STORIES_LIMIT);
+}
+
+// ---------------------------------------------------------------------------
+// STALE-REPUBLISH RANK PENALTY (DEFAULT OFF -- Lucas-reviewed core ranking)
+// ---------------------------------------------------------------------------
+//
+// CORE-RANKING FLAG: this is the active-path rank hook for the stale-republish
+// detector (src/lib/stale-republish.ts). It is gated on STALE_REPUBLISH_MODE and
+// is a strict no-op unless mode === "active". In off/shadow (shadow is the
+// default) applyStaleRankPenalty returns the input rows untouched and in the
+// SAME order, so merging this changes prod ranking by zero. Flipping to active
+// is a human (Lucas) decision; see the recon doc Phase D.
+//
+// WHY A PENALTY, NOT JUST RE-DATING. fetchTopStories orders by relevance_score
+// first. A stale republish carries a SATURATED relevance_score (the canonical
+// YYGH case is relevance 10), so correcting its displayed recency to the inferred
+// event date does NOT sink it: a relevance-10 row stays at the top of a
+// relevance-primary sort regardless of its date. Only a targeted rank penalty,
+// keyed on the CORRECTED (inferred) date, de-pins it. This is exactly the residual
+// the signal-blend freshness penalty (article-signal-score.ts eventAgeDays) calls
+// out as unhandled "the republish-dated-today case".
+//
+// HOW. For each flagged row we compute an effective-age penalty from the inferred
+// event date (days stale * PENALTY_PER_STALE_DAY) and subtract it from an
+// effective relevance used ONLY for re-sorting here (the stored relevance_score is
+// never mutated). A row inferred to be 6 days stale drops by 6 * 1.5 = 9 points,
+// pushing a relevance-10 republish below fresh relevance-7+ content. The sort is
+// stable and total-ordered (id asc final key) so it is deterministic.
+
+// Per stale-day relevance penalty. Sized so a multi-day-stale republish (the
+// YYGH 6-day case) sinks below the fresh top band, while a 1-day re-date barely
+// perturbs ordering. Tune in the shadow window before flipping.
+export const PENALTY_PER_STALE_DAY = 1.5;
+
+/** Days between the inferred event date and now, floored at 0. */
+function staleDays(inferredEventDate: string | null): number {
+  if (!inferredEventDate) return 0;
+  const ms = Date.now() - new Date(`${inferredEventDate}T00:00:00.000Z`).getTime();
+  const d = ms / 86_400_000;
+  return Number.isFinite(d) && d > 0 ? d : 0;
+}
+
+/**
+ * Re-rank rows applying the stale-republish penalty. PURE NO-OP unless
+ * mode === "active": in off/shadow it returns the input array order unchanged.
+ * `verdicts` maps article id -> Layer 1 verdict (computed by the caller via
+ * evaluateStaleRepublish). Only rows whose verdict is stale are penalized; all
+ * others keep their effective relevance. Stable, deterministic ordering.
+ */
+export function applyStaleRankPenalty(
+  rows: TopStoryRow[],
+  verdicts: Map<string, StaleVerdict>,
+  mode: StaleRepublishMode = resolveStaleRepublishMode(),
+): TopStoryRow[] {
+  if (mode !== "active") return rows;
+  const effRelevance = (row: TopStoryRow): number => {
+    const base = row.relevance_score ?? -Infinity;
+    const v = verdicts.get(row.id);
+    if (v?.stale && v.inferredEventDate) {
+      return base - PENALTY_PER_STALE_DAY * staleDays(v.inferredEventDate);
+    }
+    return base;
+  };
+  // Decorate with the original index to make the sort stable and to break ties
+  // exactly the way the SQL order did (relevance desc, then original order).
+  return rows
+    .map((row, idx) => ({ row, idx, eff: effRelevance(row) }))
+    .sort((a, b) => (b.eff !== a.eff ? b.eff - a.eff : a.idx - b.idx))
+    .map((d) => d.row);
 }
