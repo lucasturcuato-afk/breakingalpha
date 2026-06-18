@@ -35,6 +35,9 @@ export interface MacroPanelData {
   periods?: Record<string, string>;
   fired_today?: string[];
   read?: string | null;
+  // Scheduled-catalyst strip data (backend/event_calendar.py). Optional and
+  // additive: rides in the same macro_panel JSON, rendered by CatalystStrip.
+  catalysts?: import("./CatalystStrip").CatalystItem[];
 }
 
 interface MacroPanelProps {

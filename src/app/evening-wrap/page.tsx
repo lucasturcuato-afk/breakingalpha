@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { AppShell } from "@/components/shell";
 import { PanelWidget } from "@/components/shell/right-panel";
 import { TickerStrip } from "@/components/brief/ticker-strip";
+import CatalystStrip, { type CatalystItem } from "@/components/brief/CatalystStrip";
 import { MorningReview } from "@/components/brief/morning-review";
 import { ExportMenu } from "@/components/brief/export-menu";
 import { ShareButton } from "@/components/brief/share-button";
@@ -105,6 +106,7 @@ interface BriefingData {
     headlines?: Array<{ title: string; href?: string }>;
   } | null;
   morning_review?: MorningReviewShape | null;
+  macro_panel?: { catalysts?: CatalystItem[] } | null;
 }
 
 function storyToContent(story: StoryData): ContentDescriptor {
@@ -266,6 +268,12 @@ export default function EveningWrapPage() {
             b.morning_review && typeof b.morning_review === "object"
               ? (b.morning_review as MorningReviewShape)
               : null;
+          const macroPanel = (() => {
+            const m = b.macro_panel;
+            if (!m) return null;
+            if (typeof m === "string") { try { return JSON.parse(m); } catch { return null; } }
+            return m;
+          })();
           setBriefing({
             id: b.id,
             headline: b.headline,
@@ -279,6 +287,7 @@ export default function EveningWrapPage() {
             created_at: b.created_at,
             market_pulse: marketPulse,
             morning_review: morningReview,
+            macro_panel: macroPanel,
           });
           setIsStale(data.is_stale === true);
           if (data.last_attempt_status) setLastRunStatus(data.last_attempt_status);
@@ -1147,6 +1156,14 @@ export default function EveningWrapPage() {
             {/* ── Tomorrow's Setup — dual mode. Narrative prose card when
                 the backend delivers a single paragraph; structured row
                 list when it delivers multiple <p>-separated events. ── */}
+            {/* Scheduled-catalyst strip (FOMC / CPI / PCE / jobs into tomorrow
+                and ahead). Rides in macro_panel.catalysts; empty renders nothing. */}
+            {briefing?.macro_panel?.catalysts?.length ? (
+              <section style={{ marginBottom: 36 }}>
+                <CatalystStrip catalysts={briefing.macro_panel.catalysts} />
+              </section>
+            ) : null}
+
             {tomorrowSetupContent && tomorrowSetupContent.trim() && (
               <section style={{ marginBottom: 40 }}>
                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 8 }}>
