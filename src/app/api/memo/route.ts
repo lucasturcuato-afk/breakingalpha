@@ -10,6 +10,7 @@ import {
   resolveMemoCompanyIdentifiers,
   supabaseCompanyLookup,
 } from "@/lib/memo-company-canonical";
+import { enforceBriefVoice } from "@/lib/brief-voice-guard";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -524,9 +525,51 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      const memo = completion.text;
+      let memo = completion.text;
       if (!memo) {
         return NextResponse.json({ error: "Gemini returned empty memo, retry" }, { status: 500 });
+      }
+
+      // Brief voice compliance guard (company brief only). Deterministic
+      // post-parse scan for first person and reader-directed recommendation /
+      // exposure language, then one bounded re-ask, then safe fallback. The
+      // prompt VOICE REGISTER + INFORMATIONAL ONLY rules are the first line of
+      // defense; this guard is what makes them hold when the model drifts.
+      // Modeled on the PR #385 opener guard. Non-fatal: never throws, never
+      // blocks the response.
+      if (type === "company" || type === "company-web") {
+        const enforced = await enforceBriefVoice(memo, {
+          regenerate: async (correction) => {
+            try {
+              const redo = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: [{ role: "user", parts: [{ text: truncated }] }],
+                config: {
+                  systemInstruction: `${augmentedSystem}\n\n${correction}`,
+                  temperature: 0.2,
+                  maxOutputTokens,
+                  thinkingConfig: { thinkingBudget: 0 },
+                },
+              });
+              return redo.text ?? null;
+            } catch (e) {
+              console.warn("[memo] voice guard re-ask failed (non-fatal):", e);
+              return null;
+            }
+          },
+        });
+        if (enforced.reasked) {
+          console.warn(
+            "[memo] voice guard re-asked",
+            JSON.stringify({
+              type,
+              still_violating: enforced.stillViolating,
+              first_person: enforced.violationsBefore.firstPerson,
+              recommendations: enforced.violationsBefore.recommendations,
+            }),
+          );
+        }
+        memo = enforced.memo;
       }
 
       // WD126: derive the company cache key — prefer explicit `company` field,
