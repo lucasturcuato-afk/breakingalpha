@@ -1707,6 +1707,24 @@ def run(brief_type="morning"):
     if brief_type in ("morning", "evening"):
         system, tape_regime = _maybe_inject_tape_directive(brief_type, system)
 
+    # --- Scheduled-catalyst injection (deterministic floor + live FRED actuals).
+    # The static floor (FOMC + dot plot, CPI / PCE / NFP) is the guaranteed
+    # schedule; the live layer enriches with reported values and soft-fails to the
+    # floor (see event_calendar.py). Values are framed as reported market data,
+    # never a Signalera prediction. Stashed for the render strip, which rides in
+    # macro_panel.catalysts (no new column, no migration).
+    catalyst_list = []
+    _catalyst_block = ""
+    try:
+        import event_calendar
+        _cat_asof = (datetime.now(timezone.utc) - timedelta(hours=5)).date()
+        catalyst_list = event_calendar.get_catalysts(_cat_asof, brief_type)
+        if catalyst_list:
+            _catalyst_block = event_calendar.build_catalyst_block(catalyst_list, _cat_asof, brief_type)
+            print(f"  🗓 Prepared {len(catalyst_list)} scheduled catalyst(s)")
+    except Exception as e:
+        print(f"  ⚠ catalyst prep skipped (non-fatal): {e}")
+
     # --- Feedback loop: prepend cached brief improvement addendum ----------
     brief_addendum_used = None
     try:
@@ -1737,6 +1755,14 @@ def run(brief_type="morning"):
     if engagement_ctx:
         system = engagement_ctx + "\n\n" + system
         print(f"  📈 Injected {len(engagement_ctx)}-char user engagement context")
+
+    # Prepend the scheduled-catalyst block OUTERMOST (highest attention) so an
+    # imminent FOMC / key print is the first directive the model reads. The render
+    # strip is the deterministic visibility guarantee; this is best-effort narrative
+    # surfacing.
+    if _catalyst_block:
+        system = _catalyst_block + system
+        print(f"  🗓 Injected scheduled-catalyst block ({len(catalyst_list)} event(s), outermost)")
 
     # Bounded retry: a single transient model error or rate limit no longer
     # stubs the whole brief (see _generate_brief_json). Returns None only after
@@ -2049,6 +2075,33 @@ def run(brief_type="morning"):
                 print("  ⚠ macro_panel skipped: data layers returned no releases")
         except Exception as e:
             print(f"[synthesize] macro_panel attach failed (non-fatal): {e}")
+
+    # --- Attach scheduled catalysts to the render strip (both modes, soft-fail).
+    # Rides inside the existing macro_panel JSONB column: briefing/route.ts uses
+    # select("*") and spreads ...raw, so this reaches the frontend with no new
+    # column and no migration. Merges into any macro_panel written above so the
+    # morning releases are preserved.
+    if brief_id and not brief_is_stub and catalyst_list:
+        try:
+            import event_calendar
+            _cat_payload = event_calendar.to_render_payload(catalyst_list, _cat_asof)
+            existing = {}
+            try:
+                _r = (
+                    supabase.table("briefings").select("macro_panel")
+                    .eq("id", brief_id).limit(1).execute()
+                )
+                if _r.data and isinstance(_r.data[0].get("macro_panel"), dict):
+                    existing = _r.data[0]["macro_panel"]
+            except Exception:
+                existing = {}
+            merged = {**existing, "catalysts": _cat_payload}
+            supabase.table("briefings").update(
+                {"macro_panel": merged}
+            ).eq("id", brief_id).execute()
+            print(f"  🗓 Attached {len(_cat_payload)} catalyst(s) to {brief_type} brief {brief_id}")
+        except Exception as e:
+            print(f"[synthesize] catalyst attach failed (non-fatal): {e}")
 
     # Return brief text and addendum metadata for downstream consumers
     # (e.g. brief_feedback_loop.score_brief in run.py)

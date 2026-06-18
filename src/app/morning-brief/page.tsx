@@ -12,6 +12,7 @@ import type { WatchlistBriefSection as WatchlistSectionData } from "@/lib/watchl
 import { DCAnalystSection } from "@/components/brief/dc-analyst-section";
 import { DCSectorSignals } from "@/components/brief/dc-sector-signals";
 import MacroPanel, { type MacroPanelData } from "@/components/brief/MacroPanel";
+import CatalystStrip from "@/components/brief/CatalystStrip";
 import { ActiveThesesWidget } from "@/components/dashboard/active-theses-widget";
 import { WatchlistWidget } from "@/components/dashboard/watchlist-widget";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
@@ -1372,6 +1373,14 @@ export default function MorningBriefPage() {
             {briefing.macro_panel?.releases?.length ? (
               <section style={{ marginBottom: 28 }}>
                 <MacroPanel panel={briefing.macro_panel} />
+              </section>
+            ) : null}
+
+            {/* Scheduled-catalyst strip (FOMC / CPI / PCE / jobs). Rides in
+                macro_panel.catalysts; renders nothing when empty. */}
+            {briefing.macro_panel?.catalysts?.length ? (
+              <section style={{ marginBottom: 28 }}>
+                <CatalystStrip catalysts={briefing.macro_panel.catalysts} />
               </section>
             ) : null}
 
