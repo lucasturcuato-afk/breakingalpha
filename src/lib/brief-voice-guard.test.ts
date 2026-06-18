@@ -94,6 +94,13 @@ test("recommendation: near-misses do NOT false-positive", () => {
   assert.equal(v.recommendations.length, 0, JSON.stringify(v.recommendations));
 });
 
+test("recommendation: 'sold off', space-separated 'sell off', and 'buyout' do NOT false-positive", () => {
+  const v = detectVoiceViolations(
+    "The stock sold off hard, a leveraged buyout closed, and the sell off deepened.",
+  );
+  assert.equal(v.recommendations.length, 0, JSON.stringify(v.recommendations));
+});
+
 // ---------------------------------------------------------------------------
 // Clean brief passes whole
 // ---------------------------------------------------------------------------
@@ -139,39 +146,62 @@ test("enforce: violating brief re-asks once and adopts a clean rewrite", async (
   assert.ok(res.violationsBefore.firstPerson.includes("we"));
 });
 
-test("enforce: persistent violation falls back to least-violating and flags it", async () => {
-  let calls = 0;
-  const dirty = "We recommend increasing exposure and we expect buyers.";
-  const lessDirty = "Filings point to increasing exposure risk."; // 1 violation, no first person
-  const res = await enforceBriefVoice(dirty, {
-    maxReasks: 1,
-    regenerate: async () => {
-      calls++;
-      return lessDirty;
-    },
-  });
-  assert.equal(calls, 1);
+// FAIL-CLOSED on recommendations: a recommendation must never survive the
+// fallback, even if first person does. helper asserts the surfaced brief is
+// provably free of any recommendation/exposure phrase.
+const recsIn = (s: string) => detectVoiceViolations(s).recommendations;
+
+test("enforce: fallback NEVER surfaces a recommendation (double failure, both contain one)", async () => {
+  // Draft and re-ask both contain a recommendation; the re-ask has a compliant
+  // sentence that must survive redaction while the recommendation is removed.
+  const dirty = "The filing shifts the capital structure. We recommend increasing exposure.";
+  const reask = "Analysts recommend buying the stock. The order book points to demand.";
+  const res = await enforceBriefVoice(dirty, { regenerate: async () => reask });
   assert.equal(res.reasked, true);
-  assert.equal(res.stillViolating, true);
-  assert.equal(res.memo, lessDirty); // adopted because it had fewer violations
+  assert.deepEqual(recsIn(res.memo), [], `leftover recommendation: ${res.memo}`);
+  assert.ok(res.memo.includes("order book"), "compliant sentence should survive");
+  assert.ok(!/recommend|\bbuy\b/i.test(res.memo), "offending sentence should be gone");
 });
 
-test("enforce: a re-ask that does not help keeps the original draft", async () => {
-  const dirty = "We recommend buying."; // 2 violations
-  const worse = "We recommend buying and we should add to position."; // more violations
-  const res = await enforceBriefVoice(dirty, {
-    regenerate: async () => worse,
-  });
-  assert.equal(res.stillViolating, true);
-  assert.equal(res.memo, dirty); // original kept; re-ask was not an improvement
+test("enforce: recommendation-free draft wins even though it has first person", async () => {
+  // Draft has a recommendation; re-ask drops the recommendation but keeps "we".
+  // The recommendation-free draft must win; first person may remain.
+  const dirty = "We recommend buying.";
+  const reask = "We see the order book tightening."; // first person, NO recommendation
+  const res = await enforceBriefVoice(dirty, { regenerate: async () => reask });
+  assert.equal(res.memo, reask);
+  assert.deepEqual(recsIn(res.memo), []);
+  assert.ok(res.violationsBefore.firstPerson.includes("we"));
+  assert.equal(res.stillViolating, true); // leftover first person is acceptable
 });
 
-test("enforce: null re-ask (model failure) falls back safely", async () => {
-  const dirty = "We recommend increasing exposure.";
-  const res = await enforceBriefVoice(dirty, {
-    regenerate: async () => null,
-  });
+test("enforce: all drafts carry a recommendation -> redacted recommendation-free, first person may remain", async () => {
+  const dirty = "We expect demand. We recommend buying."; // compliant fp sentence + offending sentence
+  const reask = "We recommend selling. We see the order book."; // offending + compliant fp sentence
+  const res = await enforceBriefVoice(dirty, { regenerate: async () => reask });
+  assert.deepEqual(recsIn(res.memo), [], `leftover recommendation: ${res.memo}`);
+  assert.ok(detectVoiceViolations(res.memo).firstPerson.includes("we"), "first person may remain");
+  assert.ok(!/recommend|\bbuy\b/i.test(res.memo));
+});
+
+test("enforce: null re-ask (model failure) redacts the original to recommendation-free", async () => {
+  const dirty = "The filing shifts strategy. We recommend increasing exposure.";
+  const res = await enforceBriefVoice(dirty, { regenerate: async () => null });
   assert.equal(res.reasked, true);
-  assert.equal(res.stillViolating, true);
-  assert.equal(res.memo, dirty);
+  assert.deepEqual(recsIn(res.memo), []);
+  assert.ok(res.memo.includes("filing shifts strategy"), "compliant content survives");
+});
+
+test("enforce: invariant -- no double-failure shape ever surfaces a recommendation", async () => {
+  const pairs: Array<[string, string]> = [
+    ["We recommend increasing exposure.", "Analysts recommend buying the stock."],
+    ["Buy the dip.", "Sell into strength."],
+    ["Move to overweight here.", "Go underweight instead."],
+    ["You should add to position.", "Trim the position into the rally."],
+    ["Take profits now.", "We recommend reducing exposure."],
+  ];
+  for (const [draft, reask] of pairs) {
+    const res = await enforceBriefVoice(draft, { regenerate: async () => reask });
+    assert.deepEqual(recsIn(res.memo), [], `shape leaked: draft=${draft} reask=${reask} memo=${res.memo}`);
+  }
 });

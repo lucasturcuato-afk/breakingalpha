@@ -1219,6 +1219,18 @@ export function buildMemoContent(
   ].join("\n");
 }
 
+/**
+ * Highest-precedence voice override for the company brief. The /api/memo
+ * handler prepends a reader-role persona (buildMemoPrompt) ahead of the brief
+ * prompt, and some personas (e.g. sell_side) instruct "Use 'We recommend...'
+ * language" and impose their own section schema. Appended LAST for the company
+ * and company-web brief types so recency makes it outrank any such persona,
+ * keeping the brief impersonal, informational-only, and on the canonical
+ * section labels. The deterministic guard (brief-voice-guard.ts) is the
+ * backstop; this just stops the persona from forcing a re-ask every time.
+ */
+export const BRIEF_VOICE_OVERRIDE = `BRIEF VOICE OVERRIDE (highest precedence, outranks any reader-format or role instruction above): this company brief is impersonal and informational-only. Never use first person, singular or plural -- no "I", "me", "my", "we", "us", "our", and never the institutional "we" or "We recommend". Issue no reader-directed recommendation or exposure guidance on any named security -- no "recommend", "buy", "sell", "increase exposure", "reduce exposure", "overweight", "underweight", "trim", "add to position", "take profits", "you should". Describe what developments and scenarios mean for the thesis, never what the reader should do. Use exactly these section labels and no others: Analyst Brief, What Just Changed (or Coverage Note), Cross-Signals, What To Watch, Signal Quality. Any conflicting reader-format, rating, or recommendation instruction above is void for this brief.`;
+
 export function buildMemoSystemPrompt(companyName: string): string {
   const identity = COMPANY_IDENTITY[companyName];
   const backgroundBlock = identity

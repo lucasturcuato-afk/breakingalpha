@@ -48,7 +48,7 @@ const RECOMMENDATION_PATTERNS: RegExp[] = [
   /\b(?:over|under)weight\b/gi,
   /\byou\s+(?:should|must|need\s+to|ought|may\s+want\s+to|can|could)\b/gi,
   /\b(?:increase|increasing|reduce|reducing|raise|raising|lower|lowering|cut|cutting|boost|boosting|trim|trimming|pare|paring|build|building|scale|scaling)\s+(?:your\s+|the\s+)?(?:exposure|position|positions|stake|allocation|holdings?|weighting)\b/gi,
-  /\b(?:buy|sell)\b(?!-side|-off)/gi,
+  /\b(?:buy|sell)\b(?![-\s](?:side|off))/gi,
   /\badd(?:ing)?\s+to\s+(?:your\s+|the\s+)?position\b/gi,
   /\btake\s+profits?\b/gi,
   /\bgo\s+(?:long|short)\b/gi,
@@ -79,6 +79,36 @@ export function violationCount(v: VoiceViolations): number {
 
 export function hasVoiceViolation(memo: string): boolean {
   return violationCount(detectVoiceViolations(memo)) > 0;
+}
+
+/**
+ * Remove recommendation-bearing content so the result is provably free of any
+ * reader-directed recommendation or exposure phrase. Drops whole sentences that
+ * carry a recommendation (preserving section headings and compliant sentences),
+ * then neutralizes any residual token as a final guarantee. First person is left
+ * untouched. Used only on the fail-closed fallback path, never on a draft that
+ * can already be surfaced clean.
+ */
+function redactRecommendations(text: string): string {
+  // Fresh non-global regex per test: the shared /g patterns carry lastIndex
+  // state that would make .test() skip matches.
+  const carriesRecommendation = (s: string): boolean =>
+    RECOMMENDATION_PATTERNS.some((re) => new RegExp(re.source, "i").test(s));
+
+  const lines = text.split("\n").map((line) => {
+    if (!line.trim()) return line;
+    // Split into sentences on terminal punctuation; drop only the offending ones.
+    const sentences = line.split(/(?<=[.!?])\s+/);
+    return sentences.filter((s) => !carriesRecommendation(s)).join(" ");
+  });
+
+  let out = lines.join("\n");
+  // Final guarantee: neutralize any residual phrase not bounded by sentence
+  // punctuation (e.g. inside a bullet with no terminal period, or a heading).
+  for (const re of RECOMMENDATION_PATTERNS) {
+    out = out.replace(new RegExp(re.source, "gi"), "[redacted]");
+  }
+  return out.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /**
@@ -115,25 +145,39 @@ export interface EnforceOptions {
 }
 
 export interface EnforceResult {
-  /** The brief to surface: clean if achievable, else the least-violating draft. */
+  /**
+   * The brief to surface: clean if achievable, else a fallback that is ALWAYS
+   * recommendation-free (recommendation-bearing content is redacted when no
+   * clean draft exists). May retain first person on the fallback path.
+   */
   memo: string;
   /** Violations detected in the original draft (before any re-ask). */
   violationsBefore: VoiceViolations;
   /** True if at least one re-ask was issued. */
   reasked: boolean;
-  /** True if the surfaced brief still contains a violation (fallback path). */
+  /**
+   * True if the surfaced brief still contains a violation. On the fallback path
+   * this can only be leftover first person; recommendations are always removed.
+   */
   stillViolating: boolean;
 }
 
 /**
- * Detect -> bounded re-ask -> safe fallback.
+ * Detect -> bounded re-ask -> FAIL-CLOSED fallback.
  *
  * Clean draft: returned unchanged, no model call. Violating draft: re-ask up to
- * maxReasks times; return the first clean result. If no re-ask comes back
- * clean, fall back to the least-violating draft seen (original or any re-ask)
- * and flag stillViolating so the caller can log it. This mirrors the #385
- * "best effort, non-fatal" contract: the guard catches the common drift and
- * fixes it in one shot; it never throws and never blocks the response.
+ * maxReasks times and adopt the first fully clean result. If no draft comes back
+ * clean, the fallback is FAIL-CLOSED on recommendations: a reader-directed
+ * recommendation or exposure phrase must NEVER survive, even at the cost of
+ * leftover first person.
+ *   1. Prefer any draft that is already recommendation-free; among those, the
+ *      one with the least first person. First person may remain; a
+ *      recommendation may not.
+ *   2. If every draft carries a recommendation, redact the recommendation-bearing
+ *      sentences from the least-first-person draft so the surfaced brief is
+ *      provably recommendation-free.
+ * Mirrors the #385 "best effort, non-fatal" contract: never throws, never blocks
+ * the response. stillViolating flags any residual (first person only by then).
  */
 export async function enforceBriefVoice(
   memo: string,
@@ -145,25 +189,51 @@ export async function enforceBriefVoice(
   }
 
   const maxReasks = opts.maxReasks ?? 1;
-  let best = memo;
-  let bestCount = violationCount(before);
   let reasked = false;
+  // Every draft seen, in order: original first, then each non-empty re-ask.
+  const candidates: string[] = [memo];
 
   for (let i = 0; i < maxReasks; i++) {
-    const correction = buildVoiceCorrection(detectVoiceViolations(best));
+    const correction = buildVoiceCorrection(
+      detectVoiceViolations(candidates[candidates.length - 1]),
+    );
     const next = await opts.regenerate(correction);
     reasked = true;
     if (next && next.trim()) {
-      const nextCount = violationCount(detectVoiceViolations(next));
-      if (nextCount === 0) {
+      if (!hasVoiceViolation(next)) {
         return { memo: next, violationsBefore: before, reasked, stillViolating: false };
       }
-      if (nextCount < bestCount) {
-        best = next;
-        bestCount = nextCount;
-      }
+      candidates.push(next);
     }
   }
 
-  return { memo: best, violationsBefore: before, reasked, stillViolating: bestCount > 0 };
+  // No fully clean draft. Fail closed on recommendations.
+  const scored = candidates.map((text) => ({ text, v: detectVoiceViolations(text) }));
+  type Scored = (typeof scored)[number];
+  const leastFirstPerson = (a: Scored, b: Scored): Scored =>
+    b.v.firstPerson.length < a.v.firstPerson.length ? b : a;
+
+  // 1. A recommendation-free draft can be surfaced as-is (first person may remain).
+  const recFree = scored.filter((c) => c.v.recommendations.length === 0);
+  if (recFree.length > 0) {
+    const winner = recFree.reduce(leastFirstPerson);
+    return {
+      memo: winner.text,
+      violationsBefore: before,
+      reasked,
+      stillViolating: winner.v.firstPerson.length > 0,
+    };
+  }
+
+  // 2. Every draft carries a recommendation: redact it out of the least-first-
+  //    person draft so the surfaced brief is provably recommendation-free.
+  const base = scored.reduce(leastFirstPerson);
+  const redacted = redactRecommendations(base.text);
+  const after = detectVoiceViolations(redacted);
+  return {
+    memo: redacted,
+    violationsBefore: before,
+    reasked,
+    stillViolating: violationCount(after) > 0,
+  };
 }

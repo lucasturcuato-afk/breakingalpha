@@ -11,6 +11,7 @@ import {
   supabaseCompanyLookup,
 } from "@/lib/memo-company-canonical";
 import { enforceBriefVoice } from "@/lib/brief-voice-guard";
+import { BRIEF_VOICE_OVERRIDE } from "@/lib/company-intel";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -269,7 +270,7 @@ Hard rules: no invented counterparties, dollar figures, or valuation assumptions
   // Fallback prompt for type "company-web". In normal operation the caller
   // (frontend) will pass the full buildWebFallbackMemoSystemPrompt(name) text
   // via systemPrompt; this is the safety net if it forgets.
-  "company-web": "You are a senior equity research analyst writing a company intelligence brief grounded in WEB SEARCH RESULTS. Use only facts from the provided results. Every factual sentence must end with a bracketed citation [n] mapping to the result number. Sections: Analyst Brief, What Just Changed (or Coverage Note if no direct developments), Cross-Signals, What To Do With This (two if/then bullets), Signal Quality. Under 300 words. No em-dashes. No bullets outside What To Do With This.",
+  "company-web": "You are a senior equity research analyst writing a company intelligence brief grounded in WEB SEARCH RESULTS. Use only facts from the provided results. Every factual sentence must end with a bracketed citation [n] mapping to the result number. Sections: Analyst Brief, What Just Changed (or Coverage Note if no direct developments), Cross-Signals, What To Watch (two if/then bullets), Signal Quality. Under 300 words. No em-dashes. No bullets outside What To Watch. Impersonal and informational-only: no first person (no 'we', 'us', 'our', 'I'), and no reader-directed recommendation or exposure language (no 'recommend', 'buy', 'sell', 'increase/reduce exposure', 'overweight', 'underweight', 'you should'). What To Watch states implications for the thesis, not actions for the reader.",
 };
 
 const RATE_LIMIT_MEMO = 10; // memos per 24h
@@ -506,11 +507,18 @@ export async function POST(request: NextRequest) {
     // for an un-indexed company. Article-grounded memos still get the overlay.
     const memoCtx = type === "company-web" ? "" : await buildMemoContext(sector || undefined);
     const baseSystem = (memoCtx ? memoCtx + "\n\n" : "") + system;
-    const augmentedSystem = buildMemoPrompt(profile, baseSystem);
+    let augmentedSystem = buildMemoPrompt(profile, baseSystem);
+    // Company brief: append the impersonal/informational-only override LAST so
+    // it outranks any reader-role persona prepended by buildMemoPrompt (e.g.
+    // the sell_side "We recommend..." instruction). Pairs with the post-parse
+    // guard below.
+    if (type === "company" || type === "company-web") {
+      augmentedSystem += "\n\n" + BRIEF_VOICE_OVERRIDE;
+    }
 
     // Web-fallback memos need a higher output ceiling than article-grounded.
     // The web prompt has 5 sections plus per-claim [n] citations plus two
-    // 75-word "What To Do With This" bullets, which routinely lands in the
+    // 75-word "What To Watch" bullets, which routinely lands in the
     // 700 to 950 output-token range. Other types fit comfortably in 2400.
     const maxOutputTokens = type === "company-web" ? 8192 : 2400;
     try {
