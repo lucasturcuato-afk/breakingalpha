@@ -1361,6 +1361,130 @@ def _maybe_inject_tape_directive(brief_type, system):
     return directive + system, tape["regime"]
 
 
+# ── Lead-thesis opener guard ─────────────────────────────────────────────────
+# The first sentence of market_pulse.narrative is the most visible line in the
+# product, and it reliably regresses to a mood / index recap that the prompt
+# alone cannot prevent (experiment fix/thesis-opener-reliability: 0/10 base in
+# both modes across C0 / thinking-budget sweep / carrier-decouple; a thinking
+# budget did not help and a high budget broke generation). This guard detects a
+# recap opener deterministically and does ONE targeted re-ask that rewrites the
+# narrative ONLY, leading with a named driver. If the re-ask still recaps (or
+# fails), the original narrative is kept and the miss is logged. No loop, no
+# stub rewrite. Validated lift on a real corpus: 0/10 -> 10/10 in both modes,
+# residual 0; firing cost is at most one extra synthesis call per brief.
+_OPENER_MOODS = set()
+for _grp in market_tape.REGIME_VOCAB.values():
+    _OPENER_MOODS |= set(_grp)
+_OPENER_REGIME_WORDS = _OPENER_MOODS | {
+    "de-risking", "de risking", "derisking", "risk-off", "risk off", "risk-on",
+    "risk on", "defensive posture", "guarded posture", "cautious posture",
+    "heavy posture", "risk-off posture",
+}
+_OPENER_EVENT_NOUNS = (
+    "fomc", "fed ", "the fed", "cpi", "ppi", "pce", "payroll", "jobs report",
+    "earnings", "guidance", "deal", "merger", "acquisition", "ipo", "offering",
+    "buyout", "sanction", "tariff", "opec", "downgrade", "upgrade", "dot plot",
+    "rate cut", "rate decision", "stake sale", "share sale", "block trade",
+    "approval", "transaction",
+)
+_OPENER_INDEX_BLOCK = {
+    "S&P", "Nasdaq", "Dow", "Russell", "VIX", "Jones", "Composite", "Capital",
+    "Markets", "Market", "Today", "The", "Tech", "Wall", "Street", "Stocks",
+    "January", "February", "March", "April", "May", "June", "July", "August",
+    "September", "October", "November", "December", "RISK", "Conversely",
+    "Meanwhile", "Despite", "However", "Overall",
+}
+_OPENER_MKT_START = re.compile(
+    r"^\W*(today'?s?\s+)?(the\s+)?(capital\s+)?(markets?|tape|session|trading|broader\s+market|"
+    r"broad\s+market|s&p\s?500|nasdaq(\s+composite)?|dow(\s+jones)?|russell\s?2000|indices|"
+    r"major\s+indices|stocks|equities|wall\s+street|u\.s\.\s+(stocks|equities|markets))\b", re.I)
+_OPENER_INDEX_MOVE = re.compile(
+    r"^\W*(today'?s?\s+)?(the\s+)?(s&p\s?500|nasdaq(\s+composite)?|dow(\s+jones)?|russell\s?2000|"
+    r"stocks|equities|indices|major\s+indices|markets?)\s+(rose|fell|climbed|dropped|declined|"
+    r"advanced|slid|sank|gained|lost|tumbled|rallied|plunged|slipped|jumped|closed|opened|edged|"
+    r"ended|finished|sold\s+off|posted|traded)\b", re.I)
+_OPENER_MOOD_TOKEN = re.compile(
+    r"\b(" + "|".join(re.escape(m) for m in sorted(_OPENER_REGIME_WORDS, key=len, reverse=True)) + r")\b", re.I)
+
+
+def _opener_first_sentence(narrative):
+    p = (narrative or "").strip().split("\n\n")[0].strip()
+    parts = re.split(r"(?<=[.!?])\s+", p)
+    return parts[0].strip() if parts else p
+
+
+def _opener_has_named_driver(s):
+    sl = s.lower()
+    if any(ev in sl for ev in _OPENER_EVENT_NOUNS):
+        return True
+    if re.search(r"\$\s?\d", s) or re.search(r"\b\d+(\.\d+)?\s?(billion|million|trillion)\b", sl):
+        return True
+    for t in re.findall(r"\b[A-Z][A-Za-z&.]+\b", s)[1:]:
+        if t not in _OPENER_INDEX_BLOCK and len(t) > 1:
+            return True
+    return False
+
+
+def _is_opener_recap(first_sentence):
+    """True when the opener is a generic market/tape/index recap with no named
+    driver, an index-move lead, or a market-subject mood/regime restatement."""
+    s = (first_sentence or "").strip()
+    if not s:
+        return True, "empty"
+    if _OPENER_INDEX_MOVE.match(s):
+        return True, "index-move lead"
+    if _OPENER_MKT_START.match(s):
+        if not _opener_has_named_driver(s):
+            return True, "market-subject, no named driver"
+        if _OPENER_MOOD_TOKEN.search(s[:90]):
+            return True, "market-subject + regime word"
+    return False, ""
+
+
+def _regenerate_opener(data, regime, brief_type):
+    """ONE targeted re-ask: rewrite market_pulse.narrative so its first sentence
+    leads with a named driver. Returns the new narrative string, or None on any
+    failure. Thinking stays at 0 (gemini_generate default); this is prose only."""
+    mp = data.get("market_pulse") or {}
+    bad = _opener_first_sentence(mp.get("narrative"))
+    weight = ("Weight the opener FORWARD: what matters today and why."
+              if brief_type == "morning"
+              else "Weight the opener BACKWARD: what the day MEANT.")
+    system = (
+        "You rewrite ONE field of a finished market brief. Return JSON only: "
+        '{"narrative": "<rewritten narrative, 2-3 short paragraphs separated by \\n\\n>"}. '
+        "No other keys, no prose outside the JSON. Zero em-dashes; use hyphens, colons, parens."
+    )
+    user = (
+        f"The market_pulse.narrative opens with a banned mood/regime recap:\n\"{bad}\"\n\n"
+        f"Lead story: {data.get('headline','')}\n{data.get('lead_paragraph','')}\n\n"
+        f"Prior-close/tape regime: {regime}. The sentiment_word and market_tone already carry the "
+        "mood; do NOT restate it.\n\n"
+        "Rewrite the narrative so the FIRST sentence is a specific analytical claim about the day's "
+        "single most important driver and what it means. RULES for that first sentence:\n"
+        "- Start with the named driver (a company, deal, data release, sector move, or catalyst from "
+        "the brief), NOT with 'the market / markets / tape / stocks / indices' and NOT with a mood or "
+        "posture word.\n"
+        "- Make a claim with a reason or through-line (what it means, what it turns on, rotation vs "
+        "de-risking, positioning vs fundamentals).\n"
+        "- This is analysis, not advice: no imperative act verbs, no buy/sell/hold or price target on "
+        "a named security.\n"
+        "- FORBIDDEN openings: 'the market is/was/closed/remains/reflected ...', 'capital markets are "
+        "...', \"today's tape ...\", '[mood] posture', '[index] fell/rose X%', any sentence whose "
+        "subject is the market/tape/indices.\n"
+        f"{weight}\n"
+        "Keep the rest of the narrative's substance and paragraph count. Return JSON only."
+    )
+    try:
+        raw = gemini_generate(system=system, user_content=user, temperature=0.3, max_tokens=1024)
+        parsed = _parse_brief_json(raw)
+        if parsed and isinstance(parsed.get("narrative"), str) and parsed["narrative"].strip():
+            return parsed["narrative"].strip()
+    except Exception as e:
+        print(f"  ⚠ opener guard: re-ask call failed (non-fatal): {e}")
+    return None
+
+
 def run(brief_type="morning"):
     print(f"📝 Synthesizing {brief_type} briefing...")
 
@@ -1647,6 +1771,29 @@ def run(brief_type="morning"):
             "top_deals": [],
             "sector_breakdown": {}
         }
+
+    # Lead-thesis opener guard (morning + evening, non-fatal). The narrative's
+    # opening sentence is the most visible line in the product and reliably
+    # regresses to a mood / index recap. Detect it and do ONE targeted re-ask
+    # that rewrites the narrative only, leading with a named driver; keep the
+    # original and log if the re-ask still recaps or fails. See helper block.
+    if not brief_is_stub:
+        try:
+            mp = data.get("market_pulse")
+            if isinstance(mp, dict) and isinstance(mp.get("narrative"), str) and mp["narrative"].strip():
+                fs = _opener_first_sentence(mp["narrative"])
+                recap, why = _is_opener_recap(fs)
+                if recap:
+                    new_narr = _regenerate_opener(data, tape_regime, brief_type)
+                    if new_narr and not _is_opener_recap(_opener_first_sentence(new_narr))[0]:
+                        mp["narrative"] = new_narr
+                        print("  [opener guard] re-ask replaced a recap opener with a named-driver lead")
+                    elif new_narr:
+                        print(f"  ⚠ opener guard: re-ask still recap ({why}); keeping original opener")
+                    else:
+                        print(f"  ⚠ opener guard: re-ask failed ({why}); keeping original opener")
+        except Exception as e:
+            print(f"  ⚠ opener guard error (non-fatal): {e}")
 
     sector_breakdown = _validate_sector_breakdown(data.get("sector_breakdown", {}))
     print(f"  📊 sector_breakdown: {len(sector_breakdown)} sector(s) — {list(sector_breakdown.keys())}")
