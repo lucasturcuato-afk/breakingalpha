@@ -1760,6 +1760,39 @@ def run(brief_type="morning"):
     if brief_type in ("morning", "evening"):
         system, tape_regime = _maybe_inject_tape_directive(brief_type, system)
 
+    # --- Market-holiday / weekend awareness (market_calendar.py, soft-fail) ------
+    # On a full-day US equity closure, the tape above is the LAST completed session
+    # close (fetch_tape returns the prior close when there is no live session). We
+    # reuse that prior-session-close framing as-is and add a directive that states
+    # the closure and pins the numbers to the prior close in the PAST tense, so the
+    # brief never implies live trading. News sections still generate. The closure
+    # is also stamped onto market_pulse (no migration) for the render hero.
+    market_closed = False
+    holiday_name = None
+    last_trading_session = None
+    try:
+        import market_calendar
+        _et_today = (datetime.now(timezone.utc) - timedelta(hours=5)).date()
+        _mstat = market_calendar.market_status(_et_today)
+        market_closed = bool(_mstat.get("market_closed"))
+        holiday_name = _mstat.get("holiday_name")
+        last_trading_session = _mstat.get("last_trading_session")
+        if market_closed:
+            _label = holiday_name or "a market holiday"
+            system = (
+                "[MARKET CLOSED TODAY - deterministic US trading calendar]\n"
+                f"US equity markets are CLOSED today for {_label}; there is no live "
+                "session. The index and VIX figures above are the LAST COMPLETED SESSION "
+                f"close ({last_trading_session}), NOT today's trading. State the closure "
+                "plainly near the top, and frame every market-level number in the PAST "
+                "tense as that prior close; do not imply live or intraday movement today. "
+                "Keep producing every news section (deals, earnings, sectors, catalysts) "
+                "as usual: corporate and macro news still matters on a closed day.\n\n"
+            ) + system
+            print(f"  📅 Market CLOSED today ({_label}); injected closed-day directive")
+    except Exception as e:
+        print(f"  ⚠ market-calendar check skipped (non-fatal): {e}")
+
     # --- Scheduled-catalyst injection (deterministic floor + live FRED actuals).
     # The static floor (FOMC + dot plot, CPI / PCE / NFP) is the guaranteed
     # schedule; the live layer enriches with reported values and soft-fails to the
@@ -1910,6 +1943,28 @@ def run(brief_type="morning"):
         derived_summary = f"{lead_paragraph}\n\n{supporting_context}\n\n{what_to_watch_body}"
     else:
         derived_summary = data.get("summary", "") or ""
+
+    # Stamp the market-closed state onto market_pulse (no migration; rides the
+    # existing market_pulse JSON the hero already reads) so the render can show a
+    # closed-day note instead of a present-tense "Today the market is ..." hero.
+    # The prompt directive that asks the model to state the closure is best-effort,
+    # so we ALSO deterministically prepend a closure note to the narrative when the
+    # model did not mention it: the closure is then guaranteed in the brief text.
+    if market_closed and isinstance(data.get("market_pulse"), dict):
+        mp = data["market_pulse"]
+        mp["market_closed"] = True
+        mp["holiday_name"] = holiday_name
+        mp["last_trading_session"] = last_trading_session
+        narr = mp.get("narrative")
+        if isinstance(narr, str) and not any(
+            w in narr.lower() for w in ("closed", "holiday", "juneteenth", "no trading", "not trading")
+        ):
+            _label = holiday_name or "a market holiday"
+            mp["narrative"] = (
+                f"US equity markets are closed today for {_label}; the market figures "
+                f"here reflect the prior session close ({last_trading_session})."
+                + "\n\n" + narr
+            )
 
     now = datetime.now(timezone.utc).isoformat()
     row = {
