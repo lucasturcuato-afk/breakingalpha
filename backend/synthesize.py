@@ -1914,6 +1914,34 @@ def run(brief_type="morning"):
     except Exception:
         brief_id = None
 
+    # --- SHADOW market-impact lead comparison (read-only, NO live change) -------
+    # lead_preselect ranks by deal size and only sees the relevance-top-60 corpus,
+    # so a broadly-covered macro event (e.g. the 2026-06-18 hawkish Fed: 46 articles
+    # / 16 sources, crowded out of the top-60 by score-10 single-names) can never
+    # win the lead. This logs what an impact-aware ranker WOULD pick (coverage
+    # breadth + recency + recent tier-1 boost, mega-deal preserved) so the
+    # divergence can be reviewed before any live flip. It does NOT change the live
+    # lead, spine, prompt, or brief. Soft-fail. Flipping it live is a separate
+    # follow-up. See impact_ranking.py.
+    try:
+        import impact_ranking
+        import lead_preselect as _lp
+        _shadow = impact_ranking.shadow_compare(
+            supabase, data.get("headline", ""), datetime.now(timezone.utc)
+        )
+        if _shadow.get("shadow_lead_title"):
+            print(
+                f"  🧪 [impact-shadow] diverged={_shadow.get('shadow_diverged_from_live')} "
+                f"cluster={_shadow.get('shadow_cluster')} score={_shadow.get('shadow_score')} "
+                f"live='{(data.get('headline','') or '')[:55]}' "
+                f"shadow='{_shadow['shadow_lead_title'][:55]}'"
+            )
+        try:
+            _lp._LAST_DECISION_LOG.update(_shadow)  # threaded into observe.record_run
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"  ⚠ impact-shadow comparison skipped (non-fatal): {e}")
 
     # ── Record output for universal feedback table ──
     try:
