@@ -1,5 +1,5 @@
 """
-impact_ranking.py - SHADOW market-impact lead ranking for the morning/evening brief.
+impact_ranking.py - LIVE market-impact lead ranking for the morning/evening brief.
 
 WHY: lead_preselect.py ranks the lead by deal dollar size (Filter A/A2 $1B+) and,
 failing that, a macro/geo/sector fallback that only sees the relevance-top-60
