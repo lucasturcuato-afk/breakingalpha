@@ -5,7 +5,7 @@
  *
  * The article-grounded memo prompt emits five bold section labels in each
  * mode (Analyst Brief, What Just Changed | Coverage Note, Cross-Signals,
- * What To Do With This, Signal Quality). BriefTab uses this parser to
+ * What To Watch, Signal Quality). BriefTab uses this parser to
  * render each section under its own heading without coupling to the
  * structured-output schema we abandoned in PR-C1c.
  *
