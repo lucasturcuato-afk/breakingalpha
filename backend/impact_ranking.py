@@ -23,13 +23,11 @@ Distinct SOURCES (not raw article count) is the primary breadth metric: it resis
 the SEO / wire-duplication failure mode where one promotional story is syndicated
 under many near-identical "Google News (TICKER)" rows.
 
-SHADOW ONLY: nothing here changes the live lead. synthesize.py computes this
-alongside the live preselect lead and logs the divergence. Flipping it live is a
-separate one-line follow-up after review.
-
-NOTE (dependency): PR #386 (event_calendar.py) is NOT on origin/main yet, so the
-tier-1 date table below is self-contained. When #386 merges, source these dates
-from event_calendar (dedupe follow-up); the dates are intentionally identical.
+LIVE: synthesize.py uses compute_lead() as the primary lead path, falling back to
+lead_preselect's deal-size pick (then Gemini) when no confident cluster is found.
+shadow_compare() is retained for telemetry and offline replay. Tier-1 dates come
+from event_calendar.py (the SOURCE OF TRUTH section below); there is no
+self-contained date table here.
 """
 from __future__ import annotations
 
@@ -293,7 +291,13 @@ def compute_shadow_lead(
         return None
 
 
-# ── SHADOW comparison helper (read-only; used by synthesize.py) ──────────────
+# Live alias: synthesize.py calls compute_lead() for the primary lead. The
+# implementation is shared with the offline/telemetry path; the name is kept for
+# back-compat and tests.
+compute_lead = compute_shadow_lead
+
+
+# ── Coverage-pool + deal helpers (used by the live lead path and telemetry) ──
 _POOL_COLS = ("title, summary, url, source, sector, industry_verticals, companies, "
               "deal_type, relevance_score, published_at, ingested_at")
 

@@ -1539,11 +1539,51 @@ def run(brief_type="morning"):
     # directive telling Gemini "narrate this, do not re-rank". If it
     # returns None, Gemini's in-prompt PRIMARY STORY SELECTION block
     # (PR #128) runs as fallback — behavior matches pre-Path-B exactly.
+    # impact_ranking is now the LIVE lead path: it ranks by MARKET IMPACT
+    # (distinct-source coverage breadth + recency + tier-1 / recent-event boost +
+    # confirmed mega-deal) over the broad point-in-time pool, fixing the deal-size
+    # blind spot that led 2026-06-18 with Eightco over the hawkish Fed. It FALLS
+    # BACK to lead_preselect's deal-size pick, and then to Gemini's in-prompt
+    # selection, when it returns no confident cluster, so the lead is never empty.
+    # The chosen lead is hoisted into spine slot 0 with a narrate-this directive.
     preselected = None
     preselect_directive = None
+    lead_source = "gemini"
     try:
         from lead_preselect import preselect_primary_story, build_preselect_directive
-        preselected = preselect_primary_story(articles, brief_type)
+
+        # Deal-size pick (kept as fallback + telemetry).
+        deal_pick = None
+        try:
+            deal_pick = preselect_primary_story(articles, brief_type)
+        except Exception as e:
+            print(f"  ⚠ deal-size pre-selector failed: {e}")
+
+        # Impact pick over the broad coverage pool.
+        impact_pick = None
+        try:
+            import impact_ranking
+            _now = datetime.now(timezone.utc)
+            _pool = impact_ranking.fetch_coverage_pool(supabase, _now)
+            _impact = (
+                impact_ranking.compute_lead(
+                    _pool, _now, mega_deal_urls=impact_ranking._mega_deal_urls(supabase, _now)
+                )
+                if _pool else None
+            )
+            if _impact and _impact.get("article"):
+                impact_pick = dict(_impact["article"])
+                impact_pick["_preselect_reason"] = f"impact_rank:{_impact['cluster_key']}"
+                impact_pick["_impact_score"] = _impact["score"]
+                impact_pick["_impact_breadth"] = _impact["breadth"]
+                impact_pick["_impact_cluster"] = _impact["cluster_key"]
+        except Exception as e:
+            print(f"  ⚠ impact lead failed (falling back to deal-size pick): {e}")
+            impact_pick = None
+
+        preselected = impact_pick or deal_pick
+        lead_source = "impact" if impact_pick else ("deal_preselect" if deal_pick else "gemini")
+
         if preselected:
             # Hoist into slot 0 so the selector/prompt see it first.
             _url = (preselected.get("url") or "").strip()
@@ -1552,13 +1592,26 @@ def run(brief_type="morning"):
             ]
             preselect_directive = build_preselect_directive(preselected)
             print(
-                f"  🎯 Pre-selected primary story ({preselected.get('_preselect_reason')}): "
+                f"  🎯 Lead [{lead_source}] ({preselected.get('_preselect_reason')}): "
                 f"{(preselected.get('title') or '')[:80]}"
             )
         else:
-            print("  🎯 Pre-selector found no deterministic pick — Gemini will select")
+            print("  🎯 No deterministic lead (Gemini will select)")
+
+        # Telemetry: which path won + both candidates, into the run decision log.
+        try:
+            import lead_preselect as _lp
+            _lp._LAST_DECISION_LOG.update({
+                "lead_source": lead_source,
+                "impact_lead_title": (impact_pick.get("title") if impact_pick else None),
+                "impact_lead_cluster": (impact_pick.get("_impact_cluster") if impact_pick else None),
+                "impact_lead_score": (impact_pick.get("_impact_score") if impact_pick else None),
+                "deal_lead_title": (deal_pick.get("title") if deal_pick else None),
+            })
+        except Exception:
+            pass
     except Exception as e:
-        print(f"  ⚠ Pre-selector failed (falling back to Gemini selection): {e}")
+        print(f"  ⚠ Lead selection failed (Gemini will select): {e}")
         preselected = None
         preselect_directive = None
 
@@ -1914,34 +1967,8 @@ def run(brief_type="morning"):
     except Exception:
         brief_id = None
 
-    # --- SHADOW market-impact lead comparison (read-only, NO live change) -------
-    # lead_preselect ranks by deal size and only sees the relevance-top-60 corpus,
-    # so a broadly-covered macro event (e.g. the 2026-06-18 hawkish Fed: 46 articles
-    # / 16 sources, crowded out of the top-60 by score-10 single-names) can never
-    # win the lead. This logs what an impact-aware ranker WOULD pick (coverage
-    # breadth + recency + recent tier-1 boost, mega-deal preserved) so the
-    # divergence can be reviewed before any live flip. It does NOT change the live
-    # lead, spine, prompt, or brief. Soft-fail. Flipping it live is a separate
-    # follow-up. See impact_ranking.py.
-    try:
-        import impact_ranking
-        import lead_preselect as _lp
-        _shadow = impact_ranking.shadow_compare(
-            supabase, data.get("headline", ""), datetime.now(timezone.utc)
-        )
-        if _shadow.get("shadow_lead_title"):
-            print(
-                f"  🧪 [impact-shadow] diverged={_shadow.get('shadow_diverged_from_live')} "
-                f"cluster={_shadow.get('shadow_cluster')} score={_shadow.get('shadow_score')} "
-                f"live='{(data.get('headline','') or '')[:55]}' "
-                f"shadow='{_shadow['shadow_lead_title'][:55]}'"
-            )
-        try:
-            _lp._LAST_DECISION_LOG.update(_shadow)  # threaded into observe.record_run
-        except Exception:
-            pass
-    except Exception as e:
-        print(f"  ⚠ impact-shadow comparison skipped (non-fatal): {e}")
+    # (The former post-generation SHADOW comparison block is removed: impact_ranking
+    # is now the live lead path above, with lead_source telemetry recorded there.)
 
     # ── Record output for universal feedback table ──
     try:
