@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { type SupabaseClient } from "@supabase/supabase-js";
+import { getServiceSupabase } from "@/lib/supabase-service";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isAdmin } from "@/lib/admin-emails";
 import { recordOutput } from "@/lib/outputs";
@@ -66,10 +67,7 @@ interface UserProfile {
 
 async function fetchUserProfile(userId: string): Promise<UserProfile | null> {
   try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    );
+    const supabase = getServiceSupabase();
     const { data, error } = await supabase
       .from("user_profiles")
       .select("first_name, role, firm_or_school, sectors, risk_appetite, strategy_type, watchlist_tickers, onboarding_completed")
@@ -183,10 +181,7 @@ Tone: balanced, client-aware.`;
 
 async function buildMemoContext(sector: string | undefined): Promise<string> {
   try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    );
+    const supabase = getServiceSupabase();
 
     // 1. Recent resolved theses
     let thesesQuery = supabase
@@ -447,10 +442,7 @@ export async function POST(request: NextRequest) {
     // next BriefTab mount cannot return stale content while the fresh row
     // is being written.
     try {
-      const svcSupabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      );
+      const svcSupabase = getServiceSupabase();
       await svcSupabase
         .from("outputs")
         .delete()
@@ -589,10 +581,7 @@ export async function POST(request: NextRequest) {
       const resolvedCompany = cacheKey === "unknown" ? null : cacheKey;
 
       // Record to universal outputs table (service-role client for bypassing RLS)
-      const svcSupabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      );
+      const svcSupabase = getServiceSupabase();
 
       // Canonical identifier enrichment (fail-open, src/lib/memo-company-canonical):
       // attaches content.ticker when the companies table maps the name to exactly
@@ -678,10 +667,7 @@ Sections: TRANSACTION OVERVIEW, STRATEGIC RATIONALE, KEY RISKS, ANALYST TAKE. Un
     }
 
     // Record to universal outputs table
-    const svcSupabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    );
+    const svcSupabase = getServiceSupabase();
     const outputId = await recordOutput(svcSupabase, {
       output_type: 'memo',
       content: {
