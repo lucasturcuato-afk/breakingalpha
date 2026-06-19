@@ -67,6 +67,8 @@ BANNED constructions (vague or placeholder subjects/objects):
 
 This constraint is absolute and supersedes any 'unless evidenced' softeners elsewhere in this prompt. No escape clauses.
 
+SPECULATIVE SINGLE-NAME FRAMING: a story whose ONLY substance is one small or micro-cap company's self-promotional disclosure gets measured, skeptical analyst framing, never a credulous BULLISH read. Treat these as low-verification: (1) a company announcing its OWN crypto, token, AI, or treasury holdings or a 'strategic reserve'; (2) a micro-cap touting its own partnership, pipeline, MOU, or 'inaugural' report; (3) a promotional press-release-only item with no third-party confirmation; (4) a name flagged by a short-seller; (5) a headline-only claim with no corroborating coverage. For these: state plainly WHO claimed WHAT and that it is self-reported and unverified, give the market-impact context (a micro-cap self-disclosure rarely moves the broad tape), and set the top_deals sentiment to NEUTRAL (not BULLISH) unless an independent, named party confirms a priced transaction. Do NOT make one the lead. A confirmed, broadly-reported transaction or a priced deal with a named counterparty is different: it may carry a directional read. This shapes the brief-level framing only; it does not change the per-article sentiment chips.
+
 SPECTATOR / HEDGE VOICE (harvested from real briefs, BANNED in every field). These narrate what someone WILL watch instead of stating the implication, and they are the dominant filler in current output. Do NOT use any of: 'investors will watch', 'investors will be watching', 'investors will monitor', 'investors will closely watch', 'investors should watch', 'market participants will observe', 'market participants will monitor', 'market participants will closely monitor', 'will be a key focus for analysts', 'will be a focus for analysts', 'follow-on analyst commentary', 'awaiting analyst commentary', 'will be key', 'will be a key indicator', 'will be a key factor', 'will be a critical factor', 'will determine if', 'will determine whether', 'will indicate whether', 'to gauge market', 'for indications of', 'for signals on', 'could provide insight', 'remains to be seen', 'it is worth noting', 'marking a significant transaction', 'represents a significant transaction', 'first-order event'. Attribution to analysts is NOT a substitute for a view: never write 'X will be a focus for analysts' in place of stating what X means. (Analytical attribution of a concrete fact, e.g. 'analysts flagged FCF coverage as the swing metric', stays allowed.) PATTERN BAN (catches reworded variants, not just the exact strings above): do not write any sentence whose main clause is the reader or the market watching, monitoring, observing, gauging, awaiting, being keen on, or focusing on something; lead with the consequence instead. Also banned regardless of exact wording: '[subject] will be a key focus' / 'will be the focus' / 'will be a focus', '[X] will indicate [noun]', '[X] could signal broader [noun]', 'the market will observe / monitor / be keen on'. If a sentence can be cut down to its consequence, cut it.
 
 COMMITMENT RULE (positive, the point of this section): every forward line and every per-story line names a concrete driver, mechanism, number, or specific consequence and then states the implication in Signalera's own voice. Do not report that the market will watch something; say what it means and what is at stake. Rewrite example (illustrative, do not reuse this wording): replace 'Investors will watch [Company]'s stock to gauge demand' with 'A soft aftermarket would mark the [$X] block as overpriced and chill the [sector] issuance pipeline'.
@@ -220,6 +222,8 @@ BANNED constructions (vague or placeholder subjects/objects):
 - Impact filler: 'significant', 'substantial', 'major' without a specific number
 
 This constraint is absolute and supersedes any 'unless evidenced' softeners elsewhere in this prompt. No escape clauses.
+
+SPECULATIVE SINGLE-NAME FRAMING: a story whose ONLY substance is one small or micro-cap company's self-promotional disclosure gets measured, skeptical analyst framing, never a credulous BULLISH read. Treat these as low-verification: (1) a company announcing its OWN crypto, token, AI, or treasury holdings or a 'strategic reserve'; (2) a micro-cap touting its own partnership, pipeline, MOU, or 'inaugural' report; (3) a promotional press-release-only item with no third-party confirmation; (4) a name flagged by a short-seller; (5) a headline-only claim with no corroborating coverage. For these: state plainly WHO claimed WHAT and that it is self-reported and unverified, give the market-impact context (a micro-cap self-disclosure rarely moves the broad tape), and set the top_deals sentiment to NEUTRAL (not BULLISH) unless an independent, named party confirms a priced transaction. Do NOT make one the lead. A confirmed, broadly-reported transaction or a priced deal with a named counterparty is different: it may carry a directional read. This shapes the brief-level framing only; it does not change the per-article sentiment chips.
 
 SPECTATOR / HEDGE VOICE (harvested from real briefs, BANNED in every field). These narrate what someone WILL watch instead of stating the implication, and they are the dominant filler in current output. Do NOT use any of: 'investors will watch', 'investors will be watching', 'investors will monitor', 'investors will closely watch', 'investors should watch', 'market participants will observe', 'market participants will monitor', 'market participants will closely monitor', 'will be a key focus for analysts', 'will be a focus for analysts', 'follow-on analyst commentary', 'awaiting analyst commentary', 'will be key', 'will be a key indicator', 'will be a key factor', 'will be a critical factor', 'will determine if', 'will determine whether', 'will indicate whether', 'to gauge market', 'for indications of', 'for signals on', 'could provide insight', 'remains to be seen', 'it is worth noting', 'marking a significant transaction', 'represents a significant transaction', 'first-order event'. Attribution to analysts is NOT a substitute for a view: never write 'X will be a focus for analysts' in place of stating what X means. (Analytical attribution of a concrete fact, e.g. 'analysts flagged FCF coverage as the swing metric', stays allowed.) PATTERN BAN (catches reworded variants, not just the exact strings above): do not write any sentence whose main clause is the reader or the market watching, monitoring, observing, gauging, awaiting, being keen on, or focusing on something; lead with the consequence instead. Also banned regardless of exact wording: '[subject] will be a key focus' / 'will be the focus' / 'will be a focus', '[X] will indicate [noun]', '[X] could signal broader [noun]', 'the market will observe / monitor / be keen on'. If a sentence can be cut down to its consequence, cut it.
 
@@ -1761,6 +1765,39 @@ def run(brief_type="morning"):
     if brief_type in ("morning", "evening"):
         system, tape_regime = _maybe_inject_tape_directive(brief_type, system)
 
+    # --- Market-holiday / weekend awareness (market_calendar.py, soft-fail) ------
+    # On a full-day US equity closure, the tape above is the LAST completed session
+    # close (fetch_tape returns the prior close when there is no live session). We
+    # reuse that prior-session-close framing as-is and add a directive that states
+    # the closure and pins the numbers to the prior close in the PAST tense, so the
+    # brief never implies live trading. News sections still generate. The closure
+    # is also stamped onto market_pulse (no migration) for the render hero.
+    market_closed = False
+    holiday_name = None
+    last_trading_session = None
+    try:
+        import market_calendar
+        _et_today = (datetime.now(timezone.utc) - timedelta(hours=5)).date()
+        _mstat = market_calendar.market_status(_et_today)
+        market_closed = bool(_mstat.get("market_closed"))
+        holiday_name = _mstat.get("holiday_name")
+        last_trading_session = _mstat.get("last_trading_session")
+        if market_closed:
+            _label = holiday_name or "a market holiday"
+            system = (
+                "[MARKET CLOSED TODAY - deterministic US trading calendar]\n"
+                f"US equity markets are CLOSED today for {_label}; there is no live "
+                "session. The index and VIX figures above are the LAST COMPLETED SESSION "
+                f"close ({last_trading_session}), NOT today's trading. State the closure "
+                "plainly near the top, and frame every market-level number in the PAST "
+                "tense as that prior close; do not imply live or intraday movement today. "
+                "Keep producing every news section (deals, earnings, sectors, catalysts) "
+                "as usual: corporate and macro news still matters on a closed day.\n\n"
+            ) + system
+            print(f"  📅 Market CLOSED today ({_label}); injected closed-day directive")
+    except Exception as e:
+        print(f"  ⚠ market-calendar check skipped (non-fatal): {e}")
+
     # --- Scheduled-catalyst injection (deterministic floor + live FRED actuals).
     # The static floor (FOMC + dot plot, CPI / PCE / NFP) is the guaranteed
     # schedule; the live layer enriches with reported values and soft-fails to the
@@ -1954,6 +1991,28 @@ def run(brief_type="morning"):
         derived_summary = f"{lead_paragraph}\n\n{supporting_context}\n\n{what_to_watch_body}"
     else:
         derived_summary = data.get("summary", "") or ""
+
+    # Stamp the market-closed state onto market_pulse (no migration; rides the
+    # existing market_pulse JSON the hero already reads) so the render can show a
+    # closed-day note instead of a present-tense "Today the market is ..." hero.
+    # The prompt directive that asks the model to state the closure is best-effort,
+    # so we ALSO deterministically prepend a closure note to the narrative when the
+    # model did not mention it: the closure is then guaranteed in the brief text.
+    if market_closed and isinstance(data.get("market_pulse"), dict):
+        mp = data["market_pulse"]
+        mp["market_closed"] = True
+        mp["holiday_name"] = holiday_name
+        mp["last_trading_session"] = last_trading_session
+        narr = mp.get("narrative")
+        if isinstance(narr, str) and not any(
+            w in narr.lower() for w in ("closed", "holiday", "juneteenth", "no trading", "not trading")
+        ):
+            _label = holiday_name or "a market holiday"
+            mp["narrative"] = (
+                f"US equity markets are closed today for {_label}; the market figures "
+                f"here reflect the prior session close ({last_trading_session})."
+                + "\n\n" + narr
+            )
 
     now = datetime.now(timezone.utc).isoformat()
     row = {

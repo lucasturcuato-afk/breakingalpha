@@ -6,6 +6,11 @@ export interface MarketPulseData {
   sentiment_word: string;
   narrative: string;
   headlines?: Array<{ title: string; href?: string }>;
+  // Set by the backend (market_calendar.py) on a US market holiday / weekend.
+  // When true, the hero reads in the past tense and shows a closed-day note,
+  // since the mood word reflects the last completed session, not live trading.
+  market_closed?: boolean;
+  holiday_name?: string | null;
 }
 
 interface MarketPulseProps {
@@ -37,6 +42,11 @@ export function MarketPulse({ pulse, className }: MarketPulseProps) {
     .filter(Boolean);
 
   const headlines = (pulse.headlines ?? []).slice(0, 3);
+  const closed = !!pulse.market_closed;
+  const closedLabel = pulse.holiday_name || "a market holiday";
+  // Past tense on a closed day: the mood word is the last completed session, not
+  // live trading, so the hero must not imply today's market is moving.
+  const leadPhrase = closed ? "At the last close, the market was " : "Today the market is ";
 
   return (
     <section
@@ -60,6 +70,23 @@ export function MarketPulse({ pulse, className }: MarketPulseProps) {
         Market Pulse
       </p>
 
+      {/* Closed-day note: rendered only when the backend flags a US market
+          holiday / weekend, so the present-tense hero never implies live trading. */}
+      {closed ? (
+        <p
+          className="font-sans mb-3"
+          style={{
+            color: "var(--gold)",
+            fontSize: "11px",
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+          }}
+        >
+          Markets closed today: {closedLabel}
+        </p>
+      ) : null}
+
       {/* Pull-quote */}
       <h2
         className="font-[family-name:var(--font-playfair-display)] leading-tight mb-5"
@@ -71,7 +98,7 @@ export function MarketPulse({ pulse, className }: MarketPulseProps) {
         }}
       >
         <span style={{ color: "var(--foreground)", opacity: 0.92 }}>
-          Today the market is{" "}
+          {leadPhrase}
         </span>
         <span
           className="italic dark:[filter:drop-shadow(0_0_14px_rgba(212,168,75,0.28))]"
