@@ -628,8 +628,22 @@ def grade_one(thesis: dict) -> dict | None:
     if not thesis_id:
         return None
     if not ticker:
-        print(f"  ⚠ thesis {thesis_id[:8]}… has no ticker — skipped")
-        logger.info("grader: step skip thesis=%s reason=no_ticker", thesis_id)
+        print(f"  ⚠ thesis {thesis_id[:8]}… has no ticker — marking ungradable")
+        logger.info(
+            "grader: step skip thesis=%s reason=no_ticker action=mark_ungradable",
+            thesis_id,
+        )
+        try:
+            supabase.table("theses").update({
+                "outcome": "ungradable",
+                "outcome_notes": "No ticker — cannot price-grade",
+                "outcome_checked_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", thesis_id).execute()
+        except Exception as e:
+            logger.warning(
+                "grader: failed to mark thesis=%s ungradable err=%s",
+                thesis_id, e,
+            )
         return None
 
     try:
