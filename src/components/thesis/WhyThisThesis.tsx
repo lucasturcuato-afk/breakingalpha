@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { ChevronDown } from "lucide-react";
 
+import { redactRationale } from "@/lib/thesis-recommendation-guard";
+
 function getSupabase() {
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -191,7 +193,9 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
             result.adversarial = {
               score: thesis.adversarial_score,
               passed: thesis.passed_adversarial,
-              bearCase: thesis.bear_case,
+              // Render-time neutralisation of stored prose (this component loads
+              // bear_case directly, bypassing the page-level neutralizeThesis).
+              bearCase: thesis.bear_case ? redactRationale(thesis.bear_case) : null,
             };
           } catch { /* soft fail */ }
         })(),
