@@ -11,6 +11,7 @@ import { CompanyKPIStrip } from "@/components/company/CompanyKPIStrip";
 import { CompanyTrendCard } from "@/components/company/CompanyTrendCard";
 import { CompanyMemoModalListener } from "@/components/company/CompanyMemoModalListener";
 import { BriefTab } from "@/components/company/tabs/BriefTab";
+import { PrimerTab } from "@/components/company/tabs/PrimerTab";
 import { ArticlesTab } from "@/components/company/tabs/ArticlesTab";
 import { TrendTab } from "@/components/company/tabs/TrendTab";
 import { FilingsTab } from "@/components/company/tabs/FilingsTab";
@@ -23,6 +24,7 @@ import { fetchCompanyFilings } from "@/lib/sec-filings";
 import { fetchCompanyFinancials } from "@/lib/financial-facts";
 import {
   CANONICAL,
+  COMPANY_IDENTITY,
   canonicalize,
   buildMemoContent,
   buildMemoSystemPrompt,
@@ -137,8 +139,28 @@ export default async function CompanyDetailPage({
   // filings; companies without a CIK render the tab's empty state.
   const financialsResult = await fetchCompanyFinancials(supabase, { name: companyName });
 
+  // Curated identity (Snapshot industry + Business overview), keyed on the same
+  // canonical name the memo inputs use. Null for uncurated companies, which the
+  // Primer sections render as neutral factual empty states.
+  const identity = COMPANY_IDENTITY[canonical] ?? null;
+
   const tabContent = {
-    brief: <BriefTab company={canonical} content={memoContent} systemPrompt={systemPrompt} />,
+    // Coverage Primer: replaces the brief tab in place. Snapshot + Business
+    // overview + Financial snapshot, then the existing BriefTab embedded
+    // UNCHANGED as Recent developments (no /api/memo route touch).
+    brief: (
+      <PrimerTab
+        companyName={companyDetail.display}
+        ticker={companyDetail.ticker}
+        sector={companyDetail.sector}
+        industry={identity?.industry ?? null}
+        description={identity?.brief ?? null}
+        financials={financialsResult}
+        briefSlot={
+          <BriefTab company={canonical} content={memoContent} systemPrompt={systemPrompt} />
+        }
+      />
+    ),
     articles: <ArticlesTab articles={articlesForTab} />,
     trend: (
       <TrendTab
