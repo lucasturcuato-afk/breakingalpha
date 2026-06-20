@@ -7,6 +7,7 @@ import re
 from typing import Optional
 
 from google import genai
+from google.genai import types
 
 from backend.edgar.client import sec_get
 from backend.edgar.constants import ITEM_CODE_DESCRIPTIONS
@@ -86,7 +87,14 @@ def summarize_8k(
     if client is None:
         return None
     try:
-        resp = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+        resp = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                max_output_tokens=512,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            ),
+        )
         text = (resp.text or "").strip()
         return text or None
     except Exception as e:
