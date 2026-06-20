@@ -18,6 +18,8 @@
  * thesis.
  */
 
+import { redactRationale } from "./thesis-recommendation-guard";
+
 export const LIVE_SCORE_BANDS = {
   price: 50,
   sentiment: 25,
@@ -264,13 +266,67 @@ export function verdictLean(verdict: string): "supportive" | "against" | "neutra
 
 /**
  * Display-only neutraliser for thesis titles. Strips a single leading stance
- * word (Long, Short, Buy, Sell, Avoid) plus its trailing space so the tracker
- * reads as informational rather than as a recommendation. Leaves Watch,
- * "X Re-rates", and verb-less titles untouched. Never mutates stored data;
+ * word (Long, Short, Buy, Sell, Avoid, Watch) plus its trailing space so the
+ * surface reads as informational rather than as a recommendation. Leaves
+ * "X Re-rates" and verb-less titles untouched. Never mutates stored data;
  * apply at render time only.
  */
 export function neutralizeThesisTitle(title: string | null | undefined): string {
   const s = (title ?? "").trim();
   if (!s) return s;
-  return s.replace(/^(?:long|short|buy|sell|avoid)\b\s/i, "");
+  return s.replace(/^(?:long|short|buy|sell|avoid|watch)\b\s/i, "");
+}
+
+/**
+ * Display-only verdict label for a terminal `outcome` value
+ * (confirmed/invalidated/inconclusive). Maps to neutral evidence wording so a
+ * surface never renders a verdict as a directional call. Parallel to
+ * verdictDisplayLabel (which maps the live_verdict strings); the raw outcome is
+ * still what drives palette and counting, so this never feeds logic.
+ */
+export function outcomeDisplayLabel(outcome: string | null | undefined): string {
+  const o = (outcome ?? "").trim().toLowerCase();
+  if (o === "confirmed") return "Supported";
+  if (o === "invalidated") return "Challenged";
+  if (o === "inconclusive") return "Inconclusive";
+  return "Developing";
+}
+
+/**
+ * Display-only thesis neutraliser, applied at render time to rows already
+ * stored in the DB (which predate the #397 generation guard). Returns a shallow
+ * copy with the user-facing prose made informational:
+ *   - title       -> neutralizeThesisTitle (strip directional prefix)
+ *   - rationale   -> redactRationale (drop recommendation/vehicle sentences)
+ *   - summary     -> redactRationale
+ *   - bear_case   -> redactRationale
+ * Structured fields (conviction, ticker, horizon, outcome, live_verdict, ...)
+ * are left untouched so grading/counting are unaffected. Verdict TEXT is
+ * relabelled separately at the render site via outcomeDisplayLabel /
+ * verdictDisplayLabel. This is render-time cleaning of stored prose, not
+ * regeneration: no model re-ask. Never mutates the DB.
+ */
+export function neutralizeThesis<
+  T extends {
+    title?: string | null;
+    rationale?: string | null;
+    summary?: string | null;
+    bear_case?: string | null;
+  },
+>(thesis: T): T {
+  if (!thesis) return thesis;
+  const out: T = { ...thesis };
+  if (typeof out.title === "string") {
+    out.title = neutralizeThesisTitle(out.title) as T["title"];
+  }
+  if (typeof out.rationale === "string") {
+    out.rationale = redactRationale(out.rationale) as T["rationale"];
+  }
+  if (typeof out.summary === "string") {
+    out.summary = redactRationale(out.summary) as T["summary"];
+  }
+  if (typeof out.bear_case === "string") {
+    out.bear_case = redactRationale(out.bear_case) as T["bear_case"];
+  }
+  return out;
 }

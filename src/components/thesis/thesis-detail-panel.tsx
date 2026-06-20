@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { getSectorStyle } from "@/lib/sector-colors";
+import { outcomeDisplayLabel } from "@/lib/track-record-live-score";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronDown, ChevronUp } from "lucide-react";
@@ -368,9 +369,9 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
                   thesis.outcome === "invalidated" ? "bg-signal-dn/10 text-signal-dn" :
                   "bg-signal-warn/10 text-signal-warn"
                 }`}>
-                  {thesis.outcome === "confirmed" ? "✓ Confirmed" :
-                   thesis.outcome === "invalidated" ? "✗ Invalidated" :
-                   "~ Inconclusive"}
+                  {(thesis.outcome === "confirmed" ? "✓ " :
+                    thesis.outcome === "invalidated" ? "✗ " : "~ ") +
+                   outcomeDisplayLabel(thesis.outcome)}
                 </span>
               )}
               <span className="font-sans text-[10px] text-text-muted">{thesis.updatedAt}</span>

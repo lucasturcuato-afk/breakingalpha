@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { outcomeDisplayLabel } from "@/lib/track-record-live-score";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -75,7 +76,7 @@ function OutcomeIcon({
 
   if (outcome === "confirmed") {
     return (
-      <Tooltip content="Confirmed">
+      <Tooltip content={outcomeDisplayLabel(outcome)}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
           <circle cx={c} cy={c} r={r} fill="none" stroke="var(--signal-up)" strokeWidth={1.5} />
           <polyline
@@ -92,7 +93,7 @@ function OutcomeIcon({
   }
   if (outcome === "invalidated") {
     return (
-      <Tooltip content="Invalidated">
+      <Tooltip content={outcomeDisplayLabel(outcome)}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
           <circle cx={c} cy={c} r={r} fill="none" stroke="var(--signal-dn)" strokeWidth={1.5} />
           <line x1="5" y1="5" x2="9" y2="9" stroke="var(--signal-dn)" strokeWidth={1.5} strokeLinecap="round" />
@@ -103,7 +104,7 @@ function OutcomeIcon({
   }
   if (outcome === "inconclusive") {
     return (
-      <Tooltip content="Inconclusive">
+      <Tooltip content={outcomeDisplayLabel(outcome)}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
           <circle cx={c} cy={c} r={r} fill="none" stroke="var(--signal-warn)" strokeWidth={1.5} />
           <line x1="4.5" y1={c} x2="9.5" y2={c} stroke="var(--signal-warn)" strokeWidth={1.5} strokeLinecap="round" />
@@ -290,9 +291,9 @@ export function ThesisCard({ thesis, isSelected }: ThesisCardProps) {
                 thesis.outcome === "invalidated" ? "bg-signal-dn/10 text-signal-dn" :
                 "bg-signal-warn/10 text-signal-warn"
               }`}>
-                {thesis.outcome === "confirmed" ? "✓ Confirmed" :
-                 thesis.outcome === "invalidated" ? "✗ Invalidated" :
-                 "~ Inconclusive"}
+                {(thesis.outcome === "confirmed" ? "✓ " :
+                  thesis.outcome === "invalidated" ? "✗ " : "~ ") +
+                 outcomeDisplayLabel(thesis.outcome)}
               </span>
             )}
             {!thesis.outcome && (

@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { AppShell } from "@/components/shell";
 import { useUserProfile } from "@/hooks/useUserProfile";
+import { redactRationale } from "@/lib/thesis-recommendation-guard";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -895,7 +896,7 @@ function DealFlowContent() {
                             Signal
                           </p>
                           <p className="font-sans text-[12px] text-text-secondary leading-relaxed italic">
-                            {deal.thesis}
+                            {redactRationale(deal.thesis)}
                           </p>
                         </div>
                       )}

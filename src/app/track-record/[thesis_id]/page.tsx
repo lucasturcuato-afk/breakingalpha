@@ -10,6 +10,7 @@ import { getSectorStyle } from "@/lib/sector-colors";
 import {
   computeLiveScore,
   liveScoreChipClasses,
+  neutralizeThesis,
   neutralizeThesisTitle,
   verdictDisplayLabel,
   type LiveScoreResult,
@@ -91,7 +92,11 @@ export default function ThesisDetailPage() {
             .order("graded_at", { ascending: true }),
         ]);
 
-        if (thesisRes.data) setThesis(thesisRes.data as unknown as ThesisRow);
+        // Neutralise stored prose for display: redact recommendation language
+        // from rationale / bear_case (title + verdict are neutralised at the
+        // render sites below). Display-only; the DB is untouched.
+        if (thesisRes.data)
+          setThesis(neutralizeThesis(thesisRes.data as unknown as ThesisRow));
         setVerdicts((verdictsRes.data as VerdictRow[] | null) ?? []);
       } catch (e) {
         console.error("Thesis detail load error:", e);

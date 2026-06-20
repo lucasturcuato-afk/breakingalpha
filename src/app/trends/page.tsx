@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { AppShell } from "@/components/shell";
 import { EmptyState } from "@/components/ui/empty-state";
+import { neutralizeThesisTitle } from "@/lib/track-record-live-score";
 import { TrendingUp, Lock, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserClient } from "@supabase/ssr";
@@ -1169,7 +1170,7 @@ export default function TrendsPage() {
                       href={`/thesis-board?thesis=${related.id}`}
                       className="inline-flex items-center gap-2 font-sans text-[12px] font-semibold text-gold hover:text-gold-dark transition-colors"
                     >
-                      Related thesis: {related.title} {"\u2192"}
+                      Related thesis: {neutralizeThesisTitle(related.title)} {"\u2192"}
                     </a>
                   </div>
                 );
