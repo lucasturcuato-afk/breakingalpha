@@ -6,6 +6,7 @@ import { mapThesisRow, dedupByTitleSector, thesisDedupKey, thesisFuzzyKey } from
 import { getUserProfile, sectorWeight } from "@/lib/user-profile";
 import { recordOutput } from "@/lib/outputs";
 import { THESIS_FRONTEND_PROMPT_VERSION } from "@/lib/output-constants";
+import { enforceThesisRecommendation, hasThesisViolation } from "@/lib/thesis-recommendation-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -410,6 +411,8 @@ STRICT REQUIREMENTS for each thesis:
 - Must identify a clear market catalyst (what happened and why it matters NOW)
 - Must have a testable claim (something that will either prove or disprove the thesis in 30-90 days)
 - Rationale must be 3-4 sentences minimum, IB-grade language
+- TITLE MUST BE DESCRIPTIVE ANALYSIS, not a recommendation. State what is changing for the named entity or theme and why it matters, with the security or theme as the SUBJECT. This is informational analysis, NOT advice. FORBIDDEN: any directive prefix or call (never begin with "Buy", "Sell", "Long", "Short", "Avoid", or "Watch", and never phrase the title as an instruction to trade). REQUIRED shape: subject + what is changing, e.g. "AeroVironment Backlog Strengthens on New Orders", "Defense Supplier Margins Lag Prime Backlogs", "Iran Risk Premium Set to Compress".
+- INFORMATIONAL ONLY: never recommend a vehicle or instrument. Do not write "the cleanest expression is [ticker]", "the best way to play this", or any buy/sell/long/short/overweight/underweight/recommend/"increase exposure"/"add to position" phrasing. Name a security only as the SUBJECT of analysis or the falsifiable signal, never as an instrument the reader should trade. Close the rationale with "What confirms this:" or "What invalidates this:".
 - conviction must be exactly one of: HIGH, MEDIUM, or WATCH
 - HIGH = strong signal across multiple sources, clear catalyst
 - MEDIUM = emerging signal, needs confirmation
@@ -424,10 +427,10 @@ QUALITY RULES:
 
 Return a JSON array only. Each object must have exactly these fields:
 {
-  title: string (8 words max, specific and actionable),
+  title: string (8 words max, DESCRIPTIVE analysis with the security or theme as subject; NO "Buy/Sell/Long/Short/Avoid/Watch" prefix, no trade instruction),
   conviction: HIGH | MEDIUM | WATCH,
   sector: string,
-  rationale: string (3-4 sentences, specific companies and data),
+  rationale: string (3-4 sentences, specific companies and data, closing with "What confirms this:" or "What invalidates this:"; never recommends a vehicle or instrument),
   catalyst: string (1-2 sentences, what triggered this),
   supporting_article_ids: string[] (minimum 2 article IDs),
   ticker: string (REQUIRED — single primary US ticker this thesis can be graded against. For company-specific theses use the company ticker e.g. "AAPL", "MSFT". For macro/sector theses use the most relevant sector ETF: "SPY" for broad market, "XLF" for financials, "XLK" for tech, "XLE" for energy, "XLV" for healthcare, "XLI" for industrials, "XLC" for communications, "XLY" for consumer discretionary, "XLP" for consumer staples, "XLU" for utilities, "XLB" for materials, "XLRE" for real estate, "GLD" for gold, "TLT" for bonds, "DXY" for dollar. NEVER return null — always pick the single best ticker),
@@ -514,6 +517,66 @@ ${clusterBlocks}`;
         { error: "Gemini returned no valid theses — retry" },
         { status: 500 }
       );
+    }
+
+    // Recommendation guard: make every generated thesis informational-only
+    // (descriptive title, no recommended vehicle, no buy/sell call) BEFORE
+    // persist. Touches only title + rationale; conviction/ticker/horizon stay
+    // intact so grading is unchanged. Detect -> one bounded re-ask -> fail-closed
+    // redaction. Mirrors the #389 brief-voice guard. Best-effort and non-fatal.
+    for (const t of theses) {
+      try {
+        if (!hasThesisViolation(t.title, t.rationale)) continue;
+        const enforced = await enforceThesisRecommendation(t.title, t.rationale ?? "", {
+          regenerate: async (correction) => {
+            try {
+              const resp = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: [
+                  {
+                    role: "user",
+                    parts: [
+                      {
+                        text:
+                          "Rewrite this single investment thesis to comply, preserving the same companies, facts, catalyst, and structure.\n\n" +
+                          `CURRENT TITLE: ${t.title}\n` +
+                          `CURRENT RATIONALE: ${t.rationale ?? ""}\n\n` +
+                          `${correction}\n\n` +
+                          'Return ONLY a JSON object: {"title": "...", "rationale": "..."}',
+                      },
+                    ],
+                  },
+                ],
+                config: {
+                  temperature: 0.3,
+                  maxOutputTokens: 600,
+                  responseMimeType: "application/json",
+                  thinkingConfig: { thinkingBudget: 0 },
+                },
+              });
+              const cleaned = (resp.text || "").replace(/```json|```/g, "").trim();
+              const m = cleaned.match(/\{[\s\S]*\}/);
+              if (!m) return null;
+              const obj = JSON.parse(m[0]);
+              if (typeof obj?.title !== "string" || typeof obj?.rationale !== "string") return null;
+              return { title: obj.title, rationale: obj.rationale };
+            } catch {
+              return null;
+            }
+          },
+          maxReasks: 1,
+        });
+        t.title = enforced.title;
+        t.rationale = enforced.rationale;
+        if (enforced.stillViolating) {
+          console.warn(`[theses POST] thesis guard residual after fallback: "${enforced.title.slice(0, 50)}"`);
+        }
+      } catch (guardErr) {
+        console.warn(
+          "[theses POST] thesis guard error (non-fatal):",
+          guardErr instanceof Error ? guardErr.message : String(guardErr),
+        );
+      }
     }
 
     // Dedup: delete today's AI-generated theses for this user before inserting.

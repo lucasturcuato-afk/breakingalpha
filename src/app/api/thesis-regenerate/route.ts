@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { enforceThesisRecommendation, hasThesisViolation } from "@/lib/thesis-recommendation-guard";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -63,7 +64,7 @@ CATALYST: ${thesis.catalyst || "Not specified"}
 ARTICLES:
 ${articleContext || "None"}
 
-Cite specific companies, figures, and deal values from the articles. Structure: key data point → sector implications → forward outlook matching ${thesis.conviction} conviction. Respond with ONLY the paragraph text, no labels or markdown.`;
+Cite specific companies, figures, and deal values from the articles. Structure: key data point → sector implications → forward outlook matching ${thesis.conviction} conviction. INFORMATIONAL ONLY, NOT advice: this is descriptive analysis. Never recommend a vehicle or instrument and never use buy/sell/long/short/avoid/overweight/underweight/recommend/"the cleanest expression is [ticker]"/"best way to play"/"increase exposure"/"add to position" phrasing. Name a security only as the SUBJECT of analysis, never as something to trade. Respond with ONLY the paragraph text, no labels or markdown.`;
 
     const analysisCompletion = await ai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -74,10 +75,66 @@ Cite specific companies, figures, and deal values from the articles. Structure: 
         thinkingConfig: { thinkingBudget: 0 },
       },
     });
-    const newRationale =
+    let newRationale =
       analysisCompletion.text?.trim() ||
       thesis.rationale ||
       "";
+
+    // Recommendation guard: keep the regenerated thesis informational-only.
+    // Runs over the title + regenerated rationale; touches only those (the
+    // grader's structured fields are untouched). Detect -> one bounded re-ask
+    // -> fail-closed redaction. Mirrors the #389 brief-voice guard. Non-fatal.
+    let guardedTitle: string | null = null;
+    try {
+      if (hasThesisViolation(thesis.title, newRationale)) {
+        const enforced = await enforceThesisRecommendation(thesis.title || "", newRationale, {
+          regenerate: async (correction) => {
+            try {
+              const resp = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: [
+                  {
+                    role: "user",
+                    parts: [
+                      {
+                        text:
+                          "Rewrite this single investment thesis to comply, preserving the same companies, facts, catalyst, and structure.\n\n" +
+                          `CURRENT TITLE: ${thesis.title || ""}\n` +
+                          `CURRENT RATIONALE: ${newRationale}\n\n` +
+                          `${correction}\n\n` +
+                          'Return ONLY a JSON object: {"title": "...", "rationale": "..."}',
+                      },
+                    ],
+                  },
+                ],
+                config: {
+                  temperature: 0.3,
+                  maxOutputTokens: 600,
+                  responseMimeType: "application/json",
+                  thinkingConfig: { thinkingBudget: 0 },
+                },
+              });
+              const cleaned = (resp.text || "").replace(/```json|```/g, "").trim();
+              const m = cleaned.match(/\{[\s\S]*\}/);
+              if (!m) return null;
+              const obj = JSON.parse(m[0]);
+              if (typeof obj?.title !== "string" || typeof obj?.rationale !== "string") return null;
+              return { title: obj.title, rationale: obj.rationale };
+            } catch {
+              return null;
+            }
+          },
+          maxReasks: 1,
+        });
+        newRationale = enforced.rationale;
+        if (enforced.title && enforced.title !== thesis.title) guardedTitle = enforced.title;
+      }
+    } catch (guardErr) {
+      console.warn(
+        "Thesis guard error (non-fatal):",
+        guardErr instanceof Error ? guardErr.message : String(guardErr),
+      );
+    }
 
     // Step 2: Generate catalyst note + evidence chain
     const detailPrompt = `Given this thesis and articles, generate catalyst note and evidence chain.
@@ -121,6 +178,7 @@ Rules: one entry per article (${articleList.length} total), cite specific data.`
     }
 
     const updateData: Record<string, unknown> = { rationale: newRationale };
+    if (guardedTitle) updateData.title = guardedTitle;
     if (catalystNote) updateData.catalyst_note = catalystNote;
     if (evidenceChain.length > 0) updateData.evidence_chain = evidenceChain;
 
@@ -136,6 +194,7 @@ Rules: one entry per article (${articleList.length} total), cite specific data.`
     return NextResponse.json({
       thesis: {
         ...thesis,
+        ...(guardedTitle ? { title: guardedTitle } : {}),
         rationale: newRationale,
         catalyst_note: catalystNote,
         evidence_chain: evidenceChain,

@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -53,6 +54,13 @@ from google import genai
 import embedding_job
 from outputs import record_output
 from output_constants import THESIS_PROMPT_VERSION
+from thesis_recommendation_guard import (
+    build_thesis_correction,
+    detect_thesis_violations,
+    enforce_thesis_recommendation,
+    has_thesis_violation,
+    violation_count,
+)
 
 logger = logging.getLogger("thesis_generator")
 if not logger.handlers:
@@ -411,31 +419,34 @@ def _build_prompt(cluster_blocks: str) -> str:
         "investment theses that a portfolio manager or deal team would actually "
         "act on.\n\n"
         "STRICT REQUIREMENTS for each thesis:\n\n"
-        "1. **Title MUST begin with one of these exact prefixes** (pick the one "
-        "that best fits the stance):\n"
-        "   - \"Long [X]\" — bullish on a specific name/sector/theme\n"
-        "   - \"Short [X]\" — bearish on a specific name/sector/theme\n"
-        "   - \"Avoid [X]\" — soft bearish; recommend not owning\n"
-        "   - \"Buy [X]\" — strong bullish; specific actionable name\n"
-        "   - \"Watch [X]\" — early signal; not yet actionable\n"
-        "   - \"[X] Re-rates\" — specific entity will reprice (up or down)\n"
-        "   - \"[X] Compresses\" — spread/multiple/premium narrows\n"
-        "   - \"[X] Resolves\" — situation reaches binary outcome\n"
-        "   - \"[X] Reverses\" — recent move undoes\n"
-        "   - \"[X] Breaks Down\" — current pattern fails\n"
-        "   - \"[X] Outperforms [Y]\" — relative bet\n"
-        "   - \"[X] Lags [Y]\" — relative bet (other direction)\n"
-        "   The title is 8 words MAX, including the prefix.\n\n"
+        "1. **Title MUST be DESCRIPTIVE ANALYSIS, not a recommendation.** State "
+        "what is changing for the named entity or theme and why it matters, with "
+        "the security or theme as the SUBJECT. This is informational analysis, "
+        "NOT advice.\n"
+        "   - FORBIDDEN: any directive prefix or call. Never begin with \"Buy\", "
+        "\"Sell\", \"Long\", \"Short\", \"Avoid\", or \"Watch\", and never phrase "
+        "the title as an instruction to trade.\n"
+        "   - REQUIRED shape: subject + what is changing, e.g. \"AeroVironment "
+        "Backlog Strengthens on New Orders\", \"Defense Supplier Margins Lag "
+        "Prime Backlogs\", \"Iran Risk Premium Set to Compress\", \"Optical "
+        "Computing Read-Through Stays Unproven\".\n"
+        "   - Use neutral analytical verbs (strengthens, weakens, re-rates, "
+        "compresses, lags, outperforms, resolves, reverses, breaks down) framed "
+        "as observations, not as bets the reader should place.\n"
+        "   The title is 8 words MAX.\n\n"
         "2. **Rationale MUST be 2-3 sentences total**, structured as:\n"
         "   - Sentence 1: state the structural argument (why the trade exists)\n"
         "   - Sentence 2: identify the asymmetry (what the market is missing "
         "or has miscalibrated)\n"
         "   - **Sentence 3 (the close) MUST begin with one of these exact "
-        "phrasings**:\n"
-        "     a. \"If we're right, [X]; if not, [Y].\"\n"
-        "     b. \"The cleanest expression is [specific ticker], because "
-        "[reason].\"\n"
-        "     c. \"What invalidates this: [specific event/data point].\"\n"
+        "phrasings** (evidence and falsifiability, NOT a trade instruction):\n"
+        "     a. \"What confirms this: [specific event/data point].\"\n"
+        "     b. \"What invalidates this: [specific event/data point].\"\n"
+        "   Do NOT recommend a vehicle or instrument. Never write \"the cleanest "
+        "expression is [ticker]\", \"the best way to play this\", or any "
+        "buy/sell/long/short/overweight/underweight phrasing. Name a security "
+        "only as the SUBJECT of analysis or the falsifiable signal, never as an "
+        "instrument the reader should trade.\n"
         "   No exceptions. The final sentence is the load-bearing element of "
         "the thesis.\n\n"
         "3. **Catalyst MUST be a specific upcoming event with a temporal "
@@ -489,7 +500,7 @@ def _build_prompt(cluster_blocks: str) -> str:
         "register your output should match:\n\n"
         "EXAMPLE 1:\n"
         "{\n"
-        "  \"title\": \"Long Defense Suppliers Two Layers Down\",\n"
+        "  \"title\": \"Defense Suppliers Lag Prime Backlogs\",\n"
         "  \"conviction\": \"HIGH\",\n"
         "  \"sector\": \"Industrials\",\n"
         "  \"rationale\": \"NATO procurement budgets are accelerating defense "
@@ -498,9 +509,9 @@ def _build_prompt(cluster_blocks: str) -> str:
         "the news. The asymmetry sits in tier-2 suppliers (electronics, "
         "propulsion components, specialty materials) whose revenue tracks "
         "prime backlogs with a 6-9 month lag and whose multiples have not "
-        "repriced. The cleanest expression is the iShares U.S. Aerospace & "
-        "Defense ETF (ITA) screened against the prime-heavy XAR — long ITA / "
-        "short XAR captures the supplier tilt.\",\n"
+        "repriced. What confirms this: tier-2 supplier order books and the "
+        "supplier-weighted ITA closing its gap to the prime-heavy XAR over the "
+        "next two quarters.\",\n"
         "  \"catalyst\": \"Q3 2026 earnings from LMT (October 23) and RTX "
         "(October 28) will reveal whether prime-level backlog growth is "
         "translating into supplier order flow.\",\n"
@@ -533,7 +544,7 @@ def _build_prompt(cluster_blocks: str) -> str:
         "}\n\n"
         "EXAMPLE 3:\n"
         "{\n"
-        "  \"title\": \"Watch Optical Computing Reseller Spillover\",\n"
+        "  \"title\": \"Optical Computing Read-Through Stays Unproven\",\n"
         "  \"conviction\": \"WATCH\",\n"
         "  \"sector\": \"Technology\",\n"
         "  \"rationale\": \"Lightelligence's Hong Kong debut surge validates "
@@ -541,10 +552,11 @@ def _build_prompt(cluster_blocks: str) -> str:
         "read-through to listed comps (Lumentum, II-VI) is unclear because "
         "most existing optical computing exposure is in private companies or "
         "non-US listings. The asymmetry is whether public optical-computing "
-        "pure-plays exist in size — if they do, they should rerate quickly; "
-        "if they don't, the surge is a private-market dynamic that doesn't "
-        "transmit. If we're right, Lumentum and II-VI re-rate within 30 "
-        "days; if not, the move stays trapped in HK-listed names.\",\n"
+        "pure-plays exist in size, since if they do they should rerate quickly, "
+        "and if they don't the surge is a private-market dynamic that doesn't "
+        "transmit. What confirms this: Lumentum and II-VI re-rate within 30 "
+        "days on disclosed optical-computing exposure; absent that, the move "
+        "stays trapped in HK-listed names.\",\n"
         "  \"catalyst\": \"Within the next 30 days, Lumentum and II-VI "
         "investor-day mentions of optical-computing exposure will signal "
         "whether the public-comp read-through holds.\",\n"
@@ -557,10 +569,13 @@ def _build_prompt(cluster_blocks: str) -> str:
         "Match this voice. Match this structure. Match this density.\n\n"
         "Return a JSON array only. Each object must have exactly these fields:\n"
         "{\n"
-        "  title: string (8 words max, specific and actionable),\n"
+        "  title: string (8 words max, DESCRIPTIVE analysis with the security or "
+        "theme as subject; NO \"Buy/Sell/Long/Short/Avoid/Watch\" prefix, no "
+        "trade instruction),\n"
         "  conviction: HIGH | MEDIUM | WATCH,\n"
         "  sector: string,\n"
-        "  rationale: string (2-3 sentences, ending with one of the required closing patterns),\n"
+        "  rationale: string (2-3 sentences, closing with \"What confirms this:\" "
+        "or \"What invalidates this:\"; never recommends a vehicle or instrument),\n"
         "  catalyst: string (1-2 sentences, what triggered this),\n"
         "  supporting_article_ids: string[] (minimum 2 article IDs),\n"
         "  ticker: string (REQUIRED — single primary US ticker. For company-"
@@ -650,7 +665,78 @@ def _call_gemini(prompt: str) -> list[dict]:
         return []
 
     valid = [t for t in parsed if _validate_thesis(t)]
-    return valid[:MAX_THESES_INSERT]
+    capped = valid[:MAX_THESES_INSERT]
+    return [_guard_thesis(t) for t in capped]
+
+
+def _regenerate_thesis(original: dict, correction: str) -> tuple[str, str] | None:
+    """Bounded re-ask: rewrite ONE thesis's title + rationale to comply, keeping
+    the same facts. Returns (title, rationale) or None on any failure so the
+    guard falls back to deterministic redaction. Mirrors the injected
+    `regenerate` of brief_voice_guard."""
+    prompt = (
+        "Rewrite this single investment thesis to comply, preserving the same "
+        "companies, facts, catalyst, and structure.\n\n"
+        f"CURRENT TITLE: {original.get('title') or ''}\n"
+        f"CURRENT RATIONALE: {original.get('rationale') or ''}\n\n"
+        f"{correction}\n\n"
+        'Return ONLY a JSON object: {"title": "...", "rationale": "..."}'
+    )
+    try:
+        resp = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config={
+                "temperature": GEMINI_TEMPERATURE,
+                "max_output_tokens": 600,
+                "response_mime_type": "application/json",
+                "thinking_config": {"thinking_budget": 0},
+            },
+        )
+    except Exception as e:
+        logger.warning("  thesis guard: re-ask failed (non-fatal): %s", e)
+        return None
+    raw = getattr(resp, "text", "") or ""
+    try:
+        cleaned = raw.replace("```json", "").replace("```", "").strip()
+        m = re.search(r"\{.*\}", cleaned, re.DOTALL)
+        obj = json.loads(m.group(0) if m else cleaned)
+    except Exception:
+        return None
+    if not isinstance(obj, dict):
+        return None
+    nt = obj.get("title")
+    nr = obj.get("rationale")
+    if not isinstance(nt, str) or not isinstance(nr, str):
+        return None
+    return (nt, nr)
+
+
+def _guard_thesis(t: dict) -> dict:
+    """Run the deterministic recommendation guard over a generated thesis's
+    user-facing title + rationale. Structured fields (conviction, ticker,
+    horizon, verifiable_signal) are NOT touched, so direction survives via
+    conviction and grading stays as-is. Detect -> one bounded re-ask ->
+    fail-closed redaction."""
+    title = t.get("title") or ""
+    rationale = t.get("rationale") or ""
+    if not has_thesis_violation(title, rationale):
+        return t
+    before = detect_thesis_violations(title, rationale)
+    logger.info(
+        "  [thesis guard] %d violation(s) on '%s': enforcing descriptive framing",
+        violation_count(before),
+        title[:50],
+    )
+    res = enforce_thesis_recommendation(
+        title, rationale, lambda corr: _regenerate_thesis(t, corr), max_reasks=1
+    )
+    out = dict(t)
+    out["title"] = res.title
+    out["rationale"] = res.rationale
+    if res.still_violating:
+        logger.warning("  [thesis guard] residual after fallback on '%s'", res.title[:50])
+    return out
 
 
 # ---------------------------------------------------------------------------
