@@ -95,7 +95,28 @@ export function hasThesisViolation(
  * Capitalizes the new leading character. Idempotent.
  */
 export function stripDirectionalTitle(title: string | null | undefined): string {
-  let out = (title ?? "").replace(TITLE_PREFIX_PATTERN, "").trim();
+  let out = (title ?? "").trim();
+  // Loop until stable so a stacked prefix ("Buy Long X") is fully removed.
+  for (;;) {
+    const stripped = out.replace(TITLE_PREFIX_PATTERN, "").trim();
+    if (stripped === out) break;
+    out = stripped;
+  }
+  if (out) out = out[0].toUpperCase() + out.slice(1);
+  return out;
+}
+
+/**
+ * Fail-closed title cleaner: strip every leading directional prefix, then
+ * neutralize any residual recommendation/vehicle token (a leading "Overweight",
+ * a mid-title "buy"). Guarantees detect returns zero violations for the title.
+ */
+export function sanitizeTitle(title: string | null | undefined): string {
+  let out = stripDirectionalTitle(title);
+  for (const re of [...VEHICLE_PATTERNS, ...RECOMMENDATION_PATTERNS]) {
+    out = out.replace(new RegExp(re.source, "gi"), "[redacted]");
+  }
+  out = out.replace(/\s{2,}/g, " ").trim();
   if (out) out = out[0].toUpperCase() + out.slice(1);
   return out;
 }
@@ -209,7 +230,7 @@ export async function enforceThesisRecommendation(
   }
 
   const base = candidates[candidates.length - 1];
-  const safeTitle = stripDirectionalTitle(base.title);
+  const safeTitle = sanitizeTitle(base.title);
   const safeRationale = redactRationale(base.rationale);
   const after = detectThesisViolations(safeTitle, safeRationale);
   return {

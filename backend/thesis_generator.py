@@ -724,7 +724,7 @@ def _guard_thesis(t: dict) -> dict:
         return t
     before = detect_thesis_violations(title, rationale)
     logger.info(
-        "  [thesis guard] %d violation(s) on '%s' — enforcing descriptive framing",
+        "  [thesis guard] %d violation(s) on '%s': enforcing descriptive framing",
         violation_count(before),
         title[:50],
     )

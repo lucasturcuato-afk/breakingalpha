@@ -108,11 +108,31 @@ def has_thesis_violation(title: Optional[str], rationale: Optional[str]) -> bool
 
 
 def strip_directional_title(title: str) -> str:
-    """Remove a single leading directional prefix so the title reads as analysis.
-    Compiled fresh; capitalizes the new leading character so 'Buy AeroVironment'
-    becomes 'AeroVironment', 'short defense' becomes 'Defense'. Idempotent."""
-    out = re.compile(_TITLE_PREFIX_SOURCE, re.IGNORECASE).sub("", title or "", count=1)
-    out = out.strip()
+    """Remove leading directional prefixes so the title reads as analysis.
+    Capitalizes the new leading character so 'Buy AeroVironment' becomes
+    'AeroVironment'. Loops until stable so a stacked prefix ('Buy Long X') is
+    fully removed, not just the first. Idempotent."""
+    pat = re.compile(_TITLE_PREFIX_SOURCE, re.IGNORECASE)
+    out = (title or "").strip()
+    while True:
+        stripped = pat.sub("", out, count=1).strip()
+        if stripped == out:
+            break
+        out = stripped
+    if out:
+        out = out[0].upper() + out[1:]
+    return out
+
+
+def sanitize_title(title: str) -> str:
+    """Fail-closed title cleaner: strip every leading directional prefix, then
+    neutralize any residual recommendation/vehicle token (e.g. a leading
+    'Overweight' or a mid-title 'buy'). Guarantees detect returns zero
+    violations for the title."""
+    out = strip_directional_title(title)
+    for src in _VEHICLE_SOURCES + _RECOMMENDATION_SOURCES:
+        out = re.compile(src, re.IGNORECASE).sub("[redacted]", out)
+    out = re.sub(r"\s{2,}", " ", out).strip()
     if out:
         out = out[0].upper() + out[1:]
     return out
@@ -225,7 +245,7 @@ def enforce_thesis_recommendation(
             return EnforceResult(ct, cr, before, reasked, False)
 
     base_t, base_r = candidates[-1]
-    safe_title = strip_directional_title(base_t)
+    safe_title = sanitize_title(base_t)
     safe_rationale = redact_rationale(base_r)
     after = detect_thesis_violations(safe_title, safe_rationale)
     return EnforceResult(

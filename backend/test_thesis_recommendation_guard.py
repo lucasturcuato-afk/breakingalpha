@@ -99,6 +99,26 @@ class TestRedaction(unittest.TestCase):
         # Descriptive title untouched.
         self.assertEqual(strip_directional_title(CLEAN_TITLE), CLEAN_TITLE)
 
+    def test_stacked_prefix_fully_stripped(self):
+        # A stacked directional prefix must not survive the fail-closed strip.
+        from thesis_recommendation_guard import sanitize_title
+
+        out = sanitize_title("Buy Long AeroVironment Backlog")
+        self.assertEqual(violation_count(detect_thesis_violations(out, "")), 0)
+        out2 = sanitize_title("Overweight Defense Suppliers")
+        self.assertEqual(violation_count(detect_thesis_violations(out2, "")), 0)
+
+    def test_failclosed_stacked_prefix_clean(self):
+        res = enforce_thesis_recommendation(
+            "Buy Long AeroVironment Backlog",
+            "Overweight the name here. What invalidates this: a slip.",
+            lambda c: None,
+            max_reasks=1,
+        )
+        self.assertEqual(
+            violation_count(detect_thesis_violations(res.title, res.rationale)), 0
+        )
+
     def test_strip_is_idempotent(self):
         once = strip_directional_title("Long JPMorgan Retail Expansion")
         twice = strip_directional_title(once)

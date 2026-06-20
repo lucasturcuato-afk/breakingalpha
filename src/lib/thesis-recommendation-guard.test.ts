@@ -75,6 +75,15 @@ test("stripDirectionalTitle removes prefix, idempotent, leaves descriptive", () 
   assert.equal(stripDirectionalTitle(once), once);
 });
 
+test("stacked directional prefix fully stripped by fail-closed", async () => {
+  const res = await enforceThesisRecommendation(
+    "Buy Long AeroVironment Backlog",
+    "Overweight the name here. What invalidates this: a slip.",
+    { regenerate: async () => null },
+  );
+  assert.equal(violationCount(detectThesisViolations(res.title, res.rationale)), 0);
+});
+
 test("redactRationale removes vehicle, keeps invalidation close", () => {
   const r =
     "AeroVironment's backlog is widening. The cleanest expression is AVAV, because it is the purest play. What invalidates this: a delivery slip at the next print.";
