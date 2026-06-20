@@ -26,7 +26,6 @@ import logging
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from supabase import create_client
 
 from supabase_client import get_service_client
 
