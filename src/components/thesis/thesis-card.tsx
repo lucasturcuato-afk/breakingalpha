@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { outcomeDisplayLabel } from "@/lib/track-record-live-score";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -290,9 +291,9 @@ export function ThesisCard({ thesis, isSelected }: ThesisCardProps) {
                 thesis.outcome === "invalidated" ? "bg-signal-dn/10 text-signal-dn" :
                 "bg-signal-warn/10 text-signal-warn"
               }`}>
-                {thesis.outcome === "confirmed" ? "✓ Confirmed" :
-                 thesis.outcome === "invalidated" ? "✗ Invalidated" :
-                 "~ Inconclusive"}
+                {(thesis.outcome === "confirmed" ? "✓ " :
+                  thesis.outcome === "invalidated" ? "✗ " : "~ ") +
+                 outcomeDisplayLabel(thesis.outcome)}
               </span>
             )}
             {!thesis.outcome && (

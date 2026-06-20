@@ -1,6 +1,8 @@
 import { cn } from "@/lib/utils";
 import { SentimentPill } from "@/components/ui/sentiment-pill";
 import Link from "next/link";
+import { neutralizeThesisTitle } from "@/lib/track-record-live-score";
+import { redactRationale } from "@/lib/thesis-recommendation-guard";
 
 export interface ThesisPreview {
   id: string;
@@ -51,10 +53,10 @@ export function ActiveThesesWidget({
             <SentimentPill tone={thesis.conviction} size="sm" />
           </div>
           <h4 className="font-display text-[12px] font-semibold text-text-primary leading-snug">
-            {thesis.title}
+            {neutralizeThesisTitle(thesis.title)}
           </h4>
           <p className="font-sans text-[11px] text-text-secondary leading-snug mt-0.5 line-clamp-2">
-            {thesis.preview}
+            {redactRationale(thesis.preview)}
           </p>
         </Link>
       ))}

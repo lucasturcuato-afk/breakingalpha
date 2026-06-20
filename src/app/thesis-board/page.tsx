@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import type { ThesisItem, ThesisStatus, WeeklyDigest, PatternRow, SourceCredibilityRow } from "@/components/thesis";
 import { mapThesisRow } from "@/lib/thesis-mapper";
+import { neutralizeThesis } from "@/lib/track-record-live-score";
 
 function getSupabase() {
   return createBrowserClient(
@@ -234,7 +235,11 @@ function ThesisBoardContent() {
       const res = await fetch("/api/theses");
       const data = await res.json();
       if (data.theses && Array.isArray(data.theses)) {
-        const mapped: ThesisItem[] = data.theses.map(mapThesisRow);
+        // Neutralise stored rows for display: strip directional title prefixes
+        // and redact recommendation language from bodies before any board
+        // surface (card, detail panel, table, list, kanban, and their MemoModal
+        // children) renders them. Display-only; the DB is untouched.
+        const mapped: ThesisItem[] = data.theses.map(mapThesisRow).map(neutralizeThesis);
         setTheses(mapped);
       }
       if (data.digest) {

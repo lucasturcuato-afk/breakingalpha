@@ -99,6 +99,8 @@
 import { stripHtml } from "@/lib/strip-html";
 import { PrintMasthead } from "./print-masthead";
 import { formatPTDateLong } from "@/lib/format-pt";
+import { neutralizeThesisTitle } from "@/lib/track-record-live-score";
+import { redactRationale } from "@/lib/thesis-recommendation-guard";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 
@@ -715,7 +717,12 @@ function ActiveThesesSection({ theses }: { theses: ActiveThesis[] }) {
       {theses.map((t, i) => {
         const isLast = i === theses.length - 1;
         const tagColor = convictionColor(t.conviction);
-        const rationaleText = trimToFirstSentence(t.rationale, 180);
+        // Neutralise stored prose for the brief: redact recommendation language
+        // from the rationale (title neutralised at its render below).
+        const rationaleText = trimToFirstSentence(
+          t.rationale ? redactRationale(t.rationale) : t.rationale,
+          180,
+        );
         const catalystText = trimToFirstSentence(t.catalyst, 180);
         const mentionLine = t.matched_today
           ? buildMentionLine(t.mention_surface, t.mention_anchor)
@@ -772,7 +779,7 @@ function ActiveThesesSection({ theses }: { theses: ActiveThesis[] }) {
                 margin: "6px 0 6px",
               }}
             >
-              {trimToFirstClause(t.title || "Untitled thesis", 80)}
+              {trimToFirstClause(neutralizeThesisTitle(t.title) || "Untitled thesis", 80)}
             </h4>
             {rationaleText ? (
               <p
