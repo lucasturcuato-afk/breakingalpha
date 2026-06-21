@@ -1,40 +1,60 @@
 "use client";
 
 /**
- * PrimerTab (Coverage Primer PR1)
+ * PrimerTab (Coverage Primer)
  *
  * The Coverage Primer replaces the per-company brief tab in place: a scannable
  * interview-prep sheet assembled from existing data. Sections, top to bottom:
- *   1. Snapshot            -- ticker, sector, industry, identity (factual)
- *   2. Business overview   -- curated one-line descriptor (COMPANY_IDENTITY)
- *   3. Financial snapshot  -- latest annual XBRL digest (fetchCompanyFinancials)
- *   4. Recent developments -- the existing BriefTab, embedded UNCHANGED, which
- *      carries the informational-only brief (the #389 voice guard applies on the
- *      /api/memo path it owns; this component does not touch that path).
+ *   1. Snapshot            -- company, ticker, sector, industry (factual)
+ *   2. Business overview   -- live provider profile summary or curated descriptor
+ *   3. Key stats           -- valuation digest from the on-view quote feed
+ *   4. Financial snapshot  -- latest annual XBRL digest + computed margins
+ *   5. Recent developments -- the existing BriefTab, embedded UNCHANGED, which
+ *      carries the informational-only brief (#389 voice guard on the /api/memo
+ *      path it owns; this component does not touch that path).
+ *
+ * Valuation and live profile are fetched on view from /api/company-kpis (the
+ * same Yahoo v10 feed the KPI strip uses) so the page render never blocks on
+ * Yahoo. Curated COMPANY_IDENTITY (industry, description) is the immediate,
+ * always-available fallback; live data overlays it when it arrives.
  *
  * Factual scaffolding only: no buy/sell/hold/overweight/exposure/allocation
- * language anywhere. Every section degrades to a neutral empty state for a
- * sparse company, so the Primer never looks broken. The brief always renders.
+ * language. Every section degrades to a neutral empty state (or hides, for the
+ * business overview) so the Primer never looks broken. The brief always renders.
  */
 
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 import type { CompanyFinancialsResult } from "@/lib/financial-facts";
+import type { QuoteSummaryLive } from "@/lib/yahoo/quoteSummary";
 import { PrimerSnapshot } from "./primer/PrimerSnapshot";
 import { PrimerBusinessOverview } from "./primer/PrimerBusinessOverview";
+import { PrimerKeyStats } from "./primer/PrimerKeyStats";
 import { PrimerFinancialSnapshot } from "./primer/PrimerFinancialSnapshot";
 
 interface PrimerTabProps {
   companyName: string;
   ticker: string | null;
   sector: string | null;
-  /** Curated industry label from COMPANY_IDENTITY, or null when uncurated. */
+  /** Curated industry from COMPANY_IDENTITY, or null. Fallback for live profile. */
   industry: string | null;
-  /** Curated one-line description from COMPANY_IDENTITY.brief, or null. */
+  /** Curated description from COMPANY_IDENTITY.brief, or null. Fallback for live. */
   description: string | null;
   financials: CompanyFinancialsResult;
   /** The existing BriefTab element, embedded as Recent developments unchanged. */
   briefSlot: ReactNode;
+}
+
+/** Trim a long provider summary to a clean one-to-two-sentence overview. */
+function trimSummary(text: string): string {
+  const clean = text.trim();
+  if (clean.length <= 280) return clean;
+  // Prefer a sentence boundary within the cap; else hard-cap with an ellipsis.
+  const slice = clean.slice(0, 280);
+  const lastStop = Math.max(slice.lastIndexOf(". "), slice.lastIndexOf("! "), slice.lastIndexOf("? "));
+  if (lastStop > 120) return slice.slice(0, lastStop + 1);
+  return slice.replace(/\s+\S*$/, "") + "...";
 }
 
 export function PrimerTab({
@@ -46,15 +66,58 @@ export function PrimerTab({
   financials,
   briefSlot,
 }: PrimerTabProps) {
+  const [quote, setQuote] = useState<QuoteSummaryLive | null>(null);
+  const [loading, setLoading] = useState<boolean>(!!ticker);
+
+  useEffect(() => {
+    if (!ticker) {
+      setLoading(false);
+      return;
+    }
+    const ctrl = new AbortController();
+    setLoading(true);
+    (async () => {
+      try {
+        const r = await fetch(`/api/company-kpis?ticker=${encodeURIComponent(ticker)}`, {
+          signal: ctrl.signal,
+        });
+        if (ctrl.signal.aborted) return;
+        if (!r.ok) {
+          setQuote(null);
+          return;
+        }
+        const body = (await r.json()) as { kind?: string } & Partial<QuoteSummaryLive>;
+        if (ctrl.signal.aborted) return;
+        setQuote(body.kind === "live" ? (body as QuoteSummaryLive) : null);
+      } catch (e) {
+        if ((e as { name?: string })?.name === "AbortError") return;
+        setQuote(null);
+      } finally {
+        if (!ctrl.signal.aborted) setLoading(false);
+      }
+    })();
+    return () => ctrl.abort();
+  }, [ticker]);
+
+  // Live profile overlays the curated fallback; null only when neither exists.
+  const resolvedIndustry = quote?.industry ?? industry ?? null;
+  const resolvedDescription = quote?.businessSummary
+    ? trimSummary(quote.businessSummary)
+    : description ?? null;
+
   return (
     <div data-testid="primer-tab" className="space-y-4">
       <PrimerSnapshot
         companyName={companyName}
         ticker={ticker}
         sector={sector}
-        industry={industry}
+        industry={resolvedIndustry}
       />
-      <PrimerBusinessOverview description={description} />
+
+      {/* Business overview: hidden entirely when neither live nor curated text. */}
+      {resolvedDescription ? <PrimerBusinessOverview description={resolvedDescription} /> : null}
+
+      <PrimerKeyStats quote={quote} loading={loading} />
       <PrimerFinancialSnapshot financials={financials} />
 
       {/* Recent developments: the existing brief, embedded unchanged. */}

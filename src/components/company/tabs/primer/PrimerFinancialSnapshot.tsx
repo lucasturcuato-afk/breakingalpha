@@ -46,6 +46,25 @@ export function PrimerFinancialSnapshot({ financials }: PrimerFinancialSnapshotP
       }).filter((r): r is { label: string; display: string } => r !== null)
     : [];
 
+  // Margins computed from the fundamentals already shown (latest annual column).
+  // Pure ratios of reported statement values, no external data. Skipped when the
+  // numerator or a non-zero revenue denominator is missing.
+  const cellVal = (key: string): number | null => {
+    if (!latest) return null;
+    const c = annual.grid[key]?.[latest.key];
+    return c && Number.isFinite(c.value) ? c.value : null;
+  };
+  const revenue = cellVal("revenue");
+  const margins: { label: string; display: string }[] = [];
+  if (revenue && revenue !== 0) {
+    const addMargin = (label: string, numerator: number | null) => {
+      if (numerator != null) margins.push({ label, display: formatValue(numerator / revenue, "pct") });
+    };
+    addMargin("Gross margin", cellVal("gross_profit"));
+    addMargin("Operating margin", cellVal("operating_income"));
+    addMargin("Net margin", cellVal("net_income"));
+  }
+
   return (
     <section
       data-testid="primer-financial-snapshot"
@@ -83,6 +102,23 @@ export function PrimerFinancialSnapshot({ financials }: PrimerFinancialSnapshotP
           {financialsEmptyCopy(hasCik)}
         </p>
       )}
+
+      {margins.length > 0 ? (
+        <div data-testid="primer-margins" className="pt-1 border-t border-border-base/60">
+          <dl className="grid grid-cols-3 gap-x-4 gap-y-2 pt-2">
+            {margins.map((m) => (
+              <div key={m.label} className="flex flex-col gap-0.5">
+                <dt className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-text-faint">
+                  {m.label}
+                </dt>
+                <dd className="font-sans text-[13px] text-espresso font-semibold tabular-nums">
+                  {m.display}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
     </section>
   );
 }

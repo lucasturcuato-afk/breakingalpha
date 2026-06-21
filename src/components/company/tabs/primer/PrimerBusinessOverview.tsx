@@ -1,17 +1,18 @@
 "use client";
 
 /**
- * PrimerBusinessOverview (Coverage Primer PR1)
+ * PrimerBusinessOverview (Coverage Primer)
  *
- * Renders the curated one-line business description from COMPANY_IDENTITY
- * verbatim (no model generation). Uncurated companies show a neutral factual
- * placeholder rather than a blank section, so the Primer never looks broken.
- * Informational only.
+ * Renders a factual one-line business description: the live provider profile
+ * summary (Yahoo assetProfile) when available, else the curated COMPANY_IDENTITY
+ * description, both verbatim (no model generation). The parent only renders this
+ * section when a description exists, so there is no placeholder branch: a company
+ * with neither source hides the section entirely. Informational only.
  */
 
 interface PrimerBusinessOverviewProps {
-  /** Curated profile description from COMPANY_IDENTITY.brief, or null. */
-  description: string | null;
+  /** Resolved description (live profile summary or curated). Always present. */
+  description: string;
 }
 
 export function PrimerBusinessOverview({ description }: PrimerBusinessOverviewProps) {
@@ -23,17 +24,7 @@ export function PrimerBusinessOverview({ description }: PrimerBusinessOverviewPr
       <h3 className="font-mono text-[9.5px] font-bold uppercase tracking-[0.10em] text-text-faint">
         Business overview
       </h3>
-      {description ? (
-        <p className="font-sans text-[13px] text-text-secondary leading-relaxed">{description}</p>
-      ) : (
-        <p
-          data-testid="primer-business-overview-empty"
-          className="font-sans text-[12px] text-text-faint italic leading-relaxed"
-        >
-          No curated business overview for this company yet. See Recent developments below for the
-          latest article-sourced activity.
-        </p>
-      )}
+      <p className="font-sans text-[13px] text-text-secondary leading-relaxed">{description}</p>
     </section>
   );
 }
