@@ -62,7 +62,17 @@ export function PrimerKeyStats({ quote, loading }: PrimerKeyStatsProps) {
     };
     push("Market cap", fmtMktCap(quote.marketCap));
     push("P/E (trailing)", fmtPE(quote.peTrailing));
-    push("P/E (forward)", fmtPE(quote.peForward));
+    // Forward P/E is a Yahoo consensus-estimate figure (attributed like the 1y
+    // target), and is dropped when trailing EPS (TTM) is negative or missing: a
+    // forward P/E on non-positive earnings is not meaningful, which is why
+    // mainstream sites dash it (and why trailing P/E is already absent there).
+    const epsTtm = quote.epsTrailing;
+    const fwdEpsMeaningful = epsTtm != null && Number.isFinite(epsTtm) && epsTtm > 0;
+    push(
+      "P/E (forward)",
+      fwdEpsMeaningful ? fmtPE(quote.peForward) : null,
+      "Analyst consensus (Yahoo Finance)",
+    );
     push("EPS (TTM)", fmtUsd(quote.epsTrailing));
     push("52-week range", fmtRange(quote.fiftyTwoWeekLow, quote.fiftyTwoWeekHigh));
     push("Dividend yield", fmtPct(quote.dividendYield));
