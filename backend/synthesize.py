@@ -1063,9 +1063,6 @@ def generate_morning_review_for_evening(today_date, sb):
         resp = gemini_client.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
-            config=types.GenerateContentConfig(
-                max_output_tokens=1536,
-            ),
         )
         text = (resp.text or "").strip()
         # Strip code fences if present (```json ... ``` or ``` ... ```)
