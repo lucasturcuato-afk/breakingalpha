@@ -18,7 +18,7 @@ interface PrimerSnapshotProps {
   industry: string | null;
 }
 
-const DASH = "—";
+const DASH = "--";
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
