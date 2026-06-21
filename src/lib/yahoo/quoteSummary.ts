@@ -12,7 +12,7 @@ import { getCrumb, invalidateCrumb } from "@/lib/yahoo/crumbAuth";
 
 const UA = "Mozilla/5.0 (compatible; Signalera/1.0)";
 const FETCH_TIMEOUT_MS = 7000;
-const MODULES = "price,summaryDetail,defaultKeyStatistics,financialData,earningsHistory,calendarEvents";
+const MODULES = "price,summaryDetail,defaultKeyStatistics,financialData,earningsHistory,calendarEvents,assetProfile";
 
 export interface QuoteSummaryLive {
   kind: "live";
@@ -27,9 +27,14 @@ export interface QuoteSummaryLive {
   epsForward: number | null;
   fiftyTwoWeekHigh: number | null;
   fiftyTwoWeekLow: number | null;
+  dividendYield: number | null; // decimal fraction, 0.0042 = 0.42%
+  beta: number | null;
   volume: number | null;
   averageVolume: number | null;
   targetMeanPrice: number | null;
+  // Profile (assetProfile module). Strings, not numeric.
+  industry: string | null;
+  businessSummary: string | null;
   nextEarningsDate: number | null; // unix seconds
   lastEarnings: { actualEPS: number | null; estimateEPS: number | null; surprisePct: number | null } | null;
 }
@@ -72,6 +77,7 @@ function mapResult(ticker: string, raw: Record<string, unknown>): QuoteSummaryLi
   const summary = (raw.summaryDetail ?? {}) as Record<string, YahooNumeric>;
   const stats = (raw.defaultKeyStatistics ?? {}) as Record<string, YahooNumeric>;
   const financial = (raw.financialData ?? {}) as Record<string, YahooNumeric>;
+  const profile = (raw.assetProfile ?? {}) as Record<string, unknown>;
   const calendar = (raw.calendarEvents ?? {}) as { earnings?: { earningsDate?: YahooNumeric[] } };
   const history = ((raw.earningsHistory ?? {}) as { history?: Array<Record<string, YahooNumeric>> }).history ?? [];
 
@@ -97,9 +103,16 @@ function mapResult(ticker: string, raw: Record<string, unknown>): QuoteSummaryLi
     epsForward: num(stats.forwardEps),
     fiftyTwoWeekHigh: num(summary.fiftyTwoWeekHigh),
     fiftyTwoWeekLow: num(summary.fiftyTwoWeekLow),
+    dividendYield: num(summary.dividendYield),
+    beta: num(stats.beta),
     volume: num(summary.regularMarketVolume) ?? num(price.regularMarketVolume),
     averageVolume: num(summary.averageVolume),
     targetMeanPrice: num(financial.targetMeanPrice),
+    industry: typeof profile.industry === "string" && profile.industry.trim() ? profile.industry.trim() : null,
+    businessSummary:
+      typeof profile.longBusinessSummary === "string" && profile.longBusinessSummary.trim()
+        ? profile.longBusinessSummary.trim()
+        : null,
     nextEarningsDate: earningsDateArr.length > 0 ? num(earningsDateArr[0]) : null,
     lastEarnings,
   };
