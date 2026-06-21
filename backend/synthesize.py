@@ -1064,8 +1064,7 @@ def generate_morning_review_for_evening(today_date, sb):
             model=GEMINI_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
-                max_output_tokens=1024,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                max_output_tokens=1536,
             ),
         )
         text = (resp.text or "").strip()
