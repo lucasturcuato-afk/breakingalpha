@@ -16,7 +16,8 @@ export type OutputType =
   | 'deal_extraction'
   | 'user_addendum'
   | 'mention_alert'
-  | 'cross_reference';
+  | 'cross_reference'
+  | 'company_overview';
 
 interface RecordOutputParams {
   output_type: OutputType;
