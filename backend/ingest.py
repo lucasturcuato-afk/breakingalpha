@@ -19,6 +19,14 @@ from wikidata import is_valid_company
 from fulltext import fetch_full_text, SCRAPEABLE_SOURCES
 from entity_resolver import resolve_entity, increment_mention_counts
 from supabase_client import get_service_client
+try:
+    from usage_log import accumulate_gemini_usage
+except Exception:  # pragma: no cover - usage logging must never break import
+    try:
+        from backend.usage_log import accumulate_gemini_usage
+    except Exception:
+        def accumulate_gemini_usage(*a, **k):
+            return
 
 load_dotenv()
 
@@ -563,6 +571,7 @@ def grade_relevance(article):
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
                 response = _ex.submit(_call).result(timeout=30)
             _accumulate_filter_usage(response)
+            accumulate_gemini_usage("shadow_grader", RELEVANCE_GRADE_MODEL, response)
             text = (response.text or "").strip()
             if text.startswith("```"):
                 text = text.split("```")[1]
@@ -1211,6 +1220,7 @@ def filter_article(article):
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
                 response = _ex.submit(_call).result(timeout=30)
             _accumulate_filter_usage(response)
+            accumulate_gemini_usage("filter", FILTER_MODEL, response)
             text = (response.text or "").strip()
             if text.startswith("```"):
                 text = text.split("```")[1]

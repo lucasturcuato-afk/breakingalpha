@@ -17,6 +17,14 @@ import macro_calendar
 import bea_calendar
 from brief_voice_guard import enforce_brief_voice, has_voice_violation
 from dataclasses import asdict
+try:
+    from usage_log import log_gemini_usage
+except Exception:  # pragma: no cover - usage logging must never break import
+    try:
+        from backend.usage_log import log_gemini_usage
+    except Exception:
+        def log_gemini_usage(*a, **k):
+            return
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 # Admin client for writes that must bypass RLS (e.g. morning_brief_calls).
@@ -671,6 +679,7 @@ def gemini_generate(system, user_content, temperature=0.3, max_tokens=4096):
             response_mime_type="application/json",
         ),
     )
+    log_gemini_usage("brief_synthesis", GEMINI_MODEL, response)
     return (response.text or "").strip()
 
 def fetch_watchlist_signals(cutoff_hours: int = 24) -> tuple[list[dict], list[str]]:
@@ -1064,6 +1073,7 @@ def generate_morning_review_for_evening(today_date, sb):
             model=GEMINI_MODEL,
             contents=prompt,
         )
+        log_gemini_usage("evening_review", GEMINI_MODEL, resp)
         text = (resp.text or "").strip()
         # Strip code fences if present (```json ... ``` or ``` ... ```)
         if text.startswith("```"):
