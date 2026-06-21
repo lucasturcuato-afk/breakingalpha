@@ -27,12 +27,24 @@ from supabase import create_client
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 
-# Phase 1 manual snapshots of the model names hardcoded in ingest.py (line 126)
-# and synthesize.py (line 133). There is no centralized model config in this
-# repo — importing either module to read the constants is not safe (triggers
-# Groq/Supabase init). Update these manually when either file changes its model.
-MODEL_INGEST = "llama-3.1-8b-instant"
-MODEL_SYNTH  = "llama-3.3-70b-versatile"
+# Real models used by the live pipeline. The filter/ingest path runs on
+# gemini-2.5-flash-lite (ingest.py FILTER_MODEL) and synthesis runs on
+# gemini-2.5-flash (synthesize.py GEMINI_MODEL). There is no centralized model
+# config in this repo, and importing either module to read the constants is not
+# safe (it triggers client init), so these stay manual snapshots. Update them if
+# either file changes its model.
+MODEL_INGEST = "gemini-2.5-flash-lite"
+MODEL_SYNTH  = "gemini-2.5-flash"
+
+# Soft import of the usage-log flush. Never breaks observe import.
+try:
+    from usage_log import flush_gemini_usage
+except Exception:  # pragma: no cover - usage logging must never break import
+    try:
+        from backend.usage_log import flush_gemini_usage
+    except Exception:
+        def flush_gemini_usage(*a, **k):
+            return
 
 # Mirrors synthesize._select_articles_for_synthesis() — the current production
 # article selector. Update these if synthesize.py changes its selection params.
@@ -240,6 +252,11 @@ def record_run(brief_type, started_at, ingest_count=None, deal_extractor_status=
     try:
         ins    = supabase.table("pipeline_runs").insert(run_row).execute()
         run_id = ins.data[0]["id"]
+        # Flush aggregated per-step Gemini token usage for this run. Soft-fail.
+        try:
+            flush_gemini_usage(run_id)
+        except Exception:
+            pass
         print(f"  [observe] run recorded — id={run_id}, status={status}, "
               f"ingest={ingest_count}, candidates={candidate_count}, "
               f"selected={selected_count}, duration={duration_s:.1f}s")

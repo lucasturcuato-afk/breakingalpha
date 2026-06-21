@@ -16,6 +16,14 @@ from output_constants import DEAL_PROMPT_VERSION
 # a valuation parser, not lead_preselect's A2 predicate — strength stays
 # decoupled from the lead-eligibility logic.
 from lead_preselect import parse_valuation_to_usd_b
+try:
+    from usage_log import log_gemini_usage
+except Exception:  # pragma: no cover - usage logging must never break import
+    try:
+        from backend.usage_log import log_gemini_usage
+    except Exception:
+        def log_gemini_usage(*a, **k):
+            return
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
@@ -147,6 +155,7 @@ def gemini_extract(system_prompt, user_content):
                 response_mime_type="application/json",
             ),
         )
+        log_gemini_usage("deal_extractor", GEMINI_MODEL, response)
         return (response.text or "").strip()
     except Exception as e:
         print(f"  ⚠ Gemini error: {e}")

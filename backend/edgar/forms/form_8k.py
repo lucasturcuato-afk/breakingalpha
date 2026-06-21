@@ -11,6 +11,14 @@ from google.genai import types
 
 from backend.edgar.client import sec_get
 from backend.edgar.constants import ITEM_CODE_DESCRIPTIONS
+try:
+    from backend.usage_log import log_gemini_usage
+except Exception:  # pragma: no cover - usage logging must never break import
+    try:
+        from usage_log import log_gemini_usage
+    except Exception:
+        def log_gemini_usage(*a, **k):
+            return
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +103,7 @@ def summarize_8k(
                 thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
+        log_gemini_usage("form_8k", GEMINI_MODEL, resp)
         text = (resp.text or "").strip()
         return text or None
     except Exception as e:
