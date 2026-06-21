@@ -7,7 +7,7 @@ Name ratio threshold (fuzzy/MEDIUM): 0.6.
 |---|---|---|
 | Phase A HIGH (auto-backfillable) | 914 | in phase-a.sql, apply after review |
 | Phase A MEDIUM (manual review) | 75 | flagged, NOT in sql |
-| New-universe SEC companies | 9141 | expansion opportunity, no action |
+| New-universe SEC companies | 9141 | exact-match-only UPPER BOUND, no action |
 | Many-to-one collisions | 457 | flagged, adjudicate (dedup) |
 | Ambiguous (db -> 2+ SEC) | 18 | flagged, never backfilled |
 
@@ -32,6 +32,8 @@ Name ratio threshold (fuzzy/MEDIUM): 0.6.
 | Factory | CHEESECAKE FACTORY INC | ticker | 0.56 | 887596 |
 
 ## New-universe SEC companies (sample)
+
+CAVEAT: this is an UPPER BOUND. An SEC entry counts as new-universe only when NO DB company matches it by exact ticker, exact CIK, or exact normalized-name equality. No fuzzy matching is applied here, so companies present under a non-normalized-equal name with no ticker (e.g. P&G, Home Depot below) are overcounted as new. Treat the count as a ceiling on the expansion opportunity, not an exact figure.
 
 | sec_ticker | SEC title | CIK |
 |---|---|---|

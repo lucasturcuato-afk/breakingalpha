@@ -278,7 +278,7 @@ def emit_report(phase_a_high, phase_a_medium, collisions, ambiguous,
         "|---|---|---|",
         f"| Phase A HIGH (auto-backfillable) | {len(phase_a_high)} | in phase-a.sql, apply after review |",
         f"| Phase A MEDIUM (manual review) | {len(phase_a_medium)} | flagged, NOT in sql |",
-        f"| New-universe SEC companies | {len(new_universe)} | expansion opportunity, no action |",
+        f"| New-universe SEC companies | {len(new_universe)} | exact-match-only UPPER BOUND, no action |",
         f"| Many-to-one collisions | {len(collisions)} | flagged, adjudicate (dedup) |",
         f"| Ambiguous (db -> 2+ SEC) | {len(ambiguous)} | flagged, never backfilled |",
         "",
@@ -300,6 +300,12 @@ def emit_report(phase_a_high, phase_a_medium, collisions, ambiguous,
                    f"| {r['ratio']:.2f} | {r['cik']} |")
 
     rep += ["", "## New-universe SEC companies (sample)", "",
+            "CAVEAT: this is an UPPER BOUND. An SEC entry counts as new-universe "
+            "only when NO DB company matches it by exact ticker, exact CIK, or "
+            "exact normalized-name equality. No fuzzy matching is applied here, so "
+            "companies present under a non-normalized-equal name with no ticker "
+            "(e.g. P&G, Home Depot below) are overcounted as new. Treat the count "
+            "as a ceiling on the expansion opportunity, not an exact figure.", "",
             "| sec_ticker | SEC title | CIK |", "|---|---|---|"]
     for cik, raw, title in _sample(new_universe):
         rep.append(f"| {raw} | {title} | {cik} |")
