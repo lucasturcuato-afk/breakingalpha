@@ -68,6 +68,9 @@ export function PrimerTab({
 }: PrimerTabProps) {
   const [quote, setQuote] = useState<QuoteSummaryLive | null>(null);
   const [loading, setLoading] = useState<boolean>(!!ticker);
+  // Normalized, Gemini-cleaned overview (write-through cached server-side). Null
+  // until it resolves; the raw/curated fallback shows in the meantime.
+  const [normalized, setNormalized] = useState<string | null>(null);
 
   useEffect(() => {
     if (!ticker) {
@@ -101,9 +104,48 @@ export function PrimerTab({
 
   // Live profile overlays the curated fallback; null only when neither exists.
   const resolvedIndustry = quote?.industry ?? industry ?? null;
-  const resolvedDescription = quote?.businessSummary
+
+  // Normalize the overview once we have a source (live provider summary, else
+  // curated description). The route reads its write-through cache, generates on
+  // miss, and returns a clean grounded overview. Falls back silently; the raw
+  // text still shows until (and if) the normalized version arrives.
+  const sourceSummary = quote?.businessSummary ?? description ?? null;
+  useEffect(() => {
+    setNormalized(null);
+    if (!sourceSummary) return;
+    const ctrl = new AbortController();
+    (async () => {
+      try {
+        const r = await fetch("/api/company-overview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            company: companyName,
+            ticker,
+            sector,
+            industry: resolvedIndustry,
+            summary: sourceSummary,
+          }),
+          signal: ctrl.signal,
+        });
+        if (ctrl.signal.aborted || !r.ok) return;
+        const body = (await r.json()) as { overview?: string };
+        if (ctrl.signal.aborted) return;
+        if (body.overview && body.overview.trim()) setNormalized(body.overview.trim());
+      } catch (e) {
+        if ((e as { name?: string })?.name === "AbortError") return;
+        // Non-fatal: keep the raw/curated fallback.
+      }
+    })();
+    return () => ctrl.abort();
+  }, [companyName, ticker, sector, resolvedIndustry, sourceSummary]);
+
+  // Resolution order: normalized (grounded, cached) -> trimmed raw provider
+  // summary -> curated description -> hide the section entirely.
+  const fallbackDescription = quote?.businessSummary
     ? trimSummary(quote.businessSummary)
     : description ?? null;
+  const resolvedDescription = normalized ?? fallbackDescription;
 
   return (
     <div data-testid="primer-tab" className="space-y-4">
