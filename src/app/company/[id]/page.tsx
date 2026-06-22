@@ -6,6 +6,7 @@ import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { CompanyDetailLayout } from "@/components/company/CompanyDetailLayout";
 import { CompanyDetailHeader } from "@/components/company/CompanyDetailHeader";
 import { EmptyState } from "@/components/company/states/EmptyState";
+import { CompanyAutoResolve } from "@/components/company/states/CompanyAutoResolve";
 import { CompanyAliasRibbon } from "@/components/company/CompanyAliasRibbon";
 import { CompanyKPIStrip } from "@/components/company/CompanyKPIStrip";
 import { CompanyTrendCard } from "@/components/company/CompanyTrendCard";
@@ -89,6 +90,7 @@ export default async function CompanyDetailPage({
   if (!companyDetail) {
     return (
       <LiveMoodShell pageTitle="Company Intel">
+        <CompanyAutoResolve query={companyName} />
         <EmptyState canonical={companyName} />
       </LiveMoodShell>
     );
