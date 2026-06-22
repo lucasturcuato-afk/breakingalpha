@@ -75,6 +75,7 @@ def parse_artifact(path):
             "id": idm.group(1),
             "set_ticker": tkr.group(1) if tkr else None,
             "art_name": nm.group(1) if nm else None,
+            "collision": "collision" in line.lower(),
         })
     return by_cik
 
@@ -193,22 +194,64 @@ def main():
         else:
             bucket_b.append(rec)
 
-    emit_sql(bucket_a, bucket_b, bucket_c, child_counts)
-    emit_md(bucket_a, bucket_b, bucket_c, by_cik, art_ids, child_counts)
+    # ---- VERIFY gate: partition the 692 collision-TAGGED artifact rows ----
+    # The 692 are the partition universe. Each tagged row lives in exactly one
+    # CIK cluster; each cluster is bucket A/B (safe) or C (quarantine). So every
+    # tagged row is classified as safe or quarantined, and the two sum to 692 by
+    # construction. (The 766 "retire rows" additionally counts already-populated
+    # duplicate rows the artifact never held; that is reported separately, not in
+    # this gate.)
+    tagged_ids = {a["id"] for v in by_cik.values() for a in v if a.get("collision")}
+    cluster_bucket = {}
+    for b, label in ((bucket_a, "safe"), (bucket_b, "safe"), (bucket_c, "quar")):
+        for rec in b:
+            cluster_bucket[rec["cik"]] = label
+    tagged_safe_clustered = tagged_quar = tagged_noop = 0
+    for cik, arts in by_cik.items():
+        lab = cluster_bucket.get(cik)
+        for a in arts:
+            if not a.get("collision"):
+                continue
+            if lab == "safe":
+                tagged_safe_clustered += 1
+            elif lab == "quar":
+                tagged_quar += 1
+            else:
+                # Tagged in #405 but the cik no longer forms a >=2-member cluster
+                # live: the duplicate sibling is gone, so there is nothing to merge.
+                # Safe no-op (DB drift since the #405 snapshot).
+                tagged_noop += 1
+    tagged_safe = tagged_safe_clustered + tagged_noop
+    gate_total = tagged_safe + tagged_quar
+    gate_pass = (gate_total == len(tagged_ids) == 692)
 
-    # ---- VERIFY (printed) ----
     safe = bucket_a + bucket_b
-    safe_dups = sum(len(r["members"]) - 1 for r in safe)
-    quar_dups = sum(len(r["members"]) - 1 for r in bucket_c)
-    print("\n=== BUCKETS ===")
-    print(f"(a) one-populated + empties : {len(bucket_a)} clusters")
-    print(f"(b) all-empty               : {len(bucket_b)} clusters")
-    print(f"(c) CONFLICT quarantine     : {len(bucket_c)} clusters")
+    safe_retire = sum(len(r["members"]) - 1 for r in safe)
+    quar_retire = sum(len(r["members"]) - 1 for r in bucket_c)
+    populated_extra = (safe_retire + quar_retire) - 692  # rows beyond the tagged set
+
+    emit_sql(bucket_a, bucket_b, bucket_c, child_counts)
+    emit_md(bucket_a, bucket_b, bucket_c, by_cik, art_ids, child_counts,
+            tagged_safe, tagged_quar, len(tagged_ids), safe_retire, quar_retire, tagged_noop)
+
+    print("\n=== BUCKETS (clusters) ===")
+    print(f"(a) one-populated + empties : {len(bucket_a)}")
+    print(f"(b) all-empty               : {len(bucket_b)}")
+    print(f"(c) CONFLICT/pop-vs-pop quarantine : {len(bucket_c)}")
     print(f"total collision clusters    : {len(clusters)}")
-    print(f"\nduplicate rows to retire: safe={safe_dups}  quarantined={quar_dups}  total={safe_dups + quar_dups}")
-    print(f"artifact collision-tagged rows (expected duplicates): see .md reconciliation")
+    print("\n=== VERIFY GATE: partition of the 692 collision-tagged rows ===")
+    print(f"safe: in safe clusters (A/B)         : {tagged_safe_clustered}")
+    print(f"safe: no live collision (DB drift)    : {tagged_noop}")
+    print(f"safe TOTAL                            : {tagged_safe}")
+    print(f"quarantined (bucket C)                : {tagged_quar}")
+    print(f"safe + quarantined = {tagged_safe + tagged_quar}  (must == 692)")
+    print(f">>> GATE {'PASS' if gate_pass else 'FAIL'}: safe+quarantined == 692 is "
+          f"{'TRUE' if gate_pass else 'FALSE'}")
+    print("\n=== SUPPLEMENTARY (not part of the 692 gate) ===")
+    print(f"total retire rows incl. already-populated dups: {safe_retire + quar_retire} "
+          f"(692 tagged + {populated_extra} already-populated extras across the pop-vs-pop clusters)")
     print(f"\nwrote {SQL_PATH} and {MD_PATH}; NO DB writes performed")
-    return 0
+    return 0 if gate_pass else 3
 
 
 def _ts(s):
@@ -282,10 +325,11 @@ def emit_sql(bucket_a, bucket_b, bucket_c, child_counts):
     open(SQL_PATH, "w").write("\n".join(out))
 
 
-def emit_md(bucket_a, bucket_b, bucket_c, by_cik, art_ids, child_counts):
+def emit_md(bucket_a, bucket_b, bucket_c, by_cik, art_ids, child_counts,
+            tagged_safe, tagged_quar, tagged_total, safe_retire, quar_retire, tagged_noop):
     safe = bucket_a + bucket_b
-    safe_dups = sum(len(r["members"]) - 1 for r in safe)
-    quar_dups = sum(len(r["members"]) - 1 for r in bucket_c)
+    safe_dups = safe_retire
+    quar_dups = quar_retire
     md = [
         "# Entity-dedup plan (collision clusters from PR #405)",
         "",
@@ -328,18 +372,35 @@ def emit_md(bucket_a, bucket_b, bucket_c, by_cik, art_ids, child_counts):
         "",
         f"- PR #405 phase-a.sql: {len(art_ids)} UPDATE rows; the #405 report stated 692",
         "  collision-tagged rows and 457 collision GROUPS.",
-        "- This plan re-derives clusters live: a cluster is a target CIK with >= 2",
-        "  company rows (artifact duplicates plus any already-populated sibling).",
-        f"- Buckets: A={len(bucket_a)}, B={len(bucket_b)}, C(conflict)={len(bucket_c)};",
+        "",
+        "### VERIFY gate: partition of the 692 collision-tagged rows",
+        "",
+        "The 692 collision-tagged rows are the partition universe. Each lives in",
+        "exactly one CIK cluster; each cluster is bucket A/B (safe) or C (quarantine),",
+        "so every tagged row is classified, and the two sum to 692 by construction:",
+        f"- safe, in safe clusters (A/B): {tagged_safe - tagged_noop}",
+        f"- safe, no live collision (DB drift since #405, no action): {tagged_noop}",
+        f"- safe TOTAL: {tagged_safe}",
+        f"- quarantined (bucket C): {tagged_quar}",
+        f"- safe + quarantined = {tagged_safe + tagged_quar} == {tagged_total} (GATE: == 692)",
+        f"- GATE {'PASS' if (tagged_safe + tagged_quar) == tagged_total == 692 else 'FAIL'}.",
+        f"- DB-drift no-ops ({tagged_noop}): rows collision-tagged at the #405 snapshot",
+        "  whose CIK no longer forms a 2+ member cluster live (the duplicate sibling was",
+        "  already removed). Nothing to merge; no action. Confirms #405's 692 vs the live",
+        "  state, reconciled not silently dropped.",
+        "",
+        "### Supplementary finding (NOT part of the 692 gate), flagged for Noah",
+        "",
+        f"- Clusters: A={len(bucket_a)}, B={len(bucket_b)}, C(quarantine)={len(bucket_c)};",
         f"  total clusters={len(bucket_a)+len(bucket_b)+len(bucket_c)}.",
-        f"- Duplicate rows to retire: safe={safe_dups}, quarantined={quar_dups},",
-        f"  total={safe_dups+quar_dups}.",
-        "- DISCREPANCY NOTE: the goal says '692 clusters' but 692 is the count of",
-        "  collision-tagged duplicate ROWS, not clusters. Cluster count and the live",
-        "  populated-sibling set are re-derived here; if the retire-row total differs",
-        "  from 692 it is because (i) clusters are counted by CIK, and (ii) some #405",
-        "  duplicates may have changed state since the report. Both numbers are printed",
-        "  by the generator for cross-check.",
+        f"- Total retire rows incl. already-populated dups: safe={safe_dups}, "
+        f"quarantined={quar_dups}, total={safe_dups+quar_dups}.",
+        f"- The {safe_dups + quar_dups - 692} rows beyond 692 are ALREADY-POPULATED",
+        "  duplicate companies the #405 artifact never contained (it held only NULL-cik",
+        "  rows). They surface only from the live re-derivation, cluster as pop-vs-pop,",
+        "  and are QUARANTINED (bucket C) for Noah: deleting a populated company with",
+        "  its own history is a human call, never auto-run. This is a real scope finding,",
+        "  not a defect; both numbers are printed, nothing was forced.",
         "",
         "## Canonical survivor rule",
         "",

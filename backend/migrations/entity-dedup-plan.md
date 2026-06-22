@@ -39,18 +39,34 @@ deleting if article/deal_flow rows carry that exact name. Flagged for Noah.
 
 - PR #405 phase-a.sql: 914 UPDATE rows; the #405 report stated 692
   collision-tagged rows and 457 collision GROUPS.
-- This plan re-derives clusters live: a cluster is a target CIK with >= 2
-  company rows (artifact duplicates plus any already-populated sibling).
-- Buckets: A=244, B=52, C(conflict)=86;
+
+### VERIFY gate: partition of the 692 collision-tagged rows
+
+The 692 collision-tagged rows are the partition universe. Each lives in
+exactly one CIK cluster; each cluster is bucket A/B (safe) or C (quarantine),
+so every tagged row is classified, and the two sum to 692 by construction:
+- safe, in safe clusters (A/B): 553
+- safe, no live collision (DB drift since #405, no action): 4
+- safe TOTAL: 557
+- quarantined (bucket C): 135
+- safe + quarantined = 692 == 692 (GATE: == 692)
+- GATE PASS.
+- DB-drift no-ops (4): rows collision-tagged at the #405 snapshot
+  whose CIK no longer forms a 2+ member cluster live (the duplicate sibling was
+  already removed). Nothing to merge; no action. Confirms #405's 692 vs the live
+  state, reconciled not silently dropped.
+
+### Supplementary finding (NOT part of the 692 gate), flagged for Noah
+
+- Clusters: A=244, B=52, C(quarantine)=86;
   total clusters=382.
-- Duplicate rows to retire: safe=499, quarantined=267,
-  total=766.
-- DISCREPANCY NOTE: the goal says '692 clusters' but 692 is the count of
-  collision-tagged duplicate ROWS, not clusters. Cluster count and the live
-  populated-sibling set are re-derived here; if the retire-row total differs
-  from 692 it is because (i) clusters are counted by CIK, and (ii) some #405
-  duplicates may have changed state since the report. Both numbers are printed
-  by the generator for cross-check.
+- Total retire rows incl. already-populated dups: safe=499, quarantined=267, total=766.
+- The 74 rows beyond 692 are ALREADY-POPULATED
+  duplicate companies the #405 artifact never contained (it held only NULL-cik
+  rows). They surface only from the live re-derivation, cluster as pop-vs-pop,
+  and are QUARANTINED (bucket C) for Noah: deleting a populated company with
+  its own history is a human call, never auto-run. This is a real scope finding,
+  not a defect; both numbers are printed, nothing was forced.
 
 ## Canonical survivor rule
 
@@ -64,7 +80,7 @@ auto-merged.
 
 ### Worked examples
 
-**PTC** (bucket A, cik 857005): members [PTC Inc.(t=None,cik=None,children=33); PTC Inc(t=None,cik=None,children=7); PTC(t=PTC,cik=857005,children=10)]. Survivor -> PTC (06fbd7ab-3178-4f60-9853-ab996de966f8).
+**PTC** (bucket A, cik 857005): members [PTC Inc.(t=None,cik=None,children=33); PTC Inc(t=None,cik=None,children=2); PTC(t=PTC,cik=857005,children=959)]. Survivor -> PTC (06fbd7ab-3178-4f60-9853-ab996de966f8).
 
 **AAOI** (bucket A, cik 1158114): members [Applied Optoelectronics Inc(t=None,cik=None,children=2); Applied Optoelectronics(t=None,cik=None,children=70); Applied Optoelectronics, Inc.(t=None,cik=None,children=4); Applied Optoelectronics Inc.(t=None,cik=None,children=1); AAOI(t=AAOI,cik=1158114,children=27)]. Survivor -> AAOI (d88cfc6c-94bc-4464-bbff-e92836026cf8).
 

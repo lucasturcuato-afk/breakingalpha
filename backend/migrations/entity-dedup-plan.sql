@@ -137,8 +137,8 @@ DELETE FROM companies WHERE id IN ('40673709-ac0e-4553-afb1-c1cb0f709366', '718e
 COMMIT;
 
 -- cik 40211  survivor 881a01e4-8ad2-447a-81d2-7a51f25bc4f5 'GATX Corporation' (ticker=GATX, cik=40211)
---   retire 7337a425-e112-4505-a75b-926e21619245 'GATX Corp' (ticker=None, cik=None, children=3)
---   retire 77091c49-f902-4ba8-a353-f4061b083b5a 'GATX' (ticker=None, cik=None, children=8)
+--   retire 7337a425-e112-4505-a75b-926e21619245 'GATX Corp' (ticker=None, cik=None, children=2)
+--   retire 77091c49-f902-4ba8-a353-f4061b083b5a 'GATX' (ticker=None, cik=None, children=2)
 --   retire fb8d6a62-a81e-4226-a57e-2588d4bf8785 'GATX Corp.' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '881a01e4-8ad2-447a-81d2-7a51f25bc4f5' WHERE canonical_id IN ('7337a425-e112-4505-a75b-926e21619245', '77091c49-f902-4ba8-a353-f4061b083b5a', 'fb8d6a62-a81e-4226-a57e-2588d4bf8785');
@@ -183,7 +183,7 @@ COMMIT;
 
 -- cik 63754  survivor 262f25aa-f27d-4c8e-ae1e-a4d4ec8109f3 'McCormick' (ticker=MKC, cik=63754)
 --   retire 29cbf9a2-3f45-4ebd-8bf0-cb8b7b482c3f 'MCCORMICK & COMPANY' (ticker=None, cik=None, children=3)
---   retire 5cec6f27-ed4c-4604-9fe5-a8cef0ab43e0 'McCormick & Company, Incorporated' (ticker=None, cik=None, children=5)
+--   retire 5cec6f27-ed4c-4604-9fe5-a8cef0ab43e0 'McCormick & Company, Incorporated' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '262f25aa-f27d-4c8e-ae1e-a4d4ec8109f3' WHERE canonical_id IN ('29cbf9a2-3f45-4ebd-8bf0-cb8b7b482c3f', '5cec6f27-ed4c-4604-9fe5-a8cef0ab43e0');
 UPDATE company_mentions SET company_id = '262f25aa-f27d-4c8e-ae1e-a4d4ec8109f3' WHERE company_id IN ('29cbf9a2-3f45-4ebd-8bf0-cb8b7b482c3f', '5cec6f27-ed4c-4604-9fe5-a8cef0ab43e0');
@@ -213,7 +213,7 @@ COMMIT;
 -- cik 67088  survivor 6bfe88d4-3aea-4159-ab13-4f437237141b 'MUFG' (ticker=MUFG, cik=67088)
 --   retire 477d2d9e-acdb-411b-a478-f76e0445c77a 'Mitsubishi UFJ Financial Group Inc' (ticker=None, cik=None, children=3)
 --   retire ad87f6a6-6c3a-4cd5-b7ea-0067d306a7e3 'Mitsubishi UFJ Financial Group Inc.' (ticker=None, cik=None, children=1)
---   retire c2a8115e-874b-4f59-b47d-c7acf9665ba4 'Mitsubishi UFJ Financial Group' (ticker=None, cik=None, children=4)
+--   retire c2a8115e-874b-4f59-b47d-c7acf9665ba4 'Mitsubishi UFJ Financial Group' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '6bfe88d4-3aea-4159-ab13-4f437237141b' WHERE canonical_id IN ('477d2d9e-acdb-411b-a478-f76e0445c77a', 'ad87f6a6-6c3a-4cd5-b7ea-0067d306a7e3', 'c2a8115e-874b-4f59-b47d-c7acf9665ba4');
 UPDATE company_mentions SET company_id = '6bfe88d4-3aea-4159-ab13-4f437237141b' WHERE company_id IN ('477d2d9e-acdb-411b-a478-f76e0445c77a', 'ad87f6a6-6c3a-4cd5-b7ea-0067d306a7e3', 'c2a8115e-874b-4f59-b47d-c7acf9665ba4');
@@ -243,7 +243,7 @@ COMMIT;
 
 -- cik 69633  survivor 1f2a2227-c23e-42a0-86c2-17d19302d017 'APCO' (ticker=NSSC, cik=69633)
 --   retire 03b6582f-1736-414a-9cce-43aea745cc9e 'NAPCO Security Technologies Inc' (ticker=None, cik=None, children=3)
---   retire 8b2aa808-1675-4ac0-a7e8-2812321d068a 'NAPCO SECURITY TECHNOLOGIES' (ticker=None, cik=None, children=13)
+--   retire 8b2aa808-1675-4ac0-a7e8-2812321d068a 'NAPCO SECURITY TECHNOLOGIES' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '1f2a2227-c23e-42a0-86c2-17d19302d017' WHERE canonical_id IN ('03b6582f-1736-414a-9cce-43aea745cc9e', '8b2aa808-1675-4ac0-a7e8-2812321d068a');
 UPDATE company_mentions SET company_id = '1f2a2227-c23e-42a0-86c2-17d19302d017' WHERE company_id IN ('03b6582f-1736-414a-9cce-43aea745cc9e', '8b2aa808-1675-4ac0-a7e8-2812321d068a');
@@ -301,7 +301,7 @@ DELETE FROM companies WHERE id IN ('0c452eb7-d33d-4921-9687-a0d62efe85de', '3078
 COMMIT;
 
 -- cik 78003  survivor 38ca3536-bf59-48b4-9b32-67cbdf0e32c4 'Pfizer' (ticker=PFE, cik=78003)
---   retire 92c20a1d-808e-45fd-9fab-ec42b74ac22a 'Pfizer, Inc.' (ticker=None, cik=None, children=3)
+--   retire 92c20a1d-808e-45fd-9fab-ec42b74ac22a 'Pfizer, Inc.' (ticker=None, cik=None, children=2)
 --   retire c7d773b8-9b8f-4fa9-ac99-a6bdbc8a32d1 'Pfizer Inc.' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '38ca3536-bf59-48b4-9b32-67cbdf0e32c4' WHERE canonical_id IN ('92c20a1d-808e-45fd-9fab-ec42b74ac22a', 'c7d773b8-9b8f-4fa9-ac99-a6bdbc8a32d1');
@@ -317,7 +317,7 @@ COMMIT;
 
 -- cik 87347  survivor 7dd4423f-4298-4933-98b1-8d3bc838adc1 'SLB' (ticker=SLB, cik=87347)
 --   retire 22415f9c-28a3-403f-af37-70386189ebf6 'SLB Ltd' (ticker=None, cik=None, children=3)
---   retire 86584e62-ed50-42c5-b0a6-650ab4c70477 'SLB Limited' (ticker=None, cik=None, children=12)
+--   retire 86584e62-ed50-42c5-b0a6-650ab4c70477 'SLB Limited' (ticker=None, cik=None, children=2)
 --   retire dbd4e1b4-6e2a-4807-bf44-22fba1a07a11 'SLB Ltd.' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '7dd4423f-4298-4933-98b1-8d3bc838adc1' WHERE canonical_id IN ('22415f9c-28a3-403f-af37-70386189ebf6', '86584e62-ed50-42c5-b0a6-650ab4c70477', 'dbd4e1b4-6e2a-4807-bf44-22fba1a07a11');
@@ -510,7 +510,7 @@ DELETE FROM companies WHERE id IN ('a71ffded-f546-4aa9-abf0-377f1193ea2a', 'd442
 COMMIT;
 
 -- cik 310158  survivor 22c1eee9-19de-4bb9-91e6-13c1bd19d4d4 'Merck' (ticker=MRK, cik=310158)
---   retire 736eb8d2-299c-4f79-b27a-b534f85011fd 'Merck & Co Inc' (ticker=None, cik=None, children=3)
+--   retire 736eb8d2-299c-4f79-b27a-b534f85011fd 'Merck & Co Inc' (ticker=None, cik=None, children=2)
 --   retire e2a81122-f409-4b52-b650-835101bbe8d9 'Merck & Co., Inc.' (ticker=None, cik=None, children=2)
 --   retire f4d28cd6-463e-41df-8a1b-41dc04951cbb 'Merck & Company, Inc.' (ticker=None, cik=None, children=2)
 BEGIN;
@@ -574,7 +574,7 @@ DELETE FROM companies WHERE id IN ('1b12dfbe-452b-4715-b122-957f47ee51df', '1b22
 COMMIT;
 
 -- cik 320187  survivor be05ab91-9006-41d4-80d3-f0914af413d2 'Nike' (ticker=NKE, cik=320187)
---   retire 864356b2-fd0a-42c2-b5e1-c90814bc11f5 'NIKE, Inc.' (ticker=None, cik=None, children=9)
+--   retire 864356b2-fd0a-42c2-b5e1-c90814bc11f5 'NIKE, Inc.' (ticker=None, cik=None, children=24)
 BEGIN;
 UPDATE aliases SET canonical_id = 'be05ab91-9006-41d4-80d3-f0914af413d2' WHERE canonical_id IN ('864356b2-fd0a-42c2-b5e1-c90814bc11f5');
 UPDATE company_mentions SET company_id = 'be05ab91-9006-41d4-80d3-f0914af413d2' WHERE company_id IN ('864356b2-fd0a-42c2-b5e1-c90814bc11f5');
@@ -650,7 +650,7 @@ DELETE FROM companies WHERE id IN ('12f392ab-06e7-4d1a-8908-0f8b7d140764', '27af
 COMMIT;
 
 -- cik 732717  survivor 52ac0481-58e2-47b3-a9a0-5eb282423ce2 'AT&T' (ticker=T, cik=732717)
---   retire 41022a3e-f2e1-49da-aa83-81640e813406 'AT&T Inc' (ticker=None, cik=None, children=2)
+--   retire 41022a3e-f2e1-49da-aa83-81640e813406 'AT&T Inc' (ticker=None, cik=None, children=4)
 --   retire 571c04f0-27f7-40a9-bf4f-cd7a6d37d874 'AT&T Inc.' (ticker=None, cik=None, children=9)
 BEGIN;
 UPDATE aliases SET canonical_id = '52ac0481-58e2-47b3-a9a0-5eb282423ce2' WHERE canonical_id IN ('41022a3e-f2e1-49da-aa83-81640e813406', '571c04f0-27f7-40a9-bf4f-cd7a6d37d874');
@@ -666,7 +666,7 @@ COMMIT;
 
 -- cik 733269  survivor eeb5dc0e-340d-4358-837f-afb17f6b8d3c 'Ramp' (ticker=RAMP, cik=733269)
 --   retire 357c0337-a1c7-4005-848b-c6393a0cd0da 'LiveRamp Holdings, Inc.' (ticker=None, cik=None, children=3)
---   retire 3778ec3b-adf7-4547-b0a8-9898ee18692d 'LiveRamp' (ticker=None, cik=None, children=2)
+--   retire 3778ec3b-adf7-4547-b0a8-9898ee18692d 'LiveRamp' (ticker=None, cik=None, children=28)
 --   retire c144f2db-ff2b-4ce9-86bc-3df06601a523 'LiveRamp Holdings' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = 'eeb5dc0e-340d-4358-837f-afb17f6b8d3c' WHERE canonical_id IN ('357c0337-a1c7-4005-848b-c6393a0cd0da', '3778ec3b-adf7-4547-b0a8-9898ee18692d', 'c144f2db-ff2b-4ce9-86bc-3df06601a523');
@@ -879,7 +879,7 @@ COMMIT;
 
 -- cik 857005  survivor 06fbd7ab-3178-4f60-9853-ab996de966f8 'PTC' (ticker=PTC, cik=857005)
 --   retire 635010e7-5d28-418e-97f0-1574b568a545 'PTC Inc.' (ticker=None, cik=None, children=33)
---   retire baee6d78-ab6d-43a3-b809-0ec4ae510d5a 'PTC Inc' (ticker=None, cik=None, children=7)
+--   retire baee6d78-ab6d-43a3-b809-0ec4ae510d5a 'PTC Inc' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '06fbd7ab-3178-4f60-9853-ab996de966f8' WHERE canonical_id IN ('635010e7-5d28-418e-97f0-1574b568a545', 'baee6d78-ab6d-43a3-b809-0ec4ae510d5a');
 UPDATE company_mentions SET company_id = '06fbd7ab-3178-4f60-9853-ab996de966f8' WHERE company_id IN ('635010e7-5d28-418e-97f0-1574b568a545', 'baee6d78-ab6d-43a3-b809-0ec4ae510d5a');
@@ -997,7 +997,7 @@ COMMIT;
 
 -- cik 886128  survivor a8ab6585-7197-424c-92f5-74494e332616 'FuelCell Energy Inc' (ticker=FCEL, cik=886128)
 --   retire 040bc25e-4a7c-4688-9b44-4931f63805c0 'FuelCell Energy Inc.' (ticker=None, cik=None, children=4)
---   retire 79da7f65-23ee-407e-9b84-cd414a32d4e6 'FuelCell Energy' (ticker=None, cik=None, children=12)
+--   retire 79da7f65-23ee-407e-9b84-cd414a32d4e6 'FuelCell Energy' (ticker=None, cik=None, children=57)
 BEGIN;
 UPDATE aliases SET canonical_id = 'a8ab6585-7197-424c-92f5-74494e332616' WHERE canonical_id IN ('040bc25e-4a7c-4688-9b44-4931f63805c0', '79da7f65-23ee-407e-9b84-cd414a32d4e6');
 UPDATE company_mentions SET company_id = 'a8ab6585-7197-424c-92f5-74494e332616' WHERE company_id IN ('040bc25e-4a7c-4688-9b44-4931f63805c0', '79da7f65-23ee-407e-9b84-cd414a32d4e6');
@@ -1011,7 +1011,7 @@ DELETE FROM companies WHERE id IN ('040bc25e-4a7c-4688-9b44-4931f63805c0', '79da
 COMMIT;
 
 -- cik 887396  survivor f70b1c49-4c4d-4ec9-b75c-757334a24743 'Empire Petroleum' (ticker=EP, cik=887396)
---   retire 6806201c-28fa-4ec9-9823-474662c946aa 'Empire Petroleum Corp' (ticker=None, cik=None, children=5)
+--   retire 6806201c-28fa-4ec9-9823-474662c946aa 'Empire Petroleum Corp' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = 'f70b1c49-4c4d-4ec9-b75c-757334a24743' WHERE canonical_id IN ('6806201c-28fa-4ec9-9823-474662c946aa');
 UPDATE company_mentions SET company_id = 'f70b1c49-4c4d-4ec9-b75c-757334a24743' WHERE company_id IN ('6806201c-28fa-4ec9-9823-474662c946aa');
@@ -1025,7 +1025,7 @@ DELETE FROM companies WHERE id IN ('6806201c-28fa-4ec9-9823-474662c946aa');
 COMMIT;
 
 -- cik 887936  survivor 8de1447f-b65c-494f-939c-7b493564a763 'LTi' (ticker=FCN, cik=887936)
---   retire 86418122-85a6-4f9a-a6d1-6e7dab5684fd 'FTI Consulting' (ticker=None, cik=None, children=24)
+--   retire 86418122-85a6-4f9a-a6d1-6e7dab5684fd 'FTI Consulting' (ticker=None, cik=None, children=2)
 --   retire d320ad46-f8e6-4bdd-aba1-a12128a89de5 'FTI Consulting, Inc.' (ticker=None, cik=None, children=2)
 --   retire e0c4ceac-408b-4e31-ab85-4c3c319b0992 'FTI CONSULTING, INC' (ticker=None, cik=None, children=2)
 BEGIN;
@@ -1087,7 +1087,7 @@ DELETE FROM companies WHERE id IN ('72142bb5-0c4d-44bb-9dc4-cb60a85610f9', 'c129
 COMMIT;
 
 -- cik 908937  survivor f2c4a105-1fcd-4605-a19a-00b1d8add3dc 'Sirius XM' (ticker=SIRI, cik=908937)
---   retire 5df36e1e-0e0f-49c4-92f6-360d3940006c 'Sirius XM Holdings Inc.' (ticker=None, cik=None, children=2)
+--   retire 5df36e1e-0e0f-49c4-92f6-360d3940006c 'Sirius XM Holdings Inc.' (ticker=None, cik=None, children=4)
 --   retire 7906d6b1-711b-4ad4-a271-9640f202ecba 'Sirius XM Holdings' (ticker=None, cik=None, children=8)
 BEGIN;
 UPDATE aliases SET canonical_id = 'f2c4a105-1fcd-4605-a19a-00b1d8add3dc' WHERE canonical_id IN ('5df36e1e-0e0f-49c4-92f6-360d3940006c', '7906d6b1-711b-4ad4-a271-9640f202ecba');
@@ -1102,7 +1102,7 @@ DELETE FROM companies WHERE id IN ('5df36e1e-0e0f-49c4-92f6-360d3940006c', '7906
 COMMIT;
 
 -- cik 914208  survivor 18e6fe0c-bbe5-4e1c-8d72-621f433229d1 'Invesco' (ticker=IVZ, cik=914208)
---   retire 337a5b19-f316-4f16-b6b6-041360957434 'Invesco Ltd.' (ticker=None, cik=None, children=2)
+--   retire 337a5b19-f316-4f16-b6b6-041360957434 'Invesco Ltd.' (ticker=None, cik=None, children=6)
 BEGIN;
 UPDATE aliases SET canonical_id = '18e6fe0c-bbe5-4e1c-8d72-621f433229d1' WHERE canonical_id IN ('337a5b19-f316-4f16-b6b6-041360957434');
 UPDATE company_mentions SET company_id = '18e6fe0c-bbe5-4e1c-8d72-621f433229d1' WHERE company_id IN ('337a5b19-f316-4f16-b6b6-041360957434');
@@ -1196,7 +1196,7 @@ COMMIT;
 -- cik 943452  survivor e29e40de-8416-4d5d-ab6b-d162d221c250 'GHO' (ticker=WAB, cik=943452)
 --   retire 0d2ec05b-c58d-4ba5-ada4-d94497762758 'Westinghouse Air Brake Technologies Corp' (ticker=None, cik=None, children=3)
 --   retire 12a3866a-b5da-4ed9-874f-9ed6e6b29932 'Westinghouse Air Brake Technologies' (ticker=None, cik=None, children=13)
---   retire 5a292aca-22b9-4442-9f69-1a23fcfb0860 'Westinghouse Air Brake Technologies Corporation' (ticker=None, cik=None, children=3)
+--   retire 5a292aca-22b9-4442-9f69-1a23fcfb0860 'Westinghouse Air Brake Technologies Corporation' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = 'e29e40de-8416-4d5d-ab6b-d162d221c250' WHERE canonical_id IN ('0d2ec05b-c58d-4ba5-ada4-d94497762758', '12a3866a-b5da-4ed9-874f-9ed6e6b29932', '5a292aca-22b9-4442-9f69-1a23fcfb0860');
 UPDATE company_mentions SET company_id = 'e29e40de-8416-4d5d-ab6b-d162d221c250' WHERE company_id IN ('0d2ec05b-c58d-4ba5-ada4-d94497762758', '12a3866a-b5da-4ed9-874f-9ed6e6b29932', '5a292aca-22b9-4442-9f69-1a23fcfb0860');
@@ -1269,7 +1269,7 @@ COMMIT;
 
 -- cik 1024305  survivor e9761678-ee8a-4fc1-9c24-b4d848b59584 'Coty Inc.' (ticker=COTY, cik=1024305)
 --   retire 503a8c75-a048-49b4-953f-a602796a3711 'Coty Inc' (ticker=None, cik=None, children=2)
---   retire 7a716a0e-acc3-42ac-9258-c206a40d1fac 'Coty' (ticker=None, cik=None, children=2)
+--   retire 7a716a0e-acc3-42ac-9258-c206a40d1fac 'Coty' (ticker=None, cik=None, children=7)
 BEGIN;
 UPDATE aliases SET canonical_id = 'e9761678-ee8a-4fc1-9c24-b4d848b59584' WHERE canonical_id IN ('503a8c75-a048-49b4-953f-a602796a3711', '7a716a0e-acc3-42ac-9258-c206a40d1fac');
 UPDATE company_mentions SET company_id = 'e9761678-ee8a-4fc1-9c24-b4d848b59584' WHERE company_id IN ('503a8c75-a048-49b4-953f-a602796a3711', '7a716a0e-acc3-42ac-9258-c206a40d1fac');
@@ -1284,7 +1284,7 @@ COMMIT;
 
 -- cik 1030894  survivor 2f6ae028-3d23-4708-b837-187b7efdd3b3 'Celestica' (ticker=CLS, cik=1030894)
 --   retire 792fe60f-10e0-4e2d-aa30-77c981ae98f8 'Celestica, Inc.' (ticker=None, cik=None, children=5)
---   retire 7c55b337-f8f4-4b3a-b097-d7f2571b2a82 'Celestica Inc' (ticker=None, cik=None, children=2)
+--   retire 7c55b337-f8f4-4b3a-b097-d7f2571b2a82 'Celestica Inc' (ticker=None, cik=None, children=10)
 BEGIN;
 UPDATE aliases SET canonical_id = '2f6ae028-3d23-4708-b837-187b7efdd3b3' WHERE canonical_id IN ('792fe60f-10e0-4e2d-aa30-77c981ae98f8', '7c55b337-f8f4-4b3a-b097-d7f2571b2a82');
 UPDATE company_mentions SET company_id = '2f6ae028-3d23-4708-b837-187b7efdd3b3' WHERE company_id IN ('792fe60f-10e0-4e2d-aa30-77c981ae98f8', '7c55b337-f8f4-4b3a-b097-d7f2571b2a82');
@@ -1342,7 +1342,7 @@ COMMIT;
 
 -- cik 1048911  survivor c116e033-d055-4a6f-8be0-5ff7d48dd99c 'FedEx' (ticker=FDX, cik=1048911)
 --   retire 4fd63fc2-1aaf-434d-b6dd-2ecf3b7c9c3d 'FedEx Corporation' (ticker=None, cik=None, children=11)
---   retire 75d8d8ab-e364-4961-b6f7-ccf190f06802 'FedEx Corp' (ticker=None, cik=None, children=5)
+--   retire 75d8d8ab-e364-4961-b6f7-ccf190f06802 'FedEx Corp' (ticker=None, cik=None, children=2)
 --   retire 9eb67fc1-3962-4b3e-928c-dac5b88c18d9 'FedEx Corp.' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = 'c116e033-d055-4a6f-8be0-5ff7d48dd99c' WHERE canonical_id IN ('4fd63fc2-1aaf-434d-b6dd-2ecf3b7c9c3d', '75d8d8ab-e364-4961-b6f7-ccf190f06802', '9eb67fc1-3962-4b3e-928c-dac5b88c18d9');
@@ -1357,7 +1357,7 @@ DELETE FROM companies WHERE id IN ('4fd63fc2-1aaf-434d-b6dd-2ecf3b7c9c3d', '75d8
 COMMIT;
 
 -- cik 1056288  survivor c4225bb4-d022-4859-b10a-008650781f4a 'Federated Hermes' (ticker=FHI, cik=1056288)
---   retire a03f075b-c6d2-4afe-943e-b6f13d85f11b 'Federated Hermes, Inc.' (ticker=None, cik=None, children=4)
+--   retire a03f075b-c6d2-4afe-943e-b6f13d85f11b 'Federated Hermes, Inc.' (ticker=None, cik=None, children=2)
 --   retire d0286673-a294-41a1-9b43-3785ac3000c7 'Federated Hermes Inc' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = 'c4225bb4-d022-4859-b10a-008650781f4a' WHERE canonical_id IN ('a03f075b-c6d2-4afe-943e-b6f13d85f11b', 'd0286673-a294-41a1-9b43-3785ac3000c7');
@@ -1387,7 +1387,7 @@ COMMIT;
 
 -- cik 1067983  survivor de144271-920b-443f-a26b-3f9f30097c0a 'Berkshire Hathaway' (ticker=BRK.B, cik=1067983)
 --   retire 64383c40-f024-46be-aa15-b8ec1511ebd2 'Berkshire Hathaway Inc.' (ticker=None, cik=None, children=3)
---   retire 74ab93ff-f351-4aae-af2c-b9eb63af81f5 'Berkshire Hathaway Inc' (ticker=None, cik=None, children=4)
+--   retire 74ab93ff-f351-4aae-af2c-b9eb63af81f5 'Berkshire Hathaway Inc' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = 'de144271-920b-443f-a26b-3f9f30097c0a' WHERE canonical_id IN ('64383c40-f024-46be-aa15-b8ec1511ebd2', '74ab93ff-f351-4aae-af2c-b9eb63af81f5');
 UPDATE company_mentions SET company_id = 'de144271-920b-443f-a26b-3f9f30097c0a' WHERE company_id IN ('64383c40-f024-46be-aa15-b8ec1511ebd2', '74ab93ff-f351-4aae-af2c-b9eb63af81f5');
@@ -1401,7 +1401,7 @@ DELETE FROM companies WHERE id IN ('64383c40-f024-46be-aa15-b8ec1511ebd2', '74ab
 COMMIT;
 
 -- cik 1083446  survivor 16c82c40-6d67-477c-b684-72527084c09e 'Astrana Health' (ticker=ASTH, cik=1083446)
---   retire 79677707-dc67-4666-aa26-a3e151f8239f 'Astrana Health Inc' (ticker=None, cik=None, children=3)
+--   retire 79677707-dc67-4666-aa26-a3e151f8239f 'Astrana Health Inc' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '16c82c40-6d67-477c-b684-72527084c09e' WHERE canonical_id IN ('79677707-dc67-4666-aa26-a3e151f8239f');
 UPDATE company_mentions SET company_id = '16c82c40-6d67-477c-b684-72527084c09e' WHERE company_id IN ('79677707-dc67-4666-aa26-a3e151f8239f');
@@ -1431,7 +1431,7 @@ COMMIT;
 
 -- cik 1086222  survivor bd324028-c155-4a5b-ae39-340d91878e0a 'Akamai Technologies' (ticker=AKAM, cik=1086222)
 --   retire 45e01806-3d11-4069-963a-316a3b77cdc7 'Akamai Technologies Inc' (ticker=None, cik=None, children=4)
---   retire 78f37135-fa14-450d-bb06-4aafd4e20148 'Akamai Technologies, Inc.' (ticker=None, cik=None, children=7)
+--   retire 78f37135-fa14-450d-bb06-4aafd4e20148 'Akamai Technologies, Inc.' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = 'bd324028-c155-4a5b-ae39-340d91878e0a' WHERE canonical_id IN ('45e01806-3d11-4069-963a-316a3b77cdc7', '78f37135-fa14-450d-bb06-4aafd4e20148');
 UPDATE company_mentions SET company_id = 'bd324028-c155-4a5b-ae39-340d91878e0a' WHERE company_id IN ('45e01806-3d11-4069-963a-316a3b77cdc7', '78f37135-fa14-450d-bb06-4aafd4e20148');
@@ -1517,7 +1517,7 @@ DELETE FROM companies WHERE id IN ('3df2cab6-5e5c-4b77-ad1a-bb951b2a04af', 'dc3b
 COMMIT;
 
 -- cik 1124198  survivor a974f8f2-db21-4fde-8983-f710693f7143 'Fluor Corporation' (ticker=FLR, cik=1124198)
---   retire 850dc496-ed02-4258-a98d-9293bf0d4222 'Fluor Corp' (ticker=None, cik=None, children=3)
+--   retire 850dc496-ed02-4258-a98d-9293bf0d4222 'Fluor Corp' (ticker=None, cik=None, children=2)
 --   retire b060b437-8ce1-4ec3-8530-9b161fdf32f1 'Fluor' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = 'a974f8f2-db21-4fde-8983-f710693f7143' WHERE canonical_id IN ('850dc496-ed02-4258-a98d-9293bf0d4222', 'b060b437-8ce1-4ec3-8530-9b161fdf32f1');
@@ -1562,7 +1562,7 @@ COMMIT;
 
 -- cik 1136893  survivor 59d437d7-d36d-4514-a150-3092862ff7f3 'Fidelity' (ticker=FIS, cik=1136893)
 --   retire 06dd0082-395b-48e5-be20-a8cb9574e508 'Fidelity National Information Services' (ticker=None, cik=None, children=5)
---   retire 8bbbf6de-a8f8-4476-897b-312edb7bb4dd 'Fidelity National Information Services Inc' (ticker=None, cik=None, children=2)
+--   retire 8bbbf6de-a8f8-4476-897b-312edb7bb4dd 'Fidelity National Information Services Inc' (ticker=None, cik=None, children=4)
 BEGIN;
 UPDATE aliases SET canonical_id = '59d437d7-d36d-4514-a150-3092862ff7f3' WHERE canonical_id IN ('06dd0082-395b-48e5-be20-a8cb9574e508', '8bbbf6de-a8f8-4476-897b-312edb7bb4dd');
 UPDATE company_mentions SET company_id = '59d437d7-d36d-4514-a150-3092862ff7f3' WHERE company_id IN ('06dd0082-395b-48e5-be20-a8cb9574e508', '8bbbf6de-a8f8-4476-897b-312edb7bb4dd');
@@ -1770,7 +1770,7 @@ DELETE FROM companies WHERE id IN ('a653c24e-0c06-4679-9059-a7492d019eb8');
 COMMIT;
 
 -- cik 1311370  survivor 89d83ff6-baec-4948-8c95-1de9f8362c15 'Lazard' (ticker=LAZ, cik=1311370)
---   retire 83e62b67-03af-436c-a637-81cc18d9c53e 'Lazard Inc' (ticker=None, cik=None, children=2)
+--   retire 83e62b67-03af-436c-a637-81cc18d9c53e 'Lazard Inc' (ticker=None, cik=None, children=3)
 BEGIN;
 UPDATE aliases SET canonical_id = '89d83ff6-baec-4948-8c95-1de9f8362c15' WHERE canonical_id IN ('83e62b67-03af-436c-a637-81cc18d9c53e');
 UPDATE company_mentions SET company_id = '89d83ff6-baec-4948-8c95-1de9f8362c15' WHERE company_id IN ('83e62b67-03af-436c-a637-81cc18d9c53e');
@@ -1902,7 +1902,7 @@ DELETE FROM companies WHERE id IN ('3087770d-3b96-46a5-8591-5c11d94cce6c', '3234
 COMMIT;
 
 -- cik 1331520  survivor 838a40d8-43f2-4b41-b117-b994bab3cb69 'Home BancShares, Inc.' (ticker=HOMB, cik=1331520)
---   retire 779ed5de-beb8-4e96-ac3b-04b011182da5 'Home BancShares Inc' (ticker=None, cik=None, children=5)
+--   retire 779ed5de-beb8-4e96-ac3b-04b011182da5 'Home BancShares Inc' (ticker=None, cik=None, children=2)
 --   retire dfaa37ad-236f-4f13-b311-1db33c26b912 'Home BancShares' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '838a40d8-43f2-4b41-b117-b994bab3cb69' WHERE canonical_id IN ('779ed5de-beb8-4e96-ac3b-04b011182da5', 'dfaa37ad-236f-4f13-b311-1db33c26b912');
@@ -1933,7 +1933,7 @@ COMMIT;
 
 -- cik 1337634  survivor c518f3bc-fac5-47f7-be39-f0b03e0fdbbb 'StubHub' (ticker=STUB, cik=1337634)
 --   retire 505e3b5e-fbc9-4360-92ec-5cb5e6da95f1 'StubHub Holdings' (ticker=None, cik=None, children=3)
---   retire 6b52656b-1110-4cd7-a2b6-683d5b33a41f 'StubHub Holdings, Inc.' (ticker=None, cik=None, children=2)
+--   retire 6b52656b-1110-4cd7-a2b6-683d5b33a41f 'StubHub Holdings, Inc.' (ticker=None, cik=None, children=4)
 BEGIN;
 UPDATE aliases SET canonical_id = 'c518f3bc-fac5-47f7-be39-f0b03e0fdbbb' WHERE canonical_id IN ('505e3b5e-fbc9-4360-92ec-5cb5e6da95f1', '6b52656b-1110-4cd7-a2b6-683d5b33a41f');
 UPDATE company_mentions SET company_id = 'c518f3bc-fac5-47f7-be39-f0b03e0fdbbb' WHERE company_id IN ('505e3b5e-fbc9-4360-92ec-5cb5e6da95f1', '6b52656b-1110-4cd7-a2b6-683d5b33a41f');
@@ -2036,7 +2036,7 @@ COMMIT;
 
 -- cik 1413329  survivor 958ef05e-5e59-46ff-a002-df50c09c5393 'Philip Morris International Inc.' (ticker=PM, cik=1413329)
 --   retire 1549d6c4-ed23-4109-86be-038a4f9d47e6 'Philip Morris International Inc' (ticker=None, cik=None, children=3)
---   retire 51c62471-f4a2-4684-a2b0-f82251b865f1 'Philip Morris International' (ticker=None, cik=None, children=28)
+--   retire 51c62471-f4a2-4684-a2b0-f82251b865f1 'Philip Morris International' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '958ef05e-5e59-46ff-a002-df50c09c5393' WHERE canonical_id IN ('1549d6c4-ed23-4109-86be-038a4f9d47e6', '51c62471-f4a2-4684-a2b0-f82251b865f1');
 UPDATE company_mentions SET company_id = '958ef05e-5e59-46ff-a002-df50c09c5393' WHERE company_id IN ('1549d6c4-ed23-4109-86be-038a4f9d47e6', '51c62471-f4a2-4684-a2b0-f82251b865f1');
@@ -2078,7 +2078,7 @@ DELETE FROM companies WHERE id IN ('ff9398ed-7867-4235-a756-c42f9924a8af');
 COMMIT;
 
 -- cik 1433642  survivor c50b5874-f892-4698-8ab2-74fdb460e1d5 'Hamilton Lane' (ticker=HLNE, cik=1433642)
---   retire 5bcd3905-2a03-4998-affb-0fb315892492 'Hamilton Lane Inc' (ticker=None, cik=None, children=2)
+--   retire 5bcd3905-2a03-4998-affb-0fb315892492 'Hamilton Lane Inc' (ticker=None, cik=None, children=3)
 BEGIN;
 UPDATE aliases SET canonical_id = 'c50b5874-f892-4698-8ab2-74fdb460e1d5' WHERE canonical_id IN ('5bcd3905-2a03-4998-affb-0fb315892492');
 UPDATE company_mentions SET company_id = 'c50b5874-f892-4698-8ab2-74fdb460e1d5' WHERE company_id IN ('5bcd3905-2a03-4998-affb-0fb315892492');
@@ -2184,7 +2184,7 @@ DELETE FROM companies WHERE id IN ('3ecc25ca-d09a-4db6-b147-4dd947ca8d97', 'afad
 COMMIT;
 
 -- cik 1468327  survivor b12120fe-24ca-460a-9a7f-0fbbb7f8d6b0 'Rent the Runway, Inc.' (ticker=RENT, cik=1468327)
---   retire 721597b7-2b78-44bb-bc10-3798deeb4613 'Rent the Runway' (ticker=None, cik=None, children=3)
+--   retire 721597b7-2b78-44bb-bc10-3798deeb4613 'Rent the Runway' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = 'b12120fe-24ca-460a-9a7f-0fbbb7f8d6b0' WHERE canonical_id IN ('721597b7-2b78-44bb-bc10-3798deeb4613');
 UPDATE company_mentions SET company_id = 'b12120fe-24ca-460a-9a7f-0fbbb7f8d6b0' WHERE company_id IN ('721597b7-2b78-44bb-bc10-3798deeb4613');
@@ -2243,7 +2243,7 @@ DELETE FROM companies WHERE id IN ('18433b93-9e11-479c-b450-5c8942e91d11', '4afc
 COMMIT;
 
 -- cik 1486159  survivor bf01fba2-886e-445e-a64d-a18c42477670 'Chord Energy' (ticker=CHRD, cik=1486159)
---   retire c6e5b4ee-1f8b-44ba-a770-3f5023cb2f5a 'Chord Energy Corp' (ticker=None, cik=None, children=3)
+--   retire c6e5b4ee-1f8b-44ba-a770-3f5023cb2f5a 'Chord Energy Corp' (ticker=None, cik=None, children=2)
 --   retire f4f3e474-e14c-4a46-9d93-1ff2c6967ccc 'Chord Energy Corporation' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = 'bf01fba2-886e-445e-a64d-a18c42477670' WHERE canonical_id IN ('c6e5b4ee-1f8b-44ba-a770-3f5023cb2f5a', 'f4f3e474-e14c-4a46-9d93-1ff2c6967ccc');
@@ -2273,7 +2273,7 @@ DELETE FROM companies WHERE id IN ('95e3e85d-4e09-428f-bdbe-d9f5dfb0e31b', 'cb75
 COMMIT;
 
 -- cik 1520358  survivor 8b8d2f49-316e-464e-84a1-efab92bba070 "Mama''s Creations" (ticker=MAMA, cik=1520358)
---   retire 779a6943-9407-41a7-aa73-200941ee55c6 "Mama''s Creations, Inc." (ticker=None, cik=None, children=2)
+--   retire 779a6943-9407-41a7-aa73-200941ee55c6 "Mama''s Creations, Inc." (ticker=None, cik=None, children=5)
 --   retire 98291856-b93b-4c3c-be35-0ce721c610b6 'MAMA`S CREATIONS' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '8b8d2f49-316e-464e-84a1-efab92bba070' WHERE canonical_id IN ('779a6943-9407-41a7-aa73-200941ee55c6', '98291856-b93b-4c3c-be35-0ce721c610b6');
@@ -2332,7 +2332,7 @@ DELETE FROM companies WHERE id IN ('bed02ccf-c401-4061-a1b2-b7508229dee4', 'df04
 COMMIT;
 
 -- cik 1561550  survivor bfb3540f-b115-439c-bc96-b12079327d2a 'Datadog' (ticker=DDOG, cik=1561550)
---   retire 475bafe0-b020-4e0f-aae4-8a7d5e196c48 'Datadog, Inc.' (ticker=None, cik=None, children=2)
+--   retire 475bafe0-b020-4e0f-aae4-8a7d5e196c48 'Datadog, Inc.' (ticker=None, cik=None, children=6)
 BEGIN;
 UPDATE aliases SET canonical_id = 'bfb3540f-b115-439c-bc96-b12079327d2a' WHERE canonical_id IN ('475bafe0-b020-4e0f-aae4-8a7d5e196c48');
 UPDATE company_mentions SET company_id = 'bfb3540f-b115-439c-bc96-b12079327d2a' WHERE company_id IN ('475bafe0-b020-4e0f-aae4-8a7d5e196c48');
@@ -2346,7 +2346,7 @@ DELETE FROM companies WHERE id IN ('475bafe0-b020-4e0f-aae4-8a7d5e196c48');
 COMMIT;
 
 -- cik 1564708  survivor af84b022-1d18-433b-85d3-ccbd9b7c0fb5 'News Corp' (ticker=NWSA, cik=1564708)
---   retire 65c12816-e089-4617-b295-bbd710dac3ba 'News' (ticker=None, cik=None, children=3)
+--   retire 65c12816-e089-4617-b295-bbd710dac3ba 'News' (ticker=None, cik=None, children=2)
 --   retire e16ea754-b7a4-4c8b-9814-8d7edd352c10 'News Corporation' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = 'af84b022-1d18-433b-85d3-ccbd9b7c0fb5' WHERE canonical_id IN ('65c12816-e089-4617-b295-bbd710dac3ba', 'e16ea754-b7a4-4c8b-9814-8d7edd352c10');
@@ -2390,7 +2390,7 @@ DELETE FROM companies WHERE id IN ('4bc39e77-9f72-4710-93dc-e930b7419aee', 'ad90
 COMMIT;
 
 -- cik 1575793  survivor 65819719-e444-405a-9f5f-3be0ece8c31c 'Energous' (ticker=WATT, cik=1575793)
---   retire c01f8ac9-ccb4-4fc4-9de2-49ccb80f2043 'Energous Corporation' (ticker=None, cik=None, children=3)
+--   retire c01f8ac9-ccb4-4fc4-9de2-49ccb80f2043 'Energous Corporation' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '65819719-e444-405a-9f5f-3be0ece8c31c' WHERE canonical_id IN ('c01f8ac9-ccb4-4fc4-9de2-49ccb80f2043');
 UPDATE company_mentions SET company_id = '65819719-e444-405a-9f5f-3be0ece8c31c' WHERE company_id IN ('c01f8ac9-ccb4-4fc4-9de2-49ccb80f2043');
@@ -2493,7 +2493,7 @@ DELETE FROM companies WHERE id IN ('876c2a70-3e79-4e27-b1e7-2c6d1ea08d3d', '949d
 COMMIT;
 
 -- cik 1596967  survivor 063301f7-350f-4f9b-8c14-c1715c361ca3 'Moelis & Company' (ticker=MC, cik=1596967)
---   retire 7359b7e5-7bad-4b6b-b02b-f50fd3334beb 'Moelis & Co' (ticker=None, cik=None, children=3)
+--   retire 7359b7e5-7bad-4b6b-b02b-f50fd3334beb 'Moelis & Co' (ticker=None, cik=None, children=2)
 --   retire 9d5d57cb-3d90-4088-a393-8220953945cb 'Moelis' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '063301f7-350f-4f9b-8c14-c1715c361ca3' WHERE canonical_id IN ('7359b7e5-7bad-4b6b-b02b-f50fd3334beb', '9d5d57cb-3d90-4088-a393-8220953945cb');
@@ -2522,7 +2522,7 @@ DELETE FROM companies WHERE id IN ('72181692-54d3-4617-b901-3b809aeb6aa6');
 COMMIT;
 
 -- cik 1606498  survivor 226af746-d45e-4afc-bb9e-2970757d000a 'Avanos Medical' (ticker=AVNS, cik=1606498)
---   retire 5dd9cc16-d88b-4de5-83ec-a598939e1697 'Avanos Medical Inc' (ticker=None, cik=None, children=5)
+--   retire 5dd9cc16-d88b-4de5-83ec-a598939e1697 'Avanos Medical Inc' (ticker=None, cik=None, children=2)
 --   retire 87ede353-3ef5-461d-9fa4-3ffb0d4c8066 'Avanos Medical, Inc.' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '226af746-d45e-4afc-bb9e-2970757d000a' WHERE canonical_id IN ('5dd9cc16-d88b-4de5-83ec-a598939e1697', '87ede353-3ef5-461d-9fa4-3ffb0d4c8066');
@@ -2537,7 +2537,7 @@ DELETE FROM companies WHERE id IN ('5dd9cc16-d88b-4de5-83ec-a598939e1697', '87ed
 COMMIT;
 
 -- cik 1614178  survivor 93b221b6-1687-4a3c-8a37-a8c56dc5d0ef 'Yext' (ticker=YEXT, cik=1614178)
---   retire a6836bfd-00bf-4bd5-9e0f-b96e7ff13619 'Yext, Inc.' (ticker=None, cik=None, children=6)
+--   retire a6836bfd-00bf-4bd5-9e0f-b96e7ff13619 'Yext, Inc.' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '93b221b6-1687-4a3c-8a37-a8c56dc5d0ef' WHERE canonical_id IN ('a6836bfd-00bf-4bd5-9e0f-b96e7ff13619');
 UPDATE company_mentions SET company_id = '93b221b6-1687-4a3c-8a37-a8c56dc5d0ef' WHERE company_id IN ('a6836bfd-00bf-4bd5-9e0f-b96e7ff13619');
@@ -2596,7 +2596,7 @@ DELETE FROM companies WHERE id IN ('a7575958-633a-43f2-9e88-d49a04262aac', 'f88d
 COMMIT;
 
 -- cik 1640147  survivor 87638cce-3d6b-49f6-8444-a8ad56f42957 'Snowflake' (ticker=SNOW, cik=1640147)
---   retire 882f6ff3-eb24-454e-b7a8-4960988700d0 'Snowflake Inc.' (ticker=None, cik=None, children=19)
+--   retire 882f6ff3-eb24-454e-b7a8-4960988700d0 'Snowflake Inc.' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '87638cce-3d6b-49f6-8444-a8ad56f42957' WHERE canonical_id IN ('882f6ff3-eb24-454e-b7a8-4960988700d0');
 UPDATE company_mentions SET company_id = '87638cce-3d6b-49f6-8444-a8ad56f42957' WHERE company_id IN ('882f6ff3-eb24-454e-b7a8-4960988700d0');
@@ -2610,7 +2610,7 @@ DELETE FROM companies WHERE id IN ('882f6ff3-eb24-454e-b7a8-4960988700d0');
 COMMIT;
 
 -- cik 1652044  survivor f1776f5c-0b4e-4b46-abac-dd4cb7088c8a 'Alphabet' (ticker=GOOGL, cik=1652044)
---   retire 77704e1c-108a-46d8-859c-d3a465d45d82 'Alphabet Inc.' (ticker=None, cik=None, children=11)
+--   retire 77704e1c-108a-46d8-859c-d3a465d45d82 'Alphabet Inc.' (ticker=None, cik=None, children=2)
 --   retire ad65ce85-038a-4517-a321-f8b6484872da 'Alphabet Inc' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = 'f1776f5c-0b4e-4b46-abac-dd4cb7088c8a' WHERE canonical_id IN ('77704e1c-108a-46d8-859c-d3a465d45d82', 'ad65ce85-038a-4517-a321-f8b6484872da');
@@ -2641,7 +2641,7 @@ DELETE FROM companies WHERE id IN ('016e7343-54d9-4a57-bc87-1b5f813dbfdb', 'b233
 COMMIT;
 
 -- cik 1676725  survivor 5b885a00-f21c-44be-96bb-7f5e39e3c8ae 'IDEAYA Biosciences, Inc.' (ticker=IDYA, cik=1676725)
---   retire 650a4318-c993-4cf8-afdc-8e72d4ccb94d 'IDEAYA Biosciences' (ticker=None, cik=None, children=7)
+--   retire 650a4318-c993-4cf8-afdc-8e72d4ccb94d 'IDEAYA Biosciences' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '5b885a00-f21c-44be-96bb-7f5e39e3c8ae' WHERE canonical_id IN ('650a4318-c993-4cf8-afdc-8e72d4ccb94d');
 UPDATE company_mentions SET company_id = '5b885a00-f21c-44be-96bb-7f5e39e3c8ae' WHERE company_id IN ('650a4318-c993-4cf8-afdc-8e72d4ccb94d');
@@ -2686,7 +2686,7 @@ COMMIT;
 
 -- cik 1701605  survivor 036f707a-eeab-4e7f-96ec-2c9cfac7d0b0 'Baker Hughes Co.' (ticker=BKR, cik=1701605)
 --   retire 33e8b0ef-54f0-449c-b30d-81cc3888968f 'Baker Hughes' (ticker=None, cik=None, children=40)
---   retire 54e35845-8384-45a9-a08f-b11a1eed19e3 'Baker Hughes Company' (ticker=None, cik=None, children=15)
+--   retire 54e35845-8384-45a9-a08f-b11a1eed19e3 'Baker Hughes Company' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '036f707a-eeab-4e7f-96ec-2c9cfac7d0b0' WHERE canonical_id IN ('33e8b0ef-54f0-449c-b30d-81cc3888968f', '54e35845-8384-45a9-a08f-b11a1eed19e3');
 UPDATE company_mentions SET company_id = '036f707a-eeab-4e7f-96ec-2c9cfac7d0b0' WHERE company_id IN ('33e8b0ef-54f0-449c-b30d-81cc3888968f', '54e35845-8384-45a9-a08f-b11a1eed19e3');
@@ -2715,7 +2715,7 @@ DELETE FROM companies WHERE id IN ('131856bd-f5e1-42c9-9324-46a36b843595', 'bff0
 COMMIT;
 
 -- cik 1712189  survivor 45bdd9a2-affd-46a4-96c0-e7f30f691f15 'Target Hospitality Corp.' (ticker=TH, cik=1712189)
---   retire 7d18e2a7-ddbb-488d-a3ea-9d54c95fa788 'Target Hospitality' (ticker=None, cik=None, children=2)
+--   retire 7d18e2a7-ddbb-488d-a3ea-9d54c95fa788 'Target Hospitality' (ticker=None, cik=None, children=4)
 BEGIN;
 UPDATE aliases SET canonical_id = '45bdd9a2-affd-46a4-96c0-e7f30f691f15' WHERE canonical_id IN ('7d18e2a7-ddbb-488d-a3ea-9d54c95fa788');
 UPDATE company_mentions SET company_id = '45bdd9a2-affd-46a4-96c0-e7f30f691f15' WHERE company_id IN ('7d18e2a7-ddbb-488d-a3ea-9d54c95fa788');
@@ -2743,7 +2743,7 @@ DELETE FROM companies WHERE id IN ('49228ac8-1ff1-45d7-bda9-87bbad94ff2d');
 COMMIT;
 
 -- cik 1720635  survivor 1046f136-d965-4e82-b987-3cdfb52e9735 'nVent Electric PLC' (ticker=NVT, cik=1720635)
---   retire 5a721957-6eda-4c1e-ae94-04a6fc6f8742 'nVent Electric' (ticker=None, cik=None, children=2)
+--   retire 5a721957-6eda-4c1e-ae94-04a6fc6f8742 'nVent Electric' (ticker=None, cik=None, children=33)
 BEGIN;
 UPDATE aliases SET canonical_id = '1046f136-d965-4e82-b987-3cdfb52e9735' WHERE canonical_id IN ('5a721957-6eda-4c1e-ae94-04a6fc6f8742');
 UPDATE company_mentions SET company_id = '1046f136-d965-4e82-b987-3cdfb52e9735' WHERE company_id IN ('5a721957-6eda-4c1e-ae94-04a6fc6f8742');
@@ -2831,7 +2831,7 @@ DELETE FROM companies WHERE id IN ('165cd445-e32b-472f-97ed-387a8108728a', '4fa1
 COMMIT;
 
 -- cik 1766502  survivor 4394e74d-5c08-46ff-bb74-852006423093 'Chewy' (ticker=CHWY, cik=1766502)
---   retire 5290e708-e593-4f9e-91cd-ebd8cb6a272e 'Chewy, Inc.' (ticker=None, cik=None, children=3)
+--   retire 5290e708-e593-4f9e-91cd-ebd8cb6a272e 'Chewy, Inc.' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '4394e74d-5c08-46ff-bb74-852006423093' WHERE canonical_id IN ('5290e708-e593-4f9e-91cd-ebd8cb6a272e');
 UPDATE company_mentions SET company_id = '4394e74d-5c08-46ff-bb74-852006423093' WHERE company_id IN ('5290e708-e593-4f9e-91cd-ebd8cb6a272e');
@@ -2875,7 +2875,7 @@ DELETE FROM companies WHERE id IN ('8f660f67-9ecb-4139-8f8a-6b2de2f62548', 'e757
 COMMIT;
 
 -- cik 1773751  survivor bcbe250f-06ab-4189-9b18-72ec8d071c5b 'Hims & Hers Health' (ticker=HIMS, cik=1773751)
---   retire 89ddf1d9-0f8a-4025-a5ed-66dc3d06358c 'Hims & Hers Health Inc' (ticker=None, cik=None, children=2)
+--   retire 89ddf1d9-0f8a-4025-a5ed-66dc3d06358c 'Hims & Hers Health Inc' (ticker=None, cik=None, children=6)
 --   retire b20cc290-1871-4c68-a746-e0437c00ac22 'Hims & Hers Health, Inc.' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = 'bcbe250f-06ab-4189-9b18-72ec8d071c5b' WHERE canonical_id IN ('89ddf1d9-0f8a-4025-a5ed-66dc3d06358c', 'b20cc290-1871-4c68-a746-e0437c00ac22');
@@ -2891,7 +2891,7 @@ COMMIT;
 
 -- cik 1791145  survivor f3e6bb65-c8fb-43fd-9c71-0ce29e9ec1d8 'GBank Financial' (ticker=GBFH, cik=1791145)
 --   retire 6cd5800a-d27e-44d5-954b-6a0c4ff15f95 'GBANK FINANCIAL HOLDINGS' (ticker=None, cik=None, children=2)
---   retire 8000dbf4-d3ba-46c9-95da-05163e4a1bc7 'GBank Financial Holdings Inc.' (ticker=None, cik=None, children=4)
+--   retire 8000dbf4-d3ba-46c9-95da-05163e4a1bc7 'GBank Financial Holdings Inc.' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = 'f3e6bb65-c8fb-43fd-9c71-0ce29e9ec1d8' WHERE canonical_id IN ('6cd5800a-d27e-44d5-954b-6a0c4ff15f95', '8000dbf4-d3ba-46c9-95da-05163e4a1bc7');
 UPDATE company_mentions SET company_id = 'f3e6bb65-c8fb-43fd-9c71-0ce29e9ec1d8' WHERE company_id IN ('6cd5800a-d27e-44d5-954b-6a0c4ff15f95', '8000dbf4-d3ba-46c9-95da-05163e4a1bc7');
@@ -2919,7 +2919,7 @@ DELETE FROM companies WHERE id IN ('fac21765-6952-481f-85ab-ad0e627eb1d5');
 COMMIT;
 
 -- cik 1800667  survivor c5105c16-5ac7-4faf-8d9d-7fc0f1f3e11f 'JFrog' (ticker=FROG, cik=1800667)
---   retire 92af9b5b-4424-4ca3-80a3-f6faed12977b 'JFrog Ltd.' (ticker=None, cik=None, children=2)
+--   retire 92af9b5b-4424-4ca3-80a3-f6faed12977b 'JFrog Ltd.' (ticker=None, cik=None, children=9)
 BEGIN;
 UPDATE aliases SET canonical_id = 'c5105c16-5ac7-4faf-8d9d-7fc0f1f3e11f' WHERE canonical_id IN ('92af9b5b-4424-4ca3-80a3-f6faed12977b');
 UPDATE company_mentions SET company_id = 'c5105c16-5ac7-4faf-8d9d-7fc0f1f3e11f' WHERE company_id IN ('92af9b5b-4424-4ca3-80a3-f6faed12977b');
@@ -2963,7 +2963,7 @@ COMMIT;
 
 -- cik 1810806  survivor 03a4c021-6ee0-421c-a94f-cdd52a1eef48 'Unity Software' (ticker=U, cik=1810806)
 --   retire 29c86198-5209-4071-bf04-7d72e6e0b43a 'Unity Software Inc' (ticker=None, cik=None, children=4)
---   retire 82df75e6-c908-429b-9351-3477f7ed1df0 'Unity Software Inc.' (ticker=None, cik=None, children=4)
+--   retire 82df75e6-c908-429b-9351-3477f7ed1df0 'Unity Software Inc.' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '03a4c021-6ee0-421c-a94f-cdd52a1eef48' WHERE canonical_id IN ('29c86198-5209-4071-bf04-7d72e6e0b43a', '82df75e6-c908-429b-9351-3477f7ed1df0');
 UPDATE company_mentions SET company_id = '03a4c021-6ee0-421c-a94f-cdd52a1eef48' WHERE company_id IN ('29c86198-5209-4071-bf04-7d72e6e0b43a', '82df75e6-c908-429b-9351-3477f7ed1df0');
@@ -3204,7 +3204,7 @@ DELETE FROM companies WHERE id IN ('9d0aee46-e660-4e4e-b6cb-a733a5886067');
 COMMIT;
 
 -- cik 1858724  survivor 9b2da8df-abcb-4158-b47d-7c115045f59a 'BingEx Limited' (ticker=FLX, cik=1858724)
---   retire 7d300aa9-d26c-49bd-9910-1da9258d8110 'BingEx' (ticker=None, cik=None, children=3)
+--   retire 7d300aa9-d26c-49bd-9910-1da9258d8110 'BingEx' (ticker=None, cik=None, children=2)
 --   retire e1027ff7-d5d5-4810-8068-c5fa1e745145 'BingEx Ltd' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '9b2da8df-abcb-4158-b47d-7c115045f59a' WHERE canonical_id IN ('7d300aa9-d26c-49bd-9910-1da9258d8110', 'e1027ff7-d5d5-4810-8068-c5fa1e745145');
@@ -3377,7 +3377,7 @@ DELETE FROM companies WHERE id IN ('95930df3-242a-4757-809d-7413bc01e58a');
 COMMIT;
 
 -- cik 1937926  survivor f42d8e9a-6cfe-4623-991d-3ad024ba86f4 'Brookfield Asset Management' (ticker=BAM, cik=1937926)
---   retire 8db23786-3b4b-47e3-847c-30042e608135 'Brookfield Asset Management Inc' (ticker=None, cik=None, children=2)
+--   retire 8db23786-3b4b-47e3-847c-30042e608135 'Brookfield Asset Management Inc' (ticker=None, cik=None, children=3)
 BEGIN;
 UPDATE aliases SET canonical_id = 'f42d8e9a-6cfe-4623-991d-3ad024ba86f4' WHERE canonical_id IN ('8db23786-3b4b-47e3-847c-30042e608135');
 UPDATE company_mentions SET company_id = 'f42d8e9a-6cfe-4623-991d-3ad024ba86f4' WHERE company_id IN ('8db23786-3b4b-47e3-847c-30042e608135');
@@ -3826,7 +3826,7 @@ DELETE FROM companies WHERE id IN ('b6e8ddfb-0905-485f-a72c-21625dc41289', 'cfbb
 COMMIT;
 
 -- cik 887596  survivor 15ccbe92-27e5-4a6f-be30-b1ebb47f7e2b 'Cheesecake Factory' (ticker=None, cik=None)
---   retire b16bc09c-c0a5-421b-a121-4e697d15acae 'The Cheesecake Factory Incorporated' (ticker=None, cik=None, children=3)
+--   retire b16bc09c-c0a5-421b-a121-4e697d15acae 'The Cheesecake Factory Incorporated' (ticker=None, cik=None, children=2)
 --   retire bd033bf4-68a4-4b58-9da7-b675f72fef48 'The Cheesecake Factory' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '15ccbe92-27e5-4a6f-be30-b1ebb47f7e2b' WHERE canonical_id IN ('b16bc09c-c0a5-421b-a121-4e697d15acae', 'bd033bf4-68a4-4b58-9da7-b675f72fef48');
@@ -3995,20 +3995,20 @@ UPDATE companies SET ticker = COALESCE(ticker, 'LYG'), sec_cik = COALESCE(sec_ci
 DELETE FROM companies WHERE id IN ('3cfa4ea2-35e5-4383-998a-7727d4c16f1d');
 COMMIT;
 
--- cik 1324404  survivor a0e35816-7939-4d7e-98f6-67240695af86 'CF Industries' (ticker=None, cik=None)
---   retire 4be93e7b-4599-4e2c-8e73-fa13248c7c57 'CF Industries Holdings Inc.' (ticker=None, cik=None, children=2)
+-- cik 1324404  survivor 4be93e7b-4599-4e2c-8e73-fa13248c7c57 'CF Industries Holdings Inc.' (ticker=None, cik=None)
+--   retire a0e35816-7939-4d7e-98f6-67240695af86 'CF Industries' (ticker=None, cik=None, children=2)
 --   retire a519e5f2-4e32-4b1f-a4f9-a27949a2ff36 'CF Industries Holdings Inc' (ticker=None, cik=None, children=2)
 --   retire de0ac263-f4a9-4bb2-8c84-338fd536bd35 'CF Industries Holdings' (ticker=None, cik=None, children=2)
 BEGIN;
-UPDATE aliases SET canonical_id = 'a0e35816-7939-4d7e-98f6-67240695af86' WHERE canonical_id IN ('4be93e7b-4599-4e2c-8e73-fa13248c7c57', 'a519e5f2-4e32-4b1f-a4f9-a27949a2ff36', 'de0ac263-f4a9-4bb2-8c84-338fd536bd35');
-UPDATE company_mentions SET company_id = 'a0e35816-7939-4d7e-98f6-67240695af86' WHERE company_id IN ('4be93e7b-4599-4e2c-8e73-fa13248c7c57', 'a519e5f2-4e32-4b1f-a4f9-a27949a2ff36', 'de0ac263-f4a9-4bb2-8c84-338fd536bd35');
-UPDATE financial_facts SET company_id = 'a0e35816-7939-4d7e-98f6-67240695af86' WHERE company_id IN ('4be93e7b-4599-4e2c-8e73-fa13248c7c57', 'a519e5f2-4e32-4b1f-a4f9-a27949a2ff36', 'de0ac263-f4a9-4bb2-8c84-338fd536bd35');
-UPDATE insider_transactions SET company_id = 'a0e35816-7939-4d7e-98f6-67240695af86' WHERE company_id IN ('4be93e7b-4599-4e2c-8e73-fa13248c7c57', 'a519e5f2-4e32-4b1f-a4f9-a27949a2ff36', 'de0ac263-f4a9-4bb2-8c84-338fd536bd35');
-UPDATE resolution_log SET resolved_canonical_id = 'a0e35816-7939-4d7e-98f6-67240695af86' WHERE resolved_canonical_id IN ('4be93e7b-4599-4e2c-8e73-fa13248c7c57', 'a519e5f2-4e32-4b1f-a4f9-a27949a2ff36', 'de0ac263-f4a9-4bb2-8c84-338fd536bd35');
-UPDATE sec_filings SET company_id = 'a0e35816-7939-4d7e-98f6-67240695af86' WHERE company_id IN ('4be93e7b-4599-4e2c-8e73-fa13248c7c57', 'a519e5f2-4e32-4b1f-a4f9-a27949a2ff36', 'de0ac263-f4a9-4bb2-8c84-338fd536bd35');
-UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('4be93e7b-4599-4e2c-8e73-fa13248c7c57', 'a519e5f2-4e32-4b1f-a4f9-a27949a2ff36', 'de0ac263-f4a9-4bb2-8c84-338fd536bd35')),0) WHERE id = 'a0e35816-7939-4d7e-98f6-67240695af86';
-UPDATE companies SET ticker = COALESCE(ticker, 'CF'), sec_cik = COALESCE(sec_cik, 1324404) WHERE id = 'a0e35816-7939-4d7e-98f6-67240695af86';
-DELETE FROM companies WHERE id IN ('4be93e7b-4599-4e2c-8e73-fa13248c7c57', 'a519e5f2-4e32-4b1f-a4f9-a27949a2ff36', 'de0ac263-f4a9-4bb2-8c84-338fd536bd35');
+UPDATE aliases SET canonical_id = '4be93e7b-4599-4e2c-8e73-fa13248c7c57' WHERE canonical_id IN ('a0e35816-7939-4d7e-98f6-67240695af86', 'a519e5f2-4e32-4b1f-a4f9-a27949a2ff36', 'de0ac263-f4a9-4bb2-8c84-338fd536bd35');
+UPDATE company_mentions SET company_id = '4be93e7b-4599-4e2c-8e73-fa13248c7c57' WHERE company_id IN ('a0e35816-7939-4d7e-98f6-67240695af86', 'a519e5f2-4e32-4b1f-a4f9-a27949a2ff36', 'de0ac263-f4a9-4bb2-8c84-338fd536bd35');
+UPDATE financial_facts SET company_id = '4be93e7b-4599-4e2c-8e73-fa13248c7c57' WHERE company_id IN ('a0e35816-7939-4d7e-98f6-67240695af86', 'a519e5f2-4e32-4b1f-a4f9-a27949a2ff36', 'de0ac263-f4a9-4bb2-8c84-338fd536bd35');
+UPDATE insider_transactions SET company_id = '4be93e7b-4599-4e2c-8e73-fa13248c7c57' WHERE company_id IN ('a0e35816-7939-4d7e-98f6-67240695af86', 'a519e5f2-4e32-4b1f-a4f9-a27949a2ff36', 'de0ac263-f4a9-4bb2-8c84-338fd536bd35');
+UPDATE resolution_log SET resolved_canonical_id = '4be93e7b-4599-4e2c-8e73-fa13248c7c57' WHERE resolved_canonical_id IN ('a0e35816-7939-4d7e-98f6-67240695af86', 'a519e5f2-4e32-4b1f-a4f9-a27949a2ff36', 'de0ac263-f4a9-4bb2-8c84-338fd536bd35');
+UPDATE sec_filings SET company_id = '4be93e7b-4599-4e2c-8e73-fa13248c7c57' WHERE company_id IN ('a0e35816-7939-4d7e-98f6-67240695af86', 'a519e5f2-4e32-4b1f-a4f9-a27949a2ff36', 'de0ac263-f4a9-4bb2-8c84-338fd536bd35');
+UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('a0e35816-7939-4d7e-98f6-67240695af86', 'a519e5f2-4e32-4b1f-a4f9-a27949a2ff36', 'de0ac263-f4a9-4bb2-8c84-338fd536bd35')),0) WHERE id = '4be93e7b-4599-4e2c-8e73-fa13248c7c57';
+UPDATE companies SET ticker = COALESCE(ticker, 'CF'), sec_cik = COALESCE(sec_cik, 1324404) WHERE id = '4be93e7b-4599-4e2c-8e73-fa13248c7c57';
+DELETE FROM companies WHERE id IN ('a0e35816-7939-4d7e-98f6-67240695af86', 'a519e5f2-4e32-4b1f-a4f9-a27949a2ff36', 'de0ac263-f4a9-4bb2-8c84-338fd536bd35');
 COMMIT;
 
 -- cik 1334036  survivor ad710ba4-f119-4ca1-a924-b35d58aec55a 'Crocs Inc' (ticker=None, cik=None)
@@ -4026,7 +4026,7 @@ DELETE FROM companies WHERE id IN ('f667818a-cf94-436b-9186-401d10e760f8');
 COMMIT;
 
 -- cik 1334933  survivor 4a1df636-2feb-4f5a-b442-baad692084ca 'Uranium Energy' (ticker=None, cik=None)
---   retire b4aeef22-61dc-4a22-9590-dbc15b18c4a9 'Uranium Energy Corp' (ticker=None, cik=None, children=10)
+--   retire b4aeef22-61dc-4a22-9590-dbc15b18c4a9 'Uranium Energy Corp' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '4a1df636-2feb-4f5a-b442-baad692084ca' WHERE canonical_id IN ('b4aeef22-61dc-4a22-9590-dbc15b18c4a9');
 UPDATE company_mentions SET company_id = '4a1df636-2feb-4f5a-b442-baad692084ca' WHERE company_id IN ('b4aeef22-61dc-4a22-9590-dbc15b18c4a9');
@@ -4040,7 +4040,7 @@ DELETE FROM companies WHERE id IN ('b4aeef22-61dc-4a22-9590-dbc15b18c4a9');
 COMMIT;
 
 -- cik 1367644  survivor 383e05ba-1b37-4ad1-b3cd-34e6c73e8fe3 'EMERGENT BIOSOLUTIONS INC' (ticker=None, cik=None)
---   retire 3f78c04e-ed83-4819-9e13-08e2a1dc8514 'Emergent BioSolutions' (ticker=None, cik=None, children=2)
+--   retire 3f78c04e-ed83-4819-9e13-08e2a1dc8514 'Emergent BioSolutions' (ticker=None, cik=None, children=4)
 BEGIN;
 UPDATE aliases SET canonical_id = '383e05ba-1b37-4ad1-b3cd-34e6c73e8fe3' WHERE canonical_id IN ('3f78c04e-ed83-4819-9e13-08e2a1dc8514');
 UPDATE company_mentions SET company_id = '383e05ba-1b37-4ad1-b3cd-34e6c73e8fe3' WHERE company_id IN ('3f78c04e-ed83-4819-9e13-08e2a1dc8514');
@@ -4053,18 +4053,18 @@ UPDATE companies SET ticker = COALESCE(ticker, 'EBS'), sec_cik = COALESCE(sec_ci
 DELETE FROM companies WHERE id IN ('3f78c04e-ed83-4819-9e13-08e2a1dc8514');
 COMMIT;
 
--- cik 1411579  survivor e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d 'AMC Entertainment' (ticker=None, cik=None)
---   retire 8c7179a8-46f2-4b4b-af3a-75170f4b3000 'AMC Entertainment Holdings Inc.' (ticker=None, cik=None, children=1)
+-- cik 1411579  survivor 8c7179a8-46f2-4b4b-af3a-75170f4b3000 'AMC Entertainment Holdings Inc.' (ticker=None, cik=None)
+--   retire e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d 'AMC Entertainment' (ticker=None, cik=None, children=2)
 BEGIN;
-UPDATE aliases SET canonical_id = 'e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d' WHERE canonical_id IN ('8c7179a8-46f2-4b4b-af3a-75170f4b3000');
-UPDATE company_mentions SET company_id = 'e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d' WHERE company_id IN ('8c7179a8-46f2-4b4b-af3a-75170f4b3000');
-UPDATE financial_facts SET company_id = 'e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d' WHERE company_id IN ('8c7179a8-46f2-4b4b-af3a-75170f4b3000');
-UPDATE insider_transactions SET company_id = 'e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d' WHERE company_id IN ('8c7179a8-46f2-4b4b-af3a-75170f4b3000');
-UPDATE resolution_log SET resolved_canonical_id = 'e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d' WHERE resolved_canonical_id IN ('8c7179a8-46f2-4b4b-af3a-75170f4b3000');
-UPDATE sec_filings SET company_id = 'e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d' WHERE company_id IN ('8c7179a8-46f2-4b4b-af3a-75170f4b3000');
-UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('8c7179a8-46f2-4b4b-af3a-75170f4b3000')),0) WHERE id = 'e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d';
-UPDATE companies SET ticker = COALESCE(ticker, 'AMC'), sec_cik = COALESCE(sec_cik, 1411579) WHERE id = 'e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d';
-DELETE FROM companies WHERE id IN ('8c7179a8-46f2-4b4b-af3a-75170f4b3000');
+UPDATE aliases SET canonical_id = '8c7179a8-46f2-4b4b-af3a-75170f4b3000' WHERE canonical_id IN ('e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d');
+UPDATE company_mentions SET company_id = '8c7179a8-46f2-4b4b-af3a-75170f4b3000' WHERE company_id IN ('e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d');
+UPDATE financial_facts SET company_id = '8c7179a8-46f2-4b4b-af3a-75170f4b3000' WHERE company_id IN ('e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d');
+UPDATE insider_transactions SET company_id = '8c7179a8-46f2-4b4b-af3a-75170f4b3000' WHERE company_id IN ('e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d');
+UPDATE resolution_log SET resolved_canonical_id = '8c7179a8-46f2-4b4b-af3a-75170f4b3000' WHERE resolved_canonical_id IN ('e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d');
+UPDATE sec_filings SET company_id = '8c7179a8-46f2-4b4b-af3a-75170f4b3000' WHERE company_id IN ('e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d');
+UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d')),0) WHERE id = '8c7179a8-46f2-4b4b-af3a-75170f4b3000';
+UPDATE companies SET ticker = COALESCE(ticker, 'AMC'), sec_cik = COALESCE(sec_cik, 1411579) WHERE id = '8c7179a8-46f2-4b4b-af3a-75170f4b3000';
+DELETE FROM companies WHERE id IN ('e7cd3188-e0e2-4980-ac3e-a7a70f8bbb6d');
 COMMIT;
 
 -- cik 1434868  survivor 2fba0620-abda-4d68-8421-0288060b3b3e 'Esperion Therapeutics Inc' (ticker=None, cik=None)
@@ -4081,19 +4081,19 @@ UPDATE companies SET ticker = COALESCE(ticker, 'ESPR'), sec_cik = COALESCE(sec_c
 DELETE FROM companies WHERE id IN ('015e1dd9-ae0a-4b85-94f6-a660aaacd9c9');
 COMMIT;
 
--- cik 1445162  survivor 33061072-1f18-40df-abf2-02e1181f608d 'BYD Company Limited' (ticker=None, cik=None)
---   retire 940ce4a1-888e-4427-b49d-469f56c24bc6 'BYD COMPANY' (ticker=None, cik=None, children=2)
+-- cik 1445162  survivor 940ce4a1-888e-4427-b49d-469f56c24bc6 'BYD COMPANY' (ticker=None, cik=None)
+--   retire 33061072-1f18-40df-abf2-02e1181f608d 'BYD Company Limited' (ticker=None, cik=None, children=5)
 --   retire f1c94176-f6c2-441b-8db6-65541efeb645 'BYD Co Ltd' (ticker=None, cik=None, children=2)
 BEGIN;
-UPDATE aliases SET canonical_id = '33061072-1f18-40df-abf2-02e1181f608d' WHERE canonical_id IN ('940ce4a1-888e-4427-b49d-469f56c24bc6', 'f1c94176-f6c2-441b-8db6-65541efeb645');
-UPDATE company_mentions SET company_id = '33061072-1f18-40df-abf2-02e1181f608d' WHERE company_id IN ('940ce4a1-888e-4427-b49d-469f56c24bc6', 'f1c94176-f6c2-441b-8db6-65541efeb645');
-UPDATE financial_facts SET company_id = '33061072-1f18-40df-abf2-02e1181f608d' WHERE company_id IN ('940ce4a1-888e-4427-b49d-469f56c24bc6', 'f1c94176-f6c2-441b-8db6-65541efeb645');
-UPDATE insider_transactions SET company_id = '33061072-1f18-40df-abf2-02e1181f608d' WHERE company_id IN ('940ce4a1-888e-4427-b49d-469f56c24bc6', 'f1c94176-f6c2-441b-8db6-65541efeb645');
-UPDATE resolution_log SET resolved_canonical_id = '33061072-1f18-40df-abf2-02e1181f608d' WHERE resolved_canonical_id IN ('940ce4a1-888e-4427-b49d-469f56c24bc6', 'f1c94176-f6c2-441b-8db6-65541efeb645');
-UPDATE sec_filings SET company_id = '33061072-1f18-40df-abf2-02e1181f608d' WHERE company_id IN ('940ce4a1-888e-4427-b49d-469f56c24bc6', 'f1c94176-f6c2-441b-8db6-65541efeb645');
-UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('940ce4a1-888e-4427-b49d-469f56c24bc6', 'f1c94176-f6c2-441b-8db6-65541efeb645')),0) WHERE id = '33061072-1f18-40df-abf2-02e1181f608d';
-UPDATE companies SET ticker = COALESCE(ticker, 'BYDDF'), sec_cik = COALESCE(sec_cik, 1445162) WHERE id = '33061072-1f18-40df-abf2-02e1181f608d';
-DELETE FROM companies WHERE id IN ('940ce4a1-888e-4427-b49d-469f56c24bc6', 'f1c94176-f6c2-441b-8db6-65541efeb645');
+UPDATE aliases SET canonical_id = '940ce4a1-888e-4427-b49d-469f56c24bc6' WHERE canonical_id IN ('33061072-1f18-40df-abf2-02e1181f608d', 'f1c94176-f6c2-441b-8db6-65541efeb645');
+UPDATE company_mentions SET company_id = '940ce4a1-888e-4427-b49d-469f56c24bc6' WHERE company_id IN ('33061072-1f18-40df-abf2-02e1181f608d', 'f1c94176-f6c2-441b-8db6-65541efeb645');
+UPDATE financial_facts SET company_id = '940ce4a1-888e-4427-b49d-469f56c24bc6' WHERE company_id IN ('33061072-1f18-40df-abf2-02e1181f608d', 'f1c94176-f6c2-441b-8db6-65541efeb645');
+UPDATE insider_transactions SET company_id = '940ce4a1-888e-4427-b49d-469f56c24bc6' WHERE company_id IN ('33061072-1f18-40df-abf2-02e1181f608d', 'f1c94176-f6c2-441b-8db6-65541efeb645');
+UPDATE resolution_log SET resolved_canonical_id = '940ce4a1-888e-4427-b49d-469f56c24bc6' WHERE resolved_canonical_id IN ('33061072-1f18-40df-abf2-02e1181f608d', 'f1c94176-f6c2-441b-8db6-65541efeb645');
+UPDATE sec_filings SET company_id = '940ce4a1-888e-4427-b49d-469f56c24bc6' WHERE company_id IN ('33061072-1f18-40df-abf2-02e1181f608d', 'f1c94176-f6c2-441b-8db6-65541efeb645');
+UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('33061072-1f18-40df-abf2-02e1181f608d', 'f1c94176-f6c2-441b-8db6-65541efeb645')),0) WHERE id = '940ce4a1-888e-4427-b49d-469f56c24bc6';
+UPDATE companies SET ticker = COALESCE(ticker, 'BYDDF'), sec_cik = COALESCE(sec_cik, 1445162) WHERE id = '940ce4a1-888e-4427-b49d-469f56c24bc6';
+DELETE FROM companies WHERE id IN ('33061072-1f18-40df-abf2-02e1181f608d', 'f1c94176-f6c2-441b-8db6-65541efeb645');
 COMMIT;
 
 -- cik 1486957  survivor 79f7df98-4d18-4976-9f00-dfd3323ee029 'BWX Technologies' (ticker=None, cik=None)
@@ -4237,7 +4237,7 @@ DELETE FROM companies WHERE id IN ('ac3b0d91-8596-4ea3-b0bf-89ddb6a760ad');
 COMMIT;
 
 -- cik 1747079  survivor 1afad86a-b506-42f5-8e4f-0ad58deb8e3d "Bally''s Corp" (ticker=None, cik=None)
---   retire 7bbb4ea0-4af7-47ef-a9e1-11ab5329a7ca "Bally''s" (ticker=None, cik=None, children=2)
+--   retire 7bbb4ea0-4af7-47ef-a9e1-11ab5329a7ca "Bally''s" (ticker=None, cik=None, children=3)
 BEGIN;
 UPDATE aliases SET canonical_id = '1afad86a-b506-42f5-8e4f-0ad58deb8e3d' WHERE canonical_id IN ('7bbb4ea0-4af7-47ef-a9e1-11ab5329a7ca');
 UPDATE company_mentions SET company_id = '1afad86a-b506-42f5-8e4f-0ad58deb8e3d' WHERE company_id IN ('7bbb4ea0-4af7-47ef-a9e1-11ab5329a7ca');
@@ -4251,7 +4251,7 @@ DELETE FROM companies WHERE id IN ('7bbb4ea0-4af7-47ef-a9e1-11ab5329a7ca');
 COMMIT;
 
 -- cik 1755672  survivor 04fbd49d-c88b-4f5f-bf5c-c85bc61d49da 'Corteva' (ticker=None, cik=None)
---   retire 6e7cd30c-f1e2-49e5-95e3-a0da3f7612ad 'Corteva Inc.' (ticker=None, cik=None, children=3)
+--   retire 6e7cd30c-f1e2-49e5-95e3-a0da3f7612ad 'Corteva Inc.' (ticker=None, cik=None, children=2)
 --   retire f378aa01-816d-454a-88e4-62f335234b05 'Corteva, Inc.' (ticker=None, cik=None, children=2)
 BEGIN;
 UPDATE aliases SET canonical_id = '04fbd49d-c88b-4f5f-bf5c-c85bc61d49da' WHERE canonical_id IN ('6e7cd30c-f1e2-49e5-95e3-a0da3f7612ad', 'f378aa01-816d-454a-88e4-62f335234b05');
@@ -4279,18 +4279,18 @@ UPDATE companies SET ticker = COALESCE(ticker, 'DRVN'), sec_cik = COALESCE(sec_c
 DELETE FROM companies WHERE id IN ('ea2ca79e-f54d-4d00-8273-048e2e64451d');
 COMMIT;
 
--- cik 1812364  survivor e259fc86-df8e-40fd-88d6-0e727f618641 'Relay Therapeutics, Inc.' (ticker=None, cik=None)
---   retire 906e9a5e-fbd4-4181-a35e-200fc3cc585e 'Relay Therapeutics' (ticker=None, cik=None, children=2)
+-- cik 1812364  survivor 906e9a5e-fbd4-4181-a35e-200fc3cc585e 'Relay Therapeutics' (ticker=None, cik=None)
+--   retire e259fc86-df8e-40fd-88d6-0e727f618641 'Relay Therapeutics, Inc.' (ticker=None, cik=None, children=2)
 BEGIN;
-UPDATE aliases SET canonical_id = 'e259fc86-df8e-40fd-88d6-0e727f618641' WHERE canonical_id IN ('906e9a5e-fbd4-4181-a35e-200fc3cc585e');
-UPDATE company_mentions SET company_id = 'e259fc86-df8e-40fd-88d6-0e727f618641' WHERE company_id IN ('906e9a5e-fbd4-4181-a35e-200fc3cc585e');
-UPDATE financial_facts SET company_id = 'e259fc86-df8e-40fd-88d6-0e727f618641' WHERE company_id IN ('906e9a5e-fbd4-4181-a35e-200fc3cc585e');
-UPDATE insider_transactions SET company_id = 'e259fc86-df8e-40fd-88d6-0e727f618641' WHERE company_id IN ('906e9a5e-fbd4-4181-a35e-200fc3cc585e');
-UPDATE resolution_log SET resolved_canonical_id = 'e259fc86-df8e-40fd-88d6-0e727f618641' WHERE resolved_canonical_id IN ('906e9a5e-fbd4-4181-a35e-200fc3cc585e');
-UPDATE sec_filings SET company_id = 'e259fc86-df8e-40fd-88d6-0e727f618641' WHERE company_id IN ('906e9a5e-fbd4-4181-a35e-200fc3cc585e');
-UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('906e9a5e-fbd4-4181-a35e-200fc3cc585e')),0) WHERE id = 'e259fc86-df8e-40fd-88d6-0e727f618641';
-UPDATE companies SET ticker = COALESCE(ticker, 'RLAY'), sec_cik = COALESCE(sec_cik, 1812364) WHERE id = 'e259fc86-df8e-40fd-88d6-0e727f618641';
-DELETE FROM companies WHERE id IN ('906e9a5e-fbd4-4181-a35e-200fc3cc585e');
+UPDATE aliases SET canonical_id = '906e9a5e-fbd4-4181-a35e-200fc3cc585e' WHERE canonical_id IN ('e259fc86-df8e-40fd-88d6-0e727f618641');
+UPDATE company_mentions SET company_id = '906e9a5e-fbd4-4181-a35e-200fc3cc585e' WHERE company_id IN ('e259fc86-df8e-40fd-88d6-0e727f618641');
+UPDATE financial_facts SET company_id = '906e9a5e-fbd4-4181-a35e-200fc3cc585e' WHERE company_id IN ('e259fc86-df8e-40fd-88d6-0e727f618641');
+UPDATE insider_transactions SET company_id = '906e9a5e-fbd4-4181-a35e-200fc3cc585e' WHERE company_id IN ('e259fc86-df8e-40fd-88d6-0e727f618641');
+UPDATE resolution_log SET resolved_canonical_id = '906e9a5e-fbd4-4181-a35e-200fc3cc585e' WHERE resolved_canonical_id IN ('e259fc86-df8e-40fd-88d6-0e727f618641');
+UPDATE sec_filings SET company_id = '906e9a5e-fbd4-4181-a35e-200fc3cc585e' WHERE company_id IN ('e259fc86-df8e-40fd-88d6-0e727f618641');
+UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('e259fc86-df8e-40fd-88d6-0e727f618641')),0) WHERE id = '906e9a5e-fbd4-4181-a35e-200fc3cc585e';
+UPDATE companies SET ticker = COALESCE(ticker, 'RLAY'), sec_cik = COALESCE(sec_cik, 1812364) WHERE id = '906e9a5e-fbd4-4181-a35e-200fc3cc585e';
+DELETE FROM companies WHERE id IN ('e259fc86-df8e-40fd-88d6-0e727f618641');
 COMMIT;
 
 -- cik 1857816  survivor 6b648f58-a4ab-4e2c-8174-1c801ff683c7 'GigaCloud Technology' (ticker=None, cik=None)
@@ -4350,18 +4350,18 @@ UPDATE companies SET ticker = COALESCE(ticker, 'PS'), sec_cik = COALESCE(sec_cik
 DELETE FROM companies WHERE id IN ('ff7c2eb4-3fb8-4751-8e56-4d355b576fba');
 COMMIT;
 
--- cik 2097163  survivor 88acefca-3a00-41e7-a20d-5e7cc8e1e8c3 'Xanadu Quantum Technologies Limited' (ticker=None, cik=None)
---   retire 631222ec-21ab-4201-8264-49147eaa40cd 'Xanadu Quantum Technologies Inc.' (ticker=None, cik=None, children=1)
+-- cik 2097163  survivor 631222ec-21ab-4201-8264-49147eaa40cd 'Xanadu Quantum Technologies Inc.' (ticker=None, cik=None)
+--   retire 88acefca-3a00-41e7-a20d-5e7cc8e1e8c3 'Xanadu Quantum Technologies Limited' (ticker=None, cik=None, children=2)
 BEGIN;
-UPDATE aliases SET canonical_id = '88acefca-3a00-41e7-a20d-5e7cc8e1e8c3' WHERE canonical_id IN ('631222ec-21ab-4201-8264-49147eaa40cd');
-UPDATE company_mentions SET company_id = '88acefca-3a00-41e7-a20d-5e7cc8e1e8c3' WHERE company_id IN ('631222ec-21ab-4201-8264-49147eaa40cd');
-UPDATE financial_facts SET company_id = '88acefca-3a00-41e7-a20d-5e7cc8e1e8c3' WHERE company_id IN ('631222ec-21ab-4201-8264-49147eaa40cd');
-UPDATE insider_transactions SET company_id = '88acefca-3a00-41e7-a20d-5e7cc8e1e8c3' WHERE company_id IN ('631222ec-21ab-4201-8264-49147eaa40cd');
-UPDATE resolution_log SET resolved_canonical_id = '88acefca-3a00-41e7-a20d-5e7cc8e1e8c3' WHERE resolved_canonical_id IN ('631222ec-21ab-4201-8264-49147eaa40cd');
-UPDATE sec_filings SET company_id = '88acefca-3a00-41e7-a20d-5e7cc8e1e8c3' WHERE company_id IN ('631222ec-21ab-4201-8264-49147eaa40cd');
-UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('631222ec-21ab-4201-8264-49147eaa40cd')),0) WHERE id = '88acefca-3a00-41e7-a20d-5e7cc8e1e8c3';
-UPDATE companies SET ticker = COALESCE(ticker, 'XNDU'), sec_cik = COALESCE(sec_cik, 2097163) WHERE id = '88acefca-3a00-41e7-a20d-5e7cc8e1e8c3';
-DELETE FROM companies WHERE id IN ('631222ec-21ab-4201-8264-49147eaa40cd');
+UPDATE aliases SET canonical_id = '631222ec-21ab-4201-8264-49147eaa40cd' WHERE canonical_id IN ('88acefca-3a00-41e7-a20d-5e7cc8e1e8c3');
+UPDATE company_mentions SET company_id = '631222ec-21ab-4201-8264-49147eaa40cd' WHERE company_id IN ('88acefca-3a00-41e7-a20d-5e7cc8e1e8c3');
+UPDATE financial_facts SET company_id = '631222ec-21ab-4201-8264-49147eaa40cd' WHERE company_id IN ('88acefca-3a00-41e7-a20d-5e7cc8e1e8c3');
+UPDATE insider_transactions SET company_id = '631222ec-21ab-4201-8264-49147eaa40cd' WHERE company_id IN ('88acefca-3a00-41e7-a20d-5e7cc8e1e8c3');
+UPDATE resolution_log SET resolved_canonical_id = '631222ec-21ab-4201-8264-49147eaa40cd' WHERE resolved_canonical_id IN ('88acefca-3a00-41e7-a20d-5e7cc8e1e8c3');
+UPDATE sec_filings SET company_id = '631222ec-21ab-4201-8264-49147eaa40cd' WHERE company_id IN ('88acefca-3a00-41e7-a20d-5e7cc8e1e8c3');
+UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('88acefca-3a00-41e7-a20d-5e7cc8e1e8c3')),0) WHERE id = '631222ec-21ab-4201-8264-49147eaa40cd';
+UPDATE companies SET ticker = COALESCE(ticker, 'XNDU'), sec_cik = COALESCE(sec_cik, 2097163) WHERE id = '631222ec-21ab-4201-8264-49147eaa40cd';
+DELETE FROM companies WHERE id IN ('88acefca-3a00-41e7-a20d-5e7cc8e1e8c3');
 COMMIT;
 
 
@@ -4370,22 +4370,22 @@ COMMIT;
 -- DO NOT run these as-is. A human must decide the true survivor / dedupe path.
 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
--- -- cik 2488  survivor 0ae3883c-c1e1-49d3-85ae-60fd08de6441 'Advanced Micro Devices Inc.' (ticker=AMD, cik=2488)
--- --   retire 5fca1448-d725-4241-81dc-d138b80b45a7 'Advanced Micro Devices Inc' (ticker=None, cik=None, children=4)
+-- -- cik 2488  survivor 75d78915-8d2f-4058-a653-11aa35403e53 'AMD' (ticker=AMD, cik=2488)
+-- --   retire 5fca1448-d725-4241-81dc-d138b80b45a7 'Advanced Micro Devices Inc' (ticker=None, cik=None, children=2)
+-- --   retire 0ae3883c-c1e1-49d3-85ae-60fd08de6441 'Advanced Micro Devices Inc.' (ticker=AMD, cik=2488, children=46)
 -- --   retire 0904d024-a02b-4ea3-b7e5-2450e3545fc0 'Advanced Micro' (ticker=AMD, cik=2488, children=6)
--- --   retire 75d78915-8d2f-4058-a653-11aa35403e53 'AMD' (ticker=AMD, cik=2488, children=6)
 -- --   retire a36a1dc3-3166-4482-adf1-ed5cdc0ba41a 'Advanced Micro Devices' (ticker=AMD, cik=2488, children=1)
 -- --   retire 47b6c205-b0ee-4d15-bba0-11295fc0447c 'Advanced Micro Devices, Inc.' (ticker=AMD, cik=2488, children=25)
 -- BEGIN;
--- UPDATE aliases SET canonical_id = '0ae3883c-c1e1-49d3-85ae-60fd08de6441' WHERE canonical_id IN ('5fca1448-d725-4241-81dc-d138b80b45a7', '0904d024-a02b-4ea3-b7e5-2450e3545fc0', '75d78915-8d2f-4058-a653-11aa35403e53', 'a36a1dc3-3166-4482-adf1-ed5cdc0ba41a', '47b6c205-b0ee-4d15-bba0-11295fc0447c');
--- UPDATE company_mentions SET company_id = '0ae3883c-c1e1-49d3-85ae-60fd08de6441' WHERE company_id IN ('5fca1448-d725-4241-81dc-d138b80b45a7', '0904d024-a02b-4ea3-b7e5-2450e3545fc0', '75d78915-8d2f-4058-a653-11aa35403e53', 'a36a1dc3-3166-4482-adf1-ed5cdc0ba41a', '47b6c205-b0ee-4d15-bba0-11295fc0447c');
--- UPDATE financial_facts SET company_id = '0ae3883c-c1e1-49d3-85ae-60fd08de6441' WHERE company_id IN ('5fca1448-d725-4241-81dc-d138b80b45a7', '0904d024-a02b-4ea3-b7e5-2450e3545fc0', '75d78915-8d2f-4058-a653-11aa35403e53', 'a36a1dc3-3166-4482-adf1-ed5cdc0ba41a', '47b6c205-b0ee-4d15-bba0-11295fc0447c');
--- UPDATE insider_transactions SET company_id = '0ae3883c-c1e1-49d3-85ae-60fd08de6441' WHERE company_id IN ('5fca1448-d725-4241-81dc-d138b80b45a7', '0904d024-a02b-4ea3-b7e5-2450e3545fc0', '75d78915-8d2f-4058-a653-11aa35403e53', 'a36a1dc3-3166-4482-adf1-ed5cdc0ba41a', '47b6c205-b0ee-4d15-bba0-11295fc0447c');
--- UPDATE resolution_log SET resolved_canonical_id = '0ae3883c-c1e1-49d3-85ae-60fd08de6441' WHERE resolved_canonical_id IN ('5fca1448-d725-4241-81dc-d138b80b45a7', '0904d024-a02b-4ea3-b7e5-2450e3545fc0', '75d78915-8d2f-4058-a653-11aa35403e53', 'a36a1dc3-3166-4482-adf1-ed5cdc0ba41a', '47b6c205-b0ee-4d15-bba0-11295fc0447c');
--- UPDATE sec_filings SET company_id = '0ae3883c-c1e1-49d3-85ae-60fd08de6441' WHERE company_id IN ('5fca1448-d725-4241-81dc-d138b80b45a7', '0904d024-a02b-4ea3-b7e5-2450e3545fc0', '75d78915-8d2f-4058-a653-11aa35403e53', 'a36a1dc3-3166-4482-adf1-ed5cdc0ba41a', '47b6c205-b0ee-4d15-bba0-11295fc0447c');
--- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('5fca1448-d725-4241-81dc-d138b80b45a7', '0904d024-a02b-4ea3-b7e5-2450e3545fc0', '75d78915-8d2f-4058-a653-11aa35403e53', 'a36a1dc3-3166-4482-adf1-ed5cdc0ba41a', '47b6c205-b0ee-4d15-bba0-11295fc0447c')),0) WHERE id = '0ae3883c-c1e1-49d3-85ae-60fd08de6441';
--- UPDATE companies SET ticker = COALESCE(ticker, 'AMD'), sec_cik = COALESCE(sec_cik, 2488) WHERE id = '0ae3883c-c1e1-49d3-85ae-60fd08de6441';
--- DELETE FROM companies WHERE id IN ('5fca1448-d725-4241-81dc-d138b80b45a7', '0904d024-a02b-4ea3-b7e5-2450e3545fc0', '75d78915-8d2f-4058-a653-11aa35403e53', 'a36a1dc3-3166-4482-adf1-ed5cdc0ba41a', '47b6c205-b0ee-4d15-bba0-11295fc0447c');
+-- UPDATE aliases SET canonical_id = '75d78915-8d2f-4058-a653-11aa35403e53' WHERE canonical_id IN ('5fca1448-d725-4241-81dc-d138b80b45a7', '0ae3883c-c1e1-49d3-85ae-60fd08de6441', '0904d024-a02b-4ea3-b7e5-2450e3545fc0', 'a36a1dc3-3166-4482-adf1-ed5cdc0ba41a', '47b6c205-b0ee-4d15-bba0-11295fc0447c');
+-- UPDATE company_mentions SET company_id = '75d78915-8d2f-4058-a653-11aa35403e53' WHERE company_id IN ('5fca1448-d725-4241-81dc-d138b80b45a7', '0ae3883c-c1e1-49d3-85ae-60fd08de6441', '0904d024-a02b-4ea3-b7e5-2450e3545fc0', 'a36a1dc3-3166-4482-adf1-ed5cdc0ba41a', '47b6c205-b0ee-4d15-bba0-11295fc0447c');
+-- UPDATE financial_facts SET company_id = '75d78915-8d2f-4058-a653-11aa35403e53' WHERE company_id IN ('5fca1448-d725-4241-81dc-d138b80b45a7', '0ae3883c-c1e1-49d3-85ae-60fd08de6441', '0904d024-a02b-4ea3-b7e5-2450e3545fc0', 'a36a1dc3-3166-4482-adf1-ed5cdc0ba41a', '47b6c205-b0ee-4d15-bba0-11295fc0447c');
+-- UPDATE insider_transactions SET company_id = '75d78915-8d2f-4058-a653-11aa35403e53' WHERE company_id IN ('5fca1448-d725-4241-81dc-d138b80b45a7', '0ae3883c-c1e1-49d3-85ae-60fd08de6441', '0904d024-a02b-4ea3-b7e5-2450e3545fc0', 'a36a1dc3-3166-4482-adf1-ed5cdc0ba41a', '47b6c205-b0ee-4d15-bba0-11295fc0447c');
+-- UPDATE resolution_log SET resolved_canonical_id = '75d78915-8d2f-4058-a653-11aa35403e53' WHERE resolved_canonical_id IN ('5fca1448-d725-4241-81dc-d138b80b45a7', '0ae3883c-c1e1-49d3-85ae-60fd08de6441', '0904d024-a02b-4ea3-b7e5-2450e3545fc0', 'a36a1dc3-3166-4482-adf1-ed5cdc0ba41a', '47b6c205-b0ee-4d15-bba0-11295fc0447c');
+-- UPDATE sec_filings SET company_id = '75d78915-8d2f-4058-a653-11aa35403e53' WHERE company_id IN ('5fca1448-d725-4241-81dc-d138b80b45a7', '0ae3883c-c1e1-49d3-85ae-60fd08de6441', '0904d024-a02b-4ea3-b7e5-2450e3545fc0', 'a36a1dc3-3166-4482-adf1-ed5cdc0ba41a', '47b6c205-b0ee-4d15-bba0-11295fc0447c');
+-- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('5fca1448-d725-4241-81dc-d138b80b45a7', '0ae3883c-c1e1-49d3-85ae-60fd08de6441', '0904d024-a02b-4ea3-b7e5-2450e3545fc0', 'a36a1dc3-3166-4482-adf1-ed5cdc0ba41a', '47b6c205-b0ee-4d15-bba0-11295fc0447c')),0) WHERE id = '75d78915-8d2f-4058-a653-11aa35403e53';
+-- UPDATE companies SET ticker = COALESCE(ticker, 'AMD'), sec_cik = COALESCE(sec_cik, 2488) WHERE id = '75d78915-8d2f-4058-a653-11aa35403e53';
+-- DELETE FROM companies WHERE id IN ('5fca1448-d725-4241-81dc-d138b80b45a7', '0ae3883c-c1e1-49d3-85ae-60fd08de6441', '0904d024-a02b-4ea3-b7e5-2450e3545fc0', 'a36a1dc3-3166-4482-adf1-ed5cdc0ba41a', '47b6c205-b0ee-4d15-bba0-11295fc0447c');
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
@@ -4408,24 +4408,24 @@ COMMIT;
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
--- -- cik 21665  survivor 6cedac7a-8b83-4057-8381-a010000338d9 'Colgate-Palmolive' (ticker=CL, cik=21665)
+-- -- cik 21665  survivor 69181709-4554-41a0-b5a6-7f1c7731a0b7 'LG' (ticker=CL, cik=21665)
 -- --   retire ef8bbe20-5fa1-4679-9705-c5ed5e821374 'Colgate Palmolive' (ticker=None, cik=None, children=2)
--- --   retire 69181709-4554-41a0-b5a6-7f1c7731a0b7 'LG' (ticker=CL, cik=21665, children=14)
+-- --   retire 6cedac7a-8b83-4057-8381-a010000338d9 'Colgate-Palmolive' (ticker=CL, cik=21665, children=1)
 -- BEGIN;
--- UPDATE aliases SET canonical_id = '6cedac7a-8b83-4057-8381-a010000338d9' WHERE canonical_id IN ('ef8bbe20-5fa1-4679-9705-c5ed5e821374', '69181709-4554-41a0-b5a6-7f1c7731a0b7');
--- UPDATE company_mentions SET company_id = '6cedac7a-8b83-4057-8381-a010000338d9' WHERE company_id IN ('ef8bbe20-5fa1-4679-9705-c5ed5e821374', '69181709-4554-41a0-b5a6-7f1c7731a0b7');
--- UPDATE financial_facts SET company_id = '6cedac7a-8b83-4057-8381-a010000338d9' WHERE company_id IN ('ef8bbe20-5fa1-4679-9705-c5ed5e821374', '69181709-4554-41a0-b5a6-7f1c7731a0b7');
--- UPDATE insider_transactions SET company_id = '6cedac7a-8b83-4057-8381-a010000338d9' WHERE company_id IN ('ef8bbe20-5fa1-4679-9705-c5ed5e821374', '69181709-4554-41a0-b5a6-7f1c7731a0b7');
--- UPDATE resolution_log SET resolved_canonical_id = '6cedac7a-8b83-4057-8381-a010000338d9' WHERE resolved_canonical_id IN ('ef8bbe20-5fa1-4679-9705-c5ed5e821374', '69181709-4554-41a0-b5a6-7f1c7731a0b7');
--- UPDATE sec_filings SET company_id = '6cedac7a-8b83-4057-8381-a010000338d9' WHERE company_id IN ('ef8bbe20-5fa1-4679-9705-c5ed5e821374', '69181709-4554-41a0-b5a6-7f1c7731a0b7');
--- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('ef8bbe20-5fa1-4679-9705-c5ed5e821374', '69181709-4554-41a0-b5a6-7f1c7731a0b7')),0) WHERE id = '6cedac7a-8b83-4057-8381-a010000338d9';
--- UPDATE companies SET ticker = COALESCE(ticker, 'CL'), sec_cik = COALESCE(sec_cik, 21665) WHERE id = '6cedac7a-8b83-4057-8381-a010000338d9';
--- DELETE FROM companies WHERE id IN ('ef8bbe20-5fa1-4679-9705-c5ed5e821374', '69181709-4554-41a0-b5a6-7f1c7731a0b7');
+-- UPDATE aliases SET canonical_id = '69181709-4554-41a0-b5a6-7f1c7731a0b7' WHERE canonical_id IN ('ef8bbe20-5fa1-4679-9705-c5ed5e821374', '6cedac7a-8b83-4057-8381-a010000338d9');
+-- UPDATE company_mentions SET company_id = '69181709-4554-41a0-b5a6-7f1c7731a0b7' WHERE company_id IN ('ef8bbe20-5fa1-4679-9705-c5ed5e821374', '6cedac7a-8b83-4057-8381-a010000338d9');
+-- UPDATE financial_facts SET company_id = '69181709-4554-41a0-b5a6-7f1c7731a0b7' WHERE company_id IN ('ef8bbe20-5fa1-4679-9705-c5ed5e821374', '6cedac7a-8b83-4057-8381-a010000338d9');
+-- UPDATE insider_transactions SET company_id = '69181709-4554-41a0-b5a6-7f1c7731a0b7' WHERE company_id IN ('ef8bbe20-5fa1-4679-9705-c5ed5e821374', '6cedac7a-8b83-4057-8381-a010000338d9');
+-- UPDATE resolution_log SET resolved_canonical_id = '69181709-4554-41a0-b5a6-7f1c7731a0b7' WHERE resolved_canonical_id IN ('ef8bbe20-5fa1-4679-9705-c5ed5e821374', '6cedac7a-8b83-4057-8381-a010000338d9');
+-- UPDATE sec_filings SET company_id = '69181709-4554-41a0-b5a6-7f1c7731a0b7' WHERE company_id IN ('ef8bbe20-5fa1-4679-9705-c5ed5e821374', '6cedac7a-8b83-4057-8381-a010000338d9');
+-- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('ef8bbe20-5fa1-4679-9705-c5ed5e821374', '6cedac7a-8b83-4057-8381-a010000338d9')),0) WHERE id = '69181709-4554-41a0-b5a6-7f1c7731a0b7';
+-- UPDATE companies SET ticker = COALESCE(ticker, 'CL'), sec_cik = COALESCE(sec_cik, 21665) WHERE id = '69181709-4554-41a0-b5a6-7f1c7731a0b7';
+-- DELETE FROM companies WHERE id IN ('ef8bbe20-5fa1-4679-9705-c5ed5e821374', '6cedac7a-8b83-4057-8381-a010000338d9');
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
 -- -- cik 27904  survivor 8d94020a-76b1-4cb7-963f-7c61b5d81517 'Delta' (ticker=DAL, cik=27904)
--- --   retire 4e26148f-b479-452a-aa21-30d71e0744d8 'Delta Air Lines Inc' (ticker=None, cik=None, children=2)
+-- --   retire 4e26148f-b479-452a-aa21-30d71e0744d8 'Delta Air Lines Inc' (ticker=None, cik=None, children=3)
 -- --   retire 9679463e-538e-46e3-b44e-ed4872fecf46 'Delta Air Lines' (ticker=DAL, cik=27904, children=1)
 -- BEGIN;
 -- UPDATE aliases SET canonical_id = '8d94020a-76b1-4cb7-963f-7c61b5d81517' WHERE canonical_id IN ('4e26148f-b479-452a-aa21-30d71e0744d8', '9679463e-538e-46e3-b44e-ed4872fecf46');
@@ -4440,37 +4440,37 @@ COMMIT;
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
--- -- cik 34088  survivor 058d6cdf-38b2-4ee1-aaef-b56e411203f9 'Exxon Mobil' (ticker=XOM, cik=34088)
+-- -- cik 34088  survivor 3fdd6b31-746b-4605-9da5-5bbff329eec1 'Exxon' (ticker=XOM, cik=34088)
 -- --   retire 4970452d-4379-4009-961f-9211976bcf78 'Exxon Mobil Corp' (ticker=None, cik=None, children=3)
 -- --   retire 09e3404d-88a7-44c4-bc70-a9af02745cca 'Exxon Mobil Corporation' (ticker=XOM, cik=34088, children=6)
--- --   retire 3fdd6b31-746b-4605-9da5-5bbff329eec1 'Exxon' (ticker=XOM, cik=34088, children=8)
+-- --   retire 058d6cdf-38b2-4ee1-aaef-b56e411203f9 'Exxon Mobil' (ticker=XOM, cik=34088, children=47)
 -- BEGIN;
--- UPDATE aliases SET canonical_id = '058d6cdf-38b2-4ee1-aaef-b56e411203f9' WHERE canonical_id IN ('4970452d-4379-4009-961f-9211976bcf78', '09e3404d-88a7-44c4-bc70-a9af02745cca', '3fdd6b31-746b-4605-9da5-5bbff329eec1');
--- UPDATE company_mentions SET company_id = '058d6cdf-38b2-4ee1-aaef-b56e411203f9' WHERE company_id IN ('4970452d-4379-4009-961f-9211976bcf78', '09e3404d-88a7-44c4-bc70-a9af02745cca', '3fdd6b31-746b-4605-9da5-5bbff329eec1');
--- UPDATE financial_facts SET company_id = '058d6cdf-38b2-4ee1-aaef-b56e411203f9' WHERE company_id IN ('4970452d-4379-4009-961f-9211976bcf78', '09e3404d-88a7-44c4-bc70-a9af02745cca', '3fdd6b31-746b-4605-9da5-5bbff329eec1');
--- UPDATE insider_transactions SET company_id = '058d6cdf-38b2-4ee1-aaef-b56e411203f9' WHERE company_id IN ('4970452d-4379-4009-961f-9211976bcf78', '09e3404d-88a7-44c4-bc70-a9af02745cca', '3fdd6b31-746b-4605-9da5-5bbff329eec1');
--- UPDATE resolution_log SET resolved_canonical_id = '058d6cdf-38b2-4ee1-aaef-b56e411203f9' WHERE resolved_canonical_id IN ('4970452d-4379-4009-961f-9211976bcf78', '09e3404d-88a7-44c4-bc70-a9af02745cca', '3fdd6b31-746b-4605-9da5-5bbff329eec1');
--- UPDATE sec_filings SET company_id = '058d6cdf-38b2-4ee1-aaef-b56e411203f9' WHERE company_id IN ('4970452d-4379-4009-961f-9211976bcf78', '09e3404d-88a7-44c4-bc70-a9af02745cca', '3fdd6b31-746b-4605-9da5-5bbff329eec1');
--- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('4970452d-4379-4009-961f-9211976bcf78', '09e3404d-88a7-44c4-bc70-a9af02745cca', '3fdd6b31-746b-4605-9da5-5bbff329eec1')),0) WHERE id = '058d6cdf-38b2-4ee1-aaef-b56e411203f9';
--- UPDATE companies SET ticker = COALESCE(ticker, 'XOM'), sec_cik = COALESCE(sec_cik, 34088) WHERE id = '058d6cdf-38b2-4ee1-aaef-b56e411203f9';
--- DELETE FROM companies WHERE id IN ('4970452d-4379-4009-961f-9211976bcf78', '09e3404d-88a7-44c4-bc70-a9af02745cca', '3fdd6b31-746b-4605-9da5-5bbff329eec1');
+-- UPDATE aliases SET canonical_id = '3fdd6b31-746b-4605-9da5-5bbff329eec1' WHERE canonical_id IN ('4970452d-4379-4009-961f-9211976bcf78', '09e3404d-88a7-44c4-bc70-a9af02745cca', '058d6cdf-38b2-4ee1-aaef-b56e411203f9');
+-- UPDATE company_mentions SET company_id = '3fdd6b31-746b-4605-9da5-5bbff329eec1' WHERE company_id IN ('4970452d-4379-4009-961f-9211976bcf78', '09e3404d-88a7-44c4-bc70-a9af02745cca', '058d6cdf-38b2-4ee1-aaef-b56e411203f9');
+-- UPDATE financial_facts SET company_id = '3fdd6b31-746b-4605-9da5-5bbff329eec1' WHERE company_id IN ('4970452d-4379-4009-961f-9211976bcf78', '09e3404d-88a7-44c4-bc70-a9af02745cca', '058d6cdf-38b2-4ee1-aaef-b56e411203f9');
+-- UPDATE insider_transactions SET company_id = '3fdd6b31-746b-4605-9da5-5bbff329eec1' WHERE company_id IN ('4970452d-4379-4009-961f-9211976bcf78', '09e3404d-88a7-44c4-bc70-a9af02745cca', '058d6cdf-38b2-4ee1-aaef-b56e411203f9');
+-- UPDATE resolution_log SET resolved_canonical_id = '3fdd6b31-746b-4605-9da5-5bbff329eec1' WHERE resolved_canonical_id IN ('4970452d-4379-4009-961f-9211976bcf78', '09e3404d-88a7-44c4-bc70-a9af02745cca', '058d6cdf-38b2-4ee1-aaef-b56e411203f9');
+-- UPDATE sec_filings SET company_id = '3fdd6b31-746b-4605-9da5-5bbff329eec1' WHERE company_id IN ('4970452d-4379-4009-961f-9211976bcf78', '09e3404d-88a7-44c4-bc70-a9af02745cca', '058d6cdf-38b2-4ee1-aaef-b56e411203f9');
+-- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('4970452d-4379-4009-961f-9211976bcf78', '09e3404d-88a7-44c4-bc70-a9af02745cca', '058d6cdf-38b2-4ee1-aaef-b56e411203f9')),0) WHERE id = '3fdd6b31-746b-4605-9da5-5bbff329eec1';
+-- UPDATE companies SET ticker = COALESCE(ticker, 'XOM'), sec_cik = COALESCE(sec_cik, 34088) WHERE id = '3fdd6b31-746b-4605-9da5-5bbff329eec1';
+-- DELETE FROM companies WHERE id IN ('4970452d-4379-4009-961f-9211976bcf78', '09e3404d-88a7-44c4-bc70-a9af02745cca', '058d6cdf-38b2-4ee1-aaef-b56e411203f9');
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
--- -- cik 37996  survivor 73e54956-ddaf-45b1-befd-adc060d8be1a 'Ford Motor' (ticker=F, cik=37996)
+-- -- cik 37996  survivor 958356ce-ac9f-4095-b638-947c963bf307 'Ford' (ticker=F, cik=37996)
 -- --   retire de7ea4ee-b91d-47dc-9c1e-0a5295eee0e5 'Ford Motor Co' (ticker=None, cik=None, children=2)
 -- --   retire e4fb0264-68bf-4df8-8f08-2d1ade5abd80 'Ford Motor Company' (ticker=None, cik=None, children=2)
--- --   retire 958356ce-ac9f-4095-b638-947c963bf307 'Ford' (ticker=F, cik=37996, children=6)
+-- --   retire 73e54956-ddaf-45b1-befd-adc060d8be1a 'Ford Motor' (ticker=F, cik=37996, children=1)
 -- BEGIN;
--- UPDATE aliases SET canonical_id = '73e54956-ddaf-45b1-befd-adc060d8be1a' WHERE canonical_id IN ('de7ea4ee-b91d-47dc-9c1e-0a5295eee0e5', 'e4fb0264-68bf-4df8-8f08-2d1ade5abd80', '958356ce-ac9f-4095-b638-947c963bf307');
--- UPDATE company_mentions SET company_id = '73e54956-ddaf-45b1-befd-adc060d8be1a' WHERE company_id IN ('de7ea4ee-b91d-47dc-9c1e-0a5295eee0e5', 'e4fb0264-68bf-4df8-8f08-2d1ade5abd80', '958356ce-ac9f-4095-b638-947c963bf307');
--- UPDATE financial_facts SET company_id = '73e54956-ddaf-45b1-befd-adc060d8be1a' WHERE company_id IN ('de7ea4ee-b91d-47dc-9c1e-0a5295eee0e5', 'e4fb0264-68bf-4df8-8f08-2d1ade5abd80', '958356ce-ac9f-4095-b638-947c963bf307');
--- UPDATE insider_transactions SET company_id = '73e54956-ddaf-45b1-befd-adc060d8be1a' WHERE company_id IN ('de7ea4ee-b91d-47dc-9c1e-0a5295eee0e5', 'e4fb0264-68bf-4df8-8f08-2d1ade5abd80', '958356ce-ac9f-4095-b638-947c963bf307');
--- UPDATE resolution_log SET resolved_canonical_id = '73e54956-ddaf-45b1-befd-adc060d8be1a' WHERE resolved_canonical_id IN ('de7ea4ee-b91d-47dc-9c1e-0a5295eee0e5', 'e4fb0264-68bf-4df8-8f08-2d1ade5abd80', '958356ce-ac9f-4095-b638-947c963bf307');
--- UPDATE sec_filings SET company_id = '73e54956-ddaf-45b1-befd-adc060d8be1a' WHERE company_id IN ('de7ea4ee-b91d-47dc-9c1e-0a5295eee0e5', 'e4fb0264-68bf-4df8-8f08-2d1ade5abd80', '958356ce-ac9f-4095-b638-947c963bf307');
--- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('de7ea4ee-b91d-47dc-9c1e-0a5295eee0e5', 'e4fb0264-68bf-4df8-8f08-2d1ade5abd80', '958356ce-ac9f-4095-b638-947c963bf307')),0) WHERE id = '73e54956-ddaf-45b1-befd-adc060d8be1a';
--- UPDATE companies SET ticker = COALESCE(ticker, 'F'), sec_cik = COALESCE(sec_cik, 37996) WHERE id = '73e54956-ddaf-45b1-befd-adc060d8be1a';
--- DELETE FROM companies WHERE id IN ('de7ea4ee-b91d-47dc-9c1e-0a5295eee0e5', 'e4fb0264-68bf-4df8-8f08-2d1ade5abd80', '958356ce-ac9f-4095-b638-947c963bf307');
+-- UPDATE aliases SET canonical_id = '958356ce-ac9f-4095-b638-947c963bf307' WHERE canonical_id IN ('de7ea4ee-b91d-47dc-9c1e-0a5295eee0e5', 'e4fb0264-68bf-4df8-8f08-2d1ade5abd80', '73e54956-ddaf-45b1-befd-adc060d8be1a');
+-- UPDATE company_mentions SET company_id = '958356ce-ac9f-4095-b638-947c963bf307' WHERE company_id IN ('de7ea4ee-b91d-47dc-9c1e-0a5295eee0e5', 'e4fb0264-68bf-4df8-8f08-2d1ade5abd80', '73e54956-ddaf-45b1-befd-adc060d8be1a');
+-- UPDATE financial_facts SET company_id = '958356ce-ac9f-4095-b638-947c963bf307' WHERE company_id IN ('de7ea4ee-b91d-47dc-9c1e-0a5295eee0e5', 'e4fb0264-68bf-4df8-8f08-2d1ade5abd80', '73e54956-ddaf-45b1-befd-adc060d8be1a');
+-- UPDATE insider_transactions SET company_id = '958356ce-ac9f-4095-b638-947c963bf307' WHERE company_id IN ('de7ea4ee-b91d-47dc-9c1e-0a5295eee0e5', 'e4fb0264-68bf-4df8-8f08-2d1ade5abd80', '73e54956-ddaf-45b1-befd-adc060d8be1a');
+-- UPDATE resolution_log SET resolved_canonical_id = '958356ce-ac9f-4095-b638-947c963bf307' WHERE resolved_canonical_id IN ('de7ea4ee-b91d-47dc-9c1e-0a5295eee0e5', 'e4fb0264-68bf-4df8-8f08-2d1ade5abd80', '73e54956-ddaf-45b1-befd-adc060d8be1a');
+-- UPDATE sec_filings SET company_id = '958356ce-ac9f-4095-b638-947c963bf307' WHERE company_id IN ('de7ea4ee-b91d-47dc-9c1e-0a5295eee0e5', 'e4fb0264-68bf-4df8-8f08-2d1ade5abd80', '73e54956-ddaf-45b1-befd-adc060d8be1a');
+-- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('de7ea4ee-b91d-47dc-9c1e-0a5295eee0e5', 'e4fb0264-68bf-4df8-8f08-2d1ade5abd80', '73e54956-ddaf-45b1-befd-adc060d8be1a')),0) WHERE id = '958356ce-ac9f-4095-b638-947c963bf307';
+-- UPDATE companies SET ticker = COALESCE(ticker, 'F'), sec_cik = COALESCE(sec_cik, 37996) WHERE id = '958356ce-ac9f-4095-b638-947c963bf307';
+-- DELETE FROM companies WHERE id IN ('de7ea4ee-b91d-47dc-9c1e-0a5295eee0e5', 'e4fb0264-68bf-4df8-8f08-2d1ade5abd80', '73e54956-ddaf-45b1-befd-adc060d8be1a');
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
@@ -4512,7 +4512,7 @@ COMMIT;
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
 -- -- cik 59478  survivor 06a73671-4ef5-4885-aba3-ddbdbdbe68d8 'Eli Lilly' (ticker=LLY, cik=59478)
 -- --   retire 2db5f667-5697-41b1-a4b3-7875ff3d7144 'Eli Lilly & Co' (ticker=None, cik=None, children=4)
--- --   retire b4c23e8b-6a3f-42ef-8013-d75ec2e2db15 'Eli Lilly & Co.' (ticker=None, cik=None, children=3)
+-- --   retire b4c23e8b-6a3f-42ef-8013-d75ec2e2db15 'Eli Lilly & Co.' (ticker=None, cik=None, children=1)
 -- --   retire 34e3c8d5-c125-4627-9963-8a0f640ae73d 'Eli Lilly and Company' (ticker=LLY, cik=59478, children=11)
 -- BEGIN;
 -- UPDATE aliases SET canonical_id = '06a73671-4ef5-4885-aba3-ddbdbdbe68d8' WHERE canonical_id IN ('2db5f667-5697-41b1-a4b3-7875ff3d7144', 'b4c23e8b-6a3f-42ef-8013-d75ec2e2db15', '34e3c8d5-c125-4627-9963-8a0f640ae73d');
@@ -4548,7 +4548,7 @@ COMMIT;
 -- -- cik 77476  survivor 755099f3-3aa2-4a0a-bab9-388259057fad 'PepsiCo' (ticker=PEP, cik=77476)
 -- --   retire 007afbb1-8b87-46d7-bee1-e17a0715fac0 'PepsiCo, Inc.' (ticker=None, cik=None, children=18)
 -- --   retire 3f633e9e-ad92-4351-af18-39fd35e0cd7d 'PepsiCo Inc' (ticker=None, cik=None, children=3)
--- --   retire 5eb992f4-6a23-4a1c-acd2-c395724b50ff 'PepsiCo Inc.' (ticker=None, cik=None, children=2)
+-- --   retire 5eb992f4-6a23-4a1c-acd2-c395724b50ff 'PepsiCo Inc.' (ticker=None, cik=None, children=3)
 -- --   retire 24184ca6-2367-4e72-9379-6f4afb90254d 'Pepsi' (ticker=PEP, cik=77476, children=4)
 -- BEGIN;
 -- UPDATE aliases SET canonical_id = '755099f3-3aa2-4a0a-bab9-388259057fad' WHERE canonical_id IN ('007afbb1-8b87-46d7-bee1-e17a0715fac0', '3f633e9e-ad92-4351-af18-39fd35e0cd7d', '5eb992f4-6a23-4a1c-acd2-c395724b50ff', '24184ca6-2367-4e72-9379-6f4afb90254d');
@@ -4564,8 +4564,8 @@ COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
 -- -- cik 93410  survivor 2e4b78e9-5875-4cf4-ac00-f9989600c2c1 'Chevron' (ticker=CVX, cik=93410)
--- --   retire 5582102b-83b3-4d26-8f0e-b6de1b063de7 'Chevron Corp' (ticker=None, cik=None, children=5)
--- --   retire 6beed13e-f170-41d4-94ca-190aa36682a6 'Chevron Corporation' (ticker=CVX, cik=93410, children=50)
+-- --   retire 5582102b-83b3-4d26-8f0e-b6de1b063de7 'Chevron Corp' (ticker=None, cik=None, children=2)
+-- --   retire 6beed13e-f170-41d4-94ca-190aa36682a6 'Chevron Corporation' (ticker=CVX, cik=93410, children=18)
 -- BEGIN;
 -- UPDATE aliases SET canonical_id = '2e4b78e9-5875-4cf4-ac00-f9989600c2c1' WHERE canonical_id IN ('5582102b-83b3-4d26-8f0e-b6de1b063de7', '6beed13e-f170-41d4-94ca-190aa36682a6');
 -- UPDATE company_mentions SET company_id = '2e4b78e9-5875-4cf4-ac00-f9989600c2c1' WHERE company_id IN ('5582102b-83b3-4d26-8f0e-b6de1b063de7', '6beed13e-f170-41d4-94ca-190aa36682a6');
@@ -4596,28 +4596,28 @@ COMMIT;
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
--- -- cik 101829  survivor 52a7bb03-d705-409d-8cb0-89f6e1eedc67 'Raytheon' (ticker=RTX, cik=101829)
+-- -- cik 101829  survivor 577bcdf9-af2f-4b97-bf11-b8825b470061 'RTX' (ticker=RTX, cik=101829)
 -- --   retire fdab1253-ce74-4bc2-822e-c0656d599e69 'RTX Corp.' (ticker=None, cik=None, children=2)
 -- --   retire 14dd999a-4783-4127-b5ab-440f48f3d57f 'RTX Corp' (ticker=RTX, cik=101829, children=17)
 -- --   retire 39c719cf-b7f5-47a9-93ec-303688caf57f 'RTX Corporation' (ticker=RTX, cik=101829, children=15)
--- --   retire 577bcdf9-af2f-4b97-bf11-b8825b470061 'RTX' (ticker=RTX, cik=101829, children=31)
+-- --   retire 52a7bb03-d705-409d-8cb0-89f6e1eedc67 'Raytheon' (ticker=RTX, cik=101829, children=1)
 -- BEGIN;
--- UPDATE aliases SET canonical_id = '52a7bb03-d705-409d-8cb0-89f6e1eedc67' WHERE canonical_id IN ('fdab1253-ce74-4bc2-822e-c0656d599e69', '14dd999a-4783-4127-b5ab-440f48f3d57f', '39c719cf-b7f5-47a9-93ec-303688caf57f', '577bcdf9-af2f-4b97-bf11-b8825b470061');
--- UPDATE company_mentions SET company_id = '52a7bb03-d705-409d-8cb0-89f6e1eedc67' WHERE company_id IN ('fdab1253-ce74-4bc2-822e-c0656d599e69', '14dd999a-4783-4127-b5ab-440f48f3d57f', '39c719cf-b7f5-47a9-93ec-303688caf57f', '577bcdf9-af2f-4b97-bf11-b8825b470061');
--- UPDATE financial_facts SET company_id = '52a7bb03-d705-409d-8cb0-89f6e1eedc67' WHERE company_id IN ('fdab1253-ce74-4bc2-822e-c0656d599e69', '14dd999a-4783-4127-b5ab-440f48f3d57f', '39c719cf-b7f5-47a9-93ec-303688caf57f', '577bcdf9-af2f-4b97-bf11-b8825b470061');
--- UPDATE insider_transactions SET company_id = '52a7bb03-d705-409d-8cb0-89f6e1eedc67' WHERE company_id IN ('fdab1253-ce74-4bc2-822e-c0656d599e69', '14dd999a-4783-4127-b5ab-440f48f3d57f', '39c719cf-b7f5-47a9-93ec-303688caf57f', '577bcdf9-af2f-4b97-bf11-b8825b470061');
--- UPDATE resolution_log SET resolved_canonical_id = '52a7bb03-d705-409d-8cb0-89f6e1eedc67' WHERE resolved_canonical_id IN ('fdab1253-ce74-4bc2-822e-c0656d599e69', '14dd999a-4783-4127-b5ab-440f48f3d57f', '39c719cf-b7f5-47a9-93ec-303688caf57f', '577bcdf9-af2f-4b97-bf11-b8825b470061');
--- UPDATE sec_filings SET company_id = '52a7bb03-d705-409d-8cb0-89f6e1eedc67' WHERE company_id IN ('fdab1253-ce74-4bc2-822e-c0656d599e69', '14dd999a-4783-4127-b5ab-440f48f3d57f', '39c719cf-b7f5-47a9-93ec-303688caf57f', '577bcdf9-af2f-4b97-bf11-b8825b470061');
--- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('fdab1253-ce74-4bc2-822e-c0656d599e69', '14dd999a-4783-4127-b5ab-440f48f3d57f', '39c719cf-b7f5-47a9-93ec-303688caf57f', '577bcdf9-af2f-4b97-bf11-b8825b470061')),0) WHERE id = '52a7bb03-d705-409d-8cb0-89f6e1eedc67';
--- UPDATE companies SET ticker = COALESCE(ticker, 'RTX'), sec_cik = COALESCE(sec_cik, 101829) WHERE id = '52a7bb03-d705-409d-8cb0-89f6e1eedc67';
--- DELETE FROM companies WHERE id IN ('fdab1253-ce74-4bc2-822e-c0656d599e69', '14dd999a-4783-4127-b5ab-440f48f3d57f', '39c719cf-b7f5-47a9-93ec-303688caf57f', '577bcdf9-af2f-4b97-bf11-b8825b470061');
+-- UPDATE aliases SET canonical_id = '577bcdf9-af2f-4b97-bf11-b8825b470061' WHERE canonical_id IN ('fdab1253-ce74-4bc2-822e-c0656d599e69', '14dd999a-4783-4127-b5ab-440f48f3d57f', '39c719cf-b7f5-47a9-93ec-303688caf57f', '52a7bb03-d705-409d-8cb0-89f6e1eedc67');
+-- UPDATE company_mentions SET company_id = '577bcdf9-af2f-4b97-bf11-b8825b470061' WHERE company_id IN ('fdab1253-ce74-4bc2-822e-c0656d599e69', '14dd999a-4783-4127-b5ab-440f48f3d57f', '39c719cf-b7f5-47a9-93ec-303688caf57f', '52a7bb03-d705-409d-8cb0-89f6e1eedc67');
+-- UPDATE financial_facts SET company_id = '577bcdf9-af2f-4b97-bf11-b8825b470061' WHERE company_id IN ('fdab1253-ce74-4bc2-822e-c0656d599e69', '14dd999a-4783-4127-b5ab-440f48f3d57f', '39c719cf-b7f5-47a9-93ec-303688caf57f', '52a7bb03-d705-409d-8cb0-89f6e1eedc67');
+-- UPDATE insider_transactions SET company_id = '577bcdf9-af2f-4b97-bf11-b8825b470061' WHERE company_id IN ('fdab1253-ce74-4bc2-822e-c0656d599e69', '14dd999a-4783-4127-b5ab-440f48f3d57f', '39c719cf-b7f5-47a9-93ec-303688caf57f', '52a7bb03-d705-409d-8cb0-89f6e1eedc67');
+-- UPDATE resolution_log SET resolved_canonical_id = '577bcdf9-af2f-4b97-bf11-b8825b470061' WHERE resolved_canonical_id IN ('fdab1253-ce74-4bc2-822e-c0656d599e69', '14dd999a-4783-4127-b5ab-440f48f3d57f', '39c719cf-b7f5-47a9-93ec-303688caf57f', '52a7bb03-d705-409d-8cb0-89f6e1eedc67');
+-- UPDATE sec_filings SET company_id = '577bcdf9-af2f-4b97-bf11-b8825b470061' WHERE company_id IN ('fdab1253-ce74-4bc2-822e-c0656d599e69', '14dd999a-4783-4127-b5ab-440f48f3d57f', '39c719cf-b7f5-47a9-93ec-303688caf57f', '52a7bb03-d705-409d-8cb0-89f6e1eedc67');
+-- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('fdab1253-ce74-4bc2-822e-c0656d599e69', '14dd999a-4783-4127-b5ab-440f48f3d57f', '39c719cf-b7f5-47a9-93ec-303688caf57f', '52a7bb03-d705-409d-8cb0-89f6e1eedc67')),0) WHERE id = '577bcdf9-af2f-4b97-bf11-b8825b470061';
+-- UPDATE companies SET ticker = COALESCE(ticker, 'RTX'), sec_cik = COALESCE(sec_cik, 101829) WHERE id = '577bcdf9-af2f-4b97-bf11-b8825b470061';
+-- DELETE FROM companies WHERE id IN ('fdab1253-ce74-4bc2-822e-c0656d599e69', '14dd999a-4783-4127-b5ab-440f48f3d57f', '39c719cf-b7f5-47a9-93ec-303688caf57f', '52a7bb03-d705-409d-8cb0-89f6e1eedc67');
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
 -- -- cik 106040  survivor 03b08a4b-1421-44e7-9dbd-1a414bfacf17 'Western Digital' (ticker=WDC, cik=106040)
 -- --   retire 24619a19-c096-4d38-b48c-7a048522ace8 'Western Digital Corporation' (ticker=None, cik=None, children=14)
--- --   retire 87239770-b69b-4656-ae5a-73e2d5c90a13 'Western Digital Corp' (ticker=None, cik=None, children=2)
--- --   retire 8509534e-dab8-4153-a0f9-836ef30f9494 'Western Digital Corp.' (ticker=WDC, cik=106040, children=1)
+-- --   retire 87239770-b69b-4656-ae5a-73e2d5c90a13 'Western Digital Corp' (ticker=None, cik=None, children=3)
+-- --   retire 8509534e-dab8-4153-a0f9-836ef30f9494 'Western Digital Corp.' (ticker=WDC, cik=106040, children=2)
 -- BEGIN;
 -- UPDATE aliases SET canonical_id = '03b08a4b-1421-44e7-9dbd-1a414bfacf17' WHERE canonical_id IN ('24619a19-c096-4d38-b48c-7a048522ace8', '87239770-b69b-4656-ae5a-73e2d5c90a13', '8509534e-dab8-4153-a0f9-836ef30f9494');
 -- UPDATE company_mentions SET company_id = '03b08a4b-1421-44e7-9dbd-1a414bfacf17' WHERE company_id IN ('24619a19-c096-4d38-b48c-7a048522ace8', '87239770-b69b-4656-ae5a-73e2d5c90a13', '8509534e-dab8-4153-a0f9-836ef30f9494');
@@ -4683,7 +4683,7 @@ COMMIT;
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
 -- -- cik 707549  survivor 990ec5d8-682b-4318-b0c7-13695ca5ab0f 'Lam Research' (ticker=LRCX, cik=707549)
 -- --   retire 0ddba682-0b8f-47bc-9b6a-486c6597ed2a 'Lam Research Corporation' (ticker=None, cik=None, children=42)
--- --   retire 3a6bf512-903d-4fc2-b700-20a18c1d50bb 'Lam Research Corp' (ticker=None, cik=None, children=2)
+-- --   retire 3a6bf512-903d-4fc2-b700-20a18c1d50bb 'Lam Research Corp' (ticker=None, cik=None, children=9)
 -- --   retire b76072ac-edb2-47c8-a34a-a8eb022bccf2 'Lam Research Corp.' (ticker=LRCX, cik=707549, children=1)
 -- BEGIN;
 -- UPDATE aliases SET canonical_id = '990ec5d8-682b-4318-b0c7-13695ca5ab0f' WHERE canonical_id IN ('0ddba682-0b8f-47bc-9b6a-486c6597ed2a', '3a6bf512-903d-4fc2-b700-20a18c1d50bb', 'b76072ac-edb2-47c8-a34a-a8eb022bccf2');
@@ -4734,20 +4734,20 @@ COMMIT;
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
--- -- cik 749251  survivor 44ab652b-61e8-4d34-a46c-9076aa3725c6 'Gartner, Inc.' (ticker=IT, cik=749251)
+-- -- cik 749251  survivor 615178cf-b157-4b15-b9bc-a4860ac18536 'Gartner' (ticker=IT, cik=749251)
 -- --   retire 0a489e27-eb37-4d92-a46f-31808b6612cc 'Gartner Inc' (ticker=None, cik=None, children=5)
 -- --   retire 33c258ec-4c8b-4a25-b0f8-a8aa8cc0b1bf 'Gartner Inc.' (ticker=None, cik=None, children=7)
--- --   retire 615178cf-b157-4b15-b9bc-a4860ac18536 'Gartner' (ticker=IT, cik=749251, children=1)
+-- --   retire 44ab652b-61e8-4d34-a46c-9076aa3725c6 'Gartner, Inc.' (ticker=IT, cik=749251, children=4)
 -- BEGIN;
--- UPDATE aliases SET canonical_id = '44ab652b-61e8-4d34-a46c-9076aa3725c6' WHERE canonical_id IN ('0a489e27-eb37-4d92-a46f-31808b6612cc', '33c258ec-4c8b-4a25-b0f8-a8aa8cc0b1bf', '615178cf-b157-4b15-b9bc-a4860ac18536');
--- UPDATE company_mentions SET company_id = '44ab652b-61e8-4d34-a46c-9076aa3725c6' WHERE company_id IN ('0a489e27-eb37-4d92-a46f-31808b6612cc', '33c258ec-4c8b-4a25-b0f8-a8aa8cc0b1bf', '615178cf-b157-4b15-b9bc-a4860ac18536');
--- UPDATE financial_facts SET company_id = '44ab652b-61e8-4d34-a46c-9076aa3725c6' WHERE company_id IN ('0a489e27-eb37-4d92-a46f-31808b6612cc', '33c258ec-4c8b-4a25-b0f8-a8aa8cc0b1bf', '615178cf-b157-4b15-b9bc-a4860ac18536');
--- UPDATE insider_transactions SET company_id = '44ab652b-61e8-4d34-a46c-9076aa3725c6' WHERE company_id IN ('0a489e27-eb37-4d92-a46f-31808b6612cc', '33c258ec-4c8b-4a25-b0f8-a8aa8cc0b1bf', '615178cf-b157-4b15-b9bc-a4860ac18536');
--- UPDATE resolution_log SET resolved_canonical_id = '44ab652b-61e8-4d34-a46c-9076aa3725c6' WHERE resolved_canonical_id IN ('0a489e27-eb37-4d92-a46f-31808b6612cc', '33c258ec-4c8b-4a25-b0f8-a8aa8cc0b1bf', '615178cf-b157-4b15-b9bc-a4860ac18536');
--- UPDATE sec_filings SET company_id = '44ab652b-61e8-4d34-a46c-9076aa3725c6' WHERE company_id IN ('0a489e27-eb37-4d92-a46f-31808b6612cc', '33c258ec-4c8b-4a25-b0f8-a8aa8cc0b1bf', '615178cf-b157-4b15-b9bc-a4860ac18536');
--- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('0a489e27-eb37-4d92-a46f-31808b6612cc', '33c258ec-4c8b-4a25-b0f8-a8aa8cc0b1bf', '615178cf-b157-4b15-b9bc-a4860ac18536')),0) WHERE id = '44ab652b-61e8-4d34-a46c-9076aa3725c6';
--- UPDATE companies SET ticker = COALESCE(ticker, 'IT'), sec_cik = COALESCE(sec_cik, 749251) WHERE id = '44ab652b-61e8-4d34-a46c-9076aa3725c6';
--- DELETE FROM companies WHERE id IN ('0a489e27-eb37-4d92-a46f-31808b6612cc', '33c258ec-4c8b-4a25-b0f8-a8aa8cc0b1bf', '615178cf-b157-4b15-b9bc-a4860ac18536');
+-- UPDATE aliases SET canonical_id = '615178cf-b157-4b15-b9bc-a4860ac18536' WHERE canonical_id IN ('0a489e27-eb37-4d92-a46f-31808b6612cc', '33c258ec-4c8b-4a25-b0f8-a8aa8cc0b1bf', '44ab652b-61e8-4d34-a46c-9076aa3725c6');
+-- UPDATE company_mentions SET company_id = '615178cf-b157-4b15-b9bc-a4860ac18536' WHERE company_id IN ('0a489e27-eb37-4d92-a46f-31808b6612cc', '33c258ec-4c8b-4a25-b0f8-a8aa8cc0b1bf', '44ab652b-61e8-4d34-a46c-9076aa3725c6');
+-- UPDATE financial_facts SET company_id = '615178cf-b157-4b15-b9bc-a4860ac18536' WHERE company_id IN ('0a489e27-eb37-4d92-a46f-31808b6612cc', '33c258ec-4c8b-4a25-b0f8-a8aa8cc0b1bf', '44ab652b-61e8-4d34-a46c-9076aa3725c6');
+-- UPDATE insider_transactions SET company_id = '615178cf-b157-4b15-b9bc-a4860ac18536' WHERE company_id IN ('0a489e27-eb37-4d92-a46f-31808b6612cc', '33c258ec-4c8b-4a25-b0f8-a8aa8cc0b1bf', '44ab652b-61e8-4d34-a46c-9076aa3725c6');
+-- UPDATE resolution_log SET resolved_canonical_id = '615178cf-b157-4b15-b9bc-a4860ac18536' WHERE resolved_canonical_id IN ('0a489e27-eb37-4d92-a46f-31808b6612cc', '33c258ec-4c8b-4a25-b0f8-a8aa8cc0b1bf', '44ab652b-61e8-4d34-a46c-9076aa3725c6');
+-- UPDATE sec_filings SET company_id = '615178cf-b157-4b15-b9bc-a4860ac18536' WHERE company_id IN ('0a489e27-eb37-4d92-a46f-31808b6612cc', '33c258ec-4c8b-4a25-b0f8-a8aa8cc0b1bf', '44ab652b-61e8-4d34-a46c-9076aa3725c6');
+-- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('0a489e27-eb37-4d92-a46f-31808b6612cc', '33c258ec-4c8b-4a25-b0f8-a8aa8cc0b1bf', '44ab652b-61e8-4d34-a46c-9076aa3725c6')),0) WHERE id = '615178cf-b157-4b15-b9bc-a4860ac18536';
+-- UPDATE companies SET ticker = COALESCE(ticker, 'IT'), sec_cik = COALESCE(sec_cik, 749251) WHERE id = '615178cf-b157-4b15-b9bc-a4860ac18536';
+-- DELETE FROM companies WHERE id IN ('0a489e27-eb37-4d92-a46f-31808b6612cc', '33c258ec-4c8b-4a25-b0f8-a8aa8cc0b1bf', '44ab652b-61e8-4d34-a46c-9076aa3725c6');
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
@@ -4818,23 +4818,23 @@ COMMIT;
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
--- -- cik 886982  survivor 5b0269e1-e85f-4ff9-b310-a3e9af55c3db 'Goldman Sachs Group Inc.' (ticker=GS, cik=886982)
+-- -- cik 886982  survivor 86094111-a21a-4128-9733-3b5aa2f0e58c 'Goldman Sachs' (ticker=GS, cik=886982)
 -- --   retire 1cd7e75e-b876-4292-80ef-07a8a32718a7 'Goldman Sachs International' (ticker=None, cik=None, children=3)
 -- --   retire 56e5d2f0-6cd6-49e4-90a3-7075fd8469fd 'The Goldman Sachs Group, Inc.' (ticker=None, cik=None, children=36)
 -- --   retire dbb09aff-c413-4907-9277-616590b39e50 'Goldman Sachs Group' (ticker=None, cik=None, children=2)
 -- --   retire ec89a14f-c412-4cbd-b00a-4169406619a9 'The Goldman Sachs Group' (ticker=None, cik=None, children=2)
--- --   retire 4fb87fd8-0acb-4ae1-943f-118d74b1bd04 'Goldman' (ticker=GS, cik=886982, children=7)
--- --   retire 86094111-a21a-4128-9733-3b5aa2f0e58c 'Goldman Sachs' (ticker=GS, cik=886982, children=1)
+-- --   retire 5b0269e1-e85f-4ff9-b310-a3e9af55c3db 'Goldman Sachs Group Inc.' (ticker=GS, cik=886982, children=14)
+-- --   retire 4fb87fd8-0acb-4ae1-943f-118d74b1bd04 'Goldman' (ticker=GS, cik=886982, children=1)
 -- BEGIN;
--- UPDATE aliases SET canonical_id = '5b0269e1-e85f-4ff9-b310-a3e9af55c3db' WHERE canonical_id IN ('1cd7e75e-b876-4292-80ef-07a8a32718a7', '56e5d2f0-6cd6-49e4-90a3-7075fd8469fd', 'dbb09aff-c413-4907-9277-616590b39e50', 'ec89a14f-c412-4cbd-b00a-4169406619a9', '4fb87fd8-0acb-4ae1-943f-118d74b1bd04', '86094111-a21a-4128-9733-3b5aa2f0e58c');
--- UPDATE company_mentions SET company_id = '5b0269e1-e85f-4ff9-b310-a3e9af55c3db' WHERE company_id IN ('1cd7e75e-b876-4292-80ef-07a8a32718a7', '56e5d2f0-6cd6-49e4-90a3-7075fd8469fd', 'dbb09aff-c413-4907-9277-616590b39e50', 'ec89a14f-c412-4cbd-b00a-4169406619a9', '4fb87fd8-0acb-4ae1-943f-118d74b1bd04', '86094111-a21a-4128-9733-3b5aa2f0e58c');
--- UPDATE financial_facts SET company_id = '5b0269e1-e85f-4ff9-b310-a3e9af55c3db' WHERE company_id IN ('1cd7e75e-b876-4292-80ef-07a8a32718a7', '56e5d2f0-6cd6-49e4-90a3-7075fd8469fd', 'dbb09aff-c413-4907-9277-616590b39e50', 'ec89a14f-c412-4cbd-b00a-4169406619a9', '4fb87fd8-0acb-4ae1-943f-118d74b1bd04', '86094111-a21a-4128-9733-3b5aa2f0e58c');
--- UPDATE insider_transactions SET company_id = '5b0269e1-e85f-4ff9-b310-a3e9af55c3db' WHERE company_id IN ('1cd7e75e-b876-4292-80ef-07a8a32718a7', '56e5d2f0-6cd6-49e4-90a3-7075fd8469fd', 'dbb09aff-c413-4907-9277-616590b39e50', 'ec89a14f-c412-4cbd-b00a-4169406619a9', '4fb87fd8-0acb-4ae1-943f-118d74b1bd04', '86094111-a21a-4128-9733-3b5aa2f0e58c');
--- UPDATE resolution_log SET resolved_canonical_id = '5b0269e1-e85f-4ff9-b310-a3e9af55c3db' WHERE resolved_canonical_id IN ('1cd7e75e-b876-4292-80ef-07a8a32718a7', '56e5d2f0-6cd6-49e4-90a3-7075fd8469fd', 'dbb09aff-c413-4907-9277-616590b39e50', 'ec89a14f-c412-4cbd-b00a-4169406619a9', '4fb87fd8-0acb-4ae1-943f-118d74b1bd04', '86094111-a21a-4128-9733-3b5aa2f0e58c');
--- UPDATE sec_filings SET company_id = '5b0269e1-e85f-4ff9-b310-a3e9af55c3db' WHERE company_id IN ('1cd7e75e-b876-4292-80ef-07a8a32718a7', '56e5d2f0-6cd6-49e4-90a3-7075fd8469fd', 'dbb09aff-c413-4907-9277-616590b39e50', 'ec89a14f-c412-4cbd-b00a-4169406619a9', '4fb87fd8-0acb-4ae1-943f-118d74b1bd04', '86094111-a21a-4128-9733-3b5aa2f0e58c');
--- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('1cd7e75e-b876-4292-80ef-07a8a32718a7', '56e5d2f0-6cd6-49e4-90a3-7075fd8469fd', 'dbb09aff-c413-4907-9277-616590b39e50', 'ec89a14f-c412-4cbd-b00a-4169406619a9', '4fb87fd8-0acb-4ae1-943f-118d74b1bd04', '86094111-a21a-4128-9733-3b5aa2f0e58c')),0) WHERE id = '5b0269e1-e85f-4ff9-b310-a3e9af55c3db';
--- UPDATE companies SET ticker = COALESCE(ticker, 'GS'), sec_cik = COALESCE(sec_cik, 886982) WHERE id = '5b0269e1-e85f-4ff9-b310-a3e9af55c3db';
--- DELETE FROM companies WHERE id IN ('1cd7e75e-b876-4292-80ef-07a8a32718a7', '56e5d2f0-6cd6-49e4-90a3-7075fd8469fd', 'dbb09aff-c413-4907-9277-616590b39e50', 'ec89a14f-c412-4cbd-b00a-4169406619a9', '4fb87fd8-0acb-4ae1-943f-118d74b1bd04', '86094111-a21a-4128-9733-3b5aa2f0e58c');
+-- UPDATE aliases SET canonical_id = '86094111-a21a-4128-9733-3b5aa2f0e58c' WHERE canonical_id IN ('1cd7e75e-b876-4292-80ef-07a8a32718a7', '56e5d2f0-6cd6-49e4-90a3-7075fd8469fd', 'dbb09aff-c413-4907-9277-616590b39e50', 'ec89a14f-c412-4cbd-b00a-4169406619a9', '5b0269e1-e85f-4ff9-b310-a3e9af55c3db', '4fb87fd8-0acb-4ae1-943f-118d74b1bd04');
+-- UPDATE company_mentions SET company_id = '86094111-a21a-4128-9733-3b5aa2f0e58c' WHERE company_id IN ('1cd7e75e-b876-4292-80ef-07a8a32718a7', '56e5d2f0-6cd6-49e4-90a3-7075fd8469fd', 'dbb09aff-c413-4907-9277-616590b39e50', 'ec89a14f-c412-4cbd-b00a-4169406619a9', '5b0269e1-e85f-4ff9-b310-a3e9af55c3db', '4fb87fd8-0acb-4ae1-943f-118d74b1bd04');
+-- UPDATE financial_facts SET company_id = '86094111-a21a-4128-9733-3b5aa2f0e58c' WHERE company_id IN ('1cd7e75e-b876-4292-80ef-07a8a32718a7', '56e5d2f0-6cd6-49e4-90a3-7075fd8469fd', 'dbb09aff-c413-4907-9277-616590b39e50', 'ec89a14f-c412-4cbd-b00a-4169406619a9', '5b0269e1-e85f-4ff9-b310-a3e9af55c3db', '4fb87fd8-0acb-4ae1-943f-118d74b1bd04');
+-- UPDATE insider_transactions SET company_id = '86094111-a21a-4128-9733-3b5aa2f0e58c' WHERE company_id IN ('1cd7e75e-b876-4292-80ef-07a8a32718a7', '56e5d2f0-6cd6-49e4-90a3-7075fd8469fd', 'dbb09aff-c413-4907-9277-616590b39e50', 'ec89a14f-c412-4cbd-b00a-4169406619a9', '5b0269e1-e85f-4ff9-b310-a3e9af55c3db', '4fb87fd8-0acb-4ae1-943f-118d74b1bd04');
+-- UPDATE resolution_log SET resolved_canonical_id = '86094111-a21a-4128-9733-3b5aa2f0e58c' WHERE resolved_canonical_id IN ('1cd7e75e-b876-4292-80ef-07a8a32718a7', '56e5d2f0-6cd6-49e4-90a3-7075fd8469fd', 'dbb09aff-c413-4907-9277-616590b39e50', 'ec89a14f-c412-4cbd-b00a-4169406619a9', '5b0269e1-e85f-4ff9-b310-a3e9af55c3db', '4fb87fd8-0acb-4ae1-943f-118d74b1bd04');
+-- UPDATE sec_filings SET company_id = '86094111-a21a-4128-9733-3b5aa2f0e58c' WHERE company_id IN ('1cd7e75e-b876-4292-80ef-07a8a32718a7', '56e5d2f0-6cd6-49e4-90a3-7075fd8469fd', 'dbb09aff-c413-4907-9277-616590b39e50', 'ec89a14f-c412-4cbd-b00a-4169406619a9', '5b0269e1-e85f-4ff9-b310-a3e9af55c3db', '4fb87fd8-0acb-4ae1-943f-118d74b1bd04');
+-- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('1cd7e75e-b876-4292-80ef-07a8a32718a7', '56e5d2f0-6cd6-49e4-90a3-7075fd8469fd', 'dbb09aff-c413-4907-9277-616590b39e50', 'ec89a14f-c412-4cbd-b00a-4169406619a9', '5b0269e1-e85f-4ff9-b310-a3e9af55c3db', '4fb87fd8-0acb-4ae1-943f-118d74b1bd04')),0) WHERE id = '86094111-a21a-4128-9733-3b5aa2f0e58c';
+-- UPDATE companies SET ticker = COALESCE(ticker, 'GS'), sec_cik = COALESCE(sec_cik, 886982) WHERE id = '86094111-a21a-4128-9733-3b5aa2f0e58c';
+-- DELETE FROM companies WHERE id IN ('1cd7e75e-b876-4292-80ef-07a8a32718a7', '56e5d2f0-6cd6-49e4-90a3-7075fd8469fd', 'dbb09aff-c413-4907-9277-616590b39e50', 'ec89a14f-c412-4cbd-b00a-4169406619a9', '5b0269e1-e85f-4ff9-b310-a3e9af55c3db', '4fb87fd8-0acb-4ae1-943f-118d74b1bd04');
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
@@ -4872,28 +4872,28 @@ COMMIT;
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
--- -- cik 1018724  survivor 71eb19c3-f009-4c32-80b1-ac01b391b225 'Amazon' (ticker=AMZN, cik=1018724)
+-- -- cik 1018724  survivor 9c55cc2f-e0c0-480c-9230-649a90b6a2f9 'Amazon.com Inc.' (ticker=AMZN, cik=1018724)
 -- --   retire 2c9d3f8f-c1c1-4d48-a0e4-6ae71746a16e 'Amazon.com, Inc.' (ticker=None, cik=None, children=3)
--- --   retire b1da166e-e1dd-45ba-ba6d-f7418ac80b12 'Amazon.com Inc' (ticker=None, cik=None, children=6)
--- --   retire 9c55cc2f-e0c0-480c-9230-649a90b6a2f9 'Amazon.com Inc.' (ticker=AMZN, cik=1018724, children=32)
+-- --   retire b1da166e-e1dd-45ba-ba6d-f7418ac80b12 'Amazon.com Inc' (ticker=None, cik=None, children=2)
 -- --   retire a12699c8-6ce9-49cc-9fba-6aa5f34034fd 'Amazon.com' (ticker=AMZN, cik=1018724, children=1)
+-- --   retire 71eb19c3-f009-4c32-80b1-ac01b391b225 'Amazon' (ticker=AMZN, cik=1018724, children=6)
 -- BEGIN;
--- UPDATE aliases SET canonical_id = '71eb19c3-f009-4c32-80b1-ac01b391b225' WHERE canonical_id IN ('2c9d3f8f-c1c1-4d48-a0e4-6ae71746a16e', 'b1da166e-e1dd-45ba-ba6d-f7418ac80b12', '9c55cc2f-e0c0-480c-9230-649a90b6a2f9', 'a12699c8-6ce9-49cc-9fba-6aa5f34034fd');
--- UPDATE company_mentions SET company_id = '71eb19c3-f009-4c32-80b1-ac01b391b225' WHERE company_id IN ('2c9d3f8f-c1c1-4d48-a0e4-6ae71746a16e', 'b1da166e-e1dd-45ba-ba6d-f7418ac80b12', '9c55cc2f-e0c0-480c-9230-649a90b6a2f9', 'a12699c8-6ce9-49cc-9fba-6aa5f34034fd');
--- UPDATE financial_facts SET company_id = '71eb19c3-f009-4c32-80b1-ac01b391b225' WHERE company_id IN ('2c9d3f8f-c1c1-4d48-a0e4-6ae71746a16e', 'b1da166e-e1dd-45ba-ba6d-f7418ac80b12', '9c55cc2f-e0c0-480c-9230-649a90b6a2f9', 'a12699c8-6ce9-49cc-9fba-6aa5f34034fd');
--- UPDATE insider_transactions SET company_id = '71eb19c3-f009-4c32-80b1-ac01b391b225' WHERE company_id IN ('2c9d3f8f-c1c1-4d48-a0e4-6ae71746a16e', 'b1da166e-e1dd-45ba-ba6d-f7418ac80b12', '9c55cc2f-e0c0-480c-9230-649a90b6a2f9', 'a12699c8-6ce9-49cc-9fba-6aa5f34034fd');
--- UPDATE resolution_log SET resolved_canonical_id = '71eb19c3-f009-4c32-80b1-ac01b391b225' WHERE resolved_canonical_id IN ('2c9d3f8f-c1c1-4d48-a0e4-6ae71746a16e', 'b1da166e-e1dd-45ba-ba6d-f7418ac80b12', '9c55cc2f-e0c0-480c-9230-649a90b6a2f9', 'a12699c8-6ce9-49cc-9fba-6aa5f34034fd');
--- UPDATE sec_filings SET company_id = '71eb19c3-f009-4c32-80b1-ac01b391b225' WHERE company_id IN ('2c9d3f8f-c1c1-4d48-a0e4-6ae71746a16e', 'b1da166e-e1dd-45ba-ba6d-f7418ac80b12', '9c55cc2f-e0c0-480c-9230-649a90b6a2f9', 'a12699c8-6ce9-49cc-9fba-6aa5f34034fd');
--- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('2c9d3f8f-c1c1-4d48-a0e4-6ae71746a16e', 'b1da166e-e1dd-45ba-ba6d-f7418ac80b12', '9c55cc2f-e0c0-480c-9230-649a90b6a2f9', 'a12699c8-6ce9-49cc-9fba-6aa5f34034fd')),0) WHERE id = '71eb19c3-f009-4c32-80b1-ac01b391b225';
--- UPDATE companies SET ticker = COALESCE(ticker, 'AMZN'), sec_cik = COALESCE(sec_cik, 1018724) WHERE id = '71eb19c3-f009-4c32-80b1-ac01b391b225';
--- DELETE FROM companies WHERE id IN ('2c9d3f8f-c1c1-4d48-a0e4-6ae71746a16e', 'b1da166e-e1dd-45ba-ba6d-f7418ac80b12', '9c55cc2f-e0c0-480c-9230-649a90b6a2f9', 'a12699c8-6ce9-49cc-9fba-6aa5f34034fd');
+-- UPDATE aliases SET canonical_id = '9c55cc2f-e0c0-480c-9230-649a90b6a2f9' WHERE canonical_id IN ('2c9d3f8f-c1c1-4d48-a0e4-6ae71746a16e', 'b1da166e-e1dd-45ba-ba6d-f7418ac80b12', 'a12699c8-6ce9-49cc-9fba-6aa5f34034fd', '71eb19c3-f009-4c32-80b1-ac01b391b225');
+-- UPDATE company_mentions SET company_id = '9c55cc2f-e0c0-480c-9230-649a90b6a2f9' WHERE company_id IN ('2c9d3f8f-c1c1-4d48-a0e4-6ae71746a16e', 'b1da166e-e1dd-45ba-ba6d-f7418ac80b12', 'a12699c8-6ce9-49cc-9fba-6aa5f34034fd', '71eb19c3-f009-4c32-80b1-ac01b391b225');
+-- UPDATE financial_facts SET company_id = '9c55cc2f-e0c0-480c-9230-649a90b6a2f9' WHERE company_id IN ('2c9d3f8f-c1c1-4d48-a0e4-6ae71746a16e', 'b1da166e-e1dd-45ba-ba6d-f7418ac80b12', 'a12699c8-6ce9-49cc-9fba-6aa5f34034fd', '71eb19c3-f009-4c32-80b1-ac01b391b225');
+-- UPDATE insider_transactions SET company_id = '9c55cc2f-e0c0-480c-9230-649a90b6a2f9' WHERE company_id IN ('2c9d3f8f-c1c1-4d48-a0e4-6ae71746a16e', 'b1da166e-e1dd-45ba-ba6d-f7418ac80b12', 'a12699c8-6ce9-49cc-9fba-6aa5f34034fd', '71eb19c3-f009-4c32-80b1-ac01b391b225');
+-- UPDATE resolution_log SET resolved_canonical_id = '9c55cc2f-e0c0-480c-9230-649a90b6a2f9' WHERE resolved_canonical_id IN ('2c9d3f8f-c1c1-4d48-a0e4-6ae71746a16e', 'b1da166e-e1dd-45ba-ba6d-f7418ac80b12', 'a12699c8-6ce9-49cc-9fba-6aa5f34034fd', '71eb19c3-f009-4c32-80b1-ac01b391b225');
+-- UPDATE sec_filings SET company_id = '9c55cc2f-e0c0-480c-9230-649a90b6a2f9' WHERE company_id IN ('2c9d3f8f-c1c1-4d48-a0e4-6ae71746a16e', 'b1da166e-e1dd-45ba-ba6d-f7418ac80b12', 'a12699c8-6ce9-49cc-9fba-6aa5f34034fd', '71eb19c3-f009-4c32-80b1-ac01b391b225');
+-- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('2c9d3f8f-c1c1-4d48-a0e4-6ae71746a16e', 'b1da166e-e1dd-45ba-ba6d-f7418ac80b12', 'a12699c8-6ce9-49cc-9fba-6aa5f34034fd', '71eb19c3-f009-4c32-80b1-ac01b391b225')),0) WHERE id = '9c55cc2f-e0c0-480c-9230-649a90b6a2f9';
+-- UPDATE companies SET ticker = COALESCE(ticker, 'AMZN'), sec_cik = COALESCE(sec_cik, 1018724) WHERE id = '9c55cc2f-e0c0-480c-9230-649a90b6a2f9';
+-- DELETE FROM companies WHERE id IN ('2c9d3f8f-c1c1-4d48-a0e4-6ae71746a16e', 'b1da166e-e1dd-45ba-ba6d-f7418ac80b12', 'a12699c8-6ce9-49cc-9fba-6aa5f34034fd', '71eb19c3-f009-4c32-80b1-ac01b391b225');
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
 -- -- cik 1046179  survivor 77700ef7-e51a-4ab0-81dd-e276345cc0e2 'Taiwan Semiconductor' (ticker=TSM, cik=1046179)
 -- --   retire 37b883db-c080-4007-ae2a-4492f155edbb 'Taiwan Semiconductor Manufacturing Co Ltd' (ticker=None, cik=None, children=7)
 -- --   retire bddaa156-9cd1-4816-90ae-ddc242e5bf7e 'Taiwan Semiconductor Manufacturing' (ticker=TSM, cik=1046179, children=66)
--- --   retire 4da26598-77cf-4afa-be6c-6028c7f436a9 'Taiwan Semiconductor Manufacturing Company' (ticker=TSM, cik=1046179, children=1)
+-- --   retire 4da26598-77cf-4afa-be6c-6028c7f436a9 'Taiwan Semiconductor Manufacturing Company' (ticker=TSM, cik=1046179, children=12)
 -- --   retire 4f407d59-87b6-4c3c-84e6-84c2a477457f 'Taiwan Semiconductor Manufacturing Company Limited (TSM)' (ticker=TSM, cik=1046179, children=2)
 -- --   retire 9f39e37f-043a-4a3d-9fa8-375ecd611c60 'Taiwan Semiconductor Manufacturing Company Limited' (ticker=TSM, cik=1046179, children=1)
 -- --   retire e126bcb4-6ff7-4eef-b5ac-4a784b975fdb 'Taiwan Semiconductor Manufacturing Co.' (ticker=TSM, cik=1046179, children=1)
@@ -4911,8 +4911,8 @@ COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
 -- -- cik 1050446  survivor f3cdb722-9bf7-41c3-a860-fe16ac83161f 'MSTR' (ticker=MSTR, cik=1050446)
--- --   retire 5f340599-b6af-4552-9389-e12799c66e34 'Strategy Inc.' (ticker=None, cik=None, children=4)
--- --   retire 7b28141f-85c6-4a03-b4c8-940165fec322 'Strategy Inc' (ticker=None, cik=None, children=4)
+-- --   retire 5f340599-b6af-4552-9389-e12799c66e34 'Strategy Inc.' (ticker=None, cik=None, children=2)
+-- --   retire 7b28141f-85c6-4a03-b4c8-940165fec322 'Strategy Inc' (ticker=None, cik=None, children=2)
 -- --   retire d78a75e5-d9c9-4bf9-b806-93c5f38dd521 'Strategy' (ticker=MSTR, cik=1050446, children=3)
 -- BEGIN;
 -- UPDATE aliases SET canonical_id = 'f3cdb722-9bf7-41c3-a860-fe16ac83161f' WHERE canonical_id IN ('5f340599-b6af-4552-9389-e12799c66e34', '7b28141f-85c6-4a03-b4c8-940165fec322', 'd78a75e5-d9c9-4bf9-b806-93c5f38dd521');
@@ -4928,7 +4928,7 @@ COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
 -- -- cik 1051627  survivor 79087126-c9a5-444f-8aa2-626677d8f9e9 'AXTI' (ticker=AXTI, cik=1051627)
--- --   retire 6e76e105-7a2d-4110-8719-3dbba0893197 'AXT' (ticker=None, cik=None, children=5)
+-- --   retire 6e76e105-7a2d-4110-8719-3dbba0893197 'AXT' (ticker=None, cik=None, children=2)
 -- --   retire d57dd8c3-52fc-44f0-b574-457e91a6316f 'AXT Inc' (ticker=AXTI, cik=1051627, children=1)
 -- BEGIN;
 -- UPDATE aliases SET canonical_id = '79087126-c9a5-444f-8aa2-626677d8f9e9' WHERE canonical_id IN ('6e76e105-7a2d-4110-8719-3dbba0893197', 'd57dd8c3-52fc-44f0-b574-457e91a6316f');
@@ -5076,21 +5076,21 @@ COMMIT;
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
--- -- cik 1260221  survivor b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4 'TransDigm' (ticker=TDG, cik=1260221)
+-- -- cik 1260221  survivor db66c116-360f-4ae4-ba4e-edb948c3ddd5 'TransDigm Group Incorporated' (ticker=TDG, cik=1260221)
 -- --   retire 3ca140c6-1898-45c3-99a7-840a32aa7766 'TransDigm Group Inc' (ticker=None, cik=None, children=3)
--- --   retire 7e1adde0-de73-4cd3-9041-e1346cd6ce11 'TransDigm Group Inc.' (ticker=None, cik=None, children=3)
--- --   retire db66c116-360f-4ae4-ba4e-edb948c3ddd5 'TransDigm Group Incorporated' (ticker=TDG, cik=1260221, children=6)
+-- --   retire 7e1adde0-de73-4cd3-9041-e1346cd6ce11 'TransDigm Group Inc.' (ticker=None, cik=None, children=2)
+-- --   retire b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4 'TransDigm' (ticker=TDG, cik=1260221, children=1)
 -- --   retire 87b7bbc2-a297-491c-a8bd-c90b31a8970c 'TransDigm Group' (ticker=TDG, cik=1260221, children=1)
 -- BEGIN;
--- UPDATE aliases SET canonical_id = 'b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4' WHERE canonical_id IN ('3ca140c6-1898-45c3-99a7-840a32aa7766', '7e1adde0-de73-4cd3-9041-e1346cd6ce11', 'db66c116-360f-4ae4-ba4e-edb948c3ddd5', '87b7bbc2-a297-491c-a8bd-c90b31a8970c');
--- UPDATE company_mentions SET company_id = 'b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4' WHERE company_id IN ('3ca140c6-1898-45c3-99a7-840a32aa7766', '7e1adde0-de73-4cd3-9041-e1346cd6ce11', 'db66c116-360f-4ae4-ba4e-edb948c3ddd5', '87b7bbc2-a297-491c-a8bd-c90b31a8970c');
--- UPDATE financial_facts SET company_id = 'b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4' WHERE company_id IN ('3ca140c6-1898-45c3-99a7-840a32aa7766', '7e1adde0-de73-4cd3-9041-e1346cd6ce11', 'db66c116-360f-4ae4-ba4e-edb948c3ddd5', '87b7bbc2-a297-491c-a8bd-c90b31a8970c');
--- UPDATE insider_transactions SET company_id = 'b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4' WHERE company_id IN ('3ca140c6-1898-45c3-99a7-840a32aa7766', '7e1adde0-de73-4cd3-9041-e1346cd6ce11', 'db66c116-360f-4ae4-ba4e-edb948c3ddd5', '87b7bbc2-a297-491c-a8bd-c90b31a8970c');
--- UPDATE resolution_log SET resolved_canonical_id = 'b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4' WHERE resolved_canonical_id IN ('3ca140c6-1898-45c3-99a7-840a32aa7766', '7e1adde0-de73-4cd3-9041-e1346cd6ce11', 'db66c116-360f-4ae4-ba4e-edb948c3ddd5', '87b7bbc2-a297-491c-a8bd-c90b31a8970c');
--- UPDATE sec_filings SET company_id = 'b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4' WHERE company_id IN ('3ca140c6-1898-45c3-99a7-840a32aa7766', '7e1adde0-de73-4cd3-9041-e1346cd6ce11', 'db66c116-360f-4ae4-ba4e-edb948c3ddd5', '87b7bbc2-a297-491c-a8bd-c90b31a8970c');
--- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('3ca140c6-1898-45c3-99a7-840a32aa7766', '7e1adde0-de73-4cd3-9041-e1346cd6ce11', 'db66c116-360f-4ae4-ba4e-edb948c3ddd5', '87b7bbc2-a297-491c-a8bd-c90b31a8970c')),0) WHERE id = 'b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4';
--- UPDATE companies SET ticker = COALESCE(ticker, 'TDG'), sec_cik = COALESCE(sec_cik, 1260221) WHERE id = 'b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4';
--- DELETE FROM companies WHERE id IN ('3ca140c6-1898-45c3-99a7-840a32aa7766', '7e1adde0-de73-4cd3-9041-e1346cd6ce11', 'db66c116-360f-4ae4-ba4e-edb948c3ddd5', '87b7bbc2-a297-491c-a8bd-c90b31a8970c');
+-- UPDATE aliases SET canonical_id = 'db66c116-360f-4ae4-ba4e-edb948c3ddd5' WHERE canonical_id IN ('3ca140c6-1898-45c3-99a7-840a32aa7766', '7e1adde0-de73-4cd3-9041-e1346cd6ce11', 'b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4', '87b7bbc2-a297-491c-a8bd-c90b31a8970c');
+-- UPDATE company_mentions SET company_id = 'db66c116-360f-4ae4-ba4e-edb948c3ddd5' WHERE company_id IN ('3ca140c6-1898-45c3-99a7-840a32aa7766', '7e1adde0-de73-4cd3-9041-e1346cd6ce11', 'b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4', '87b7bbc2-a297-491c-a8bd-c90b31a8970c');
+-- UPDATE financial_facts SET company_id = 'db66c116-360f-4ae4-ba4e-edb948c3ddd5' WHERE company_id IN ('3ca140c6-1898-45c3-99a7-840a32aa7766', '7e1adde0-de73-4cd3-9041-e1346cd6ce11', 'b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4', '87b7bbc2-a297-491c-a8bd-c90b31a8970c');
+-- UPDATE insider_transactions SET company_id = 'db66c116-360f-4ae4-ba4e-edb948c3ddd5' WHERE company_id IN ('3ca140c6-1898-45c3-99a7-840a32aa7766', '7e1adde0-de73-4cd3-9041-e1346cd6ce11', 'b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4', '87b7bbc2-a297-491c-a8bd-c90b31a8970c');
+-- UPDATE resolution_log SET resolved_canonical_id = 'db66c116-360f-4ae4-ba4e-edb948c3ddd5' WHERE resolved_canonical_id IN ('3ca140c6-1898-45c3-99a7-840a32aa7766', '7e1adde0-de73-4cd3-9041-e1346cd6ce11', 'b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4', '87b7bbc2-a297-491c-a8bd-c90b31a8970c');
+-- UPDATE sec_filings SET company_id = 'db66c116-360f-4ae4-ba4e-edb948c3ddd5' WHERE company_id IN ('3ca140c6-1898-45c3-99a7-840a32aa7766', '7e1adde0-de73-4cd3-9041-e1346cd6ce11', 'b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4', '87b7bbc2-a297-491c-a8bd-c90b31a8970c');
+-- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('3ca140c6-1898-45c3-99a7-840a32aa7766', '7e1adde0-de73-4cd3-9041-e1346cd6ce11', 'b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4', '87b7bbc2-a297-491c-a8bd-c90b31a8970c')),0) WHERE id = 'db66c116-360f-4ae4-ba4e-edb948c3ddd5';
+-- UPDATE companies SET ticker = COALESCE(ticker, 'TDG'), sec_cik = COALESCE(sec_cik, 1260221) WHERE id = 'db66c116-360f-4ae4-ba4e-edb948c3ddd5';
+-- DELETE FROM companies WHERE id IN ('3ca140c6-1898-45c3-99a7-840a32aa7766', '7e1adde0-de73-4cd3-9041-e1346cd6ce11', 'b8ecc5ce-1305-4a0f-af56-8d4fc668c3a4', '87b7bbc2-a297-491c-a8bd-c90b31a8970c');
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
@@ -5150,7 +5150,7 @@ COMMIT;
 -- --   retire cc6f97de-2c5f-4045-bcc3-817f304522c8 'Super Micro Computer, Inc.' (ticker=SMCI, cik=1375365, children=1)
 -- --   retire 5f322abd-e2ba-4eac-8e27-842c3c5a0da1 'Super Micro Computer Inc.' (ticker=SMCI, cik=1375365, children=4)
 -- --   retire e318c9a7-5583-4a2a-b91c-2bdbf890560e 'Super Micro' (ticker=SMCI, cik=1375365, children=9)
--- --   retire 6840b797-869e-42e3-8b8c-77e2b4b9432f 'SMCI' (ticker=SMCI, cik=1375365, children=21)
+-- --   retire 6840b797-869e-42e3-8b8c-77e2b4b9432f 'SMCI' (ticker=SMCI, cik=1375365, children=1)
 -- BEGIN;
 -- UPDATE aliases SET canonical_id = '1b0e7b68-e308-4897-8eba-47b96bc71a29' WHERE canonical_id IN ('bf6a2c28-f86e-45d3-8b1f-5daab340bf12', 'cc6f97de-2c5f-4045-bcc3-817f304522c8', '5f322abd-e2ba-4eac-8e27-842c3c5a0da1', 'e318c9a7-5583-4a2a-b91c-2bdbf890560e', '6840b797-869e-42e3-8b8c-77e2b4b9432f');
 -- UPDATE company_mentions SET company_id = '1b0e7b68-e308-4897-8eba-47b96bc71a29' WHERE company_id IN ('bf6a2c28-f86e-45d3-8b1f-5daab340bf12', 'cc6f97de-2c5f-4045-bcc3-817f304522c8', '5f322abd-e2ba-4eac-8e27-842c3c5a0da1', 'e318c9a7-5583-4a2a-b91c-2bdbf890560e', '6840b797-869e-42e3-8b8c-77e2b4b9432f');
@@ -5199,7 +5199,7 @@ COMMIT;
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
 -- -- cik 1397187  survivor f59bec55-21b9-4148-bcf4-7cff297c0716 'Lululemon' (ticker=LULU, cik=1397187)
 -- --   retire 2741654b-7944-4640-b59a-fb8f37c83c32 'Lululemon Athletica Inc' (ticker=None, cik=None, children=12)
--- --   retire 8905db8b-a266-4b14-993c-f546703a08e6 'lululemon athletica inc.' (ticker=None, cik=None, children=6)
+-- --   retire 8905db8b-a266-4b14-993c-f546703a08e6 'lululemon athletica inc.' (ticker=None, cik=None, children=2)
 -- --   retire af58f08b-15e2-4be5-b785-751d98237ad6 'lululemon athletica' (ticker=LULU, cik=1397187, children=2)
 -- BEGIN;
 -- UPDATE aliases SET canonical_id = 'f59bec55-21b9-4148-bcf4-7cff297c0716' WHERE canonical_id IN ('2741654b-7944-4640-b59a-fb8f37c83c32', '8905db8b-a266-4b14-993c-f546703a08e6', 'af58f08b-15e2-4be5-b785-751d98237ad6');
@@ -5236,7 +5236,7 @@ COMMIT;
 -- --   retire baafb0a4-434f-4450-8d3a-2c8c0cfe66ee 'Warner Bros.' (ticker=WBD, cik=1437107, children=1)
 -- --   retire aaaa5d14-ec39-419a-a5f8-b60a42fbb967 'Warner Bros' (ticker=WBD, cik=1437107, children=1)
 -- --   retire 726d3f0f-b6ee-4e8c-b0be-1a037abeb38e 'Warner Bros. Discovery' (ticker=WBD, cik=1437107, children=8)
--- --   retire 56d5ee2a-c997-425e-84d2-9fccfd43591f 'Cove' (ticker=WBD, cik=1437107, children=2)
+-- --   retire 56d5ee2a-c997-425e-84d2-9fccfd43591f 'Cove' (ticker=WBD, cik=1437107, children=1)
 -- BEGIN;
 -- UPDATE aliases SET canonical_id = '1a04e17e-f927-4bbb-9e43-82c8a29962e6' WHERE canonical_id IN ('48aef457-be19-4abe-b7b2-255a6568cb26', 'b5a503c0-e365-42a4-ad80-07da6fc49d04', 'baafb0a4-434f-4450-8d3a-2c8c0cfe66ee', 'aaaa5d14-ec39-419a-a5f8-b60a42fbb967', '726d3f0f-b6ee-4e8c-b0be-1a037abeb38e', '56d5ee2a-c997-425e-84d2-9fccfd43591f');
 -- UPDATE company_mentions SET company_id = '1a04e17e-f927-4bbb-9e43-82c8a29962e6' WHERE company_id IN ('48aef457-be19-4abe-b7b2-255a6568cb26', 'b5a503c0-e365-42a4-ad80-07da6fc49d04', 'baafb0a4-434f-4450-8d3a-2c8c0cfe66ee', 'aaaa5d14-ec39-419a-a5f8-b60a42fbb967', '726d3f0f-b6ee-4e8c-b0be-1a037abeb38e', '56d5ee2a-c997-425e-84d2-9fccfd43591f');
@@ -5406,7 +5406,7 @@ COMMIT;
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
 -- -- cik 1590364  survivor 03385548-dd21-43e7-86e5-c8a854699311 'Fortress' (ticker=FTAI, cik=1590364)
 -- --   retire 694114cc-85be-4be3-8b3c-5da35e613d00 'FTAI Aviation Ltd.' (ticker=None, cik=None, children=2)
--- --   retire 81296b17-b420-4af9-a513-56c1fa25d16d 'FTAI Aviation Ltd' (ticker=None, cik=None, children=2)
+-- --   retire 81296b17-b420-4af9-a513-56c1fa25d16d 'FTAI Aviation Ltd' (ticker=None, cik=None, children=5)
 -- --   retire a4e7d55a-8f9a-428f-a10d-246716d5da6f 'FTAI Aviation' (ticker=FTAI, cik=1590364, children=1)
 -- BEGIN;
 -- UPDATE aliases SET canonical_id = '03385548-dd21-43e7-86e5-c8a854699311' WHERE canonical_id IN ('694114cc-85be-4be3-8b3c-5da35e613d00', '81296b17-b420-4af9-a513-56c1fa25d16d', 'a4e7d55a-8f9a-428f-a10d-246716d5da6f');
@@ -5438,9 +5438,9 @@ COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
 -- -- cik 1628171  survivor 701c6b05-8e7e-487c-bb7f-5d590ba7a1c4 'Revolut' (ticker=RVMD, cik=1628171)
--- --   retire 55a6ce74-e34f-4fa4-9cca-52b725b6ccf8 'Revolution Medicines Inc.' (ticker=None, cik=None, children=3)
+-- --   retire 55a6ce74-e34f-4fa4-9cca-52b725b6ccf8 'Revolution Medicines Inc.' (ticker=None, cik=None, children=2)
 -- --   retire d99e526f-da24-4a6c-bfd6-d2abe302a1d9 'Revolution Medicines' (ticker=None, cik=None, children=2)
--- --   retire 68385e0b-5d0c-4ad6-a3da-8dc29f15af82 'Revolut Ltd.' (ticker=RVMD, cik=1628171, children=2)
+-- --   retire 68385e0b-5d0c-4ad6-a3da-8dc29f15af82 'Revolut Ltd.' (ticker=RVMD, cik=1628171, children=1)
 -- BEGIN;
 -- UPDATE aliases SET canonical_id = '701c6b05-8e7e-487c-bb7f-5d590ba7a1c4' WHERE canonical_id IN ('55a6ce74-e34f-4fa4-9cca-52b725b6ccf8', 'd99e526f-da24-4a6c-bfd6-d2abe302a1d9', '68385e0b-5d0c-4ad6-a3da-8dc29f15af82');
 -- UPDATE company_mentions SET company_id = '701c6b05-8e7e-487c-bb7f-5d590ba7a1c4' WHERE company_id IN ('55a6ce74-e34f-4fa4-9cca-52b725b6ccf8', 'd99e526f-da24-4a6c-bfd6-d2abe302a1d9', '68385e0b-5d0c-4ad6-a3da-8dc29f15af82');
@@ -5455,7 +5455,7 @@ COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
 -- -- cik 1633978  survivor 5efc25a5-c24b-44d4-af75-d15a021d8383 'Lumentum' (ticker=LITE, cik=1633978)
--- --   retire 5e3a13d3-0ae6-4d91-8497-56164ddb49fa 'Lumentum Holdings' (ticker=None, cik=None, children=2)
+-- --   retire 5e3a13d3-0ae6-4d91-8497-56164ddb49fa 'Lumentum Holdings' (ticker=None, cik=None, children=7)
 -- --   retire f8e05347-e18f-434a-8999-18ba47d7c7d9 'Lumentum Holdings Inc' (ticker=None, cik=None, children=2)
 -- --   retire 63c86e9c-96df-45d4-8002-a7518e487622 'Lumentum Holdings Inc.' (ticker=LITE, cik=1633978, children=3)
 -- BEGIN;
@@ -5538,7 +5538,7 @@ COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
 -- -- cik 1713445  survivor 0fc243ae-9c8a-4f34-b978-7efa987db836 'Reddit' (ticker=RDDT, cik=1713445)
--- --   retire 65e5a22a-8d84-4dd2-a412-93416febdd60 'Reddit Inc.' (ticker=None, cik=None, children=9)
+-- --   retire 65e5a22a-8d84-4dd2-a412-93416febdd60 'Reddit Inc.' (ticker=None, cik=None, children=2)
 -- --   retire a864ad2b-1469-412b-b79e-e28f71a2f142 'Reddit Inc' (ticker=RDDT, cik=1713445, children=1)
 -- --   retire 3327a342-621e-4ad5-97a8-f379aac96619 'Reddit, Inc.' (ticker=RDDT, cik=1713445, children=9)
 -- BEGIN;
@@ -5604,19 +5604,19 @@ COMMIT;
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
--- -- cik 1759509  survivor c7ebfb5b-7c4b-4525-8096-1554fda72495 'Lyft' (ticker=LYFT, cik=1759509)
+-- -- cik 1759509  survivor 2f9ebdaf-68d8-4b8f-9725-938b7b47caf4 'Lyft Inc.' (ticker=LYFT, cik=1759509)
 -- --   retire bbc15345-9db0-42c0-a964-9b08b13c0594 'Lyft, Inc.' (ticker=None, cik=None, children=2)
--- --   retire 2f9ebdaf-68d8-4b8f-9725-938b7b47caf4 'Lyft Inc.' (ticker=LYFT, cik=1759509, children=4)
+-- --   retire c7ebfb5b-7c4b-4525-8096-1554fda72495 'Lyft' (ticker=LYFT, cik=1759509, children=2)
 -- BEGIN;
--- UPDATE aliases SET canonical_id = 'c7ebfb5b-7c4b-4525-8096-1554fda72495' WHERE canonical_id IN ('bbc15345-9db0-42c0-a964-9b08b13c0594', '2f9ebdaf-68d8-4b8f-9725-938b7b47caf4');
--- UPDATE company_mentions SET company_id = 'c7ebfb5b-7c4b-4525-8096-1554fda72495' WHERE company_id IN ('bbc15345-9db0-42c0-a964-9b08b13c0594', '2f9ebdaf-68d8-4b8f-9725-938b7b47caf4');
--- UPDATE financial_facts SET company_id = 'c7ebfb5b-7c4b-4525-8096-1554fda72495' WHERE company_id IN ('bbc15345-9db0-42c0-a964-9b08b13c0594', '2f9ebdaf-68d8-4b8f-9725-938b7b47caf4');
--- UPDATE insider_transactions SET company_id = 'c7ebfb5b-7c4b-4525-8096-1554fda72495' WHERE company_id IN ('bbc15345-9db0-42c0-a964-9b08b13c0594', '2f9ebdaf-68d8-4b8f-9725-938b7b47caf4');
--- UPDATE resolution_log SET resolved_canonical_id = 'c7ebfb5b-7c4b-4525-8096-1554fda72495' WHERE resolved_canonical_id IN ('bbc15345-9db0-42c0-a964-9b08b13c0594', '2f9ebdaf-68d8-4b8f-9725-938b7b47caf4');
--- UPDATE sec_filings SET company_id = 'c7ebfb5b-7c4b-4525-8096-1554fda72495' WHERE company_id IN ('bbc15345-9db0-42c0-a964-9b08b13c0594', '2f9ebdaf-68d8-4b8f-9725-938b7b47caf4');
--- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('bbc15345-9db0-42c0-a964-9b08b13c0594', '2f9ebdaf-68d8-4b8f-9725-938b7b47caf4')),0) WHERE id = 'c7ebfb5b-7c4b-4525-8096-1554fda72495';
--- UPDATE companies SET ticker = COALESCE(ticker, 'LYFT'), sec_cik = COALESCE(sec_cik, 1759509) WHERE id = 'c7ebfb5b-7c4b-4525-8096-1554fda72495';
--- DELETE FROM companies WHERE id IN ('bbc15345-9db0-42c0-a964-9b08b13c0594', '2f9ebdaf-68d8-4b8f-9725-938b7b47caf4');
+-- UPDATE aliases SET canonical_id = '2f9ebdaf-68d8-4b8f-9725-938b7b47caf4' WHERE canonical_id IN ('bbc15345-9db0-42c0-a964-9b08b13c0594', 'c7ebfb5b-7c4b-4525-8096-1554fda72495');
+-- UPDATE company_mentions SET company_id = '2f9ebdaf-68d8-4b8f-9725-938b7b47caf4' WHERE company_id IN ('bbc15345-9db0-42c0-a964-9b08b13c0594', 'c7ebfb5b-7c4b-4525-8096-1554fda72495');
+-- UPDATE financial_facts SET company_id = '2f9ebdaf-68d8-4b8f-9725-938b7b47caf4' WHERE company_id IN ('bbc15345-9db0-42c0-a964-9b08b13c0594', 'c7ebfb5b-7c4b-4525-8096-1554fda72495');
+-- UPDATE insider_transactions SET company_id = '2f9ebdaf-68d8-4b8f-9725-938b7b47caf4' WHERE company_id IN ('bbc15345-9db0-42c0-a964-9b08b13c0594', 'c7ebfb5b-7c4b-4525-8096-1554fda72495');
+-- UPDATE resolution_log SET resolved_canonical_id = '2f9ebdaf-68d8-4b8f-9725-938b7b47caf4' WHERE resolved_canonical_id IN ('bbc15345-9db0-42c0-a964-9b08b13c0594', 'c7ebfb5b-7c4b-4525-8096-1554fda72495');
+-- UPDATE sec_filings SET company_id = '2f9ebdaf-68d8-4b8f-9725-938b7b47caf4' WHERE company_id IN ('bbc15345-9db0-42c0-a964-9b08b13c0594', 'c7ebfb5b-7c4b-4525-8096-1554fda72495');
+-- UPDATE companies SET mention_count = COALESCE(mention_count,0) + COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ('bbc15345-9db0-42c0-a964-9b08b13c0594', 'c7ebfb5b-7c4b-4525-8096-1554fda72495')),0) WHERE id = '2f9ebdaf-68d8-4b8f-9725-938b7b47caf4';
+-- UPDATE companies SET ticker = COALESCE(ticker, 'LYFT'), sec_cik = COALESCE(sec_cik, 1759509) WHERE id = '2f9ebdaf-68d8-4b8f-9725-938b7b47caf4';
+-- DELETE FROM companies WHERE id IN ('bbc15345-9db0-42c0-a964-9b08b13c0594', 'c7ebfb5b-7c4b-4525-8096-1554fda72495');
 -- COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
@@ -5654,7 +5654,7 @@ COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
 -- -- cik 1834584  survivor 22ca0ef9-eddd-4b99-b70e-dcd35ce8861f 'Coupang' (ticker=CPNG, cik=1834584)
--- --   retire 6e94a6be-e48a-4087-9dc0-01fa232cd548 'Coupang, Inc.' (ticker=None, cik=None, children=6)
+-- --   retire 6e94a6be-e48a-4087-9dc0-01fa232cd548 'Coupang, Inc.' (ticker=None, cik=None, children=2)
 -- --   retire ef240a08-b77c-4248-ba7d-a7f48c8db006 'Coupang Inc' (ticker=None, cik=None, children=2)
 -- --   retire f4bf44ab-3044-4051-99ef-a0aa2bd0fa9b 'Coupang Inc.' (ticker=CPNG, cik=1834584, children=1)
 -- BEGIN;
@@ -5740,7 +5740,7 @@ COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
 -- -- cik 1932393  survivor 07a1b8b8-0bc3-4f12-b33a-ab25a5b6da05 'GE HealthCare' (ticker=GEHC, cik=1932393)
--- --   retire 5c378f38-5e09-46cc-9a7a-70f684772ecf 'GE Healthcare Technologies Inc' (ticker=None, cik=None, children=3)
+-- --   retire 5c378f38-5e09-46cc-9a7a-70f684772ecf 'GE Healthcare Technologies Inc' (ticker=None, cik=None, children=2)
 -- --   retire a18fea77-6dc7-42e0-98a9-c155b3a8eec7 'GE HealthCare Technologies' (ticker=None, cik=None, children=1)
 -- --   retire b95ae9ac-5884-41b1-8fc6-a34917de0e8c 'GE HealthCare Technologies Inc.' (ticker=None, cik=None, children=1)
 -- --   retire e64c8a5f-9496-46eb-867c-06cd92a72041 'GE Healthcare' (ticker=GEHC, cik=1932393, children=1)
@@ -5759,7 +5759,7 @@ COMMIT;
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
 -- -- cik 1969302  survivor 1e912c24-c0d2-46d6-a675-cf5a86890c2f 'Pony AI' (ticker=PONY, cik=1969302)
 -- --   retire 318e049a-23d4-402f-bdcd-7700cb7992af 'Pony.ai' (ticker=None, cik=None, children=3)
--- --   retire 6105d8f5-1a43-468f-8437-5f8462600241 'Pony AI Inc.' (ticker=PONY, cik=1969302, children=8)
+-- --   retire 6105d8f5-1a43-468f-8437-5f8462600241 'Pony AI Inc.' (ticker=PONY, cik=1969302, children=1)
 -- BEGIN;
 -- UPDATE aliases SET canonical_id = '1e912c24-c0d2-46d6-a675-cf5a86890c2f' WHERE canonical_id IN ('318e049a-23d4-402f-bdcd-7700cb7992af', '6105d8f5-1a43-468f-8437-5f8462600241');
 -- UPDATE company_mentions SET company_id = '1e912c24-c0d2-46d6-a675-cf5a86890c2f' WHERE company_id IN ('318e049a-23d4-402f-bdcd-7700cb7992af', '6105d8f5-1a43-468f-8437-5f8462600241');
@@ -5810,7 +5810,7 @@ COMMIT;
 -- 
 -- REVIEW (two or more already-populated rows (pop-vs-pop)): do not auto-run; human picks the survivor.
 -- -- cik 2052959  survivor 06aef3bc-7bdb-477d-9dbf-aa9e0fe397b8 'Lionsgate Studios Corp.' (ticker=LION, cik=2052959)
--- --   retire 83f8c040-069a-49d7-86e2-2115afcfe1cb 'Lionsgate Studios' (ticker=None, cik=None, children=2)
+-- --   retire 83f8c040-069a-49d7-86e2-2115afcfe1cb 'Lionsgate Studios' (ticker=None, cik=None, children=22)
 -- --   retire e8d8f260-7e3d-446b-bd19-8ad4c4f7905a 'Lionsgate' (ticker=LION, cik=2052959, children=1)
 -- BEGIN;
 -- UPDATE aliases SET canonical_id = '06aef3bc-7bdb-477d-9dbf-aa9e0fe397b8' WHERE canonical_id IN ('83f8c040-069a-49d7-86e2-2115afcfe1cb', 'e8d8f260-7e3d-446b-bd19-8ad4c4f7905a');
