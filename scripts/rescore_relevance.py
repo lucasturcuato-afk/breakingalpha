@@ -97,19 +97,26 @@ _FLASH_PRICE_IN_PER_M = 0.30
 _FLASH_PRICE_OUT_PER_M = 2.50
 
 
-def _fetch_scope_rows(supabase, cutoff_iso: str) -> list[dict]:
+def _fetch_scope_rows(supabase, cutoff_iso: str, min_score: float | None = None) -> list[dict]:
     """All in-window rows with the fields the grader needs + current score.
 
     Paginates because PostgREST caps a single response (default 1000). SELECT
-    only - never mutates."""
+    only - never mutates. When min_score is set, narrows the window to rows whose
+    current relevance_score is at or above it (used to target un-rescored rows
+    that still carry saturated legacy scores)."""
     rows: list[dict] = []
     page = 0
     page_size = 1000
     while True:
-        resp = (
+        query = (
             supabase.table("articles")
             .select("id, title, source, summary, relevance_score")
             .gte("ingested_at", cutoff_iso)
+        )
+        if min_score is not None:
+            query = query.gte("relevance_score", min_score)
+        resp = (
+            query
             .order("id")
             .range(page * page_size, page * page_size + page_size - 1)
             .execute()
@@ -252,7 +259,7 @@ def run_dry(args) -> int:
 
     # 1) Pure-SQL scope: full count + BEFORE distribution. No Gemini.
     print(f"[rescore] fetching scope rows ingested >= {cutoff} ({args.days}d window)...")
-    rows = _fetch_scope_rows(supabase, cutoff)
+    rows = _fetch_scope_rows(supabase, cutoff, args.min_score)
     before = _before_distribution(rows)
     print(f"[rescore] full scope: {before['n']} rows")
     print(f"[rescore] BEFORE distribution (full scope): {before}")
@@ -321,7 +328,7 @@ def run_write(args) -> int:
     cutoff = _window_cutoff_iso(args.days)
     import ingest  # noqa: E402
 
-    rows = _fetch_scope_rows(supabase, cutoff)
+    rows = _fetch_scope_rows(supabase, cutoff, args.min_score)
     print(f"[rescore:write] re-grading + updating {len(rows)} rows ({args.days}d window)...")
     ingest._reset_filter_usage()
     graded = _grade_rows_parallel(ingest, rows, args.workers)
@@ -354,6 +361,7 @@ def main() -> int:
     mode.add_argument("--dry-run", action="store_true", help="read + re-grade a sample + report; writes nothing (DEFAULT)")
     mode.add_argument("--write", action="store_true", help="apply the UPDATEs (must be explicit)")
     p.add_argument("--days", type=int, default=7, help="window: rows ingested in the last N days (default 7)")
+    p.add_argument("--min-score", type=float, default=None, help="narrow the window to rows with relevance_score >= this value (default: no filter; targets un-rescored rows still carrying saturated legacy scores)")
     p.add_argument("--sample", type=int, default=200, help="dry-run: rows to live-grade for the after-dist + cost (default 200)")
     p.add_argument("--workers", type=int, default=int(os.getenv("FILTER_PARALLEL_WORKERS", "50")), help="parallel grader workers (default FILTER_PARALLEL_WORKERS=50)")
     p.add_argument("--seed", type=int, default=1729, help="random seed for the dry-run sample")
