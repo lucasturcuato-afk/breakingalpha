@@ -147,6 +147,14 @@ export default async function CompanyDetailPage({
   // Primer sections render as neutral factual empty states.
   const identity = COMPANY_IDENTITY[canonical] ?? null;
 
+  // Web-memo affordance is OFF by default. It renders only when
+  // NEXT_PUBLIC_WEB_FALLBACK_ENABLED is explicitly "true" (same flag the
+  // web-fallback route and the /api/memo company-web branch already gate on,
+  // both default-off via !== "true"). Absent the env override the affordance is
+  // not shown and POST /api/companies/web-fallback is never invoked from the UI.
+  // PrimerWebMemo and the route stay in place, dormant.
+  const webMemoEnabled = process.env.NEXT_PUBLIC_WEB_FALLBACK_ENABLED === "true";
+
   const tabContent = {
     // Coverage Primer: replaces the brief tab in place. Snapshot + Business
     // overview + Financial snapshot, then the existing BriefTab embedded
@@ -165,7 +173,10 @@ export default async function CompanyDetailPage({
           // cannot fire a corpus brief against zero articles. Coverage exists ->
           // ONLY the corpus BriefTab, unchanged.
           developmentArticles.length === 0 && contextArticles.length === 0 ? (
-            <PrimerWebMemo company={companyDetail.display} />
+            // No coverage: web-memo card ONLY when the flag is on; otherwise
+            // render nothing here (BriefTab stays unmounted so its Generate
+            // Brief CTA cannot fire a corpus brief against zero articles).
+            webMemoEnabled ? <PrimerWebMemo company={companyDetail.display} /> : null
           ) : (
             <BriefTab company={canonical} content={memoContent} systemPrompt={systemPrompt} />
           )
