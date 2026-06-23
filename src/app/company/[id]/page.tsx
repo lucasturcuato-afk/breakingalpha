@@ -176,7 +176,9 @@ export default async function CompanyDetailPage({
             // No coverage: web-memo card ONLY when the flag is on; otherwise
             // render nothing here (BriefTab stays unmounted so its Generate
             // Brief CTA cannot fire a corpus brief against zero articles).
-            webMemoEnabled ? <PrimerWebMemo company={companyDetail.display} /> : null
+            webMemoEnabled ? (
+              <PrimerWebMemo company={companyDetail.display} ticker={companyDetail.ticker} />
+            ) : null
           ) : (
             <BriefTab company={canonical} content={memoContent} systemPrompt={systemPrompt} />
           )

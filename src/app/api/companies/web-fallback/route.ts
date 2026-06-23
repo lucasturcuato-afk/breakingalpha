@@ -16,13 +16,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { searchWeb, type SearchResult } from "@/lib/web-search";
+import { classifyWebResults, isThinPool } from "@/lib/web-memo-entity";
 import { normalizeFromResults } from "./normalize";
 
 export const dynamic = "force-dynamic";
 
 export interface WebFallbackResponse {
+  /** On-entity results only: subject material for the memo. */
   results: SearchResult[];
+  /** Off-entity results that share a token with the subject (different
+   * companies). Passed for labeled context; never cited as a development. */
+  sectorContext: SearchResult[];
   canonicalName: string;
+  /** Count of results that actually refer to the subject after filtering. */
+  onEntityCount: number;
+  /** True when there are too few on-entity results for a reliable brief. */
+  thin: boolean;
 }
 
 /**
@@ -74,7 +83,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  let body: { query?: string };
+  let body: { query?: string; ticker?: string };
   try {
     body = await request.json();
   } catch {
@@ -117,9 +126,25 @@ export async function POST(request: NextRequest) {
   // not what the user mistyped.
   const canonicalName = normalizeFromResults(query, results, heuristicGuess);
 
-  const payload: WebFallbackResponse = {
+  // Entity-contamination filter (eval PR #415, Mode 1): partition the pool into
+  // rows that are actually about the subject vs rows that merely share a token
+  // (e.g. "Shore Bancshares" / "North Shore Bank" in a "Lake Shore Bancorp"
+  // search). Only on-entity rows become memo subject material; the rest are
+  // labeled sector context and never attributed to the subject.
+  const ticker = typeof body.ticker === "string" ? body.ticker.trim() : null;
+  const { onEntity, sectorContext } = classifyWebResults(
+    { canonical: canonicalName, ticker },
     results,
+  );
+
+  const payload: WebFallbackResponse = {
+    results: onEntity,
+    sectorContext,
     canonicalName,
+    onEntityCount: onEntity.length,
+    // Thin-pool gate (Mode 2): too few on-entity results to ground a confident
+    // brief. The client renders an explicit thin-coverage state instead.
+    thin: isThinPool(onEntity.length),
   };
   return NextResponse.json(payload);
 }

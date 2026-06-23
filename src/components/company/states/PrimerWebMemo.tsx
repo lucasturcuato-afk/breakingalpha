@@ -34,19 +34,25 @@ interface WebFallbackResult {
 interface Props {
   /** Canonical display name; used as the web-search query and memo title. */
   company: string;
+  /** Ticker, when known (minted on-demand row), used for entity matching. */
+  ticker?: string | null;
 }
 
-export function PrimerWebMemo({ company }: Props) {
+export function PrimerWebMemo({ company, ticker }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState<WebFallbackResult[]>([]);
+  const [sectorContext, setSectorContext] = useState<WebFallbackResult[]>([]);
   const [canonical, setCanonical] = useState("");
   const [memoOpen, setMemoOpen] = useState(false);
+  // True once a generation returned too few on-entity sources for a reliable
+  // brief; we show a thin-coverage state instead of a memo.
+  const [thin, setThin] = useState(false);
 
   const memoContent = useMemo(() => {
     if (!canonical || results.length === 0) return "";
-    return buildWebFallbackMemoContent(canonical, results);
-  }, [canonical, results]);
+    return buildWebFallbackMemoContent(canonical, results, sectorContext);
+  }, [canonical, results, sectorContext]);
   const memoSystemPrompt = useMemo(() => {
     if (!canonical) return "";
     return buildWebFallbackMemoSystemPrompt(canonical, results.length);
@@ -61,7 +67,7 @@ export function PrimerWebMemo({ company }: Props) {
       const res = await fetch("/api/companies/web-fallback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query, ...(ticker ? { ticker } : {}) }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -69,16 +75,26 @@ export function PrimerWebMemo({ company }: Props) {
       }
       const json = (await res.json()) as {
         results?: WebFallbackResult[];
+        sectorContext?: WebFallbackResult[];
         canonicalName?: string;
+        thin?: boolean;
       };
       const found = json.results ?? [];
-      setResults(found);
-      setCanonical(json.canonicalName ?? query);
-      if (found.length === 0) {
-        setError("No web results found for this company yet.");
-      } else {
-        setMemoOpen(true);
+      const name = json.canonicalName ?? query;
+      setCanonical(name);
+      // Thin-pool gate: too few on-entity sources to ground a reliable brief.
+      // Do NOT generate a confident memo on a starved/contaminated pool.
+      if (json.thin || found.length === 0) {
+        setThin(true);
+        setResults([]);
+        setError(
+          `Limited verifiable coverage for ${name}. Not enough on-topic sources for a reliable brief yet.`,
+        );
+        return;
       }
+      setSectorContext(json.sectorContext ?? []);
+      setResults(found);
+      setMemoOpen(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Web search failed");
     } finally {
@@ -98,37 +114,41 @@ export function PrimerWebMemo({ company }: Props) {
             <p className="font-sans text-[13px] font-semibold text-espresso">
               No indexed coverage for {company} yet.
             </p>
-            <p className="font-sans text-[12px] text-text-secondary mt-0.5">
-              Generate a memo from web search?
-            </p>
+            {!thin && (
+              <p className="font-sans text-[12px] text-text-secondary mt-0.5">
+                Generate a memo from web search?
+              </p>
+            )}
             {error && (
               <p className="font-sans text-[11px] text-signal-dn mt-1">{error}</p>
             )}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={results.length > 0 ? () => setMemoOpen(true) : handleGenerate}
-          disabled={loading}
-          className={cn(
-            "flex-shrink-0 ml-4 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg",
-            "font-data text-[10px] font-bold uppercase border cursor-pointer transition-colors",
-            "border-gold/40 bg-white text-gold hover:bg-gold/10",
-            loading && "opacity-60 cursor-wait",
-          )}
-        >
-          {loading ? (
-            <>
-              <Loader2 size={11} className="animate-spin" />
-              Searching
-            </>
-          ) : (
-            <>
-              <Sparkles size={11} />
-              {results.length > 0 ? "View memo" : "Generate"}
-            </>
-          )}
-        </button>
+        {!thin && (
+          <button
+            type="button"
+            onClick={results.length > 0 ? () => setMemoOpen(true) : handleGenerate}
+            disabled={loading}
+            className={cn(
+              "flex-shrink-0 ml-4 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg",
+              "font-data text-[10px] font-bold uppercase border cursor-pointer transition-colors",
+              "border-gold/40 bg-white text-gold hover:bg-gold/10",
+              loading && "opacity-60 cursor-wait",
+            )}
+          >
+            {loading ? (
+              <>
+                <Loader2 size={11} className="animate-spin" />
+                Searching
+              </>
+            ) : (
+              <>
+                <Sparkles size={11} />
+                {results.length > 0 ? "View memo" : "Generate"}
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       {canonical && results.length > 0 && (

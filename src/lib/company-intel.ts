@@ -1405,15 +1405,27 @@ export function formatWebResultsForMemo(results: WebMemoResult[]): string {
 export function buildWebFallbackMemoContent(
   canonicalName: string,
   results: WebMemoResult[],
+  sectorContext: WebMemoResult[] = [],
 ): string {
-  return [
+  const lines = [
     `COMPANY: ${canonicalName}`,
     `MEMO_MODE: web-fallback`,
     `SIGNAL QUALITY: web-grounded (${results.length} sources, last 30 days)`,
     ``,
     `WEB SEARCH RESULTS (${results.length}):`,
     formatWebResultsForMemo(results),
-  ].join("\n");
+  ];
+  // Off-entity results that share a token with the subject are passed as labeled
+  // sector context ONLY. They are not subject material and must never be cited as
+  // a development of ${canonicalName} (see ENTITY DISAMBIGUATION in the prompt).
+  if (sectorContext.length > 0) {
+    lines.push(
+      ``,
+      `SECTOR CONTEXT (different companies; do NOT attribute to ${canonicalName}, do NOT cite as its developments):`,
+      formatWebResultsForMemo(sectorContext),
+    );
+  }
+  return lines.join("\n");
 }
 
 /**
@@ -1438,7 +1450,7 @@ export function buildWebFallbackMemoSystemPrompt(
 
 Your output will be read by finance students, junior analysts, and early-career professionals developing genuine market intuition. Every sentence must teach them something they could not have gotten from reading the headline themselves.
 
-ENTITY DISAMBIGUATION: These results are about ${canonicalName}. Treat all naming variants in the result titles ("${canonicalName}", "${canonicalName} Inc", "${canonicalName}.ai", or any obvious capitalization or suffix variant) as one entity. Do not split coverage across naming variants. Do not assume distinct entities unless a title explicitly contradicts that ${canonicalName} is the subject.
+ENTITY DISAMBIGUATION: These results are about ${canonicalName}. Treat ONLY true suffix or capitalization variants of "${canonicalName}" as the same entity: a legal-suffix variant ("${canonicalName} Inc", "${canonicalName} Corp", "${canonicalName}.ai"), or a pure casing change. Do NOT merge a result just because it shares a common token with "${canonicalName}". Companies that share a word like "Shore", "National", "First", "Lake", or "United" but differ in the rest of the name are DIFFERENT entities (e.g. "Lake Shore Bancorp" is not "Shore Bancshares" or "North Shore Bank"). If a result's company name is not "${canonicalName}" up to a legal suffix or casing, it is a different company: do not attribute its events, figures, or executives to ${canonicalName}, and treat it as sector context at most.
 
 SOURCING DISCIPLINE (apply without exception):
 This memo is web-grounded, not article-grounded. Every specific figure, statistic, named event, percentage, dollar amount, and precise claim in the memo must be directly traceable to one of the WEB SEARCH RESULTS provided below, and must be marked with a bracketed citation pointing to the result number, e.g. "[3]". Citations attach to the end of the sentence containing the claim. If a claim draws from two results, cite both: "[2][5]". Do not supplement with training knowledge. Do not add figures, valuations, growth rates, timelines, or named events that do not appear explicitly in the provided results. If a figure or claim is not present in the provided results, omit it entirely. Implications and analytical framing drawn from cited facts are permitted (and do not need a citation themselves) -- invented figures are not. A memo with fewer specific claims that are all sourced and cited is better than a memo with more claims that blend result content with model knowledge. When in doubt, omit. Before including any specific figure (percentage, dollar amount, ratio, multiplier), internally verify: does this exact figure appear in one of the WEB SEARCH RESULTS provided? If you cannot point to the specific result number where this figure appears, omit it. Only figures explicitly present in the provided result pool are permitted. If a company, statistic, or claim does not appear in the provided result titles or summaries, it does not exist for the purposes of this memo. Do not include any company, startup, competitor, or named entity that is not explicitly mentioned in the provided results.
