@@ -564,6 +564,79 @@ class BreadthPreferenceTests(unittest.TestCase):
             "duration", f))
 
 
+class ForeignFilerFormTests(unittest.TestCase):
+    """Foreign large-caps (ASML, Arm, Alibaba, Spotify, NIO, Orix) file their
+    annual report as a 20-F (or 40-F for Canadian MJDS filers), NOT a 10-K,
+    but expose the same us-gaap companyfacts. Those forms must be accepted and
+    handled exactly like a 10-K; the furnished interim 6-K stays excluded."""
+
+    @staticmethod
+    def _annual_form(val, year, accn, form):
+        return _raw(val, f"{year}-12-31", accn, start=f"{year}-01-01",
+                    fy=year, fp="FY", form=form, filed=f"{year + 1}-02-15")
+
+    def test_20f_facts_are_extracted_and_labeled_like_a_10k(self):
+        # ASML-shaped: every periodic report is a 20-F.
+        cf = _company_facts({
+            "Revenues": {"units": {"USD": [
+                self._annual_form(28_000, 2023, "acc-23", "20-F"),
+                self._annual_form(30_000, 2024, "acc-24", "20-F"),
+            ]}},
+            "Assets": {"units": {"USD": [
+                _raw(40_000, "2024-12-31", "acc-24", fy=2024, fp="FY",
+                     form="20-F", filed="2025-02-15"),
+            ]}},
+        })
+        facts = extract_financial_facts(123, cf)
+        rev = {f["period_end"]: f for f in facts if f["metric_key"] == "revenue"}
+        self.assertEqual(set(rev), {"2023-12-31", "2024-12-31"})
+        # annual span + fp=FY anchor => labeled FY, identical to a 10-K
+        self.assertEqual(
+            (rev["2024-12-31"]["fiscal_year"], rev["2024-12-31"]["fiscal_period"]),
+            (2024, "FY"))
+        (assets,) = [f for f in facts if f["metric_key"] == "total_assets"]
+        self.assertEqual(assets["period_type"], "instant")
+        self.assertEqual((assets["fiscal_year"], assets["fiscal_period"]),
+                         (2024, "FY"))
+
+    def test_40f_facts_are_extracted(self):
+        cf = _company_facts({
+            "Revenues": {"units": {"USD": [
+                self._annual_form(5_000, 2024, "acc-24", "40-F"),
+            ]}},
+        })
+        (rev,) = [f for f in extract_financial_facts(123, cf)
+                  if f["metric_key"] == "revenue"]
+        self.assertEqual((rev["fiscal_year"], rev["fiscal_period"]), (2024, "FY"))
+
+    def test_20fa_restatement_is_kept(self):
+        # parity with 10-K/A: an amended 20-F restatement must survive
+        # accession-keyed alongside the original (ASML carries real 20-F/A).
+        cf = _company_facts({
+            "NetIncomeLoss": {"units": {"USD": [
+                _raw(1_000, "2024-12-31", "acc-orig", start="2024-01-01",
+                     fy=2024, fp="FY", form="20-F", filed="2025-02-15"),
+                _raw(900, "2024-12-31", "acc-amend", start="2024-01-01",
+                     fy=2024, fp="FY", form="20-F/A", filed="2025-06-01"),
+            ]}},
+        })
+        facts = extract_financial_facts(123, cf)
+        ni = [f for f in facts if f["metric_key"] == "net_income"]
+        self.assertEqual(len(ni), 2)
+        self.assertEqual(sorted(f["value"] for f in ni), [900, 1_000])
+        (rest,) = detect_restatements(facts)
+        self.assertEqual([v["value"] for v in rest["values"]], [1_000, 900])
+
+    def test_six_k_interim_still_excluded(self):
+        # 6-K is furnished and inconsistently tagged (like 8-K): not trusted.
+        cf = _company_facts({
+            "Assets": {"units": {"USD": [
+                _raw(40_000, "2024-12-31", "acc-6k", form="6-K"),
+            ]}},
+        })
+        self.assertEqual(extract_financial_facts(123, cf), [])
+
+
 class RestatementHookTests(unittest.TestCase):
     def test_restatement_detected_across_accessions(self):
         cf = _company_facts({
