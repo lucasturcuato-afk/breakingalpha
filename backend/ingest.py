@@ -85,6 +85,17 @@ RELEVANCE_GRADE_MODE = os.environ.get("RELEVANCE_GRADE_MODE", "shadow").strip().
 # measured 0% hit rate). thinking_budget=0 keeps the cost/latency delta small.
 RELEVANCE_GRADE_MODEL = os.environ.get("RELEVANCE_GRADE_MODEL", "gemini-2.5-flash").strip()
 
+# Cost lever, default OFF so production is unchanged on merge. When
+# RELEVANCE_GRADE_LITE is true, the relevance grade call uses Flash-Lite instead
+# of RELEVANCE_GRADE_MODEL (Flash). The flag stays off until an offline Flash vs
+# Flash-Lite quality comparison clears the decision boundaries. With the flag
+# off, RELEVANCE_GRADE_EFFECTIVE_MODEL equals RELEVANCE_GRADE_MODEL, so the grade
+# call is byte-identical to today. Nothing is wired into schedule.yml.
+RELEVANCE_GRADE_LITE = os.environ.get("RELEVANCE_GRADE_LITE", "false").strip().lower() == "true"
+RELEVANCE_GRADE_EFFECTIVE_MODEL = (
+    "gemini-2.5-flash-lite" if RELEVANCE_GRADE_LITE else RELEVANCE_GRADE_MODEL
+)
+
 # Ingest gate UNDER `new` MODE ONLY. Data-derived from the offline distribution
 # (docs/recon/relevance-recalibration.md): the new grader's own bands map tightly
 # to score ranges -- material_first_order -> 9-10, secondary_partial (analyst
@@ -554,7 +565,7 @@ def grade_relevance(article):
 
     def _call():
         return gemini_client.models.generate_content(
-            model=RELEVANCE_GRADE_MODEL,
+            model=RELEVANCE_GRADE_EFFECTIVE_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.2,
@@ -571,7 +582,7 @@ def grade_relevance(article):
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
                 response = _ex.submit(_call).result(timeout=30)
             _accumulate_filter_usage(response)
-            accumulate_gemini_usage("shadow_grader", RELEVANCE_GRADE_MODEL, response)
+            accumulate_gemini_usage("shadow_grader", RELEVANCE_GRADE_EFFECTIVE_MODEL, response)
             text = (response.text or "").strip()
             if text.startswith("```"):
                 text = text.split("```")[1]
