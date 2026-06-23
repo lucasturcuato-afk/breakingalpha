@@ -160,12 +160,15 @@ export default async function CompanyDetailPage({
         description={identity?.brief ?? null}
         financials={financialsResult}
         briefSlot={
-          <>
-            {developmentArticles.length === 0 && contextArticles.length === 0 && (
-              <PrimerWebMemo company={companyDetail.display} />
-            )}
+          // Mutually exclusive, never stacked. No article coverage -> ONLY the
+          // web-memo card; BriefTab is not mounted, so its "Generate Brief" CTA
+          // cannot fire a corpus brief against zero articles. Coverage exists ->
+          // ONLY the corpus BriefTab, unchanged.
+          developmentArticles.length === 0 && contextArticles.length === 0 ? (
+            <PrimerWebMemo company={companyDetail.display} />
+          ) : (
             <BriefTab company={canonical} content={memoContent} systemPrompt={systemPrompt} />
-          </>
+          )
         }
       />
     ),
