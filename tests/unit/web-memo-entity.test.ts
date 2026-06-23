@@ -7,6 +7,8 @@ import {
   classifyWebResults,
   isThinPool,
   verifyMemoCitations,
+  enforceMemoCitations,
+  parseWebResultsFromContent,
   THIN_POOL_MIN_ON_ENTITY,
   type WebResultLike,
 } from "../../src/lib/web-memo-entity.ts";
@@ -101,4 +103,48 @@ test("citation check flags a figure absent from its cited result", () => {
   // Sentence whose figure IS in its cited result is not flagged.
   const good = "An insider exercised options on 1,028 shares [2].";
   assert.equal(verifyMemoCitations(good, pool).length, 0);
+});
+
+test("enforcement strips only the unsupported citation, keeps the sentence", () => {
+  const pool = [
+    r("North Shore Bank buying PyraMax Bank owner for around $95 million"), // [1]
+    r("Lake Shore Bancorp LSBK insider option exercise of 1,028 shares"), // [2]
+  ];
+  const memo =
+    "Lake Shore Bancorp is acquiring a competitor for roughly $95 million [2]. " +
+    "An insider exercised options on 1,028 shares [2].";
+  const fixed = enforceMemoCitations(memo, pool);
+  // The $95M is not in [2] -> [2] stripped, but the sentence prose survives.
+  assert.match(fixed, /acquiring a competitor for roughly \$95 million\./);
+  assert.ok(!/\$95 million \[2\]/.test(fixed));
+  // The 1,028-share figure IS in [2] -> that citation is untouched.
+  assert.match(fixed, /1,028 shares \[2\]\./);
+});
+
+test("enforcement keeps a citation that supports one of several figures", () => {
+  const pool = [
+    r("Acme revenue rose to $52.8 million in Q1"), // [1] has 52.8
+    r("Acme appoints a new COO"), // [2] has no figure
+  ];
+  const memo = "Acme revenue rose to $52.8 million [1][2].";
+  const fixed = enforceMemoCitations(memo, pool);
+  assert.match(fixed, /\$52\.8 million \[1\]\./); // [1] kept (supports 52.8)
+  assert.ok(!/\[2\]/.test(fixed)); // [2] stripped (supports nothing)
+});
+
+test("parseWebResultsFromContent reads subject list, excludes SECTOR CONTEXT", () => {
+  const content = [
+    "COMPANY: Acme",
+    "",
+    "WEB SEARCH RESULTS (2):",
+    "[1] Acme reports $10 million (a.com | 2026-06-01) http://a :: acme did things",
+    "[2] Acme grows 20% (b.com) http://b :: acme grew",
+    "",
+    "SECTOR CONTEXT (different companies):",
+    "[1] Gamma unrelated $999 (c.com) http://c :: gamma",
+  ].join("\n");
+  const parsed = parseWebResultsFromContent(content);
+  assert.equal(parsed.length, 2);
+  assert.match(parsed[0].title, /Acme reports \$10 million/);
+  assert.ok(!parsed.some((p) => /Gamma/.test(p.title)));
 });

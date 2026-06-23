@@ -183,3 +183,54 @@ export function verifyMemoCitations(
   }
   return flags;
 }
+
+/**
+ * Reconstruct the numbered subject result pool from the memo PROMPT content
+ * (buildWebFallbackMemoContent output). The memo's [n] citations map to the
+ * "WEB SEARCH RESULTS" list; the SECTOR CONTEXT block (different companies,
+ * never cited) restarts its own numbering, so it is excluded.
+ */
+export function parseWebResultsFromContent(content: string): WebResultLike[] {
+  const subjectPart = content.split(/^SECTOR CONTEXT/m)[0];
+  const byIndex = new Map<number, string>();
+  for (const line of subjectPart.split(/\r?\n/)) {
+    const m = line.match(/^\[(\d+)\]\s+(.*)$/);
+    if (m) byIndex.set(Number(m[1]), m[2]);
+  }
+  const max = byIndex.size === 0 ? 0 : Math.max(...byIndex.keys());
+  const out: WebResultLike[] = [];
+  for (let i = 1; i <= max; i++) {
+    out.push({ url: "", title: byIndex.get(i) ?? "", summary: "", source: "", publishedAt: null });
+  }
+  return out;
+}
+
+/**
+ * Citation enforcement (least-destructive): for each numeric-bearing sentence,
+ * strip ONLY the [n] citations whose cited result contains none of the
+ * sentence's figures, leaving the sentence prose intact. A sentence that loses
+ * its only citation is kept as uncited prose, never deleted. Non-numeric
+ * citations are never touched (the checker can false-positive on rephrased
+ * figures, so it is conservative by design).
+ */
+export function enforceMemoCitations(memo: string, results: readonly WebResultLike[]): string {
+  let out = memo;
+  for (const sentence of splitSentences(memo)) {
+    const citedIndices = [...sentence.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1]));
+    if (citedIndices.length === 0) continue;
+    const figs = figureTokens(sentence.replace(/\[\d+\]/g, ""));
+    if (figs.length === 0) continue;
+    let fixed = sentence;
+    for (const n of citedIndices) {
+      const res = results[n - 1];
+      const resDigits = res ? `${res.title} ${res.summary}`.replace(/[^0-9]/g, "") : "";
+      const supports = figs.some((f) => resDigits.includes(f));
+      if (!supports) fixed = fixed.split(`[${n}]`).join("");
+    }
+    if (fixed !== sentence) {
+      fixed = fixed.replace(/ {2,}/g, " ").replace(/\s+([.,;!?])/g, "$1").trim();
+      out = out.replace(sentence, fixed);
+    }
+  }
+  return out;
+}
