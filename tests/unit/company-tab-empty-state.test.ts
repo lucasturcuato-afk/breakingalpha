@@ -5,8 +5,9 @@
 // cannot load under node:test, so we test the pure copy decision the component
 // renders verbatim -- the same "test the pure decision proves the gate" pattern
 // as require-admin.test.ts. The contract:
-//   hasCik === true  -> data-pending copy, NEVER the words "private" / "pre-IPO"
-//   hasCik === false -> the private / pre-IPO copy
+//   filings:    hasCik true -> data-pending; false -> private / pre-IPO copy
+//   financials: NEUTRAL in both branches, NEVER "private" / "pre-IPO" (a no-CIK
+//               on-demand minted public ticker is not private)
 // A freshly-IPO'd filer (ticker + sec_cik set, no 8-K/10-Q yet, e.g. SpaceX)
 // resolves hasCik === true and must not read as private.
 //
@@ -41,10 +42,10 @@ test("Financials: hasCik renders the pending-report copy, never private/pre-IPO"
   assert.doesNotMatch(copy, PRIVATE);
 });
 
-test("Financials: no CIK still renders the private/pre-IPO copy", () => {
+test("Financials: no CIK renders neutral copy, never private/pre-IPO", () => {
   const copy = financialsEmptyCopy(false);
-  assert.match(copy, PRIVATE);
-  assert.match(copy, /private, pre-IPO/);
+  assert.equal(copy, "SEC fundamentals are not available for this company yet.");
+  assert.doesNotMatch(copy, PRIVATE);
 });
 
 test("edgarFilingsUrl points at the SEC browse-edgar getcompany index", () => {

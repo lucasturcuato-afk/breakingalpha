@@ -8,10 +8,15 @@
 // financials-format.ts split tested by financials-format.test.ts.
 //
 // hasCik = the company resolved to a SEC CIK (a public / EDGAR filer). When
-// true, missing data means "nothing in our coverage yet", NOT "private": the
-// private / pre-IPO label must appear ONLY in the false branch. A freshly-IPO'd
-// filer (e.g. SpaceX, ticker set, sec_cik set, but no 8-K / 10-Q yet) lands on
-// the true branch and must never read as private.
+// true, missing data means "nothing in our coverage yet", NOT "private". A
+// freshly-IPO'd filer (e.g. SpaceX, ticker set, sec_cik set, but no 8-K / 10-Q
+// yet) lands on the true branch and must never read as private.
+//
+// Financials copy stays NEUTRAL in BOTH branches: an on-demand minted public
+// ticker (name + ticker, sec_cik not yet resolved) has cik === null but is not
+// private, so financialsEmptyCopy must not assert private / pre-IPO. The filings
+// false branch still carries the private label (filings coverage is a stronger
+// signal of EDGAR presence); revisit if on-demand mint changes that too.
 
 export function filingsEmptyCopy(hasCik: boolean): string {
   return hasCik
@@ -20,7 +25,10 @@ export function filingsEmptyCopy(hasCik: boolean): string {
 }
 
 export function financialsEmptyCopy(hasCik: boolean): string {
+  // No-CIK branch stays NEUTRAL: an on-demand minted public ticker (name + ticker,
+  // sec_cik not resolved yet) has cik === null but is NOT private. Asserting
+  // "private, pre-IPO, or not an SEC filer" was false for public filers like UNM.
   return hasCik
     ? "Financials appear after the first periodic report."
-    : "Financials not available. This company is private, pre-IPO, or not an SEC filer.";
+    : "SEC fundamentals are not available for this company yet.";
 }
