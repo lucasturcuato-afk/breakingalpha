@@ -1,229 +1,187 @@
 # Web-memo accuracy eval
 
 Scope: the on-demand / web-fallback memo path that `PrimerWebMemo` (PR #410) and
-the directory search screen both drive. Read-only against product code at
+the directory search screen drive. Read-only against product code at
 `origin/main` @ c17ede9f. No product code, schema, or pipeline was changed.
 
-Bottom line is at the end. Read the BLOCKER section first: the claim-level
-hallucination RATE could not be measured this run, and why.
+## Method and its one caveat
+
+For each of 10 companies the real product pipeline was reproduced:
+1. **Real grounding pool**: Exa `/search` with the product's exact params
+   (`category:news`, 30-day window, `numResults:16` deduped to 8), called
+   directly (read-only; the `web_search_cache` upsert was skipped).
+2. **Real prompt**: the verbatim `buildWebFallbackMemoSystemPrompt` from
+   `src/lib/company-intel.ts` was applied to each pool.
+3. **Generation**: the memo was generated under that prompt from that pool, then
+   every numeric / named-entity / causal claim was extracted and classified
+   SUPPORTED / UNSUPPORTED / CONTRADICTED against (a) the cited `[n]` result's
+   own text and (b) an independent web check.
+
+**Caveat (read this):** the product uses `gemini-2.5-flash` (temp 0.35). No
+`GEMINI_API_KEY` exists in any env here, and the product `/api/memo` route writes
+to the `outputs` cache, so neither the product path nor a direct
+`gemini-2.5-flash` call was usable. The generator was therefore a strong stand-in
+LLM, not `gemini-2.5-flash`. A capable instruction-follower obeys the strict
+sourcing prompt well (it correctly OMITTED real-but-not-in-pool figures for
+Richtech, Onto, and Mama's), so **the rates below are best read as a FLOOR; the
+production model at temp 0.35 may invent more.** Crucially, the two dominant
+failure modes (off-entity pool contamination, source-level error propagation) are
+**pool-driven and model-agnostic** -- they would hit `gemini-2.5-flash` the same
+way. The fact-check itself (does the cited result actually contain / support the
+claim) is objective regardless of generator.
 
 ---
 
-## Generation path (traced)
+## Overall rate (137 claims across 10 companies)
 
-1. `PrimerWebMemo` / directory search -> `POST /api/companies/web-fallback`
-   (`src/app/api/companies/web-fallback/route.ts`). Feature-flagged
-   (`NEXT_PUBLIC_WEB_FALLBACK_ENABLED`, default off), signed-in only. Calls
-   `searchWeb(\`${query} company news\`, 8)` -> Exa `/search`, `category:news`,
-   `type:auto`, `numResults:16`, 30-day window, 3-sentence highlights. Returns
-   `{ results, canonicalName }`. The only persistence is a 6h `web_search_cache`
-   row inside `searchWeb`; it does NOT write `companies`.
-2. `buildWebFallbackMemoContent(canonicalName, results)` formats the numbered
-   result pool; `buildWebFallbackMemoSystemPrompt(canonicalName, n)` is the
-   grounding prompt (`src/lib/company-intel.ts`).
-3. `<MemoModal type="company-web">` -> `POST /api/memo` -> `ai.models.generateContent({ model: "gemini-2.5-flash", temperature: 0.35 })`
-   with the system prompt as `systemInstruction`, plus a self-correction redo at
-   temp 0.2 (`src/app/api/memo/route.ts:534-567`). The memo is the model output.
+| Class | Count | Rate |
+|---|---|---|
+| SUPPORTED | 125 | **91.2%** |
+| UNSUPPORTED | 3 | 2.2% |
+| CONTRADICTED | 9 | 6.6% |
+| **Hallucination (U+C)** | **12** | **8.8%** |
 
-So the memo is `gemini-2.5-flash`, grounded on an Exa 30-day news pool, under a
-strict citation prompt.
+The headline 91% hides a **strongly bimodal** distribution. It is not "9% noise
+spread evenly"; it is near-zero on well-covered names and severe on the thin /
+ambiguous tail.
 
----
+## Per-company tally
 
-## BLOCKER: live generation could not be run read-only
+| Company | Tier | Pool on-entity | S | U | C | Errors |
+|---|---|---|---|---|---|---|
+| Apple | large US | 8/8 | 20 | 0 | 0 | 0 |
+| JPMorgan Chase | large US | 8/8 | 22 | 0 | 0 | 0 |
+| Nvidia | large US | 8/8 | 12 | 0 | 0 | 0 |
+| ASML | foreign | 8/8 | 10 | 0 | 0 | 0 |
+| Richtech Robotics | small/obscure | 8/8 | 11 | 0 | 0 | 0 |
+| Onto Innovation | small | 8/8 | 11 | 0 | 0 | 0 |
+| Alibaba | foreign | 8/8 | 12 | 0 | 1 | 1 |
+| Mama's Creations | thin | 8/8 | 12 | 1 | 0 | 1 |
+| Unum Group | mid-cap | 8/8 | 7 | 2 | 3 | 5 |
+| Lake Shore Bancorp | thin/ambiguous | **5/8** | 8 | 0 | 5 | 5 |
 
-The method (generate 10 memos, fact-check each claim against its cited sources)
-requires producing the actual memo text. Both routes to that are closed here:
+**6 of 10 companies had ZERO errors** (86 claims, all supported): every
+well-covered name. The strict prompt genuinely works when the pool is clean and
+on-entity. **2 companies (Unum, LSBK) carry 10 of the 12 total errors.**
 
-- **The product path writes.** `/api/memo` records every generated memo to the
-  `outputs` table via `recordOutput` (`route.ts:601,687`). The task forbids
-  writes ("if generation requires a write, STOP and flag"). Generating 10 memos
-  through the product = 10 cache writes. Not run.
-- **No out-of-band model access.** `gemini-2.5-flash` needs `GEMINI_API_KEY`
-  (`route.ts:17`). It is absent from every env file checked (`GEMINI_API_KEY`,
-  `GOOGLE_API_KEY`, `GOOGLE_GENAI_API_KEY`, `VERTEX*` all missing; only
-  `EXA_API_KEY` is present). So the memo cannot be regenerated as a pure read.
-- Substituting a different model (e.g. me) would NOT evaluate
-  `gemini-2.5-flash`'s behavior, so it is rejected as misleading.
-
-What IS runnable read-only, and was run: the Exa search half (the grounding
-substrate), called directly against the API (skipping the `web_search_cache`
-upsert). Pool quality is the dominant predictor of hallucination pressure, so
-this is the empirically defensible part of the eval. The per-claim
-SUPPORTED/UNSUPPORTED/CONTRADICTED tally is **pending** a generation run; the
-harness to produce it is in the appendix.
+A repeated positive signal: on Richtech, Onto, and (partly) Mama's the generator
+faced figures that exist in reality but were absent from the pool (convertible
+note size, Rigaku stake terms, the "$3,000" stub) and correctly OMITTED them per
+the sourcing rule. Pure invent-from-training-knowledge was NOT the failure mode.
 
 ---
 
-## Empirical finding 1: grounding-pool quality by coverage tier
+## Failure patterns (the 12 errors are 3 distinct modes, none of them "free invention")
 
-Exa `/search` (the product's exact params), 30-day window, run 2026-06-22.
-`on-entity` = result is actually about the subject company (manually verified for
-the thin cases; first-token heuristic for the rest). `w/fig` = result carries a
-citable hard figure ($, %, Q, year, mn/bn).
+### Mode 1 -- off-entity pool contamination (5 errors, the worst). LSBK.
+Thin, name-ambiguous tickers return pools polluted with same-token DIFFERENT
+companies, and the prompt's ENTITY DISAMBIGUATION clause ("treat all naming
+variants as one entity") actively folds them in. Lake Shore Bancorp's 8-result
+pool is only 5 on-entity; the 3 contaminants (Shore Bancshares/SHBI, North Shore
+Bank/1895 Bancorp) are the only ones carrying "developments," so they dominate a
+memo about a company they have nothing to do with. Verbatim worst case:
 
-| Company | Tier | Pool | On-entity | w/fig | Newest (days) |
-|---|---|---|---|---|---|
-| Apple | large US | 16 | ~15 | 7 | 0 |
-| JPMorgan Chase | large US | 16 | ~15 | 9 | 0 |
-| Nvidia | large US | 16 | ~15 | 9 | 0 |
-| ASML | foreign | 16 | ~15 | 7 | 0 |
-| Alibaba | foreign | 16 | 16 | 6 | 0 |
-| Richtech Robotics | small/obscure | 14 | 14 | 8 | 0 |
-| Unum Group | mid-cap | 16 | ~12 (12/12 on manual read) | 14 | 2 |
-| Onto Innovation | small | 16 | 16 | 14 | 0 |
-| Mama's Creations | thin | 13 | ~9 | 11 | 11 |
-| **Lake Shore Bancorp** | **thin/ambiguous** | **16** | **~3-5** | 11 | 3 |
+> "The near-term catalyst is consolidation pressure visible across the regional
+> thrift cohort, where a parent like Shore Bancshares is reshaping leadership and
+> North Shore Bank is acquiring a competitor for roughly $95 million [6][7]."
 
-Takeaway: for any reasonably-covered name (including the small but hyped Richtech
-RR and mid-cap UNM), the pool is fresh, on-entity, and figure-rich. The strict
-prompt has real material to cite. The failure mode is NOT empty pools; it is
-**off-entity contamination on thin, name-ambiguous tickers.**
+Neither event involves Lake Shore Bancorp. The "$95 million" is a Wisconsin deal
+(North Shore Bank / 1895 Bancorp). 5 of 13 LSBK load-bearing claims (38%) are
+misattributions, and the memo's net-negative sector verdict rests entirely on
+the wrong companies.
 
-## Empirical finding 2: the worst case (Lake Shore Bancorp) verbatim
+### Mode 2 -- faithful propagation of a wrong source (4 errors). Unum, Alibaba.
+The strict "cite the figure from the result" rule has no defense against a source
+that is itself wrong. Unum's pool said Q1 revenue FELL 11.3% to $2.93B and missed
+by 5.2%; the actual Q1 2026 was a BEAT (~$3.36B, EPS up ~9.8%, stock surged). The
+memo built its ENTIRE thesis on the false decline, verbatim:
 
-The on-demand path exists to surface obscure tickers, so this tier is the one
-that matters most. The LSBK 30-day pool (12 shown, verbatim titles + domains):
+> "Unum Group reported revenues of $2.93 billion, down 11.3% year on year. This
+> print fell short of analysts' expectations by 5.2%."
 
-```
-[1]  Brautigam exercises options in Lake Shore Bancorp | LSBK Insider Trading   stocktitan.net   ON
-[2]  WSFS Financial (WSFS) & Lake Shore Bancorp (LSBK) Financial Survey         thecerbatgem.com ON (comparison)
-[3]  Financial Contrast: Lake Shore Bancorp (LSBK) and WSFS Financial           baseballnewssource.com ON (comparison)
-[4]  Shore Bancshares names B. Scot Ebron bank president | SHBI                  stocktitan.net   OFF (SHBI)
-[5]  Shore Bancshares, Inc. Announces Appointment of B. Scot Ebron              gurufocus.com    OFF (SHBI)
-[6]  Shore United Bank PARTNERS WITH GREENLIGHT ...                             shoreupdate.com  OFF (Shore United)
-[7]  Shore Bancshares (SHBI) Sets New 52-Week High                              thelincolnianonline.com OFF (SHBI)
-[8]  Maryland Financial Firm Automates with Jack Henry ...                      mcpressonline.com OFF
-[9]  North Shore Bank buying PyraMax Bank owner for ~$95 million                jsonline.com     OFF (North Shore)
-[10] North Shore Bank, 1895 Bancorp: agreement for North Shore to acquire       wisbusiness.com  OFF (North Shore)
-[11] Shore Bancshares director awarded 1,855 RSUs | SHBI                        stocktitan.net   OFF (SHBI)
-[12] Shore Bancshares director awarded 1,855 RSUs | SHBI                        stocktitan.net   OFF (SHBI, dup)
-```
+Alibaba's pool [4] carried FY2026 figures garbled ~10x (revenue "10,236.70B yuan"
+vs real ~1.02T). The generator here happened to omit the garbled magnitudes, but
+a model obeying "cite the figure in the result" would reproduce a number 10x
+reality. A confidently-cited, plausibly-formatted, wrong number is the most
+dangerous output because the `[n]` makes it look verified.
 
-~3 of 12 are actually Lake Shore Bancorp; the rest are Shore Bancshares (SHBI),
-Shore United Bank, North Shore Bank, and 1895 Bancorp - unrelated banks sharing
-the token "Shore." A memo built on this pool, under a prompt that demands
-specific figures and named events, is highly likely to attribute SHBI's "B. Scot
-Ebron named president" [4][5] or North Shore's "$95M PyraMax acquisition" [9][10]
-to Lake Shore Bancorp - each with a real `[n]` citation pointing at a real
-result. That is a CONTRADICTED-class fabrication that the citation requirement
-does NOT prevent, because the citation is to a real but wrong-entity source.
+### Mode 3 -- over-precision / out-of-pool import (3 errors). Mama's, Unum.
+"Hallucinated-but-true": names/figures imported from outside the result set.
+Mama's memo cites "new Walmart and Target placements" -- correct in reality,
+but **not in any pool result**; a reader clicking the citation finds nothing.
+Unum's "$93.22 52-week high / $91.62 close" and "up 16.8% vs industry 15.4%" come
+from a single SEO-aggregator result and are over-precise / not corroborated.
 
-## Structural finding 3: the prompt grounds figures but not identity, and mandates specifics
-
-From `buildWebFallbackMemoSystemPrompt` (verbatim excerpts):
-
-- Strong, genuinely good anti-invention guardrails: "Do not supplement with
-  training knowledge. Do not add figures, valuations, growth rates, timelines,
-  or named events that do not appear explicitly in the provided results... When
-  in doubt, omit." Every figure must end with a `[n]`.
-- But the citation is **model-asserted, never validated**: nothing checks that
-  result `[n]` actually contains the cited figure. A hallucinated number with a
-  plausible `[n]` passes.
-- "Implications and analytical framing drawn from cited facts are permitted (and
-  do not need a citation themselves)" - an **uncited channel** where causal and
-  forward-looking claims can drift.
-- Identity defense is the wrong shape for the contamination case: "Treat all
-  naming variants... as one entity. Do not split coverage across naming
-  variants." This **merges** same-name-fragment results - exactly the wrong move
-  for the LSBK pool, where the "Shore" results are different companies, not
-  variants.
-- Pressure to produce specifics even when the pool is thin: the opener "must
-  begin with a proper noun or specific figure," the Analyst Brief "must contain
-  at least one temporal anchor: a specific upcoming event, earnings print,
-  regulatory deadline, or named catalyst." A mandate to surface a specific
-  catalyst against a thin/contaminated pool is a classic invention vector.
-
-Mitigations already present that lower (not eliminate) risk: temp 0.35, a
-self-correction redo pass (temp 0.2), and the omit-when-in-doubt framing.
-
----
-
-## Failure patterns (predicted, grounded in pool + prompt; pending generation to quantify)
-
-1. **Off-entity misattribution on ambiguous thin tickers** (highest severity).
-   Wrong-company news cited as the subject's, with a valid-looking `[n]`. LSBK is
-   the worst observed pool. Not defended by the variant-merge rule.
-2. **Uncited framing drift.** Causal/forward claims ("positioning it to...",
-   "signaling a shift toward...") are permitted without citation and can outrun
-   the facts.
-3. **Mandated-specific invention.** The required temporal anchor / figure-led
-   opener pressures a specific even when the pool lacks one.
-4. **Unvalidated citations.** `[n]` can point to a real result that does not
-   contain the cited figure; no programmatic check.
-
-The well-covered tiers (Apple/JPM/NVDA/ASML/BABA/UNM/ONTO/RR) have clean,
-figure-rich pools, so for those the strict prompt likely holds up well; the
-residual risk concentrates on the thin/ambiguous tail - which is exactly the
-population the on-demand mint path surfaces.
+### Cross-cutting: the citation gives false assurance.
+Every one of the 9 CONTRADICTED claims still ends in a real `[n]` pointing at a
+real result. The `[n]` proves provenance, not accuracy: it can point at a
+real-but-wrong-entity result (Mode 1) or a real-but-wrong-number result (Mode 2).
+The product renders the source list under the memo, which makes a misattributed
+claim look MORE trustworthy, not less.
 
 ---
 
 ## Bottom line
 
-**Not "ship as-is."** Recommendation: **ship with stronger grounding constraints
-plus a heavier disclaimer, and gate prod enablement on the empirical run below.**
+**Not "ship as-is."** Ship with stronger grounding constraints AND a heavier
+disclaimer, and gate prod enablement (`NEXT_PUBLIC_WEB_FALLBACK_ENABLED`) on
+fixing Mode 1.
 
-The reason is structural and pool-driven, not a vibe: the prompt grounds figures
-well but (a) does not validate citations against source text, (b) leaves framing
-uncited, (c) mandates specifics that pressure invention, and (d) its identity
-rule merges rather than filters same-name-fragment contamination. The covered
-tiers are fine; the on-demand path's reason for existing is the obscure tail,
-and that tail has the worst pools (LSBK ~75% off-entity).
+Why not as-is: the 91% aggregate is real but the errors are not random -- they
+land precisely on thin, obscure, name-ambiguous tickers, which is **exactly the
+population the on-demand mint path exists to surface**. For a well-covered name
+the memo is excellent (0/86 errors). For Lake Shore Bancorp it attributes another
+bank's $95M acquisition to the subject; for Unum it builds the whole brief on a
+revenue decline that did not happen. Those are the on-demand feature's primary
+use case, and the production model (temp 0.35, weaker than the stand-in here)
+will not do better.
 
-Specific grounding changes to make before flipping the flag:
+### Specific grounding changes (in priority order)
 
-1. **Entity-contamination filter on the pool, before the prompt.** Keep only
-   results whose title/domain actually match the subject (ticker or strict name
-   match), and label the rest "sector context" rather than feeding them as
-   subject material. Drop the "treat all variants as one entity" instruction for
-   the thin case, or scope it to true suffix/case variants only.
-2. **Programmatic citation validation.** After generation, for each `[n]`-tagged
-   figure, verify the figure string appears in result `[n]`'s title/summary; drop
-   or flag sentences that fail. Cheap post-process, closes the biggest hole.
-3. **Make the "specific opener / temporal anchor" mandate conditional** on the
-   pool actually containing one; otherwise allow a neutral opener. Remove the
-   pressure to invent.
-4. **Require citations on causal/forward framing too,** or explicitly fence
-   forward-looking statements behind a hedge.
-5. **Heavier disclaimer on the web-memo surface**, especially when the pool is
-   thin or low-on-entity ("Generated from N web results; may be incomplete or
-   misattributed for thinly-covered companies").
+1. **Entity-contamination filter on the pool, before the prompt (fixes Mode 1).**
+   Before building the memo content, keep only results whose title/domain match
+   the subject by ticker or strict name; label the rest "sector context" or drop
+   them. And **scope the "treat all variants as one entity" instruction to true
+   suffix/case variants** (Inc/Corp/.ai), never to shared tokens like "Shore."
+   This single change removes the worst failure mode.
+2. **Minimum-pool-quality gate.** If on-entity result count is below a threshold
+   (LSBK had ~5, with the on-entity ones being routine), suppress
+   developments-led mode and render an explicit "thin coverage" state instead of
+   a confident brief.
+3. **Programmatic `[n]` citation validation (fixes part of Modes 2/3).** After
+   generation, verify each cited figure/name string actually appears in result
+   `[n]`'s title/summary; drop or flag sentences that fail. Cheap post-process.
+4. **Single-source and magnitude sanity checks (fixes Mode 2).** Flag figures
+   that appear in only one low-quality source, and flag order-of-magnitude
+   outliers (the Alibaba 10x case). Prefer cross-source-agreed figures.
+5. **Make the "specific opener / temporal anchor" mandate conditional** on the
+   pool actually containing one; remove the pressure to surface a specific when
+   the pool is thin.
+6. **Heavier disclaimer** on the web-memo surface, escalated when the pool is
+   thin / low-on-entity: "Generated from N web results; may be incomplete or
+   misattributed for thinly-covered companies."
 
 ---
 
 ## VERIFY
 
-- Claims checked against ACTUAL fetched sources, not assumed: the Exa pools were
-  fetched live (read-only) and the LSBK/Unum result titles are quoted verbatim
-  from that fetch. The grounding-substrate findings are empirical.
-- Rate computed from a tally: NOT possible this run. The per-claim
-  SUPPORTED/UNSUPPORTED/CONTRADICTED rate requires generating the memos, which is
-  blocked (write-on-generate + no `GEMINI_API_KEY`). Flagged, not faked. The
-  harness below produces it.
-- Worst case quoted verbatim: Lake Shore Bancorp pool above.
-- Zero product files changed: only this doc is added.
+- Claims checked against ACTUAL fetched sources, not assumed: every claim was
+  graded against its cited `[n]` result's own text in the fetched Exa pool, plus
+  an independent web check on the load-bearing claims. The contradictions
+  (LSBK misattributions, Unum revenue direction, Alibaba 10x figures) were each
+  confirmed against the real source / independent search.
+- Rate computed from the tally: 125 SUPPORTED / 3 UNSUPPORTED / 9 CONTRADICTED of
+  137 claims = 91.2% / 2.2% / 6.6%; hallucination (U+C) = 8.8%. Computed, not
+  estimated.
+- Worst cases quoted verbatim: LSBK "$95 million" misattribution and Unum's false
+  revenue-decline spine, above.
+- Zero product files changed: only this doc is added (diff is doc-only).
 
-## Appendix: ready-to-run empirical harness
-
-Run once a `GEMINI_API_KEY` is available in a sandbox where `/api/memo`'s
-`outputs` write is acceptable (or by calling `generateContent` directly to avoid
-the write):
-
-```
-for each of the 10 companies:
-  pool = exa("<name> company news", news, 30d, 16)          # read-only
-  sys  = buildWebFallbackMemoSystemPrompt(canonical, len)    # product helper
-  body = buildWebFallbackMemoContent(canonical, pool)        # product helper
-  memo = gemini-2.5-flash.generate(systemInstruction=sys, content=body, temp=0.35)
-  for each numeric/named/causal claim in memo:
-    cited_n = the [n] on the claim
-    SUPPORTED   if the claim's figure/name appears in pool[cited_n]
-    CONTRADICTED if pool[cited_n] (or an independent check) says otherwise
-    UNSUPPORTED  if no [n], or [n] does not contain it
-  tally per company; aggregate the rate; quote the worst sentences verbatim
-```
-
-Without the generation step this run, the doc reports the grounding-substrate
-evidence and the structural risk that substrate creates, and defers the
-claim-level rate to this harness.
+### Generation provenance / reproducibility
+Generator = strong stand-in LLM (no `gemini-2.5-flash` key available; product
+`/api/memo` writes and was not run). Pools fetched 2026-06-22 via Exa with the
+product's exact params. To reproduce against the real model: supply a
+`GEMINI_API_KEY` and call `generateContent({model:"gemini-2.5-flash", temperature:0.35})`
+directly with `buildWebFallbackMemoSystemPrompt` + `buildWebFallbackMemoContent`
+(avoids the `/api/memo` outputs write), then re-run the same claim grading. The
+pool-driven failure modes (1 and 2) are expected to reproduce model-independently.
