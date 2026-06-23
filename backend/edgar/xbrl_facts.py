@@ -32,7 +32,17 @@ logger = logging.getLogger(__name__)
 
 # Forms whose facts we trust for structured financials. 8-K earnings exhibits
 # are inconsistently tagged; periodic reports (+ amendments) only for v1.
-XBRL_FORMS = {"10-K", "10-Q", "10-K/A", "10-Q/A"}
+# 20-F (foreign private issuers, e.g. ASML) and 40-F (Canadian MJDS filers) are
+# the annual reports of foreign large-caps that file us-gaap companyfacts; they
+# carry fp=FY and ~365d duration spans, so the period/fiscal logic treats them
+# exactly like a 10-K. Their interim equivalent is the 6-K, which (like the
+# 8-K) is furnished and inconsistently tagged, so it is deliberately excluded;
+# foreign filers therefore yield annual-only facts (no 10-Q-style YTD quarters).
+# Amendments (/A) are included for the same reason as 10-K/A: ASML's real
+# companyfacts carries 20-F/A restatements that the accession-keyed history
+# must preserve.
+XBRL_FORMS = {"10-K", "10-Q", "10-K/A", "10-Q/A",
+              "20-F", "20-F/A", "40-F", "40-F/A"}
 
 # v1 metric map: metric_key -> (period kind, ordered candidate us-gaap tags).
 # Order is a tie-break only; period-aware resolution does the real work.
