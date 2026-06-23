@@ -86,55 +86,61 @@ function buildMemoPrompt(profile: UserProfile | null, basePrompt: string): strin
 
   const role = profile.role ?? "";
 
+  // Reader-role formats. All blocks are descriptive and third-person: they
+  // shape analytical depth and section focus only. No block may instruct a
+  // recommendation, rating, directional call, position sizing, or first-person
+  // voice -- that compliance line is enforced uniformly by the base article
+  // prompt, the ARTICLE_VOICE_OVERRIDE appended at highest precedence, and the
+  // post-parse enforceBriefVoice guard.
   const roleBlocks: Record<string, string> = {
     student_analyst: `MEMO FORMAT FOR THIS READER (student analyst — educational tone):
-Structure the memo with these exact sections:
+Structure the note with these exact sections:
 1. **What's Happening** — Plain English, no jargon. Explain the situation as if the reader is smart but unfamiliar with this specific event.
 2. **Why It Matters** — Explain the mechanism: how does this event create or destroy value? Connect cause to effect.
-3. **The Thesis** — State what to believe and why. Be specific about direction and timeframe.
-4. **Bear Case** — What would make this thesis wrong? Name specific risks.
+3. **The Analytical Picture** — Lay out what the stated facts suggest and the key uncertainties, descriptively. Do not tell the reader what to believe or do.
+4. **Bear Case** — What would undercut the apparent read? Name specific risks.
 5. **What to Watch** — 3 specific upcoming catalysts with dates if known.
 Define any technical terms inline when first used.
 Tone: educational, assumes no prior knowledge of this specific situation. Never say "as you know."`,
 
     buy_side: `MEMO FORMAT FOR THIS READER (buy-side analyst — direct, no hand-holding):
-Structure the memo with these exact sections:
-1. **The Trade** — Long/short, catalyst, time horizon. One paragraph max.
-2. **Thesis in 3 Bullets** — Why now, why this, why us. Each bullet is one sentence.
-3. **Bear Case + What Kills It** — Name the specific risk that invalidates the thesis.
-4. **Comparable Situations** — 1-2 recent analogues from the same sector or setup type.
-5. **Position Sizing Context** — High/medium/low conviction framing.
+Structure the note with these exact sections:
+1. **What Happened** — The event and its catalyst, in one tight paragraph. No directional call.
+2. **Analytical Read in 3 Bullets** — Why now, what changed, why it is material. Each bullet is one descriptive sentence.
+3. **Bear Case + What Breaks It** — Name the specific risk that would invalidate the apparent read.
+4. **Comparable Situations** — 1-2 recent analogues from the same sector or setup type, only where grounded in the provided text.
+5. **Signal Strength** — Characterize how material and well-evidenced the event is. Descriptive only, not a sizing or conviction call.
 6. **Key Dates** — Numbered list of upcoming catalysts with dates.
 Tone: direct, assumes fluency. No explaining basics.`,
 
     sell_side: `MEMO FORMAT FOR THIS READER (sell-side analyst — client-facing, distributable):
-Structure the memo with these exact sections:
-1. **Executive Summary** — 2 sentences, client-ready. Lead with the conclusion.
-2. **Rating + Thesis** — Frame as Outperform/Neutral/Underperform with supporting thesis.
+Structure the note with these exact sections:
+1. **Executive Summary** — 2 sentences, client-ready. Lead with the key takeaway, stated descriptively.
+2. **What Changed** — The development and its supporting evidence. No rating, no Outperform/Neutral/Underperform call.
 3. **Key Catalysts** — Numbered, dated where possible.
-4. **Risks** — Bull case / base case / bear case with scenario probabilities if appropriate.
-5. **Valuation Context** — Relative and/or absolute valuation framing.
-6. **Recommendation** — Use "We recommend..." language. Be explicit about action.
+4. **Risks** — Bull case / base case / bear case framing of how the situation could evolve.
+5. **Valuation Context** — Relative and/or absolute valuation framing, descriptive only, with no target.
+6. **What To Watch** — The open questions and signposts that would confirm or undercut the read. State implications for the thesis, not actions for the reader.
 Tone: formal, client-facing, distribution-ready.`,
 
     private_equity: `MEMO FORMAT FOR THIS READER (private equity — IC memo style):
-Structure the memo with these exact sections:
-1. **Deal Merit Summary** — Why this asset is interesting. 2-3 sentences max.
-2. **Entry Multiple Context** — How the implied valuation compares to comparable transactions.
-3. **Value Creation Levers** — Operational, financial, and strategic levers. Be specific.
-4. **Exit Scenarios** — 3-5 year horizon with multiple range for each scenario.
+Structure the note with these exact sections:
+1. **Situation Summary** — What is notable about this asset or transaction. 2-3 sentences max.
+2. **Entry Multiple Context** — How any implied valuation compares to comparable transactions, only where figures are provided.
+3. **Value Creation Levers** — Operational, financial, and strategic levers the situation implies. Be specific.
+4. **Scenario Range** — 3-5 year horizon scenarios with a multiple range for each, described as possibilities, not a forecast to act on.
 5. **Key Risks** — Leverage, sponsor competition, macro exposure. Name specific risks.
-6. **IC Recommendation** — Clear go/no-go framing with conditions.
+6. **Open Questions** — The diligence items the provided text leaves unresolved. No go/no-go call.
 Tone: IC memo style. Dense. No fluff. Every sentence must carry information.`,
   };
 
   const defaultRoleBlock = `MEMO FORMAT FOR THIS READER (investment advisor — balanced, client-aware):
-Structure the memo with these exact sections:
-1. **Opportunity Summary** — What is this and why look at it now.
-2. **Risk/Return Framing** — Upside vs downside in concrete terms.
-3. **Portfolio Fit** — How this relates to the reader's focus sectors and risk posture.
-4. **Bear Case** — What goes wrong and how bad.
-5. **Action Items** — Specific next steps: monitor, research further, or act.
+Structure the note with these exact sections:
+1. **Situation Summary** — What this is and why it is relevant now.
+2. **Risk/Return Framing** — Upside vs downside in concrete, descriptive terms. No directional call.
+3. **Context** — How this relates to the relevant sectors and the broader backdrop.
+4. **Bear Case** — What could go wrong and how bad.
+5. **What To Watch** — The signposts and open questions worth monitoring. No reader-directed actions.
 Tone: balanced, client-aware.`;
 
   const strategyOverlays: Record<string, string> = {
@@ -260,13 +266,20 @@ List 2–3 grounded watchpoints specific to THIS deal: regulatory approvals for 
 Hard rules: no invented counterparties, dollar figures, or valuation assumptions beyond what is provided. No recommendation section. No standalone valuation section. No empty sections. Every sentence must reference something specific from the input. Under 320 words.`,
   thesis: "You are a buy-side equity research analyst. Write an investment thesis memo using ONLY the facts provided. Do NOT invent price targets, ratings, or figures not present in the input. Sections: Core Thesis, Supporting Evidence, Bear Case, Catalysts to Watch. Under 300 words.",
   brief: "You are a market strategist. Write a market brief: Key Macro Takeaway, Sector Implications, Risk Flags. Under 300 words.",
-  article: "You are a financial analyst. Summarize market implications using only what is stated: What Happened, Market Impact, Actionable Insight. Under 250 words.",
+  article: "You are a financial analyst writing an impersonal, informational-only market note. Third person only: never use first person (no I, me, my, we, us, our, and never the institutional 'we'). Issue no recommendation, rating, or directional call: no buy, sell, hold, long, short, overweight, underweight, conviction, position sizing, price target, or reader-directed action. Describe, do not advise. Sections: What Happened, Why It Matters, Key Stated Facts, What To Watch, Open Questions. Ground strictly in the provided title and summary: do not invent sources, figures, comparables, or counterparties, and if the provided context is insufficient to fill a section, say so plainly rather than inferring. Under 250 words.",
   company: "You are a sector analyst. Write a company intelligence brief. Use only facts from the provided articles. Sections: Company Brief (sector and primary business), Recent Developments (Direct articles only), Sector Context (Context articles as backdrop), Key Watchpoints (2–3 from Direct articles only), Signal Quality (one controlled label + one sentence). Under 300 words.",
   // Fallback prompt for type "company-web". In normal operation the caller
   // (frontend) will pass the full buildWebFallbackMemoSystemPrompt(name) text
   // via systemPrompt; this is the safety net if it forgets.
   "company-web": "You are a senior equity research analyst writing a company intelligence brief grounded in WEB SEARCH RESULTS. Use only facts from the provided results. Every factual sentence must end with a bracketed citation [n] mapping to the result number. Sections: Analyst Brief, What Just Changed (or Coverage Note if no direct developments), Cross-Signals, What To Watch (two if/then bullets), Signal Quality. Under 300 words. No em-dashes. No bullets outside What To Watch. Impersonal and informational-only: no first person (no 'we', 'us', 'our', 'I'), and no reader-directed recommendation or exposure language (no 'recommend', 'buy', 'sell', 'increase/reduce exposure', 'overweight', 'underweight', 'you should'). What To Watch states implications for the thesis, not actions for the reader.",
 };
+
+// Compliance override for article-grounded memos (type "article"). Mirrors the
+// company-brief BRIEF_VOICE_OVERRIDE bans (impersonal voice, no reader-directed
+// recommendation or directional call) but imposes NO fixed section labels, so
+// each reader-role scaffold in buildMemoPrompt is preserved. Appended at highest
+// precedence and paired with the post-parse enforceBriefVoice guard below.
+const ARTICLE_VOICE_OVERRIDE = `VOICE OVERRIDE (highest precedence, outranks any reader-format or role instruction above): this note is impersonal and informational-only. Never use first person, singular or plural -- no "I", "me", "my", "we", "us", "our", and never the institutional "we" or "We recommend". Issue no recommendation, rating, or directional call on any named security -- no "recommend", "buy", "sell", "hold", "long", "short", "overweight", "underweight", "increase exposure", "reduce exposure", "trim", "add to position", "take profits", "conviction", "position sizing", "go long", "go short", "price target", "you should". Describe what the development and each scenario mean for the thesis, never what the reader should do. Any conflicting reader-format, rating, or recommendation instruction above is void.`;
 
 const RATE_LIMIT_MEMO = 10; // memos per 24h
 
@@ -506,6 +519,10 @@ export async function POST(request: NextRequest) {
     // guard below.
     if (type === "company" || type === "company-web") {
       augmentedSystem += "\n\n" + BRIEF_VOICE_OVERRIDE;
+    } else if (type === "article") {
+      // Article memos carry the same compliance bans but keep their reader-role
+      // section scaffold, so use the label-free override (see ARTICLE_VOICE_OVERRIDE).
+      augmentedSystem += "\n\n" + ARTICLE_VOICE_OVERRIDE;
     }
 
     // Web-fallback memos need a higher output ceiling than article-grounded.
@@ -536,8 +553,9 @@ export async function POST(request: NextRequest) {
       // prompt VOICE REGISTER + INFORMATIONAL ONLY rules are the first line of
       // defense; this guard is what makes them hold when the model drifts.
       // Modeled on the PR #385 opener guard. Non-fatal: never throws, never
-      // blocks the response.
-      if (type === "company" || type === "company-web") {
+      // blocks the response. Article memos run the same fail-closed guard so
+      // dashboard "Generate Memo" cannot surface a recommendation or first person.
+      if (type === "company" || type === "company-web" || type === "article") {
         const enforced = await enforceBriefVoice(memo, {
           regenerate: async (correction) => {
             try {
