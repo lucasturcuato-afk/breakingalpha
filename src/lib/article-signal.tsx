@@ -1,27 +1,13 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { getCompleteness, getAdjustedScore, type Completeness } from "@/lib/article-signal-score";
 
-export type Completeness = "full" | "summary" | "headline";
-
-export function getCompleteness(
-  content: string | null | undefined,
-  summary?: string | null | undefined
-): Completeness {
-  if (content && content.length > 500) return "full";
-  if (content && content.length >= 100) return "summary";
-  if (summary && summary.length > 200) return "summary";
-  return "headline";
-}
-
-export function getAdjustedScore(
-  relevanceScore: number | null | undefined,
-  completeness: Completeness
-): number | null {
-  if (relevanceScore == null) return null;
-  const weights: Record<Completeness, number> = { full: 1.0, summary: 0.8, headline: 0.5 };
-  return Math.round(relevanceScore * weights[completeness] * 10) / 10;
-}
+// Re-exported so "@/lib/article-signal" stays the single public entry point.
+// The scoring/completeness logic lives in the JSX-free sibling module so it can
+// be unit-tested under node --test; see article-signal-score.ts.
+export { getCompleteness, getAdjustedScore };
+export type { Completeness };
 
 export function CompletenessBadge({ completeness }: { completeness?: Completeness | null }) {
   if (!completeness) return null;

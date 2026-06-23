@@ -245,6 +245,8 @@ export default function DashboardPage() {
           setStories(
             data.map((a) => {
               const completeness = getCompleteness(a.content, a.summary);
+              // Signal is the model's native relevance_score; completeness is a
+              // separate badge and no longer scales the number.
               const adjustedScore = getAdjustedScore(a.relevance_score, completeness);
               const companies = (() => {
                 if (!a.companies) return undefined;

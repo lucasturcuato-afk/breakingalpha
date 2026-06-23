@@ -12,7 +12,7 @@ import {
 } from "@/lib/sector-colors";
 import { Badge } from "@/components/ui/badge";
 import { BookmarkButton } from "@/components/ui/bookmark";
-import { Sparkles, Plus, MessageSquare, Loader2 } from "lucide-react";
+import { Sparkles, Plus, MessageSquare, Loader2, ExternalLink } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
 import type { BadgeVariant } from "@/components/ui/badge";
 import type { Completeness } from "@/lib/article-signal";
@@ -179,6 +179,18 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
           <CompletenessBadge completeness={story.completeness} />
           <SignalScore score={story.adjustedScore} />
           <SourceCredibilityBadge winRate={story.sourceWinRate} sampleSize={story.sourceSampleSize} />
+          {story.url && (
+            <a
+              href={story.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 font-sans text-[10px] font-medium text-text-muted hover:text-text-primary transition-colors"
+            >
+              <ExternalLink size={10} />
+              Source
+            </a>
+          )}
         </div>
 
         {/* Headline */}
@@ -409,6 +421,18 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
             <CompletenessBadge completeness={story.completeness} />
             <SignalScore score={story.adjustedScore} />
             <SourceCredibilityBadge winRate={story.sourceWinRate} sampleSize={story.sourceSampleSize} />
+            {story.url && (
+              <a
+                href={story.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1 font-sans text-[9px] font-medium text-text-muted hover:text-text-primary transition-colors"
+              >
+                <ExternalLink size={9} />
+                Source
+              </a>
+            )}
           </div>
           <h4 className="font-[family-name:var(--font-playfair-display)] text-[13px] font-bold text-espresso leading-snug hover:text-gold-dark transition-colors">
             {story.title}
