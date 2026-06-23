@@ -7,6 +7,7 @@ import { CompanyDetailLayout } from "@/components/company/CompanyDetailLayout";
 import { CompanyDetailHeader } from "@/components/company/CompanyDetailHeader";
 import { EmptyState } from "@/components/company/states/EmptyState";
 import { CompanyAutoResolve } from "@/components/company/states/CompanyAutoResolve";
+import { PrimerWebMemo } from "@/components/company/states/PrimerWebMemo";
 import { CompanyAliasRibbon } from "@/components/company/CompanyAliasRibbon";
 import { CompanyKPIStrip } from "@/components/company/CompanyKPIStrip";
 import { CompanyTrendCard } from "@/components/company/CompanyTrendCard";
@@ -159,7 +160,12 @@ export default async function CompanyDetailPage({
         description={identity?.brief ?? null}
         financials={financialsResult}
         briefSlot={
-          <BriefTab company={canonical} content={memoContent} systemPrompt={systemPrompt} />
+          <>
+            {developmentArticles.length === 0 && contextArticles.length === 0 && (
+              <PrimerWebMemo company={companyDetail.display} />
+            )}
+            <BriefTab company={canonical} content={memoContent} systemPrompt={systemPrompt} />
+          </>
         }
       />
     ),
