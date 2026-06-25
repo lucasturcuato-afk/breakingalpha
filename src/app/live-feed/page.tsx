@@ -158,9 +158,13 @@ export default function LiveFeedPage() {
 
   const fetchArticles = useCallback(async () => {
     try {
+      // Published-date floor so stale items (date-less or weeks old) never
+      // surface on the live feed. NULL published_at is excluded by gte.
+      const publishedFloor7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const { data, error } = await getSupabase()
         .from("articles")
         .select("id, title, source, sector, industry_verticals, activity_types, sentiment, summary, content, published_at, ingested_at, url, companies, relevance_score")
+        .gte("published_at", publishedFloor7d)
         .order("ingested_at", { ascending: false })
         .limit(100);
 
