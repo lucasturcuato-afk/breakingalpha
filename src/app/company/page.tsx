@@ -9,11 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import {
   Search,
   Building2,
-  Sparkles,
-  ExternalLink,
   Lock,
-  Globe,
-  Loader2,
   Star,
   ChevronUp,
   ChevronDown,
@@ -23,26 +19,9 @@ import { cn } from "@/lib/utils";
 import { createBrowserClient } from "@supabase/ssr";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { ThemeTags } from "@/components/company/ThemeTags";
-import { MemoModal } from "@/components/memo/MemoModal";
 import { SignInModal } from "@/components/auth/sign-in-modal";
-import {
-  buildWebFallbackMemoContent,
-  buildWebFallbackMemoSystemPrompt,
-  canonicalize,
-  timeAgo,
-} from "@/lib/company-intel";
+import { canonicalize, timeAgo } from "@/lib/company-intel";
 import { useLiveMood } from "@/hooks/useLiveMood";
-
-// Shape returned by /api/companies/web-fallback. Includes `summary` for the
-// memo prompt; MemoSource (used by the modal's source list) is the visible
-// subset.
-interface WebFallbackResult {
-  url: string;
-  title: string;
-  source: string;
-  publishedAt: string | null;
-  summary: string;
-}
 
 // Shape of /api/companies response items. Locally redeclared to avoid importing
 // from a route file across the client boundary.
@@ -263,13 +242,6 @@ export default function CompanyIntelPage() {
   // (needed for DELETE). Populated on mount via GET /api/watchlist when signed in.
   const [watchlist, setWatchlist] = useState<Map<string, string>>(new Map());
 
-  // Web-fallback state. Only meaningful when NEXT_PUBLIC_WEB_FALLBACK_ENABLED is "true".
-  const webFallbackEnabled = process.env.NEXT_PUBLIC_WEB_FALLBACK_ENABLED === "true";
-  const [webFallbackLoading, setWebFallbackLoading] = useState(false);
-  const [webFallbackError, setWebFallbackError] = useState("");
-  const [webResults, setWebResults] = useState<WebFallbackResult[]>([]);
-  const [webCanonical, setWebCanonical] = useState("");
-  const [webMemoOpen, setWebMemoOpen] = useState(false);
 
   // Refs for keyboard nav: keep latest closures without re-binding the listener.
   const rowsRef = useRef<CompanyRow[]>([]);
@@ -361,56 +333,6 @@ export default function CompanyIntelPage() {
     })();
     return () => { cancelled = true; };
   }, [debouncedSearch]);
-
-  // Reset web-fallback state on every search keystroke. The CTA must only
-  // surface for the current query, not a stale one.
-  useEffect(() => {
-    setWebResults([]);
-    setWebCanonical("");
-    setWebFallbackError("");
-    setWebFallbackLoading(false);
-  }, [search]);
-
-  const handleGenerateWebFallback = async () => {
-    const trimmed = search.trim();
-    if (trimmed.length < 2) return;
-    setWebFallbackLoading(true);
-    setWebFallbackError("");
-    try {
-      const res = await fetch("/api/companies/web-fallback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: trimmed }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Search failed (${res.status})`);
-      }
-      const json = (await res.json()) as {
-        results?: WebFallbackResult[];
-        canonicalName?: string;
-        error?: string;
-      };
-      setWebResults(json.results ?? []);
-      setWebCanonical(json.canonicalName ?? trimmed);
-      if ((json.results ?? []).length === 0) {
-        setWebFallbackError("No web results found for that company.");
-      }
-    } catch (e) {
-      setWebFallbackError(e instanceof Error ? e.message : "Web search failed");
-    } finally {
-      setWebFallbackLoading(false);
-    }
-  };
-
-  const webMemoContent = useMemo(() => {
-    if (!webCanonical || webResults.length === 0) return "";
-    return buildWebFallbackMemoContent(webCanonical, webResults);
-  }, [webCanonical, webResults]);
-  const webMemoSystemPrompt = useMemo(() => {
-    if (!webCanonical) return "";
-    return buildWebFallbackMemoSystemPrompt(webCanonical, webResults.length);
-  }, [webCanonical, webResults.length]);
 
   // Vertical filter (chips). Two-layer mapping: ground-truth overrides for
   // well-known companies, sector-derived fallback for the long tail.
@@ -640,6 +562,25 @@ export default function CompanyIntelPage() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                const q = search.trim();
+                if (!q) return;
+                // Matched-row behavior preserved: open the highlighted/top match.
+                const rows = rowsRef.current;
+                if (rows.length > 0) {
+                  const i = highlightedRef.current;
+                  const target = rows[i >= 0 ? i : 0];
+                  if (target) router.push(`/company/${encodeURIComponent(slugify(target.name))}`);
+                  return;
+                }
+                // Zero matches: navigate only for a plausible ticker shape so the
+                // on-demand mint path opens. Non-ticker junk does not navigate.
+                const upper = q.toUpperCase();
+                if (/^[A-Z]{1,6}(\.[A-Z]{1,4})?$/.test(upper)) {
+                  router.push(`/company/${encodeURIComponent(upper)}`);
+                }
+              }}
               placeholder="Search companies by name or ticker..."
               className="pl-9 font-sans"
             />
@@ -720,104 +661,6 @@ export default function CompanyIntelPage() {
                 </button>
               ) : undefined}
             />
-
-            {webFallbackEnabled && !isSignedOut && search.trim().length >= 2 && webResults.length === 0 && (
-              <div
-                className="mt-4 px-4 py-4 rounded-xl border flex items-center justify-between"
-                style={{ borderColor: "rgba(201,146,42,0.3)", backgroundColor: "var(--gold-muted)" }}
-              >
-                <div className="flex items-start gap-3">
-                  <Globe size={16} className="mt-0.5" style={{ color: "var(--gold)" }} />
-                  <div>
-                    <p className="font-sans text-[13px] font-semibold text-espresso">
-                      We don&apos;t have {search.trim()} in our index yet.
-                    </p>
-                    <p className="font-sans text-[12px] text-text-secondary mt-0.5">
-                      Generate a memo from web search instead?
-                    </p>
-                    {webFallbackError && (
-                      <p className="font-sans text-[11px] text-signal-dn mt-1">{webFallbackError}</p>
-                    )}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleGenerateWebFallback}
-                  disabled={webFallbackLoading}
-                  className={cn(
-                    "flex-shrink-0 ml-4 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg",
-                    "font-data text-[10px] font-bold uppercase border cursor-pointer transition-colors",
-                    "border-gold/40 bg-white text-gold hover:bg-gold/10",
-                    webFallbackLoading && "opacity-60 cursor-wait",
-                  )}
-                >
-                  {webFallbackLoading ? (
-                    <>
-                      <Loader2 size={11} className="animate-spin" />
-                      Searching
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={11} />
-                      Generate
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
-
-            {webFallbackEnabled && webResults.length > 0 && (
-              <div className="mt-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="font-data text-[10px] uppercase tracking-widest text-gold font-bold">
-                    Web results for {webCanonical}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setWebMemoOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-gold/40 bg-gold-muted text-gold font-data text-[10px] font-bold uppercase cursor-pointer hover:bg-gold/10 transition-colors"
-                  >
-                    <Sparkles size={11} />
-                    Generate Memo
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {webResults.map((r, i) => (
-                    <div key={r.url} className="bg-white border border-border-base rounded-xl p-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-data text-[9px] text-gold bg-gold-muted border border-gold-border px-1.5 py-0.5 rounded-md">
-                          [{i + 1}]
-                        </span>
-                        <span className="font-data text-[9px] text-text-muted">{r.source}</span>
-                        {r.publishedAt && (
-                          <span className="font-data text-[9px] text-text-faint ml-auto">
-                            {r.publishedAt.slice(0, 10)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <h4 className="font-display text-[13px] font-bold text-espresso leading-snug flex-1">
-                          {r.title}
-                        </h4>
-                        <a
-                          href={r.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5"
-                        >
-                          <ExternalLink size={11} />
-                        </a>
-                      </div>
-                      {r.summary && (
-                        <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1 line-clamp-2">
-                          {r.summary}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         ) : (
           <div className="relative bg-white border border-border-base rounded-xl overflow-x-auto">
@@ -972,24 +815,6 @@ export default function CompanyIntelPage() {
         )}
       </div>
 
-      {/* Web-fallback memo modal. Distinct instance from any future indexed-company
-          modal so the two paths cannot interfere with each other. */}
-      {webFallbackEnabled && webCanonical && webResults.length > 0 && (
-        <MemoModal
-          isOpen={webMemoOpen}
-          onClose={() => setWebMemoOpen(false)}
-          title={webCanonical}
-          content={webMemoContent}
-          type="company-web"
-          systemPrompt={webMemoSystemPrompt}
-          sources={webResults.map((r) => ({
-            url: r.url,
-            title: r.title,
-            source: r.source,
-            publishedAt: r.publishedAt,
-          }))}
-        />
-      )}
       <SignInModal
         isOpen={showSignIn}
         onClose={() => setShowSignIn(false)}

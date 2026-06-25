@@ -6,6 +6,7 @@ import { getServiceSupabase } from "@/lib/supabase-service";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isAdmin } from "@/lib/admin-emails";
 import { recordOutput } from "@/lib/outputs";
+import { enforceMemoCitations, parseWebResultsFromContent } from "@/lib/web-memo-entity";
 import { MEMO_PROMPT_VERSION } from "@/lib/output-constants";
 import {
   resolveMemoCompanyIdentifiers,
@@ -588,6 +589,19 @@ export async function POST(request: NextRequest) {
           );
         }
         memo = enforced.memo;
+      }
+
+      // Citation enforcement (eval PR #415, FIX 3) -- company-web ONLY, gated by
+      // the web-fallback flag. Strips [n] citations whose cited result does not
+      // contain the sentence's figure, leaving the prose intact. Never touches
+      // other memo types. The subject result pool is reconstructed from the
+      // prompt content (which embeds the numbered WEB SEARCH RESULTS list).
+      if (
+        type === "company-web" &&
+        process.env.NEXT_PUBLIC_WEB_FALLBACK_ENABLED === "true" &&
+        memo
+      ) {
+        memo = enforceMemoCitations(memo, parseWebResultsFromContent(originalContent));
       }
 
       // WD126: derive the company cache key — prefer explicit `company` field,
