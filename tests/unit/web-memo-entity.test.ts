@@ -41,15 +41,17 @@ test("entity filter drops off-entity 'Shore' banks from a Lake Shore Bancorp poo
     { canonical: "Lake Shore Bancorp", ticker: "LSBK" },
     LSBK_POOL,
   );
-  // The 3 contaminants (Shore Bancshares, North Shore Bank) must be dropped.
-  assert.equal(sectorContext.length, 3);
+  // The 3 Shore contaminants plus the OSBC quote-table row (ticker only in a
+  // foreign body listing, not its title) must be dropped: 4 off-entity.
+  assert.equal(sectorContext.length, 4);
   const droppedTitles = sectorContext.map((x) => x.title).join(" | ");
   assert.match(droppedTitles, /North Shore Bank buying PyraMax/);
   assert.match(droppedTitles, /Shore Bancshares/);
+  assert.match(droppedTitles, /Old Second Bancorp/);
   // The $95M misattribution source is NOT in the subject material.
   assert.ok(!onEntity.some((x) => /\$95 million/.test(x.title)));
-  // Every surviving row is genuinely Lake Shore Bancorp.
-  assert.ok(onEntity.every((x) => /lake shore|lsbk/i.test(`${x.title} ${x.summary}`)));
+  // Every surviving row names Lake Shore Bancorp in its title.
+  assert.ok(onEntity.every((x) => /lake shore/i.test(x.title)));
 });
 
 test("entity filter keeps a clean single-token pool intact (no over-drop)", () => {
@@ -88,7 +90,32 @@ test("thin-pool gate: below threshold triggers, LSBK on-entity count does not", 
     { canonical: "Lake Shore Bancorp", ticker: "LSBK" },
     LSBK_POOL,
   );
-  assert.equal(onEntity.length, 5); // 5 genuine LSBK rows survive the filter
+  // 4 rows name Lake Shore Bancorp in their title; the OSBC quote-table row is
+  // excluded. 4 is at the threshold, so this fixture is not thin. A pool with
+  // fewer genuine rows trips the gate (see the thin production-pool test below).
+  assert.equal(onEntity.length, 4);
+  assert.equal(isThinPool(onEntity.length), false);
+});
+
+test("thin-pool gate trips on a production-shaped LSBK pool (genuine coverage < 4)", () => {
+  // The real failure: a name-ambiguous ticker whose pool is mostly other Shore
+  // banks with only a couple of genuine Lake Shore Bancorp rows. After the
+  // filter, on-entity < 4, so the route returns thin and no confident brief.
+  const THIN_LSBK: WebResultLike[] = [
+    r("Lake Shore Bancorp declares quarterly dividend | LSBK"),
+    r("Lake Shore Bancorp Q1 results | LSBK Stock"),
+    r("Shore Bancshares names B. Scot Ebron bank president | SHBI"),
+    r("North Shore Bank buying PyraMax Bank owner for around $95 million"),
+    r("Shore United Bank expands Greenlight partnership"),
+    r("Shore Bancshares completes Jack Henry core conversion"),
+  ];
+  const { onEntity, sectorContext } = classifyWebResults(
+    { canonical: "Lake Shore Bancorp", ticker: "LSBK" },
+    THIN_LSBK,
+  );
+  assert.equal(onEntity.length, 2);
+  assert.equal(sectorContext.length, 4); // all Shore/North Shore contaminants dropped
+  assert.equal(isThinPool(onEntity.length), true); // gate trips: no confident brief
 });
 
 test("subjectForClassification falls back to the full query name on a token-collapsed pool", () => {
@@ -115,11 +142,11 @@ test("live path: token-collapsed canonical no longer inverts the LSBK filter", (
     { canonical: subject, ticker: "LSBK" },
     LSBK_POOL,
   );
-  // All three Shore Bancshares / North Shore contaminants are dropped.
-  assert.equal(sectorContext.length, 3);
+  // The Shore contaminants and the OSBC quote-table row are dropped.
+  assert.equal(sectorContext.length, 4);
   assert.ok(!onEntity.some((x) => /\$95 million|Shore Bancshares/.test(x.title)));
-  // Only genuine LSBK rows survive.
-  assert.ok(onEntity.every((x) => /lake shore|lsbk/i.test(`${x.title} ${x.summary}`)));
+  // Only genuine LSBK rows (named in title) survive.
+  assert.ok(onEntity.every((x) => /lake shore/i.test(x.title)));
 });
 
 test("corroboration guard strips a single-source figure citation", () => {

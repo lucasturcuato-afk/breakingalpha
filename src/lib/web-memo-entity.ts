@@ -100,8 +100,13 @@ export interface ClassifiedResults<T extends WebResultLike = WebResultLike> {
 /**
  * Partition a result pool into rows that are actually about the subject
  * (on-entity) vs rows that merely share a token (sector context). A row is
- * on-entity if its title+summary contains the ticker as a whole token OR passes
- * matchesName. Only on-entity rows are fed to the memo as subject material.
+ * on-entity if it passes matchesName on title+summary, OR its ticker appears in
+ * the TITLE. Only on-entity rows are fed to the memo as subject material.
+ *
+ * The ticker test is title-scoped on purpose: a ticker buried in a body
+ * quote-table of many unrelated stocks ("Old Second Bancorp (OSBC) ... also
+ * lists LSBK 15.77") is a shared-token false positive, the same failure class as
+ * a shared name token, and must not pull another company's article on-entity.
  */
 export function classifyWebResults<T extends WebResultLike>(
   subject: ClassifySubject,
@@ -111,9 +116,9 @@ export function classifyWebResults<T extends WebResultLike>(
   const onEntity: T[] = [];
   const sectorContext: T[] = [];
   for (const r of results) {
-    const hay = normalize(`${r.title} ${r.summary}`);
-    const hit = (ticker && hasToken(hay, ticker)) || matchesName(subject.canonical, hay);
-    (hit ? onEntity : sectorContext).push(r);
+    const nameHit = matchesName(subject.canonical, normalize(`${r.title} ${r.summary}`));
+    const tickerHit = ticker !== "" && hasToken(normalize(r.title), ticker);
+    (nameHit || tickerHit ? onEntity : sectorContext).push(r);
   }
   return { onEntity, sectorContext };
 }
