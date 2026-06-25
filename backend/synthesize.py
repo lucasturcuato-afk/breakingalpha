@@ -1502,6 +1502,236 @@ def _regenerate_opener(data, regime, brief_type):
     return None
 
 
+# ── Section entity validation (D8) ───────────────────────────────────────────
+# The single brief generation produces every section in one JSON. A section can
+# name an org that is nowhere in the corpus (observed: "Texas Pacific Land"
+# hallucinated into a section). Build the authoritative org roster from the
+# article corpus (titles + bodies + resolved companies[]) and flag any
+# capitalized multi-word org named in a section that is absent from it. A clear
+# hallucination (org absent from the corpus entirely) triggers ONE re-ask. Not
+# over-engineered: a conservative proper-noun extractor, substring containment.
+_ENTITY_STOP = frozenset((
+    "The", "This", "That", "These", "Those", "Federal", "Reserve", "Wall",
+    "Street", "Street's", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+    "January", "February", "March", "April", "May", "June", "July", "August",
+    "September", "October", "November", "December", "AI", "CEO", "CFO", "IPO",
+    "GDP", "CPI", "PCE", "FOMC", "US", "U.S.", "Q1", "Q2", "Q3", "Q4",
+))
+
+
+def _candidate_orgs(text):
+    """Conservative proper-noun org extractor: runs of capitalized tokens
+    (optionally joined by &/of/and) of length >= 2 words, or a single ALL-CAPS
+    ticker-like token of length >= 2. Returns a set of candidate org strings."""
+    if not isinstance(text, str) or not text.strip():
+        return set()
+    out = set()
+    # Multi-word capitalized runs, e.g. "Texas Pacific Land", "Goldman Sachs".
+    for m in re.finditer(r"\b([A-Z][A-Za-z.&'\-]+(?:\s+(?:of\s+|and\s+|&\s+)?[A-Z][A-Za-z.&'\-]+){1,4})\b", text):
+        phrase = m.group(1).strip()
+        toks = [t for t in re.split(r"\s+", phrase) if t]
+        # Drop runs that are entirely stopwords / sentence-initial noise.
+        if all(t in _ENTITY_STOP for t in toks):
+            continue
+        out.add(phrase)
+    return out
+
+
+def _org_supported(org, corpus_lc, allowed_lc):
+    """True when an org candidate is supported: it (or a head fragment) appears in
+    the source corpus text, or matches a resolved company name."""
+    o = org.strip().lower()
+    if not o:
+        return True
+    if o in allowed_lc:
+        return True
+    if o in corpus_lc:
+        return True
+    # Head-of-name containment: "AbbVie" supports "AbbVie Inc"; "Texas Pacific"
+    # not in corpus stays unsupported.
+    head = o.split()[0]
+    if len(head) > 3 and (head in allowed_lc or head in corpus_lc):
+        return True
+    return False
+
+
+def _unsupported_orgs_in_sections(sections, corpus_text, allowed_companies):
+    """Return {section_key: [unsupported org, ...]} for every section whose prose
+    names an org absent from the corpus and the resolved-company roster."""
+    corpus_lc = (corpus_text or "").lower()
+    allowed_lc = {str(c).strip().lower() for c in (allowed_companies or []) if str(c).strip()}
+    flagged = {}
+    if not isinstance(sections, dict):
+        return flagged
+    for key, val in sections.items():
+        if not isinstance(val, str) or not val.strip():
+            continue
+        bad = [o for o in _candidate_orgs(val) if not _org_supported(o, corpus_lc, allowed_lc)]
+        if bad:
+            flagged[key] = sorted(set(bad))
+    return flagged
+
+
+def _regenerate_sections_entity_safe(sections, flagged, corpus_text, allowed_companies):
+    """ONE targeted re-ask: rewrite the flagged sections so they name only orgs
+    present in the corpus / resolved companies. Returns a dict of rewritten
+    sections, or None on any failure. Prose only; thinking stays at default 0."""
+    roster = ", ".join(sorted({str(c).strip() for c in (allowed_companies or []) if str(c).strip()}))
+    bad_lines = "\n".join(f"- {k}: {', '.join(v)}" for k, v in flagged.items())
+    only = {k: sections[k] for k in flagged if k in sections}
+    system = (
+        "You correct factual entity errors in a finished market brief. Return JSON "
+        'only: {"sections": {"<section name>": "<rewritten text>", ...}}. No other '
+        "keys, no prose outside the JSON. Zero em-dashes; use hyphens, colons, parens."
+    )
+    user = (
+        "These sections name organizations that do NOT appear anywhere in today's "
+        "source articles and are likely hallucinated:\n"
+        f"{bad_lines}\n\n"
+        "Rewrite ONLY these sections so every organization named is one that actually "
+        "appears in the corpus below or in this resolved-company roster. Drop or "
+        "replace any unsupported name; keep the real signal. Do not invent new "
+        "companies. Keep each section's length and intent.\n\n"
+        f"RESOLVED COMPANIES: {roster}\n\n"
+        f"SECTIONS TO FIX (JSON): {json.dumps(only)}\n\n"
+        f"SOURCE CORPUS (excerpt):\n{(corpus_text or '')[:6000]}"
+    )
+    try:
+        raw = gemini_generate(system=system, user_content=user, temperature=0.2, max_tokens=2048)
+        parsed = _parse_brief_json(raw)
+        if parsed and isinstance(parsed.get("sections"), dict):
+            return parsed["sections"]
+    except Exception as e:
+        print(f"  ⚠ entity guard: re-ask call failed (non-fatal): {e}")
+    return None
+
+
+# ── Corrective entity-fact injection (D7 backend) ────────────────────────────
+# Gemini drifts on fast-changing public/private status (it wrote SpaceX as
+# private after its 2026-06-12 IPO). Inject an authoritative fact line built from
+# EXISTING facts: finnhub_helper.HARD_TICKER_OVERRIDES already pins the canonical
+# ticker (spacex -> SPCX), and the small status map below records the few names
+# whose public/private status the model gets wrong. v1 needs no migration; the
+# companion UNAPPLIED migration (see migrations dir) persists this into the
+# entity store for a future read-from-DB version.
+_ENTITY_FACT_STATUS = {
+    # lowercase canonical name -> (status, exchange)
+    "spacex": ("public", "NASDAQ"),
+    "berkshire hathaway": ("public", "NYSE"),
+}
+
+
+def _build_entity_fact_block(corpus_companies):
+    """Build the [ENTITY FACTS] directive for the companies present in today's
+    corpus that have an authoritative pinned fact. Returns "" when none apply.
+    Pure; safe import of finnhub_helper (no I/O at import)."""
+    try:
+        from finnhub_helper import HARD_TICKER_OVERRIDES
+    except Exception:
+        HARD_TICKER_OVERRIDES = {}
+    present = {str(c).strip().lower() for c in (corpus_companies or []) if str(c).strip()}
+    lines = []
+    for name in sorted(present):
+        ticker = HARD_TICKER_OVERRIDES.get(name)
+        status = _ENTITY_FACT_STATUS.get(name)
+        if not ticker and not status:
+            continue
+        disp = name.title() if name.islower() else name
+        bits = []
+        if status:
+            st, exch = status
+            bits.append(st)
+            if ticker:
+                bits.append(f"{exch}: {ticker}")
+            elif exch:
+                bits.append(exch)
+        elif ticker:
+            bits.append(f"ticker {ticker}")
+        lines.append(f"- {disp}: {', '.join(bits)}")
+    if not lines:
+        return ""
+    return (
+        "[ENTITY FACTS - authoritative, supersede any conflicting prior belief]\n"
+        "Treat these as ground truth for status and ticker; do not describe any of "
+        "these as private or pre-IPO:\n"
+        + "\n".join(lines)
+        + "\n\n"
+    )
+
+
+# ── Overview redundancy guard (D9) ───────────────────────────────────────────
+# headline + lead_paragraph + market_pulse.narrative routinely narrate the SAME
+# story, so the panoramic overview just restates the lead. Detect a narrative
+# whose opening paragraph adds no NET-NEW driver beyond the headline/lead, then
+# do ONE re-ask that rewrites the narrative to introduce distinct drivers. The
+# opener guard re-anchors to headline+lead; this guard runs after it and pushes
+# the other way (breadth, not restatement).
+_RED_STOP = frozenset((
+    "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with", "as",
+    "at", "by", "is", "are", "its", "it", "after", "amid", "over", "from", "new",
+    "today", "market", "markets", "stock", "shares", "billion", "million",
+    "deal", "company", "inc", "corp", "this", "that", "into", "than", "but",
+))
+
+
+def _significant_tokens(text):
+    toks = re.findall(r"[a-z0-9]+", (text or "").lower())
+    return {t for t in toks if t not in _RED_STOP and len(t) > 3}
+
+
+def _narrative_is_redundant(headline, lead, narrative):
+    """True when the narrative's FIRST paragraph adds essentially no net-new
+    content beyond headline + lead (Jaccard-style overlap of significant tokens
+    above a threshold and no fresh named token)."""
+    first = (narrative or "").strip().split("\n\n")[0]
+    n_tok = _significant_tokens(first)
+    if not n_tok:
+        return False
+    base = _significant_tokens(headline) | _significant_tokens(lead)
+    if not base:
+        return False
+    fresh = n_tok - base
+    overlap = len(n_tok & base) / max(1, len(n_tok))
+    # Redundant when the opening paragraph is mostly the lead's vocabulary and
+    # brings fewer than two genuinely new significant tokens.
+    return overlap >= 0.6 and len(fresh) < 2
+
+
+def _regenerate_narrative_net_new(data, regime, brief_type):
+    """ONE re-ask: rewrite market_pulse.narrative so it adds NET-NEW drivers
+    distinct from the headline/lead instead of restating them. Returns the new
+    narrative string or None. Prose only."""
+    mp = data.get("market_pulse") or {}
+    system = (
+        "You rewrite ONE field of a finished market brief. Return JSON only: "
+        '{"narrative": "<rewritten narrative, 2-3 short paragraphs separated by \\n\\n>"}. '
+        "No other keys, no prose outside the JSON. Zero em-dashes; use hyphens, colons, parens."
+    )
+    user = (
+        "The market_pulse.narrative below just restates the lead story. The lead is "
+        "already covered in the headline and lead paragraph; the Market Pulse is the "
+        "PANORAMIC read and must add DIFFERENT drivers.\n\n"
+        f"Headline: {data.get('headline','')}\n"
+        f"Lead paragraph: {data.get('lead_paragraph','')}\n"
+        f"Regime: {regime}\n\n"
+        f"Current narrative:\n{mp.get('narrative','')}\n\n"
+        "Rewrite the narrative so it names at least two DISTINCT drivers or themes "
+        "beyond the lead story (other deals, sectors, macro, breadth, volatility), and "
+        "does NOT re-narrate the lead beyond a single passing mention. Keep the "
+        "analytical opener rule: first sentence is a through-line claim led by a named "
+        "driver, not 'the market is [mood]' and not an index recap. Keep the paragraph "
+        "count. Return JSON only."
+    )
+    try:
+        raw = gemini_generate(system=system, user_content=user, temperature=0.35, max_tokens=1024)
+        parsed = _parse_brief_json(raw)
+        if parsed and isinstance(parsed.get("narrative"), str) and parsed["narrative"].strip():
+            return parsed["narrative"].strip()
+    except Exception as e:
+        print(f"  ⚠ redundancy guard: re-ask call failed (non-fatal): {e}")
+    return None
+
+
 def run(brief_type="morning"):
     print(f"📝 Synthesizing {brief_type} briefing...")
 
@@ -1684,14 +1914,34 @@ def run(brief_type="morning"):
             return body[:1200]
         return (a.get("summary", "") or "")[:300]
 
+    def _companies_of(a):
+        c = a.get("companies") or []
+        if isinstance(c, str):
+            try:
+                c = json.loads(c)
+            except Exception:
+                c = [c] if c.strip() else []
+        return [str(x).strip() for x in c if str(x).strip()]
+
+    # D8: pass the RESOLVED companies[] into section generation. Without them the
+    # model only saw title/body/signal and hallucinated org names (e.g. "Texas
+    # Pacific Land"). The Entities line is the authoritative roster for each
+    # article; the post-gen entity check below validates every named org against
+    # this corpus + resolved companies.
+    def _entities_line(a):
+        cos = _companies_of(a)
+        return ("\nEntities: " + ", ".join(cos)) if cos else ""
+
     spine_texts = [
         f"[{a.get('sector','')}] {a.get('title','')}\n{_spine_body(a)}"
+        + _entities_line(a)
         + (f"\nSignal: {a['relevance_reason']}" if a.get('relevance_reason') else "")
         for a in spine
     ]
     # Floor: shortened summary (150 chars) — breadth signals, not lead stories
     floor_texts = [
         f"[{a.get('sector','')}] {a.get('title','')}\n{(a.get('summary','') or '')[:150]}"
+        + _entities_line(a)
         + (f"\nSignal: {a['relevance_reason']}" if a.get('relevance_reason') else "")
         for a in floor
     ]
@@ -1923,6 +2173,22 @@ def run(brief_type="morning"):
         system = _catalyst_block + system
         print(f"  🗓 Injected scheduled-catalyst block ({len(catalyst_list)} event(s), outermost)")
 
+    # --- Corrective entity-fact injection (D7 backend) --------------------------
+    # Pin authoritative status/ticker for fast-changing names (e.g. SpaceX is
+    # public, NASDAQ: SPCX after the 2026-06-12 IPO) so the model stops describing
+    # them as private. Built from existing facts (HARD_TICKER_OVERRIDES); no DB
+    # read, no migration required for v1. Soft-fail.
+    try:
+        _corpus_companies = []
+        for a in (spine + floor):
+            _corpus_companies.extend(_companies_of(a))
+        _entity_fact_block = _build_entity_fact_block(_corpus_companies)
+        if _entity_fact_block:
+            system = _entity_fact_block + system
+            print(f"  🏷 Injected entity-fact block ({_entity_fact_block.count(chr(10) + '- ')} fact line(s))")
+    except Exception as e:
+        print(f"  ⚠ entity-fact injection skipped (non-fatal): {e}")
+
     # Bounded retry: a single transient model error or rate limit no longer
     # stubs the whole brief (see _generate_brief_json). Returns None only after
     # every attempt fails, which the stub fallback below then handles.
@@ -1977,6 +2243,23 @@ def run(brief_type="morning"):
                         print(f"  ⚠ opener guard: re-ask still recap ({why}); keeping original opener")
                     else:
                         print(f"  ⚠ opener guard: re-ask failed ({why}); keeping original opener")
+                # D9 overview-redundancy guard: run AFTER the opener guard so the
+                # opener is already named-driver-led, then push for net-new drivers
+                # vs headline/lead. ONE re-ask; keep original if it stays redundant.
+                if isinstance(mp.get("narrative"), str) and mp["narrative"].strip():
+                    if _narrative_is_redundant(
+                        data.get("headline", ""), data.get("lead_paragraph", ""), mp["narrative"]
+                    ):
+                        new_n = _regenerate_narrative_net_new(data, tape_regime, brief_type)
+                        if new_n and not _narrative_is_redundant(
+                            data.get("headline", ""), data.get("lead_paragraph", ""), new_n
+                        ):
+                            mp["narrative"] = new_n
+                            print("  [redundancy guard] rewrote narrative to add net-new drivers")
+                        elif new_n:
+                            print("  ⚠ redundancy guard: re-ask still restates lead; keeping original")
+                        else:
+                            print("  ⚠ redundancy guard: re-ask failed; keeping original narrative")
         except Exception as e:
             print(f"  ⚠ opener guard error (non-fatal): {e}")
 
@@ -2022,6 +2305,39 @@ def run(brief_type="morning"):
                         print("  ⚠ voice guard: residual first person after fallback (recommendations removed)")
         except Exception as e:
             print(f"  ⚠ voice guard error (non-fatal): {e}")
+
+    # Section entity validation (D8, morning + evening, non-fatal). Every org
+    # named in a section must appear in the section's source corpus or the
+    # resolved-company roster; a clear hallucination (org absent from the corpus
+    # entirely) triggers ONE re-ask of just the flagged sections. Unsupported
+    # orgs are always logged. Never blocks the response.
+    if not brief_is_stub:
+        try:
+            _allowed_companies = []
+            for a in (spine + floor):
+                _allowed_companies.extend(_companies_of(a))
+            _sections = data.get("sections")
+            flagged = _unsupported_orgs_in_sections(_sections, article_text, _allowed_companies)
+            if flagged:
+                print(f"  ⚠ entity guard: unsupported orgs by section: {flagged}")
+                fixed = _regenerate_sections_entity_safe(
+                    _sections, flagged, article_text, _allowed_companies
+                )
+                if isinstance(fixed, dict):
+                    merged = dict(_sections)
+                    for k, v in fixed.items():
+                        if k in merged and isinstance(v, str) and v.strip():
+                            merged[k] = v
+                    still = _unsupported_orgs_in_sections(merged, article_text, _allowed_companies)
+                    data["sections"] = merged
+                    if still:
+                        print(f"  ⚠ entity guard: residual unsupported orgs after re-ask: {still}")
+                    else:
+                        print("  [entity guard] re-ask resolved all unsupported orgs")
+                else:
+                    print("  ⚠ entity guard: re-ask failed; keeping original sections (orgs logged)")
+        except Exception as e:
+            print(f"  ⚠ entity guard error (non-fatal): {e}")
 
     sector_breakdown = _validate_sector_breakdown(data.get("sector_breakdown", {}))
     print(f"  📊 sector_breakdown: {len(sector_breakdown)} sector(s) — {list(sector_breakdown.keys())}")
