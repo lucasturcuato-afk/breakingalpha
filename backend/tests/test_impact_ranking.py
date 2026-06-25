@@ -42,19 +42,40 @@ class ClusterKeyTests(unittest.TestCase):
         k = ir.cluster_key(art("Dina Powell McCormick opens door to Wall Street", "Axios",
                                companies=["Meta"]))
         self.assertNotEqual(k, "macro:fed")
-        self.assertEqual(k, "co:meta")
+        # D1: company cluster is now company+event-scoped.
+        self.assertTrue(k.startswith("co:meta:"))
 
     def test_company_cluster(self):
-        self.assertEqual(ir.cluster_key(art("Nvidia ships new chip", "Reuters", companies=["Nvidia"])),
-                         "co:nvidia")
+        # D1: company clusters carry an event sub-key (here a product launch).
+        k = ir.cluster_key(art("Nvidia ships new chip", "Reuters", companies=["Nvidia"]))
+        self.assertTrue(k.startswith("co:nvidia:"))
+
+    def test_company_event_subcluster_splits_distinct_events(self):
+        # D1 core: one company, two unrelated events -> two distinct clusters.
+        deal = ir.cluster_key(art("SpaceX to acquire AI startup for $6.3 billion",
+                                   "FT", companies=["SpaceX"]))
+        bond = ir.cluster_key(art("SpaceX pitches investors juicy yields in $25bn bond deal",
+                                   "Bloomberg", companies=["SpaceX"]))
+        self.assertNotEqual(deal, bond)
+        self.assertTrue(deal.startswith("co:spacex:"))
+        self.assertTrue(bond.startswith("co:spacex:"))
+
+    def test_company_event_subcluster_merges_syndicated_dupes(self):
+        # Same event, two outlets, same theme -> SAME cluster (breadth counts).
+        a = ir.cluster_key(art("SpaceX to acquire AI startup for $6.3 billion",
+                               "FT", companies=["SpaceX"]))
+        b = ir.cluster_key(art("SpaceX to acquire AI startup in $6.3B deal",
+                               "Reuters", companies=["SpaceX"]))
+        self.assertEqual(a, b)
 
     def test_no_sector_megacluster(self):
         # No company, no macro keyword -> singleton, NOT a sector bucket.
-        k = ir.cluster_key(art("Some niche tech gadget launches", "Blog", companies=[]))
+        k = ir.cluster_key(art("Some niche tech gadget", "Blog", companies=[]))
         self.assertTrue(k.startswith("one:"))
 
     def test_company_array_text(self):
-        self.assertEqual(ir.cluster_key(art("X", "S", companies="{Eightco,OpenAI}")), "co:eightco")
+        self.assertTrue(ir.cluster_key(art("X update", "S", companies="{Eightco,OpenAI}"))
+                        .startswith("co:eightco:"))
 
 
 class RecentEventTests(unittest.TestCase):
@@ -103,7 +124,7 @@ class MegaDealTests(unittest.TestCase):
         quiet = [art("Small cap update", f"Blog{i}", rel=7, companies=[f"Tiny{i}"]) for i in range(3)]
         res = ir.compute_shadow_lead(deal + quiet, NOW, asof_date=dt.date(2026, 7, 20),
                                      mega_deal_urls={deal_url})
-        self.assertEqual(res["cluster_key"], "co:spacex")
+        self.assertEqual(res["cluster_key"], "co:spacex:ma")
         self.assertTrue(res["top_clusters"][0]["is_mega_deal"])
 
     def test_empty_pool(self):
@@ -118,6 +139,61 @@ class ScoringTests(unittest.TestCase):
         top = scored[0]
         self.assertEqual(top["cluster_key"], "macro:fed")
         self.assertTrue(top["is_recent"] and top["is_tier1"])
+
+
+class StaleEventBackstopTests(unittest.TestCase):
+    """D4: a stale-but-broadly-covered non-macro event must not out-rank a fresh
+    event of equal breadth."""
+
+    def test_fresh_event_beats_stale_equal_breadth(self):
+        fresh = [art("Acme launches new platform", f"FreshSrc{i}", rel=8,
+                     companies=["Acme"], hours_ago=3) for i in range(5)]
+        stale = [art("Beta unveils gadget rollout", f"StaleSrc{i}", rel=8,
+                     companies=["Beta"], hours_ago=40) for i in range(5)]
+        scored = ir.score_clusters(fresh + stale, NOW)
+        self.assertTrue(scored[0]["cluster_key"].startswith("co:acme:"))
+        # The stale cluster carries the staleness reason.
+        stale_c = next(c for c in scored if c["cluster_key"].startswith("co:beta:"))
+        self.assertIn("stale event", stale_c["reason"])
+
+
+class MegaDealRelaxTests(unittest.TestCase):
+    """D12: a genuine confirmed same-day deal with a STALE deal_flow stage still
+    gets the mega-deal boost when the article side is unambiguous."""
+
+    def test_stale_stage_relaxed_when_article_confirmed(self):
+        url = "http://deal/qcom-modular"
+        deal_arts = [
+            art("Qualcomm to acquire AI chip startup Modular Inc in $4 billion deal",
+                "Bloomberg", rel=10, companies=["Qualcomm"], url=url,
+                summary="Qualcomm agreed to acquire Modular Inc for $4 billion in a definitive agreement."),
+            art("Qualcomm buys Modular for $4B to bolster AI chip software stack",
+                "Reuters", rel=9, companies=["Qualcomm"],
+                summary="Qualcomm signed an agreement to acquire Modular Inc for $4 billion."),
+        ]
+        deal_rows = [{"company": "Modular Inc", "acquirer": "Qualcomm", "deal_type": "M&A",
+                      "stage": "rumored", "valuation": "$4B", "source_url": url}]
+        urls = ir.confirmed_mega_deal_urls(deal_rows, deal_arts)
+        self.assertIn(url, urls)
+
+    def test_stale_stage_speculative_headline_still_blocked(self):
+        url = "http://deal/spec"
+        spec_arts = [
+            art("Foo in talks to acquire Bar for $5 billion", "Bloomberg", rel=10,
+                companies=["Foo"], url=url, summary="Foo is in talks to acquire Bar."),
+        ]
+        deal_rows = [{"company": "Bar", "acquirer": "Foo", "deal_type": "M&A",
+                      "stage": "rumored", "valuation": "$5B", "source_url": url}]
+        urls = ir.confirmed_mega_deal_urls(deal_rows, spec_arts)
+        self.assertNotIn(url, urls)
+
+    def test_confirmed_stage_path_preserved(self):
+        url = "http://deal/closed"
+        arts = [art("X completes acquisition of Y for $3B", "Wire", rel=8,
+                    companies=["X"], url=url)]
+        deal_rows = [{"company": "Y", "acquirer": "X", "deal_type": "M&A",
+                      "stage": "closed", "valuation": "$3B", "source_url": url}]
+        self.assertIn(url, ir.confirmed_mega_deal_urls(deal_rows, arts))
 
 
 if __name__ == "__main__":

@@ -72,16 +72,78 @@ MACRO_BUCKETS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 TIER1_BUCKETS = {"fed", "cpi", "pce", "jobs"}
 
+# ── Event-theme sub-buckets (D1) ─────────────────────────────────────────────
+# WHY: a single company can generate many UNRELATED stories in one window (on
+# 2026-06-24 SpaceX produced 48 articles across 21 sources spanning a cargo
+# test, a $6.3B AI deal, a $25B bond sale, a post-IPO stock slump, analyst
+# initiations, and a lockup). Bucketing all of them under "co:spacex" credited
+# breadth (distinct sources) to the COMPANY, not to any single EVENT, so the
+# name out-ranked genuinely broadly-covered single events on volume alone.
+#
+# Fix: within a company bucket, sub-cluster by EVENT theme so distinct events
+# are distinct clusters and breadth is counted per EVENT. Order matters: the
+# first theme whose keywords hit wins. Items that match no theme fall back to a
+# content signature (below) so near-identical syndications of one story still
+# merge, but unrelated stories do not. Macro buckets are unchanged.
+EVENT_THEMES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("ma", ("acquire", "acquisition", "acquires", "buyout", "buy out", "to buy",
+            "buys", "merger", "takeover", "tender offer", "bid for", "deal for")),
+    ("funding", ("bond", "debt deal", "notes offering", "note offering",
+                 "raises $", "raise $", "funding round", "series a", "series b",
+                 "series c", "series d", "fundraise", "fundraising", "credit facility",
+                 "term loan", "convertible")),
+    ("offering", ("share sale", "stock offering", "equity raise", "equity offering",
+                  "registered direct", "secondary offering", "priced its",
+                  "pricing of", "at-the-market")),
+    ("ipo", ("ipo", "debut", "lists publicly", "begins trading", "began trading",
+             "post-ipo", "listing", "goes public")),
+    ("stock", ("stock", "shares", "selloff", "sell-off", "rout", "plunge", "tumble",
+               "slumps", "slump", "rally", "rallies", "rebound", "valuation",
+               "market cap", "trillionaire")),
+    ("rating", ("upgrade", "downgrade", "initiates coverage", "starts at",
+                "price target", "neutral", "overweight", "underweight", "buy rating")),
+    ("earnings", ("earnings", "quarterly results", "q1", "q2", "q3", "q4",
+                  "revenue", "guidance", "eps", "beats", "misses")),
+    ("buyback", ("buyback", "repurchase", "share repurchase", "dividend")),
+    ("legal", ("lawsuit", "sues", "probe", "investigation", "antitrust", "appeal",
+               "court", "settlement", "fine", "sanction")),
+    ("layoffs", ("layoff", "layoffs", "job cuts", "cuts jobs", "restructuring",
+                 "workforce reduction")),
+    ("product", ("launch", "launches", "unveils", "debuts", "rollout", "rolls out",
+                 "new product", "contract", "partnership", "partners with")),
+)
+
+# How many tokens form a fallback content signature for an item that matches no
+# named event theme. Small enough that syndicated near-duplicates of one story
+# (same head words) collapse, large enough that two unrelated stories do not.
+_SIG_TOKENS = 4
+_STOPWORDS = frozenset((
+    "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with", "as",
+    "at", "by", "is", "are", "its", "it", "after", "amid", "over", "from", "new",
+    "inc", "corp", "ltd", "plc", "co", "says", "report", "reports", "reuters",
+    "bloomberg", "yahoo", "finance", "google", "news",
+))
+
 # Scoring weights. Tuned so broad authoritative macro coverage beats a narrow
 # single-name story, a tier-1 event that just happened gets promoted, and a
 # genuine $1B+ deal still leads. See tests for the calibration cases.
 W_DISTINCT_SOURCES = 3.0
 W_ARTICLE_COUNT = 1.0
-W_RECENCY = 2.0
+# D4 recency backstop: lead recency was dominated by breadth and MEGA_DEAL_BOOST,
+# so a stale-but-broadly-covered cluster could out-rank a fresh event. Raise the
+# recency weight and add an explicit staleness penalty for clusters whose
+# freshest article is older than EVENT_STALE_AGE_H. D1/A2 catch the 06-24 case;
+# this is the backstop so an old event cannot lead on accumulated breadth alone.
+W_RECENCY = 4.0
 TIER1_BOOST = 4.0
 RECENT_EVENT_BOOST = 4.0
 MEGA_DEAL_BOOST = 10.0
 RECENCY_HALFWINDOW_H = 48.0
+# A cluster whose freshest article is older than this (hours) takes a flat
+# staleness penalty unless it is a tier-1 / recent-event macro cluster (those
+# carry their own boosts and are intentionally exempt).
+EVENT_STALE_AGE_H = 24.0
+STALE_EVENT_PENALTY = 3.0
 
 
 def _text(a: dict) -> str:
@@ -102,25 +164,54 @@ def _parse_list(raw) -> list:
     return []
 
 
+def _event_theme(t: str) -> Optional[str]:
+    """First EVENT_THEMES bucket whose keywords appear in the article text, or
+    None when no named theme matches."""
+    for theme, kws in EVENT_THEMES:
+        if any(kw in t for kw in kws):
+            return theme
+    return None
+
+
+def _content_signature(a: dict) -> str:
+    """Stable short content signature for an item with no named event theme: the
+    first few significant (non-stopword) title tokens. Near-identical
+    syndications of one story share a head and collapse; unrelated stories do
+    not. Deterministic and pure."""
+    title = str(a.get("title") or "").lower()
+    toks = re.findall(r"[a-z0-9$]+", title)
+    sig = [w for w in toks if w not in _STOPWORDS and len(w) > 2][:_SIG_TOKENS]
+    if not sig:
+        return (a.get("url") or title or "unknown").strip()[:60]
+    return "-".join(sig)
+
+
 def cluster_key(a: dict) -> str:
     """Assign an article to an EVENT cluster. Macro keyword buckets first (so the
-    Fed is one cluster regardless of outlet), then primary company/ticker.
+    Fed is one cluster regardless of outlet), then a company+EVENT sub-cluster.
 
-    Everything else is a SINGLETON (keyed by url/title), deliberately NOT bucketed
-    by industry vertical: a sector is not an event, and lumping all of a sector's
-    unrelated stories into one cluster produces a fake mega-cluster that always
-    wins on breadth. Coverage breadth is only meaningful at the event level (one
-    macro event, one company's news), so non-macro non-company items do not
-    aggregate."""
+    D1: within one company, distinct EVENTS are distinct clusters. A company's
+    many unrelated stories (a deal, a bond sale, a stock-price slump, an analyst
+    rating) no longer collapse into one "co:NAME" mega-cluster that wins on
+    name-level volume; breadth (distinct sources) is counted per EVENT. The
+    sub-key is the matched event theme, else a content signature so syndicated
+    near-duplicates of the SAME story still merge.
+
+    Everything else is a SINGLETON (keyed by content signature), deliberately NOT
+    bucketed by industry vertical: a sector is not an event, and lumping all of a
+    sector's unrelated stories into one cluster produces a fake mega-cluster that
+    always wins on breadth. Coverage breadth is only meaningful at the event
+    level."""
     t = _text(a)
     for bucket, kws in MACRO_BUCKETS:
         if any(kw in t for kw in kws):
             return f"macro:{bucket}"
     companies = _parse_list(a.get("companies"))
     if companies and str(companies[0]).strip():
-        return "co:" + str(companies[0]).strip().lower()
-    uid = (a.get("url") or a.get("title") or "unknown").strip().lower()
-    return "one:" + uid
+        co = str(companies[0]).strip().lower()
+        sub = _event_theme(t) or ("sig:" + _content_signature(a))
+        return f"co:{co}:{sub}"
+    return "one:" + _content_signature(a)
 
 
 def _age_hours(a: dict, now: datetime.datetime) -> float:
@@ -195,6 +286,11 @@ def score_clusters(
         is_recent = bucket in recent_events
         is_mega = any((x.get("url") or "").strip() in mega_deal_urls for x in arts)
 
+        # D4: stale non-macro clusters take a flat penalty so accumulated breadth
+        # on an old event cannot out-rank a fresh one. Tier-1 / recent-event macro
+        # clusters are exempt (they carry their own intentional boosts).
+        is_stale = (freshest != float("inf") and freshest > EVENT_STALE_AGE_H
+                    and not (is_tier1 or is_recent))
         score = (
             W_DISTINCT_SOURCES * math.log1p(n_sources)
             + W_ARTICLE_COUNT * math.log1p(n_articles)
@@ -202,8 +298,11 @@ def score_clusters(
             + (TIER1_BOOST if is_tier1 else 0.0)
             + (RECENT_EVENT_BOOST if is_recent else 0.0)
             + (MEGA_DEAL_BOOST if is_mega else 0.0)
+            - (STALE_EVENT_PENALTY if is_stale else 0.0)
         )
         reasons = []
+        if is_stale:
+            reasons.append("stale event (>24h)")
         if is_recent:
             reasons.append("recent tier-1 event (<=48h)")
         if is_tier1:
@@ -321,23 +420,98 @@ def fetch_coverage_pool(sb, now: datetime.datetime, hours_ingest: int = 24,
         return []
 
 
+# D12 same-day-confirmation relaxation thresholds. A deal whose deal_flow stage
+# is STALE (e.g. still 'rumored' after the deal was actually announced, because
+# deal_extractor did not re-run) can still qualify for the mega-deal boost when
+# the TODAY-side article signal is unambiguous: explicit value, high relevance,
+# and broad cross-source coverage of that same deal. These are the article-side
+# proxies for "clearly confirmed" when the deal_flow stage cannot be trusted.
+MEGA_DEAL_RELAX_MIN_RELEVANCE = 9
+MEGA_DEAL_RELAX_MIN_DISTINCT_SOURCES = 2
+
+
+def confirmed_mega_deal_urls(deal_rows: list[dict], pool: list[dict]) -> set[str]:
+    """Pure: given deal_flow rows and the article pool, return the set of article
+    source_urls that map to a CONFIRMED $1B+ deal eligible for the mega-deal boost.
+
+    Two paths (D12):
+      1. Stage path (original): deal_flow stage in CONFIRMED_STAGES.
+      2. Relaxed same-day path: the deal_flow stage is STALE but the article side
+         is unambiguous, i.e. the deal has an explicit >= $1B valuation AND the
+         EVENT cluster of the matched article(s) shows high relevance and
+         dominant cross-source breadth (multiple distinct sources). This recovers
+         a genuine confirmed same-day deal (e.g. Qualcomm/Modular $4B) whose
+         deal_flow row was never re-confirmed past 'rumored'.
+
+    Unconfirmed-keyword headlines ("in talks", "rumored", "potential bid") are
+    still blocked via lead_preselect's blocklist so a speculative single-name does
+    NOT get the boost."""
+    import lead_preselect as lp
+
+    out: set[str] = set()
+    if not deal_rows:
+        return out
+
+    # Index the pool by url and by event cluster so we can read the article-side
+    # confirmation signal for a given deal_flow source_url.
+    by_url: dict[str, dict] = {}
+    for a in pool:
+        u = (a.get("url") or "").strip()
+        if u and u not in by_url:
+            by_url[u] = a
+
+    from collections import defaultdict
+    cluster_members: dict[str, list[dict]] = defaultdict(list)
+    for a in pool:
+        cluster_members[cluster_key(a)].append(a)
+
+    for d in deal_rows:
+        url = (d.get("source_url") or "").strip()
+        if not url:
+            continue
+        v = lp.parse_valuation_to_usd_b(d.get("valuation"))
+        if v is None or v < 1.0:
+            continue
+        stage = (d.get("stage") or "").strip().lower()
+
+        # Path 1: trusted stage.
+        if stage in lp.CONFIRMED_STAGES:
+            out.add(url)
+            continue
+
+        # Path 2: relaxed same-day confirmation from the article side.
+        art = by_url.get(url)
+        if not art:
+            continue
+        text = (str(art.get("title") or "") + " " + str(art.get("summary") or "")).lower()
+        # Block speculative single-name headlines even under the relaxed path.
+        if lp._has_unconfirmed_keyword(text) or lp._has_unconfirmed_keyword_non_ma(text):
+            continue
+        try:
+            rel = int(art.get("relevance_score") or 0)
+        except (TypeError, ValueError):
+            rel = 0
+        members = cluster_members.get(cluster_key(art), [art])
+        distinct_sources = len({
+            str(x.get("source") or "").strip().lower() for x in members if x.get("source")
+        })
+        if (rel >= MEGA_DEAL_RELAX_MIN_RELEVANCE
+                and distinct_sources >= MEGA_DEAL_RELAX_MIN_DISTINCT_SOURCES):
+            out.add(url)
+    return out
+
+
 def _mega_deal_urls(sb, now: datetime.datetime) -> set[str]:
-    """Reuse lead_preselect's deal_flow fetch, valuation parse, AND confirmation
-    gate (no duplication) to mark CONFIRMED $1B+ deal urls, preserving the
-    mega-deal lead path. The confirmation gate (stage in signed / closed) matters:
-    without it a speculative "$7B plan" headline would get the full mega-deal boost
-    and out-rank a broadly-covered event, which is the same speculative-single-name
-    failure this ranker exists to avoid."""
+    """Reuse lead_preselect's deal_flow fetch + valuation parse, then apply the
+    confirmation gate (confirmed_mega_deal_urls) to mark CONFIRMED $1B+ deal urls,
+    preserving the mega-deal lead path. D12: the gate now also admits a clearly
+    confirmed same-day deal whose deal_flow stage is stale (see
+    confirmed_mega_deal_urls). Read-only; never raises."""
     try:
         import lead_preselect as lp
-        out: set[str] = set()
-        for d in lp.fetch_recent_deal_flow(sb, hours=48, limit=300):
-            v = lp.parse_valuation_to_usd_b(d.get("valuation"))
-            stage = (d.get("stage") or "").strip().lower()
-            if (v is not None and v >= 1.0 and stage in lp.CONFIRMED_STAGES
-                    and (d.get("source_url") or "").strip()):
-                out.add(d["source_url"].strip())
-        return out
+        deal_rows = lp.fetch_recent_deal_flow(sb, hours=48, limit=300)
+        pool = fetch_coverage_pool(sb, now)
+        return confirmed_mega_deal_urls(deal_rows, pool)
     except Exception as e:
         logger.warning("impact_ranking: _mega_deal_urls failed: %s", e)
         return set()
