@@ -1349,7 +1349,9 @@ def _build_morning_tape_directive(tape: dict) -> str:
 def _maybe_inject_tape_directive(brief_type, system):
     """Fetch the latest tape and prepend the surface-appropriate grounding block.
 
-    Returns (system, tape_regime). Both morning and evening are grounded:
+    Returns (system, tape_regime, tape). `tape` is the raw fetched tape dict (or
+    None) so the caller can run the overview-subject materiality gate without a
+    second fetch. Both morning and evening are grounded:
       - evening uses market_tape.build_tape_directive (close-of-day framing),
       - morning uses _build_morning_tape_directive (prior-session-close framing,
         backward-bound word / tone, forward-free what_to_watch).
@@ -1366,14 +1368,14 @@ def _maybe_inject_tape_directive(brief_type, system):
         print(f"  ⚠ tape fetch failed (non-fatal): {e}")
     if not tape:
         print(f"  ⚠ tape unavailable - {brief_type} synthesis runs ungrounded; sentiment_word will be nulled")
-        return system, None
+        return system, None, None
     directive = (
         market_tape.build_tape_directive(tape)
         if brief_type == "evening"
         else _build_morning_tape_directive(tape)
     )
     print(f"  📊 Injected tape facts (regime: {tape['regime']}, vix: {tape['vix_level']:.1f})")
-    return directive + system, tape["regime"]
+    return directive + system, tape["regime"], tape
 
 
 # ── Lead-thesis opener guard ─────────────────────────────────────────────────
@@ -1772,8 +1774,64 @@ def run(brief_type="morning"):
     # post-parse backstop below nulls sentiment_word instead of shipping an
     # unverifiable word. Never defaults to a biased word.
     tape_regime = None
+    tape_obj = None
     if brief_type in ("morning", "evening"):
-        system, tape_regime = _maybe_inject_tape_directive(brief_type, system)
+        system, tape_regime, tape_obj = _maybe_inject_tape_directive(brief_type, system)
+
+    # --- Overview-subject materiality gate (D2+D3) -------------------------------
+    # Break the inheritance where the market_pulse overview subject = the pre-picked
+    # lead. The default overview is a market-wide synthesis chosen independently from
+    # the fresh tape. A single-name OR pure-deal/fundraise lead may become the
+    # overview SUBJECT only if it clears the conservative materiality gate (material
+    # tape move AND story is the tape's cited driver AND its EVENT-level cluster has
+    # dominant cross-source breadth). Otherwise it is relegated to a MENTION. The
+    # decision rides the existing system-prompt prepend path; no route file is edited.
+    if brief_type in ("morning", "evening") and preselected:
+        try:
+            _ps_companies = preselected.get("companies") or []
+            if isinstance(_ps_companies, str):
+                try:
+                    _ps_companies = json.loads(_ps_companies)
+                except Exception:
+                    _ps_companies = [_ps_companies]
+            _ps_deal_type = (preselected.get("deal_type") or "").strip().lower()
+            _pure_deal_types = {
+                "m&a", "mergers & acquisitions", "lbo", "ipo", "funding",
+                "fundraising", "debt financing", "minority stake", "asset sale",
+                "ipo & capital markets",
+            }
+            _is_pure_deal = _ps_deal_type in _pure_deal_types
+            _is_single_name = bool(_ps_companies) and len(_ps_companies) <= 2
+            _is_single_or_deal = _is_single_name or _is_pure_deal
+            # Distinct-source breadth of the pick's EVENT-level cluster (post-D1).
+            _breadth = (preselected.get("_impact_breadth") or {})
+            _distinct_sources = int(_breadth.get("distinct_sources") or 0)
+            # tape_driver_names: only gen-time-available movers/driver. The tape
+            # fetch surfaces indices + VIX, not per-name quotes, so the conservative
+            # driver set is empty here. See TODO(recon open question 2) in
+            # market_tape.overview_subject_gate.
+            _gate = market_tape.overview_subject_gate(
+                story_companies=_ps_companies,
+                is_single_name_or_deal=_is_single_or_deal,
+                cluster_distinct_sources=_distinct_sources,
+                tape=tape_obj,
+                tape_driver_names=None,
+            )
+            system = market_tape.build_overview_subject_directive(
+                _gate, story_title=(preselected.get("title") or "")
+            ) + system
+            print(f"  🧭 Overview subject gate: {_gate['subject']} ({'; '.join(_gate['reasons'])})")
+            try:
+                import lead_preselect as _lp
+                _lp._LAST_DECISION_LOG.update({
+                    "overview_subject": _gate["subject"],
+                    "overview_gate_passed": _gate["passed"],
+                    "overview_gate_checks": _gate["checks"],
+                })
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"  ⚠ overview-subject gate skipped (non-fatal): {e}")
 
     # --- Market-holiday / weekend awareness (market_calendar.py, soft-fail) ------
     # On a full-day US equity closure, the tape above is the LAST completed session
