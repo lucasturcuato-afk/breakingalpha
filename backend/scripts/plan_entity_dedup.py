@@ -277,6 +277,21 @@ def _cluster_sql(rec, child_counts, commented=False):
                      f"(ticker={d['ticker']}, cik={d['sec_cik']}, children={sum(child_counts.get(d['id'],{}).values())})")
     lines.append(f"{pfx}BEGIN;")
     for table, col in FK_CHILDREN:
+        # aliases has UNIQUE (lookup_key, canonical_id); re-pointing a loser whose
+        # lookup_key the survivor (or an earlier loser) already holds throws 23505.
+        # Emit an interleaved per-loser DELETE+UPDATE pair, in list order, so each
+        # loser's guard runs after prior losers have moved onto the survivor and
+        # therefore sees and clears the now-colliding lookup_key. Do not collapse
+        # to an IN(...) UPDATE here: a single set move cannot resolve loser-vs-loser
+        # collisions. The other 5 FK children have no unique index on the re-pointed
+        # column, so their set move cannot collide and stays as one IN(...) UPDATE.
+        if table == "aliases":
+            for d in dups:
+                lines.append(f"{pfx}DELETE FROM aliases a USING aliases s "
+                             f"WHERE a.{col} = '{d['id']}' AND s.{col} = '{surv['id']}' "
+                             f"AND s.lookup_key = a.lookup_key;")
+                lines.append(f"{pfx}UPDATE aliases SET {col} = '{surv['id']}' WHERE {col} = '{d['id']}';")
+            continue
         lines.append(f"{pfx}UPDATE {table} SET {col} = '{surv['id']}' WHERE {col} IN ({dup_ids});")
     lines.append(f"{pfx}UPDATE companies SET mention_count = COALESCE(mention_count,0) + "
                  f"COALESCE((SELECT SUM(COALESCE(mention_count,0)) FROM companies WHERE id IN ({dup_ids})),0) "
