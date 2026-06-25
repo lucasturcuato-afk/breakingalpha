@@ -33,6 +33,24 @@ VIX_CALM_LEVEL = 15
 VIX_SPIKE_PCT = 3
 SPX_TIEBREAK_PCT = 0.3
 
+# ── Overview-subject materiality gate (D2+D3) ────────────────────────────────
+# WHY: the default overview subject used to inherit the pre-picked lead, so a
+# single-name or pure-deal story could become the market-wide read even on a day
+# when nothing moved the whole tape (2026-06-24: a SpaceX post-IPO stock slump
+# led on name-level volume while the broad tape was mild risk-on/neutral). The
+# default overview must be a market-wide synthesis chosen independently from the
+# fresh tape. A single-name / pure-deal story may BECOME the overview subject
+# only when this gate passes; otherwise it is relegated to a MENTION.
+#
+# v1 is conservative and defaults to market-wide. Thresholds are deliberately
+# tunable named constants. "Material move" means the day's tape itself moved
+# enough that a single driver could plausibly own the market-wide read.
+MATERIALITY_SPX_ABS_PCT = 1.0   # |S&P 500 daily %| at or above this is material
+MATERIALITY_VIX_ABS_PCT = 8.0   # |VIX daily %| at or above this is material
+# A cluster needs at least this many DISTINCT sources to count as "dominant
+# cross-source breadth" for overview-subject eligibility.
+MATERIALITY_MIN_DISTINCT_SOURCES = 6
+
 
 def compute_regime(vix_level: float, vix_pct_change: float, spx_pct_change: float) -> str:
     """
@@ -223,6 +241,138 @@ def fetch_tape() -> dict | None:
         spx_pct_change=spx["pct"],
     )
     return {"quotes": quotes, "regime": regime, "vix_level": vix["price"]}
+
+
+# ── Overview-subject materiality gate (D2+D3) ───────────────────────────────
+
+def tape_has_material_move(tape: dict | None) -> bool:
+    """Gate (a): did the gen-time tape itself move enough that a single driver
+    could plausibly own the market-wide read today? True when |S&P %| or |VIX %|
+    clears its materiality threshold. Conservative: on a mild tape this is False,
+    so the overview defaults to a market-wide synthesis. Pure, never raises."""
+    if not tape:
+        return False
+    try:
+        quotes = tape.get("quotes") or {}
+        spx = quotes.get("^GSPC") or {}
+        vix = quotes.get("^VIX") or {}
+        spx_pct = abs(float(spx.get("pct") or 0.0))
+        vix_pct = abs(float(vix.get("pct") or 0.0))
+        return spx_pct >= MATERIALITY_SPX_ABS_PCT or vix_pct >= MATERIALITY_VIX_ABS_PCT
+    except Exception as e:
+        logger.warning("market_tape: tape_has_material_move failed: %s", e)
+        return False
+
+
+def _norm_names(names) -> set[str]:
+    out: set[str] = set()
+    for n in names or []:
+        s = str(n or "").strip().lower()
+        if s:
+            out.add(s)
+    return out
+
+
+def story_companies_are_tape_drivers(story_companies, tape_driver_names) -> bool:
+    """Gate (b) proxy: are the story's resolved companies among the day's cited
+    movers/driver in the tape data already fetched at gen time? `tape_driver_names`
+    is the caller-supplied set of the day's biggest movers / the tape's cited
+    driver. Conservative: empty driver set -> False (cannot confirm)."""
+    cos = _norm_names(story_companies)
+    drivers = _norm_names(tape_driver_names)
+    if not cos or not drivers:
+        return False
+    return bool(cos & drivers)
+
+
+def overview_subject_gate(
+    *,
+    story_companies,
+    is_single_name_or_deal: bool,
+    cluster_distinct_sources: int,
+    tape: dict | None,
+    tape_driver_names=None,
+) -> dict:
+    """Decide whether a single-name OR pure-deal/fundraise story may be the
+    overview SUBJECT, or must be relegated to a MENTION inside a market-wide
+    overview. Returns {"subject": "story"|"market_wide", "passed": bool,
+    "reasons": [...], "checks": {...}}.
+
+    v1 conservative gate, defaults to market-wide. A story-subject overview
+    requires ALL THREE proxies (use ONLY signals available at gen time):
+      (a) the gen-time tape shows a material move, AND
+      (b) the story's resolved companies are among the day's biggest movers /
+          the tape's cited driver, AND
+      (c) the story's EVENT-level cluster (post-D1) has dominant cross-source
+          breadth (>= MATERIALITY_MIN_DISTINCT_SOURCES distinct sources).
+
+    A market-wide story (not single-name / not pure-deal) is always allowed to be
+    the subject and keeps the market altitude; the gate only constrains the
+    single-name / pure-deal case.
+
+    # TODO(recon open question 2): needs Noah's confirmed inputs. Gate (b) is a
+    # proxy on the caller-supplied mover/driver set; precise per-story index
+    # contribution is not derivable at gen time, so it is intentionally NOT
+    # fabricated here."""
+    checks = {
+        "tape_material": tape_has_material_move(tape),
+        "is_tape_driver": story_companies_are_tape_drivers(story_companies, tape_driver_names),
+        "dominant_breadth": int(cluster_distinct_sources or 0) >= MATERIALITY_MIN_DISTINCT_SOURCES,
+    }
+    if not is_single_name_or_deal:
+        return {"subject": "story", "passed": True,
+                "reasons": ["market-wide story; gate not applicable"], "checks": checks}
+
+    reasons = []
+    if not checks["tape_material"]:
+        reasons.append("tape not material (no single driver owns the read)")
+    if not checks["is_tape_driver"]:
+        reasons.append("story companies are not the day's tape driver")
+    if not checks["dominant_breadth"]:
+        reasons.append(
+            f"event cluster lacks dominant breadth "
+            f"(<{MATERIALITY_MIN_DISTINCT_SOURCES} distinct sources)"
+        )
+
+    passed = all(checks.values())
+    if passed:
+        return {"subject": "story", "passed": True,
+                "reasons": ["single-name/deal story cleared materiality gate"],
+                "checks": checks}
+    return {"subject": "market_wide", "passed": False,
+            "reasons": reasons or ["relegated to mention"], "checks": checks}
+
+
+def build_overview_subject_directive(gate: dict, story_title: str = "") -> str:
+    """Render the [OVERVIEW SUBJECT] directive prepended to the synthesis system
+    prompt (same injection pattern as the tape directive). Tells Gemini whether
+    the market_pulse overview centers on the pre-picked story or stays a
+    market-wide synthesis with that story relegated to a mention. No edits to any
+    route file: this rides the existing system-prompt prepend path."""
+    title = (story_title or "").strip()[:160]
+    if gate.get("subject") == "story":
+        body = (
+            "The pre-picked lead story cleared the market-materiality gate, so the "
+            "market_pulse.narrative MAY center on it, but stay at MARKET altitude: "
+            "frame it as what the whole tape turns on, not a single-name writeup."
+        )
+    else:
+        reasons = "; ".join(gate.get("reasons") or ["not material market-wide"])
+        body = (
+            "The pre-picked lead story did NOT clear the market-materiality gate "
+            f"({reasons}). The market_pulse overview MUST be a MARKET-WIDE synthesis "
+            "chosen from the tape: index moves, breadth, volatility, rates, and the "
+            "dominant macro driver. Do NOT let the lead story become the overview "
+            "subject. It may appear only as ONE mention among several distinct "
+            "drivers, never as the through-line."
+        )
+    lines = [
+        "[OVERVIEW SUBJECT - deterministic market-materiality gate]",
+    ]
+    if title:
+        lines.append(f'Pre-picked lead: "{title}"')
+    lines.append(body)
+    return "\n".join(lines) + "\n\n"
 
 
 # ── Prompt grounding + post-parse enforcement ───────────────────────────────
