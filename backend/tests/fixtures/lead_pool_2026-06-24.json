@@ -1,0 +1,1044 @@
+{
+  "_meta": {
+    "asof_utc": "2026-06-24T13:45:25+00:00",
+    "description": "Representative snapshot of the 06-24 morning candidate pool (SELECT-only from prod via supabase MCP, 2026-06-24). SpaceX cluster is real (48 rows / 21 distinct sources, many distinct events). Genuine confirmed deals: AbbVie/Apogee $10.9B, Accenture $4.175B, Public Storage Canada $1.2B. A7 stale-stage case: Qualcomm/Modular $4B (deal_flow stage 'rumored').",
+    "ingest_window": [
+      "2026-06-23T13:45:25+00:00",
+      "2026-06-24T13:45:25+00:00"
+    ],
+    "publish_window": [
+      "2026-06-22T13:45:25+00:00",
+      "2026-06-24T13:45:25+00:00"
+    ]
+  },
+  "deal_flow": [
+    {
+      "company": "Apogee Therapeutics",
+      "acquirer": "AbbVie",
+      "deal_type": "M&A",
+      "stage": "announced",
+      "valuation": "$10.9B",
+      "source_url": "https://x.test/abbv-apogee-1"
+    },
+    {
+      "company": "Modular Inc",
+      "acquirer": "Qualcomm",
+      "deal_type": "M&A",
+      "stage": "rumored",
+      "valuation": "$4B",
+      "source_url": "https://x.test/qcom-modular-1"
+    }
+  ],
+  "articles": [
+    {
+      "title": "SpaceX Conducts Starfall Cargo Test, Lands Next AST SpaceMobile Launch",
+      "summary": "SpaceX Conducts Starfall Cargo Test, Lands Next AST SpaceMobile Launch",
+      "url": "https://x.test/5640946",
+      "source": "Yahoo",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T07:15:25+00:00",
+      "ingested_at": "2026-06-24T07:45:25+00:00"
+    },
+    {
+      "title": "SpaceX Just Inked a New AI Deal Worth Up to $6.3 Billion",
+      "summary": "SpaceX Just Inked a New AI Deal Worth Up to $6.3 Billion",
+      "url": "https://x.test/9321980",
+      "source": "Yahoo",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T06:15:25+00:00",
+      "ingested_at": "2026-06-24T06:45:25+00:00"
+    },
+    {
+      "title": "Musk's SpaceX Adds Billions in Debt While Cutting Interest Costs",
+      "summary": "Musk's SpaceX Adds Billions in Debt While Cutting Interest Costs",
+      "url": "https://x.test/5288036",
+      "source": "Bloomberg Tech",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Fundraising",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T11:15:25+00:00",
+      "ingested_at": "2026-06-24T11:45:25+00:00"
+    },
+    {
+      "title": "SpaceX pitches investors juicy yields in $25bn bond deal",
+      "summary": "SpaceX pitches investors juicy yields in $25bn bond deal",
+      "url": "https://x.test/2321316",
+      "source": "FT Tech",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Funding",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T10:15:25+00:00",
+      "ingested_at": "2026-06-24T10:45:25+00:00"
+    },
+    {
+      "title": "SpaceX pulls off one of the biggest AI debt deals yet",
+      "summary": "SpaceX pulls off one of the biggest AI debt deals yet",
+      "url": "https://x.test/6262432",
+      "source": "MarketWatch Top",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Funding",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T09:15:25+00:00",
+      "ingested_at": "2026-06-24T09:45:25+00:00"
+    },
+    {
+      "title": "Gracias' Valor to Raise $2.5 Billion Fund Amid SpaceX Win",
+      "summary": "Gracias' Valor to Raise $2.5 Billion Fund Amid SpaceX Win",
+      "url": "https://x.test/3991353",
+      "source": "Bloomberg Tech",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Fundraising",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T01:15:25+00:00",
+      "ingested_at": "2026-06-24T01:45:25+00:00"
+    },
+    {
+      "title": "SpaceX Conducts Starfall Cargo Test, Lands Next AST SpaceMobile Launch - Investor's Business Daily",
+      "summary": "SpaceX Conducts Starfall Cargo Test, Lands Next AST SpaceMobile Launch - Investor's Business Daily",
+      "url": "https://x.test/578859",
+      "source": "Google News (ASTS)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 9,
+      "published_at": "2026-06-24T07:15:25+00:00",
+      "ingested_at": "2026-06-24T07:45:25+00:00"
+    },
+    {
+      "title": "SpaceX's $25 Billion Sale Meets Skeptical Eyes of Debt Investors",
+      "summary": "SpaceX's $25 Billion Sale Meets Skeptical Eyes of Debt Investors",
+      "url": "https://x.test/7471098",
+      "source": "Bloomberg Tech",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Fundraising",
+      "relevance_score": 9,
+      "published_at": "2026-06-24T00:15:25+00:00",
+      "ingested_at": "2026-06-24T00:45:25+00:00"
+    },
+    {
+      "title": "SpaceX (SPCX) Extends Losing Streak After Disclosing First-Ever Public Bond Offering - TipRanks",
+      "summary": "SpaceX (SPCX) Extends Losing Streak After Disclosing First-Ever Public Bond Offering - TipRanks",
+      "url": "https://x.test/7339278",
+      "source": "Google News (SPCX)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Fundraising",
+      "relevance_score": 9,
+      "published_at": "2026-06-23T23:15:25+00:00",
+      "ingested_at": "2026-06-23T23:45:25+00:00"
+    },
+    {
+      "title": "Markets tumble worldwide as Fed resets expectations: $400 billion wiped off SpaceX stock - Fortune",
+      "summary": "Markets tumble worldwide as Fed resets expectations: $400 billion wiped off SpaceX stock - Fortune",
+      "url": "https://x.test/7431407",
+      "source": "Google News (COST)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 8,
+      "published_at": "2026-06-23T21:15:25+00:00",
+      "ingested_at": "2026-06-23T21:45:25+00:00"
+    },
+    {
+      "title": "'Wait for a better SpaceX entry point:' Susquehanna starts SPCX at Neutral - Investing.com",
+      "summary": "'Wait for a better SpaceX entry point:' Susquehanna starts SPCX at Neutral - Investing.com",
+      "url": "https://x.test/3293573",
+      "source": "Google News (SPCX)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 8,
+      "published_at": "2026-06-24T03:15:25+00:00",
+      "ingested_at": "2026-06-24T03:45:25+00:00"
+    },
+    {
+      "title": "Elon Musk loses record $350bn in a week as SpaceX slumps - The Telegraph",
+      "summary": "Elon Musk loses record $350bn in a week as SpaceX slumps - The Telegraph",
+      "url": "https://x.test/7834173",
+      "source": "Google News (BN)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 5,
+      "published_at": "2026-06-23T19:15:25+00:00",
+      "ingested_at": "2026-06-23T19:45:25+00:00"
+    },
+    {
+      "title": "SPCX Stock Sees Record Retail Frenzy - SpaceX Logs Over $400M Inflows In First Week Post-IPO - Stocktwits",
+      "summary": "SPCX Stock Sees Record Retail Frenzy - SpaceX Logs Over $400M Inflows In First Week Post-IPO - Stocktwits",
+      "url": "https://x.test/6454705",
+      "source": "Google News (SPCX)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "IPO",
+      "relevance_score": 4,
+      "published_at": "2026-06-23T17:15:25+00:00",
+      "ingested_at": "2026-06-23T17:45:25+00:00"
+    },
+    {
+      "title": "SpaceX: I See 50% Downside, Even With Cursor (NASDAQ:SPCX) - Seeking Alpha",
+      "summary": "SpaceX: I See 50% Downside, Even With Cursor (NASDAQ:SPCX) - Seeking Alpha",
+      "url": "https://x.test/7083383",
+      "source": "Google News (SPCX)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 4,
+      "published_at": "2026-06-23T16:15:25+00:00",
+      "ingested_at": "2026-06-23T16:45:25+00:00"
+    },
+    {
+      "title": "SpaceX Stock: Cathie Wood Bought More SPCX As It Dived 16% - Investor's Business Daily",
+      "summary": "SpaceX Stock: Cathie Wood Bought More SPCX As It Dived 16% - Investor's Business Daily",
+      "url": "https://x.test/3767654",
+      "source": "Google News (SPCX)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 4,
+      "published_at": "2026-06-23T15:15:25+00:00",
+      "ingested_at": "2026-06-23T15:45:25+00:00"
+    },
+    {
+      "title": "Elon Musk loses his trillionaire status as SpaceX stock comes back to Earth - Business Insider",
+      "summary": "Elon Musk loses his trillionaire status as SpaceX stock comes back to Earth - Business Insider",
+      "url": "https://x.test/526132",
+      "source": "Google News (NET)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 4,
+      "published_at": "2026-06-23T15:15:25+00:00",
+      "ingested_at": "2026-06-23T15:45:25+00:00"
+    },
+    {
+      "title": "SpaceX stock dips below $150 debut before rebounding - Yahoo! Finance Canada",
+      "summary": "SpaceX stock dips below $150 debut before rebounding - Yahoo! Finance Canada",
+      "url": "https://x.test/8928656",
+      "source": "Google News (SPCX)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T18:15:25+00:00",
+      "ingested_at": "2026-06-23T18:45:25+00:00"
+    },
+    {
+      "title": "Better Artificial Intelligence (AI) Stock to Buy: SpaceX vs. Nvidia - The Motley Fool",
+      "summary": "Better Artificial Intelligence (AI) Stock to Buy: SpaceX vs. Nvidia - The Motley Fool",
+      "url": "https://x.test/1982554",
+      "source": "Google News (SHOP)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T14:15:25+00:00",
+      "ingested_at": "2026-06-23T14:45:25+00:00"
+    },
+    {
+      "title": "The Biggest IPO in History Is Unraveling. Why SpaceX Stock Hasn't Hit Bottom Yet - 24/7 Wall St.",
+      "summary": "The Biggest IPO in History Is Unraveling. Why SpaceX Stock Hasn't Hit Bottom Yet - 24/7 Wall St.",
+      "url": "https://x.test/5869377",
+      "source": "Google News (ON)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "IPO & Capital Markets",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T20:15:25+00:00",
+      "ingested_at": "2026-06-23T20:45:25+00:00"
+    },
+    {
+      "title": "Better Artificial Intelligence (AI) Stock to Buy: SpaceX vs. Nvidia - The Globe and Mail",
+      "summary": "Better Artificial Intelligence (AI) Stock to Buy: SpaceX vs. Nvidia - The Globe and Mail",
+      "url": "https://x.test/5500996",
+      "source": "Google News (NVDA)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T14:15:25+00:00",
+      "ingested_at": "2026-06-23T14:45:25+00:00"
+    },
+    {
+      "title": "Nasdaq, S&P 500, Dow Futures Crack On Tech, SpaceX Selloff - Stocktwits",
+      "summary": "Nasdaq, S&P 500, Dow Futures Crack On Tech, SpaceX Selloff - Stocktwits",
+      "url": "https://x.test/3200054",
+      "source": "Google News (HOOD)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-24T05:15:25+00:00",
+      "ingested_at": "2026-06-24T05:45:25+00:00"
+    },
+    {
+      "title": "Forget SpaceX: Redditors Think This Asian Stock Has 10X Potential - Yahoo Finance",
+      "summary": "Forget SpaceX: Redditors Think This Asian Stock Has 10X Potential - Yahoo Finance",
+      "url": "https://x.test/3738539",
+      "source": "Google News (GRAB)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T14:15:25+00:00",
+      "ingested_at": "2026-06-23T14:45:25+00:00"
+    },
+    {
+      "title": "SpaceX succumbs to gravity as the stock briefly dips below its debut price on Nasdaq - MarketWatch",
+      "summary": "SpaceX succumbs to gravity as the stock briefly dips below its debut price on Nasdaq - MarketWatch",
+      "url": "https://x.test/842692",
+      "source": "Google News (COST)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T19:15:25+00:00",
+      "ingested_at": "2026-06-23T19:45:25+00:00"
+    },
+    {
+      "title": "Does a Lower Stock Price and New Contracts Make SpaceX Stock a Buy? - The Motley Fool",
+      "summary": "Does a Lower Stock Price and New Contracts Make SpaceX Stock a Buy? - The Motley Fool",
+      "url": "https://x.test/383905",
+      "source": "Google News (COST)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T17:15:25+00:00",
+      "ingested_at": "2026-06-23T17:45:25+00:00"
+    },
+    {
+      "title": "SpaceX stock price drops again as post-IPO gains for retail investors get nearly wiped out - Fast Company",
+      "summary": "SpaceX stock price drops again as post-IPO gains for retail investors get nearly wiped out - Fast Company",
+      "url": "https://x.test/2815674",
+      "source": "Google News (COST)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T22:15:25+00:00",
+      "ingested_at": "2026-06-23T22:45:25+00:00"
+    },
+    {
+      "title": "SpaceX closes nearly 1% higher, snapping three-day losing streak - CNBC",
+      "summary": "SpaceX closes nearly 1% higher, snapping three-day losing streak - CNBC",
+      "url": "https://x.test/8411735",
+      "source": "Google News (COST)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-24T08:15:25+00:00",
+      "ingested_at": "2026-06-24T08:45:25+00:00"
+    },
+    {
+      "title": "SpaceX stock's wild price swings since its IPO show how risky leveraged ETFs can be - MarketWatch",
+      "summary": "SpaceX stock's wild price swings since its IPO show how risky leveraged ETFs can be - MarketWatch",
+      "url": "https://x.test/6759458",
+      "source": "Google News (COST)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-24T02:15:25+00:00",
+      "ingested_at": "2026-06-24T02:45:25+00:00"
+    },
+    {
+      "title": "SpaceX Shares Fall Below $150 Debut Price For First Time - Forbes",
+      "summary": "SpaceX Shares Fall Below $150 Debut Price For First Time - Forbes",
+      "url": "https://x.test/7241601",
+      "source": "Google News (COST)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T18:15:25+00:00",
+      "ingested_at": "2026-06-23T18:45:25+00:00"
+    },
+    {
+      "title": "SpaceX stock dips below $150 debut before rebounding - Yahoo Finance",
+      "summary": "SpaceX stock dips below $150 debut before rebounding - Yahoo Finance",
+      "url": "https://x.test/3799443",
+      "source": "Google News (COST)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T18:15:25+00:00",
+      "ingested_at": "2026-06-23T18:45:25+00:00"
+    },
+    {
+      "title": "SpaceX shares drop below debut price before jumping amid $600bn sell-off - Al Jazeera",
+      "summary": "SpaceX shares drop below debut price before jumping amid $600bn sell-off - Al Jazeera",
+      "url": "https://x.test/1932016",
+      "source": "Google News (BN)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T21:15:25+00:00",
+      "ingested_at": "2026-06-23T21:45:25+00:00"
+    },
+    {
+      "title": "SpaceX: Needs To Come Down To Earth",
+      "summary": "SpaceX: Needs To Come Down To Earth",
+      "url": "https://x.test/688842",
+      "source": "SeekingAlpha",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-24T04:15:25+00:00",
+      "ingested_at": "2026-06-24T04:45:25+00:00"
+    },
+    {
+      "title": "The SpaceX ETF Halted Mere Hours After the Biggest IPO Ever",
+      "summary": "The SpaceX ETF Halted Mere Hours After the Biggest IPO Ever",
+      "url": "https://x.test/5222377",
+      "source": "Yahoo",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T14:15:25+00:00",
+      "ingested_at": "2026-06-23T14:45:25+00:00"
+    },
+    {
+      "title": "SpaceX: A $2 Trillion Valuation In A $350 Billion Body",
+      "summary": "SpaceX: A $2 Trillion Valuation In A $350 Billion Body",
+      "url": "https://x.test/7085930",
+      "source": "SeekingAlpha",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-24T01:15:25+00:00",
+      "ingested_at": "2026-06-24T01:45:25+00:00"
+    },
+    {
+      "title": "Global Tech Selloff Underway, Hitting Broader Market As Well",
+      "summary": "Global Tech Selloff Underway, Hitting Broader Market As Well",
+      "url": "https://x.test/8311960",
+      "source": "SeekingAlpha",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-24T06:15:25+00:00",
+      "ingested_at": "2026-06-24T06:45:25+00:00"
+    },
+    {
+      "title": "SpaceX Lockup Expiration: Will Insider Selling Sink the Stock?",
+      "summary": "SpaceX Lockup Expiration: Will Insider Selling Sink the Stock?",
+      "url": "https://x.test/998033",
+      "source": "Yahoo",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-24T00:15:25+00:00",
+      "ingested_at": "2026-06-24T00:45:25+00:00"
+    },
+    {
+      "title": "SpaceX Stock Price Is Slumping After Its Blockbuster IPO",
+      "summary": "SpaceX Stock Price Is Slumping After Its Blockbuster IPO",
+      "url": "https://x.test/5761734",
+      "source": "NYT Business",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "IPO",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T23:15:25+00:00",
+      "ingested_at": "2026-06-23T23:45:25+00:00"
+    },
+    {
+      "title": "Buying SpaceX Stock Isn't the Same as Buying Tesla's IPO Back in 2010 - Yahoo Finance",
+      "summary": "Buying SpaceX Stock Isn't the Same as Buying Tesla's IPO Back in 2010 - Yahoo Finance",
+      "url": "https://x.test/2595199",
+      "source": "Google News (TESLA)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T14:15:25+00:00",
+      "ingested_at": "2026-06-23T14:45:25+00:00"
+    },
+    {
+      "title": "Investment Logic Under the Prospect of a Musk Empire Merger: Sell SpaceX, Buy Tesla?",
+      "summary": "Investment Logic Under the Prospect of a Musk Empire Merger: Sell SpaceX, Buy Tesla?",
+      "url": "https://x.test/6091221",
+      "source": "Google News (TESLA)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "M&A",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T14:15:25+00:00",
+      "ingested_at": "2026-06-23T14:45:25+00:00"
+    },
+    {
+      "title": "SpaceX Faces Decline as Stock Drops Below IPO Price - GuruFocus",
+      "summary": "SpaceX Faces Decline as Stock Drops Below IPO Price - GuruFocus",
+      "url": "https://x.test/9887366",
+      "source": "Google News (SPY)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T19:15:25+00:00",
+      "ingested_at": "2026-06-23T19:45:25+00:00"
+    },
+    {
+      "title": "Cathie Wood's Ark Invest Buys 210,121 Shares of Elon Musk's SpaceX (SPCX) - Yahoo Finance",
+      "summary": "Cathie Wood's Ark Invest Buys 210,121 Shares of Elon Musk's SpaceX (SPCX) - Yahoo Finance",
+      "url": "https://x.test/8628608",
+      "source": "Google News (SPCX)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T16:15:25+00:00",
+      "ingested_at": "2026-06-23T16:45:25+00:00"
+    },
+    {
+      "title": "SpaceX Stock Has Plunged 3 Days in a Row. Is This a Red Flag or a Buying Opportunity? - Yahoo Finance",
+      "summary": "SpaceX Stock Has Plunged 3 Days in a Row. Is This a Red Flag or a Buying Opportunity? - Yahoo Finance",
+      "url": "https://x.test/9792356",
+      "source": "Google News (SPCX)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T20:15:25+00:00",
+      "ingested_at": "2026-06-23T20:45:25+00:00"
+    },
+    {
+      "title": "SpaceX Stock Is All Over the Place. 3 Dividend Stocks to Buy Instead - The Motley Fool",
+      "summary": "SpaceX Stock Is All Over the Place. 3 Dividend Stocks to Buy Instead - The Motley Fool",
+      "url": "https://x.test/2926489",
+      "source": "Google News (JNJ)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T14:15:25+00:00",
+      "ingested_at": "2026-06-23T14:45:25+00:00"
+    },
+    {
+      "title": "SpaceX (SPCX) Falls 31% From Its High - Why $100B in Cash Isn't Stopping the Selloff - TradingKey",
+      "summary": "SpaceX (SPCX) Falls 31% From Its High - Why $100B in Cash Isn't Stopping the Selloff - TradingKey",
+      "url": "https://x.test/7612001",
+      "source": "Google News (CASH)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T21:15:25+00:00",
+      "ingested_at": "2026-06-23T21:45:25+00:00"
+    },
+    {
+      "title": "SpaceX stock declines for third day, erasing over $600bn in value - The Irish Times",
+      "summary": "SpaceX stock declines for third day, erasing over $600bn in value - The Irish Times",
+      "url": "https://x.test/8949162",
+      "source": "Google News (BN)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T19:15:25+00:00",
+      "ingested_at": "2026-06-23T19:45:25+00:00"
+    },
+    {
+      "title": "SpaceX Plunges 5%, Falling Below Amazon's Market Cap - The Motley Fool",
+      "summary": "SpaceX Plunges 5%, Falling Below Amazon's Market Cap - The Motley Fool",
+      "url": "https://x.test/9373814",
+      "source": "Google News (AMZN)",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T22:15:25+00:00",
+      "ingested_at": "2026-06-23T22:45:25+00:00"
+    },
+    {
+      "title": "SpaceX Tumble Is Just the Tip of Stock Market's Tech Problems",
+      "summary": "SpaceX Tumble Is Just the Tip of Stock Market's Tech Problems",
+      "url": "https://x.test/8392960",
+      "source": "Yahoo",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-24T03:15:25+00:00",
+      "ingested_at": "2026-06-24T03:45:25+00:00"
+    },
+    {
+      "title": "The Biggest IPO in History Is Unraveling. Why SpaceX Stock Hasn't Hit Bottom Yet",
+      "summary": "The Biggest IPO in History Is Unraveling. Why SpaceX Stock Hasn't Hit Bottom Yet",
+      "url": "https://x.test/1208226",
+      "source": "Yahoo",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "IPO & Capital Markets",
+      "relevance_score": 3,
+      "published_at": "2026-06-23T20:15:25+00:00",
+      "ingested_at": "2026-06-23T20:45:25+00:00"
+    },
+    {
+      "title": "SpaceX Shares Waver Near $2 Trillion Mark After 3-Day Rout",
+      "summary": "SpaceX Shares Waver Near $2 Trillion Mark After 3-Day Rout",
+      "url": "https://x.test/8165253",
+      "source": "Bloomberg Tech",
+      "companies": [
+        "SpaceX"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 3,
+      "published_at": "2026-06-24T07:15:25+00:00",
+      "ingested_at": "2026-06-24T07:45:25+00:00"
+    },
+    {
+      "title": "AbbVie (ABBV) Is Buying Apogee Therapeutics For $10.9 Billion To Rebuild Its Pipeline - simplywall.st",
+      "summary": "AbbVie agreed to acquire Apogee Therapeutics for $10.9 billion, a definitive agreement to deepen its immunology pipeline.",
+      "url": "https://x.test/4638621",
+      "source": "Google News (ABBV)",
+      "companies": [
+        "AbbVie",
+        "Apogee Therapeutics"
+      ],
+      "deal_type": "M&A",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T09:15:25+00:00",
+      "ingested_at": "2026-06-24T09:45:25+00:00"
+    },
+    {
+      "title": "ABBV Jumps on Deepening Immunology Portfolio With $10.9B APGE Buyout - TradingView",
+      "summary": "AbbVie's $10.9 billion buyout of Apogee Therapeutics is a signed deal; shares jumped on the immunology expansion.",
+      "url": "https://x.test/7873087",
+      "source": "Google News (ABBV)",
+      "companies": [
+        "AbbVie",
+        "Apogee Therapeutics"
+      ],
+      "deal_type": "M&A",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T09:15:25+00:00",
+      "ingested_at": "2026-06-24T09:45:25+00:00"
+    },
+    {
+      "title": "AbbVie to acquire Apogee Therapeutics in $10.9 billion deal - Reuters",
+      "summary": "AbbVie signed a definitive agreement to acquire Apogee Therapeutics for $10.9 billion.",
+      "url": "https://x.test/abbv-apogee-1",
+      "source": "Reuters",
+      "companies": [
+        "AbbVie",
+        "Apogee Therapeutics"
+      ],
+      "deal_type": "M&A",
+      "relevance_score": 9,
+      "published_at": "2026-06-24T08:15:25+00:00",
+      "ingested_at": "2026-06-24T08:45:25+00:00"
+    },
+    {
+      "title": "Accenture (ACN) to Acquire Stake in Dragos and Buy runZero and NetRise for $4.175B",
+      "summary": "Accenture agreed to acquire runZero and NetRise and a stake in Dragos for $4.175 billion in a signed deal.",
+      "url": "https://x.test/1674252",
+      "source": "Yahoo",
+      "companies": [
+        "Accenture"
+      ],
+      "deal_type": "M&A",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T07:15:25+00:00",
+      "ingested_at": "2026-06-24T07:45:25+00:00"
+    },
+    {
+      "title": "Public Storage (PSA) to Acquire Public Storage Canada for $1.2 B - GuruFocus",
+      "summary": "Public Storage signed an agreement to acquire Public Storage Canada for $1.2 billion.",
+      "url": "https://x.test/8447793",
+      "source": "Google News (PSA)",
+      "companies": [
+        "Public Storage"
+      ],
+      "deal_type": "M&A",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T06:15:25+00:00",
+      "ingested_at": "2026-06-24T06:45:25+00:00"
+    },
+    {
+      "title": "Public Storage (NYSE: PSA) plans $1.2B Public Storage Canada acquisition - Stock Titan",
+      "summary": "Public Storage plans a $1.2 billion acquisition of Public Storage Canada; agreement to acquire reached.",
+      "url": "https://x.test/7987134",
+      "source": "Google News (PSA)",
+      "companies": [
+        "Public Storage"
+      ],
+      "deal_type": "M&A",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T06:15:25+00:00",
+      "ingested_at": "2026-06-24T06:45:25+00:00"
+    },
+    {
+      "title": "Qualcomm to acquire AI chip startup Modular Inc in $4 billion deal - Bloomberg",
+      "summary": "Qualcomm agreed to acquire AI chip startup Modular Inc for $4 billion in a definitive agreement, Bloomberg reported.",
+      "url": "https://x.test/qcom-modular-1",
+      "source": "Bloomberg Tech",
+      "companies": [
+        "Qualcomm",
+        "Modular Inc"
+      ],
+      "deal_type": "M&A",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T10:15:25+00:00",
+      "ingested_at": "2026-06-24T10:45:25+00:00"
+    },
+    {
+      "title": "Qualcomm buys Modular for $4B to bolster AI chip software stack - Reuters",
+      "summary": "Qualcomm signed an agreement to acquire Modular Inc for $4 billion, deepening its AI software stack.",
+      "url": "https://x.test/qcom-modular-2",
+      "source": "Reuters",
+      "companies": [
+        "Qualcomm",
+        "Modular Inc"
+      ],
+      "deal_type": "M&A",
+      "relevance_score": 9,
+      "published_at": "2026-06-24T10:15:25+00:00",
+      "ingested_at": "2026-06-24T10:45:25+00:00"
+    },
+    {
+      "title": "Qualcomm-Modular $4B acquisition: what the chip deal means for AI - CNBC",
+      "summary": "The $4 billion Qualcomm acquisition of Modular reshapes the AI chip software landscape.",
+      "url": "https://x.test/qcom-modular-3",
+      "source": "Google News (QCOM)",
+      "companies": [
+        "Qualcomm",
+        "Modular Inc"
+      ],
+      "deal_type": "M&A",
+      "relevance_score": 9,
+      "published_at": "2026-06-24T10:15:25+00:00",
+      "ingested_at": "2026-06-24T10:45:25+00:00"
+    },
+    {
+      "title": "Tesla (TSLA) Faces Federal Crash Probe As FSD Scrutiny Deepens - simplywall.st",
+      "summary": "Tesla (TSLA) Faces Federal Crash Probe As FSD Scrutiny Deepens - simplywall.st",
+      "url": "https://x.test/1930497",
+      "source": "Google News (TSLA)",
+      "companies": [
+        "Tesla"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T08:15:25+00:00",
+      "ingested_at": "2026-06-24T08:45:25+00:00"
+    },
+    {
+      "title": "Alphabet to Replace Verizon in Dow Jones Industrial Average - Intellectia AI",
+      "summary": "Alphabet to Replace Verizon in Dow Jones Industrial Average - Intellectia AI",
+      "url": "https://x.test/322422",
+      "source": "Google News (SPGI)",
+      "companies": [
+        "Alphabet",
+        "Verizon"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T07:15:25+00:00",
+      "ingested_at": "2026-06-24T07:45:25+00:00"
+    },
+    {
+      "title": "ORCL Stock Layoffs: What to Know as Oracle Cuts 21,000 Jobs - Barchart.com",
+      "summary": "ORCL Stock Layoffs: What to Know as Oracle Cuts 21,000 Jobs - Barchart.com",
+      "url": "https://x.test/3747452",
+      "source": "Google News (ORCL)",
+      "companies": [
+        "Oracle"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T06:15:25+00:00",
+      "ingested_at": "2026-06-24T06:45:25+00:00"
+    },
+    {
+      "title": "Oracle layoffs: 21,000 jobs cut amid the SaaSpocalypse - Fast Company",
+      "summary": "Oracle layoffs: 21,000 jobs cut amid the SaaSpocalypse - Fast Company",
+      "url": "https://x.test/1926560",
+      "source": "Google News (ORCL)",
+      "companies": [
+        "Oracle"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T06:15:25+00:00",
+      "ingested_at": "2026-06-24T06:45:25+00:00"
+    },
+    {
+      "title": "Meta debuts AI-powered Meta Glasses, starting at $299 - Yahoo Finance",
+      "summary": "Meta debuts AI-powered Meta Glasses, starting at $299 - Yahoo Finance",
+      "url": "https://x.test/3629410",
+      "source": "Google News (META)",
+      "companies": [
+        "Meta"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T05:15:25+00:00",
+      "ingested_at": "2026-06-24T05:45:25+00:00"
+    },
+    {
+      "title": "Meta announces new smart glasses starting at $299 - CNBC",
+      "summary": "Meta announces new smart glasses starting at $299 - CNBC",
+      "url": "https://x.test/3977415",
+      "source": "Google News (META)",
+      "companies": [
+        "Meta"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T05:15:25+00:00",
+      "ingested_at": "2026-06-24T05:45:25+00:00"
+    },
+    {
+      "title": "Nvidia memory stocks plunge as SK hynix slows HBM4 capacity - Moomoo",
+      "summary": "Nvidia memory stocks plunge as SK hynix slows HBM4 capacity - Moomoo",
+      "url": "https://x.test/6691491",
+      "source": "Google News (NVDA)",
+      "companies": [
+        "NVIDIA",
+        "SK hynix"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T04:15:25+00:00",
+      "ingested_at": "2026-06-24T04:45:25+00:00"
+    },
+    {
+      "title": "Cerebras falls 10% after forecasting shrinking margin in first earnings since IPO - CNBC",
+      "summary": "Cerebras falls 10% after forecasting shrinking margin in first earnings since IPO - CNBC",
+      "url": "https://x.test/4461836",
+      "source": "Google News (CBRS)",
+      "companies": [
+        "Cerebras"
+      ],
+      "deal_type": "Earnings",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T04:15:25+00:00",
+      "ingested_at": "2026-06-24T04:45:25+00:00"
+    },
+    {
+      "title": "Samsung readies $59bn share buyback program",
+      "summary": "Samsung readies $59bn share buyback program",
+      "url": "https://x.test/4440265",
+      "source": "Google News (BN)",
+      "companies": [
+        "Samsung"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T03:15:25+00:00",
+      "ingested_at": "2026-06-24T03:45:25+00:00"
+    },
+    {
+      "title": "GameStop CEO drops $35B pay plan to focus on eBay acquisition - The Business Times",
+      "summary": "GameStop CEO drops $35B pay plan to focus on eBay acquisition - The Business Times",
+      "url": "https://x.test/9700682",
+      "source": "Google News (EBAY)",
+      "companies": [
+        "GameStop",
+        "eBay"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T02:15:25+00:00",
+      "ingested_at": "2026-06-24T02:45:25+00:00"
+    },
+    {
+      "title": "Lockheed Martin (LMT) Secures $8.4B Contract Modification - GuruFocus",
+      "summary": "Lockheed Martin (LMT) Secures $8.4B Contract Modification - GuruFocus",
+      "url": "https://x.test/3773542",
+      "source": "Google News (LMT)",
+      "companies": [
+        "Lockheed Martin"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T07:15:25+00:00",
+      "ingested_at": "2026-06-24T07:45:25+00:00"
+    },
+    {
+      "title": "Alibaba Launches $1.5 Billion Pupu Bid To Reignite China Grocery Delivery Battle - simplywall.st",
+      "summary": "Alibaba Launches $1.5 Billion Pupu Bid To Reignite China Grocery Delivery Battle - simplywall.st",
+      "url": "https://x.test/5600865",
+      "source": "Google News (BABA)",
+      "companies": [
+        "Alibaba"
+      ],
+      "deal_type": "Mergers & Acquisitions",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T01:15:25+00:00",
+      "ingested_at": "2026-06-24T01:45:25+00:00"
+    },
+    {
+      "title": "Exxon (XOM) Wins Appeal in Longstanding Cuban Asset Dispute - GuruFocus",
+      "summary": "Exxon (XOM) Wins Appeal in Longstanding Cuban Asset Dispute - GuruFocus",
+      "url": "https://x.test/1127092",
+      "source": "Google News (XOM)",
+      "companies": [
+        "Exxon"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T00:15:25+00:00",
+      "ingested_at": "2026-06-24T00:45:25+00:00"
+    },
+    {
+      "title": "KB Home Q2 revenue tops consensus, issues solid full-year guidance - Seeking Alpha",
+      "summary": "KB Home Q2 revenue tops consensus, issues solid full-year guidance - Seeking Alpha",
+      "url": "https://x.test/3737433",
+      "source": "Google News (KBH)",
+      "companies": [
+        "KB Home"
+      ],
+      "deal_type": "Earnings",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T04:15:25+00:00",
+      "ingested_at": "2026-06-24T04:45:25+00:00"
+    },
+    {
+      "title": "Accenture (ACN) Reports Weaker Earnings, Shares Drop - GuruFocus",
+      "summary": "Accenture (ACN) Reports Weaker Earnings, Shares Drop - GuruFocus",
+      "url": "https://x.test/2250719",
+      "source": "Google News (ACN)",
+      "companies": [
+        "Accenture"
+      ],
+      "deal_type": "Earnings",
+      "relevance_score": 10,
+      "published_at": "2026-06-24T05:15:25+00:00",
+      "ingested_at": "2026-06-24T05:45:25+00:00"
+    },
+    {
+      "title": "Intel restructuring plan adds foundry uncertainty - Reuters",
+      "summary": "Intel restructuring plan adds foundry uncertainty - Reuters",
+      "url": "https://x.test/2449207",
+      "source": "Reuters",
+      "companies": [
+        "Intel"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 8,
+      "published_at": "2026-06-23T23:15:25+00:00",
+      "ingested_at": "2026-06-23T23:45:25+00:00"
+    },
+    {
+      "title": "Broadcom AI revenue accelerates into next quarter - Bloomberg",
+      "summary": "Broadcom AI revenue accelerates into next quarter - Bloomberg",
+      "url": "https://x.test/3733045",
+      "source": "Bloomberg Tech",
+      "companies": [
+        "Broadcom"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 8,
+      "published_at": "2026-06-24T01:15:25+00:00",
+      "ingested_at": "2026-06-24T01:45:25+00:00"
+    },
+    {
+      "title": "Chevron expands Permian output guidance - Reuters",
+      "summary": "Chevron expands Permian output guidance - Reuters",
+      "url": "https://x.test/8869362",
+      "source": "Reuters",
+      "companies": [
+        "Chevron"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 8,
+      "published_at": "2026-06-23T22:15:25+00:00",
+      "ingested_at": "2026-06-23T22:45:25+00:00"
+    },
+    {
+      "title": "Micron memory pricing outlook softens - CNBC",
+      "summary": "Micron memory pricing outlook softens - CNBC",
+      "url": "https://x.test/8579675",
+      "source": "Google News (MU)",
+      "companies": [
+        "Micron"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 8,
+      "published_at": "2026-06-24T00:15:25+00:00",
+      "ingested_at": "2026-06-24T00:45:25+00:00"
+    },
+    {
+      "title": "Robinhood rolls out new derivatives product - Yahoo Finance",
+      "summary": "Robinhood rolls out new derivatives product - Yahoo Finance",
+      "url": "https://x.test/9119225",
+      "source": "Google News (HOOD)",
+      "companies": [
+        "Robinhood"
+      ],
+      "deal_type": "Other",
+      "relevance_score": 7,
+      "published_at": "2026-06-23T21:15:25+00:00",
+      "ingested_at": "2026-06-23T21:45:25+00:00"
+    }
+  ]
+}
