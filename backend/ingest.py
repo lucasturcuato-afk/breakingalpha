@@ -142,6 +142,22 @@ FILTER_LOG_BATCH_SIZE = 50
 # can trigger transient 429s at high filter concurrency. Retry with backoff a
 # bounded number of times, then drop-and-log (same contract as a schema drop).
 FILTER_MAX_RATE_RETRIES = int(os.getenv("FILTER_MAX_RATE_RETRIES", "5"))
+# Explicit prompt-prefix caching for the filter step (FILTER_PROMPT_CACHE).
+# DEFAULT OFF: production behaviour is byte-identical to today. When ON, the
+# static rubric/schema is reordered to a leading PREFIX and registered ONCE per
+# run as an explicit Gemini CachedContent (~90% input discount on the ~3.9k-token
+# prefix); the article fields move to the tail. Any cache create/reference
+# failure SOFT-FAILS to the uncached reordered prompt and never skips an article.
+# This is an LLM byte-order change: it must stay OFF until the offline
+# equivalence eval (tools/filter_reorder_eval.py) shows ingest-gate decisions do
+# not drift. Not wired into schedule.yml, so merging this leaves prod unchanged.
+FILTER_PROMPT_CACHE = os.getenv("FILTER_PROMPT_CACHE", "0").strip().lower() in (
+    "1", "true", "yes", "on",
+)
+# Explicit-cache TTL. The filter phase is bounded by FILTER_PHASE_BUDGET_SEC
+# (3600s); 35 min covers a typical ~31-min pass with headroom, then auto-expires
+# so a crashed run leaves no lingering cache beyond the TTL.
+FILTER_CACHE_TTL_SEC = int(os.getenv("FILTER_CACHE_TTL_SEC", "2100"))
 # Wall-clock safety net for the whole filter phase. If the candidate pool ever
 # spikes again (the #294 gnews per-ticker fan-out pushed it to ~14k and hung the
 # filter past the 90-min step ceiling, freezing the feed because a hard kill
@@ -469,6 +485,40 @@ Respond ONLY in valid JSON:
   "deal_type": "Classify as exactly one of these — apply the first definition that matches: M&A (a named buyer and a named target are identified for a single specific transaction. Sector-level deal-volume reports, league tables, and 'deals are up/down X%' stories are Macro or Other, not M&A.), IPO (a specific named operating company is going public via a primary listing. ETF launches, fund registrations, closed-end fund IPOs, secondary offerings, and SPAC over-allotment exercises after the initial listing are Other, not IPO. SPAC initial listings are IPO; subsequent de-SPAC merger announcements are M&A.), Funding (a named company is receiving investment capital — a venture round, private equity investment, debt financing, or fundraising raise; the company receiving the money determines the type), Joint-venture disambiguator (a JV is NOT its own deal_type value — always remap to one of Funding, M&A, or Other based on framing): if the article frames the JV as an investment INTO a named company that will operate as a new entity (capital flowing into a new joint vehicle), use Funding. If the article frames it as a combination of operating businesses, use M&A. If purely a commercial / sales partnership with no equity, use Other. Default to Funding when ambiguous. Earnings (ONLY a company's own officially reported financial results: revenue figures, EPS, net income, or forward guidance issued as part of a formal results announcement that has already happened. Hard exclusions, all of which map to Other: (a) pre-earnings previews, expectations, 'What's in the Offing', 'What to expect from Q__', 'Q__ Earnings: What Key Metrics Have to Say'; (b) earnings-date scheduling press releases such as 'to Report Q__ Earnings on [date]'; (c) analyst recommendations, price-target changes, upgrades, downgrades, ratings reiterations, listicles such as 'Best ___ Stocks to Buy'; (d) post-earnings opinion or thesis pieces from SeekingAlpha-style outlets that argue a buy / sell case rather than report fresh results. If the article is dated AFTER the company's most recent results and contains specific quoted EPS, revenue, or guidance numbers, label Earnings. Otherwise label Other.), Macro (central bank decisions, interest rate policy, inflation data, GDP, tariff or trade policy affecting broad markets — not specific to one company), Geopolitical (wars, sanctions, elections, cross-border disputes with market impact), Other (regulatory action, product launch, contract award, partnership announcement, legal settlement, personnel change, analyst note, market commentary — use this as a catch-all for anything that does not clearly fit the above). Return null only if the article is so general it fits none of these. Default to Other over null.",
   "primary_company": "The single company that is the MAIN ACTOR of the event this article covers — the company doing the action, not a company that is merely named or mentioned. Apply these rules in order: (1) Funding/IPO: primary_company is the company RECEIVING the investment or going public — not the investor, not a chip or technology supplier the article mentions, not a competitor named for comparison. Example: 'Mistral raises $830M to house Nvidia chips' → primary_company is Mistral, not Nvidia. (2) M&A: primary_company is the acquirer or the acquisition target — whichever is the article's central subject. Example: 'Goldman leads buyout of PortfolioCo' → primary_company is PortfolioCo (the target), not Goldman (the advisor). (3) Earnings: primary_company is the company that issued the results. (4) Commentary or market opinion: if a company's employee, analyst, or executive is quoted giving views on markets, sectors, or other companies — but the article is NOT about that company's own named event — return null. Example: 'Goldman's analyst recommends semiconductors' → null. (5) When one company is clearly driving the event and others are mentioned incidentally as suppliers, partners, advisors, or comparisons, always name the driving company. Return null only when two or more companies are genuinely co-equal actors with no single driver (e.g. a true joint venture announced by both parties equally). Never invent a name not present in the companies array. Reject and return null if the candidate primary_company is: (a) a descriptive phrase such as 'one AI chip stock', 'the company behind X', 'a Saudi delivery app'; (b) a placeholder such as 'NewCo', 'TargetCo', 'Company A'; (c) a possessive descriptor such as 'Kevin Hart's media company'; (d) a number-plus-noun headline pattern such as '1 AI Stock'; (e) a name composed only of a generic noun and an industry word."
 }}"""
+
+
+# ---------------------------------------------------------------------------
+# Cacheable reorder of FILTER_PROMPT (used only when FILTER_PROMPT_CACHE is ON).
+# The original puts the variable article fields in the MIDDLE, so the ~3.9k-token
+# static rubric/schema is a SUFFIX and nothing is cacheable. We mechanically
+# RELOCATE the fields block to the very END, leaving the static rubric/schema as
+# a byte-identical leading PREFIX. Only byte-order changes; the text is identical
+# (verified: the non-field body is character-for-character the same as
+# FILTER_PROMPT). The derivation below is intentionally string surgery on the one
+# source-of-truth FILTER_PROMPT, never a hand-retyped copy, so the two orderings
+# can never drift in wording.
+_FILTER_FIELDS_MIDDLE = "Article Title: {title}\nSummary: {summary}\nSource: {source}\n\n"
+_FILTER_FIELDS_TAIL = "\n\nArticle Title: {title}\nSummary: {summary}\nSource: {source}\n"
+_FILTER_STATIC_BODY_TMPL = FILTER_PROMPT.replace(_FILTER_FIELDS_MIDDLE, "", 1).rstrip("\n")
+# Reordered template (fields appended at the end). Used as the uncached soft-fail
+# prompt and to derive the cached prefix.
+FILTER_PROMPT_REORDERED = _FILTER_STATIC_BODY_TMPL + _FILTER_FIELDS_TAIL
+# Rendered static prefix (the schema's {{ }} collapse to { }) for the explicit
+# cache CONTENTS. Equals the leading slice of FILTER_PROMPT_REORDERED.format(...)
+# that precedes the article fields, so cache(prefix) + request(fields tail)
+# reconstructs the uncached reordered prompt exactly.
+_FILTER_STATIC_PREFIX = _FILTER_STATIC_BODY_TMPL.replace("{{", "{").replace("}}", "}")
+
+# Fail loud at import if the relocation ever stops being text-preserving (e.g.
+# FILTER_PROMPT is edited and the fields-block marker drifts): the fields block
+# must be found and removed exactly once, and the reordered template must split
+# cleanly into the cached prefix plus the formatted fields tail.
+assert _FILTER_STATIC_BODY_TMPL.count("Article Title:") == 0, (
+    "FILTER_PROMPT reorder: fields block not found in its expected middle position"
+)
+assert FILTER_PROMPT_REORDERED.format(title="", summary="", source="") == (
+    _FILTER_STATIC_PREFIX + _FILTER_FIELDS_TAIL.format(title="", summary="", source="")
+), "FILTER_PROMPT reorder: cached prefix + fields tail does not reconstruct the reordered prompt"
 
 
 # ---------------------------------------------------------------------------
@@ -1189,12 +1239,71 @@ def _accumulate_filter_usage(response) -> None:
         pass
 
 
-def filter_article(article):
-    prompt = FILTER_PROMPT.format(
-        title=article["title"],
-        summary=article["summary"],
-        source=article["source"],
-    )
+def _create_filter_cache():
+    """Create the explicit static-prefix CachedContent for this run, ONCE.
+
+    Returns the cache resource name on success, or None on ANY failure so the
+    caller soft-fails to the uncached reordered prompt. Never raises into the
+    run: a cache problem must degrade cost, never correctness."""
+    try:
+        cache = gemini_client.caches.create(
+            model=FILTER_MODEL,
+            config=types.CreateCachedContentConfig(
+                contents=_FILTER_STATIC_PREFIX,
+                ttl=f"{FILTER_CACHE_TTL_SEC}s",
+                display_name="filter-static-prefix",
+            ),
+        )
+        print(
+            f"  [filter:cache] created {cache.name} ttl={FILTER_CACHE_TTL_SEC}s "
+            f"(static prefix cached; ~90% input discount on hit)"
+        )
+        return cache.name
+    except Exception as ex:
+        print(
+            f"  [filter:cache] create FAILED, falling back to uncached reordered "
+            f"prompt for the whole run: {ex}"
+        )
+        return None
+
+
+def _delete_filter_cache(cache_name):
+    """Best-effort delete of the per-run filter cache. Soft-fail; the TTL also
+    expires it. Never raises."""
+    if not cache_name:
+        return
+    try:
+        gemini_client.caches.delete(name=cache_name)
+        print(f"  [filter:cache] deleted {cache_name}")
+    except Exception as ex:
+        print(f"  [filter:cache] delete skipped ({cache_name}): {ex}")
+
+
+def filter_article(article, cache_name=None):
+    # FILTER_PROMPT_CACHE OFF -> byte-identical to the original (unchanged prompt
+    # order, no cache reference). ON with a live cache -> the request carries only
+    # the fields tail and references the cached static prefix. ON without a cache
+    # (soft-fail) -> the full reordered prompt, uncached. All three send the same
+    # semantic content; only byte-order (and, on the cached path, the cache
+    # boundary) differs.
+    if FILTER_PROMPT_CACHE and cache_name:
+        prompt = _FILTER_FIELDS_TAIL.format(
+            title=article["title"],
+            summary=article["summary"],
+            source=article["source"],
+        )
+    elif FILTER_PROMPT_CACHE:
+        prompt = FILTER_PROMPT_REORDERED.format(
+            title=article["title"],
+            summary=article["summary"],
+            source=article["source"],
+        )
+    else:
+        prompt = FILTER_PROMPT.format(
+            title=article["title"],
+            summary=article["summary"],
+            source=article["source"],
+        )
 
     def _call():
         return gemini_client.models.generate_content(
@@ -1206,6 +1315,7 @@ def filter_article(article):
                 thinking_config=types.ThinkingConfig(thinking_budget=0),
                 response_mime_type="application/json",
                 response_schema=FilterDecision,
+                cached_content=(cache_name if FILTER_PROMPT_CACHE else None),
             ),
         )
 
@@ -1240,7 +1350,7 @@ def filter_article(article):
             return None
 
 
-def _filter_article_with_retry(article):
+def _filter_article_with_retry(article, cache_name=None):
     """filter_article() with one retry on None. Returns parsed dict or None.
 
     response_schema enforcement at single-object level is reliable but not
@@ -1253,11 +1363,11 @@ def _filter_article_with_retry(article):
       [filter:retry-fail]  title='...': retry also failed, dropping
     """
     title_short = (article.get("title") or "")[:60].replace("\n", " ")
-    result = filter_article(article)
+    result = filter_article(article, cache_name=cache_name)
     if result is not None:
         return result
     print(f"  [filter:schema-fail] title='{title_short}', retrying once")
-    result = filter_article(article)
+    result = filter_article(article, cache_name=cache_name)
     if result is None:
         print(f"  [filter:retry-fail] title='{title_short}', dropping")
     return result
@@ -1298,13 +1408,21 @@ def filter_articles(articles):
         f"budget={FILTER_PHASE_BUDGET_SEC}s, progress every {FILTER_LOG_BATCH_SIZE}"
     )
 
+    # Create the explicit static-prefix cache ONCE for the whole pass (only when
+    # the flag is ON). A None here (flag off, or create failed) means every call
+    # soft-fails to the uncached path; it can never skip or alter an article.
+    cache_name = _create_filter_cache() if FILTER_PROMPT_CACHE else None
+
     results = [None] * total
     done = kept = skipped = 0
     budget_hit = False
     t0 = time.time()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=FILTER_PARALLEL_WORKERS) as ex:
-        fut_to_idx = {ex.submit(_filter_article_with_retry, a): i for i, a in enumerate(articles)}
+        fut_to_idx = {
+            ex.submit(_filter_article_with_retry, a, cache_name): i
+            for i, a in enumerate(articles)
+        }
         for fut in concurrent.futures.as_completed(fut_to_idx):
             i = fut_to_idx[fut]
             try:
@@ -1377,6 +1495,9 @@ def filter_articles(articles):
         )
     except Exception as ex:
         print(f"  [filter:usage] summary skipped: {ex}")
+
+    # Best-effort teardown of the per-run cache (no-op when off / never created).
+    _delete_filter_cache(cache_name)
 
     return results
 
