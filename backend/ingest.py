@@ -311,18 +311,31 @@ def _fetch_single_gnews_feed(ticker: str) -> list[dict]:
     try:
         raw = _fetch_feed_bytes(url)
         feed = feedparser.parse(raw)
-        now_iso = datetime.now(timezone.utc).isoformat()
+        freshness_cutoff = datetime.now(timezone.utc) - timedelta(days=INGEST_FRESHNESS_DAYS)
         for e in feed.entries[:GNEWS_ENTRY_CAP]:
             link = e.get("link", "")
             title = e.get("title", "")
             if not link or not title:
                 continue
+            # Missing date stays NULL: never now-stamp a date-less item, or a
+            # stale story masquerades as fresh (articles has no created_at; the
+            # true ingest time lives in ingested_at, defaulted by the DB).
+            published_at = e.get("published") or None
+            # Skip articles older than INGEST_FRESHNESS_DAYS. Mirrors the main
+            # RSS loop: if the date is missing or unparseable, let it through.
+            if published_at:
+                try:
+                    pub_dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+                    if pub_dt < freshness_cutoff:
+                        continue
+                except Exception:
+                    pass  # if parsing fails, let the entry through
             articles.append({
                 "title": title,
                 "summary": strip_html(e.get("summary", e.get("description", "")))[:500],
                 "url": link,
                 "source": f"Google News ({ticker})",
-                "published_at": e.get("published", now_iso),
+                "published_at": published_at,
                 "content_type": "snippet",
             })
     except Exception as ex:
@@ -1013,7 +1026,9 @@ def fetch_watchlist_finnhub_articles() -> list[dict]:
                 duplicates += 1
                 continue
             ts = item.get("datetime")
-            published_at = now.isoformat()
+            # Missing/unparseable timestamp stays NULL: never now-stamp, or a
+            # stale item looks fresh. True ingest time lives in articles.ingested_at.
+            published_at = None
             if ts:
                 try:
                     published_at = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
@@ -1064,15 +1079,20 @@ def fetch_all_articles():
             entry_cap = 40 if source in WIRE_SOURCES else 8
             for e in feed.entries[:entry_cap]:
                 feed_total += 1
-                published_at = e.get("published", now.isoformat())
-                # Skip articles older than INGEST_FRESHNESS_DAYS
-                try:
-                    pub_dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
-                    if pub_dt < freshness_cutoff:
-                        skipped_stale += 1
-                        continue
-                except Exception:
-                    pass  # if parsing fails, let the entry through
+                # Missing date stays NULL: never now-stamp a date-less item, or a
+                # stale story masquerades as fresh (articles has no created_at; the
+                # true ingest time lives in ingested_at, defaulted by the DB).
+                published_at = e.get("published") or None
+                # Skip articles older than INGEST_FRESHNESS_DAYS. If the date is
+                # missing or unparseable, let the entry through.
+                if published_at:
+                    try:
+                        pub_dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+                        if pub_dt < freshness_cutoff:
+                            skipped_stale += 1
+                            continue
+                    except Exception:
+                        pass  # if parsing fails, let the entry through
                 articles.append({
                     "title": e.get("title", ""),
                     "summary": strip_html(e.get("summary", e.get("description", "")))[:500],
@@ -1110,7 +1130,9 @@ def fetch_all_articles():
                     "summary": strip_html(a.get("description", ""))[:500],
                     "url": a.get("url", ""),
                     "source": a.get("source", {}).get("name", "NewsAPI"),
-                    "published_at": a.get("publishedAt", datetime.now(timezone.utc).isoformat()),
+                    # Missing date stays NULL, never now-stamped. True ingest
+                    # time lives in articles.ingested_at (DB default now()).
+                    "published_at": a.get("publishedAt") or None,
                     "content_type": "snippet"
                 })
             time.sleep(0.3)
