@@ -6,7 +6,11 @@ import { getServiceSupabase } from "@/lib/supabase-service";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isAdmin } from "@/lib/admin-emails";
 import { recordOutput } from "@/lib/outputs";
-import { enforceMemoCitations, parseWebResultsFromContent } from "@/lib/web-memo-entity";
+import {
+  enforceMemoCitations,
+  enforceCorroboratedFigures,
+  parseWebResultsFromContent,
+} from "@/lib/web-memo-entity";
 import { MEMO_PROMPT_VERSION } from "@/lib/output-constants";
 import {
   resolveMemoCompanyIdentifiers,
@@ -601,7 +605,12 @@ export async function POST(request: NextRequest) {
         process.env.NEXT_PUBLIC_WEB_FALLBACK_ENABLED === "true" &&
         memo
       ) {
-        memo = enforceMemoCitations(memo, parseWebResultsFromContent(originalContent));
+        const subjectResults = parseWebResultsFromContent(originalContent);
+        memo = enforceMemoCitations(memo, subjectResults);
+        // Mode 2/B corroboration guard: de-authorize single-source figures and
+        // order-of-magnitude mismatches so a lone (possibly wrong) revenue print
+        // cannot anchor the thesis, as it did for UNM.
+        memo = enforceCorroboratedFigures(memo, subjectResults);
       }
 
       // WD126: derive the company cache key — prefer explicit `company` field,

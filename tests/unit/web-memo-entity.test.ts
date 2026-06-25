@@ -6,12 +6,15 @@ import assert from "node:assert/strict";
 import {
   classifyWebResults,
   isThinPool,
+  subjectForClassification,
+  enforceCorroboratedFigures,
   verifyMemoCitations,
   enforceMemoCitations,
   parseWebResultsFromContent,
   THIN_POOL_MIN_ON_ENTITY,
   type WebResultLike,
 } from "../../src/lib/web-memo-entity.ts";
+import { normalizeFromResults } from "../../src/app/api/companies/web-fallback/normalize.ts";
 
 const r = (title: string, summary = "", source = "x.com"): WebResultLike => ({
   url: `https://${source}/x`,
@@ -86,6 +89,70 @@ test("thin-pool gate: below threshold triggers, LSBK on-entity count does not", 
     LSBK_POOL,
   );
   assert.equal(onEntity.length, 5); // 5 genuine LSBK rows survive the filter
+});
+
+test("subjectForClassification falls back to the full query name on a token-collapsed pool", () => {
+  // The live LSBK bug: normalizeFromResults collapses the contaminated pool to
+  // the bare shared token "Shore"; classification must anchor on the fuller
+  // query-derived name instead.
+  assert.equal(subjectForClassification("Shore", "Lake Shore Bancorp"), "Lake Shore Bancorp");
+  // Distinctive pool names are kept (typo recovery + concatenated brands).
+  assert.equal(subjectForClassification("Pershing Square", "Perishing Square"), "Pershing Square");
+  assert.equal(subjectForClassification("NVIDIA", "nvidia"), "NVIDIA");
+  // Genuine single-token companies are not over-corrected.
+  assert.equal(subjectForClassification("Apple", "Apple"), "Apple");
+  assert.equal(subjectForClassification("Unum", "Unum"), "Unum");
+});
+
+test("live path: token-collapsed canonical no longer inverts the LSBK filter", () => {
+  // Reproduces the deployed sequence: derive canonical from the pool, then pick
+  // the classification subject, then filter. Before the fix this kept all 8.
+  const query = "Lake Shore Bancorp";
+  const derived = normalizeFromResults(query, LSBK_POOL as never, query);
+  assert.equal(derived, "Shore"); // the root-cause collapse is still observable
+  const subject = subjectForClassification(derived, query);
+  const { onEntity, sectorContext } = classifyWebResults(
+    { canonical: subject, ticker: "LSBK" },
+    LSBK_POOL,
+  );
+  // All three Shore Bancshares / North Shore contaminants are dropped.
+  assert.equal(sectorContext.length, 3);
+  assert.ok(!onEntity.some((x) => /\$95 million|Shore Bancshares/.test(x.title)));
+  // Only genuine LSBK rows survive.
+  assert.ok(onEntity.every((x) => /lake shore|lsbk/i.test(`${x.title} ${x.summary}`)));
+});
+
+test("corroboration guard strips a single-source figure citation", () => {
+  const pool = [
+    r("Unum reports Q1 2026 revenue of $3.18 billion, a beat"), // [1]
+    r("Unum names a new CFO"), // [2] no figure
+  ];
+  // The false figure appears in zero/one source -> citation stripped, prose kept.
+  const memo = "Unum Q1 2026 revenue fell 11.3% to $2.93 billion, missing by 5.2% [1].";
+  const fixed = enforceCorroboratedFigures(memo, pool);
+  assert.ok(!/\[1\]/.test(fixed));
+  assert.match(fixed, /\$2\.93 billion/); // prose survives, just de-authorized
+});
+
+test("corroboration guard rejects an order-of-magnitude mismatch", () => {
+  const pool = [
+    r("Acme Q1 revenue was $2.93 million"), // [1] million
+    r("Acme Q1 revenue was $2.93 million per the filing"), // [2] million
+  ];
+  // Memo claims billions; two sources say millions -> same digits, wrong scale.
+  const memo = "Acme posted $2.93 billion in Q1 revenue [1][2].";
+  const fixed = enforceCorroboratedFigures(memo, pool);
+  assert.ok(!/\[1\]/.test(fixed) && !/\[2\]/.test(fixed));
+});
+
+test("corroboration guard keeps a figure backed by two compatible sources", () => {
+  const pool = [
+    r("Acme Q1 revenue rose to $2.93 billion"), // [1]
+    r("Acme reported $2.93 billion for the quarter"), // [2]
+  ];
+  const memo = "Acme posted $2.93 billion in Q1 revenue [1][2].";
+  const fixed = enforceCorroboratedFigures(memo, pool);
+  assert.equal(fixed, memo); // corroborated by two compatible sources, untouched
 });
 
 test("citation check flags a figure absent from its cited result", () => {
