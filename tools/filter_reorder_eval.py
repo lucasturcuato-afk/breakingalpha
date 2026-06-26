@@ -50,6 +50,15 @@ BATCH = int(os.getenv("EVAL_BATCH", "25"))
 SLEEP_SEC = float(os.getenv("EVAL_SLEEP_SEC", "5"))
 GATE = int(os.getenv("EVAL_GATE", "6"))
 
+# Bounded exponential backoff for transient Gemini errors (503 UNAVAILABLE,
+# 429 RESOURCE_EXHAUSTED). Without this a transient 503 silently drops the
+# article from the sample, which is exactly why throttled runs under-sample.
+# Sequence at the defaults: 2s, 4s, 8s, 16s, then give up. Bounded by attempts,
+# so it cannot infinite-loop.
+MAX_RETRIES = int(os.getenv("EVAL_MAX_RETRIES", "5"))
+BACKOFF_BASE_SEC = float(os.getenv("EVAL_BACKOFF_BASE_SEC", "2"))
+BACKOFF_CAP_SEC = float(os.getenv("EVAL_BACKOFF_CAP_SEC", "30"))
+
 # Relevance bands to stratify the sample across. (lo, hi) inclusive.
 BANDS = [(0, 3), (4, 5), (6, 7), (8, 10)]
 
@@ -65,7 +74,7 @@ def _sample_articles():
                 .select("title,summary,source,relevance_score,sentiment,companies")
                 .gte("relevance_score", lo)
                 .lte("relevance_score", hi)
-                .order("created_at", desc=True)
+                .order("ingested_at", desc=True)
                 .limit(PER_BAND)
                 .execute()
             )
@@ -113,6 +122,37 @@ def _grade(prompt_text):
     return json.loads(text.strip())
 
 
+def _is_unavailable_error(ex) -> bool:
+    """True for transient Gemini 503 UNAVAILABLE (the Google capacity blip).
+    Distinct from _is_rate_limit_error, which covers 429/RESOURCE_EXHAUSTED."""
+    s = str(ex)
+    return "503" in s or "UNAVAILABLE" in s
+
+
+def _grade_with_retry(prompt_text, label, item_idx):
+    """_grade with bounded exponential backoff on transient Gemini errors so a
+    503/429 blip does not silently drop the article from the sample. Non-transient
+    errors raise immediately. If every attempt fails, the last exception is
+    re-raised so the caller can halt (persistent rate-limit) or skip (503)."""
+    last_ex = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            return _grade(prompt_text)
+        except Exception as ex:
+            last_ex = ex
+            transient = _is_unavailable_error(ex) or ingest._is_rate_limit_error(ex)
+            if not transient or attempt == MAX_RETRIES:
+                raise
+            backoff = min(BACKOFF_CAP_SEC, BACKOFF_BASE_SEC * (2 ** (attempt - 1)))
+            print(
+                f"  [eval] item {item_idx} {label} transient error "
+                f"(attempt {attempt}/{MAX_RETRIES}, backoff {backoff:.0f}s): "
+                f"{type(ex).__name__}"
+            )
+            time.sleep(backoff)
+    raise last_ex  # defensive: loop always returns or raises above
+
+
 def _companies(parsed):
     """Lower-cased set of company names from a parsed filter result."""
     out = set()
@@ -139,6 +179,7 @@ def main():
         return
 
     n = 0
+    skipped = 0
     score_exact = score_within1 = gate_agree = sentiment_agree = companies_exact = 0
     flips = []
     stopped_early = False
@@ -149,14 +190,18 @@ def main():
             time.sleep(SLEEP_SEC)
         f = _fields(a)
         try:
-            old = _grade(ingest.FILTER_PROMPT.format(**f))
-            new = _grade(ingest.FILTER_PROMPT_REORDERED.format(**f))
+            old = _grade_with_retry(ingest.FILTER_PROMPT.format(**f), "old", i)
+            new = _grade_with_retry(ingest.FILTER_PROMPT_REORDERED.format(**f), "new", i)
         except Exception as ex:
+            # Persistent rate-limit means no account headroom: halt cleanly and
+            # report the partial. A persistent 503 (or any other error) only
+            # costs us this one article, so count it skipped and keep going.
             if ingest._is_rate_limit_error(ex):
-                print(f"  [eval] rate-limited at item {i}; stopping cleanly with {n} completed.")
+                print(f"  [eval] rate-limited at item {i} after retries; stopping cleanly with {n} completed.")
                 stopped_early = True
                 break
-            print(f"  [eval] item {i} error ({type(ex).__name__}: {ex}); skipping.")
+            skipped += 1
+            print(f"  [eval] item {i} skipped after retries ({type(ex).__name__}: {ex}).")
             continue
 
         n += 1
@@ -186,6 +231,9 @@ def main():
 
     print("\n  ===== FILTER REORDER EQUIVALENCE REPORT =====")
     print(f"  graded (old,new) pairs ... {n}" + ("  [PARTIAL: rate-limited]" if stopped_early else ""))
+    print(f"  skipped (after retries) .. {skipped}")
+    print(f"  attempted ................ {n + skipped} of {total} sampled"
+          + ("  [PARTIAL: halted early, remainder not attempted]" if stopped_early else ""))
     if n:
         pct = lambda x: f"{x}/{n} ({100.0 * x / n:.1f}%)"
         print(f"  relevance_score exact .... {pct(score_exact)}")
