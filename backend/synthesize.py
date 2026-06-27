@@ -1733,6 +1733,57 @@ def _regenerate_narrative_net_new(data, regime, brief_type):
     return None
 
 
+def _resolve_lead_ticker(company_name):
+    """Best-effort gen-time ticker for a lead company name, or None. Tries the
+    deterministic HARD_TICKER_OVERRIDES first (no network), then finnhub search
+    (the same gen-time resolver the pipeline already uses) when a key is present.
+    Soft-fail: None on anything, which makes the D14 direction check inert."""
+    name = (company_name or "").strip()
+    if not name:
+        return None
+    try:
+        from finnhub_helper import HARD_TICKER_OVERRIDES
+        ov = HARD_TICKER_OVERRIDES.get(name.lower())
+        if ov:
+            return ov
+    except Exception:
+        pass
+    try:
+        from finnhub_helper import search_finnhub_ticker
+        return search_finnhub_ticker(name)
+    except Exception:
+        return None
+
+
+def _lead_session_move(preselected):
+    """D14: return (session_pct, framing) for the lead's single named company, or
+    (None, None) when not a single-name lead, the ticker cannot be resolved, or the
+    live quote is unavailable. Uses the EXISTING market_tape.fetch_quote (Yahoo,
+    baseline-correct prior close) as the gen-time live source: no new dependency.
+    Fully soft-fail, never raises out."""
+    try:
+        cos = preselected.get("companies") or []
+        if isinstance(cos, str):
+            try:
+                cos = json.loads(cos)
+            except Exception:
+                cos = [cos]
+        cos = [str(c).strip() for c in cos if str(c).strip()]
+        if not cos or len(cos) > 2:
+            return None, None
+        ticker = _resolve_lead_ticker(cos[0])
+        if not ticker:
+            return None, None
+        quote = market_tape.fetch_quote(ticker)
+        if not quote or quote.get("pct") is None:
+            return None, None
+        framing_src = " ".join(str(preselected.get(k) or "") for k in ("title", "summary"))
+        framing = market_tape.classify_framing(framing_src)
+        return float(quote["pct"]), framing
+    except Exception:
+        return None, None
+
+
 def _retemporalize_field(field_name, text, event_date, brief_date, data):
     """D13 fallback: ONE targeted re-ask when the deterministic in-place rewrite
     would garble the sentence. Rewrite ONE field so its relative-time wording is
@@ -2100,16 +2151,28 @@ def run(brief_type="morning"):
             # fetch surfaces indices + VIX, not per-name quotes, so the conservative
             # driver set is empty here. See TODO(recon open question 2) in
             # market_tape.overview_subject_gate.
+            # D14: resolve the single-name lead's CURRENT-SESSION move and framing
+            # so the gate can reject stale-direction framing (bullish lead vs a
+            # ticker that is materially DOWN today). Soft-fail to (None, None),
+            # which leaves the gate's behavior identical to before.
+            _lead_pct, _lead_framing = (None, None)
+            if _is_single_name:
+                _lead_pct, _lead_framing = _lead_session_move(preselected)
             _gate = market_tape.overview_subject_gate(
                 story_companies=_ps_companies,
                 is_single_name_or_deal=_is_single_or_deal,
                 cluster_distinct_sources=_distinct_sources,
                 tape=tape_obj,
                 tape_driver_names=None,
+                subject_session_pct=_lead_pct,
+                subject_framing=_lead_framing,
             )
             system = market_tape.build_overview_subject_directive(
                 _gate, story_title=(preselected.get("title") or "")
             ) + system
+            if _gate.get("direction_contradiction"):
+                print(f"  ⚖ live-quote reconciliation: lead is {_lead_framing} but ticker "
+                      f"{_lead_pct:+.1f}% today; instructing reframe")
             print(f"  🧭 Overview subject gate: {_gate['subject']} ({'; '.join(_gate['reasons'])})")
             try:
                 import lead_preselect as _lp

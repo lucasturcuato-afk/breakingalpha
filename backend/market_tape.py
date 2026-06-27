@@ -51,6 +51,14 @@ MATERIALITY_VIX_ABS_PCT = 8.0   # |VIX daily %| at or above this is material
 # cross-source breadth" for overview-subject eligibility.
 MATERIALITY_MIN_DISTINCT_SOURCES = 6
 
+# D14 live-quote reconciliation: a single-name lead framed bullish (surge, record,
+# all-time high, rally) may NOT lead with that stale-bullish framing when the named
+# ticker is materially DOWN in the current session at gen time. RECON_DIR_PCT is
+# the move magnitude (percent) at which today's direction is "material" enough to
+# contradict the framing. Symmetric: bearish framing against a materially-up name
+# is also a contradiction.
+RECON_DIR_PCT = 1.5
+
 
 def compute_regime(vix_level: float, vix_pct_change: float, spx_pct_change: float) -> str:
     """
@@ -285,6 +293,56 @@ def story_companies_are_tape_drivers(story_companies, tape_driver_names) -> bool
     return bool(cos & drivers)
 
 
+# D14 framing classifiers ───────────────────────────────────────────────────
+
+_BULLISH_FRAMING = (
+    "surge", "surged", "soar", "soared", "rally", "rallied", "record",
+    "all-time high", "all time high", "ath", "jump", "jumped", "spike",
+    "spiked", "rocket", "rocketed", "skyrocket", "high", "gains", "gained",
+    "climb", "climbed", "rose", "rises", "rising", "boom",
+)
+_BEARISH_FRAMING = (
+    "plunge", "plunged", "tumble", "tumbled", "crash", "crashed", "slump",
+    "slumped", "sink", "sank", "selloff", "sell-off", "rout", "slide", "slid",
+    "drop", "dropped", "fell", "falls", "falling", "decline", "declined",
+    "tank", "tanked", "low", "losses",
+)
+
+
+def classify_framing(text: str) -> str | None:
+    """Coarse bullish/bearish classification of a story's framing from its lead
+    text. Returns 'bullish', 'bearish', or None (mixed/neutral). Pure, never
+    raises. Used only to detect a direction contradiction with the live tape."""
+    if not text or not isinstance(text, str):
+        return None
+    low = text.lower()
+    bull = sum(1 for w in _BULLISH_FRAMING if w in low)
+    bear = sum(1 for w in _BEARISH_FRAMING if w in low)
+    if bull > bear:
+        return "bullish"
+    if bear > bull:
+        return "bearish"
+    return None
+
+
+def framing_contradicts_session(framing: str | None, session_pct) -> bool:
+    """D14: True when the story's framing direction contradicts the named ticker's
+    CURRENT-SESSION move by at least RECON_DIR_PCT. Bullish framing vs a materially
+    DOWN ticker, or bearish framing vs a materially UP ticker. Conservative:
+    unknown framing or unknown/small move -> False. Pure, never raises."""
+    if framing is None or session_pct is None:
+        return False
+    try:
+        pct = float(session_pct)
+    except Exception:
+        return False
+    if framing == "bullish" and pct <= -RECON_DIR_PCT:
+        return True
+    if framing == "bearish" and pct >= RECON_DIR_PCT:
+        return True
+    return False
+
+
 def overview_subject_gate(
     *,
     story_companies,
@@ -292,6 +350,8 @@ def overview_subject_gate(
     cluster_distinct_sources: int,
     tape: dict | None,
     tape_driver_names=None,
+    subject_session_pct=None,
+    subject_framing: str | None = None,
 ) -> dict:
     """Decide whether a single-name OR pure-deal/fundraise story may be the
     overview SUBJECT, or must be relegated to a MENTION inside a market-wide
@@ -313,11 +373,23 @@ def overview_subject_gate(
     # TODO(recon open question 2): needs Noah's confirmed inputs. Gate (b) is a
     # proxy on the caller-supplied mover/driver set; precise per-story index
     # contribution is not derivable at gen time, so it is intentionally NOT
-    # fabricated here."""
+    # fabricated here.
+
+    # D14 (NEW): direction reconciliation. `subject_session_pct` is the named
+    # ticker's CURRENT-SESSION move at gen time (from market_tape.fetch_quote);
+    # `subject_framing` is the story's bullish/bearish framing (classify_framing).
+    # When both are supplied and the framing contradicts the live move by
+    # RECON_DIR_PCT, the story may NOT lead with that stale-direction framing.
+    # When either is None (the #422 call sites), this check is inert and the gate
+    # behaves exactly as before (backward compatible)."""
+    _dir_contradiction = framing_contradicts_session(subject_framing, subject_session_pct)
     checks = {
         "tape_material": tape_has_material_move(tape),
         "is_tape_driver": story_companies_are_tape_drivers(story_companies, tape_driver_names),
         "dominant_breadth": int(cluster_distinct_sources or 0) >= MATERIALITY_MIN_DISTINCT_SOURCES,
+        # True = consistent (or unknown, which is permissive). False ONLY on a
+        # confirmed contradiction.
+        "direction_consistent": not _dir_contradiction,
     }
     if not is_single_name_or_deal:
         return {"subject": "story", "passed": True,
@@ -333,14 +405,27 @@ def overview_subject_gate(
             f"event cluster lacks dominant breadth "
             f"(<{MATERIALITY_MIN_DISTINCT_SOURCES} distinct sources)"
         )
+    if not checks["direction_consistent"]:
+        try:
+            _pct = float(subject_session_pct)
+        except Exception:
+            _pct = 0.0
+        reasons.append(
+            f"{subject_framing} framing contradicts the ticker's live session move "
+            f"({_pct:+.1f}% today): do not lead with stale-direction framing"
+        )
 
     passed = all(checks.values())
     if passed:
         return {"subject": "story", "passed": True,
                 "reasons": ["single-name/deal story cleared materiality gate"],
-                "checks": checks}
+                "checks": checks,
+                "direction_contradiction": _dir_contradiction,
+                "subject_session_pct": subject_session_pct}
     return {"subject": "market_wide", "passed": False,
-            "reasons": reasons or ["relegated to mention"], "checks": checks}
+            "reasons": reasons or ["relegated to mention"], "checks": checks,
+            "direction_contradiction": _dir_contradiction,
+            "subject_session_pct": subject_session_pct}
 
 
 def build_overview_subject_directive(gate: dict, story_title: str = "") -> str:
@@ -372,6 +457,23 @@ def build_overview_subject_directive(gate: dict, story_title: str = "") -> str:
     if title:
         lines.append(f'Pre-picked lead: "{title}"')
     lines.append(body)
+    # D14: when the live session contradicts the story's framing, instruct a
+    # reconcile-not-celebrate reframe regardless of the subject decision. Prefer a
+    # reframe that names the live move over silently dropping the story.
+    if gate.get("direction_contradiction"):
+        pct = gate.get("subject_session_pct")
+        try:
+            pct_txt = f"{float(pct):+.1f}% today" if pct is not None else "down today"
+        except Exception:
+            pct_txt = "down today"
+        lines.append(
+            "LIVE-QUOTE RECONCILIATION: the lead's bullish framing is from a PRIOR "
+            f"session, but the named ticker is {pct_txt} in the current session. Do "
+            "NOT celebrate the stale move as today's bullish driver. Reframe to "
+            "reconcile the prior move with today's reversal (for example: 'after the "
+            "prior session's record, the name is pulling back with its group today'). "
+            "State today's direction, not yesterday's."
+        )
     return "\n".join(lines) + "\n\n"
 
 
