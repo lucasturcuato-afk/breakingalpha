@@ -14,12 +14,19 @@ import unittest
 from pathlib import Path
 
 from backend.market_tape import (
+    DRIVER_MIN_ABS_PCT,
+    DRIVER_TOP_K,
+    MATERIALITY_MIN_DISTINCT_SOURCES,
     REGIME_DEFAULT_WORD,
     REGIME_VOCAB,
+    build_overview_subject_directive,
     build_tape_directive,
+    build_tape_driver_names,
     compute_regime,
     enforce_tape_consistency,
+    overview_subject_gate,
     parse_yahoo_daily,
+    tape_has_material_move,
 )
 
 HERE = Path(__file__).resolve().parent
@@ -292,6 +299,99 @@ class EnforceTapeConsistencyTests(unittest.TestCase):
     def test_defaults_cover_every_regime(self):
         for regime, default in REGIME_DEFAULT_WORD.items():
             self.assertIn(default, REGIME_VOCAB[regime])
+
+
+def _mtape(spx_pct, vix_pct, vix_level=16.0):
+    return {"quotes": {"^GSPC": {"pct": spx_pct}, "^VIX": {"pct": vix_pct, "price": vix_level}},
+            "regime": "neutral", "vix_level": vix_level}
+
+
+class MaterialityGateTests(unittest.TestCase):
+    """D2+D3: the overview-subject materiality gate. Defaults to market-wide; a
+    single-name/deal story is only the subject when the tape is material AND the
+    story is the tape driver AND its event cluster has dominant breadth."""
+
+    def test_mild_tape_is_not_material(self):
+        self.assertFalse(tape_has_material_move(_mtape(0.3, 2.0)))
+
+    def test_big_spx_move_is_material(self):
+        self.assertTrue(tape_has_material_move(_mtape(-1.4, 5.0)))
+
+    def test_vix_spike_is_material(self):
+        self.assertTrue(tape_has_material_move(_mtape(0.2, 12.0)))
+
+    def test_none_tape_not_material(self):
+        self.assertFalse(tape_has_material_move(None))
+
+    def test_single_name_on_mild_tape_relegated(self):
+        # The 06-24 shape: single-name story, mild tape, broad cluster -> mention.
+        gate = overview_subject_gate(
+            story_companies=["SpaceX"],
+            is_single_name_or_deal=True,
+            cluster_distinct_sources=11,
+            tape=_mtape(0.3, 2.0),
+            tape_driver_names=None,
+        )
+        self.assertEqual(gate["subject"], "market_wide")
+        self.assertFalse(gate["passed"])
+
+    def test_single_name_clears_when_all_three_pass(self):
+        gate = overview_subject_gate(
+            story_companies=["Nvidia"],
+            is_single_name_or_deal=True,
+            cluster_distinct_sources=MATERIALITY_MIN_DISTINCT_SOURCES + 1,
+            tape=_mtape(-1.6, 9.0),
+            tape_driver_names=["Nvidia"],
+        )
+        self.assertEqual(gate["subject"], "story")
+        self.assertTrue(gate["passed"])
+
+    def test_market_wide_story_always_subject(self):
+        gate = overview_subject_gate(
+            story_companies=[],
+            is_single_name_or_deal=False,
+            cluster_distinct_sources=1,
+            tape=_mtape(0.1, 0.0),
+            tape_driver_names=None,
+        )
+        self.assertEqual(gate["subject"], "story")
+        self.assertTrue(gate["passed"])
+
+    def test_directive_market_wide_text(self):
+        gate = overview_subject_gate(
+            story_companies=["SpaceX"], is_single_name_or_deal=True,
+            cluster_distinct_sources=11, tape=_mtape(0.3, 2.0), tape_driver_names=None)
+        d = build_overview_subject_directive(gate, "SpaceX stock slumps post-IPO")
+        self.assertIn("MARKET-WIDE", d)
+        self.assertIn("mention", d.lower())
+
+
+class BuildTapeDriverNamesT3(unittest.TestCase):
+    def test_material_mover_qualifies(self):
+        out = build_tape_driver_names({"Micron Technology": -6.7})
+        self.assertEqual(out, {"micron technology"})
+
+    def test_below_threshold_excluded(self):
+        # |1.2| is at/under DRIVER_MIN_ABS_PCT (2.0) -> not a driver.
+        self.assertLess(1.2, DRIVER_MIN_ABS_PCT + 0.01)
+        self.assertEqual(build_tape_driver_names({"Apple": 1.2}), set())
+
+    def test_top_k_caps_the_set(self):
+        names = {f"co{i}": (10.0 - i) for i in range(DRIVER_TOP_K + 3)}
+        out = build_tape_driver_names(names)
+        self.assertEqual(len(out), DRIVER_TOP_K, "driver set must be capped at DRIVER_TOP_K")
+        # The largest movers win: co0 (10.0) through co{K-1}.
+        for i in range(DRIVER_TOP_K):
+            self.assertIn(f"co{i}", out)
+
+    def test_empty_or_garbage_yields_empty_set(self):
+        self.assertEqual(build_tape_driver_names({}), set())
+        self.assertEqual(build_tape_driver_names(None), set())
+        self.assertEqual(build_tape_driver_names({"x": None, "": 9.0}), set())
+
+    def test_sign_ignored_only_magnitude(self):
+        out = build_tape_driver_names({"up": 5.0, "down": -5.0})
+        self.assertEqual(out, {"up", "down"})
 
 
 if __name__ == "__main__":
