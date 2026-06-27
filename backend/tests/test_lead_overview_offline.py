@@ -74,14 +74,29 @@ class FixtureShapeTests(unittest.TestCase):
         self.assertGreaterEqual(len(srcs), 20, "SpaceX distinct sources should match prod (~21)")
 
 
-class Assertion1_SpaceXNotWinByVolume(unittest.TestCase):
-    def test_winner_is_an_event_cluster_not_company_aggregate(self):
+class Assertion1_LeadIsFreshNotStaleDebut(unittest.TestCase):
+    """T2 (#422 review fix, harness honesty). The original Assertion 1 only proved
+    the 48-article company aggregate was split into event clusters and the winner
+    held < 48 articles. That passes even while a STALE lead wins: on this committed
+    06-24 fixture the winner is co:spacex:stock (the FRESH Jun-23 selloff, freshest
+    ~6.5h), and the STALE IPO-debut cluster co:spacex:ipo (freshest ~11.5h) is #2
+    by score. The old test could not distinguish those two outcomes, so it would
+    keep passing if the stale debut ever out-ranked the fresh event. This rewrite
+    asserts the FRESH selloff wins and the STALE debut does NOT, so the test STOPS
+    passing the moment a stale lead wins.
+
+    Data agreement: the fresh SpaceX selloff (co:spacex:stock) is a legitimate
+    06-24 lead candidate; the stale post-IPO debut recap (co:spacex:ipo) is not.
+    """
+    STALE_DEBUT_KEY = "co:spacex:ipo"
+    FRESH_SELLOFF_KEY = "co:spacex:stock"
+
+    def test_winner_is_fresh_event_not_stale_debut(self):
         data, now = _load()
         scored = ir.score_clusters(data["articles"], now)
 
-        # No cluster is the bare company aggregate any more: every SpaceX cluster
-        # is event-scoped (co:spacex:<theme|sig:...>), so the 48 articles are
-        # split across distinct events rather than one mega-cluster.
+        # The bare company aggregate must be gone (D1 event scoping) so the 48
+        # name-level articles cannot win on accumulated volume.
         spacex_clusters = [c for c in scored if c["cluster_key"].startswith("co:spacex:")]
         self.assertGreaterEqual(len(spacex_clusters), 3,
                                 "SpaceX should split into multiple event clusters")
@@ -89,11 +104,29 @@ class Assertion1_SpaceXNotWinByVolume(unittest.TestCase):
             self.assertNotEqual(c["cluster_key"], "co:spacex",
                                 "the company-aggregate cluster must no longer exist")
 
-        # The lead is drawn from a single EVENT cluster, and that cluster holds
-        # far fewer than the 48 name-level articles (no name-volume win).
         res = ir.compute_shadow_lead(data["articles"], now, asof_date=now.date())
         self.assertIsNotNone(res)
-        winner = next(c for c in scored if c["cluster_key"] == res["cluster_key"])
+        winner_key = res["cluster_key"]
+        winner = next(c for c in scored if c["cluster_key"] == winner_key)
+
+        by_key = {c["cluster_key"]: c for c in scored}
+        fresh = by_key.get(self.FRESH_SELLOFF_KEY)
+        stale = by_key.get(self.STALE_DEBUT_KEY)
+        self.assertIsNotNone(fresh, "fixture must contain the fresh selloff cluster")
+        self.assertIsNotNone(stale, "fixture must contain the stale IPO-debut cluster")
+
+        # Honesty core: the winner is the FRESH event, NOT the stale debut. If the
+        # stale debut ever out-ranks the fresh event, BOTH of these fail.
+        self.assertEqual(winner_key, self.FRESH_SELLOFF_KEY,
+                         "the lead must be the fresh selloff event, not the stale debut")
+        self.assertNotEqual(winner_key, self.STALE_DEBUT_KEY,
+                            "a stale IPO-debut recap must never win the lead")
+        # Recency relationship the assertion depends on: the winner is fresher than
+        # the stale debut, so the win is on freshness+breadth, not stale volume.
+        self.assertLess(winner["freshest_age_h"], stale["freshest_age_h"],
+                        "the winning event must be fresher than the stale debut cluster")
+        # No name-volume win: the winning event holds far fewer than the 48
+        # name-level articles.
         self.assertLess(winner["article_count"], 48,
                         "winning event cluster must be smaller than the name aggregate")
 
@@ -284,6 +317,140 @@ class Assertion6_UnknownDateAndProse(unittest.TestCase):
                         "the 'stock surge ... underscores' construction must be flagged")
         self.assertFalse(pq.has_garbled_prose(gen["lead_paragraph"]),
                          "the corrected lead must pass the prose guard")
+
+
+# ── Phase 2: Jun 26 EVENING lead-trust scenario (T3 driver set, T5 overlap) ───
+#
+# The full Jun 26 session tape (MU -6.7%, NVDA -1.6%, AVGO -3.7%, plus non-tech
+# up: MSFT/IBM/LLY) is in the fixture _meta.session_tape. These assertions exercise
+# the deterministic layers wired by T3/T5 on the EVENING surfaces:
+#   1. TEMPORAL: the normalized "The Close" (narrative) and "Today's Story"
+#      (lead_paragraph) contain no "today" / "this morning" for the Jun 25 event.
+#   2. DIRECTION/GATE: Micron IS a tape driver on Jun 26 (derived via the real T3
+#      build_tape_driver_names over the session tape) but DOWN, so the bullish-
+#      framed Micron story FAILS the overview-subject gate.
+#   3. OVERLAP: the relegating gate emits the T5 distinct-subject directive, so
+#      "The Close" and "Today's Story" do not both resolve to the stale Micron.
+# (D8 and the honesty meta-test live below.)
+
+class Assertion7_EveningDriverSetAndOverlap(unittest.TestCase):
+    BRIEF_DATE = dt.date(2026, 6, 26)
+    MATERIAL_TAPE = {
+        "quotes": {"^GSPC": {"pct": -1.4}, "^VIX": {"pct": 11.0}},
+        "regime": "risk-off", "vix_level": 22.0,
+    }
+
+    def _driver_set(self, nf):
+        # Real T3 derivation over the documented Jun 26 per-name session tape.
+        return mt.build_tape_driver_names(nf["_meta"]["session_tape"]["name_to_pct"])
+
+    def test_micron_is_a_driver_via_real_t3_derivation(self):
+        nf = _load_narration()
+        drivers = self._driver_set(nf)
+        self.assertIn("micron technology", drivers,
+                      "MU -6.7% must be a top driver on the Jun 26 tape")
+        self.assertLessEqual(len(drivers), mt.DRIVER_TOP_K,
+                             "the driver set must be capped at DRIVER_TOP_K")
+
+    def test_temporal_no_today_on_both_evening_surfaces(self):
+        nf = _load_narration()
+        ed = tg.event_date_et(nf["lead_story"]["published_at"])  # Jun 25 (ET)
+        gen = nf["generated_narrative"]
+        # lead_paragraph -> "Today's Story"; narrative -> "The Close".
+        for field in ("lead_paragraph", "narrative"):
+            out, changed, _ = tg.normalize_relative_time(gen[field], ed, self.BRIEF_DATE)
+            self.assertTrue(changed, f"{field} should be normalized")
+            low = out.lower()
+            self.assertNotIn("today", low, f"{field} must not say 'today'")
+            self.assertNotIn("this morning", low, f"{field} must not say 'this morning'")
+
+    def test_bullish_micron_down_fails_gate_with_real_driver_set(self):
+        nf = _load_narration()
+        drivers = self._driver_set(nf)
+        framing = mt.classify_framing(
+            nf["lead_story"]["title"] + " " + nf["lead_story"]["summary"]
+        )
+        self.assertEqual(framing, "bullish")
+        mu_pct = nf["_meta"]["session_tape"]["name_to_pct"]["Micron Technology"]
+        gate = mt.overview_subject_gate(
+            story_companies=["Micron Technology"],
+            is_single_name_or_deal=True,
+            cluster_distinct_sources=nf["lead_story"]["_impact_breadth"]["distinct_sources"],
+            tape=self.MATERIAL_TAPE,
+            tape_driver_names=drivers,
+            subject_session_pct=mu_pct,
+            subject_framing=framing,
+        )
+        # Micron clears tape_material, is_tape_driver, and breadth, so the ONLY
+        # thing that relegates it is the direction contradiction (bullish vs -6.7%).
+        self.assertTrue(gate["checks"]["is_tape_driver"],
+                        "the real driver set must confirm Micron is a driver")
+        self.assertFalse(gate["checks"]["direction_consistent"])
+        self.assertEqual(gate["subject"], "market_wide",
+                         "a bullish-framed Micron lead on a -6.7% session must be relegated")
+        self.assertTrue(gate.get("direction_contradiction"))
+
+    def test_overlap_directive_forces_distinct_subjects_when_relegated(self):
+        nf = _load_narration()
+        drivers = self._driver_set(nf)
+        framing = mt.classify_framing(
+            nf["lead_story"]["title"] + " " + nf["lead_story"]["summary"]
+        )
+        mu_pct = nf["_meta"]["session_tape"]["name_to_pct"]["Micron Technology"]
+        gate = mt.overview_subject_gate(
+            story_companies=["Micron Technology"],
+            is_single_name_or_deal=True,
+            cluster_distinct_sources=12,
+            tape=self.MATERIAL_TAPE,
+            tape_driver_names=drivers,
+            subject_session_pct=mu_pct,
+            subject_framing=framing,
+        )
+        directive = mt.build_overlap_enforcement_directive(gate)
+        self.assertTrue(directive, "a relegated lead must emit the overlap directive")
+        self.assertIn("DISTINCT", directive.upper(),
+                      "the overlap directive must force distinct subjects")
+
+    def test_overlap_directive_noop_when_lead_is_dominant_driver(self):
+        # Materiality-gates-overlap: when the lead IS the dominant driver (gate
+        # passed), the two surfaces are allowed to share it -> no directive.
+        gate = mt.overview_subject_gate(
+            story_companies=["Nvidia"],
+            is_single_name_or_deal=True,
+            cluster_distinct_sources=mt.MATERIALITY_MIN_DISTINCT_SOURCES + 2,
+            tape={"quotes": {"^GSPC": {"pct": -1.6}, "^VIX": {"pct": 9.0}},
+                  "regime": "risk-off", "vix_level": 20.0},
+            tape_driver_names={"nvidia"},
+        )
+        self.assertTrue(gate["passed"])
+        self.assertEqual(mt.build_overlap_enforcement_directive(gate), "",
+                         "a dominant-driver lead may share the subject; no directive")
+
+
+class Assertion8_HarnessHonestyMetaCheck(unittest.TestCase):
+    """Phase 2 item 5: prove the rewritten Assertion 1 FAILS on a stale lead and
+    PASSES only on a fresh one. The honesty predicate is: winner == fresh selloff
+    AND winner != stale debut. We apply it to two synthetic outcomes."""
+    FRESH = "co:spacex:stock"
+    STALE = "co:spacex:ipo"
+
+    def _honesty_holds(self, winner_key):
+        # Mirrors Assertion1's core predicate.
+        return winner_key == self.FRESH and winner_key != self.STALE
+
+    def test_predicate_passes_on_fresh_lead(self):
+        self.assertTrue(self._honesty_holds(self.FRESH),
+                        "the honesty predicate must accept a fresh lead")
+
+    def test_predicate_fails_on_stale_lead(self):
+        self.assertFalse(self._honesty_holds(self.STALE),
+                         "the honesty predicate must reject a stale debut lead")
+
+    def test_real_fixture_winner_satisfies_predicate(self):
+        data, now = _load()
+        res = ir.compute_shadow_lead(data["articles"], now, asof_date=now.date())
+        self.assertTrue(self._honesty_holds(res["cluster_key"]),
+                        "the committed fixture must satisfy the honesty predicate")
 
 
 class Assertion9_HeadlineTemporalAndProperNoun(unittest.TestCase):

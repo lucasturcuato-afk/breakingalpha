@@ -14,11 +14,14 @@ import unittest
 from pathlib import Path
 
 from backend.market_tape import (
+    DRIVER_MIN_ABS_PCT,
+    DRIVER_TOP_K,
     MATERIALITY_MIN_DISTINCT_SOURCES,
     REGIME_DEFAULT_WORD,
     REGIME_VOCAB,
     build_overview_subject_directive,
     build_tape_directive,
+    build_tape_driver_names,
     compute_regime,
     enforce_tape_consistency,
     overview_subject_gate,
@@ -361,6 +364,34 @@ class MaterialityGateTests(unittest.TestCase):
         d = build_overview_subject_directive(gate, "SpaceX stock slumps post-IPO")
         self.assertIn("MARKET-WIDE", d)
         self.assertIn("mention", d.lower())
+
+
+class BuildTapeDriverNamesT3(unittest.TestCase):
+    def test_material_mover_qualifies(self):
+        out = build_tape_driver_names({"Micron Technology": -6.7})
+        self.assertEqual(out, {"micron technology"})
+
+    def test_below_threshold_excluded(self):
+        # |1.2| is at/under DRIVER_MIN_ABS_PCT (2.0) -> not a driver.
+        self.assertLess(1.2, DRIVER_MIN_ABS_PCT + 0.01)
+        self.assertEqual(build_tape_driver_names({"Apple": 1.2}), set())
+
+    def test_top_k_caps_the_set(self):
+        names = {f"co{i}": (10.0 - i) for i in range(DRIVER_TOP_K + 3)}
+        out = build_tape_driver_names(names)
+        self.assertEqual(len(out), DRIVER_TOP_K, "driver set must be capped at DRIVER_TOP_K")
+        # The largest movers win: co0 (10.0) through co{K-1}.
+        for i in range(DRIVER_TOP_K):
+            self.assertIn(f"co{i}", out)
+
+    def test_empty_or_garbage_yields_empty_set(self):
+        self.assertEqual(build_tape_driver_names({}), set())
+        self.assertEqual(build_tape_driver_names(None), set())
+        self.assertEqual(build_tape_driver_names({"x": None, "": 9.0}), set())
+
+    def test_sign_ignored_only_magnitude(self):
+        out = build_tape_driver_names({"up": 5.0, "down": -5.0})
+        self.assertEqual(out, {"up", "down"})
 
 
 if __name__ == "__main__":

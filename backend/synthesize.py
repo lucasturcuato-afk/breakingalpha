@@ -1539,9 +1539,27 @@ def _candidate_orgs(text):
     return out
 
 
+# Common first words that, on their own, do NOT support a multi-word org. A bare
+# "texas" in the corpus ("West Texas") must NOT vouch for "Texas Pacific Land".
+# Geographies, generic descriptors, and high-frequency name heads only.
+_ORG_GENERIC_HEADS = frozenset((
+    "texas", "new", "american", "america", "united", "national", "global",
+    "international", "general", "first", "north", "south", "east", "west",
+    "central", "pacific", "atlantic", "european", "european", "asian",
+    "western", "eastern", "northern", "southern", "capital", "city", "state",
+    "federal", "bank", "group", "holdings", "holding", "partners", "industries",
+    "technologies", "systems", "solutions", "financial", "international",
+))
+
+
 def _org_supported(org, corpus_lc, allowed_lc):
-    """True when an org candidate is supported: it (or a head fragment) appears in
-    the source corpus text, or matches a resolved company name."""
+    """True when an org candidate is supported. Supported means: the full phrase
+    appears in the corpus or resolved-company roster, OR a DISTINCTIVE multi-token
+    prefix of the phrase does. A single common first word (a geography or generic
+    head like "texas", "new", "national") is NOT sufficient on its own: the old
+    head-token fallback deemed "Texas Pacific Land" supported because "texas"
+    appears in the corpus ("West Texas"), letting the exact hallucination D8 must
+    catch slip through (#422 review fix)."""
     o = org.strip().lower()
     if not o:
         return True
@@ -1549,10 +1567,23 @@ def _org_supported(org, corpus_lc, allowed_lc):
         return True
     if o in corpus_lc:
         return True
-    # Head-of-name containment: "AbbVie" supports "AbbVie Inc"; "Texas Pacific"
-    # not in corpus stays unsupported.
-    head = o.split()[0]
-    if len(head) > 3 and (head in allowed_lc or head in corpus_lc):
+    toks = o.split()
+    # Single-token org (e.g. "AbbVie"): the whole-string checks above are the only
+    # support; no prefix relaxation, so a lone unsupported token stays unsupported.
+    if len(toks) < 2:
+        return False
+    # Multi-word org: accept a distinctive PREFIX match so "AbbVie" / "AbbVie Inc"
+    # supports "AbbVie Therapeutics", but require either (a) a >=2-token prefix
+    # (the first two words together, distinctive enough), or (b) a single first
+    # word that is NOT a generic/geographic head. A common first word like "texas"
+    # alone can never vouch for the phrase.
+    two = " ".join(toks[:2])
+    if two in allowed_lc or two in corpus_lc:
+        return True
+    head = toks[0]
+    if len(head) > 3 and head not in _ORG_GENERIC_HEADS and (
+        head in allowed_lc or head in corpus_lc
+    ):
         return True
     return False
 
@@ -1757,11 +1788,12 @@ def _resolve_lead_ticker(company_name):
 
 
 def _lead_session_move(preselected):
-    """D14: return (session_pct, framing) for the lead's single named company, or
-    (None, None) when not a single-name lead, the ticker cannot be resolved, or the
-    live quote is unavailable. Uses the EXISTING market_tape.fetch_quote (Yahoo,
-    baseline-correct prior close) as the gen-time live source: no new dependency.
-    Fully soft-fail, never raises out."""
+    """D14 + T3: return (session_pct, framing, company_name) for the lead's single
+    named company, or (None, None, None) when not a single-name lead, the ticker
+    cannot be resolved, or the live quote is unavailable. Uses the EXISTING
+    market_tape.fetch_quote (Yahoo, baseline-correct prior close) as the gen-time
+    live source: no new dependency. The company_name lets the caller seed the T3
+    driver set without a second fetch. Fully soft-fail, never raises out."""
     try:
         cos = preselected.get("companies") or []
         if isinstance(cos, str):
@@ -1771,18 +1803,18 @@ def _lead_session_move(preselected):
                 cos = [cos]
         cos = [str(c).strip() for c in cos if str(c).strip()]
         if not cos or len(cos) > 2:
-            return None, None
+            return None, None, None
         ticker = _resolve_lead_ticker(cos[0])
         if not ticker:
-            return None, None
+            return None, None, None
         quote = market_tape.fetch_quote(ticker)
         if not quote or quote.get("pct") is None:
-            return None, None
+            return None, None, None
         framing_src = " ".join(str(preselected.get(k) or "") for k in ("title", "summary"))
         framing = market_tape.classify_framing(framing_src)
-        return float(quote["pct"]), framing
+        return float(quote["pct"]), framing, cos[0]
     except Exception:
-        return None, None
+        return None, None, None
 
 
 def _retemporalize_field(field_name, text, event_date, brief_date, data):
@@ -2148,29 +2180,47 @@ def run(brief_type="morning"):
             # Distinct-source breadth of the pick's EVENT-level cluster (post-D1).
             _breadth = (preselected.get("_impact_breadth") or {})
             _distinct_sources = int(_breadth.get("distinct_sources") or 0)
-            # tape_driver_names: only gen-time-available movers/driver. The tape
-            # fetch surfaces indices + VIX, not per-name quotes, so the conservative
-            # driver set is empty here. See TODO(recon open question 2) in
-            # market_tape.overview_subject_gate.
             # D14: resolve the single-name lead's CURRENT-SESSION move and framing
             # so the gate can reject stale-direction framing (bullish lead vs a
-            # ticker that is materially DOWN today). Soft-fail to (None, None),
+            # ticker that is materially DOWN today). Soft-fail to (None, None, None),
             # which leaves the gate's behavior identical to before.
-            _lead_pct, _lead_framing = (None, None)
+            _lead_pct, _lead_framing, _lead_name = (None, None, None)
             if _is_single_name:
-                _lead_pct, _lead_framing = _lead_session_move(preselected)
+                _lead_pct, _lead_framing, _lead_name = _lead_session_move(preselected)
+            # T3 driver-set v1: build tape_driver_names from gen-time per-name moves.
+            # The tape fetch surfaces only indices + VIX, so the candidate set is the
+            # resolved lead company whose live session move we already fetched above
+            # (no second network call). build_tape_driver_names keeps only materially
+            # large movers (|move| > DRIVER_MIN_ABS_PCT, top DRIVER_TOP_K). Empty set
+            # when no quote / no material mover -> the gate falls back to market-wide
+            # exactly as before (fail-safe; never promotes on magnitude alone, the
+            # gate still also requires a material tape and dominant breadth).
+            _driver_names = None
+            if _lead_name and _lead_pct is not None:
+                _drivers = market_tape.build_tape_driver_names({_lead_name: _lead_pct})
+                _driver_names = _drivers or None
             _gate = market_tape.overview_subject_gate(
                 story_companies=_ps_companies,
                 is_single_name_or_deal=_is_single_or_deal,
                 cluster_distinct_sources=_distinct_sources,
                 tape=tape_obj,
-                tape_driver_names=None,
+                tape_driver_names=_driver_names,
                 subject_session_pct=_lead_pct,
                 subject_framing=_lead_framing,
             )
             system = market_tape.build_overview_subject_directive(
                 _gate, story_title=(preselected.get("title") or "")
             ) + system
+            # T5 overlap enforcement: when the gate relegated the lead (it is not
+            # the day's dominant driver), force 'The Close' overview and the lead
+            # block onto distinct subjects so the evening surfaces do not both
+            # resolve to the same stale lead. Materiality-gated, deterministic,
+            # rides the existing prepend path. No-op when the lead IS the dominant
+            # driver (gate passed) or for a market-wide story.
+            _overlap_directive = market_tape.build_overlap_enforcement_directive(_gate)
+            if _overlap_directive:
+                system = _overlap_directive + system
+                print("  🔗 Overlap enforcement: lead relegated; narrative must take a distinct subject")
             if _gate.get("direction_contradiction"):
                 print(f"  ⚖ live-quote reconciliation: lead is {_lead_framing} but ticker "
                       f"{_lead_pct:+.1f}% today; instructing reframe")
@@ -2421,6 +2471,22 @@ def run(brief_type="morning"):
                 elif changed_n:
                     mpn["narrative"] = new_n
                     print("  [temporal guard] normalized narrative relative time")
+
+            # T4 evening coverage: the evening "Today's Story" card renders
+            # supporting_context and what_to_watch alongside lead_paragraph
+            # (src/app/evening-wrap/page.tsx leadCards). A stale "today" leaking
+            # into those two fields bypassed D13. Normalize them too, inline-only
+            # (no re-ask, to avoid extra model calls on secondary lead fields). On
+            # a garble the inline edit is skipped, leaving the original untouched.
+            for _fld in ("supporting_context", "what_to_watch"):
+                _txt = data.get(_fld)
+                if isinstance(_txt, str) and _txt.strip():
+                    _new, _chg, _garb = temporal_grounding.normalize_relative_time(
+                        _txt, lead_event_date, brief_date_et
+                    )
+                    if _chg and not _garb:
+                        data[_fld] = _new
+                        print(f"  [temporal guard] normalized {_fld} relative time")
         except Exception as e:
             print(f"  ⚠ temporal guard error (non-fatal): {e}")
 

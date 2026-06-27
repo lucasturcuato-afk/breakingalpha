@@ -150,7 +150,7 @@ class MorningSoftFail(unittest.TestCase):
         base = "BASE_SYSTEM_PROMPT"
         with mock.patch.object(synthesize.market_tape, "fetch_tape",
                                side_effect=RuntimeError("yahoo down")):
-            system, regime = synthesize._maybe_inject_tape_directive("morning", base)
+            system, regime, _tape = synthesize._maybe_inject_tape_directive("morning", base)
         self.assertEqual(system, base)          # unchanged
         self.assertIsNone(regime)               # no regime
         self.assertNotIn("PRIOR SESSION CLOSE", system)
@@ -158,7 +158,7 @@ class MorningSoftFail(unittest.TestCase):
     def test_unusable_tape_injects_nothing(self):
         base = "BASE_SYSTEM_PROMPT"
         with mock.patch.object(synthesize.market_tape, "fetch_tape", return_value=None):
-            system, regime = synthesize._maybe_inject_tape_directive("morning", base)
+            system, regime, _tape = synthesize._maybe_inject_tape_directive("morning", base)
         self.assertEqual(system, base)
         self.assertIsNone(regime)
 
@@ -177,7 +177,7 @@ class EveningUnchanged(unittest.TestCase):
         base = "BASE_SYSTEM_PROMPT"
         tape = _stub_tape("risk-off")
         with mock.patch.object(synthesize.market_tape, "fetch_tape", return_value=tape):
-            system, regime = synthesize._maybe_inject_tape_directive("evening", base)
+            system, regime, _tape = synthesize._maybe_inject_tape_directive("evening", base)
         # Identical to the original inline evening path: build_tape_directive + system.
         self.assertEqual(system, market_tape.build_tape_directive(tape) + base)
         self.assertEqual(regime, "risk-off")
