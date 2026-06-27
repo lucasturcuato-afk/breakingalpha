@@ -13,6 +13,7 @@ from ingest import INDUSTRY_VERTICALS
 from outputs import record_output, record_outputs_batch
 from output_constants import BRIEF_PROMPT_VERSION
 import market_tape
+import temporal_grounding
 import macro_calendar
 import bea_calendar
 from brief_voice_guard import enforce_brief_voice, has_voice_violation
@@ -1732,6 +1733,45 @@ def _regenerate_narrative_net_new(data, regime, brief_type):
     return None
 
 
+def _retemporalize_field(field_name, text, event_date, brief_date, data):
+    """D13 fallback: ONE targeted re-ask when the deterministic in-place rewrite
+    would garble the sentence. Rewrite ONE field so its relative-time wording is
+    anchored to the brief date. Prose only, narrative/lead only. Returns the new
+    string or None on any failure. This is the only path in D13 that calls the
+    model, and it runs only on the garble branch (not exercised by the offline
+    harness, which asserts the pure normalizer)."""
+    phrase = temporal_grounding.relative_phrase(event_date, brief_date)
+    if phrase is None:
+        when = (
+            "The event has NO confirmed date: do NOT write 'today', 'this morning', "
+            "or any present-tense relative time; describe it without a relative-time word."
+        )
+    else:
+        when = (
+            f"The event happened {phrase}, NOT today (brief date {brief_date.isoformat()}). "
+            f"Use '{phrase}' or plain past tense, never 'today' / 'this morning'."
+        )
+    key = "narrative" if field_name == "narrative" else "field"
+    system = (
+        "You rewrite ONE field of a finished market brief to fix its relative-time "
+        f'wording only. Return JSON only: {{"{key}": "<rewritten text>"}}. No other '
+        "keys, no prose outside the JSON. Keep every fact and the paragraph count. "
+        "Zero em-dashes; use hyphens, colons, parens."
+    )
+    user = (
+        f"{when}\n\nRewrite ONLY the relative-time wording; change nothing else.\n\n"
+        f"TEXT:\n{text}"
+    )
+    try:
+        raw = gemini_generate(system=system, user_content=user, temperature=0.2, max_tokens=1024)
+        parsed = _parse_brief_json(raw)
+        if parsed and isinstance(parsed.get(key), str) and parsed[key].strip():
+            return parsed[key].strip()
+    except Exception as e:
+        print(f"  ⚠ temporal guard: re-ask call failed (non-fatal): {e}")
+    return None
+
+
 def run(brief_type="morning"):
     print(f"📝 Synthesizing {brief_type} briefing...")
 
@@ -2083,6 +2123,28 @@ def run(brief_type="morning"):
         except Exception as e:
             print(f"  ⚠ overview-subject gate skipped (non-fatal): {e}")
 
+    # --- Temporal grounding directive (D13) -------------------------------------
+    # Anchor relative-time words to the brief date. The articles schema has no
+    # distinct event timestamp (P0.1), so the lead's event_date is derived from
+    # its published_at converted to ET; NULL published_at => UNKNOWN, which forbids
+    # any "today" claim. This is the prompt-side first line of defense; the
+    # deterministic post-parse normalizer below is the backstop. Soft-fail.
+    brief_date_et = temporal_grounding.brief_date_et()
+    lead_event_date = None
+    if preselected:
+        try:
+            lead_event_date = temporal_grounding.event_date_et(
+                preselected.get("published_at")
+            )
+            system = temporal_grounding.build_temporal_directive(
+                brief_date_et, lead_event_date,
+                lead_title=(preselected.get("title") or ""),
+            ) + system
+            _ed = lead_event_date.isoformat() if lead_event_date else "UNKNOWN"
+            print(f"  🕒 Temporal anchor: brief={brief_date_et.isoformat()} lead_event={_ed}")
+        except Exception as e:
+            print(f"  ⚠ temporal grounding directive skipped (non-fatal): {e}")
+
     # --- Market-holiday / weekend awareness (market_calendar.py, soft-fail) ------
     # On a full-day US equity closure, the tape above is the LAST completed session
     # close (fetch_tape returns the prior close when there is no live session). We
@@ -2222,6 +2284,58 @@ def run(brief_type="morning"):
             "top_deals": [],
             "sector_breakdown": {}
         }
+
+    # Temporal grounding normalizer (D13, morning + evening, non-fatal). The prompt
+    # directive above is not trusted alone: a fresh-published article narrating a
+    # prior-session event copies its "today" onto the brief (the Micron case).
+    # Deterministically rewrite relative-time tokens in lead_paragraph and
+    # market_pulse.narrative so they anchor to the brief date, NOT to the article's
+    # publication day. event_date == brief_date keeps "today"; one day prior ->
+    # "yesterday"; same week -> weekday; older -> "last week"; UNKNOWN -> strip the
+    # relative-time clause. If an in-place rewrite would garble the sentence, fall
+    # back to ONE targeted re-ask (prose only). Pure normalizer lives in
+    # temporal_grounding.py (the offline-harness target).
+    if not brief_is_stub and brief_type in ("morning", "evening"):
+        try:
+            lp_text = data.get("lead_paragraph")
+            if isinstance(lp_text, str) and lp_text.strip():
+                new_lp, changed, garbled = temporal_grounding.normalize_relative_time(
+                    lp_text, lead_event_date, brief_date_et
+                )
+                if garbled:
+                    reasked = _retemporalize_field(
+                        "lead_paragraph", lp_text, lead_event_date, brief_date_et, data
+                    )
+                    if reasked:
+                        data["lead_paragraph"] = reasked
+                        print("  [temporal guard] re-ask rewrote lead_paragraph relative time")
+                    elif changed:
+                        data["lead_paragraph"] = new_lp
+                        print("  [temporal guard] normalized lead_paragraph (re-ask failed; used inline edit)")
+                elif changed:
+                    data["lead_paragraph"] = new_lp
+                    print("  [temporal guard] normalized lead_paragraph relative time")
+
+            mpn = data.get("market_pulse")
+            if isinstance(mpn, dict) and isinstance(mpn.get("narrative"), str) and mpn["narrative"].strip():
+                new_n, changed_n, garbled_n = temporal_grounding.normalize_relative_time(
+                    mpn["narrative"], lead_event_date, brief_date_et
+                )
+                if garbled_n:
+                    reasked_n = _retemporalize_field(
+                        "narrative", mpn["narrative"], lead_event_date, brief_date_et, data
+                    )
+                    if reasked_n:
+                        mpn["narrative"] = reasked_n
+                        print("  [temporal guard] re-ask rewrote narrative relative time")
+                    elif changed_n:
+                        mpn["narrative"] = new_n
+                        print("  [temporal guard] normalized narrative (re-ask failed; used inline edit)")
+                elif changed_n:
+                    mpn["narrative"] = new_n
+                    print("  [temporal guard] normalized narrative relative time")
+        except Exception as e:
+            print(f"  ⚠ temporal guard error (non-fatal): {e}")
 
     # Lead-thesis opener guard (morning + evening, non-fatal). The narrative's
     # opening sentence is the most visible line in the product and reliably
