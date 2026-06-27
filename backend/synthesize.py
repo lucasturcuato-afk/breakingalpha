@@ -2448,6 +2448,22 @@ def run(brief_type="morning"):
                 elif changed_n:
                     mpn["narrative"] = new_n
                     print("  [temporal guard] normalized narrative relative time")
+
+            # T4 evening coverage: the evening "Today's Story" card renders
+            # supporting_context and what_to_watch alongside lead_paragraph
+            # (src/app/evening-wrap/page.tsx leadCards). A stale "today" leaking
+            # into those two fields bypassed D13. Normalize them too, inline-only
+            # (no re-ask, to avoid extra model calls on secondary lead fields). On
+            # a garble the inline edit is skipped, leaving the original untouched.
+            for _fld in ("supporting_context", "what_to_watch"):
+                _txt = data.get(_fld)
+                if isinstance(_txt, str) and _txt.strip():
+                    _new, _chg, _garb = temporal_grounding.normalize_relative_time(
+                        _txt, lead_event_date, brief_date_et
+                    )
+                    if _chg and not _garb:
+                        data[_fld] = _new
+                        print(f"  [temporal guard] normalized {_fld} relative time")
         except Exception as e:
             print(f"  ⚠ temporal guard error (non-fatal): {e}")
 
