@@ -100,8 +100,13 @@ export interface ClassifiedResults<T extends WebResultLike = WebResultLike> {
 /**
  * Partition a result pool into rows that are actually about the subject
  * (on-entity) vs rows that merely share a token (sector context). A row is
- * on-entity if its title+summary contains the ticker as a whole token OR passes
- * matchesName. Only on-entity rows are fed to the memo as subject material.
+ * on-entity if it passes matchesName on title+summary, OR its ticker appears in
+ * the TITLE. Only on-entity rows are fed to the memo as subject material.
+ *
+ * The ticker test is title-scoped on purpose: a ticker buried in a body
+ * quote-table of many unrelated stocks ("Old Second Bancorp (OSBC) ... also
+ * lists LSBK 15.77") is a shared-token false positive, the same failure class as
+ * a shared name token, and must not pull another company's article on-entity.
  */
 export function classifyWebResults<T extends WebResultLike>(
   subject: ClassifySubject,
@@ -111,15 +116,41 @@ export function classifyWebResults<T extends WebResultLike>(
   const onEntity: T[] = [];
   const sectorContext: T[] = [];
   for (const r of results) {
-    const hay = normalize(`${r.title} ${r.summary}`);
-    const hit = (ticker && hasToken(hay, ticker)) || matchesName(subject.canonical, hay);
-    (hit ? onEntity : sectorContext).push(r);
+    const nameHit = matchesName(subject.canonical, normalize(`${r.title} ${r.summary}`));
+    const tickerHit = ticker !== "" && hasToken(normalize(r.title), ticker);
+    (nameHit || tickerHit ? onEntity : sectorContext).push(r);
   }
   return { onEntity, sectorContext };
 }
 
 export function isThinPool(onEntityCount: number): boolean {
   return onEntityCount < THIN_POOL_MIN_ON_ENTITY;
+}
+
+/**
+ * Pick the name the entity filter should anchor on (Mode 1 root-cause fix).
+ *
+ * The web-fallback route derives the subject name from the result pool
+ * (normalizeFromResults). When the pool is dominated by other same-token
+ * companies, that derivation collapses to the bare high-frequency shared token:
+ * a "Lake Shore Bancorp" pool full of Shore Bancshares / North Shore Bank rows
+ * normalizes to "Shore". Anchoring the filter on "Shore" makes EVERY Shore bank
+ * match, so no contaminant is dropped and the thin-pool gate never trips.
+ *
+ * Guard: if the pool-derived name is a single, short, non-distinctive token but
+ * the query-derived name carries strictly more distinctive tokens, classify on
+ * the query-derived name instead so matchesName requires the full distinctive
+ * phrase ("lake shore"), not a shared token. A pool name that is already
+ * distinctive (a long token like "nvidia", or two+ significant tokens like
+ * "Pershing Square") is kept, preserving typo recovery.
+ */
+export function subjectForClassification(poolName: string, queryName: string): string {
+  const poolSig = significantTokens(poolName);
+  const querySig = significantTokens(queryName);
+  const poolDistinctive =
+    poolSig.some((t) => t.length >= DOMINANT_TOKEN_MIN_LEN) || poolSig.length >= 2;
+  if (!poolDistinctive && querySig.length > poolSig.length) return queryName;
+  return poolName;
 }
 
 // ---------------------------------------------------------------------------
@@ -227,6 +258,106 @@ export function enforceMemoCitations(memo: string, results: readonly WebResultLi
       const supports = figs.some((f) => resDigits.includes(f));
       if (!supports) fixed = fixed.split(`[${n}]`).join("");
     }
+    if (fixed !== sentence) {
+      fixed = fixed.replace(/ {2,}/g, " ").replace(/\s+([.,;!?])/g, "$1").trim();
+      out = out.replace(sentence, fixed);
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Corroboration guard (Mode 2/B): the UNM failure asserted a single-source
+// (and wrong) Q1 revenue figure that anchored a whole thesis. enforceMemoCitations
+// only checks that SOME cited result carries the figure; it does not care how
+// many sources do, and it compares bare digits, so "$2.93 billion" reads as
+// corroborated by a source that actually said "$2.93 million". This guard
+// requires a numeric claim to be CORROBORATED (same figure, compatible
+// magnitude, in >= 2 distinct subject results) before it may stand as sourced.
+// Single-source figures and order-of-magnitude mismatches lose their citation.
+// ---------------------------------------------------------------------------
+
+const MAGNITUDE_EXP: Record<string, number> = {
+  k: 3, thousand: 3, thousands: 3,
+  m: 6, mn: 6, million: 6, millions: 6,
+  b: 9, bn: 9, billion: 9, billions: 9,
+};
+
+/** Minimum distinct subject results that must carry a figure for it to anchor a
+ * claim as sourced. Two independent sources is the floor for corroboration. */
+export const MIN_CORROBORATING_SOURCES = 2;
+
+/** A figure as digits plus magnitude exponent (0 = none, 3/6/9 = k/m/b). The
+ * exponent is what separates "$2.93 billion" (exp 9) from "$2.93 million"
+ * (exp 6) so an order-of-magnitude mismatch is not read as agreement. */
+interface ScaledFigure {
+  digits: string;
+  exp: number;
+}
+
+function scaledFigures(text: string): ScaledFigure[] {
+  const out: ScaledFigure[] = [];
+  // Only genuinely financial figures gate corroboration: a leading "$", a
+  // trailing magnitude word, or a percent. This deliberately ignores bare
+  // integers, quarter markers ("Q1"), and years ("2026", "2029") so they cannot
+  // create spurious uncorroborated figures. Longest unit alternatives first; a
+  // word boundary stops single-letter "b"/"m" from matching inside a word.
+  const re = /(\$)?\s?(\d[\d,.]*)\s?(billions?|millions?|thousands?|bn|mn|[kmb]|%|percent)?\b/gi;
+  for (const match of text.matchAll(re)) {
+    const hasDollar = Boolean(match[1]);
+    const digits = match[2].replace(/[^0-9]/g, "");
+    if (!digits) continue;
+    const unit = match[3]?.toLowerCase();
+    if (!hasDollar && !unit) continue;
+    out.push({ digits, exp: unit ? (MAGNITUDE_EXP[unit] ?? 0) : 0 });
+  }
+  return out;
+}
+
+/** A result corroborates a figure when it contains the same digits AND a
+ * compatible magnitude (either side unitless, or the two exponents agree).
+ * A billion-vs-million collision is NOT corroboration. */
+function resultCorroborates(figure: ScaledFigure, resultFigures: ScaledFigure[]): boolean {
+  return resultFigures.some(
+    (rf) =>
+      rf.digits === figure.digits &&
+      (figure.exp === 0 || rf.exp === 0 || rf.exp === figure.exp),
+  );
+}
+
+function corroboratingSourceCount(
+  figure: ScaledFigure,
+  perResultFigures: ScaledFigure[][],
+): number {
+  return perResultFigures.filter((rf) => resultCorroborates(figure, rf)).length;
+}
+
+/**
+ * Strip the [n] citations from any numeric sentence whose figure is not
+ * corroborated by at least MIN_CORROBORATING_SOURCES distinct subject results
+ * (counting an order-of-magnitude mismatch as non-corroborating). Prose is left
+ * intact, identical contract to enforceMemoCitations: a de-authorized figure
+ * stays as text but no longer reads as a sourced fact, so it cannot anchor the
+ * thesis. Conservative on percentages and bare counts, which often restate the
+ * same value in different words across sources.
+ */
+export function enforceCorroboratedFigures(
+  memo: string,
+  results: readonly WebResultLike[],
+): string {
+  const perResultFigures = results.map((r) => scaledFigures(`${r.title} ${r.summary}`));
+  let out = memo;
+  for (const sentence of splitSentences(memo)) {
+    const citedIndices = [...sentence.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1]));
+    if (citedIndices.length === 0) continue;
+    const figs = scaledFigures(sentence.replace(/\[\d+\]/g, ""));
+    if (figs.length === 0) continue;
+    const allCorroborated = figs.every(
+      (f) => corroboratingSourceCount(f, perResultFigures) >= MIN_CORROBORATING_SOURCES,
+    );
+    if (allCorroborated) continue;
+    let fixed = sentence;
+    for (const n of citedIndices) fixed = fixed.split(`[${n}]`).join("");
     if (fixed !== sentence) {
       fixed = fixed.replace(/ {2,}/g, " ").replace(/\s+([.,;!?])/g, "$1").trim();
       out = out.replace(sentence, fixed);

@@ -413,6 +413,18 @@ def _try_insert_canonical(
                             ).eq("id", new_id).execute()
                         except Exception:
                             pass  # don't block on ticker write failure
+                        # Gate 2: CIK-at-mint. When a ticker resolves, look up
+                        # its sec_cik from the LOCAL cik_tickers table (no SEC
+                        # HTTP) so the freshly minted row is XBRL-eligible and
+                        # converges with bulk-loaded rows on CIK identity.
+                        try:
+                            populate_sec_cik_for_mint(
+                                supabase=supabase,
+                                company_id=new_id,
+                                ticker=ticker,
+                            )
+                        except Exception:
+                            pass  # don't block mint on cik population failure
                 except Exception:
                     pass  # don't block on ticker lookup failure
             return new_id
@@ -428,6 +440,95 @@ def _try_insert_canonical(
         if "duplicate" in msg or "unique" in msg or "conflict" in msg or "23505" in msg:
             return None
         raise
+
+
+def lookup_cik_for_ticker(supabase, ticker: str) -> Optional[int]:
+    """
+    Resolve a sec_cik from the LOCAL cik_tickers table by ticker. NO SEC
+    HTTP call (cik_tickers is the bulk-loaded ticker->cik map maintained by
+    backend/edgar/cik_mapping.sync_cik_tickers).
+
+    Reuses the access pattern from edgar/submissions.get_watchlist_ciks:
+        sb.table("cik_tickers").select("cik").eq("ticker", <UPPER>) ...
+
+    Share-class multiplicity: one ticker maps to one CIK, but cik_tickers'
+    PK is UNIQUE(cik, ticker) so a single ticker should yield exactly one
+    cik. If a ticker somehow maps to MULTIPLE distinct ciks (data anomaly),
+    pick the numerically smallest deterministically rather than guess.
+    Returns None when the ticker is absent (foreign/private/junk ticker).
+    """
+    t = (ticker or "").upper().strip()
+    if not t:
+        return None
+    rows = (
+        supabase.table("cik_tickers")
+        .select("cik")
+        .eq("ticker", t)
+        .execute()
+        .data
+        or []
+    )
+    ciks = sorted({r["cik"] for r in rows if r.get("cik") is not None})
+    if not ciks:
+        return None
+    # Single cik is the normal case; collapse share-class rows. If more than
+    # one distinct cik mapped to this ticker, pick the smallest (deterministic)
+    # and note the anomaly so it surfaces in logs without blocking the mint.
+    if len(ciks) > 1:
+        print(
+            f"[cik-at-mint] ticker {t!r} maps to multiple ciks {ciks}; "
+            f"picking smallest {ciks[0]}"
+        )
+    return ciks[0]
+
+
+def populate_sec_cik_for_mint(*, supabase, company_id: str, ticker: str) -> Optional[int]:
+    """
+    Set companies.sec_cik on a freshly minted row from the LOCAL cik_tickers
+    map, with an EXPLICIT dedup existence-check guard.
+
+    DEDUP HAZARD GUARD: before writing, SELECT for any company row that
+    already holds this sec_cik. If one exists (and it is not this row), do
+    NOT set sec_cik on the new row -- that would create a second CIK holder.
+    Converge onto the existing holder by leaving the minted row's sec_cik
+    NULL (the resolver/dedup layer reconciles the duplicate name separately;
+    minting a second CIK holder is the failure mode we must avoid here).
+
+    This check is correct BOTH before Gate 1's UNIQUE(sec_cik) index exists
+    AND after it: it does not rely on ON CONFLICT (sec_cik), which cannot be
+    expressed before the index is in place. See the MERGE ORDERING note in
+    the PR: before the unique index lands, this explicit SELECT reduces but
+    cannot fully eliminate the TOCTOU window between two concurrent mints;
+    the DB constraint is the real backstop.
+
+    Returns the cik written, or None if nothing was written.
+    """
+    cik = lookup_cik_for_ticker(supabase, ticker)
+    if cik is None:
+        return None
+
+    existing = (
+        supabase.table("companies")
+        .select("id")
+        .eq("sec_cik", cik)
+        .execute()
+        .data
+        or []
+    )
+    holder_ids = [r["id"] for r in existing if r.get("id") != company_id]
+    if holder_ids:
+        # Another row already holds this CIK. Do not mint a second holder;
+        # converge onto the existing one by leaving this row's sec_cik NULL.
+        print(
+            f"[cik-at-mint] cik {cik} already held by {holder_ids[0]}; "
+            f"skipping sec_cik write on minted row {company_id}"
+        )
+        return None
+
+    supabase.table("companies").update({"sec_cik": cik}).eq(
+        "id", company_id
+    ).execute()
+    return cik
 
 
 def _write_resolution_log(

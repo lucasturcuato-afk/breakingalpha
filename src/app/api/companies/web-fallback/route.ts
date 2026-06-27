@@ -16,7 +16,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { searchWeb, type SearchResult } from "@/lib/web-search";
-import { classifyWebResults, isThinPool } from "@/lib/web-memo-entity";
+import { classifyWebResults, isThinPool, subjectForClassification } from "@/lib/web-memo-entity";
 import { normalizeFromResults } from "./normalize";
 
 export const dynamic = "force-dynamic";
@@ -132,8 +132,15 @@ export async function POST(request: NextRequest) {
   // search). Only on-entity rows become memo subject material; the rest are
   // labeled sector context and never attributed to the subject.
   const ticker = typeof body.ticker === "string" ? body.ticker.trim() : null;
+  // Anchor the filter on the full subject name. normalizeFromResults can collapse
+  // a contaminated pool to a bare shared token ("Shore" from a Lake Shore Bancorp
+  // pool dominated by other Shore banks); classifying on that bare token would
+  // mark every same-token company on-entity and defeat both the filter and the
+  // thin-pool gate. subjectForClassification falls back to the query-derived name
+  // (which retains "Lake Shore") in exactly that degenerate case.
+  const classifySubject = subjectForClassification(canonicalName, heuristicGuess);
   const { onEntity, sectorContext } = classifyWebResults(
-    { canonical: canonicalName, ticker },
+    { canonical: classifySubject, ticker },
     results,
   );
 

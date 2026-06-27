@@ -59,4 +59,5 @@ jobs:
           TAGGING_PRIMARY_FOLD_ENABLED: ${{ vars.TAGGING_PRIMARY_FOLD_ENABLED }}
           RELEVANCE_GRADE_MODE: ${{ vars.RELEVANCE_GRADE_MODE }}
           INGEST_BLOCKLIST_MODE: ${{ vars.INGEST_BLOCKLIST_MODE }}
+          FILTER_PROMPT_CACHE: ${{ vars.FILTER_PROMPT_CACHE }}
         run: python run.py ${{ steps.mode.outputs.mode }}
