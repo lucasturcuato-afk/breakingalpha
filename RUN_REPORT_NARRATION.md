@@ -106,6 +106,106 @@ lead_paragraph + market_pulse.narrative. The post-parse guards (opener, redundan
 voice) already live immediately after this call (2226-2307); D13/D14/D15 slot in
 alongside them.
 
-## PHASE 1/2 RESULTS
+## PHASE 1: DEFECTS LANDED
 
-(Filled in below after implementation.)
+| ID | Defect | Files | Commit |
+|----|--------|-------|--------|
+| D13 | Temporal grounding (anchor relative time to brief date) | backend/temporal_grounding.py (new), backend/synthesize.py | 183b7362 |
+| D14 | Live-quote reconciliation (direction vs framing in the gate) | backend/market_tape.py, backend/synthesize.py | 24438075 |
+| D15 | Prose quality guard (garbled constructions) | backend/prose_quality_guard.py (new), backend/synthesize.py | 4d1ec63f |
+
+### D13 temporal grounding
+New PURE module temporal_grounding.py: brief_date_et, event_date_et,
+relative_phrase, normalize_relative_time, build_temporal_directive. CRITICAL: UTC
+-> America/New_York conversion happens BEFORE taking the date, so a prior-evening-ET
+article (Jun 26 01:30Z = Jun 25 21:30 ET) yields event_date Jun 25, not Jun 26.
+Wired into synthesize.run: a temporal-anchor directive is prepended to the system
+prompt (first line of defense), and a DETERMINISTIC post-parse normalizer rewrites
+relative-time tokens in lead_paragraph + market_pulse.narrative: same day keeps
+"today"; one day prior -> "yesterday" (strip time-of-day); same week -> weekday;
+older -> "last week"/"earlier this month"; UNKNOWN (NULL published_at) -> strip the
+clause, never assert "today". Token set: today, this morning, this afternoon,
+tonight, earlier today, now, currently, right now. A garbled inline rewrite falls
+back to ONE targeted re-ask (_retemporalize_field), the only model call in D13 and
+not on the default path.
+
+### D14 live-quote reconciliation
+Extended market_tape.overview_subject_gate ADDITIVELY (new optional params
+subject_session_pct + subject_framing; new check direction_consistent). This is a
+NEW commit on this branch that EXTENDS #422's gate, not a rewrite. New helpers
+classify_framing and framing_contradicts_session, new constant RECON_DIR_PCT (1.5).
+When a single-name lead is framed bullish but its ticker is materially DOWN today
+(or bearish vs up), the gate fails on direction and the directive builder emits a
+reconcile-not-celebrate reframe instruction (state today's direction after the
+prior move; prefer reframe over silent drop). synthesize.run resolves the lead
+ticker (HARD_TICKER_OVERRIDES, then finnhub search) and the live move via the
+EXISTING market_tape.fetch_quote (no new live-call dependency). When inputs cannot
+resolve, the check is inert and the gate behaves exactly as #422 shipped it.
+
+### D15 prose quality guard
+New PURE module prose_quality_guard.py: detect_garbled_prose / has_garbled_prose /
+build_prose_correction. Detects a tight set of confidently-broken constructions
+(compound-noun event subject feeding a clause verb, e.g. "stock surge ...
+underscores"; dangling prepositions; doubled punctuation) in lead_paragraph +
+market_pulse.narrative. Conservative: a clean determiner subject ("the rally
+signals ...") is NOT flagged. On a hit, synthesize.run runs ONE targeted re-ask
+with an explicit failure example. Not a general grammar engine. Soft-fail.
+
+## PHASE 2: HARNESS RESULTS
+
+Extended backend/tests/test_lead_overview_offline.py (commit 8a06bfcd) with a
+committed fixture backend/tests/fixtures/narration_micron_2026-06-26.json.
+
+- 12/12 tests pass in the module (6 prior retained + 6 new). The new assertions
+  cover the three required scenarios plus prose + backward-compat:
+  1. TEMPORAL: event_date Jun 25 (via ET conversion), brief_date Jun 26 -> the
+     normalized lead + narrative have no "today"/"this morning"; read "yesterday".
+  2. DIRECTION: MU -5% Jun 26 vs bullish framing -> gate flags direction_contradiction,
+     relegates to market_wide, emits the reconcile directive; inert when omitted.
+  3. UNKNOWN-DATE: NULL published_at -> UNKNOWN event date -> no "today" asserted.
+  Plus: D15 garbled lead flagged / fixed lead passes.
+- The re-ask paths (temporal + prose re-ask) are integration-only (they call the
+  model) and are explicitly NOT asserted; the harness asserts the pure layers.
+- Pre-existing env import errors UNCHANGED: discover-wide run shows 34 errors, all
+  in modules other than mine (test_store_batch and test_sec_bypass need env-bound
+  clients; test_smoke/test_supabase_conn_resilience/test_watchlist_boost/
+  test_xbrl_resolver fail to import on missing pytest/env). None are introduced by
+  this branch; temporal_grounding and prose_quality_guard import clean.
+
+Fixture note: the prod snapshot (SELECT-only, 2026-06-27) confirms Micron led that
+week's coverage with bullish earnings framing, but the exact "published Jun 25,
+ATH $1,255, +15%" row the brief copied "today" from is not reproducible verbatim
+(surviving Micron rows are Jun 26-published), so the temporal/direction inputs are
+hand-set to the documented values, faithful to the bug shape.
+
+## RECOMMENDED FOLLOW-UPS (described, not applied)
+
+- To #420 (D6): D6 correctly stamps NULL for date-less items, which D13 now treats
+  as UNKNOWN. Consider an ingest-side EVENT-date extraction (dateline / "as of" in
+  the body) so D13 can key on a true event date rather than publication date; this
+  would also let D4 penalize stale EVENTS, not just stale publications.
+- To #421 (D5): no change needed; rails and D13 do not overlap. If an event_date
+  column is ever added, the rails timeAgo could optionally prefer it.
+- To #422 (D4 recency): D4 keys on publication age and cannot catch a fresh-
+  published article narrating a prior-day event (the Micron case). If an event_date
+  signal becomes available, feed it into _article_age_hours so the stale-event
+  penalty fires on the event, not the publication. Out of scope here (would touch
+  #422's ranking logic).
+- D14 ticker resolution leans on finnhub search at gen time when a name is not in
+  HARD_TICKER_OVERRIDES (only 2 entries). Consider a small curated name->ticker map
+  for the most common single-name leads to make the direction check deterministic
+  and network-free.
+- RECON_DIR_PCT (1.5) and the framing word lists are conservative v1 tunables;
+  validate against a few live mornings before tightening.
+
+## HALT / REQUIRES LUCAS / REQUIRES MIGRATION
+
+- REQUIRES LUCAS: none. No Lucas-protected file was edited (briefing/route.ts,
+  MemoModal.tsx, watchlist-utils.ts, WatchlistAddInput.tsx, trends/page.tsx all
+  untouched). All wiring rides synthesize.run's existing system-prompt prepend and
+  post-parse guard paths.
+- REQUIRES MIGRATION: none for D13/D14/D15. (#422 still carries its own UNAPPLIED
+  migration, untouched here.) An optional event_date column is a follow-up, not a
+  requirement of this work.
+- No merges, no main pushes, no #422 rewrites, no Gemini runtime calls in the
+  default paths, no prod writes, no pipeline runs.
