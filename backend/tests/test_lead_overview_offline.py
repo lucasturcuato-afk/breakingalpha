@@ -286,5 +286,50 @@ class Assertion6_UnknownDateAndProse(unittest.TestCase):
                          "the corrected lead must pass the prose guard")
 
 
+class Assertion9_HeadlineTemporalAndProperNoun(unittest.TestCase):
+    """Review follow-up: D13 must normalize the headline (the evening 'Today's
+    Story' card renders headline + lead), and must NOT mangle a relative-time
+    token that is part of a proper noun ('USA Today')."""
+
+    JUN25 = dt.date(2026, 6, 25)
+    JUN26 = dt.date(2026, 6, 26)
+
+    def test_stale_headline_today_rewritten_to_yesterday(self):
+        hl = "Micron Soars 15% Today to a New All-Time High"
+        out, changed, garbled = tg.normalize_relative_time(hl, self.JUN25, self.JUN26)
+        self.assertTrue(changed)
+        self.assertNotIn("today", out.lower(),
+                         "stale 'today' must not survive on a prior-day event headline")
+        self.assertIn("yesterday", out.lower(),
+                      "a one-day-prior event reads 'yesterday'")
+
+    def test_unknown_event_date_strips_headline_today(self):
+        hl = "Micron Soars 15% Today to a New All-Time High"
+        out, changed, garbled = tg.normalize_relative_time(hl, None, self.JUN26)
+        self.assertTrue(changed)
+        self.assertNotIn("today", out.lower(),
+                         "UNKNOWN event date must never assert 'today' in the headline")
+
+    def test_proper_noun_today_not_mangled(self):
+        # "USA Today" (a name) must survive; only the standalone temporal "Today"
+        # at the end is rewritten.
+        hl = "USA Today: Micron Soars 15% Today"
+        out, changed, garbled = tg.normalize_relative_time(hl, self.JUN25, self.JUN26)
+        self.assertIn("USA Today", out,
+                      "the proper noun 'USA Today' must not be rewritten")
+        self.assertEqual(out.lower().count("today"), 1,
+                         "only the proper-noun 'today' should remain")
+        self.assertIn("yesterday", out.lower(),
+                      "the standalone temporal token should still be rewritten")
+
+    def test_proper_noun_alone_no_change(self):
+        # A headline whose only relative-time token is inside a proper noun must
+        # not be rewritten at all.
+        hl = "USA Today Names Micron Stock of the Year"
+        out, changed, garbled = tg.normalize_relative_time(hl, self.JUN25, self.JUN26)
+        self.assertFalse(changed, "a proper-noun-only token must not trigger a rewrite")
+        self.assertEqual(out, hl)
+
+
 if __name__ == "__main__":
     unittest.main()

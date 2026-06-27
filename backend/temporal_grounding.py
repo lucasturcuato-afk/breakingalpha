@@ -50,6 +50,19 @@ _RELATIVE_TOKENS = (
     "now",
 )
 
+# Proper-noun phrases that CONTAIN a relative-time token ("today" / "tonight")
+# but are names, not temporal claims. A token whose match falls inside one of
+# these must never be rewritten ("USA Today" must not become "USA yesterday").
+# Small allowlist, not a general NER. Lower-cased; matched case-insensitively.
+_PROPER_NOUN_PHRASES = (
+    "usa today",
+    "today show",
+    "the today show",
+    "tonight show",
+    "the tonight show",
+    "usa tonight",
+)
+
 
 def to_et(ts) -> datetime | None:
     """Coerce a timestamp (ISO string with offset, or aware/naive datetime) to an
@@ -189,8 +202,20 @@ def normalize_relative_time(
             # Should not happen for non-today phrases, but stay safe.
             continue
 
+        # Protected spans: occurrences of proper-noun phrases in the CURRENT text
+        # (recomputed per token because the proper-noun phrases contain the very
+        # tokens we rewrite, e.g. "today" inside "usa today"). A token match that
+        # falls inside one of these is a name, not a temporal claim, so skip it.
+        protected = [
+            (m.start(), m.end())
+            for ph in _PROPER_NOUN_PHRASES
+            for m in re.finditer(re.escape(ph), out, re.IGNORECASE)
+        ]
+
         def _sub(m: re.Match) -> str:
             nonlocal changed
+            if any(s <= m.start() < e for s, e in protected):
+                return m.group(0)  # inside a proper noun; leave it untouched
             changed = True
             original = m.group(0)
             if not repl:

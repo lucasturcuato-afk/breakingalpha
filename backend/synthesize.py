@@ -2361,6 +2361,29 @@ def run(brief_type="morning"):
     # temporal_grounding.py (the offline-harness target).
     if not brief_is_stub and brief_type in ("morning", "evening"):
         try:
+            # Headline anchors to the SAME lead event_date (it names the same
+            # primary_story). The evening "Today's Story" card renders headline +
+            # lead block, so a stale "today" in the headline must be rewritten too.
+            # Same normalizer, same one-shot garble re-ask as the body fields.
+            hl_text = data.get("headline")
+            if isinstance(hl_text, str) and hl_text.strip():
+                new_hl, changed_hl, garbled_hl = temporal_grounding.normalize_relative_time(
+                    hl_text, lead_event_date, brief_date_et
+                )
+                if garbled_hl:
+                    reasked_hl = _retemporalize_field(
+                        "headline", hl_text, lead_event_date, brief_date_et, data
+                    )
+                    if reasked_hl:
+                        data["headline"] = reasked_hl
+                        print("  [temporal guard] re-ask rewrote headline relative time")
+                    elif changed_hl:
+                        data["headline"] = new_hl
+                        print("  [temporal guard] normalized headline (re-ask failed; used inline edit)")
+                elif changed_hl:
+                    data["headline"] = new_hl
+                    print("  [temporal guard] normalized headline relative time")
+
             lp_text = data.get("lead_paragraph")
             if isinstance(lp_text, str) and lp_text.strip():
                 new_lp, changed, garbled = temporal_grounding.normalize_relative_time(
