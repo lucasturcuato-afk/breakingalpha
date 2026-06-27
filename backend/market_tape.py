@@ -515,6 +515,35 @@ def build_overview_subject_directive(gate: dict, story_title: str = "") -> str:
     return "\n".join(lines) + "\n\n"
 
 
+def build_overlap_enforcement_directive(gate: dict) -> str:
+    """T5: deterministic overlap control between the evening 'The Close' overview
+    (market_pulse.narrative) and 'Today's Story' (the lead block: headline +
+    lead_paragraph + supporting_context + what_to_watch). Materiality-gates the
+    overlap, not a flat similarity cap: the two surfaces may share a subject ONLY
+    when that subject is the day's dominant driver (the overview-subject gate
+    PASSED). When the gate relegated the lead (it is not the dominant driver), the
+    overview MUST take a distinct, market-wide through-line so the two surfaces do
+    not both resolve to the relegated lead. Pure; rides the existing prepend path.
+    Returns '' when the gate is not applicable (a market-wide story is fine to be
+    shared)."""
+    # When the gate passed because the lead is genuinely the dominant driver, the
+    # two surfaces sharing it is correct, so emit no constraint. When the gate is
+    # a market-wide story (not single-name/deal), there is nothing to constrain.
+    if gate.get("passed") or gate.get("subject") != "market_wide":
+        return ""
+    return (
+        "[OVERVIEW / LEAD OVERLAP - deterministic materiality rule]\n"
+        "The lead story is NOT the day's dominant market driver (see the overview-"
+        "subject gate above). Therefore 'The Close' market_pulse.narrative and the "
+        "lead block (headline + lead_paragraph) MUST resolve to DISTINCT subjects: "
+        "the narrative takes the market-wide through-line from the tape (the real "
+        "driver of today's session), and the lead block keeps the pre-picked story. "
+        "Do NOT let both surfaces center on the same relegated lead. They may share a "
+        "subject ONLY when that subject is the day's dominant driver, which it is not "
+        "today.\n\n"
+    )
+
+
 # ── Prompt grounding + post-parse enforcement ───────────────────────────────
 
 def build_tape_directive(tape: dict) -> str:

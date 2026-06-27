@@ -2211,6 +2211,16 @@ def run(brief_type="morning"):
             system = market_tape.build_overview_subject_directive(
                 _gate, story_title=(preselected.get("title") or "")
             ) + system
+            # T5 overlap enforcement: when the gate relegated the lead (it is not
+            # the day's dominant driver), force 'The Close' overview and the lead
+            # block onto distinct subjects so the evening surfaces do not both
+            # resolve to the same stale lead. Materiality-gated, deterministic,
+            # rides the existing prepend path. No-op when the lead IS the dominant
+            # driver (gate passed) or for a market-wide story.
+            _overlap_directive = market_tape.build_overlap_enforcement_directive(_gate)
+            if _overlap_directive:
+                system = _overlap_directive + system
+                print("  🔗 Overlap enforcement: lead relegated; narrative must take a distinct subject")
             if _gate.get("direction_contradiction"):
                 print(f"  ⚖ live-quote reconciliation: lead is {_lead_framing} but ticker "
                       f"{_lead_pct:+.1f}% today; instructing reframe")
