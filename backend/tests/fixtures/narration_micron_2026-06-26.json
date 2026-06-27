@@ -7,6 +7,18 @@
       "ticker": "MU",
       "current_session_pct": -5.1,
       "note": "Jun 26 premarket/early-session, down ~5% with the chip group"
+    },
+    "session_tape": {
+      "note": "Documented Jun 26 close: AI-trade unwind. MU led chips DOWN; rotation into non-tech. Per-name session % moves used to derive the T3 driver set and the D14 direction check. Hand-constructed from the documented evening-wrap incident (the verbatim per-name quotes are not retained in prod rows).",
+      "name_to_pct": {
+        "Micron Technology": -6.7,
+        "Nvidia": -1.6,
+        "Broadcom": -3.7,
+        "AMD": -2.6,
+        "Microsoft": 5.7,
+        "IBM": 5.1,
+        "Eli Lilly": 7.0
+      }
     }
   },
   "lead_story": {

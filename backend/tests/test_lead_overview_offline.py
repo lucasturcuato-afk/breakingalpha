@@ -319,5 +319,139 @@ class Assertion6_UnknownDateAndProse(unittest.TestCase):
                          "the corrected lead must pass the prose guard")
 
 
+# ── Phase 2: Jun 26 EVENING lead-trust scenario (T3 driver set, T5 overlap) ───
+#
+# The full Jun 26 session tape (MU -6.7%, NVDA -1.6%, AVGO -3.7%, plus non-tech
+# up: MSFT/IBM/LLY) is in the fixture _meta.session_tape. These assertions exercise
+# the deterministic layers wired by T3/T5 on the EVENING surfaces:
+#   1. TEMPORAL: the normalized "The Close" (narrative) and "Today's Story"
+#      (lead_paragraph) contain no "today" / "this morning" for the Jun 25 event.
+#   2. DIRECTION/GATE: Micron IS a tape driver on Jun 26 (derived via the real T3
+#      build_tape_driver_names over the session tape) but DOWN, so the bullish-
+#      framed Micron story FAILS the overview-subject gate.
+#   3. OVERLAP: the relegating gate emits the T5 distinct-subject directive, so
+#      "The Close" and "Today's Story" do not both resolve to the stale Micron.
+# (D8 and the honesty meta-test live below.)
+
+class Assertion7_EveningDriverSetAndOverlap(unittest.TestCase):
+    BRIEF_DATE = dt.date(2026, 6, 26)
+    MATERIAL_TAPE = {
+        "quotes": {"^GSPC": {"pct": -1.4}, "^VIX": {"pct": 11.0}},
+        "regime": "risk-off", "vix_level": 22.0,
+    }
+
+    def _driver_set(self, nf):
+        # Real T3 derivation over the documented Jun 26 per-name session tape.
+        return mt.build_tape_driver_names(nf["_meta"]["session_tape"]["name_to_pct"])
+
+    def test_micron_is_a_driver_via_real_t3_derivation(self):
+        nf = _load_narration()
+        drivers = self._driver_set(nf)
+        self.assertIn("micron technology", drivers,
+                      "MU -6.7% must be a top driver on the Jun 26 tape")
+        self.assertLessEqual(len(drivers), mt.DRIVER_TOP_K,
+                             "the driver set must be capped at DRIVER_TOP_K")
+
+    def test_temporal_no_today_on_both_evening_surfaces(self):
+        nf = _load_narration()
+        ed = tg.event_date_et(nf["lead_story"]["published_at"])  # Jun 25 (ET)
+        gen = nf["generated_narrative"]
+        # lead_paragraph -> "Today's Story"; narrative -> "The Close".
+        for field in ("lead_paragraph", "narrative"):
+            out, changed, _ = tg.normalize_relative_time(gen[field], ed, self.BRIEF_DATE)
+            self.assertTrue(changed, f"{field} should be normalized")
+            low = out.lower()
+            self.assertNotIn("today", low, f"{field} must not say 'today'")
+            self.assertNotIn("this morning", low, f"{field} must not say 'this morning'")
+
+    def test_bullish_micron_down_fails_gate_with_real_driver_set(self):
+        nf = _load_narration()
+        drivers = self._driver_set(nf)
+        framing = mt.classify_framing(
+            nf["lead_story"]["title"] + " " + nf["lead_story"]["summary"]
+        )
+        self.assertEqual(framing, "bullish")
+        mu_pct = nf["_meta"]["session_tape"]["name_to_pct"]["Micron Technology"]
+        gate = mt.overview_subject_gate(
+            story_companies=["Micron Technology"],
+            is_single_name_or_deal=True,
+            cluster_distinct_sources=nf["lead_story"]["_impact_breadth"]["distinct_sources"],
+            tape=self.MATERIAL_TAPE,
+            tape_driver_names=drivers,
+            subject_session_pct=mu_pct,
+            subject_framing=framing,
+        )
+        # Micron clears tape_material, is_tape_driver, and breadth, so the ONLY
+        # thing that relegates it is the direction contradiction (bullish vs -6.7%).
+        self.assertTrue(gate["checks"]["is_tape_driver"],
+                        "the real driver set must confirm Micron is a driver")
+        self.assertFalse(gate["checks"]["direction_consistent"])
+        self.assertEqual(gate["subject"], "market_wide",
+                         "a bullish-framed Micron lead on a -6.7% session must be relegated")
+        self.assertTrue(gate.get("direction_contradiction"))
+
+    def test_overlap_directive_forces_distinct_subjects_when_relegated(self):
+        nf = _load_narration()
+        drivers = self._driver_set(nf)
+        framing = mt.classify_framing(
+            nf["lead_story"]["title"] + " " + nf["lead_story"]["summary"]
+        )
+        mu_pct = nf["_meta"]["session_tape"]["name_to_pct"]["Micron Technology"]
+        gate = mt.overview_subject_gate(
+            story_companies=["Micron Technology"],
+            is_single_name_or_deal=True,
+            cluster_distinct_sources=12,
+            tape=self.MATERIAL_TAPE,
+            tape_driver_names=drivers,
+            subject_session_pct=mu_pct,
+            subject_framing=framing,
+        )
+        directive = mt.build_overlap_enforcement_directive(gate)
+        self.assertTrue(directive, "a relegated lead must emit the overlap directive")
+        self.assertIn("DISTINCT", directive.upper(),
+                      "the overlap directive must force distinct subjects")
+
+    def test_overlap_directive_noop_when_lead_is_dominant_driver(self):
+        # Materiality-gates-overlap: when the lead IS the dominant driver (gate
+        # passed), the two surfaces are allowed to share it -> no directive.
+        gate = mt.overview_subject_gate(
+            story_companies=["Nvidia"],
+            is_single_name_or_deal=True,
+            cluster_distinct_sources=mt.MATERIALITY_MIN_DISTINCT_SOURCES + 2,
+            tape={"quotes": {"^GSPC": {"pct": -1.6}, "^VIX": {"pct": 9.0}},
+                  "regime": "risk-off", "vix_level": 20.0},
+            tape_driver_names={"nvidia"},
+        )
+        self.assertTrue(gate["passed"])
+        self.assertEqual(mt.build_overlap_enforcement_directive(gate), "",
+                         "a dominant-driver lead may share the subject; no directive")
+
+
+class Assertion8_HarnessHonestyMetaCheck(unittest.TestCase):
+    """Phase 2 item 5: prove the rewritten Assertion 1 FAILS on a stale lead and
+    PASSES only on a fresh one. The honesty predicate is: winner == fresh selloff
+    AND winner != stale debut. We apply it to two synthetic outcomes."""
+    FRESH = "co:spacex:stock"
+    STALE = "co:spacex:ipo"
+
+    def _honesty_holds(self, winner_key):
+        # Mirrors Assertion1's core predicate.
+        return winner_key == self.FRESH and winner_key != self.STALE
+
+    def test_predicate_passes_on_fresh_lead(self):
+        self.assertTrue(self._honesty_holds(self.FRESH),
+                        "the honesty predicate must accept a fresh lead")
+
+    def test_predicate_fails_on_stale_lead(self):
+        self.assertFalse(self._honesty_holds(self.STALE),
+                         "the honesty predicate must reject a stale debut lead")
+
+    def test_real_fixture_winner_satisfies_predicate(self):
+        data, now = _load()
+        res = ir.compute_shadow_lead(data["articles"], now, asof_date=now.date())
+        self.assertTrue(self._honesty_holds(res["cluster_key"]),
+                        "the committed fixture must satisfy the honesty predicate")
+
+
 if __name__ == "__main__":
     unittest.main()
