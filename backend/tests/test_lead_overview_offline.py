@@ -74,14 +74,29 @@ class FixtureShapeTests(unittest.TestCase):
         self.assertGreaterEqual(len(srcs), 20, "SpaceX distinct sources should match prod (~21)")
 
 
-class Assertion1_SpaceXNotWinByVolume(unittest.TestCase):
-    def test_winner_is_an_event_cluster_not_company_aggregate(self):
+class Assertion1_LeadIsFreshNotStaleDebut(unittest.TestCase):
+    """T2 (#422 review fix, harness honesty). The original Assertion 1 only proved
+    the 48-article company aggregate was split into event clusters and the winner
+    held < 48 articles. That passes even while a STALE lead wins: on this committed
+    06-24 fixture the winner is co:spacex:stock (the FRESH Jun-23 selloff, freshest
+    ~6.5h), and the STALE IPO-debut cluster co:spacex:ipo (freshest ~11.5h) is #2
+    by score. The old test could not distinguish those two outcomes, so it would
+    keep passing if the stale debut ever out-ranked the fresh event. This rewrite
+    asserts the FRESH selloff wins and the STALE debut does NOT, so the test STOPS
+    passing the moment a stale lead wins.
+
+    Data agreement: the fresh SpaceX selloff (co:spacex:stock) is a legitimate
+    06-24 lead candidate; the stale post-IPO debut recap (co:spacex:ipo) is not.
+    """
+    STALE_DEBUT_KEY = "co:spacex:ipo"
+    FRESH_SELLOFF_KEY = "co:spacex:stock"
+
+    def test_winner_is_fresh_event_not_stale_debut(self):
         data, now = _load()
         scored = ir.score_clusters(data["articles"], now)
 
-        # No cluster is the bare company aggregate any more: every SpaceX cluster
-        # is event-scoped (co:spacex:<theme|sig:...>), so the 48 articles are
-        # split across distinct events rather than one mega-cluster.
+        # The bare company aggregate must be gone (D1 event scoping) so the 48
+        # name-level articles cannot win on accumulated volume.
         spacex_clusters = [c for c in scored if c["cluster_key"].startswith("co:spacex:")]
         self.assertGreaterEqual(len(spacex_clusters), 3,
                                 "SpaceX should split into multiple event clusters")
@@ -89,11 +104,29 @@ class Assertion1_SpaceXNotWinByVolume(unittest.TestCase):
             self.assertNotEqual(c["cluster_key"], "co:spacex",
                                 "the company-aggregate cluster must no longer exist")
 
-        # The lead is drawn from a single EVENT cluster, and that cluster holds
-        # far fewer than the 48 name-level articles (no name-volume win).
         res = ir.compute_shadow_lead(data["articles"], now, asof_date=now.date())
         self.assertIsNotNone(res)
-        winner = next(c for c in scored if c["cluster_key"] == res["cluster_key"])
+        winner_key = res["cluster_key"]
+        winner = next(c for c in scored if c["cluster_key"] == winner_key)
+
+        by_key = {c["cluster_key"]: c for c in scored}
+        fresh = by_key.get(self.FRESH_SELLOFF_KEY)
+        stale = by_key.get(self.STALE_DEBUT_KEY)
+        self.assertIsNotNone(fresh, "fixture must contain the fresh selloff cluster")
+        self.assertIsNotNone(stale, "fixture must contain the stale IPO-debut cluster")
+
+        # Honesty core: the winner is the FRESH event, NOT the stale debut. If the
+        # stale debut ever out-ranks the fresh event, BOTH of these fail.
+        self.assertEqual(winner_key, self.FRESH_SELLOFF_KEY,
+                         "the lead must be the fresh selloff event, not the stale debut")
+        self.assertNotEqual(winner_key, self.STALE_DEBUT_KEY,
+                            "a stale IPO-debut recap must never win the lead")
+        # Recency relationship the assertion depends on: the winner is fresher than
+        # the stale debut, so the win is on freshness+breadth, not stale volume.
+        self.assertLess(winner["freshest_age_h"], stale["freshest_age_h"],
+                        "the winning event must be fresher than the stale debut cluster")
+        # No name-volume win: the winning event holds far fewer than the 48
+        # name-level articles.
         self.assertLess(winner["article_count"], 48,
                         "winning event cluster must be smaller than the name aggregate")
 
