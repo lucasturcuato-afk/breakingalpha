@@ -1,0 +1,25 @@
+{
+  "_meta": {
+    "brief_date_et": "2026-06-26",
+    "asof_utc": "2026-06-26T14:13:00+00:00",
+    "description": "Hand-constructed to match the documented 2026-06-26 Micron narration bug. The prod snapshot (SELECT-only via supabase MCP, 2026-06-27) confirms Micron led coverage that week with bullish earnings framing, but the exact 'published Jun 25, ATH $1,255, +15%' article the brief copied 'today' from is not reproducible verbatim from the retained rows (the surviving Micron rows are Jun 26-published), so the temporal/direction inputs are hand-set to the documented values. event_date Jun 25 (published_at in ET), brief_date Jun 26, MU current-session move ~-5% in a chip selloff.",
+    "live_session": {
+      "ticker": "MU",
+      "current_session_pct": -5.1,
+      "note": "Jun 26 premarket/early-session, down ~5% with the chip group"
+    }
+  },
+  "lead_story": {
+    "title": "Micron Technology surges to a new all-time high",
+    "summary": "Micron Technology's stock surged to a new all-time high of $1,255 after blockbuster quarterly results, rallying about 15% as AI memory demand drove record guidance.",
+    "companies": ["Micron Technology"],
+    "deal_type": "Earnings",
+    "published_at": "2026-06-26T01:30:00+00:00",
+    "_impact_breadth": {"distinct_sources": 12}
+  },
+  "generated_narrative": {
+    "lead_paragraph": "Micron Technology's stock surged to a new all-time high today, and the move underscores increasing investor confidence in the AI memory cycle.",
+    "garbled_lead_paragraph": "Micron Technology's stock surge to a new all-time high today underscores increasing investor confidence.",
+    "narrative": "Micron's record run this morning sets the tone, as the AI memory supercycle pulls the whole semiconductor complex higher and investors reprice the group."
+  }
+}

@@ -13,9 +13,11 @@ from ingest import INDUSTRY_VERTICALS
 from outputs import record_output, record_outputs_batch
 from output_constants import BRIEF_PROMPT_VERSION
 import market_tape
+import temporal_grounding
 import macro_calendar
 import bea_calendar
 from brief_voice_guard import enforce_brief_voice, has_voice_violation
+import prose_quality_guard
 from dataclasses import asdict
 try:
     from usage_log import log_gemini_usage
@@ -1732,6 +1734,96 @@ def _regenerate_narrative_net_new(data, regime, brief_type):
     return None
 
 
+def _resolve_lead_ticker(company_name):
+    """Best-effort gen-time ticker for a lead company name, or None. Tries the
+    deterministic HARD_TICKER_OVERRIDES first (no network), then finnhub search
+    (the same gen-time resolver the pipeline already uses) when a key is present.
+    Soft-fail: None on anything, which makes the D14 direction check inert."""
+    name = (company_name or "").strip()
+    if not name:
+        return None
+    try:
+        from finnhub_helper import HARD_TICKER_OVERRIDES
+        ov = HARD_TICKER_OVERRIDES.get(name.lower())
+        if ov:
+            return ov
+    except Exception:
+        pass
+    try:
+        from finnhub_helper import search_finnhub_ticker
+        return search_finnhub_ticker(name)
+    except Exception:
+        return None
+
+
+def _lead_session_move(preselected):
+    """D14: return (session_pct, framing) for the lead's single named company, or
+    (None, None) when not a single-name lead, the ticker cannot be resolved, or the
+    live quote is unavailable. Uses the EXISTING market_tape.fetch_quote (Yahoo,
+    baseline-correct prior close) as the gen-time live source: no new dependency.
+    Fully soft-fail, never raises out."""
+    try:
+        cos = preselected.get("companies") or []
+        if isinstance(cos, str):
+            try:
+                cos = json.loads(cos)
+            except Exception:
+                cos = [cos]
+        cos = [str(c).strip() for c in cos if str(c).strip()]
+        if not cos or len(cos) > 2:
+            return None, None
+        ticker = _resolve_lead_ticker(cos[0])
+        if not ticker:
+            return None, None
+        quote = market_tape.fetch_quote(ticker)
+        if not quote or quote.get("pct") is None:
+            return None, None
+        framing_src = " ".join(str(preselected.get(k) or "") for k in ("title", "summary"))
+        framing = market_tape.classify_framing(framing_src)
+        return float(quote["pct"]), framing
+    except Exception:
+        return None, None
+
+
+def _retemporalize_field(field_name, text, event_date, brief_date, data):
+    """D13 fallback: ONE targeted re-ask when the deterministic in-place rewrite
+    would garble the sentence. Rewrite ONE field so its relative-time wording is
+    anchored to the brief date. Prose only, narrative/lead only. Returns the new
+    string or None on any failure. This is the only path in D13 that calls the
+    model, and it runs only on the garble branch (not exercised by the offline
+    harness, which asserts the pure normalizer)."""
+    phrase = temporal_grounding.relative_phrase(event_date, brief_date)
+    if phrase is None:
+        when = (
+            "The event has NO confirmed date: do NOT write 'today', 'this morning', "
+            "or any present-tense relative time; describe it without a relative-time word."
+        )
+    else:
+        when = (
+            f"The event happened {phrase}, NOT today (brief date {brief_date.isoformat()}). "
+            f"Use '{phrase}' or plain past tense, never 'today' / 'this morning'."
+        )
+    key = "narrative" if field_name == "narrative" else "field"
+    system = (
+        "You rewrite ONE field of a finished market brief to fix its relative-time "
+        f'wording only. Return JSON only: {{"{key}": "<rewritten text>"}}. No other '
+        "keys, no prose outside the JSON. Keep every fact and the paragraph count. "
+        "Zero em-dashes; use hyphens, colons, parens."
+    )
+    user = (
+        f"{when}\n\nRewrite ONLY the relative-time wording; change nothing else.\n\n"
+        f"TEXT:\n{text}"
+    )
+    try:
+        raw = gemini_generate(system=system, user_content=user, temperature=0.2, max_tokens=1024)
+        parsed = _parse_brief_json(raw)
+        if parsed and isinstance(parsed.get(key), str) and parsed[key].strip():
+            return parsed[key].strip()
+    except Exception as e:
+        print(f"  ⚠ temporal guard: re-ask call failed (non-fatal): {e}")
+    return None
+
+
 def run(brief_type="morning"):
     print(f"📝 Synthesizing {brief_type} briefing...")
 
@@ -2060,16 +2152,28 @@ def run(brief_type="morning"):
             # fetch surfaces indices + VIX, not per-name quotes, so the conservative
             # driver set is empty here. See TODO(recon open question 2) in
             # market_tape.overview_subject_gate.
+            # D14: resolve the single-name lead's CURRENT-SESSION move and framing
+            # so the gate can reject stale-direction framing (bullish lead vs a
+            # ticker that is materially DOWN today). Soft-fail to (None, None),
+            # which leaves the gate's behavior identical to before.
+            _lead_pct, _lead_framing = (None, None)
+            if _is_single_name:
+                _lead_pct, _lead_framing = _lead_session_move(preselected)
             _gate = market_tape.overview_subject_gate(
                 story_companies=_ps_companies,
                 is_single_name_or_deal=_is_single_or_deal,
                 cluster_distinct_sources=_distinct_sources,
                 tape=tape_obj,
                 tape_driver_names=None,
+                subject_session_pct=_lead_pct,
+                subject_framing=_lead_framing,
             )
             system = market_tape.build_overview_subject_directive(
                 _gate, story_title=(preselected.get("title") or "")
             ) + system
+            if _gate.get("direction_contradiction"):
+                print(f"  ⚖ live-quote reconciliation: lead is {_lead_framing} but ticker "
+                      f"{_lead_pct:+.1f}% today; instructing reframe")
             print(f"  🧭 Overview subject gate: {_gate['subject']} ({'; '.join(_gate['reasons'])})")
             try:
                 import lead_preselect as _lp
@@ -2082,6 +2186,28 @@ def run(brief_type="morning"):
                 pass
         except Exception as e:
             print(f"  ⚠ overview-subject gate skipped (non-fatal): {e}")
+
+    # --- Temporal grounding directive (D13) -------------------------------------
+    # Anchor relative-time words to the brief date. The articles schema has no
+    # distinct event timestamp (P0.1), so the lead's event_date is derived from
+    # its published_at converted to ET; NULL published_at => UNKNOWN, which forbids
+    # any "today" claim. This is the prompt-side first line of defense; the
+    # deterministic post-parse normalizer below is the backstop. Soft-fail.
+    brief_date_et = temporal_grounding.brief_date_et()
+    lead_event_date = None
+    if preselected:
+        try:
+            lead_event_date = temporal_grounding.event_date_et(
+                preselected.get("published_at")
+            )
+            system = temporal_grounding.build_temporal_directive(
+                brief_date_et, lead_event_date,
+                lead_title=(preselected.get("title") or ""),
+            ) + system
+            _ed = lead_event_date.isoformat() if lead_event_date else "UNKNOWN"
+            print(f"  🕒 Temporal anchor: brief={brief_date_et.isoformat()} lead_event={_ed}")
+        except Exception as e:
+            print(f"  ⚠ temporal grounding directive skipped (non-fatal): {e}")
 
     # --- Market-holiday / weekend awareness (market_calendar.py, soft-fail) ------
     # On a full-day US equity closure, the tape above is the LAST completed session
@@ -2223,6 +2349,81 @@ def run(brief_type="morning"):
             "sector_breakdown": {}
         }
 
+    # Temporal grounding normalizer (D13, morning + evening, non-fatal). The prompt
+    # directive above is not trusted alone: a fresh-published article narrating a
+    # prior-session event copies its "today" onto the brief (the Micron case).
+    # Deterministically rewrite relative-time tokens in lead_paragraph and
+    # market_pulse.narrative so they anchor to the brief date, NOT to the article's
+    # publication day. event_date == brief_date keeps "today"; one day prior ->
+    # "yesterday"; same week -> weekday; older -> "last week"; UNKNOWN -> strip the
+    # relative-time clause. If an in-place rewrite would garble the sentence, fall
+    # back to ONE targeted re-ask (prose only). Pure normalizer lives in
+    # temporal_grounding.py (the offline-harness target).
+    if not brief_is_stub and brief_type in ("morning", "evening"):
+        try:
+            # Headline anchors to the SAME lead event_date (it names the same
+            # primary_story). The evening "Today's Story" card renders headline +
+            # lead block, so a stale "today" in the headline must be rewritten too.
+            # Same normalizer, same one-shot garble re-ask as the body fields.
+            hl_text = data.get("headline")
+            if isinstance(hl_text, str) and hl_text.strip():
+                new_hl, changed_hl, garbled_hl = temporal_grounding.normalize_relative_time(
+                    hl_text, lead_event_date, brief_date_et
+                )
+                if garbled_hl:
+                    reasked_hl = _retemporalize_field(
+                        "headline", hl_text, lead_event_date, brief_date_et, data
+                    )
+                    if reasked_hl:
+                        data["headline"] = reasked_hl
+                        print("  [temporal guard] re-ask rewrote headline relative time")
+                    elif changed_hl:
+                        data["headline"] = new_hl
+                        print("  [temporal guard] normalized headline (re-ask failed; used inline edit)")
+                elif changed_hl:
+                    data["headline"] = new_hl
+                    print("  [temporal guard] normalized headline relative time")
+
+            lp_text = data.get("lead_paragraph")
+            if isinstance(lp_text, str) and lp_text.strip():
+                new_lp, changed, garbled = temporal_grounding.normalize_relative_time(
+                    lp_text, lead_event_date, brief_date_et
+                )
+                if garbled:
+                    reasked = _retemporalize_field(
+                        "lead_paragraph", lp_text, lead_event_date, brief_date_et, data
+                    )
+                    if reasked:
+                        data["lead_paragraph"] = reasked
+                        print("  [temporal guard] re-ask rewrote lead_paragraph relative time")
+                    elif changed:
+                        data["lead_paragraph"] = new_lp
+                        print("  [temporal guard] normalized lead_paragraph (re-ask failed; used inline edit)")
+                elif changed:
+                    data["lead_paragraph"] = new_lp
+                    print("  [temporal guard] normalized lead_paragraph relative time")
+
+            mpn = data.get("market_pulse")
+            if isinstance(mpn, dict) and isinstance(mpn.get("narrative"), str) and mpn["narrative"].strip():
+                new_n, changed_n, garbled_n = temporal_grounding.normalize_relative_time(
+                    mpn["narrative"], lead_event_date, brief_date_et
+                )
+                if garbled_n:
+                    reasked_n = _retemporalize_field(
+                        "narrative", mpn["narrative"], lead_event_date, brief_date_et, data
+                    )
+                    if reasked_n:
+                        mpn["narrative"] = reasked_n
+                        print("  [temporal guard] re-ask rewrote narrative relative time")
+                    elif changed_n:
+                        mpn["narrative"] = new_n
+                        print("  [temporal guard] normalized narrative (re-ask failed; used inline edit)")
+                elif changed_n:
+                    mpn["narrative"] = new_n
+                    print("  [temporal guard] normalized narrative relative time")
+        except Exception as e:
+            print(f"  ⚠ temporal guard error (non-fatal): {e}")
+
     # Lead-thesis opener guard (morning + evening, non-fatal). The narrative's
     # opening sentence is the most visible line in the product and reliably
     # regresses to a mood / index recap. Detect it and do ONE targeted re-ask
@@ -2305,6 +2506,63 @@ def run(brief_type="morning"):
                         print("  ⚠ voice guard: residual first person after fallback (recommendations removed)")
         except Exception as e:
             print(f"  ⚠ voice guard error (non-fatal): {e}")
+
+    # Prose quality guard (D15, morning + evening, non-fatal). The voice guard
+    # above covers first-person / recommendations, not grammar. The brief shipped
+    # "stock surge ... underscores" (a noun phrase wired into a verb slot).
+    # Deterministically detect a tight set of garbled constructions in
+    # lead_paragraph + market_pulse.narrative; on a hit run ONE targeted re-ask
+    # that fixes only the grammar. This is not a general grammar engine; the
+    # detector lives in prose_quality_guard.py (pure, unit-testable).
+    if not brief_is_stub and brief_type in ("morning", "evening"):
+        try:
+            def _prose_regenerate(field_label, text, reasons):
+                sysmsg = (
+                    "You fix the grammar of ONE field of a finished market brief. "
+                    "Return JSON only: {\"text\": \"<rewritten text, same paragraph "
+                    "count, paragraphs separated by \\n\\n>\"}. No other keys, no "
+                    "prose outside the JSON. Zero em-dashes; use hyphens, colons, parens."
+                )
+                usermsg = (
+                    prose_quality_guard.build_prose_correction(reasons)
+                    + f"\n{field_label.upper()}:\n{text}"
+                )
+                try:
+                    raw = gemini_generate(
+                        system=sysmsg, user_content=usermsg, temperature=0.2, max_tokens=1024
+                    )
+                    parsed = _parse_brief_json(raw)
+                    if parsed and isinstance(parsed.get("text"), str) and parsed["text"].strip():
+                        return parsed["text"].strip()
+                except Exception as e:
+                    print(f"  ⚠ prose guard: re-ask failed (non-fatal): {e}")
+                return None
+
+            lp_text = data.get("lead_paragraph")
+            if isinstance(lp_text, str) and lp_text.strip():
+                lp_reasons = prose_quality_guard.detect_garbled_prose(lp_text)
+                if lp_reasons:
+                    fixed = _prose_regenerate("lead_paragraph", lp_text, lp_reasons)
+                    if fixed and not prose_quality_guard.has_garbled_prose(fixed):
+                        data["lead_paragraph"] = fixed
+                        print("  [prose guard] rewrote garbled lead_paragraph")
+                    else:
+                        print(f"  ⚠ prose guard: lead_paragraph still garbled or re-ask failed "
+                              f"({len(lp_reasons)} issue(s)); keeping original")
+
+            mpp = data.get("market_pulse")
+            if isinstance(mpp, dict) and isinstance(mpp.get("narrative"), str) and mpp["narrative"].strip():
+                n_reasons = prose_quality_guard.detect_garbled_prose(mpp["narrative"])
+                if n_reasons:
+                    fixed_n = _prose_regenerate("narrative", mpp["narrative"], n_reasons)
+                    if fixed_n and not prose_quality_guard.has_garbled_prose(fixed_n):
+                        mpp["narrative"] = fixed_n
+                        print("  [prose guard] rewrote garbled narrative")
+                    else:
+                        print(f"  ⚠ prose guard: narrative still garbled or re-ask failed "
+                              f"({len(n_reasons)} issue(s)); keeping original")
+        except Exception as e:
+            print(f"  ⚠ prose guard error (non-fatal): {e}")
 
     # Section entity validation (D8, morning + evening, non-fatal). Every org
     # named in a section must appear in the section's source corpus or the

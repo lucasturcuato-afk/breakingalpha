@@ -36,8 +36,13 @@ if str(_BACKEND) not in sys.path:
 import impact_ranking as ir          # noqa: E402  (stdlib-only, no I/O at import)
 import lead_preselect as lp          # noqa: E402  (client is None without env)
 import market_tape as mt            # noqa: E402  (network is inside functions)
+import temporal_grounding as tg     # noqa: E402  (pure, stdlib-only)
+import prose_quality_guard as pq    # noqa: E402  (pure, stdlib-only)
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "lead_pool_2026-06-24.json"
+NARRATION_FIXTURE = (
+    Path(__file__).resolve().parent / "fixtures" / "narration_micron_2026-06-26.json"
+)
 
 
 def _load():
@@ -165,6 +170,165 @@ class Assertion3_GenuineDealEligible(unittest.TestCase):
         data, _ = _load()
         urls = ir.confirmed_mega_deal_urls(data["deal_flow"], data["articles"])
         self.assertIn("https://x.test/qcom-modular-1", urls)
+
+
+# ── Narration grounding (D13, D14, D15) ─────────────────────────────────────
+#
+# These exercise ONLY the deterministic layers: the D13 normalizer, the D13/D14
+# date derivation, the D14 gate direction decision, and the D15 prose detector.
+# The re-ask paths (temporal re-ask, prose re-ask) are integration-only because
+# they call the model; they are NOT asserted here. The fixture is the documented
+# 2026-06-26 Micron case: a Jun 25 (ET) ATH article narrated with "today" / "this
+# morning" on a Jun 26 brief, with MU down ~5% in the Jun 26 session.
+
+def _load_narration():
+    return json.loads(NARRATION_FIXTURE.read_text())
+
+
+class Assertion4_TemporalNoTodayForPriorEvent(unittest.TestCase):
+    def test_event_date_is_jun25_via_et_conversion(self):
+        nf = _load_narration()
+        # published_at 2026-06-26T01:30:00Z is 2026-06-25 21:30 ET: the ET-converted
+        # event date is Jun 25, NOT Jun 26. This is the bug's root cause.
+        ed = tg.event_date_et(nf["lead_story"]["published_at"])
+        self.assertEqual(ed, dt.date(2026, 6, 25),
+                         "event_date must convert UTC to ET before taking the date")
+        bd = dt.date(2026, 6, 26)
+        self.assertEqual(tg.relative_phrase(ed, bd), "yesterday")
+
+    def test_narrative_today_rewritten_to_yesterday_or_weekday(self):
+        nf = _load_narration()
+        ed = tg.event_date_et(nf["lead_story"]["published_at"])  # Jun 25
+        bd = dt.date(2026, 6, 26)
+        gen = nf["generated_narrative"]
+        for field in ("lead_paragraph", "narrative"):
+            text = gen[field]
+            out, changed, garbled = tg.normalize_relative_time(text, ed, bd)
+            self.assertTrue(changed, f"{field} should be normalized")
+            low = out.lower()
+            self.assertNotIn("today", low, f"{field} must not say 'today' for a prior-day event")
+            self.assertNotIn("this morning", low,
+                             f"{field} must not say 'this morning' for a prior-day event")
+            # The Micron event was the prior session, so the anchored phrase reads
+            # "yesterday" (one day prior). Weekday is the same-week fallback.
+            self.assertTrue("yesterday" in low or "thursday" in low or "wednesday" in low,
+                            f"{field} should anchor to yesterday/weekday, got: {out}")
+
+
+class Assertion5_DirectionContradictionFlagged(unittest.TestCase):
+    def test_bullish_micron_vs_negative_session_relegated(self):
+        nf = _load_narration()
+        sess = nf["_meta"]["live_session"]["current_session_pct"]  # ~ -5.1
+        framing = mt.classify_framing(
+            nf["lead_story"]["title"] + " " + nf["lead_story"]["summary"]
+        )
+        self.assertEqual(framing, "bullish")
+        # Material tape, story is the driver, dominant breadth: the only thing that
+        # should stop a story-subject overview is the direction contradiction.
+        material_tape = {
+            "quotes": {"^GSPC": {"pct": -1.4}, "^VIX": {"pct": 11.0}},
+            "regime": "risk-off", "vix_level": 22.0,
+        }
+        gate = mt.overview_subject_gate(
+            story_companies=["Micron Technology"],
+            is_single_name_or_deal=True,
+            cluster_distinct_sources=nf["lead_story"]["_impact_breadth"]["distinct_sources"],
+            tape=material_tape,
+            tape_driver_names={"micron technology"},
+            subject_session_pct=sess,
+            subject_framing=framing,
+        )
+        self.assertTrue(gate.get("direction_contradiction"),
+                        "bullish framing vs a -5% session must be flagged inconsistent")
+        self.assertFalse(gate["checks"]["direction_consistent"])
+        self.assertEqual(gate["subject"], "market_wide",
+                         "a direction contradiction must relegate the stale-bullish lead")
+        directive = mt.build_overview_subject_directive(gate, nf["lead_story"]["title"])
+        self.assertIn("RECONCILIATION", directive,
+                      "the directive must instruct a reconcile-not-celebrate reframe")
+
+    def test_direction_check_inert_when_inputs_omitted(self):
+        # Backward compatibility: the #422 call site omits the new inputs, so the
+        # gate must behave exactly as before (direction_consistent stays True).
+        gate = mt.overview_subject_gate(
+            story_companies=["Micron Technology"],
+            is_single_name_or_deal=True,
+            cluster_distinct_sources=12,
+            tape={"quotes": {"^GSPC": {"pct": -1.4}, "^VIX": {"pct": 11.0}},
+                  "regime": "risk-off", "vix_level": 22.0},
+            tape_driver_names={"micron technology"},
+        )
+        self.assertTrue(gate["checks"]["direction_consistent"])
+        self.assertFalse(gate.get("direction_contradiction"))
+
+
+class Assertion6_UnknownDateAndProse(unittest.TestCase):
+    def test_unknown_published_at_strips_today(self):
+        # D13: a story with NULL published_at has event_date UNKNOWN; the normalizer
+        # must remove the relative-time claim and never assert "today".
+        ed = tg.event_date_et(None)
+        self.assertIsNone(ed, "NULL published_at must yield UNKNOWN event date")
+        bd = dt.date(2026, 6, 26)
+        out, changed, _ = tg.normalize_relative_time(
+            "The financing closed today.", ed, bd
+        )
+        self.assertTrue(changed)
+        self.assertNotIn("today", out.lower(),
+                         "UNKNOWN-date story must not assert 'today'")
+
+    def test_garbled_lead_detected_clean_lead_passes(self):
+        # D15: the shipped garbled construction is detected; the fixed version is not.
+        nf = _load_narration()
+        gen = nf["generated_narrative"]
+        self.assertTrue(pq.has_garbled_prose(gen["garbled_lead_paragraph"]),
+                        "the 'stock surge ... underscores' construction must be flagged")
+        self.assertFalse(pq.has_garbled_prose(gen["lead_paragraph"]),
+                         "the corrected lead must pass the prose guard")
+
+
+class Assertion9_HeadlineTemporalAndProperNoun(unittest.TestCase):
+    """Review follow-up: D13 must normalize the headline (the evening 'Today's
+    Story' card renders headline + lead), and must NOT mangle a relative-time
+    token that is part of a proper noun ('USA Today')."""
+
+    JUN25 = dt.date(2026, 6, 25)
+    JUN26 = dt.date(2026, 6, 26)
+
+    def test_stale_headline_today_rewritten_to_yesterday(self):
+        hl = "Micron Soars 15% Today to a New All-Time High"
+        out, changed, garbled = tg.normalize_relative_time(hl, self.JUN25, self.JUN26)
+        self.assertTrue(changed)
+        self.assertNotIn("today", out.lower(),
+                         "stale 'today' must not survive on a prior-day event headline")
+        self.assertIn("yesterday", out.lower(),
+                      "a one-day-prior event reads 'yesterday'")
+
+    def test_unknown_event_date_strips_headline_today(self):
+        hl = "Micron Soars 15% Today to a New All-Time High"
+        out, changed, garbled = tg.normalize_relative_time(hl, None, self.JUN26)
+        self.assertTrue(changed)
+        self.assertNotIn("today", out.lower(),
+                         "UNKNOWN event date must never assert 'today' in the headline")
+
+    def test_proper_noun_today_not_mangled(self):
+        # "USA Today" (a name) must survive; only the standalone temporal "Today"
+        # at the end is rewritten.
+        hl = "USA Today: Micron Soars 15% Today"
+        out, changed, garbled = tg.normalize_relative_time(hl, self.JUN25, self.JUN26)
+        self.assertIn("USA Today", out,
+                      "the proper noun 'USA Today' must not be rewritten")
+        self.assertEqual(out.lower().count("today"), 1,
+                         "only the proper-noun 'today' should remain")
+        self.assertIn("yesterday", out.lower(),
+                      "the standalone temporal token should still be rewritten")
+
+    def test_proper_noun_alone_no_change(self):
+        # A headline whose only relative-time token is inside a proper noun must
+        # not be rewritten at all.
+        hl = "USA Today Names Micron Stock of the Year"
+        out, changed, garbled = tg.normalize_relative_time(hl, self.JUN25, self.JUN26)
+        self.assertFalse(changed, "a proper-noun-only token must not trigger a rewrite")
+        self.assertEqual(out, hl)
 
 
 if __name__ == "__main__":
