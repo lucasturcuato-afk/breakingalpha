@@ -1539,9 +1539,27 @@ def _candidate_orgs(text):
     return out
 
 
+# Common first words that, on their own, do NOT support a multi-word org. A bare
+# "texas" in the corpus ("West Texas") must NOT vouch for "Texas Pacific Land".
+# Geographies, generic descriptors, and high-frequency name heads only.
+_ORG_GENERIC_HEADS = frozenset((
+    "texas", "new", "american", "america", "united", "national", "global",
+    "international", "general", "first", "north", "south", "east", "west",
+    "central", "pacific", "atlantic", "european", "european", "asian",
+    "western", "eastern", "northern", "southern", "capital", "city", "state",
+    "federal", "bank", "group", "holdings", "holding", "partners", "industries",
+    "technologies", "systems", "solutions", "financial", "international",
+))
+
+
 def _org_supported(org, corpus_lc, allowed_lc):
-    """True when an org candidate is supported: it (or a head fragment) appears in
-    the source corpus text, or matches a resolved company name."""
+    """True when an org candidate is supported. Supported means: the full phrase
+    appears in the corpus or resolved-company roster, OR a DISTINCTIVE multi-token
+    prefix of the phrase does. A single common first word (a geography or generic
+    head like "texas", "new", "national") is NOT sufficient on its own: the old
+    head-token fallback deemed "Texas Pacific Land" supported because "texas"
+    appears in the corpus ("West Texas"), letting the exact hallucination D8 must
+    catch slip through (#422 review fix)."""
     o = org.strip().lower()
     if not o:
         return True
@@ -1549,10 +1567,23 @@ def _org_supported(org, corpus_lc, allowed_lc):
         return True
     if o in corpus_lc:
         return True
-    # Head-of-name containment: "AbbVie" supports "AbbVie Inc"; "Texas Pacific"
-    # not in corpus stays unsupported.
-    head = o.split()[0]
-    if len(head) > 3 and (head in allowed_lc or head in corpus_lc):
+    toks = o.split()
+    # Single-token org (e.g. "AbbVie"): the whole-string checks above are the only
+    # support; no prefix relaxation, so a lone unsupported token stays unsupported.
+    if len(toks) < 2:
+        return False
+    # Multi-word org: accept a distinctive PREFIX match so "AbbVie" / "AbbVie Inc"
+    # supports "AbbVie Therapeutics", but require either (a) a >=2-token prefix
+    # (the first two words together, distinctive enough), or (b) a single first
+    # word that is NOT a generic/geographic head. A common first word like "texas"
+    # alone can never vouch for the phrase.
+    two = " ".join(toks[:2])
+    if two in allowed_lc or two in corpus_lc:
+        return True
+    head = toks[0]
+    if len(head) > 3 and head not in _ORG_GENERIC_HEADS and (
+        head in allowed_lc or head in corpus_lc
+    ):
         return True
     return False
 
