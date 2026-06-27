@@ -17,6 +17,7 @@ import temporal_grounding
 import macro_calendar
 import bea_calendar
 from brief_voice_guard import enforce_brief_voice, has_voice_violation
+import prose_quality_guard
 from dataclasses import asdict
 try:
     from usage_log import log_gemini_usage
@@ -2482,6 +2483,63 @@ def run(brief_type="morning"):
                         print("  ⚠ voice guard: residual first person after fallback (recommendations removed)")
         except Exception as e:
             print(f"  ⚠ voice guard error (non-fatal): {e}")
+
+    # Prose quality guard (D15, morning + evening, non-fatal). The voice guard
+    # above covers first-person / recommendations, not grammar. The brief shipped
+    # "stock surge ... underscores" (a noun phrase wired into a verb slot).
+    # Deterministically detect a tight set of garbled constructions in
+    # lead_paragraph + market_pulse.narrative; on a hit run ONE targeted re-ask
+    # that fixes only the grammar. This is not a general grammar engine; the
+    # detector lives in prose_quality_guard.py (pure, unit-testable).
+    if not brief_is_stub and brief_type in ("morning", "evening"):
+        try:
+            def _prose_regenerate(field_label, text, reasons):
+                sysmsg = (
+                    "You fix the grammar of ONE field of a finished market brief. "
+                    "Return JSON only: {\"text\": \"<rewritten text, same paragraph "
+                    "count, paragraphs separated by \\n\\n>\"}. No other keys, no "
+                    "prose outside the JSON. Zero em-dashes; use hyphens, colons, parens."
+                )
+                usermsg = (
+                    prose_quality_guard.build_prose_correction(reasons)
+                    + f"\n{field_label.upper()}:\n{text}"
+                )
+                try:
+                    raw = gemini_generate(
+                        system=sysmsg, user_content=usermsg, temperature=0.2, max_tokens=1024
+                    )
+                    parsed = _parse_brief_json(raw)
+                    if parsed and isinstance(parsed.get("text"), str) and parsed["text"].strip():
+                        return parsed["text"].strip()
+                except Exception as e:
+                    print(f"  ⚠ prose guard: re-ask failed (non-fatal): {e}")
+                return None
+
+            lp_text = data.get("lead_paragraph")
+            if isinstance(lp_text, str) and lp_text.strip():
+                lp_reasons = prose_quality_guard.detect_garbled_prose(lp_text)
+                if lp_reasons:
+                    fixed = _prose_regenerate("lead_paragraph", lp_text, lp_reasons)
+                    if fixed and not prose_quality_guard.has_garbled_prose(fixed):
+                        data["lead_paragraph"] = fixed
+                        print("  [prose guard] rewrote garbled lead_paragraph")
+                    else:
+                        print(f"  ⚠ prose guard: lead_paragraph still garbled or re-ask failed "
+                              f"({len(lp_reasons)} issue(s)); keeping original")
+
+            mpp = data.get("market_pulse")
+            if isinstance(mpp, dict) and isinstance(mpp.get("narrative"), str) and mpp["narrative"].strip():
+                n_reasons = prose_quality_guard.detect_garbled_prose(mpp["narrative"])
+                if n_reasons:
+                    fixed_n = _prose_regenerate("narrative", mpp["narrative"], n_reasons)
+                    if fixed_n and not prose_quality_guard.has_garbled_prose(fixed_n):
+                        mpp["narrative"] = fixed_n
+                        print("  [prose guard] rewrote garbled narrative")
+                    else:
+                        print(f"  ⚠ prose guard: narrative still garbled or re-ask failed "
+                              f"({len(n_reasons)} issue(s)); keeping original")
+        except Exception as e:
+            print(f"  ⚠ prose guard error (non-fatal): {e}")
 
     # Section entity validation (D8, morning + evening, non-fatal). Every org
     # named in a section must appear in the section's source corpus or the
