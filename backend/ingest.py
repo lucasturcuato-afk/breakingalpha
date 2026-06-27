@@ -1221,6 +1221,16 @@ def _is_rate_limit_error(ex) -> bool:
     return "429" in s or "RESOURCE_EXHAUSTED" in s
 
 
+def _is_unavailable_error(ex) -> bool:
+    """True for a transient Gemini 503 UNAVAILABLE (the Google capacity blip).
+    Distinct from _is_rate_limit_error (429/RESOURCE_EXHAUSTED). Mirrors the eval
+    harness _is_unavailable_error (tools/filter_reorder_eval.py, PR #424): without
+    retrying these, a transient 503 silently drops the article from the run, which
+    gutted the 2026-06-25 morning brief (11 stored vs a 400-800 norm)."""
+    s = str(ex)
+    return "503" in s or "UNAVAILABLE" in s
+
+
 # ---------------------------------------------------------------------------
 # Filter-step Gemini usage accounting (FILTER ONLY). Best-effort, thread-safe,
 # and fully exception-guarded so it can NEVER break filtering. Accumulates one
@@ -1341,10 +1351,10 @@ def filter_article(article, cache_name=None):
             ),
         )
 
-    # Bounded exponential backoff on transient 429 / RESOURCE_EXHAUSTED only.
-    # Schema/parse/timeout failures are NOT retried here (the caller's
-    # _filter_article_with_retry handles the single schema retry); they fall
-    # straight through to drop-and-log, preserving the prior behaviour.
+    # Bounded exponential backoff on transient 429 / RESOURCE_EXHAUSTED and
+    # 503 / UNAVAILABLE. Schema/parse/timeout failures are NOT retried here (the
+    # caller's _filter_article_with_retry handles the single schema retry); they
+    # fall straight through to drop-and-log, preserving the prior behaviour.
     delay = 1.0
     for attempt in range(FILTER_MAX_RATE_RETRIES + 1):
         try:
@@ -1359,10 +1369,13 @@ def filter_article(article, cache_name=None):
                 if text.startswith("json"): text = text[4:]
             return json.loads(text.strip())
         except Exception as ex:
-            if _is_rate_limit_error(ex) and attempt < FILTER_MAX_RATE_RETRIES:
+            rate_limited = _is_rate_limit_error(ex)
+            unavailable = _is_unavailable_error(ex)
+            if (rate_limited or unavailable) and attempt < FILTER_MAX_RATE_RETRIES:
                 sleep_s = min(delay, 30.0) + random.uniform(0, 0.5)
+                kind = "429/RESOURCE_EXHAUSTED" if rate_limited else "503/UNAVAILABLE"
                 print(
-                    f"  [filter:rate-limit] 429/RESOURCE_EXHAUSTED, backoff "
+                    f"  [filter:rate-limit] {kind}, backoff "
                     f"{sleep_s:.1f}s (attempt {attempt + 1}/{FILTER_MAX_RATE_RETRIES})"
                 )
                 time.sleep(sleep_s)

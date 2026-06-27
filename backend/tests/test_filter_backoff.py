@@ -48,6 +48,16 @@ def _rate_limit_exc():
     )
 
 
+def _unavailable_exc():
+    """The exact exception google-genai raises on an HTTP 503 (capacity blip)."""
+    return errors.ServerError(
+        503,
+        {"error": {"code": 503,
+                   "message": "The model is overloaded. Please try again later.",
+                   "status": "UNAVAILABLE"}},
+    )
+
+
 _GOOD_JSON = json.dumps(
     {"relevant": True, "relevance_score": 8, "sector": "Technology",
      "primary_company": "TestCo", "deal_type": "Other"}
@@ -82,6 +92,25 @@ class _CountingCall:
             raise _rate_limit_exc()
         if n <= self.fails:
             raise _rate_limit_exc()
+        return _FakeResponse(_GOOD_JSON)
+
+
+class _Counting503Call:
+    """Mock for gemini_client.models.generate_content that raises a 503 for the
+    first `fails` calls, then returns a good response. Mirrors _CountingCall but
+    for the transient 503 / UNAVAILABLE capacity blip. Thread-safe."""
+
+    def __init__(self, fails=0):
+        self.fails = fails
+        self.calls = 0
+        self._lock = threading.Lock()
+
+    def __call__(self, *args, **kwargs):
+        with self._lock:
+            self.calls += 1
+            n = self.calls
+        if n <= self.fails:
+            raise _unavailable_exc()
         return _FakeResponse(_GOOD_JSON)
 
 
@@ -170,6 +199,58 @@ class FilterBackoffTest(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual(boom.calls, 1, "non-rate error is not retried by backoff")
         self.assertEqual(sleep_mock.call_count, 0)
+
+
+class Filter503BackoffTest(unittest.TestCase):
+    """503 / UNAVAILABLE transient-retry coverage (this PR). Before the fix a 503
+    was not in the retry-worthy set, so it dropped the article after one no-wait
+    retry; now it backs off and retries under the SAME FILTER_MAX_RATE_RETRIES cap
+    as 429."""
+
+    def setUp(self):
+        # The 503 detector must recognise the real SDK 503...
+        self.assertTrue(ingest._is_unavailable_error(_unavailable_exc()))
+        # ...must NOT classify a 503 as a 429 (they are distinct sets)...
+        self.assertFalse(ingest._is_rate_limit_error(_unavailable_exc()))
+        # ...and must NOT treat an ordinary error as unavailable.
+        self.assertFalse(ingest._is_unavailable_error(ValueError("boom")))
+
+    # Case (a): N<max 503s then success -> backs off and returns the decision
+    # (the bug this PR fixes: previously this article would have dropped).
+    def test_a_503_backoff_then_success(self):
+        fake = _Counting503Call(fails=3)  # 3 < FILTER_MAX_RATE_RETRIES (5)
+        with patch.object(ingest.gemini_client.models, "generate_content", fake), \
+             patch.object(ingest.time, "sleep") as sleep_mock:
+            result = ingest.filter_article(_article())
+        self.assertIsInstance(result, dict, "503-then-success must NOT be dropped")
+        self.assertTrue(result.get("relevant"))
+        self.assertEqual(result.get("relevance_score"), 8)
+        self.assertEqual(fake.calls, 4, "3 unavailable attempts + 1 success")
+        self.assertEqual(sleep_mock.call_count, 3, "one backoff sleep per 503")
+
+    # Case (b): persistent 503 -> retries exhaust, dropped, no propagation.
+    def test_b_persistent_503_still_drops(self):
+        fake = _Counting503Call(fails=10_000)  # always unavailable
+        with patch.object(ingest.gemini_client.models, "generate_content", fake), \
+             patch.object(ingest.time, "sleep"):
+            try:
+                result = ingest.filter_article(_article())
+            except Exception as ex:  # must NOT propagate
+                self.fail(f"503 propagated out of filter_article: {ex!r}")
+        self.assertIsNone(result, "sustained 503 still drops gracefully (None)")
+        self.assertEqual(
+            fake.calls, ingest.FILTER_MAX_RATE_RETRIES + 1,
+            "bounded at max retries + the initial attempt (no infinite loop)",
+        )
+
+    # Case (c): bounded, no infinite loop -> exact attempt count.
+    def test_c_503_bounded_attempts(self):
+        fake = _Counting503Call(fails=10_000)
+        with patch.object(ingest.gemini_client.models, "generate_content", fake), \
+             patch.object(ingest.time, "sleep"):
+            ingest.filter_article(_article())
+        self.assertEqual(fake.calls, ingest.FILTER_MAX_RATE_RETRIES + 1)
+        self.assertLessEqual(fake.calls, 6, "must stay bounded (5 retries + 1)")
 
 
 if __name__ == "__main__":
