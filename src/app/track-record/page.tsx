@@ -76,15 +76,6 @@ interface SectorGroup {
 
 const TERMINAL_LABELS: ReadonlyArray<string> = ["Confirmed", "Invalidated"];
 
-/**
- * Detect SpaceX-themed theses (ticker incorrectly resolves to SPCE upstream
- * because SpaceX is private; Wave 2 will fix entity resolution; for now we
- * intercept here and render "SpaceX (private)" with no ticker chip).
- */
-function isSpaceXThesis(meta: { title?: string | null; ticker?: string | null }): boolean {
-  return /spacex/i.test(meta.title ?? "");
-}
-
 export default function TrackRecordPage() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
@@ -518,7 +509,7 @@ export default function TrackRecordPage() {
                                 {t.sector}
                               </span>
                             )}
-                            <TickerOrPrivate title={t.title} ticker={t.ticker} />
+                            <TickerOrPrivate ticker={t.ticker} />
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -680,19 +671,10 @@ function ThesisRankCard({
 }
 
 function TickerOrPrivate({
-  title,
   ticker,
 }: {
-  title: string;
   ticker: string | null;
 }) {
-  if (isSpaceXThesis({ title, ticker })) {
-    return (
-      <span className="font-sans text-[9px] text-text-muted italic">
-        SpaceX (private)
-      </span>
-    );
-  }
   if (!ticker) return null;
   return (
     <span className="font-data text-[9px] text-gold-dark bg-gold-muted px-1.5 py-0.5 rounded">

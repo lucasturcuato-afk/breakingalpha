@@ -412,11 +412,15 @@ export default function MorningBriefPage() {
       try {
         const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+        // Published-date floor so stale items (date-less or weeks old) never
+        // surface on the fresh story rail. NULL published_at is excluded by gte.
+        const publishedFloor7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
         let { data: articles } = await getSupabase()
           .from("articles")
           .select("id, title, source, sector, sentiment, summary, content, published_at, ingested_at, url, companies, relevance_score")
           .gte("ingested_at", cutoff24h)
+          .gte("published_at", publishedFloor7d)
           .order("relevance_score", { ascending: false })
           .limit(8);
 
@@ -426,6 +430,7 @@ export default function MorningBriefPage() {
             .from("articles")
             .select("id, title, source, sector, sentiment, summary, content, published_at, ingested_at, url, companies, relevance_score")
             .gte("ingested_at", cutoff48h)
+            .gte("published_at", publishedFloor7d)
             .order("relevance_score", { ascending: false })
             .limit(8);
           articles = fallback;
