@@ -80,6 +80,13 @@ CONFIRMED_STAGES = {"signed", "closed"}
 # tomorrow's brief.
 FALLBACK_MAX_AGE_HOURS = 24.0
 
+# D4 recency backstop: mirror the fallback max-age onto the priced-deal picks
+# (Filter A / A2). Previously a deal article had no max-age, so a stale $1B+
+# transaction could lead a fresh brief on size alone. A deal-flow row can be
+# re-confirmed days after the article; the ARTICLE itself must still be fresh to
+# lead. Same 24h window as the fallback hierarchy.
+DEAL_MAX_AGE_HOURS = FALLBACK_MAX_AGE_HOURS
+
 # Sector-moving fallback (Spec §3.4c): cluster of 3+ articles in the
 # same industry_vertical within the last 12h.
 SECTOR_CLUSTER_WINDOW_HOURS = 12.0
@@ -778,6 +785,11 @@ def preselect_primary_story(
             url = (a.get("url") or "").strip()
             if not url:
                 continue
+            # D4: a priced-deal lead must be a FRESH article, not just a fresh
+            # deal_flow row. Stale deal articles are skipped (same window as the
+            # macro/geo/sector fallbacks).
+            if _article_age_hours(a, now) > DEAL_MAX_AGE_HOURS:
+                continue
             deal_row = deal_idx.get(url)
             val = _qualifies_filter_a(a, deal_row)
             if val is not None:
@@ -807,6 +819,9 @@ def preselect_primary_story(
         for a in articles:
             url = (a.get("url") or "").strip()
             if not url:
+                continue
+            # D4: same freshness backstop as Filter A.
+            if _article_age_hours(a, now) > DEAL_MAX_AGE_HOURS:
                 continue
             deal_row = deal_idx.get(url)
             val = _qualifies_filter_a2(a, deal_row)
