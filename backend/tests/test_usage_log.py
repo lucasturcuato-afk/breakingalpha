@@ -10,13 +10,19 @@ from backend import usage_log
 
 
 class _UM:
-    """Stand-in for response.usage_metadata."""
+    """Stand-in for response.usage_metadata.
 
-    def __init__(self, prompt, candidates, thoughts, total):
+    cached defaults to None and, when None, the cached_content_token_count
+    attribute is left UNSET so the logger sees the same shape as a response that
+    used no prompt cache (which proves cached defaults to 0)."""
+
+    def __init__(self, prompt, candidates, thoughts, total, cached=None):
         self.prompt_token_count = prompt
         self.candidates_token_count = candidates
         self.thoughts_token_count = thoughts
         self.total_token_count = total
+        if cached is not None:
+            self.cached_content_token_count = cached
 
 
 class _Resp:
@@ -35,6 +41,31 @@ class _RaisingClient:
 
     def execute(self, *a, **k):
         raise RuntimeError("gemini_usage table does not exist yet")
+
+
+class _ColumnMissingClient:
+    """Simulates a pre-migration table: rejects any insert payload that still
+    carries the cached_content_token_count column, accepts it once that key is
+    stripped. Captures the accepted payload."""
+
+    def __init__(self):
+        self.accepted = None
+        self._pending = None
+
+    def table(self, name):
+        return self
+
+    def insert(self, payload):
+        self._pending = payload
+        return self
+
+    def execute(self):
+        payload = self._pending
+        items = payload if isinstance(payload, list) else [payload]
+        if any("cached_content_token_count" in r for r in items):
+            raise RuntimeError('column "cached_content_token_count" does not exist')
+        self.accepted = payload
+        return self
 
 
 class _RecordingClient:
@@ -120,6 +151,47 @@ class UsageLogSoftFailTests(unittest.TestCase):
         usage_log._get_client = lambda: rec
         usage_log.flush_gemini_usage()
         self.assertIsNone(rec.rows)
+
+    def test_missing_cached_metadata_defaults_to_zero(self):
+        rec = _RecordingClient()
+        usage_log._get_client = lambda: rec
+        # _UM without a cached arg leaves the attribute unset (pre-cache shape).
+        usage_log.log_gemini_usage("form_8k", "m", _Resp(_UM(300, 40, 10, 350)))
+        self.assertEqual(rec.rows["cached_content_token_count"], 0)
+
+    def test_log_persists_cached_when_present(self):
+        rec = _RecordingClient()
+        usage_log._get_client = lambda: rec
+        usage_log.log_gemini_usage("filter", "m", _Resp(_UM(100, 20, 5, 125, cached=80)))
+        self.assertEqual(rec.rows["cached_content_token_count"], 80)
+
+    def test_flush_persists_summed_cached(self):
+        rec = _RecordingClient()
+        usage_log._get_client = lambda: rec
+        usage_log.accumulate_gemini_usage("filter", "m", _Resp(_UM(100, 10, 0, 110, cached=60)))
+        usage_log.accumulate_gemini_usage("filter", "m", _Resp(_UM(50, 5, 0, 55, cached=40)))
+        usage_log.flush_gemini_usage(run_id="r")
+        self.assertEqual(rec.rows[0]["cached_content_token_count"], 100)
+
+    def test_premigration_missing_column_log_falls_back_and_records(self):
+        # Simulate the column not existing yet: the first insert (with the cached
+        # key) is rejected, the stripped retry is accepted. Logging must not raise
+        # and the other columns must still land.
+        client = _ColumnMissingClient()
+        usage_log._get_client = lambda: client
+        usage_log.log_gemini_usage("filter", "m", _Resp(_UM(100, 20, 5, 125, cached=80)))
+        self.assertIsNotNone(client.accepted)
+        self.assertNotIn("cached_content_token_count", client.accepted)
+        self.assertEqual(client.accepted["prompt_tokens"], 100)
+
+    def test_premigration_missing_column_flush_falls_back_and_records(self):
+        client = _ColumnMissingClient()
+        usage_log._get_client = lambda: client
+        usage_log.accumulate_gemini_usage("filter", "m", _Resp(_UM(100, 10, 0, 110, cached=60)))
+        usage_log.flush_gemini_usage(run_id="r")
+        self.assertIsNotNone(client.accepted)
+        self.assertNotIn("cached_content_token_count", client.accepted[0])
+        self.assertEqual(client.accepted[0]["prompt_tokens"], 100)
 
 
 if __name__ == "__main__":

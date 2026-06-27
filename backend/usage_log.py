@@ -31,7 +31,8 @@ _client_lock = threading.Lock()
 # model). Flushed once per run as one aggregated row per bucket.
 _ACC_LOCK = threading.Lock()
 _ACC = defaultdict(
-    lambda: {"calls": 0, "prompt": 0, "candidates": 0, "thoughts": 0, "total": 0}
+    lambda: {"calls": 0, "prompt": 0, "candidates": 0, "thoughts": 0,
+             "cached": 0, "total": 0}
 )
 
 
@@ -66,8 +67,30 @@ def _tokens(response):
         "prompt": _g("prompt_token_count"),
         "candidates": _g("candidates_token_count"),
         "thoughts": _g("thoughts_token_count"),
+        # Cached prefix tokens, billed at a discount. Absent on responses that
+        # used no cache, so this defaults to 0.
+        "cached": _g("cached_content_token_count"),
         "total": _g("total_token_count"),
     }
+
+
+def _insert_usage(client, payload) -> None:
+    """Insert one row dict or a list of row dicts into gemini_usage. If the
+    cached_content_token_count column does not exist yet (migration not applied),
+    the first insert fails; retry once with that key stripped so the rest of the
+    usage logging keeps working until Noah applies the migration. Never raises;
+    the caller's try/except is the outer guard, this just adds the fallback."""
+    try:
+        client.table("gemini_usage").insert(payload).execute()
+        return
+    except Exception:
+        pass
+    key = "cached_content_token_count"
+    if isinstance(payload, list):
+        stripped = [{k: v for k, v in r.items() if k != key} for r in payload]
+    else:
+        stripped = {k: v for k, v in payload.items() if k != key}
+    client.table("gemini_usage").insert(stripped).execute()
 
 
 def log_gemini_usage(step, model, response, run_id: Optional[str] = None) -> None:
@@ -83,6 +106,7 @@ def log_gemini_usage(step, model, response, run_id: Optional[str] = None) -> Non
             "prompt_tokens": t["prompt"],
             "candidates_tokens": t["candidates"],
             "thoughts_tokens": t["thoughts"],
+            "cached_content_token_count": t["cached"],
             "total_tokens": t["total"],
         }
         if run_id:
@@ -90,7 +114,7 @@ def log_gemini_usage(step, model, response, run_id: Optional[str] = None) -> Non
         client = _get_client()
         if client is None:
             return
-        client.table("gemini_usage").insert(row).execute()
+        _insert_usage(client, row)
     except Exception:
         # Logging must never affect generation. Swallow everything.
         return
@@ -109,6 +133,7 @@ def accumulate_gemini_usage(step, model, response) -> None:
             b["prompt"] += t["prompt"]
             b["candidates"] += t["candidates"]
             b["thoughts"] += t["thoughts"]
+            b["cached"] += t["cached"]
             b["total"] += t["total"]
     except Exception:
         return
@@ -135,11 +160,12 @@ def flush_gemini_usage(run_id: Optional[str] = None) -> None:
                 "prompt_tokens": b["prompt"],
                 "candidates_tokens": b["candidates"],
                 "thoughts_tokens": b["thoughts"],
+                "cached_content_token_count": b["cached"],
                 "total_tokens": b["total"],
             }
             if run_id:
                 row["run_id"] = run_id
             rows.append(row)
-        client.table("gemini_usage").insert(rows).execute()
+        _insert_usage(client, rows)
     except Exception:
         return
