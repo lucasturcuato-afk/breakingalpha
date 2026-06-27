@@ -59,6 +59,44 @@ MATERIALITY_MIN_DISTINCT_SOURCES = 6
 # is also a contradiction.
 RECON_DIR_PCT = 1.5
 
+# T3 driver-set v1 (recon open question 2). At evening gen time the per-name
+# session move is available via fetch_quote(ticker)["pct"] (P0.3), but fetch_tape
+# only surfaces indices + VIX. So the day's "tape drivers" are derived by fetching
+# the candidate names' quotes and selecting the materially-large movers. A name is
+# a driver today when BOTH hold:
+#   |session move| > DRIVER_MIN_ABS_PCT, AND
+#   it is among the top DRIVER_TOP_K absolute movers in the fetched candidate set.
+# Conservative and fail-safe: no quotes => empty driver set => the gate behaves as
+# before (market-wide default). A name is NEVER promoted on magnitude alone; the
+# overview-subject gate still also requires a material tape and dominant breadth.
+# Both constants are tunable; see RUN_REPORT_LEADTRUST.md (open question 2).
+DRIVER_MIN_ABS_PCT = 2.0   # a name must move at least this much (abs %) to qualify
+DRIVER_TOP_K = 3           # at most this many names are the day's drivers
+
+
+def build_tape_driver_names(name_to_pct: dict, *, min_abs_pct: float = DRIVER_MIN_ABS_PCT,
+                            top_k: int = DRIVER_TOP_K) -> set[str]:
+    """T3: from a {company_name: session_pct} mapping fetched at gen time, return
+    the lower-cased set of the day's tape drivers per v1: names whose absolute
+    session move exceeds `min_abs_pct`, restricted to the top `top_k` absolute
+    movers. Pure, never raises. Empty input or no qualifying mover -> empty set
+    (the gate then falls back to market-wide, fail-safe)."""
+    pairs = []
+    for name, pct in (name_to_pct or {}).items():
+        nm = str(name or "").strip().lower()
+        if not nm:
+            continue
+        try:
+            p = float(pct)
+        except (TypeError, ValueError):
+            continue
+        if abs(p) > min_abs_pct:
+            pairs.append((nm, abs(p)))
+    if not pairs:
+        return set()
+    pairs.sort(key=lambda t: t[1], reverse=True)
+    return {nm for nm, _ in pairs[:top_k]}
+
 
 def compute_regime(vix_level: float, vix_pct_change: float, spx_pct_change: float) -> str:
     """
