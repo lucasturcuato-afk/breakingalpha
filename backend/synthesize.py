@@ -3052,17 +3052,48 @@ def run(brief_type="morning"):
     if psid:
         extras["primary_story_id"] = psid[:200]
 
+    # Persist the gen-time tape snapshot (v2 Gate 1 prerequisite). The new
+    # market_tape column is nullable and may not exist until the migration is
+    # applied, so it is the OUTERMOST insert attempt: if the column is missing the
+    # insert ladder falls back to the extras row (market_pulse / body are NOT
+    # lost) and then to the base row. We serialize the already-computed tape_obj;
+    # no recompute, no re-fetch. None when no tape (weekend / thin) -> not written.
+    _tape_snapshot = market_tape.serialize_tape_snapshot(tape_obj, as_of=now)
+
     insert_resp = None
     if extras:
         row_with_extras = {**row, **extras}
+        # Ordered insert candidates: with-tape (best), extras-only (existing
+        # behavior, preserves market_pulse if the tape column is absent), base.
+        _candidates = []
+        if _tape_snapshot is not None:
+            _candidates.append({**row_with_extras, "market_tape": json.dumps(_tape_snapshot)})
+        _candidates.append(row_with_extras)
+        _candidates.append(row)
+        _last_err = None
+        for _cand in _candidates:
+            try:
+                insert_resp = supabase.table("briefings").insert(_cand).execute()
+                if "market_tape" in _cand:
+                    print(f"  ✨ market_tape saved: regime={_tape_snapshot.get('regime')} vix={_tape_snapshot.get('vix_level')}")
+                if has_pulse and "market_pulse" in _cand:
+                    print(f"  ✨ market_pulse saved: {(mp_raw.get('sentiment_word') or '(no word)')[:30]}")
+                if has_structured_body and "lead_paragraph" in _cand:
+                    print(f"  ✨ structured body saved (lead/context/watch)")
+                _last_err = None
+                break
+            except Exception as ext_err:
+                _last_err = ext_err
+                print(f"  ⚠ insert attempt failed ({ext_err}) - trying a smaller row")
+        if insert_resp is None and _last_err is not None:
+            raise _last_err
+    elif _tape_snapshot is not None:
         try:
-            insert_resp = supabase.table("briefings").insert(row_with_extras).execute()
-            if has_pulse:
-                print(f"  ✨ market_pulse saved: {(mp_raw.get('sentiment_word') or '(no word)')[:30]}")
-            if has_structured_body:
-                print(f"  ✨ structured body saved (lead/context/watch)")
+            insert_resp = supabase.table("briefings").insert(
+                {**row, "market_tape": json.dumps(_tape_snapshot)}
+            ).execute()
         except Exception as ext_err:
-            print(f"  ⚠ structured-body insert failed ({ext_err}) — falling back to base row")
+            print(f"  ⚠ market_tape insert failed ({ext_err}) - falling back to base row")
             insert_resp = supabase.table("briefings").insert(row).execute()
     else:
         insert_resp = supabase.table("briefings").insert(row).execute()
