@@ -18,6 +18,7 @@ import macro_calendar
 import bea_calendar
 from brief_voice_guard import enforce_brief_voice, has_voice_violation
 import prose_quality_guard
+import overview_grounding
 from dataclasses import asdict
 try:
     from usage_log import log_gemini_usage
@@ -1817,6 +1818,108 @@ def _lead_session_move(preselected):
         return None, None, None
 
 
+def _resolve_final_lead(data, spine, floor, companies_of_fn):
+    """T1: resolve the FINAL chosen overview/lead subject AFTER generation, on
+    BOTH the pre-pick and the Gemini self-select path. Returns
+    (company_name, companies_list, title, summary) for the single named subject,
+    or (None, None, headline, lead) when no single name resolves (caller then
+    defaults MARKET-WIDE; never promotes an unvalidated single name).
+
+    Resolution order (P0.2): match the generated headline / primary_story_id back
+    to a spine/floor corpus article and take its companies[]; else fall back to
+    top_deals[0].company. The corpus match is preferred because it ties the
+    subject to a real article roster. Pure over the passed-in corpus + data; the
+    live quote is fetched separately by the caller (network)."""
+    if not isinstance(data, dict):
+        return None, None, "", ""
+    headline = (data.get("headline") or "").strip()
+    psid = (data.get("primary_story_id") or "").strip()
+    lead = (data.get("lead_paragraph") or "").strip()
+
+    def _toks(s):
+        return {t for t in re.split(r"[^a-z0-9]+", (s or "").lower()) if len(t) > 3}
+
+    hl_toks = _toks(headline) | _toks(psid)
+    best = None
+    best_overlap = 0
+    if hl_toks:
+        for a in (spine or []) + (floor or []):
+            at = _toks(a.get("title") or "")
+            if not at:
+                continue
+            overlap = len(hl_toks & at)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best = a
+    # Require a non-trivial title overlap so we don't bind to a random article.
+    if best is not None and best_overlap >= 2:
+        cos = companies_of_fn(best)
+        if cos:
+            return cos[0], cos, headline or (best.get("title") or ""), lead
+
+    # Fallback: the first top_deals company (the self-select deal-lead case).
+    top_deals = data.get("top_deals") or []
+    if isinstance(top_deals, list):
+        for d in top_deals:
+            if isinstance(d, dict):
+                co = (d.get("company") or "").strip()
+                if co:
+                    return co, [co], headline, lead
+
+    return None, None, headline, lead
+
+
+def _final_lead_session_move(name, title, summary):
+    """T1: adapt _lead_session_move to a single NAME from the self-select path.
+    Synthesizes the minimal dict _lead_session_move expects and returns
+    (session_pct, framing, company_name). Soft-fail to (None, None, None)."""
+    if not name:
+        return None, None, None
+    return _lead_session_move(
+        {"companies": [name], "title": title or "", "summary": summary or ""}
+    )
+
+
+def _body_ticker_direction_flags(text, corpus_companies):
+    """T4 (scoped to FLAG, not reframe): for named companies in the overview body
+    that carry a directional claim, check the live quote and FLAG any whose
+    direction contradicts the quote. Returns a list of human-readable flags.
+    Soft-fail, never raises; an unresolved ticker or missing quote is skipped.
+
+    Scope decision (see report): this ships FLAG + LOG only. A full body reframe
+    is deferred. We only check companies that already appear in the corpus roster
+    (so we never invent a name to check) and that carry a clear bullish/bearish
+    framing in the body text."""
+    flags = []
+    if not isinstance(text, str) or not text.strip():
+        return flags
+    low = text.lower()
+    seen = set()
+    for co in (corpus_companies or []):
+        nm = str(co).strip()
+        if not nm or nm.lower() in seen or nm.lower() not in low:
+            continue
+        seen.add(nm.lower())
+        # Localize framing to the sentence(s) mentioning this name.
+        sentences = [s for s in re.split(r"[.!?]+", text) if nm.lower() in s.lower()]
+        framing = market_tape.classify_framing(" ".join(sentences))
+        if framing is None:
+            continue
+        ticker = _resolve_lead_ticker(nm)
+        if not ticker:
+            continue
+        try:
+            quote = market_tape.fetch_quote(ticker)
+        except Exception:
+            quote = None
+        if not quote or quote.get("pct") is None:
+            continue
+        pct = float(quote["pct"])
+        if market_tape.framing_contradicts_session(framing, pct):
+            flags.append(f"{nm}: {framing} framing vs {pct:+.1f}% session move")
+    return flags
+
+
 def _retemporalize_field(field_name, text, event_date, brief_date, data):
     """D13 fallback: ONE targeted re-ask when the deterministic in-place rewrite
     would garble the sentence. Rewrite ONE field so its relative-time wording is
@@ -1853,6 +1956,74 @@ def _retemporalize_field(field_name, text, event_date, brief_date, data):
             return parsed[key].strip()
     except Exception as e:
         print(f"  ⚠ temporal guard: re-ask call failed (non-fatal): {e}")
+    return None
+
+
+def _tape_facts_block(tape):
+    """T2: render the fetched tape numbers as explicit FACTS for the grounded
+    market-wide rewrite. Only the numbers actually present are stated; nothing is
+    invented. Returns '' when no tape."""
+    if not tape:
+        return "No live tape is available; do NOT assert any market direction or index figure."
+    quotes = tape.get("quotes") or {}
+    bits = []
+    for sym, label in (("^GSPC", "S&P 500"), ("^IXIC", "Nasdaq"), ("^RUT", "Russell 2000")):
+        q = quotes.get(sym)
+        if q and q.get("pct") is not None:
+            try:
+                bits.append(f"{label} {float(q['pct']):+.2f}%")
+            except (TypeError, ValueError):
+                pass
+    vix = tape.get("vix_level")
+    try:
+        if vix is not None:
+            bits.append(f"VIX {float(vix):.1f}")
+    except (TypeError, ValueError):
+        pass
+    regime = (tape.get("regime") or "").strip().upper()
+    facts = "; ".join(bits) if bits else "(index data unavailable)"
+    return f"TAPE FACTS (ground truth): {facts}. Regime: {regime or 'UNKNOWN'}."
+
+
+def _rewrite_market_wide_grounded(data, tape, corpus_companies, relegated_title,
+                                  corpus_text, extra_correction=""):
+    """T2: ONE bounded grounded re-ask that rewrites market_pulse.narrative as a
+    MARKET read characterized ONLY from the fetched tape numbers, with the
+    relegated story demoted to at most a mention. Brevity is explicitly allowed
+    when material is thin. Returns the new narrative string or None on failure.
+    The model call is wired here; it is not exercised by the offline harness."""
+    roster = ", ".join(sorted({str(c).strip() for c in (corpus_companies or []) if str(c).strip()})[:60])
+    facts = _tape_facts_block(tape)
+    system = (
+        "You rewrite ONE field of a finished market brief: market_pulse.narrative. "
+        "Return JSON only: {\"narrative\": \"<rewritten narrative, paragraphs "
+        "separated by \\n\\n>\"}. No other keys, no prose outside the JSON. Zero "
+        "em-dashes; use hyphens, colons, parens."
+    )
+    user = (
+        "The pre-picked lead did NOT clear the market-materiality gate, so the "
+        "overview must be a MARKET-WIDE read, NOT a single-name writeup.\n\n"
+        f"{facts}\n\n"
+        "RULES (absolute):\n"
+        "- Characterize the market ONLY from the TAPE FACTS above. Do not assert a "
+        "direction the tape does not support; if the tape is quiet, say so.\n"
+        "- Any company or story you name MUST come from this corpus roster: "
+        f"{roster or '(none)'}. Do not introduce any other named entity.\n"
+        f"- The relegated story (\"{(relegated_title or '')[:160]}\") may appear as ONE "
+        "mention at most, never as the through-line.\n"
+        "- BREVITY IS ALLOWED: when material is thin, a short overview is correct. Do "
+        "NOT pad to a fixed length.\n\n"
+        f"{extra_correction}\n\n"
+        "CURRENT NARRATIVE:\n"
+        + str((data.get("market_pulse") or {}).get("narrative") or "")
+    )
+    try:
+        raw = gemini_generate(system=system, user_content=user, temperature=0.3, max_tokens=1024)
+        parsed = _parse_brief_json(raw)
+        if parsed and isinstance(parsed.get("narrative"), str) and parsed["narrative"].strip():
+            return parsed["narrative"].strip()
+    except Exception as e:
+        print(f"  ⚠ market-wide rewrite re-ask failed (non-fatal): {e}")
     return None
 
 
@@ -2160,6 +2331,11 @@ def run(brief_type="morning"):
     # tape move AND story is the tape's cited driver AND its EVENT-level cluster has
     # dominant cross-source breadth). Otherwise it is relegated to a MENTION. The
     # decision rides the existing system-prompt prepend path; no route file is edited.
+    # _pregen_gate captures the pre-pick gate decision so the post-generation
+    # final-lead gate (T1) does NOT re-relegate a pre-pick story that already
+    # PASSED the full gate (with real breadth) just because breadth cannot be
+    # recomputed post-gen. None when no pre-pick gate ran (the self-select path).
+    _pregen_gate = None
     if brief_type in ("morning", "evening") and preselected:
         try:
             _ps_companies = preselected.get("companies") or []
@@ -2208,6 +2384,7 @@ def run(brief_type="morning"):
                 subject_session_pct=_lead_pct,
                 subject_framing=_lead_framing,
             )
+            _pregen_gate = _gate
             system = market_tape.build_overview_subject_directive(
                 _gate, story_title=(preselected.get("title") or "")
             ) + system
@@ -2398,6 +2575,126 @@ def run(brief_type="morning"):
             "top_deals": [],
             "sector_breakdown": {}
         }
+
+    # --- Gate on the FINAL chosen lead (T1+T2+T3+T4, morning + evening) ----------
+    # #430 ran the overview-subject gate ONLY on the pre-pick path (inside the
+    # pre-generation `if preselected:` block). When the deterministic pre-pick
+    # returned None, Gemini self-selected the lead in-prompt and the gate, D14, and
+    # T5 were all bypassed: the overview rode a single Gemini-chosen name with no
+    # check. This block re-runs the gate on the FINAL chosen subject regardless of
+    # how it was chosen, and when the gate relegates a single name it FORCES a
+    # grounded market-wide rewrite + deterministic post-check. Fail-safe: an
+    # unresolvable lead name defaults MARKET-WIDE (never promotes an unvalidated
+    # single name). Soft-fail; never blocks the response.
+    if not brief_is_stub and brief_type in ("morning", "evening"):
+        try:
+            _final_corpus_companies = []
+            for a in (spine + floor):
+                _final_corpus_companies.extend(_companies_of(a))
+
+            # If the PRE-PICK gate already ran with real breadth and PASSED (the
+            # lead is genuinely the dominant driver), honor it: do not re-relegate
+            # post-gen where breadth cannot be recomputed. Only re-evaluate when
+            # there was no pre-pick gate (Gemini self-select) OR the pre-pick gate
+            # already relegated (in which case the directive was injected pre-gen,
+            # and this post-check confirms + grounds the final narrative).
+            _pregen_passed = bool(_pregen_gate and _pregen_gate.get("passed"))
+
+            _lead_name, _lead_cos, _lead_title, _lead_summary = _resolve_final_lead(
+                data, spine, floor, _companies_of
+            )
+            if _pregen_passed:
+                _final_gate = _pregen_gate
+            elif _lead_name:
+                _f_pct, _f_framing, _f_name = _final_lead_session_move(
+                    _lead_name, _lead_title, _lead_summary
+                )
+                _f_drivers = None
+                if _f_name and _f_pct is not None:
+                    _f_drivers = market_tape.build_tape_driver_names({_f_name: _f_pct}) or None
+                _final_gate = market_tape.overview_subject_gate(
+                    story_companies=_lead_cos,
+                    is_single_name_or_deal=True,  # a single resolved name IS single-name
+                    cluster_distinct_sources=0,   # post-gen we cannot recompute breadth; conservative
+                    # KNOWN LIMITATION (decision b, confirmed by Noah): on the
+                    # self-select path the gate may only RELEGATE to market-wide,
+                    # never affirmatively promote a single name, because event-level
+                    # breadth is not recomputable post-generation. This is intended
+                    # conservative behavior; affirmative single-name promotion on this
+                    # path is deferred to the v2 modes build (needs a gen-time breadth
+                    # signal). cluster_distinct_sources=0 here is by design, not a bug.
+                    tape=tape_obj,
+                    tape_driver_names=_f_drivers,
+                    subject_session_pct=_f_pct,
+                    subject_framing=_f_framing,
+                )
+            else:
+                # Fail-safe: no single name resolved -> treat as relegated (market-wide).
+                _final_gate = {"subject": "market_wide", "passed": False,
+                               "reasons": ["final lead name unresolvable; defaulting market-wide"],
+                               "checks": {}}
+
+            print(f"  🧭 Final-lead gate: {_final_gate['subject']} "
+                  f"({'; '.join(_final_gate.get('reasons') or [])})")
+
+            if _final_gate.get("subject") == "market_wide":
+                _mp = data.get("market_pulse")
+                if isinstance(_mp, dict) and isinstance(_mp.get("narrative"), str) and _mp["narrative"].strip():
+                    # T3 post-check on the CURRENT narrative; rewrite + re-check.
+                    _best_title = _lead_title or (data.get("headline") or "")
+                    _new = _rewrite_market_wide_grounded(
+                        data, tape_obj, _final_corpus_companies, _best_title, article_text
+                    )
+                    _candidate = _new if _new else _mp["narrative"]
+                    _vres = overview_grounding.validate_overview(
+                        _candidate, article_text, _final_corpus_companies, tape_obj
+                    )
+                    if not _vres["ok"]:
+                        for _r in _vres["reasons"]:
+                            print(f"  ⚠ grounding post-check violation: {_r}")
+                        # ONE bounded re-ask naming the violation.
+                        _correction = "FIX THESE GROUNDING VIOLATIONS: " + "; ".join(_vres["reasons"])
+                        _reasked = _rewrite_market_wide_grounded(
+                            data, tape_obj, _final_corpus_companies, _best_title,
+                            article_text, extra_correction=_correction
+                        )
+                        if _reasked:
+                            _rcheck = overview_grounding.validate_overview(
+                                _reasked, article_text, _final_corpus_companies, tape_obj
+                            )
+                            if _rcheck["ok"]:
+                                _candidate = _reasked
+                                print("  [grounding post-check] re-ask resolved all violations")
+                            else:
+                                _candidate = overview_grounding.build_minimal_overview(
+                                    tape_obj, _best_title
+                                )
+                                print("  [grounding post-check] re-ask still violating; using minimal grounded template")
+                        else:
+                            _candidate = overview_grounding.build_minimal_overview(
+                                tape_obj, _best_title
+                            )
+                            print("  [grounding post-check] re-ask failed; using minimal grounded template")
+                    elif _new:
+                        print("  [final-lead gate] forced grounded market-wide overview")
+                    _mp["narrative"] = _candidate
+
+            # T4 (scoped to FLAG + LOG): body-ticker direction contradictions.
+            try:
+                _mp2 = data.get("market_pulse")
+                _narr = _mp2.get("narrative") if isinstance(_mp2, dict) else None
+                if isinstance(_narr, str) and _narr.strip():
+                    # SCOPE (decision a, confirmed by Noah): body-ticker
+                    # stale-direction is FLAGGED and LOGGED only, not reframed.
+                    # Revisit promoting this to a full reframe after observing real
+                    # log frequency in production. Full body reframe is deferred.
+                    _body_flags = _body_ticker_direction_flags(_narr, _final_corpus_companies)
+                    for _bf in _body_flags:
+                        print(f"  ⚖ body-ticker direction flag (T4, not reframed): {_bf}")
+            except Exception as e:
+                print(f"  ⚠ body-ticker direction check skipped (non-fatal): {e}")
+        except Exception as e:
+            print(f"  ⚠ final-lead gate skipped (non-fatal): {e}")
 
     # Temporal grounding normalizer (D13, morning + evening, non-fatal). The prompt
     # directive above is not trusted alone: a fresh-published article narrating a
