@@ -252,6 +252,7 @@ def fetch_quote(symbol: str, timeout: int = 8) -> dict | None:
 TAPE_SYMBOLS = {
     "^GSPC": "S&P 500",
     "^IXIC": "Nasdaq Composite",
+    "^DJI": "Dow Jones Industrial Average",
     "^RUT": "Russell 2000",
     "^VIX": "VIX",
 }
@@ -312,8 +313,8 @@ def serialize_tape_snapshot(tape: dict | None, as_of: str | None = None) -> dict
         "vix_level": tape.get("vix_level"),
         "vix_pct": (quotes.get("^VIX") or {}).get("pct"),
         "indices": {
-            # Keys are stable; Dow is included for forward-compat even though the
-            # current TAPE_SYMBOLS set does not fetch ^DJI (it serializes to null).
+            # Keys are stable; a symbol missing from the tape serializes to null
+            # sub-fields rather than dropping the key (read-side stability).
             "sp500": _idx("^GSPC"),
             "nasdaq": _idx("^IXIC"),
             "dow": _idx("^DJI"),

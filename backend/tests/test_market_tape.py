@@ -403,6 +403,7 @@ class SerializeTapeSnapshotTests(unittest.TestCase):
         "quotes": {
             "^GSPC": {"price": 7600.0, "prev": 7500.0, "pct": 1.33},
             "^IXIC": {"price": 25800.0, "prev": 25400.0, "pct": 1.57},
+            "^DJI": {"price": 44100.0, "prev": 43700.0, "pct": 0.92},
             "^RUT": {"price": 2300.0, "prev": 2310.0, "pct": -0.43},
             "^VIX": {"price": 14.2, "prev": 15.0, "pct": -5.33},
         },
@@ -419,7 +420,15 @@ class SerializeTapeSnapshotTests(unittest.TestCase):
         self.assertEqual(snap["indices"]["sp500"], {"pct": 1.33, "level": 7600.0})
         self.assertEqual(snap["indices"]["nasdaq"], {"pct": 1.57, "level": 25800.0})
         self.assertEqual(snap["indices"]["russell"], {"pct": -0.43, "level": 2300.0})
-        # Dow is not in TAPE_SYMBOLS today; key is present, sub-fields null.
+        # Dow is now in TAPE_SYMBOLS; a real ^DJI quote serializes to real values.
+        self.assertEqual(snap["indices"]["dow"], {"pct": 0.92, "level": 44100.0})
+
+    def test_missing_dow_serializes_to_null_subfields(self):
+        # A tape lacking ^DJI still serializes the dow key with null sub-fields
+        # (read-side stability: the key never drops).
+        tape = {k: v for k, v in self.SAMPLE.items()}
+        tape["quotes"] = {s: q for s, q in self.SAMPLE["quotes"].items() if s != "^DJI"}
+        snap = serialize_tape_snapshot(tape)
         self.assertEqual(snap["indices"]["dow"], {"pct": None, "level": None})
 
     def test_none_tape_returns_none(self):
