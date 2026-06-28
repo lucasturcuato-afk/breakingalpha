@@ -2616,6 +2616,13 @@ def run(brief_type="morning"):
                     story_companies=_lead_cos,
                     is_single_name_or_deal=True,  # a single resolved name IS single-name
                     cluster_distinct_sources=0,   # post-gen we cannot recompute breadth; conservative
+                    # KNOWN LIMITATION (decision b, confirmed by Noah): on the
+                    # self-select path the gate may only RELEGATE to market-wide,
+                    # never affirmatively promote a single name, because event-level
+                    # breadth is not recomputable post-generation. This is intended
+                    # conservative behavior; affirmative single-name promotion on this
+                    # path is deferred to the v2 modes build (needs a gen-time breadth
+                    # signal). cluster_distinct_sources=0 here is by design, not a bug.
                     tape=tape_obj,
                     tape_driver_names=_f_drivers,
                     subject_session_pct=_f_pct,
@@ -2677,6 +2684,10 @@ def run(brief_type="morning"):
                 _mp2 = data.get("market_pulse")
                 _narr = _mp2.get("narrative") if isinstance(_mp2, dict) else None
                 if isinstance(_narr, str) and _narr.strip():
+                    # SCOPE (decision a, confirmed by Noah): body-ticker
+                    # stale-direction is FLAGGED and LOGGED only, not reframed.
+                    # Revisit promoting this to a full reframe after observing real
+                    # log frequency in production. Full body reframe is deferred.
                     _body_flags = _body_ticker_direction_flags(_narr, _final_corpus_companies)
                     for _bf in _body_flags:
                         print(f"  ⚖ body-ticker direction flag (T4, not reframed): {_bf}")

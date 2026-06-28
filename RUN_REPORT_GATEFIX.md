@@ -236,3 +236,10 @@ touches.
 - The minimal grounded template wording ("On a quiet tape, ...") is a
   deterministic fallback; confirm the house voice is acceptable for that
   last-resort path.
+
+## Decisions recorded (confirmed by Noah)
+- Decision (b): Known limitation: the self-select path always forces market-wide;
+  affirmative single-name promotion on that path is deferred to the v2 modes build
+  (needs a gen-time breadth signal). The breadth signal is not built now.
+- Decision (a): Body-ticker stale-direction is flagged and logged, not reframed;
+  revisit after observing real log frequency. The reframe is not implemented now.
