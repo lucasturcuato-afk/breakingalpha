@@ -38,6 +38,7 @@ import lead_preselect as lp          # noqa: E402  (client is None without env)
 import market_tape as mt            # noqa: E402  (network is inside functions)
 import temporal_grounding as tg     # noqa: E402  (pure, stdlib-only)
 import prose_quality_guard as pq    # noqa: E402  (pure, stdlib-only)
+import overview_grounding as og     # noqa: E402  (pure, stdlib-only, no I/O at import)
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "lead_pool_2026-06-24.json"
 NARRATION_FIXTURE = (
@@ -496,6 +497,176 @@ class Assertion9_HeadlineTemporalAndProperNoun(unittest.TestCase):
         out, changed, garbled = tg.normalize_relative_time(hl, self.JUN25, self.JUN26)
         self.assertFalse(changed, "a proper-noun-only token must not trigger a rewrite")
         self.assertEqual(out, hl)
+
+
+# ── Phase 2 (gate-on-final-lead): self-select bypass + grounding post-check ───
+#
+# These exercise the deterministic layers that #430 left open on the Gemini
+# self-select path: the overview-subject gate run on the FINAL chosen lead, and
+# the pure grounding post-check (overview_grounding) that catches unsupported
+# entities and tape-claim contradictions and also replaces the D8 fragment bug.
+# The market-wide rewrite re-ask is integration-only (it calls the model) and is
+# NOT asserted here; the gate decision, the post-check, and the minimal grounded
+# template ARE pure and asserted.
+
+# A quiet / divided tape with no single name owning the read (weekend / thin
+# pool shape). Below both materiality thresholds; neutral regime.
+QUIET_TAPE = {
+    "quotes": {
+        "^GSPC": {"price": 7600.0, "prev": 7595.0, "pct": 0.07},
+        "^IXIC": {"price": 25800.0, "prev": 25790.0, "pct": 0.04},
+        "^VIX": {"price": 15.6, "prev": 15.4, "pct": 1.3},
+    },
+    "regime": "neutral",
+    "vix_level": 15.6,
+}
+# A clearly DOWN tape (risk-off) for tape-claim contradiction tests.
+DOWN_TAPE = {
+    "quotes": {
+        "^GSPC": {"price": 7480.0, "prev": 7600.0, "pct": -1.58},
+        "^IXIC": {"price": 25200.0, "prev": 25800.0, "pct": -2.33},
+        "^VIX": {"price": 23.0, "prev": 20.0, "pct": 15.0},
+    },
+    "regime": "risk-off",
+    "vix_level": 23.0,
+}
+
+
+class Assertion10_SelfSelectBypassRepro(unittest.TestCase):
+    """Phase 2 item 1 (THE test that would have caught the prod bug). Mirrors the
+    live dry run: empty deterministic pre-pick, a thin/quiet pool, and a single
+    Gemini-self-selected DEAL lead. On the self-select path #430 never ran the
+    gate. Assert the gate, run on the FINAL chosen single-name subject against a
+    quiet tape, FORCES MARKET-WIDE (the deal is a mention, not the subject)."""
+
+    def test_self_selected_single_name_relegated_on_quiet_tape(self):
+        # Self-select path: a single Gemini-chosen deal lead, no pre-pick gate.
+        # The gate sees one resolved name, a quiet tape, no driver set, and (post-
+        # gen) cannot recompute breadth, so it must default MARKET-WIDE.
+        gate = mt.overview_subject_gate(
+            story_companies=["Acme Robotics"],
+            is_single_name_or_deal=True,
+            cluster_distinct_sources=0,         # post-gen: breadth unrecomputable
+            tape=QUIET_TAPE,
+            tape_driver_names=None,             # no gen-time per-name driver
+            subject_session_pct=None,
+            subject_framing=None,
+        )
+        self.assertEqual(gate["subject"], "market_wide",
+                         "a self-selected single name on a quiet tape must be relegated")
+        self.assertFalse(gate["passed"])
+        # The quiet tape is a binding reason: no single driver owns the read.
+        self.assertFalse(mt.tape_has_material_move(QUIET_TAPE))
+
+    def test_relegated_overview_must_not_center_on_the_deal(self):
+        # The grounded market-wide overview, post-rewrite, must validate clean and
+        # keep the deal to at most a mention. A narrative that is ONLY the single
+        # name is exactly the bug; the minimal grounded template proves a
+        # market-altitude, tape-grounded result is reachable deterministically.
+        minimal = og.build_minimal_overview(QUIET_TAPE, "Acme Robotics raises $400M")
+        res = og.validate_overview(minimal, "acme robotics raises $400m", ["Acme Robotics"], QUIET_TAPE)
+        self.assertTrue(res["ok"], f"minimal grounded overview should validate: {res['reasons']}")
+        # It leads with the tape, not the single name (market altitude).
+        self.assertTrue(minimal.lower().startswith("on a quiet tape"),
+                        "the grounded overview must lead with the tape, not the single name")
+
+
+class Assertion11_PostCheckEntity(unittest.TestCase):
+    """Phase 2 item 2 + the D8 fragment fix."""
+
+    CORPUS = "nvidia posted results. broadcom guided higher. the s&p 500 was mixed."
+    ROSTER = ["Nvidia", "Broadcom"]
+
+    def test_absent_company_is_flagged(self):
+        text = "Acme Robotics surged on no news while Nvidia held flat."
+        bad = og.unsupported_entities(text, self.CORPUS, self.ROSTER)
+        self.assertIn("Acme Robotics", bad,
+                      "an org absent from corpus + roster must be flagged")
+        self.assertNotIn("Nvidia", bad, "a roster org must not be flagged")
+
+    def test_fragment_not_parsed_as_org_western_digital(self):
+        # The D8 bug: the period joined "Western Digital. This" into one phrase.
+        # The sentence-bounded extractor must yield only "Western Digital".
+        text = "Western Digital. This was the read across chips."
+        cands = og.candidate_orgs(text)
+        self.assertIn("Western Digital", cands)
+        self.assertNotIn("Western Digital. This", cands,
+                         "a sentence period must not join two sentences into one org")
+        # And with Western Digital in the roster, nothing should be flagged.
+        bad = og.unsupported_entities(text, "western digital news", ["Western Digital"])
+        self.assertEqual(bad, [], f"no fragment should be flagged, got {bad}")
+
+    def test_fragment_not_parsed_as_org_the_technology(self):
+        text = "The Technology sector led. The market was calm."
+        cands = og.candidate_orgs(text)
+        self.assertNotIn("The Technology", cands,
+                         "'The Technology' must not parse as an org")
+        # No real org named, so nothing flagged even against an empty corpus.
+        self.assertEqual(og.unsupported_entities(text, "", []), [])
+
+
+class Assertion12_PostCheckTape(unittest.TestCase):
+    """Phase 2 item 3: tape-claim consistency."""
+
+    def test_bullish_claim_against_down_tape_flagged(self):
+        text = "Stocks rallied broadly in a resilient session as risk appetite returned."
+        v = og.tape_claim_violations(text, DOWN_TAPE)
+        self.assertTrue(v, "a bullish/rallying claim against a down tape must be flagged")
+
+    def test_tape_consistent_claim_passes(self):
+        text = "Equities fell hard as a risk-off mood gripped the tape."
+        v = og.tape_claim_violations(text, DOWN_TAPE)
+        self.assertEqual(v, [], "a down-tape-consistent claim must pass")
+
+    def test_no_tape_skips_check(self):
+        text = "Stocks rallied broadly."
+        self.assertEqual(og.tape_claim_violations(text, None), [],
+                         "no tape -> cannot validate -> no violation")
+
+    def test_quiet_tape_does_not_flag_direction(self):
+        # A flat/neutral tape is genuinely mixed; a direction word is not a
+        # contradiction there.
+        self.assertEqual(og.tape_claim_violations("Stocks edged higher.", QUIET_TAPE), [])
+
+
+class Assertion13_Brevity(unittest.TestCase):
+    """Phase 2 item 4: a thin pool does not force a long overview; the minimal
+    grounded template is reachable and produces a short, tape-grounded result."""
+
+    def test_minimal_template_is_short_and_grounded(self):
+        out = og.build_minimal_overview(QUIET_TAPE, "Acme Robotics raises $400M")
+        # Short: well under a padded multi-paragraph overview.
+        self.assertLess(len(out), 280, "the thin-pool overview must stay brief")
+        self.assertNotIn("\n\n", out, "the minimal overview is a single short read")
+        # Grounded: it cites the actual tape numbers, not an invented direction.
+        self.assertIn("+0.07%", out,
+                      "the overview must cite the fetched S&P figure")
+        self.assertIn("15.6", out, "the overview must cite the fetched VIX level")
+        # Validates clean against its own corpus + tape.
+        res = og.validate_overview(out, "acme robotics raises $400m", ["Acme Robotics"], QUIET_TAPE)
+        self.assertTrue(res["ok"], f"the minimal overview must self-validate: {res['reasons']}")
+
+
+class Assertion14_FailSafeUnresolvableLead(unittest.TestCase):
+    """Phase 2 item 5: when the final lead name is unresolvable, the decision must
+    default MARKET-WIDE, never a single-name subject. This mirrors the run()
+    fail-safe branch deterministically."""
+
+    def test_unresolvable_lead_defaults_market_wide(self):
+        # The run() fail-safe constructs this gate-shaped dict when no single name
+        # resolves from the generated JSON.
+        final_gate = {"subject": "market_wide", "passed": False,
+                      "reasons": ["final lead name unresolvable; defaulting market-wide"],
+                      "checks": {}}
+        self.assertEqual(final_gate["subject"], "market_wide")
+        self.assertFalse(final_gate["passed"])
+        # And the grounded overview built for that case is market-altitude, not a
+        # single name: even with no story title it leads with the tape.
+        out = og.build_minimal_overview(QUIET_TAPE, None)
+        self.assertTrue(out.lower().startswith("on a quiet tape"),
+                        "an unresolvable-lead overview must lead with the tape, not a name")
+        self.assertEqual(og.unsupported_entities(out, "", []), [],
+                         "the fail-safe overview names no unsupported entity")
 
 
 if __name__ == "__main__":
