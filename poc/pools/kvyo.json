@@ -1,0 +1,64 @@
+{
+  "query": "Klaviyo",
+  "searchQuery": "Klaviyo company news",
+  "fetchedAt": "2026-06-28T05:11:35.346Z",
+  "count": 8,
+  "results": [
+    {
+      "url": "https://www.tipranks.com/news/company-announcements/klaviyo-stockholders-approve-directors-pay-and-auditor",
+      "title": "Klaviyo Stockholders Approve Directors, Pay, and Auditor - TipRanks.com",
+      "summary": "KVYO) ).\n...\nThese voting outcomes reaffirmed the company’s existing board composition and executive pay framework, while extending its audit relationship with Deloitte & Touche LLP for the current fiscal year. The decisions signal continuity in Klaviyo’s governance, financial oversight, and leadership structure, providing stability and predictability for investors and other stakeholders.",
+      "source": "tipranks.com",
+      "publishedAt": "2026-06-09T20:39:52.000Z"
+    },
+    {
+      "url": "https://ecommerce-times.com/klaviyos-new-predictive-send-time-ai-is-lifting-dtc-email-revenue-by-double-digits",
+      "title": "Klaviyo’s New Predictive Send-Time AI Is Lifting DTC Email Revenue by Double Digits – Ecommerce Times",
+      "summary": "Klaviyo’s product team confirmed to Ecommerce Times that the model ingests Shopify order timestamps, browse abandonment events, and Klaviyo-tracked session data to weight predictions. Brands not feeding Klaviyo clean event streams via Shopify’s native integration or a CDP like Segment will see degraded prediction accuracy — a detail that’s caught some operators off guard post-launch.",
+      "source": "ecommerce-times.com",
+      "publishedAt": "2026-06-25T05:34:41.000Z"
+    },
+    {
+      "url": "https://www.marketbeat.com/instant-alerts/klaviyo-nysekvyo-rating-increased-to-strong-buy-at-the-goldman-sachs-group-2026-06-25",
+      "title": "Klaviyo (NYSE:KVYO) Rating Increased to Strong-Buy at The Goldman Sachs Group",
+      "summary": ", reporting EPS of $0.2\n...\nKlaviyo ([NYSE:KVYO](https://www.marketbeat.com/stocks/NYSE/KVYO/) - [Get Free Report](https://www.marketbeat.com/arnreports/ReportTickerOptin.aspx?RegistrationCode=TickerHyperlink&Prefix=NYSE&Symbol=KVYO)) was upgraded by The Goldman Sachs Group to a \"strong-buy\" rating in a note issued to investors on Tuesday, [Zacks.com](http://www.zacks.com/) reports.",
+      "source": "marketbeat.com",
+      "publishedAt": "2026-06-25T10:06:26.000Z"
+    },
+    {
+      "url": "https://www.insidermonkey.com/blog/klaviyo-kvyo-reports-strong-q1-2026-growth-raises-full-year-revenue-guidance-1774696?amp=1",
+      "title": "Klaviyo (KVYO) Reports Strong Q1 2026 Growth, Raises Full-Year Revenue Guidance - Insider Monkey",
+      "summary": "Klaviyo (KVYO\n...\n1 20\n...\n# Klaviyo (KVYO) Reports Strong Q1 2026 Growth, Raises Full-Year Revenue Guidance\n...\nIn a leadership transition, CFO Amanda Whalen announced her decision to step down. She will remain in her role until August 21, and will serve in an advisory capacity through November to ensure a smooth transition while Klaviyo Inc. (NYSE:KVYO) searches for her successor.",
+      "source": "insidermonkey.com",
+      "publishedAt": "2026-06-04T00:00:00.000Z"
+    },
+    {
+      "url": "https://eightx.co/blog/klaviyo-q1-earnings-cfo-read",
+      "title": "Klaviyo's Q1 2026: The Quarter It Started Making Money | Eightx",
+      "summary": "For the quarter ended March 31, 2026, Klaviyo reported revenue of $358.0 million, up 28% from $279.8 million a year earlier. It posted its first positive GAAP operating income of $1.7 million and GAAP net income of $9.0 million, or $0.03 per diluted share, versus a $14.1 million net loss in Q1 2025. The results beat analyst revenue and EPS estimates.",
+      "source": "eightx.co",
+      "publishedAt": "2026-06-13T12:00:00.000Z"
+    },
+    {
+      "url": "https://simplywall.st/stocks/us/software/nyse-kvyo/klaviyo/news/why-klaviyo-kvyo-is-up-104-after-raising-2026-guidance-and-l",
+      "title": "Why Klaviyo (KVYO) Is Up 10.4% After Raising 2026 Guidance And Launching A $500 Million Buyback - Simply Wall St News",
+      "summary": "Why Klaviyo (KVYO) Is Up 10.4% After Raising 2026 Guidance And Launching A $500 Million Buyback - Simply Wall St News\n...\n- Klaviyo recently reported strong Q1 2026 results, with 28% year-over-year revenue growth, its best operating margin since listing, a larger customer base of more than 196,000 accounts, and a newly authorized US$500.00 million share repurchase program.",
+      "source": "simplywall.st",
+      "publishedAt": "2026-06-04T00:00:00.000Z"
+    },
+    {
+      "url": "https://onlinestorenews.com/klaviyo-and-metas-alleged-data-feud-is-rattling-dtc-insiders",
+      "title": "Klaviyo and Meta’s Alleged Data Feud Is Rattling DTC Insiders – Online Store News",
+      "summary": "Klaviyo and Meta’s Alleged Data Feud Is Rattling DTC Insiders – Online Store News",
+      "source": "onlinestorenews.com",
+      "publishedAt": "2026-06-22T23:16:42.000Z"
+    },
+    {
+      "url": "https://ecommerce-times.com/is-klaviyo-quietly-building-a-competing-3pl-data-layer-to-challenge-shopify",
+      "title": "Is Klaviyo Quietly Building a Competing 3PL Data Layer to Challenge Shopify? – Ecommerce Times",
+      "summary": "Klaviyo CEO Andrew Bialecki has said publicly at Shopify Unite and at his own Klaviyo:BOS conference that the company’s long-term vision is to be the “operating system for customer relationships” — language that, depending on how broadly you interpret it, could encompass post-purchase logistics data as naturally as it encompasses email sequences.\n...\nripple effects of these rumors",
+      "source": "ecommerce-times.com",
+      "publishedAt": "2026-06-20T23:08:00.000Z"
+    }
+  ]
+}

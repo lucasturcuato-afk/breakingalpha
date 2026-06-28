@@ -1,0 +1,70 @@
+{
+  "_note": "Reconstructed KVYO web-fallback memo. The live fabricated memo text was not captured, so this fixture reproduces the eight ground-truth claims (4 fabricated + 4 true) the operator reported, citation-decorated and mapped to the REAL re-fetched kvyo pool indices (poc/pools/kvyo.json). Each claim is tagged with truth + the source trace established in Phase 2. This is the shared input for every gate POC.",
+  "pool": "kvyo.json",
+  "claims": [
+    {
+      "id": "c1-upgrade",
+      "text": "Klaviyo recently secured an upgrade from a major investment bank, reflecting growing institutional confidence. [3]",
+      "cited": [3],
+      "truth": "fabricated",
+      "trace": "At generation time the upgrade was vague and uncited (training-prior leak). The re-fetched pool now has [3] = Goldman strong-buy upgrade (2026-06-25), so the SAME claim is now coincidentally grounded. Illustrates pool volatility.",
+      "class": "a-pure-invention-at-gen-time"
+    },
+    {
+      "id": "c2-product",
+      "text": "Klaviyo's new Predictive Send-Time AI is lifting DTC email revenue by double digits. [2]",
+      "cited": [2],
+      "truth": "fabricated",
+      "trace": "Product name 'Predictive Send-Time AI' is taken VERBATIM from headline [2] (ecommerce-times.com, low-cred). Real product is personalized send-time models / Composer. The model is faithfully grounded to a wrong source.",
+      "class": "b-distortion-originating-in-source"
+    },
+    {
+      "id": "c3-feud",
+      "text": "A data feud between Klaviyo and Meta, with data access freezes since March, now threatens tens of thousands of stores and is the single sharpest risk to the thesis. [7]",
+      "cited": [7],
+      "truth": "fabricated",
+      "trace": "Built on headline [7] 'Klaviyo and Meta's ALLEGED Data Feud Is Rattling DTC Insiders' (onlinestorenews.com, low-cred, summary is just the title). Reality = 1-day Jun 12 Meta outage + unrelated April API 401. Model dropped 'alleged', invented 'freezes since March' and 'tens of thousands of stores', elevated to central risk.",
+      "class": "c-conflation-on-thin-low-cred-source"
+    },
+    {
+      "id": "c4-customers",
+      "text": "Klaviyo now serves 167,000 paying customers. [6]",
+      "cited": [6],
+      "truth": "fabricated",
+      "trace": "Pool [6] says 'more than 196,000 accounts'. 167,000 is a stale training-prior number, NOT in any pool result.",
+      "class": "d-stale-invented-figure"
+    },
+    {
+      "id": "t1-financials",
+      "text": "Klaviyo reported Q1 2026 revenue of $358.0 million, up 28% from $279.8 million a year earlier, and posted GAAP net income of $9.0 million. [5]",
+      "cited": [5],
+      "truth": "true",
+      "trace": "Verbatim from [5] (eightx.co): '$358.0 million, up 28% from $279.8 million... GAAP net income of $9.0 million'. 28% also in [6].",
+      "class": "true-multi-source"
+    },
+    {
+      "id": "t2-buyback",
+      "text": "The company raised 2026 guidance and launched a $500 million buyback. [6]",
+      "cited": [6],
+      "truth": "true",
+      "trace": "Verbatim from [6] (simplywall.st): 'Raising 2026 Guidance And Launching A $500 Million Buyback'.",
+      "class": "true-single-source"
+    },
+    {
+      "id": "t3-cfo",
+      "text": "CFO Amanda Whalen announced she will step down, remaining through August 21 and advising through November. [4]",
+      "cited": [4],
+      "truth": "true",
+      "trace": "Verbatim from [4] (insidermonkey.com): 'CFO Amanda Whalen announced her decision to step down. She will remain in her role until August 21... advisory capacity through November'.",
+      "class": "true-single-source"
+    },
+    {
+      "id": "t4-anthropic",
+      "text": "Klaviyo deepened its partnership with Anthropic to embed AI features across its platform. [2]",
+      "cited": [2],
+      "truth": "true",
+      "trace": "Operator confirmed this was TRUE in the live memo, but it is NOT in the current re-fetched pool (temporal drift). Cited [2] does not support it. Included to MEASURE false-positive risk: a true claim absent from the current pool SHOULD be flagged by pool-grounded gates, which is correct behavior for a generator constrained to the pool but a coverage loss to note.",
+      "class": "true-but-absent-from-current-pool"
+    }
+  ]
+}
