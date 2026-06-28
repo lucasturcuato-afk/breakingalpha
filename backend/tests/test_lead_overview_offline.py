@@ -647,6 +647,29 @@ class Assertion13_Brevity(unittest.TestCase):
         self.assertTrue(res["ok"], f"the minimal overview must self-validate: {res['reasons']}")
 
 
+class Assertion15_FallbackRegimeWordMatchesTape(unittest.TestCase):
+    """The minimal template's regime word must match the numbers. The self-select
+    fallback relegates to market-wide on ANY tape, so the template can fire on a
+    material-move day; a hardcoded 'quiet' would then contradict the figures."""
+
+    MATERIAL_TAPE = {
+        "quotes": {"^GSPC": {"pct": -1.4}, "^IXIC": {"pct": -1.8}, "^VIX": {"pct": 15.0}},
+        "vix_level": 22.0,
+        "regime": "risk-off",
+    }
+
+    def test_material_tape_does_not_say_quiet(self):
+        out = og.build_minimal_overview(self.MATERIAL_TAPE, "Federal Reserve Holds Rates")
+        self.assertNotIn("quiet", out.lower(),
+                         "a material-move tape must not be framed as 'quiet'")
+        self.assertIn("-1.40%", out, "the material overview must still cite the S&P figure")
+
+    def test_flat_tape_may_say_quiet(self):
+        out = og.build_minimal_overview(QUIET_TAPE, "Acme Robotics raises $400M")
+        self.assertIn("quiet", out.lower(),
+                      "a flat tape is correctly framed as quiet")
+
+
 class Assertion14_FailSafeUnresolvableLead(unittest.TestCase):
     """Phase 2 item 5: when the final lead name is unresolvable, the decision must
     default MARKET-WIDE, never a single-name subject. This mirrors the run()

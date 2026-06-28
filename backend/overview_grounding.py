@@ -285,8 +285,21 @@ def build_minimal_overview(tape: dict | None, best_story_title: str | None = Non
     if vix_txt:
         bits.append(vix_txt)
 
+    # The regime word must match the numbers. The self-select fallback relegates
+    # to market-wide on ANY tape (decision b), so this template can fire on a
+    # material-move day; a hardcoded "quiet" then contradicts the figures
+    # ("On a quiet tape, the S&P 500 is -1.40%"). Derive the framing from the SAME
+    # materiality signal the gate uses (market_tape.tape_has_material_move), so the
+    # prefix cannot contradict the tape. Lazy import keeps this module standalone.
+    try:
+        from market_tape import tape_has_material_move as _material
+        _is_material = bool(_material(tape))
+    except Exception:
+        _is_material = False
+
     if bits:
-        body = "On a quiet tape, " + ", ".join(bits) + "."
+        prefix = "The tape is moving: " if _is_material else "On a quiet tape, "
+        body = prefix + ", ".join(bits) + "."
     else:
         body = "The tape is quiet with no single driver owning the read."
 
