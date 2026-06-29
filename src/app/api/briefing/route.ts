@@ -303,7 +303,7 @@ export async function GET(request: NextRequest) {
       // replaces select("*") so internal-only columns (e.g. market_tape) stop
       // being serialized to the client. The response shape for every consumed
       // field is unchanged; only unread internal columns are dropped.
-      .select("id, created_at, headline, summary, lead_paragraph, supporting_context, what_to_watch, market_tone, sections, sector_breakdown, top_deals, market_pulse, macro_panel, morning_review")
+      .select("id, created_at, briefing_type, headline, summary, lead_paragraph, supporting_context, what_to_watch, market_tone, sections, sector_breakdown, top_deals, market_pulse, macro_panel")
       .eq("briefing_type", type)
       .neq("headline", "Market Intelligence Unavailable")
       .order("created_at", { ascending: false })
