@@ -297,7 +297,13 @@ export async function GET(request: NextRequest) {
   const [briefingResult, runResult, addendumResult] = await Promise.all([
     supabase
       .from("briefings")
-      .select("*")
+      // Explicit column list: exactly the briefings-row columns the frontend
+      // consumes (morning-brief + evening-wrap readers) plus id/created_at used
+      // by the route itself for output_ids, freshness/age, and ordering. This
+      // replaces select("*") so internal-only columns (e.g. market_tape) stop
+      // being serialized to the client. The response shape for every consumed
+      // field is unchanged; only unread internal columns are dropped.
+      .select("id, created_at, briefing_type, headline, summary, lead_paragraph, supporting_context, what_to_watch, market_tone, sections, sector_breakdown, top_deals, market_pulse, macro_panel")
       .eq("briefing_type", type)
       .neq("headline", "Market Intelligence Unavailable")
       .order("created_at", { ascending: false })
@@ -399,11 +405,11 @@ export async function GET(request: NextRequest) {
   const sections = (safeParseJSON(raw.sections) || {}) as Record<string, unknown>;
   const sectorBreak = (safeParseJSON(raw.sector_breakdown) || {}) as Record<string, unknown>;
 
-  // Market Pulse passthrough (additive — A-Subagent 1). The briefings row
-  // is selected with `*`, so if the `market_pulse` column exists on the
-  // briefings table it will already be on `raw`. We read it defensively here
-  // and expose it under a stable key on the returned `briefing` object so the
-  // frontend can rely on `briefing.market_pulse` regardless of column presence.
+  // Market Pulse passthrough (additive, A-Subagent 1). market_pulse is in the
+  // explicit select above, so when the column exists on the briefings table it
+  // is on `raw`. We read it defensively here and expose it under a stable key on
+  // the returned `briefing` object so the frontend can rely on
+  // `briefing.market_pulse` regardless of column presence.
   const marketPulse = (() => {
     const mp = (raw as Record<string, unknown>).market_pulse;
     if (!mp) return null;

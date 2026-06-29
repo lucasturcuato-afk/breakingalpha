@@ -252,6 +252,7 @@ def fetch_quote(symbol: str, timeout: int = 8) -> dict | None:
 TAPE_SYMBOLS = {
     "^GSPC": "S&P 500",
     "^IXIC": "Nasdaq Composite",
+    "^DJI": "Dow Jones Industrial Average",
     "^RUT": "Russell 2000",
     "^VIX": "VIX",
 }
@@ -287,6 +288,39 @@ def fetch_tape() -> dict | None:
         spx_pct_change=spx["pct"],
     )
     return {"quotes": quotes, "regime": regime, "vix_level": vix["price"]}
+
+
+def serialize_tape_snapshot(tape: dict | None, as_of: str | None = None) -> dict | None:
+    """Serialize the gen-time tape into a stable, structured snapshot for
+    persistence (the v2 Gate 1 prerequisite). Captures per-index pct + level,
+    VIX level + change, the computed regime, and an as_of timestamp. Pure: no
+    network, no recompute. Returns None when there is no usable tape (weekend /
+    thin / fetch failed) so the caller writes null rather than fabricating.
+
+    The shape is read-side stable: keys never change meaning, missing symbols
+    serialize to null sub-fields rather than dropping the key."""
+    if not tape or not isinstance(tape, dict):
+        return None
+    quotes = tape.get("quotes") or {}
+
+    def _idx(sym: str) -> dict:
+        q = quotes.get(sym) or {}
+        return {"pct": q.get("pct"), "level": q.get("price")}
+
+    return {
+        "as_of": as_of,
+        "regime": tape.get("regime"),
+        "vix_level": tape.get("vix_level"),
+        "vix_pct": (quotes.get("^VIX") or {}).get("pct"),
+        "indices": {
+            # Keys are stable; a symbol missing from the tape serializes to null
+            # sub-fields rather than dropping the key (read-side stability).
+            "sp500": _idx("^GSPC"),
+            "nasdaq": _idx("^IXIC"),
+            "dow": _idx("^DJI"),
+            "russell": _idx("^RUT"),
+        },
+    }
 
 
 # ── Overview-subject materiality gate (D2+D3) ───────────────────────────────

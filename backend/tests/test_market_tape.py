@@ -26,6 +26,7 @@ from backend.market_tape import (
     enforce_tape_consistency,
     overview_subject_gate,
     parse_yahoo_daily,
+    serialize_tape_snapshot,
     tape_has_material_move,
 )
 
@@ -392,6 +393,54 @@ class BuildTapeDriverNamesT3(unittest.TestCase):
     def test_sign_ignored_only_magnitude(self):
         out = build_tape_driver_names({"up": 5.0, "down": -5.0})
         self.assertEqual(out, {"up", "down"})
+
+
+class SerializeTapeSnapshotTests(unittest.TestCase):
+    """Persist gen-time tape (v2 Gate 1 prerequisite): the serializer produces a
+    stable structured shape from tape_obj, and None when there is no tape."""
+
+    SAMPLE = {
+        "quotes": {
+            "^GSPC": {"price": 7600.0, "prev": 7500.0, "pct": 1.33},
+            "^IXIC": {"price": 25800.0, "prev": 25400.0, "pct": 1.57},
+            "^DJI": {"price": 44100.0, "prev": 43700.0, "pct": 0.92},
+            "^RUT": {"price": 2300.0, "prev": 2310.0, "pct": -0.43},
+            "^VIX": {"price": 14.2, "prev": 15.0, "pct": -5.33},
+        },
+        "regime": "risk-on",
+        "vix_level": 14.2,
+    }
+
+    def test_serializes_expected_shape(self):
+        snap = serialize_tape_snapshot(self.SAMPLE, as_of="2026-06-28T14:00:00+00:00")
+        self.assertEqual(snap["as_of"], "2026-06-28T14:00:00+00:00")
+        self.assertEqual(snap["regime"], "risk-on")
+        self.assertEqual(snap["vix_level"], 14.2)
+        self.assertEqual(snap["vix_pct"], -5.33)
+        self.assertEqual(snap["indices"]["sp500"], {"pct": 1.33, "level": 7600.0})
+        self.assertEqual(snap["indices"]["nasdaq"], {"pct": 1.57, "level": 25800.0})
+        self.assertEqual(snap["indices"]["russell"], {"pct": -0.43, "level": 2300.0})
+        # Dow is now in TAPE_SYMBOLS; a real ^DJI quote serializes to real values.
+        self.assertEqual(snap["indices"]["dow"], {"pct": 0.92, "level": 44100.0})
+
+    def test_missing_dow_serializes_to_null_subfields(self):
+        # A tape lacking ^DJI still serializes the dow key with null sub-fields
+        # (read-side stability: the key never drops).
+        tape = {k: v for k, v in self.SAMPLE.items()}
+        tape["quotes"] = {s: q for s, q in self.SAMPLE["quotes"].items() if s != "^DJI"}
+        snap = serialize_tape_snapshot(tape)
+        self.assertEqual(snap["indices"]["dow"], {"pct": None, "level": None})
+
+    def test_none_tape_returns_none(self):
+        self.assertIsNone(serialize_tape_snapshot(None))
+        self.assertIsNone(serialize_tape_snapshot({}))
+        self.assertIsNone(serialize_tape_snapshot("not a dict"))
+
+    def test_missing_symbol_serializes_null_subfields(self):
+        snap = serialize_tape_snapshot({"quotes": {}, "regime": "neutral", "vix_level": None})
+        self.assertEqual(snap["indices"]["sp500"], {"pct": None, "level": None})
+        self.assertIsNone(snap["vix_pct"])
+        self.assertEqual(snap["regime"], "neutral")
 
 
 if __name__ == "__main__":
