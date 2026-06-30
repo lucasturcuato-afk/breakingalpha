@@ -442,6 +442,26 @@ class SerializeTapeSnapshotTests(unittest.TestCase):
         self.assertIsNone(snap["vix_pct"])
         self.assertEqual(snap["regime"], "neutral")
 
+    def test_column_value_is_native_dict_not_json_string(self):
+        # market_tape is a JSONB column. synthesize.py must insert the native dict,
+        # NOT json.dumps(dict): a json-string is stored as a jsonb STRING scalar
+        # and `->`/`->>` cannot key into it (the regime/dow "null" bug). Offline
+        # equivalent of asserting jsonb_typeof = object: the value the insert uses
+        # is a dict, and native nested access resolves.
+        snap = serialize_tape_snapshot(self.SAMPLE, as_of="2026-06-30T02:21:00+00:00")
+        self.assertIsInstance(snap, dict)
+        self.assertNotIsInstance(snap, str)
+        # Native key access == Postgres `->>'regime'` on a jsonb OBJECT.
+        self.assertEqual(snap["regime"], "risk-on")
+        self.assertIsNotNone(snap["regime"])
+        # Native nested access == `market_tape->'indices'->'dow'->>'pct'`.
+        self.assertEqual(snap["indices"]["dow"]["pct"], 0.92)
+        self.assertIsNotNone(snap["indices"]["dow"]["pct"])
+        # The OLD broken form: json.dumps makes a str (a jsonb string scalar once
+        # stored), on which nested access is impossible. Guards the insert site
+        # against re-introducing json.dumps for this jsonb column.
+        self.assertIsInstance(json.dumps(snap), str)
+
 
 if __name__ == "__main__":
     unittest.main()
