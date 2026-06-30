@@ -3065,9 +3065,12 @@ def run(brief_type="morning"):
         row_with_extras = {**row, **extras}
         # Ordered insert candidates: with-tape (best), extras-only (existing
         # behavior, preserves market_pulse if the tape column is absent), base.
+        # market_tape is a JSONB column, so pass the native dict (NOT json.dumps):
+        # a json-string would be stored as a jsonb string scalar and `->`/`->>`
+        # could not key into it. The dict is stored as a queryable jsonb object.
         _candidates = []
         if _tape_snapshot is not None:
-            _candidates.append({**row_with_extras, "market_tape": json.dumps(_tape_snapshot)})
+            _candidates.append({**row_with_extras, "market_tape": _tape_snapshot})
         _candidates.append(row_with_extras)
         _candidates.append(row)
         _last_err = None
@@ -3090,7 +3093,7 @@ def run(brief_type="morning"):
     elif _tape_snapshot is not None:
         try:
             insert_resp = supabase.table("briefings").insert(
-                {**row, "market_tape": json.dumps(_tape_snapshot)}
+                {**row, "market_tape": _tape_snapshot}
             ).execute()
         except Exception as ext_err:
             print(f"  ⚠ market_tape insert failed ({ext_err}) - falling back to base row")
