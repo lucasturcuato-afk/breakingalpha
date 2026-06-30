@@ -1986,12 +1986,19 @@ def _tape_facts_block(tape):
 
 
 def _rewrite_market_wide_grounded(data, tape, corpus_companies, relegated_title,
-                                  corpus_text, extra_correction=""):
-    """T2: ONE bounded grounded re-ask that rewrites market_pulse.narrative as a
-    MARKET read characterized ONLY from the fetched tape numbers, with the
-    relegated story demoted to at most a mention. Brevity is explicitly allowed
-    when material is thin. Returns the new narrative string or None on failure.
-    The model call is wired here; it is not exercised by the offline harness."""
+                                  corpus_text, extra_correction="", lead_is_dominant=False):
+    """T1/T2: ONE bounded grounded re-ask that rewrites market_pulse.narrative as
+    a MARKET-WIDE read characterized ONLY from the fetched tape numbers. The hero
+    (Market Pulse) is ALWAYS a synthesis of the whole tape, run regardless of the
+    lead gate (T1). The lead story is woven in as at most a one-line EXAMPLE, never
+    the subject, and is never restated verbatim from the lead block.
+
+    When `lead_is_dominant` is True (the gate PASSED: one event genuinely IS the
+    market, e.g. a Fed shock), the honest market-wide read may CENTER on that story
+    (T4); it is still framed as the market's read, not a single-name writeup, and
+    must not duplicate the lead block's sentences. Brevity is explicitly allowed on
+    a thin pool. Returns the new narrative string or None on failure. The model
+    call is wired here; it is not exercised by the offline harness."""
     roster = ", ".join(sorted({str(c).strip() for c in (corpus_companies or []) if str(c).strip()})[:60])
     facts = _tape_facts_block(tape)
     system = (
@@ -2000,17 +2007,31 @@ def _rewrite_market_wide_grounded(data, tape, corpus_companies, relegated_title,
         "separated by \\n\\n>\"}. No other keys, no prose outside the JSON. Zero "
         "em-dashes; use hyphens, colons, parens."
     )
+    if lead_is_dominant:
+        _lead_clause = (
+            f"- The lead story (\"{(relegated_title or '')[:160]}\") genuinely dominates "
+            "the tape today, so the market-wide read MAY center on it - but as the "
+            "MARKET'S read driven by that event, NOT as a single-name writeup. Do NOT "
+            "restate the lead block's sentences verbatim; the hero is the broad-tape "
+            "synthesis.\n"
+        )
+    else:
+        _lead_clause = (
+            f"- The lead story (\"{(relegated_title or '')[:160]}\") may appear as at most "
+            "a ONE-LINE example, never as the through-line. Do NOT restate the lead "
+            "block verbatim.\n"
+        )
     user = (
-        "The pre-picked lead did NOT clear the market-materiality gate, so the "
-        "overview must be a MARKET-WIDE read, NOT a single-name writeup.\n\n"
+        "The Market Pulse hero is ALWAYS a MARKET-WIDE synthesis of the whole tape, "
+        "NOT a single-name writeup. A single story appears only as an example woven "
+        "in.\n\n"
         f"{facts}\n\n"
         "RULES (absolute):\n"
         "- Characterize the market ONLY from the TAPE FACTS above. Do not assert a "
         "direction the tape does not support; if the tape is quiet, say so.\n"
         "- Any company or story you name MUST come from this corpus roster: "
         f"{roster or '(none)'}. Do not introduce any other named entity.\n"
-        f"- The relegated story (\"{(relegated_title or '')[:160]}\") may appear as ONE "
-        "mention at most, never as the through-line.\n"
+        f"{_lead_clause}"
         "- BREVITY IS ALLOWED: when material is thin, a short overview is correct. Do "
         "NOT pad to a fixed length.\n\n"
         f"{extra_correction}\n\n"
@@ -2637,47 +2658,61 @@ def run(brief_type="morning"):
             print(f"  🧭 Final-lead gate: {_final_gate['subject']} "
                   f"({'; '.join(_final_gate.get('reasons') or [])})")
 
-            if _final_gate.get("subject") == "market_wide":
-                _mp = data.get("market_pulse")
-                if isinstance(_mp, dict) and isinstance(_mp.get("narrative"), str) and _mp["narrative"].strip():
-                    # T3 post-check on the CURRENT narrative; rewrite + re-check.
-                    _best_title = _lead_title or (data.get("headline") or "")
-                    _new = _rewrite_market_wide_grounded(
-                        data, tape_obj, _final_corpus_companies, _best_title, article_text
+            # T1 (decouple Market Pulse): the hero is ALWAYS a market-wide synthesis
+            # of the whole tape, regardless of the lead gate decision. Previously the
+            # grounded rewrite ran ONLY on the relegate branch
+            # (`if subject == "market_wide"`), so a gate-PASS single name was left
+            # owning the hero (the Jun 29 Rocket Lab/Iridium $8B bug). We now run the
+            # grounded market-wide rewrite + grounding post-check on the hero on BOTH
+            # branches. When the gate PASSED (the lead genuinely dominates the tape),
+            # the rewrite MAY center the market-wide read on that event (T4) but never
+            # as a single-name writeup; when relegated, the lead is at most a one-line
+            # example. The lead block (headline/lead_paragraph/supporting_context/
+            # what_to_watch) is NEVER read or written here - only the hero.
+            _lead_is_dominant = (_final_gate.get("subject") != "market_wide")
+            _mp = data.get("market_pulse")
+            if isinstance(_mp, dict) and isinstance(_mp.get("narrative"), str) and _mp["narrative"].strip():
+                # T3 post-check on the CURRENT narrative; rewrite + re-check.
+                _best_title = _lead_title or (data.get("headline") or "")
+                _new = _rewrite_market_wide_grounded(
+                    data, tape_obj, _final_corpus_companies, _best_title, article_text,
+                    lead_is_dominant=_lead_is_dominant,
+                )
+                _candidate = _new if _new else _mp["narrative"]
+                _vres = overview_grounding.validate_overview(
+                    _candidate, article_text, _final_corpus_companies, tape_obj
+                )
+                if not _vres["ok"]:
+                    for _r in _vres["reasons"]:
+                        print(f"  ⚠ grounding post-check violation: {_r}")
+                    # ONE bounded re-ask naming the violation.
+                    _correction = "FIX THESE GROUNDING VIOLATIONS: " + "; ".join(_vres["reasons"])
+                    _reasked = _rewrite_market_wide_grounded(
+                        data, tape_obj, _final_corpus_companies, _best_title,
+                        article_text, extra_correction=_correction,
+                        lead_is_dominant=_lead_is_dominant,
                     )
-                    _candidate = _new if _new else _mp["narrative"]
-                    _vres = overview_grounding.validate_overview(
-                        _candidate, article_text, _final_corpus_companies, tape_obj
-                    )
-                    if not _vres["ok"]:
-                        for _r in _vres["reasons"]:
-                            print(f"  ⚠ grounding post-check violation: {_r}")
-                        # ONE bounded re-ask naming the violation.
-                        _correction = "FIX THESE GROUNDING VIOLATIONS: " + "; ".join(_vres["reasons"])
-                        _reasked = _rewrite_market_wide_grounded(
-                            data, tape_obj, _final_corpus_companies, _best_title,
-                            article_text, extra_correction=_correction
+                    if _reasked:
+                        _rcheck = overview_grounding.validate_overview(
+                            _reasked, article_text, _final_corpus_companies, tape_obj
                         )
-                        if _reasked:
-                            _rcheck = overview_grounding.validate_overview(
-                                _reasked, article_text, _final_corpus_companies, tape_obj
-                            )
-                            if _rcheck["ok"]:
-                                _candidate = _reasked
-                                print("  [grounding post-check] re-ask resolved all violations")
-                            else:
-                                _candidate = overview_grounding.build_minimal_overview(
-                                    tape_obj, _best_title
-                                )
-                                print("  [grounding post-check] re-ask still violating; using minimal grounded template")
+                        if _rcheck["ok"]:
+                            _candidate = _reasked
+                            print("  [grounding post-check] re-ask resolved all violations")
                         else:
                             _candidate = overview_grounding.build_minimal_overview(
                                 tape_obj, _best_title
                             )
-                            print("  [grounding post-check] re-ask failed; using minimal grounded template")
-                    elif _new:
-                        print("  [final-lead gate] forced grounded market-wide overview")
-                    _mp["narrative"] = _candidate
+                            print("  [grounding post-check] re-ask still violating; using minimal grounded template")
+                    else:
+                        _candidate = overview_grounding.build_minimal_overview(
+                            tape_obj, _best_title
+                        )
+                        print("  [grounding post-check] re-ask failed; using minimal grounded template")
+                elif _new:
+                    print(f"  [final-lead gate] grounded market-wide hero "
+                          f"(lead {'centers' if _lead_is_dominant else 'as example'})")
+                _mp["narrative"] = _candidate
 
             # T4 (scoped to FLAG + LOG): body-ticker direction contradictions.
             try:
