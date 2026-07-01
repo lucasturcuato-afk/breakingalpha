@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 
 from ingest import run_ingestion as run_ingest
 from synthesize import run as run_synthesize
+import story_rail
 from deal_extractor import run as run_deal_extractor
 import observe
 import critique
@@ -194,6 +195,21 @@ if __name__ == "__main__":
         except Exception as e:
             _mark_degraded("[3/16] SYNTHESIZE", e)
         print("  [3/16] SYNTHESIZE produced a STUB briefing: run will be surfaced as FAILED")
+
+    # Today's Stories rail selection (Option B). Runs AFTER synthesize so the
+    # brief row exists, and OUTSIDE synthesize.py (parallel sprint owns it).
+    # Picks the ordered rail and persists article IDs on the brief row, deduped
+    # by identity against the prior brief. Soft-fail: the frontend falls back to
+    # the live window query when story_rail_ids is absent, so a failure here
+    # never renders the rail empty.
+    print("\n[STORY RAIL] SELECTION")
+    _t = time.time()
+    try:
+        story_rail.persist_story_rail(brief_type)
+        print(f"  [STORY RAIL] done in {time.time() - _t:.2f}s")
+    except Exception as e:
+        _mark_degraded("[STORY RAIL] SELECTION", e)
+        print(f"  [STORY RAIL] FAILED in {time.time() - _t:.2f}s (frontend falls back to window query): {e}")
 
     # Snapshot lead_preselect's per-run decision log for observability.
     # Populated inside synthesize.run() via preselect_primary_story();
