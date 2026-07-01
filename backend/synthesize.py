@@ -43,11 +43,15 @@ GEMINI_MODEL = "gemini-2.5-flash"
 # PR1 tape-aware materiality lead ranking (three-state, mirrors RELEVANCE_GRADE_MODE):
 #   off    -> the materiality re-rank never runs; selection is exactly as before.
 #   shadow -> the re-rank runs and its divergence vs the shipped lead is LOGGED to
-#             the run decision log; the shipped lead is UNCHANGED (shadow-first).
+#             pipeline_runs.preselect_decision (materiality_* keys); the shipped lead
+#             is UNCHANGED (shadow-first). This is prod-neutral: no served brief moves.
 #   active -> the materiality pick REPLACES the tape-blind pick as the lead.
-# Fails closed to current behavior on any error. Default 'off' until the labeled-day
-# backtest passes on ~8-10 ratified days (see RUN_REPORT_PR1.md).
-MATERIALITY_RANK_MODE = os.environ.get("MATERIALITY_RANK_MODE", "off").strip().lower()
+# Fails closed to current behavior on any error (no tape -> no-op; any exception ->
+# serves the existing lead). DEFAULT 'shadow' during label accrual: it only LOGS the
+# divergence. Promote shadow -> active ONLY when the backtest gate in RUN_REPORT_PR1.md
+# is met (>= 8-10 ratified days INCLUDING >= 2 genuine B/C days). Set the env var to
+# 'off' to disable the shadow computation entirely.
+MATERIALITY_RANK_MODE = os.environ.get("MATERIALITY_RANK_MODE", "shadow").strip().lower()
 if MATERIALITY_RANK_MODE not in ("off", "shadow", "active"):
     print(f"  [materiality-rank] unknown MATERIALITY_RANK_MODE={MATERIALITY_RANK_MODE!r}, "
           "falling back to 'off' (prod-neutral default)")

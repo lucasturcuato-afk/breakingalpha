@@ -115,7 +115,9 @@ material broad tape; we do not claim exact attribution.
 - **Tape filter (inherit from the CSV header):** read only rows whose brief had recorded tape
   (native `market_tape` jsonb object, or a successfully parsed string-tape row); SKIP null-tape
   rows. All rows in this CSV are >= 2026-06-30 and carry a recorded tape.
-- **Currently ratified: 1 row** - `2026-06-30 evening`, `NOAH_RATIFIED_mode = A`
+- **Currently ratified: 1 row** (as of Phase 0 recon; see Phase 2 for the current ratified
+  count, which grew to 2 when the CSV accrued the 07-01 morning row mid-task) -
+  `2026-06-30 evening`, `NOAH_RATIFIED_mode = A`
   (market-wide), `NOAH_RATIFIED_lead = "market-wide tech-led rally (Rocket Lab / Comcast as
   deal examples)"`. The `2026-06-30 morning` row is present but UNRATIFIED (blank
   `NOAH_RATIFIED_*`) and is skipped by the harness.
@@ -138,7 +140,8 @@ cannot lead two consecutive briefs (the Rocket Lab repeat).
 
 ## PHASE 1 - IMPLEMENTATION
 
-All behind `MATERIALITY_RANK_MODE` (off | shadow | active), default **off**. Selection-only:
+All behind `MATERIALITY_RANK_MODE` (off | shadow | active), now default **shadow** (logs the
+divergence, serves the existing lead unchanged; see the flag flip below). Selection-only:
 the #431 final-lead gate, the #436 always-market-wide hero, and the grounding post-check are
 untouched (verified: the diff has no hunk in the overview-subject gate / grounding regions).
 
@@ -185,11 +188,36 @@ One `fetch_tape()` per brief: the tape fetched at selection time is threaded int
 `_maybe_inject_tape_directive(brief_type, system, tape=...)` (new optional param, default None
 → fetch as before), so the grounding path is behaviorally identical and there is no double fetch.
 
-**Shadow-divergence log location:** `lead_preselect._LAST_DECISION_LOG` keys
-`materiality_mode`, `materiality_lead_title`, `materiality_cluster`, `materiality_base_cluster`,
-`materiality_score`, `materiality_base_score`, `materiality_delta`, `materiality_continuity_delta`,
-`materiality_reasons`, `materiality_diverged_from_shipped`, `materiality_prior_lead`. No new
-table, no migration.
+**Shadow-divergence log location + read-back.** The block writes the `materiality_*` keys into
+`lead_preselect._LAST_DECISION_LOG`, which `run.py` snapshots and `observe.record_run` persists
+verbatim into the existing **`pipeline_runs.preselect_decision`** JSONB column (confirmed jsonb;
+no new table, no migration). Keys: `materiality_mode`, `materiality_lead_title`,
+`materiality_cluster`, `materiality_base_cluster`, `materiality_score`, `materiality_base_score`,
+`materiality_delta`, `materiality_continuity_delta`, `materiality_reasons`,
+`materiality_diverged_from_shipped`, `materiality_prior_lead` (plus the existing shipped-lead
+telemetry: `lead_source`, `impact_lead_title`, `impact_lead_cluster`).
+
+Read back what the ranker WOULD have led each day during accrual (SELECT-only):
+
+```sql
+select created_at, brief_type,
+       preselect_decision->>'materiality_mode'                  as mode,
+       preselect_decision->>'materiality_diverged_from_shipped' as diverged,
+       preselect_decision->>'lead_source'                       as shipped_source,
+       preselect_decision->>'impact_lead_title'                 as shipped_lead,
+       preselect_decision->>'materiality_lead_title'            as materiality_would_lead,
+       preselect_decision->>'materiality_cluster'               as materiality_cluster,
+       preselect_decision->>'materiality_base_cluster'          as base_cluster,
+       preselect_decision->'materiality_reasons'                as reasons,
+       preselect_decision->>'materiality_prior_lead'            as prior_lead
+from pipeline_runs
+where preselect_decision ? 'materiality_mode'
+order by created_at desc
+limit 30;
+```
+
+`diverged=true` rows are the days the materiality ranker would have chosen a different lead than
+the one that shipped; those are the cases to eyeball against the recorded tape.
 
 ### T4 - Preservation
 Verified selection-only. The diff touches: the flag block, the selection block, the
@@ -229,6 +257,11 @@ output). Note the 07-01 pool is RECONSTRUCTED from the label row: the base ranke
 confirmed $4.2bn KKR mega-deal rather than the live GIC/Genus micro-cap pick, but the point holds
 (a deal-mode lead corrected to market-wide, and GIC/Genus is itself demoted −16).
 
+**Both currently-ratified days are Mode A (market-wide), so the current 2/2 only tests the
+RELEGATE path, not the PROMOTE path.** A ranker that always relegates to market-wide would also
+score 100% here. The 2/2 is therefore indicative only and does NOT yet validate that the ranker
+correctly promotes a single story when one legitimately should lead. See the go-live gate below.
+
 Prior suites kept green: 102 tests across `test_impact_ranking`, `test_market_tape`,
 `test_lead_overview_offline` (which cover the #431 / #436 / grounding assertions) plus 16 new
 offline tests (`test_materiality_ranking`, `test_materiality_backtest`). ruff clean.
@@ -241,9 +274,14 @@ offline tests (`test_materiality_ranking`, `test_materiality_backtest`). ruff cl
    `MAT_DIRECTION_CONTRADICTION_PENALTY` (4.0), `CONTINUITY_DECAY` (12.0),
    `MAT_MIN_DISTINCT_SOURCES` (6), the `_FOREIGN_MARKERS` / `_MARKET_WIDE_TERMS` vocab, and the
    driver rule (`_MAT_DRIVER_MIN_ABS_PCT` 2.0 / top-3). These are v1 and deliberately tunable.
-2. **Go-live gate:** flip `MATERIALITY_RANK_MODE` off → shadow now (logs divergence, changes
-   nothing served); flip shadow → active ONLY once `tools/materiality_backtest.py` agrees with
-   the ratified label on **~8-10 ratified days**. At n=2 it is not yet conclusive.
+2. **Go-live gate (B/C requirement).** `MATERIALITY_RANK_MODE` is now **shadow** (logs only,
+   nothing served changes). Promote shadow -> active ONLY when the backtest agrees with the
+   ratified labels on **>= 8-10 days AND that label set includes at least 2 genuine B (or C)
+   days where a single story legitimately should lead.** Rationale: all current ratified days
+   are Mode A; a ranker that always relegates to market-wide would also score 100% on an all-A
+   set. The discriminating test is whether the ranker correctly PROMOTES a single story on a
+   B/C day. **An all-A label set, at any size, does NOT satisfy this gate.** The present 2/2 is
+   two Mode-A days and is indicative only (it does not test the promote path).
 3. **Ratify more days:** fill `NOAH_RATIFIED_mode` / `NOAH_RATIFIED_lead` in the labels CSV as
    days accrue (the 06-30 morning row is present but unratified today). Each newly-ratified day
    needs a frozen-pool fixture added under `materiality_pools/` to be graded offline.
@@ -254,8 +292,9 @@ offline tests (`test_materiality_ranking`, `test_materiality_backtest`). ruff cl
 
 ## STATUS
 
-- **HALT:** implementation complete, shadow-first, flag defaults **off**. Draft PR opened; NOT
-  merged; NOT flipped to shadow/active.
+- **HALT:** implementation complete, flag now defaults **shadow** (logs the divergence to
+  `pipeline_runs.preselect_decision`, serves the existing lead unchanged; no served brief moves).
+  Draft PR opened; NOT merged; NOT flipped to active.
 - **REQUIRES LUCAS:** none. No Lucas-protected / propose-only file was edited
   (`briefing/route.ts`, `MemoModal.tsx`, `watchlist-utils.ts`, `WatchlistAddInput.tsx`,
   `trends/page.tsx`, `memo/route.ts` all untouched).
