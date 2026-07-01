@@ -396,6 +396,404 @@ def compute_shadow_lead(
 compute_lead = compute_shadow_lead
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# PR1 - TAPE-AWARE MATERIALITY RE-RANK (shadow-first, behind MATERIALITY_RANK_MODE)
+# ══════════════════════════════════════════════════════════════════════════════
+# WHY: score_clusters proxies importance with coverage-breadth / recency / deal-size
+# and is TAPE-BLIND. On 2026-06-30 an $8B Rocket Lab/Iridium deal led a narrow tech
+# rally; on 2026-07-01 a foreign, rupee-denominated GIC/Genus stake sale led a
+# payrolls-eve conflicted tape. Both are large by the deal-size lens but did NOT move
+# the US tape. This re-rank is a DELTA on top of the base cluster score that rewards
+# stories consistent with where the tape actually moved and demotes pure deal-size
+# that did not.
+#
+# PURE: the tape dict and any per-name session moves are PASSED IN; this module makes
+# no network call and imports no network module. FAIL-SAFE: with NO tape at all
+# (weekend / fetch failure) every materiality delta is zero, so the order is
+# byte-identical to compute_shadow_lead (the continuity decay is the only delta that
+# can still apply, and only when a prior lead title is supplied). When a tape IS
+# present the penalties (US-irrelevance, deal-that-did-not-drive-the-tape) apply at any
+# magnitude and the bonuses only on a material move. All weights are named + tunable;
+# Noah ratifies them.
+
+# Materiality delta weights (tunable; see RUN_REPORT_PR1.md "WHAT NEEDS NOAH").
+# MAT_DEAL_NOT_DRIVER_PENALTY is sized to ~neutralize MEGA_DEAL_BOOST (10.0) so an
+# unconfirmed / non-tape-driving deal falls back to competing on its ORGANIC breadth
+# + recency rather than winning on deal-size alone.
+MAT_DEAL_NOT_DRIVER_PENALTY = 10.0
+MAT_US_IRRELEVANT_PENALTY = 6.0
+MAT_MARKET_WIDE_BONUS = 5.0
+MAT_TAPE_DRIVER_BONUS = 4.0
+MAT_DIRECTION_CONTRADICTION_PENALTY = 4.0
+# Continuity (T2): a cluster whose lead title matches the immediately-prior brief's
+# lead is decayed so the same story cannot lead two consecutive briefs. Large enough
+# to drop a repeated mega-deal below a fresh competitor.
+CONTINUITY_DECAY = 12.0
+
+# Local copies of the driver-selection rule (mirrors market_tape.DRIVER_* so this
+# module stays free of the network-importing market_tape). Keep in sync if tuned.
+_MAT_DRIVER_MIN_ABS_PCT = 2.0
+_MAT_DRIVER_TOP_K = 3
+
+# Pure-deal event themes (from cluster_key sub-bucket) + a market-wide vocabulary.
+_PURE_DEAL_THEMES = frozenset({"ma", "funding", "offering", "ipo"})
+_PURE_DEAL_TYPES = frozenset({
+    "m&a", "mergers & acquisitions", "lbo", "ipo", "funding", "fundraising",
+    "debt financing", "minority stake", "asset sale", "ipo & capital markets",
+    "stake sale", "share sale",
+})
+_MARKET_WIDE_TERMS = (
+    "stocks", "stock market", "markets", "wall street", "s&p 500", "s&p500",
+    "nasdaq", "dow ", "dow jones", "russell", "indexes", "indices", "equities",
+    "benchmark", "broad market", "rally", "selloff", "sell-off", "risk-on",
+    "risk-off",
+)
+# US-irrelevance markers: foreign currency / market copy with no US-ticker anchor.
+_FOREIGN_MARKERS = (
+    "rupee", "₹", "crore", "lakh", "sensex", "nifty", "bse", "nse india",
+    "indian", "india's", " india", "singapore", "yuan", "renminbi", "hong kong",
+    "shanghai", "yen ", "won ", "ringgit", "peso", "real ", "rand ", "baht",
+    "rupiah", "european union antitrust",
+)
+_US_ANCHORS = (
+    "nasdaq", "nyse", "s&p", "sec filing", "8-k", "10-k", "wall street",
+    "federal reserve", "u.s.", "us-listed", "new york",
+)
+
+
+def _cluster_arts(scored_cluster: dict) -> list[dict]:
+    return scored_cluster.get("_articles") or []
+
+
+def _cluster_text(arts: list[dict]) -> str:
+    return " ".join(_text(a) for a in arts)
+
+
+def _cluster_companies(arts: list[dict]) -> set[str]:
+    out: set[str] = set()
+    for a in arts:
+        for c in _parse_list(a.get("companies")):
+            s = str(c or "").strip().lower()
+            if s:
+                out.add(s)
+    return out
+
+
+def _cluster_sub_theme(cluster_key_str: str) -> Optional[str]:
+    # co:<name>:<sub> -> <sub> (may be "sig:..."); macro:*/one:* -> None
+    if cluster_key_str.startswith("co:"):
+        parts = cluster_key_str.split(":", 2)
+        return parts[2] if len(parts) == 3 else None
+    return None
+
+
+def _is_pure_deal_cluster(cluster_key_str: str, arts: list[dict]) -> bool:
+    sub = _cluster_sub_theme(cluster_key_str)
+    if sub in _PURE_DEAL_THEMES:
+        return True
+    for a in arts:
+        if (str(a.get("deal_type") or "").strip().lower()) in _PURE_DEAL_TYPES:
+            return True
+    return False
+
+
+def _is_single_name_cluster(cluster_key_str: str, companies: set[str]) -> bool:
+    # A company cluster with a small resolved roster (<=2 names).
+    return cluster_key_str.startswith("co:") and 1 <= len(companies) <= 2
+
+
+def _is_market_wide_cluster(cluster_key_str: str, text: str) -> bool:
+    if cluster_key_str.startswith("macro:"):
+        return True
+    return any(term in text for term in _MARKET_WIDE_TERMS)
+
+
+def _is_us_irrelevant(text: str) -> bool:
+    has_foreign = any(m in text for m in _FOREIGN_MARKERS)
+    has_us = any(m in text for m in _US_ANCHORS)
+    return has_foreign and not has_us
+
+
+def _driver_names_from_moves(name_session_pct: Optional[dict]) -> set[str]:
+    """Mirror of market_tape.build_tape_driver_names, kept local so impact_ranking
+    imports no network module. Names whose |session move| exceeds the threshold,
+    top-K by magnitude, lower-cased. Empty input -> empty set (fail-safe)."""
+    pairs = []
+    for name, pct in (name_session_pct or {}).items():
+        nm = str(name or "").strip().lower()
+        if not nm:
+            continue
+        try:
+            p = float(pct)
+        except (TypeError, ValueError):
+            continue
+        if abs(p) > _MAT_DRIVER_MIN_ABS_PCT:
+            pairs.append((nm, abs(p)))
+    if not pairs:
+        return set()
+    pairs.sort(key=lambda t: t[1], reverse=True)
+    return {nm for nm, _ in pairs[:_MAT_DRIVER_TOP_K]}
+
+
+def tape_pcts(tape: Optional[dict]) -> dict:
+    """Extract per-index + VIX percents from either a live tape
+    ({"quotes": {sym: {"pct": ..}}}) or a persisted snapshot
+    ({"indices": {"sp500": {"pct": ..}}, "vix_pct": ..}). Pure, never raises.
+    Missing values -> None."""
+    out = {"spx": None, "nasdaq": None, "dow": None, "russell": None, "vix": None}
+    if not isinstance(tape, dict):
+        return out
+
+    def _f(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    quotes = tape.get("quotes")
+    if isinstance(quotes, dict):  # live tape shape
+        out["spx"] = _f((quotes.get("^GSPC") or {}).get("pct"))
+        out["nasdaq"] = _f((quotes.get("^IXIC") or {}).get("pct"))
+        out["dow"] = _f((quotes.get("^DJI") or {}).get("pct"))
+        out["russell"] = _f((quotes.get("^RUT") or {}).get("pct"))
+        out["vix"] = _f((quotes.get("^VIX") or {}).get("pct"))
+    idx = tape.get("indices")
+    if isinstance(idx, dict):  # persisted snapshot shape (overrides if present)
+        out["spx"] = _f((idx.get("sp500") or {}).get("pct")) if out["spx"] is None else out["spx"]
+        out["nasdaq"] = _f((idx.get("nasdaq") or {}).get("pct")) if out["nasdaq"] is None else out["nasdaq"]
+        out["dow"] = _f((idx.get("dow") or {}).get("pct")) if out["dow"] is None else out["dow"]
+        out["russell"] = _f((idx.get("russell") or {}).get("pct")) if out["russell"] is None else out["russell"]
+    if out["vix"] is None:
+        out["vix"] = _f(tape.get("vix_pct"))
+    return out
+
+
+# Materiality thresholds (mirror market_tape.MATERIALITY_* so the two surfaces agree).
+MAT_SPX_ABS_PCT = 1.0
+MAT_VIX_ABS_PCT = 8.0
+MAT_MIN_DISTINCT_SOURCES = 6
+
+
+def tape_is_material(tape: Optional[dict]) -> bool:
+    p = tape_pcts(tape)
+    spx = abs(p["spx"]) if p["spx"] is not None else 0.0
+    vix = abs(p["vix"]) if p["vix"] is not None else 0.0
+    return spx >= MAT_SPX_ABS_PCT or vix >= MAT_VIX_ABS_PCT
+
+
+def tape_is_broad(tape: Optional[dict]) -> bool:
+    """True when >=2 equity indices moved the SAME direction (a broad move a single
+    name is unlikely to own alone). Pure."""
+    p = tape_pcts(tape)
+    signs = [1 if v and v > 0 else (-1 if v and v < 0 else 0)
+             for v in (p["spx"], p["nasdaq"], p["dow"], p["russell"])]
+    pos = sum(1 for s in signs if s > 0)
+    neg = sum(1 for s in signs if s < 0)
+    return pos >= 2 or neg >= 2
+
+
+def _tape_direction(tape: Optional[dict]) -> int:
+    p = tape_pcts(tape)
+    spx = p["spx"]
+    if spx is None:
+        return 0
+    return 1 if spx > 0 else (-1 if spx < 0 else 0)
+
+
+def materiality_delta(scored_cluster: dict, *, tape: Optional[dict],
+                      driver_names: set[str], name_session_pct: Optional[dict]) -> dict:
+    """Pure per-cluster materiality delta. Returns {"delta": float, "reasons": [..]}.
+
+    Two tiers, so the two ratified days (a MATERIAL 06-30 evening and an IMMATERIAL,
+    divided 07-01 morning) both resolve market-wide:
+      - PENALTIES (US-irrelevance, deal-that-did-not-drive-the-tape) apply whenever a
+        tape is PRESENT, regardless of magnitude. A foreign rupee stake sale or a
+        narrow single-name deal that is not the tape's driver should not lead a US
+        brief on a quiet OR a busy day.
+      - BONUSES (market-wide, tape-driver) apply only on a MATERIAL tape, where there
+        is a real move to be consistent with. Conservative: quiet days do not get
+        their ordinary market-wide stories boosted, only clearly-wrong leads demoted.
+
+    FAIL-SAFE: with NO tape at all (weekend / fetch failure) every delta is zero, so
+    the order is identical to compute_shadow_lead."""
+    reasons: list[str] = []
+    if not tape:
+        return {"delta": 0.0, "reasons": ["no tape (no-op)"]}
+
+    key = scored_cluster["cluster_key"]
+    arts = _cluster_arts(scored_cluster)
+    text = _cluster_text(arts)
+    companies = _cluster_companies(arts)
+    distinct_sources = int(scored_cluster.get("distinct_sources") or 0)
+    is_material = tape_is_material(tape)
+    tdir = _tape_direction(tape)
+    name_pct = {str(k).strip().lower(): v for k, v in (name_session_pct or {}).items()}
+
+    is_pure_deal = _is_pure_deal_cluster(key, arts)
+    is_single = _is_single_name_cluster(key, companies)
+    is_driver = bool(companies & driver_names)
+
+    delta = 0.0
+
+    # (1) US-irrelevance [any present tape]: a foreign / non-USD story with no US
+    # anchor cannot own the US tape (GIC/Genus rupee stake sale, 07-01).
+    if _is_us_irrelevant(text):
+        delta -= MAT_US_IRRELEVANT_PENALTY
+        reasons.append(f"US-irrelevant (-{MAT_US_IRRELEVANT_PENALTY})")
+
+    # (2) Deal-size that did not drive the tape [any present tape]: a single-name
+    # pure-deal cluster that is NOT a confirmed tape driver and lacks dominant
+    # cross-source breadth -> demote by ~the mega-deal boost so it competes on organic
+    # merit. A genuinely broadly-covered deal (distinct_sources >= threshold) is
+    # exempt and still leads; a deal confirmed as a driver on a material tape is also
+    # exempt (is_driver). Fires on both the material 06-30 (Rocket Lab) and the
+    # immaterial 07-01 (GIC/Genus) tapes.
+    if (is_pure_deal and is_single and not is_driver
+            and distinct_sources < MAT_MIN_DISTINCT_SOURCES):
+        delta -= MAT_DEAL_NOT_DRIVER_PENALTY
+        reasons.append(f"pure deal, not a tape driver (-{MAT_DEAL_NOT_DRIVER_PENALTY})")
+
+    # (3) Market-wide story on a MATERIAL tape -> reward the broad read.
+    if is_material and _is_market_wide_cluster(key, text):
+        delta += MAT_MARKET_WIDE_BONUS
+        reasons.append(f"market-wide, tape material (+{MAT_MARKET_WIDE_BONUS})")
+
+    # (4) Confirmed tape driver moving WITH a MATERIAL tape -> reward the genuine driver.
+    if is_material and is_driver and tdir != 0:
+        same_dir = False
+        for co in companies:
+            if co in name_pct:
+                try:
+                    csign = 1 if float(name_pct[co]) > 0 else (-1 if float(name_pct[co]) < 0 else 0)
+                except (TypeError, ValueError):
+                    csign = 0
+                if csign != 0 and csign == tdir:
+                    same_dir = True
+        if same_dir:
+            delta += MAT_TAPE_DRIVER_BONUS
+            reasons.append(f"tape driver, direction-consistent (+{MAT_TAPE_DRIVER_BONUS})")
+
+    # (5) A cluster's named mover contradicts a MATERIAL tape direction -> penalty
+    # (a down-name leading an up-tape is not the market-wide story).
+    contradiction = False
+    for co in companies:
+        if is_material and co in name_pct and tdir != 0:
+            try:
+                csign = 1 if float(name_pct[co]) > 0 else (-1 if float(name_pct[co]) < 0 else 0)
+                cmag = abs(float(name_pct[co]))
+            except (TypeError, ValueError):
+                csign, cmag = 0, 0.0
+            if csign != 0 and csign != tdir and cmag >= _MAT_DRIVER_MIN_ABS_PCT and co in driver_names:
+                contradiction = True
+    if contradiction and not _is_market_wide_cluster(key, text):
+        delta -= MAT_DIRECTION_CONTRADICTION_PENALTY
+        reasons.append(f"named mover contradicts tape direction (-{MAT_DIRECTION_CONTRADICTION_PENALTY})")
+
+    return {"delta": round(delta, 3), "reasons": reasons}
+
+
+def _continuity_decay(scored_cluster: dict, now: datetime.datetime,
+                      prior_lead_title: Optional[str]) -> dict:
+    """T2: decay a cluster whose lead article title matches the immediately-prior
+    brief's lead, so the same story cannot lead two consecutive briefs. Fuzzy match
+    on significant title tokens (>=0.6 Jaccard) OR shared content signature. Pure."""
+    if not prior_lead_title:
+        return {"delta": 0.0, "reasons": []}
+    arts = _cluster_arts(scored_cluster)
+    if not arts:
+        return {"delta": 0.0, "reasons": []}
+    key = scored_cluster["cluster_key"]
+    _bucket = key.split(":", 1)[1] if key.startswith("macro:") else None
+    lead = _best_article_in_cluster(arts, now, bucket=_bucket)
+    lead_title = str(lead.get("title") or "")
+
+    def _toks(s: str) -> set[str]:
+        return {w for w in re.findall(r"[a-z0-9$]+", s.lower())
+                if w not in _STOPWORDS and len(w) > 2}
+
+    a, b = _toks(lead_title), _toks(prior_lead_title)
+    if not a or not b:
+        return {"delta": 0.0, "reasons": []}
+    jac = len(a & b) / len(a | b)
+    same_sig = _content_signature(lead) == _content_signature({"title": prior_lead_title})
+    if jac >= 0.6 or same_sig:
+        return {"delta": -CONTINUITY_DECAY,
+                "reasons": [f"repeat of prior brief lead (jaccard={jac:.2f}, -{CONTINUITY_DECAY})"]}
+    return {"delta": 0.0, "reasons": []}
+
+
+def compute_materiality_lead(
+    pool: list[dict],
+    now: datetime.datetime,
+    *,
+    tape: Optional[dict] = None,
+    name_session_pct: Optional[dict] = None,
+    prior_lead_title: Optional[str] = None,
+    mega_deal_urls: Optional[set[str]] = None,
+    asof_date: Optional[datetime.date] = None,
+) -> Optional[dict]:
+    """Tape-aware materiality re-rank of the coverage pool. PURE: tape + per-name
+    session moves are passed in; no network. Returns a result shaped like
+    compute_shadow_lead PLUS 'materiality' (the delta breakdown for the winner) and
+    'base_cluster_key' (what the tape-blind ranker would have picked), or None on an
+    empty pool. Never raises.
+
+    FAIL-SAFE: with no tape / an immaterial tape and no prior_lead_title, every delta
+    is zero and this returns the SAME lead as compute_shadow_lead."""
+    try:
+        if not pool:
+            return None
+        asof_date = asof_date or now.date()
+        recent = recent_tier1_events(asof_date)
+        scored = score_clusters(pool, now, recent_events=recent, mega_deal_urls=mega_deal_urls)
+        if not scored:
+            return None
+        base_top_key = scored[0]["cluster_key"]
+
+        driver_names = _driver_names_from_moves(name_session_pct)
+        adjusted = []
+        for c in scored:
+            md = materiality_delta(c, tape=tape, driver_names=driver_names,
+                                   name_session_pct=name_session_pct)
+            cd = _continuity_decay(c, now, prior_lead_title)
+            total = round(c["score"] + md["delta"] + cd["delta"], 3)
+            rec = dict(c)
+            rec["base_score"] = c["score"]
+            rec["materiality_delta"] = md["delta"]
+            rec["continuity_delta"] = cd["delta"]
+            rec["adjusted_score"] = total
+            rec["materiality_reasons"] = md["reasons"] + cd["reasons"]
+            adjusted.append(rec)
+        adjusted.sort(key=lambda c: -c["adjusted_score"])
+        top = adjusted[0]
+        _bucket = top["cluster_key"].split(":", 1)[1] if top["cluster_key"].startswith("macro:") else None
+        lead = _best_article_in_cluster(top["_articles"], now, bucket=_bucket)
+        return {
+            "article": lead,
+            "cluster_key": top["cluster_key"],
+            "score": top["adjusted_score"],
+            "base_score": top["base_score"],
+            "materiality_delta": top["materiality_delta"],
+            "continuity_delta": top["continuity_delta"],
+            "reason": top["reason"],
+            "materiality_reasons": top["materiality_reasons"],
+            "breadth": {"distinct_sources": top["distinct_sources"],
+                        "article_count": top["article_count"]},
+            "recent_events": sorted(recent),
+            "base_cluster_key": base_top_key,
+            "diverged_from_base": top["cluster_key"] != base_top_key,
+            "top_clusters": [
+                {k: c[k] for k in ("cluster_key", "adjusted_score", "base_score",
+                                   "materiality_delta", "continuity_delta",
+                                   "distinct_sources", "article_count")}
+                for c in adjusted[:5]
+            ],
+        }
+    except Exception as e:
+        logger.warning("impact_ranking: compute_materiality_lead failed: %s", e)
+        return None
+
+
 # ── Coverage-pool + deal helpers (used by the live lead path and telemetry) ──
 _POOL_COLS = ("title, summary, url, source, sector, industry_verticals, companies, "
               "deal_type, relevance_score, published_at, ingested_at")

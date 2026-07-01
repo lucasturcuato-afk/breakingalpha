@@ -1,0 +1,16 @@
+{
+  "_comment": "Frozen candidate pool for the ratified 2026-07-01 morning row. Reconstructed from the CSV brief_actually_led_with + named_movers + press_cause_urls. Divided/immaterial tape (S&P -0.15, no material move). The GIC/Genus lead is a foreign, rupee-denominated ~Rs 955cr (~$115M) micro-cap stake sale: single-name, low breadth, off the US tape. No single-name session % was quantified in the window, so name_session_pct is empty (no confirmed driver). mega_deal_urls holds the one confirmed $1B+ US deal (KKR/EDF $4.2bn).",
+  "session_now_utc": "2026-07-01T13:45:00+00:00",
+  "mega_deal_urls": ["u_kkr1"],
+  "name_session_pct": {},
+  "pool": [
+    {"title": "GIC Group Sells Over 11% Stake in Genus Power for Rs 955.6 Crore", "source": "Reuters", "relevance_score": 9, "companies": ["Genus Power"], "deal_type": "stake sale", "url": "u_genus1", "hours_ago": 5, "summary": "GIC sold an 11% rupee-denominated stake in India's Genus Power for about Rs 955.6 crore in a block deal on the NSE."},
+    {"title": "GIC offloads Genus Power stake in Rs 955 crore India block deal", "source": "Moneycontrol", "relevance_score": 8, "companies": ["Genus Power"], "deal_type": "stake sale", "url": "u_genus2", "hours_ago": 5, "summary": "The Indian micro-cap stake sale was priced in rupees; Genus is an Indian metering company."},
+    {"title": "ADP: US private payrolls rose 98,000 in June, pay held at 4.4%", "source": "Stock Titan", "relevance_score": 8, "companies": [], "url": "u_adp1", "hours_ago": 3, "summary": "ADP said US private payrolls rose 98,000, a soft print ahead of Thursday's nonfarm payrolls; wage growth held at 4.4%."},
+    {"title": "US private payrolls miss as ADP shows 98k jobs added", "source": "MarketWatch", "relevance_score": 8, "companies": [], "url": "u_adp2", "hours_ago": 3, "summary": "The soft ADP payrolls report left the broad market divided ahead of the jobs report; stocks were mixed."},
+    {"title": "KKR to acquire US and Canada EDF power-solutions assets for $4.2bn", "source": "PE Hub", "relevance_score": 8, "companies": ["KKR"], "deal_type": "m&a", "url": "u_kkr1", "hours_ago": 6, "summary": "KKR agreed to buy EDF's US and Canada power-solutions operations for $4.2 billion."},
+    {"title": "FedEx nears $1.4B sale of logistics unit", "source": "WSJ", "relevance_score": 7, "companies": ["FedEx"], "deal_type": "asset sale", "url": "u_fdx1", "hours_ago": 7, "summary": "FedEx is closing in on a $1.4 billion sale of a logistics unit."},
+    {"title": "Taiwan detains Super Micro workers in Nvidia chip-smuggling probe", "source": "Bloomberg", "relevance_score": 8, "companies": ["Super Micro"], "url": "u_smci2", "hours_ago": 4, "summary": "Taiwan authorities detained Super Micro workers in a probe into smuggling of Nvidia chips to China."},
+    {"title": "eBay rejects GameStop partnership proposal", "source": "CNBC", "relevance_score": 6, "companies": ["eBay"], "url": "u_ebay1", "hours_ago": 8, "summary": "eBay turned down a proposal from GameStop."}
+  ]
+}

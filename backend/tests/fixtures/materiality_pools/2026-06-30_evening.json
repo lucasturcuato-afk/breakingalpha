@@ -1,0 +1,15 @@
+{
+  "_comment": "Frozen candidate pool for the ratified 2026-06-30 evening row (keystone). Reconstructed from the CSV brief_actually_led_with + named_movers + press_cause_urls. The tape is NOT here; the backtest reads the persisted tape from the CSV row. published_at/ingested_at are derived by the harness as (session_now - hours_ago). mega_deal_urls preserves the confirmed-$1B+ deal path; name_session_pct is the day's per-name session moves cross-checked from the corpus.",
+  "session_now_utc": "2026-06-30T22:30:00+00:00",
+  "mega_deal_urls": ["u_rklb1", "u_rklb2"],
+  "name_session_pct": {"Super Micro": -8.0},
+  "pool": [
+    {"title": "Rocket Lab Acquires Iridium for $8 Billion to Challenge SpaceX's Starlink", "source": "Reuters", "relevance_score": 9, "companies": ["Rocket Lab"], "deal_type": "m&a", "url": "u_rklb1", "hours_ago": 4, "summary": "Rocket Lab agreed to buy Iridium in an $8 billion cash-and-stock deal."},
+    {"title": "Rocket Lab, Iridium ink $8B cash-and-stock takeover", "source": "Bloomberg", "relevance_score": 9, "companies": ["Rocket Lab"], "deal_type": "m&a", "url": "u_rklb2", "hours_ago": 4, "summary": "The takeover values Iridium at roughly $8 billion."},
+    {"title": "Stocks Rally to Start a Big Holiday Week as Nasdaq climbs", "source": "Yahoo", "relevance_score": 8, "companies": [], "url": "u_rally1", "hours_ago": 3, "summary": "US stocks rallied to open the holiday week, led by megacap tech; the Nasdaq outperformed."},
+    {"title": "Wall Street rallies, Nasdaq leads broad market gains", "source": "MarketWatch", "relevance_score": 8, "companies": [], "url": "u_rally2", "hours_ago": 3, "summary": "The broad market climbed with the Nasdaq in front on tech and memory strength."},
+    {"title": "SK chipmakers commit over $550B to ease 'RAMageddon' memory shortage", "source": "TechCrunch", "relevance_score": 8, "companies": ["SK Hynix"], "url": "u_ram1", "hours_ago": 6, "summary": "South Korean memory makers pledged over $550 billion in investment."},
+    {"title": "Super Micro slides 8% on Taiwan chip-smuggling raid", "source": "FT", "relevance_score": 8, "companies": ["Super Micro"], "url": "u_smci1", "hours_ago": 5, "summary": "Super Micro fell about 8% after a Taiwan chip-smuggling raid."},
+    {"title": "Comcast climbs on NBCUniversal cable spin-off progress", "source": "CNBC", "relevance_score": 7, "companies": ["Comcast"], "url": "u_cmcsa1", "hours_ago": 5, "summary": "Comcast rose as its NBCUniversal cable-network spin-off advanced."}
+  ]
+}
