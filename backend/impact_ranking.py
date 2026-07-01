@@ -397,7 +397,7 @@ compute_lead = compute_shadow_lead
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PR1 — TAPE-AWARE MATERIALITY RE-RANK (shadow-first, behind MATERIALITY_RANK_MODE)
+# PR1 - TAPE-AWARE MATERIALITY RE-RANK (shadow-first, behind MATERIALITY_RANK_MODE)
 # ══════════════════════════════════════════════════════════════════════════════
 # WHY: score_clusters proxies importance with coverage-breadth / recency / deal-size
 # and is TAPE-BLIND. On 2026-06-30 an $8B Rocket Lab/Iridium deal led a narrow tech

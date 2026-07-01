@@ -200,7 +200,7 @@ def main():
     graded = [grade_row(r) for r in rows]
 
     print("=" * 74)
-    print("PR1 materiality backtest — labeled-day agreement (offline, no prod)")
+    print("PR1 materiality backtest - labeled-day agreement (offline, no prod)")
     print("=" * 74)
     gradeable = [g for g in graded if g["status"] == "GRADED"]
     pending = [g for g in graded if g["status"] == "PENDING-POOL"]
@@ -208,7 +208,7 @@ def main():
     for g in graded:
         if g["status"] == "PENDING-POOL":
             print(f"  · {g['date']:<24} PENDING-POOL (ratified={g['ratified_mode']}, "
-                  f"no frozen-pool fixture yet — add one to grade)")
+                  f"no frozen-pool fixture yet - add one to grade)")
             continue
         mark = "AGREE" if g["agrees"] else "DISAGREE"
         print(f"  {'✓' if g['agrees'] else '✗'} {g['date']:<24} "
@@ -235,19 +235,19 @@ def main():
     ok, kg = check_keystone(graded)
     print("-" * 74)
     if ok is None:
-        print(f"  KEYSTONE ({KEYSTONE_DATE}): NOT GRADED (missing row or pool fixture) — FAIL")
+        print(f"  KEYSTONE ({KEYSTONE_DATE}): NOT GRADED (missing row or pool fixture) - FAIL")
         return 1
     if ok:
-        print(f"  KEYSTONE ({KEYSTONE_DATE}): PASS — materiality does NOT lead Rocket Lab; "
+        print(f"  KEYSTONE ({KEYSTONE_DATE}): PASS - materiality does NOT lead Rocket Lab; "
               f"lands market-wide (mode A). lead='{kg['materiality_lead'][:50]}'")
     else:
-        print(f"  KEYSTONE ({KEYSTONE_DATE}): FAIL — materiality lead='{kg['materiality_lead'][:60]}' "
+        print(f"  KEYSTONE ({KEYSTONE_DATE}): FAIL - materiality lead='{kg['materiality_lead'][:60]}' "
               f"mode={kg['materiality_mode']}")
         return 1
     # Fail the run if any graded ratified day disagrees (keeps the gate honest as
     # labels accrue). With the current single ratified day this equals the keystone.
     if n and agree != n:
-        print(f"  RESULT: FAIL — {n - agree} ratified day(s) disagree")
+        print(f"  RESULT: FAIL - {n - agree} ratified day(s) disagree")
         return 1
     print("  RESULT: PASS")
     return 0

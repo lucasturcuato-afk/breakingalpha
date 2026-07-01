@@ -1,18 +1,18 @@
-# RUN_REPORT_PR1 — Tape-aware materiality ranking + continuity (shadow-first)
+# RUN_REPORT_PR1 - Tape-aware materiality ranking + continuity (shadow-first)
 
 Branch: `feat/materiality-ranking` off `origin/main` @ `a24ceefd` (#437, post-#436).
 Mode: shadow-first. Does NOT merge, does NOT flip to active.
 
 ---
 
-## PHASE 0 — RECON (read-only)
+## PHASE 0 - RECON (read-only)
 
 ### 0.1 The lead is chosen TAPE-BLIND, before the tape is fetched
 
 The live lead path is `impact_ranking.compute_lead` (= `compute_shadow_lead`), invoked
 inside the Path-B block in `backend/synthesize.py`.
 
-**Selection (tape-blind) — `backend/synthesize.py:2126-2148`:**
+**Selection (tape-blind) - `backend/synthesize.py:2126-2148`:**
 
 ```python
 2126        impact_pick = None
@@ -37,7 +37,7 @@ does no quote fetch. Its scoring (`impact_ranking.score_clusters`, lines 260-326
 `MEGA_DEAL_BOOST`. All proxy importance with coverage-breadth / recency / deal-size. None
 reference where the market actually moved.
 
-**Tape fetch — `backend/synthesize.py:2342-2345`, ~200 lines LATER:**
+**Tape fetch - `backend/synthesize.py:2342-2345`, ~200 lines LATER:**
 
 ```python
 2342    tape_regime = None
@@ -53,7 +53,7 @@ ranker cannot see the tape. This is the tape-blind ordering.
 **What the tape currently drives (and does NOT):** the fetched `tape_obj` feeds the
 overview-subject materiality gate at `synthesize.py:2347-2436` (D2/D3 + T1/T3/T5 in
 `market_tape.overview_subject_gate`). That gate decides whether the already-chosen lead may
-become the market-wide **hero/overview subject** or is relegated to a MENTION — this is the
+become the market-wide **hero/overview subject** or is relegated to a MENTION - this is the
 #436 decoupling. It does **not** change WHICH story is chosen as the lead block. So on
 06-30/07-01 the hero was correctly market-wide while the lead block still narrated the
 tape-irrelevant deal. PR1 fixes selection; the gate/hero path is untouched.
@@ -96,12 +96,12 @@ resolved `companies[]` / `deal_type` / `sector`:
   signal -> demote. The GIC/Genus rupee stake sale scores LOW because it did not move the US
   tape and is US-irrelevant.
 
-**CANNOT compute yet (out of scope, the largest lift):** true index-weight attribution —
+**CANNOT compute yet (out of scope, the largest lift):** true index-weight attribution -
 decomposing the S&P/Nasdaq move into per-constituent contribution to prove a named story is
 THE driver. We approximate "plausible driver" with direction-consistency + breadth + a
 material broad tape; we do not claim exact attribution.
 
-### 0.4 Labeled CSV — location + format
+### 0.4 Labeled CSV - location + format
 
 - **File:** `pr1_materiality_labels.csv` (currently untracked in the main working tree,
   created 2026-07-01). PR1 copies it into the branch at
@@ -115,7 +115,7 @@ material broad tape; we do not claim exact attribution.
 - **Tape filter (inherit from the CSV header):** read only rows whose brief had recorded tape
   (native `market_tape` jsonb object, or a successfully parsed string-tape row); SKIP null-tape
   rows. All rows in this CSV are >= 2026-06-30 and carry a recorded tape.
-- **Currently ratified: 1 row** — `2026-06-30 evening`, `NOAH_RATIFIED_mode = A`
+- **Currently ratified: 1 row** - `2026-06-30 evening`, `NOAH_RATIFIED_mode = A`
   (market-wide), `NOAH_RATIFIED_lead = "market-wide tech-led rally (Rocket Lab / Comcast as
   deal examples)"`. The `2026-06-30 morning` row is present but UNRATIFIED (blank
   `NOAH_RATIFIED_*`) and is skipped by the harness.
@@ -123,7 +123,7 @@ material broad tape; we do not claim exact attribution.
   The keystone test: on the ratified 06-30 evening row the new ranker must NOT choose the
   single Rocket Lab/Iridium deal as the lead.
 
-### 0.5 Continuity (T2) — reading the prior brief's lead
+### 0.5 Continuity (T2) - reading the prior brief's lead
 
 The evening path already fetches the morning brief's headline for a soft dedup directive
 (`synthesize.py:2285-2325`, `briefings.select("headline, lead_paragraph")` filtered to
@@ -136,14 +136,128 @@ cannot lead two consecutive briefs (the Rocket Lab repeat).
 
 ---
 
-## PHASE 1 — IMPLEMENTATION
+## PHASE 1 - IMPLEMENTATION
 
-_(filled in as T1-T4 land)_
+All behind `MATERIALITY_RANK_MODE` (off | shadow | active), default **off**. Selection-only:
+the #431 final-lead gate, the #436 always-market-wide hero, and the grounding post-check are
+untouched (verified: the diff has no hunk in the overview-subject gate / grounding regions).
 
-## PHASE 2 — BACKTEST HARNESS
+### T1 - Tape-aware materiality score (`backend/impact_ranking.py`)
+`compute_materiality_lead(pool, now, *, tape, name_session_pct, prior_lead_title, mega_deal_urls)`
+is a **pure DELTA** on top of the tape-blind `score_clusters`. The tape dict and any per-name
+session moves are PASSED IN; the module makes no network call and imports no network module.
+Two tiers, so a MATERIAL day (06-30 evening) and an IMMATERIAL divided day (07-01 morning) both
+resolve market-wide:
 
-_(filled in after the harness lands)_
+- **Penalties (any present tape):**
+  - `MAT_US_IRRELEVANT_PENALTY` (6.0): a foreign / non-USD story with no US anchor (rupee /
+    crore / Sensex / "Indian" markers) cannot own the US tape. Demotes GIC/Genus.
+  - `MAT_DEAL_NOT_DRIVER_PENALTY` (10.0, ~neutralizes `MEGA_DEAL_BOOST`): a single-name pure-deal
+    cluster that is NOT a confirmed tape driver AND lacks dominant breadth
+    (`distinct_sources < 6`) falls back to competing on organic breadth + recency. A genuinely
+    broadly-covered deal is exempt and still leads.
+- **Bonuses (material tape only):**
+  - `MAT_MARKET_WIDE_BONUS` (5.0): a market-wide cluster (macro:* or broad-market vocabulary)
+    on a real move.
+  - `MAT_TAPE_DRIVER_BONUS` (4.0): a cluster whose named company is a confirmed driver moving
+    WITH the tape.
+  - `MAT_DIRECTION_CONTRADICTION_PENALTY` (4.0): a named mover contradicting a material tape.
+
+`tape_pcts` reads BOTH the live tape shape (`quotes[^GSPC].pct`) and the persisted snapshot
+shape (`indices.sp500.pct`), so the same code grades gen-time and the backtest.
+
+### T2 - Continuity guard (`_continuity_decay`, `CONTINUITY_DECAY` = 12.0)
+Decays a cluster whose lead-article title matches the immediately-prior brief's lead
+(>=0.6 Jaccard on significant tokens, or a shared content signature), so the same story
+cannot lead two consecutive briefs (the Rocket Lab repeat). Reading the prior lead:
+`synthesize._fetch_prior_brief_lead()` SELECTs the most-recent `briefings.headline` (any type;
+the current brief is not written until after synthesis, so the newest row IS the prior brief).
+
+### T3 - Flag + shadow-first wiring (`backend/synthesize.py`)
+`MATERIALITY_RANK_MODE` mirrors the `RELEVANCE_GRADE_MODE` three-state precedent.
+- **shadow:** runs the re-rank, prints + logs the divergence vs the shipped lead to the run
+  decision log (`lead_preselect._LAST_DECISION_LOG.materiality_*`), serves the existing lead
+  UNCHANGED.
+- **active:** replaces the pick BEFORE the slot-0 hoist + directive build; `lead_source="materiality"`.
+- **off / any error:** current behavior. Fails closed.
+
+One `fetch_tape()` per brief: the tape fetched at selection time is threaded into
+`_maybe_inject_tape_directive(brief_type, system, tape=...)` (new optional param, default None
+→ fetch as before), so the grounding path is behaviorally identical and there is no double fetch.
+
+**Shadow-divergence log location:** `lead_preselect._LAST_DECISION_LOG` keys
+`materiality_mode`, `materiality_lead_title`, `materiality_cluster`, `materiality_base_cluster`,
+`materiality_score`, `materiality_base_score`, `materiality_delta`, `materiality_continuity_delta`,
+`materiality_reasons`, `materiality_diverged_from_shipped`, `materiality_prior_lead`. No new
+table, no migration.
+
+### T4 - Preservation
+Verified selection-only. The diff touches: the flag block, the selection block, the
+`_fetch_prior_brief_lead` helper, the optional `tape=` param on `_maybe_inject_tape_directive`,
+and the single tape-thread line. No hunk in `overview_subject_gate` / `build_overview_subject_directive`
+/ `enforce_tape_consistency` (the one `enforce_tape_consistency` line in the diff is an unchanged
+docstring context line). No Lucas-protected / propose-only file touched.
+
+## PHASE 2 - BACKTEST HARNESS
+
+`tools/materiality_backtest.py` - fully offline (NO prod, NO Gemini, NO network).
+
+- Reads ratified rows from `backend/tests/fixtures/pr1_materiality_labels.csv`
+  (`NOAH_RATIFIED_mode` set AND a recorded tape; null-tape and unratified rows skipped).
+- For each day: loads the PERSISTED tape from the CSV row + a FROZEN candidate pool from
+  `backend/tests/fixtures/materiality_pools/<date_session>.json` (reconstructed from the row's
+  `brief_actually_led_with` + `named_movers` + `press_cause_urls`).
+- Runs the tape-blind base ranker and the materiality ranker, classifies each lead as mode A
+  (market-wide) or B (single-name/deal), prints per-day agreement.
+- Newly-ratified days are auto-picked-up once their pool fixture is added (a ratified row with
+  no fixture is reported `PENDING-POOL`, not a failure).
+
+**Keystone (06-30 evening, ratified mode A):** PASS - the materiality ranker does NOT lead the
+single Rocket Lab/Iridium deal (base picks it at 18.1 via the mega-deal boost; materiality demotes
+it −10 to 8.1) and lands market-wide ("Stocks Rally to Start a Big Holiday Week"), matching the
+ratified market-wide read.
+
+**Per-day agreement (currently ratified):**
+
+| date_session | ratified | base lead | materiality lead | agree |
+|---|---|---|---|---|
+| 2026-06-30 evening | A | Rocket Lab/Iridium $8B (deal) | Broad rally / market-wide | ✓ A |
+| 2026-07-01 morning | A | KKR/EDF $4.2bn (deal) | ADP payrolls / market-wide | ✓ A |
+
+Agreement: **2/2 (100%)**. With n=2 this is **indicative, not conclusive** (stated in the harness
+output). Note the 07-01 pool is RECONSTRUCTED from the label row: the base ranker there leads the
+confirmed $4.2bn KKR mega-deal rather than the live GIC/Genus micro-cap pick, but the point holds
+(a deal-mode lead corrected to market-wide, and GIC/Genus is itself demoted −16).
+
+Prior suites kept green: 102 tests across `test_impact_ranking`, `test_market_tape`,
+`test_lead_overview_offline` (which cover the #431 / #436 / grounding assertions) plus 16 new
+offline tests (`test_materiality_ranking`, `test_materiality_backtest`). ruff clean.
 
 ## WHAT NEEDS NOAH
 
-_(final section)_
+1. **Ratify the score weights / thresholds** (all named constants in `impact_ranking.py`):
+   `MAT_DEAL_NOT_DRIVER_PENALTY` (10.0), `MAT_US_IRRELEVANT_PENALTY` (6.0),
+   `MAT_MARKET_WIDE_BONUS` (5.0), `MAT_TAPE_DRIVER_BONUS` (4.0),
+   `MAT_DIRECTION_CONTRADICTION_PENALTY` (4.0), `CONTINUITY_DECAY` (12.0),
+   `MAT_MIN_DISTINCT_SOURCES` (6), the `_FOREIGN_MARKERS` / `_MARKET_WIDE_TERMS` vocab, and the
+   driver rule (`_MAT_DRIVER_MIN_ABS_PCT` 2.0 / top-3). These are v1 and deliberately tunable.
+2. **Go-live gate:** flip `MATERIALITY_RANK_MODE` off → shadow now (logs divergence, changes
+   nothing served); flip shadow → active ONLY once `tools/materiality_backtest.py` agrees with
+   the ratified label on **~8-10 ratified days**. At n=2 it is not yet conclusive.
+3. **Ratify more days:** fill `NOAH_RATIFIED_mode` / `NOAH_RATIFIED_lead` in the labels CSV as
+   days accrue (the 06-30 morning row is present but unratified today). Each newly-ratified day
+   needs a frozen-pool fixture added under `materiality_pools/` to be graded offline.
+4. **Optional accuracy lift (follow-up, not in this PR):** feed gen-time per-name session moves
+   into the shadow ranker (`name_session_pct`) via `fetch_quote` / `_lead_session_move` so the
+   driver bonus + contradiction penalty fire live; today the gen path passes `None` (conservative:
+   deals are demoted when the tape is material rather than confirmed as drivers).
+
+## STATUS
+
+- **HALT:** implementation complete, shadow-first, flag defaults **off**. Draft PR opened; NOT
+  merged; NOT flipped to shadow/active.
+- **REQUIRES LUCAS:** none. No Lucas-protected / propose-only file was edited
+  (`briefing/route.ts`, `MemoModal.tsx`, `watchlist-utils.ts`, `WatchlistAddInput.tsx`,
+  `trends/page.tsx`, `memo/route.ts` all untouched).
+- **REQUIRES MIGRATION:** none. The shadow divergence rides the existing in-memory run decision
+  log; no schema change.
