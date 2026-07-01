@@ -83,6 +83,25 @@ function termOverlap(a: Set<string>, b: Set<string>): number {
 
 const MATCH_THRESHOLD = 2;
 
+function alnum(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+// True when the expand "summary" is just the headline restated. Google News
+// headline-only rows store the title back as the RSS description, so after
+// stripHtml the body echoes the title (collapsing a " - Source" suffix to a
+// space, sometimes with CJK bracket artifacts). We compare alphanumeric-only
+// forms so those artifacts don't defeat the match, and require near-equal
+// length so a real full-text summary that merely opens with the headline is
+// NOT suppressed. Defect #4 render half: kill the echo/blank on its own.
+function isHeadlineEcho(summary: string, title: string): boolean {
+  const s = alnum(summary);
+  const t = alnum(title);
+  if (t.length < 12 || s.length === 0) return false;
+  const [shorter, longer] = s.length <= t.length ? [s, t] : [t, s];
+  return longer.startsWith(shorter) && longer.length - shorter.length <= 8;
+}
+
 export interface DCStoryRowProps {
   story: StoryData;
   index: number;
@@ -104,6 +123,12 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
       : story.completeness === "summary" ? "Summary"
       : story.completeness === "headline" ? "Headline only"
       : null;
+
+  // Expand body: the real summary, unless it is null or merely the headline
+  // restated (defect #4). In that case bodyText is empty and we render a clean
+  // "Headline only" note instead of a blank panel or the title echoed back.
+  const cleanedSummary = story.summary ? stripHtml(story.summary) : "";
+  const bodyText = isHeadlineEcho(cleanedSummary, story.title) ? "" : cleanedSummary.trim();
 
   return (
     <div
@@ -231,7 +256,7 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
       >
         {expanded && (
           <>
-            {story.summary && (
+            {bodyText ? (
               <p
                 className="font-sans"
                 style={{
@@ -241,8 +266,21 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
                   margin: "14px 0 10px",
                 }}
               >
-                {stripHtml(story.summary).slice(0, 480)}
-                {stripHtml(story.summary).length > 480 ? "…" : ""}
+                {bodyText.slice(0, 480)}
+                {bodyText.length > 480 ? "…" : ""}
+              </p>
+            ) : (
+              <p
+                className="font-sans"
+                style={{
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                  color: "var(--text-faint)",
+                  fontStyle: "italic",
+                  margin: "14px 0 10px",
+                }}
+              >
+                Headline only. Open the source for the full story.
               </p>
             )}
 

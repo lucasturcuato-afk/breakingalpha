@@ -9,6 +9,7 @@ import { ShareButton } from "@/components/brief/share-button";
 import { DCStoryRow } from "@/components/brief/dc-story-row";
 import WatchlistBriefSection from "@/components/brief/WatchlistBriefSection";
 import type { WatchlistBriefSection as WatchlistSectionData } from "@/lib/watchlist-brief";
+import { sessionIngestFloor, publishedFloor, storiesHeadingLabel } from "@/lib/story-rail-window";
 import { DCAnalystSection } from "@/components/brief/dc-analyst-section";
 import { DCSectorSignals } from "@/components/brief/dc-sector-signals";
 import MacroPanel, { type MacroPanelData } from "@/components/brief/MacroPanel";
@@ -410,32 +411,34 @@ export default function MorningBriefPage() {
 
     (async () => {
       try {
-        const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-        const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+        // Session-window partition (defect #1): anchor on the brief's own
+        // created_at and floor the ingest window at the LAST evening session,
+        // so the morning rail cannot share rows with the evening wrap. Falls
+        // back to now() before the briefing has loaded.
+        const anchorIso = briefing?.created_at ?? new Date().toISOString();
+        const ingestFloor = await sessionIngestFloor(getSupabase(), "morning", anchorIso);
         // Published-date floor so stale items (date-less or weeks old) never
         // surface on the fresh story rail. NULL published_at is excluded by gte.
-        const publishedFloor7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const publishedFloor7d = publishedFloor(anchorIso);
 
-        let { data: articles } = await getSupabase()
+        // relevance_score is saturated at the top (see WD: signal saturation),
+        // so published_at desc is the deterministic tiebreak within the tie
+        // pool instead of arbitrary physical row order.
+        const { data: articles } = await getSupabase()
           .from("articles")
           .select("id, title, source, sector, sentiment, summary, content, published_at, ingested_at, url, companies, relevance_score")
-          .gte("ingested_at", cutoff24h)
+          .gte("ingested_at", ingestFloor)
+          .lte("ingested_at", anchorIso)
           .gte("published_at", publishedFloor7d)
           .order("relevance_score", { ascending: false })
+          .order("published_at", { ascending: false })
           .limit(8);
 
-        let label = "Today's Stories";
-        if ((articles?.length ?? 0) < 3) {
-          const { data: fallback } = await getSupabase()
-            .from("articles")
-            .select("id, title, source, sector, sentiment, summary, content, published_at, ingested_at, url, companies, relevance_score")
-            .gte("ingested_at", cutoff48h)
-            .gte("published_at", publishedFloor7d)
-            .order("relevance_score", { ascending: false })
-            .limit(8);
-          articles = fallback;
-          label = "Recent Stories";
-        }
+        // Quiet-session path: if the in-window set is thin we keep it and
+        // relabel to "Recent Stories" rather than widening the window, which
+        // is what reintroduced the cross-brief overlap in the first place.
+        const quiet = (articles?.length ?? 0) < 3;
+        const label = storiesHeadingLabel(briefing?.created_at, "Today's Stories", quiet);
         if (cancelled) return;
         setStoriesLabel(label);
 
@@ -488,7 +491,7 @@ export default function MorningBriefPage() {
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [reloadKey, briefing?.created_at]);
 
   // Active theses count (stats bar). Independent fetch — if it 503s
   // (Supabase blip) the rest of the brief renders normally.
