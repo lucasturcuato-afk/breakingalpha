@@ -40,6 +40,19 @@ supabase_admin = (
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 GEMINI_MODEL = "gemini-2.5-flash"
 
+# PR1 tape-aware materiality lead ranking (three-state, mirrors RELEVANCE_GRADE_MODE):
+#   off    -> the materiality re-rank never runs; selection is exactly as before.
+#   shadow -> the re-rank runs and its divergence vs the shipped lead is LOGGED to
+#             the run decision log; the shipped lead is UNCHANGED (shadow-first).
+#   active -> the materiality pick REPLACES the tape-blind pick as the lead.
+# Fails closed to current behavior on any error. Default 'off' until the labeled-day
+# backtest passes on ~8-10 ratified days (see RUN_REPORT_PR1.md).
+MATERIALITY_RANK_MODE = os.environ.get("MATERIALITY_RANK_MODE", "off").strip().lower()
+if MATERIALITY_RANK_MODE not in ("off", "shadow", "active"):
+    print(f"  [materiality-rank] unknown MATERIALITY_RANK_MODE={MATERIALITY_RANK_MODE!r}, "
+          "falling back to 'off' (prod-neutral default)")
+    MATERIALITY_RANK_MODE = "off"
+
 MORNING_SYSTEM = """You are a senior investment banking analyst preparing the daily morning briefing for a capital markets team.
 
 HOUSE VOICE (highest priority, applies to every field; overrides any phrasing primed elsewhere in this prompt): write like a sharp analyst with a view, not a wire feed. (1) Never narrate who is watching, monitoring, observing, gauging, awaiting, or focusing on something, and never substitute 'analysts will focus on X' for an actual view: state the consequence or what is at stake directly. (2) Open market_pulse.narrative with an analytical through-line claim, never with 'the market is / closed [mood word]' and never with an index recap (the index moves may appear later in the body, just not as the opening line). The sentiment_word still carries the mood and still matches the prior-close regime; the opening line of the narrative carries the argument.
@@ -1349,7 +1362,31 @@ def _build_morning_tape_directive(tape: dict) -> str:
     return "\n".join(lines) + "\n\n"
 
 
-def _maybe_inject_tape_directive(brief_type, system):
+def _fetch_prior_brief_lead():
+    """PR1 continuity guard (T2): read the immediately-prior brief's headline (any
+    type) so the materiality re-rank can decay a lead that already led last brief.
+    The current brief is not written until after synthesis, so the most-recent
+    briefings row IS the prior brief. Read-only; soft-fail to None so the guard is
+    simply skipped when the lookup fails."""
+    try:
+        resp = (
+            supabase.table("briefings")
+            .select("headline, briefing_type, created_at")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if resp.data:
+            headline = (resp.data[0].get("headline") or "").strip()
+            if headline:
+                print(f"  🔗 Prior brief lead (continuity): {headline[:70]}")
+                return headline
+    except Exception as e:
+        print(f"  ⚠ prior-brief lead lookup failed (non-fatal): {e}")
+    return None
+
+
+def _maybe_inject_tape_directive(brief_type, system, tape=None):
     """Fetch the latest tape and prepend the surface-appropriate grounding block.
 
     Returns (system, tape_regime, tape). `tape` is the raw fetched tape dict (or
@@ -1359,16 +1396,20 @@ def _maybe_inject_tape_directive(brief_type, system):
       - morning uses _build_morning_tape_directive (prior-session-close framing,
         backward-bound word / tone, forward-free what_to_watch).
 
+    `tape` may be passed in by the caller (PR1 hoists a single fetch to lead-
+    selection time so the materiality re-rank and this grounding path share ONE
+    fetch); when None it is fetched here exactly as before.
+
     Soft-fail (identical to the original evening path): on a fetch error or an
     unusable tape, the system is returned UNCHANGED and tape_regime is None, so
     the post-parse enforce_tape_consistency backstop nulls sentiment_word rather
     than shipping a biased default. Never injects a block without a tape.
     """
-    tape = None
-    try:
-        tape = market_tape.fetch_tape()
-    except Exception as e:
-        print(f"  ⚠ tape fetch failed (non-fatal): {e}")
+    if tape is None:
+        try:
+            tape = market_tape.fetch_tape()
+        except Exception as e:
+            print(f"  ⚠ tape fetch failed (non-fatal): {e}")
     if not tape:
         print(f"  ⚠ tape unavailable - {brief_type} synthesis runs ungrounded; sentiment_word will be nulled")
         return system, None, None
@@ -2112,6 +2153,11 @@ def run(brief_type="morning"):
     preselected = None
     preselect_directive = None
     lead_source = "gemini"
+    # PR1: the tape fetched once here (shadow/active only) is threaded into the
+    # grounding path below so the whole brief makes exactly ONE fetch_tape() call.
+    _materiality_tape = None
+    _now = datetime.now(timezone.utc)
+    _pool = None
     try:
         from lead_preselect import preselect_primary_story, build_preselect_directive
 
@@ -2126,7 +2172,6 @@ def run(brief_type="morning"):
         impact_pick = None
         try:
             import impact_ranking
-            _now = datetime.now(timezone.utc)
             _pool = impact_ranking.fetch_coverage_pool(supabase, _now)
             _impact = (
                 impact_ranking.compute_lead(
@@ -2146,6 +2191,60 @@ def run(brief_type="morning"):
 
         preselected = impact_pick or deal_pick
         lead_source = "impact" if impact_pick else ("deal_preselect" if deal_pick else "gemini")
+
+        # PR1: tape-aware materiality re-rank (shadow-first, behind MATERIALITY_RANK_MODE).
+        # It shares the ONE tape fetch with the grounding path below (threaded via
+        # _materiality_tape). SHADOW logs what it WOULD pick vs the shipped lead and
+        # leaves `preselected` unchanged; ACTIVE replaces it BEFORE the hoist +
+        # directive build. Selection-only: the #431 gate, the #436 always-market-wide
+        # hero, and the grounding post-check are untouched. Fails closed on any error.
+        if MATERIALITY_RANK_MODE != "off" and brief_type in ("morning", "evening"):
+            try:
+                import impact_ranking as _ir
+                try:
+                    _materiality_tape = market_tape.fetch_tape()
+                except Exception as _te:
+                    print(f"  ⚠ materiality tape fetch failed (non-fatal): {_te}")
+                    _materiality_tape = None
+                _prior_lead = _fetch_prior_brief_lead()
+                _mat = _ir.compute_materiality_lead(
+                    _pool, _now, tape=_materiality_tape,
+                    prior_lead_title=_prior_lead,
+                    mega_deal_urls=_ir._mega_deal_urls(supabase, _now),
+                ) if _pool else None
+                if _mat and _mat.get("article"):
+                    _mat_title = str(_mat["article"].get("title") or "")[:200]
+                    _shipped_title = str((preselected or {}).get("title") or "")[:200]
+                    _diverged = _mat_title[:80].lower() != _shipped_title[:80].lower()
+                    print(f"  🧪 [materiality:{MATERIALITY_RANK_MODE}] would lead "
+                          f"{_mat['cluster_key']}: {_mat_title[:70]} (diverged={_diverged})")
+                    try:
+                        import lead_preselect as _lp2
+                        _lp2._LAST_DECISION_LOG.update({
+                            "materiality_mode": MATERIALITY_RANK_MODE,
+                            "materiality_lead_title": _mat_title,
+                            "materiality_cluster": _mat["cluster_key"],
+                            "materiality_base_cluster": _mat.get("base_cluster_key"),
+                            "materiality_score": _mat.get("score"),
+                            "materiality_base_score": _mat.get("base_score"),
+                            "materiality_delta": _mat.get("materiality_delta"),
+                            "materiality_continuity_delta": _mat.get("continuity_delta"),
+                            "materiality_reasons": _mat.get("materiality_reasons"),
+                            "materiality_diverged_from_shipped": _diverged,
+                            "materiality_prior_lead": _prior_lead,
+                        })
+                    except Exception:
+                        pass
+                    if MATERIALITY_RANK_MODE == "active":
+                        preselected = dict(_mat["article"])
+                        preselected["_preselect_reason"] = f"materiality:{_mat['cluster_key']}"
+                        preselected["_impact_score"] = _mat.get("score")
+                        preselected["_impact_breadth"] = _mat.get("breadth")
+                        preselected["_impact_cluster"] = _mat["cluster_key"]
+                        lead_source = "materiality"
+                        print(f"  ✅ [materiality:active] lead replaced -> {_mat['cluster_key']}")
+            except Exception as _me:
+                print(f"  ⚠ materiality re-rank skipped (non-fatal, keeping shipped lead): {_me}")
 
         if preselected:
             # Hoist into slot 0 so the selector/prompt see it first.
@@ -2342,7 +2441,8 @@ def run(brief_type="morning"):
     tape_regime = None
     tape_obj = None
     if brief_type in ("morning", "evening"):
-        system, tape_regime, tape_obj = _maybe_inject_tape_directive(brief_type, system)
+        system, tape_regime, tape_obj = _maybe_inject_tape_directive(
+            brief_type, system, tape=_materiality_tape)
 
     # --- Overview-subject materiality gate (D2+D3) -------------------------------
     # Break the inheritance where the market_pulse overview subject = the pre-picked
