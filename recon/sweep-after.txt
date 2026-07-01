@@ -1,0 +1,112 @@
+
+##### KVYO (query "Klaviyo") #####
+  canonicalName (display/payload) : "Klaviyo"
+  heuristicGuess (query-derived)  : "Klaviyo"
+  classifySubject (FILTER MATCH KEY): "Klaviyo"   <-- what on-entity actually compares against
+  onEntityCount=8  sectorContext=0  poolSize=8
+    [ON ] (substr>=6) Klaviyo AI Agents Take On the Campaign, the Ticket, and Social Growth - Klav
+    [ON ] (substr>=6) Klaviyo opens Composer beta & expands Customer Agent
+    [ON ] (substr>=6) Lightspeed and Klaviyo launch integration to empower merchants with marketin
+    [ON ] (substr>=6) Klaviyo (KVYO) Reports Strong Q1 2026 Growth, Raises Full-Year Revenue Guida
+    [ON ] (substr>=6) Klaviyo Launches AI Agents That Work Together to Drive Revenue for Consumer 
+    [ON ] (substr>=6) Klaviyo unveils new capabilities across Composer & Customer Agents at K:LDN 
+    [ON ] (substr>=6) Klaviyo CEO: Infrastructure companies will lead this new era
+    [ON ] (substr>=6) Klaviyo Launches AI Agents that Work Together to Drive Revenue for Consumer 
+
+##### LSBK (query "Lake Shore Bancorp") #####
+  canonicalName (display/payload) : "Shore"
+  heuristicGuess (query-derived)  : "Lake Shore Bancorp"
+  classifySubject (FILTER MATCH KEY): "Lake Shore Bancorp"   <-- what on-entity actually compares against
+  onEntityCount=3  sectorContext=5  poolSize=8
+    [ON ] (bigram) Brautigam exercises options in Lake Shore Bancorp | LSBK Insider Trading
+    [ON ] (bigram) WSFS Financial (NASDAQ:WSFS) & Lake Shore Bancorp (NASDAQ:LSBK) Financial Su
+    [ON ] (bigram) Financial Contrast: Lake Shore Bancorp (NASDAQ:LSBK) and WSFS Financial (NAS
+    [ctx] Shore Bancshares, Inc. Announces Appointment of B. Scot Ebron as
+    [ctx] LakeShore Biopharma completes go-private at US$0.066 | LSBCF SEC Filing - Fo
+    [ctx] LakeShore Biopharma holders back going‑private merger | LSBCF SEC Filing - F
+    [ctx] Shore United Bank PARTNERS WITH GREENLIGHT TO HELP PARENTS RAISE FINANCIALLY
+    [ctx] Shore Bancshares, Inc. Announces Appointment of B. Scot Ebron as Bank Presid
+
+##### UNM (query "Unum Group") #####
+  canonicalName (display/payload) : "Unum"
+  heuristicGuess (query-derived)  : "Unum Group"
+  classifySubject (FILTER MATCH KEY): "Unum"   <-- what on-entity actually compares against
+  onEntityCount=8  sectorContext=0  poolSize=8
+    [ON ] (1-token) Unum Group (UNM) Valuation Check After Q1 Revenue Miss And Conference-Fueled
+    [ON ] (1-token) Unum Group Modernizes for the Future with Business-First Transformation -
+    [ON ] (1-token) Should Unum’s Weaker Q1 Revenue and Conference Commentary Require Action Fro
+    [ON ] (1-token) Premium Focus And Claims Experience Spotlight Might Change The Case For Inve
+    [ON ] (1-token) Unum Group (NYSE:UNM) Hits New 52-Week High  - Still a Buy?
+    [ON ] (1-token) Press Release: Roberts Disability Law Sues Unum for Allegedly Underpaying Lo
+    [ON ] (ticker-in-title) UNM Q1 2026 Earnings: EPS Beats Estimates by 2.52% Amid Solid Operational Pe
+    [ON ] (1-token) Q1 Earnings Roundup: MetLife (NYSE:MET) And The Rest Of The Life Insurance S
+
+##### FKYS (query "First Keystone") #####
+  canonicalName (display/payload) : "Keystone"
+  heuristicGuess (query-derived)  : "First Keystone"
+  classifySubject (FILTER MATCH KEY): "First Keystone"   <-- what on-entity actually compares against
+  onEntityCount=3  sectorContext=5  poolSize=8
+    [ON ] (substr>=6) Director buys 4,275 First Keystone shares | FKYS Insider Trading
+    [ON ] (substr>=6) Insider Buying: Donald Bower Acquires Shares of First Keystone C
+    [ON ] (substr>=6) Statement of Changes in Beneficial Ownership (Form 4) (First Keystone Corpor
+    [ctx] GoalBased Breaks Investment Advisory Norms, Posts Full Fee Schedule From 0.8
+    [ctx] Logue Announced as Next Chief Executive Officer of Keystone Cooperative | Ho
+    [ctx] Keystone cuts buy-to-let rates by 0.15% – Money Street News
+    [ctx] Keystone Hospitality Acquires Renaissance Indianapolis North Hotel in Carmel
+    [ctx] Gulf Keystone holds Shaikan shut-in as regional security shows early s — Tic
+
+##### UBFO (query "United Security Bancshares") #####
+  canonicalName (display/payload) : "United"
+  heuristicGuess (query-derived)  : "United Security Bancshares"
+  classifySubject (FILTER MATCH KEY): "United Security Bancshares"   <-- what on-entity actually compares against
+  onEntityCount=3  sectorContext=5  poolSize=8
+    [ctx] Community West Bancshares(NasdaqCM:CWBC) added to S&P Regional Banks Select 
+    [ON ] (substr>=6) United Security Bancshares (UBFO) Technical Analysis: Support, Resistance, I
+    [ON ] (substr>=6) United Development Bank Receives FDIC Conditional Approval, Advances Formati
+    [ON ] (substr>=6) Director gifts 1,300 Community West Bancshares shares | CWBC Insider Trading
+    [ctx] Should Accelerating Profit Growth And Rising Institutional Ownership Require
+    [ctx] United Bankshares (NASDAQ:UBSI) Coverage Initiated by Analysts at Hovde Grou
+    [ctx] Federal Reserve Release H.2A - June 26, 2026
+    [ctx] United Bankshares stock consolidates above support with bullish signals in f
+
+##### CZWI (query "Citizens Community Bancorp") #####
+  canonicalName (display/payload) : "Citizens Community"
+  heuristicGuess (query-derived)  : "Citizens Community Bancorp"
+  classifySubject (FILTER MATCH KEY): "Citizens Community"   <-- what on-entity actually compares against
+  onEntityCount=8  sectorContext=0  poolSize=8
+    [ON ] (substr>=6) Citizens Community Bancorp details 2026 shareholder votes | CZWI 8-K Filing
+    [ON ] (substr>=6) Citizens Community Bancorp holders report 7.5% stake | CZWI SEC Filing - For
+    [ON ] (substr>=6) Citizens Community Bancorp, Inc. Announces 2026 Annual Meeting Results and K
+    [ON ] (substr>=6) Alpha Buying: When Bankers Buy Banks - Citizens Community (NASDAQ:CZWI) - Be
+    [ON ] (substr>=6) Group reports 6.3% stake in Citizens Community | CZWI SEC Filing - Form SCHE
+    [ON ] (substr>=6) Gale Hoese Takes Activist Stake at Citizens Community Bancorp with 6.3% — Tr
+    [ON ] (substr>=6) Citizens Community Bancorp, Inc. - Investor Relations
+    [ON ] (substr>=6) Alpha Buying: When Bankers Buy Banks - Citizens Community (NASDAQ:CZWI) - Be
+
+##### AAPL (query "Apple") #####
+  canonicalName (display/payload) : "Apple"
+  heuristicGuess (query-derived)  : "Apple"
+  classifySubject (FILTER MATCH KEY): "Apple"   <-- what on-entity actually compares against
+  onEntityCount=6  sectorContext=2  poolSize=8
+    [ON ] (1-token) Siri AI v. EU, an update. | The Verge
+    [ON ] (1-token) EU says it held 'constructive' talks with Apple CEO Cook after Siri AI clash
+    [ON ] (1-token) Tim Cook Holds 'Constructive' Talks With EU Over Siri AI Launch - MacRumors
+    [ON ] (1-token) Apple Has Reportedly Cut iPhone 17 Lineup Production - MacRumors
+    [ctx] 'Constructive' Siri AI meeting sparks hope for iPhone users overseas | Macwo
+    [ON ] (1-token) Apple unveils next generation of Apple Intelligence, Siri AI, and more - App
+    [ctx] Tim Cook Talks With EU Tech Chief To Resolve The Siri AI Standoff
+    [ON ] (1-token) Apple signals that the new attack surface is time itself – Computerworld
+
+##### JPM (query "JPMorgan") #####
+  canonicalName (display/payload) : "JPMorgan"
+  heuristicGuess (query-derived)  : "JPMorgan"
+  classifySubject (FILTER MATCH KEY): "JPMorgan"   <-- what on-entity actually compares against
+  onEntityCount=7  sectorContext=1  poolSize=8
+    [ON ] (substr>=6) PYMNTS | JPMorgan AI Chief Teresa Heitsenrether Plans 2026 Retirement
+    [ctx] J.P. Morgan unleashes $50 billion buyback after stress test - AOL
+    [ON ] (substr>=6) JPMorgan broadens Kinexys blockchain settlement network as banks modernize c
+    [ON ] (substr>=6) JPMorgan's succession clock is ticking — and this time, insiders say it's re
+    [ON ] (substr>=6) Entering Arena of Defense Spending: JPMorgan
+    [ON ] (substr>=6) JPMorgan Endorses Digital Asset Clarity Act With Caution as Senate Targets A
+    [ON ] (substr>=6) Jamie Dimon says he may stay three more years, so why is JPMorgan already
+    [ON ] (substr>=6) JPMorgan (JPM) Expands Investment into Defense Sector

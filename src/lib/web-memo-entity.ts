@@ -44,6 +44,21 @@ const GENERIC_TOKENS = new Set([
   "services", "solutions", "global", "ltd.",
 ]);
 
+// Long (>= DOMINANT_TOKEN_MIN_LEN) tokens that are NOT company-distinctive on
+// their own: common regional-bank / corporate name words that many DIFFERENT
+// companies share ("United Bankshares" vs "United Security Bancshares", "Gulf
+// Keystone" vs "First Keystone", "Citizens Bank" vs "Citizens Community
+// Bancorp"). matchesName must NOT let a single one of these substring-match a
+// different same-word company on-entity; such names must clear the distinctive
+// bigram or all-significant-tokens test instead. Seeded from observed
+// contamination; extend as new shared tokens surface (the tuning knob, mirroring
+// GENERIC_TOKENS and HARD_TICKER_OVERRIDES).
+const NON_DISTINCTIVE_LONG_TOKENS = new Set([
+  "united", "keystone", "citizens", "security", "community", "national",
+  "american", "general", "standard", "western", "pacific", "atlantic",
+  "heritage", "premier", "provident", "peoples", "merchants", "commerce",
+]);
+
 function normalize(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -76,9 +91,21 @@ export function matchesName(canonical: string, normalizedHay: string): boolean {
     return normalize(canonical).split(" ").some((t) => t && hasToken(normalizedHay, t));
   }
   // A distinctive long token matches as a SUBSTRING so concatenated brand forms
-  // resolve (e.g. "jpmorgan" inside "JPMorganChase"). Gated at length >= 6 so
-  // short shared tokens ("shore", "first", "lake") never substring-match.
-  if (sig.some((t) => t.length >= DOMINANT_TOKEN_MIN_LEN && normalizedHay.includes(t))) {
+  // resolve ("jpmorgan" inside "JPMorganChase"). Gated at length >= 6 so short
+  // shared tokens ("shore", "lake") never substring-match. It ALSO excludes long
+  // but NON-distinctive shared words ("united", "keystone", "citizens"): those
+  // are common regional-bank name tokens, not brand identities, so a single one
+  // must not pull a DIFFERENT same-word company on-entity ("Gulf Keystone" is not
+  // "First Keystone"; "United Bankshares" is not "United Security Bancshares").
+  // Such names must then clear the distinctive bigram or all-tokens test below.
+  if (
+    sig.some(
+      (t) =>
+        t.length >= DOMINANT_TOKEN_MIN_LEN &&
+        !NON_DISTINCTIVE_LONG_TOKENS.has(t) &&
+        normalizedHay.includes(t),
+    )
+  ) {
     return true;
   }
   if (sig.length === 1) return hasToken(normalizedHay, sig[0]);
@@ -137,19 +164,28 @@ export function isThinPool(onEntityCount: number): boolean {
  * normalizes to "Shore". Anchoring the filter on "Shore" makes EVERY Shore bank
  * match, so no contaminant is dropped and the thin-pool gate never trips.
  *
- * Guard: if the pool-derived name is a single, short, non-distinctive token but
- * the query-derived name carries strictly more distinctive tokens, classify on
- * the query-derived name instead so matchesName requires the full distinctive
- * phrase ("lake shore"), not a shared token. A pool name that is already
- * distinctive (a long token like "nvidia", or two+ significant tokens like
- * "Pershing Square") is kept, preserving typo recovery.
+ * Guard: if the pool-derived name collapsed to a SINGLE token but the
+ * query-derived name carries strictly more significant tokens, classify on the
+ * query-derived name instead so matchesName requires the full distinctive phrase
+ * ("lake shore", "united security", "first keystone"), not a lone shared token.
+ *
+ * Token LENGTH is deliberately NOT used to trust a single pool token here. The
+ * earlier heuristic kept any pool token >= DOMINANT_TOKEN_MIN_LEN as "already
+ * distinctive", but that conflates a one-word brand ("nvidia") with a long,
+ * high-frequency COMMON word ("united", "keystone", "citizens"). When the pool
+ * for "United Security Bancshares" is dominated by other United banks it collapses
+ * to "United"; keeping that lets matchesName substring-match every "United ..."
+ * company on-entity (observed: United Bankshares/UBSI, United Development Bank
+ * pulled into a UBFO pool). A single pool token is only trusted when the query is
+ * ALSO a single token, so genuine one-word typo recovery ("nvdia" -> "nvidia",
+ * where querySig.length is NOT greater) still returns the pool name. Only a
+ * multi-token pool name ("Pershing Square") overrides a same-length query.
  */
 export function subjectForClassification(poolName: string, queryName: string): string {
   const poolSig = significantTokens(poolName);
   const querySig = significantTokens(queryName);
-  const poolDistinctive =
-    poolSig.some((t) => t.length >= DOMINANT_TOKEN_MIN_LEN) || poolSig.length >= 2;
-  if (!poolDistinctive && querySig.length > poolSig.length) return queryName;
+  const poolMultiToken = poolSig.length >= 2;
+  if (!poolMultiToken && querySig.length > poolSig.length) return queryName;
   return poolName;
 }
 
