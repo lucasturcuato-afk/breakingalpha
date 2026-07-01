@@ -59,6 +59,42 @@ export function publishedFloor(anchorIso: string, days = 7): string {
 }
 
 /**
+ * Option B read: the ordered article IDs persisted on this briefing row by the
+ * backend story-rail selection. Returns the list (render order) or null when the
+ * brief predates Option B / did not persist a rail, in which case the caller
+ * falls back to the live window query. Read-only, soft-fails to null.
+ */
+export async function storedRailIds(
+  supabase: SupabaseClient,
+  briefingId: string | null | undefined,
+): Promise<string[] | null> {
+  if (!briefingId) return null;
+  try {
+    const { data } = await supabase
+      .from("briefings")
+      .select("story_rail_ids")
+      .eq("id", briefingId)
+      .maybeSingle();
+    const ids = (data as { story_rail_ids?: unknown } | null)?.story_rail_ids;
+    if (Array.isArray(ids) && ids.length > 0) {
+      return ids.map((x) => String(x)).filter(Boolean);
+    }
+  } catch {
+    /* soft-fail to null → window-query fallback */
+  }
+  return null;
+}
+
+/**
+ * Reorder article rows to match the stored ID order, dropping any ID whose row
+ * is missing. `in(...)` returns rows unordered, so this restores render order.
+ */
+export function reorderByIds<T extends { id: string }>(rows: T[] | null, ids: string[]): T[] {
+  const byId = new Map((rows ?? []).map((r) => [r.id, r]));
+  return ids.map((id) => byId.get(id)).filter((r): r is T => r != null);
+}
+
+/**
  * Heading label. Returns the same-day label when the brief's created_at is
  * the same PT calendar day as now; otherwise a dated label so a day-old brief
  * never claims "Today's". `quiet` (fewer than 3 in-window rows) always wins

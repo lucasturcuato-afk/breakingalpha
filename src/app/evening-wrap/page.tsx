@@ -11,7 +11,7 @@ import { ShareButton } from "@/components/brief/share-button";
 import { DCStoryRow } from "@/components/brief/dc-story-row";
 import WatchlistBriefSection from "@/components/brief/WatchlistBriefSection";
 import type { WatchlistBriefSection as WatchlistSectionData } from "@/lib/watchlist-brief";
-import { sessionIngestFloor, publishedFloor, storiesHeadingLabel } from "@/lib/story-rail-window";
+import { sessionIngestFloor, publishedFloor, storiesHeadingLabel, storedRailIds, reorderByIds } from "@/lib/story-rail-window";
 import { DCAnalystSection } from "@/components/brief/dc-analyst-section";
 import { DCSectorSignals } from "@/components/brief/dc-sector-signals";
 import { ActiveThesesWidget } from "@/components/dashboard/active-theses-widget";
@@ -298,33 +298,41 @@ export default function EveningWrapPage() {
           if (data.section_output_ids) setSectionOutputIds(data.section_output_ids);
         }
 
-        // Session-window partition (defect #1): anchor on the brief's own
-        // created_at and floor the ingest window at the LAST morning session,
-        // so the evening rail cannot share rows with the morning brief. Falls
-        // back to now() when the briefing row is missing.
+        const SELECT_FIELDS = "id, title, source, sector, sentiment, summary, content, published_at, ingested_at, url, companies, relevance_score";
         const createdAtForLabel = data.briefing?.created_at ?? null;
         const anchorIso = createdAtForLabel ?? new Date().toISOString();
-        const ingestFloor = await sessionIngestFloor(getSupabase(), "evening", anchorIso);
-        // Published-date floor so stale items (date-less or weeks old) never
-        // surface on the fresh story rail. NULL published_at is excluded by gte.
-        const publishedFloor7d = publishedFloor(anchorIso);
 
-        // relevance_score is saturated at the top (see WD: signal saturation),
-        // so published_at desc is the deterministic tiebreak within the tie
-        // pool instead of arbitrary physical row order.
-        const { data: articles } = await getSupabase()
-          .from("articles")
-          .select("id, title, source, sector, sentiment, summary, content, published_at, ingested_at, url, companies, relevance_score")
-          .gte("ingested_at", ingestFloor)
-          .lte("ingested_at", anchorIso)
-          .gte("published_at", publishedFloor7d)
-          .order("relevance_score", { ascending: false })
-          .order("published_at", { ascending: false })
-          .limit(8);
+        // Transition fallback ONLY (defect #1, Option A): the live session-window
+        // query. Used when a brief has no persisted rail yet (legacy briefs, or a
+        // generation that did not persist IDs). Safe to delete once every live
+        // brief is B-generated. Do NOT delete story-rail-window.ts.
+        const windowFallback = async () => {
+          const ingestFloor = await sessionIngestFloor(getSupabase(), "evening", anchorIso);
+          const publishedFloor7d = publishedFloor(anchorIso);
+          const { data: rows } = await getSupabase()
+            .from("articles")
+            .select(SELECT_FIELDS)
+            .gte("ingested_at", ingestFloor)
+            .lte("ingested_at", anchorIso)
+            .gte("published_at", publishedFloor7d)
+            .order("relevance_score", { ascending: false })
+            .order("published_at", { ascending: false })
+            .limit(8);
+          return rows;
+        };
 
-        // Quiet-session path: if the in-window set is thin we keep it and
-        // relabel to "Recent Stories" rather than widening the window, which
-        // is what reintroduced the cross-brief overlap in the first place.
+        // Option B (sole go-forward mechanism): render the reproducible,
+        // identity-deduped snapshot the backend persisted on this brief row.
+        // The rail no longer computes its own selection. Fetch the stored IDs'
+        // articles and restore render order.
+        const railIds = await storedRailIds(getSupabase(), data.briefing?.id);
+        const articles = railIds
+          ? reorderByIds(
+              (await getSupabase().from("articles").select(SELECT_FIELDS).in("id", railIds)).data ?? [],
+              railIds,
+            )
+          : await windowFallback();
+
         const quiet = (articles?.length ?? 0) < 3;
         const label = storiesHeadingLabel(createdAtForLabel, "Today's Top Stories", quiet);
         setStoriesLabel(label);
