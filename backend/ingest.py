@@ -1044,8 +1044,8 @@ _NON_EN_WORDS = {
     "und", "gibt", "dass", "fuer", "für", "bekannt", "erhaelt", "erhält",
     "eine", "wird", "werden", "ueber", "über", "zur", "seine", "aktien",
     "gemaess", "gemäß", "nicht", "milliarden", "seinen",
-    "que", "avec", "une", "pour", "etre", "être", "selon", "societe",
-    "société", "resultats", "résultats", "milliards", "annonce", "ses",
+    "que", "avec", "une", "pour", "etre", "être", "selon",
+    "resultats", "résultats", "milliards", "annonce", "ses",
 }
 _WORD_RE = re.compile(r"[a-zà-öø-ÿ]+")
 
