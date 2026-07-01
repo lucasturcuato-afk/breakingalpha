@@ -408,10 +408,13 @@ compute_lead = compute_shadow_lead
 # that did not.
 #
 # PURE: the tape dict and any per-name session moves are PASSED IN; this module makes
-# no network call and imports no network module. FAIL-SAFE: on an absent or immaterial
-# tape every delta is zero, so the order is byte-identical to compute_shadow_lead
-# (the continuity decay is the only delta that can still apply, and only when a prior
-# lead title is supplied). All weights are named + tunable; Noah ratifies them.
+# no network call and imports no network module. FAIL-SAFE: with NO tape at all
+# (weekend / fetch failure) every materiality delta is zero, so the order is
+# byte-identical to compute_shadow_lead (the continuity decay is the only delta that
+# can still apply, and only when a prior lead title is supplied). When a tape IS
+# present the penalties (US-irrelevance, deal-that-did-not-drive-the-tape) apply at any
+# magnitude and the bonuses only on a material move. All weights are named + tunable;
+# Noah ratifies them.
 
 # Materiality delta weights (tunable; see RUN_REPORT_PR1.md "WHAT NEEDS NOAH").
 # MAT_DEAL_NOT_DRIVER_PENALTY is sized to ~neutralize MEGA_DEAL_BOOST (10.0) so an
@@ -600,18 +603,29 @@ def _tape_direction(tape: Optional[dict]) -> int:
 def materiality_delta(scored_cluster: dict, *, tape: Optional[dict],
                       driver_names: set[str], name_session_pct: Optional[dict]) -> dict:
     """Pure per-cluster materiality delta. Returns {"delta": float, "reasons": [..]}.
-    Zero (no-op) unless the tape is MATERIAL, so on a mild/absent tape this changes
-    nothing (shadow-first safety)."""
+
+    Two tiers, so the two ratified days (a MATERIAL 06-30 evening and an IMMATERIAL,
+    divided 07-01 morning) both resolve market-wide:
+      - PENALTIES (US-irrelevance, deal-that-did-not-drive-the-tape) apply whenever a
+        tape is PRESENT, regardless of magnitude. A foreign rupee stake sale or a
+        narrow single-name deal that is not the tape's driver should not lead a US
+        brief on a quiet OR a busy day.
+      - BONUSES (market-wide, tape-driver) apply only on a MATERIAL tape, where there
+        is a real move to be consistent with. Conservative: quiet days do not get
+        their ordinary market-wide stories boosted, only clearly-wrong leads demoted.
+
+    FAIL-SAFE: with NO tape at all (weekend / fetch failure) every delta is zero, so
+    the order is identical to compute_shadow_lead."""
     reasons: list[str] = []
-    if not tape or not tape_is_material(tape):
-        return {"delta": 0.0, "reasons": ["immaterial/absent tape (no-op)"]}
+    if not tape:
+        return {"delta": 0.0, "reasons": ["no tape (no-op)"]}
 
     key = scored_cluster["cluster_key"]
     arts = _cluster_arts(scored_cluster)
     text = _cluster_text(arts)
     companies = _cluster_companies(arts)
     distinct_sources = int(scored_cluster.get("distinct_sources") or 0)
-    material_broad = tape_is_broad(tape)
+    is_material = tape_is_material(tape)
     tdir = _tape_direction(tape)
     name_pct = {str(k).strip().lower(): v for k, v in (name_session_pct or {}).items()}
 
@@ -621,27 +635,31 @@ def materiality_delta(scored_cluster: dict, *, tape: Optional[dict],
 
     delta = 0.0
 
-    # (1) US-irrelevance: a foreign / non-USD story with no US anchor cannot own the
-    # US tape (GIC/Genus rupee stake sale).
+    # (1) US-irrelevance [any present tape]: a foreign / non-USD story with no US
+    # anchor cannot own the US tape (GIC/Genus rupee stake sale, 07-01).
     if _is_us_irrelevant(text):
         delta -= MAT_US_IRRELEVANT_PENALTY
         reasons.append(f"US-irrelevant (-{MAT_US_IRRELEVANT_PENALTY})")
 
-    # (2) Deal-size that did not drive the tape: a single-name pure-deal cluster, on
-    # a material broad tape, that is NOT a confirmed tape driver and lacks dominant
-    # breadth -> demote by ~the mega-deal boost so it competes on organic merit.
-    if (is_pure_deal and is_single and material_broad and not is_driver
+    # (2) Deal-size that did not drive the tape [any present tape]: a single-name
+    # pure-deal cluster that is NOT a confirmed tape driver and lacks dominant
+    # cross-source breadth -> demote by ~the mega-deal boost so it competes on organic
+    # merit. A genuinely broadly-covered deal (distinct_sources >= threshold) is
+    # exempt and still leads; a deal confirmed as a driver on a material tape is also
+    # exempt (is_driver). Fires on both the material 06-30 (Rocket Lab) and the
+    # immaterial 07-01 (GIC/Genus) tapes.
+    if (is_pure_deal and is_single and not is_driver
             and distinct_sources < MAT_MIN_DISTINCT_SOURCES):
         delta -= MAT_DEAL_NOT_DRIVER_PENALTY
-        reasons.append(f"pure deal, not a tape driver on a broad move (-{MAT_DEAL_NOT_DRIVER_PENALTY})")
+        reasons.append(f"pure deal, not a tape driver (-{MAT_DEAL_NOT_DRIVER_PENALTY})")
 
-    # (3) Market-wide story consistent with a material tape -> reward the broad read.
-    if _is_market_wide_cluster(key, text):
+    # (3) Market-wide story on a MATERIAL tape -> reward the broad read.
+    if is_material and _is_market_wide_cluster(key, text):
         delta += MAT_MARKET_WIDE_BONUS
         reasons.append(f"market-wide, tape material (+{MAT_MARKET_WIDE_BONUS})")
 
-    # (4) Confirmed tape driver moving WITH the tape -> reward the genuine driver.
-    if is_driver and tdir != 0:
+    # (4) Confirmed tape driver moving WITH a MATERIAL tape -> reward the genuine driver.
+    if is_material and is_driver and tdir != 0:
         same_dir = False
         for co in companies:
             if co in name_pct:
@@ -655,11 +673,11 @@ def materiality_delta(scored_cluster: dict, *, tape: Optional[dict],
             delta += MAT_TAPE_DRIVER_BONUS
             reasons.append(f"tape driver, direction-consistent (+{MAT_TAPE_DRIVER_BONUS})")
 
-    # (5) A cluster's named mover contradicts the tape direction materially -> penalty
+    # (5) A cluster's named mover contradicts a MATERIAL tape direction -> penalty
     # (a down-name leading an up-tape is not the market-wide story).
     contradiction = False
     for co in companies:
-        if co in name_pct and tdir != 0:
+        if is_material and co in name_pct and tdir != 0:
             try:
                 csign = 1 if float(name_pct[co]) > 0 else (-1 if float(name_pct[co]) < 0 else 0)
                 cmag = abs(float(name_pct[co]))

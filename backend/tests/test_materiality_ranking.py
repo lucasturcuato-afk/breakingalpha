@@ -123,30 +123,51 @@ class UsIrrelevanceTests(unittest.TestCase):
 
 
 class FailSafeTests(unittest.TestCase):
-    """Shadow-first safety: on a mild / absent tape with no prior lead, the
-    materiality lead is IDENTICAL to the tape-blind lead."""
+    """Shadow-first safety. NO tape at all (weekend / fetch failure) is a strict
+    no-op. A present tape applies penalties at any magnitude (that is what makes the
+    immaterial 07-01 GIC/Genus case resolve) but leaves an ordinary pool untouched."""
 
-    def _pool(self):
-        return rocket_lab_evening_pool()
+    MILD = {
+        "quotes": {"^GSPC": {"pct": 0.2}, "^IXIC": {"pct": 0.3},
+                   "^DJI": {"pct": 0.1}, "^RUT": {"pct": 0.1},
+                   "^VIX": {"pct": -1.0, "price": 16}},
+        "regime": "neutral", "vix_level": 16,
+    }
 
-    def test_mild_tape_is_noop(self):
-        mild = {
-            "quotes": {"^GSPC": {"pct": 0.2}, "^IXIC": {"pct": 0.3},
-                       "^DJI": {"pct": 0.1}, "^RUT": {"pct": 0.1},
-                       "^VIX": {"pct": -1.0, "price": 16}},
-            "regime": "neutral", "vix_level": 16,
-        }
-        base = ir.compute_lead(self._pool(), NOW, mega_deal_urls={"u_rklb1", "u_rklb2"})
-        mat = ir.compute_materiality_lead(self._pool(), NOW, tape=mild,
+    def test_no_tape_is_noop(self):
+        base = ir.compute_lead(rocket_lab_evening_pool(), NOW,
+                               mega_deal_urls={"u_rklb1", "u_rklb2"})
+        mat = ir.compute_materiality_lead(rocket_lab_evening_pool(), NOW, tape=None,
                                           mega_deal_urls={"u_rklb1", "u_rklb2"})
+        self.assertEqual(base["cluster_key"], mat["cluster_key"])
+
+    def test_ordinary_pool_mild_tape_unchanged(self):
+        # No foreign deal, no narrow pure-deal, no market-wide leader -> no penalty
+        # fires -> a mild present tape does not reshuffle the order.
+        pool = [
+            art("Nvidia unveils Blackwell Ultra at GTC", "Reuters", rel=9,
+                companies=["Nvidia"], url="n1"),
+            art("Nvidia GTC keynote: new datacenter roadmap", "CNBC", rel=8,
+                companies=["Nvidia"], url="n2"),
+            art("Boeing wins new widebody order from United", "WSJ", rel=7,
+                companies=["Boeing"], url="b1"),
+        ]
+        base = ir.compute_lead(pool, NOW)
+        mat = ir.compute_materiality_lead(pool, NOW, tape=self.MILD)
         self.assertEqual(base["cluster_key"], mat["cluster_key"])
         self.assertFalse(mat["diverged_from_base"])
 
-    def test_no_tape_is_noop(self):
-        base = ir.compute_lead(self._pool(), NOW, mega_deal_urls={"u_rklb1", "u_rklb2"})
-        mat = ir.compute_materiality_lead(self._pool(), NOW, tape=None,
+    def test_mild_present_tape_penalizes_narrow_deal(self):
+        # Tiered design: a narrow single-name pure deal takes the deal-not-driver
+        # penalty even on an immaterial (present) tape. The penalty alone may not
+        # dethrone it here (no material tape -> no market-wide BONUS to lift a
+        # competitor), but the demotion is what lets a tier-1 / broadly-covered
+        # market-wide story win on a real quiet day (e.g. 07-01's ADP print).
+        mat = ir.compute_materiality_lead(rocket_lab_evening_pool(), NOW, tape=self.MILD,
                                           mega_deal_urls={"u_rklb1", "u_rklb2"})
-        self.assertEqual(base["cluster_key"], mat["cluster_key"])
+        rk = [c for c in mat["top_clusters"] if c["cluster_key"] == "co:rocket lab:ma"]
+        self.assertTrue(rk and rk[0]["materiality_delta"] < 0,
+                        "narrow pure deal should be penalized even on a mild present tape")
 
 
 class ContinuityTests(unittest.TestCase):
