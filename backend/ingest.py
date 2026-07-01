@@ -346,9 +346,16 @@ def _fetch_single_gnews_feed(ticker: str) -> list[dict]:
                         continue
                 except Exception:
                     pass  # if parsing fails, let the entry through
+            raw_summary = strip_html(e.get("summary", e.get("description", "")))[:500]
+            # Detect the headline echo on the RAW title (where the summary still
+            # matches the full title text incl. publisher) BEFORE cleaning strips
+            # the " - Publisher" suffix, then store the cleaned title and empty the
+            # echo summary so the frontend renders its "Headline only" note
+            # (defect #4 data half) instead of echoing the title back.
+            echo = _is_headline_echo(raw_summary, title)
             articles.append({
-                "title": title,
-                "summary": strip_html(e.get("summary", e.get("description", "")))[:500],
+                "title": _clean_gnews_title(title),
+                "summary": "" if echo else raw_summary,
                 "url": link,
                 "source": f"Google News ({ticker})",
                 "published_at": published_at,
@@ -980,6 +987,73 @@ def strip_html(text: str) -> str:
                   "", text, flags=re.DOTALL)
     text = re.sub(r"\s{2,}", " ", text)                            # collapse whitespace
     return text.strip()
+
+
+# --- Google News title/summary cleaning + language gate --------------------
+# (defects #5 garbled titles, #4 data-half title-as-summary, #2 non-English
+# clones). These run at ingest so the stored title is clean BEFORE the
+# _normalize_title dedup, which means a "Headline - Publisher" suffix-only near
+# duplicate collapses onto its bare-headline twin for free, and non-English wire
+# clones never reach the store at all.
+
+# Google News RSS appends " - <Publisher>", and some source feeds leak CJK
+# bracket/period artifacts into the title. Strip both. The suffix match needs
+# spaces around the dash and a short (<=40 char) final segment, so hyphenated
+# compounds ("Cash-and-Stock", "Five-Year") and mid-sentence " -- " are kept.
+_GNEWS_TITLE_ARTIFACTS = re.compile(r"[】【「」（）。]")
+_GNEWS_PUBLISHER_SUFFIX = re.compile(r"\s+[-|]\s+[^-|]{1,40}$")
+
+
+def _clean_gnews_title(title):
+    if not title:
+        return title
+    t = _GNEWS_TITLE_ARTIFACTS.sub(" ", title)
+    t = _GNEWS_PUBLISHER_SUFFIX.sub("", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t or title
+
+
+def _alnum_key(s):
+    return re.sub(r"[^a-z0-9]+", "", (s or "").lower())
+
+
+def _is_headline_echo(summary, title):
+    """True when the summary is just the headline restated (Google News stores
+    the headline back as the RSS description). Mirrors the frontend guard in
+    src/components/brief/dc-story-row.tsx (isHeadlineEcho): compare alphanumeric
+    only forms and require near-equal length so a real body that merely opens
+    with the headline is NOT treated as an echo. This pattern MUST stay in sync
+    with that frontend helper; the two cannot share code across the Python/TS
+    boundary, so any change to one must be mirrored in the other."""
+    s = _alnum_key(summary)
+    t = _alnum_key(title)
+    if len(t) < 12 or not s:
+        return False
+    shorter, longer = (s, t) if len(s) <= len(t) else (t, s)
+    return longer.startswith(shorter) and len(longer) - len(shorter) <= 8
+
+
+# Dependency-free language gate (defect #2). Every configured source is
+# English-intended (RSS_FEEDS + gnews en-US locale); PR Newswire / GlobeNewswire
+# simply also carry occasional translated (DE/FR) copies of an English release,
+# which title-only dedup cannot collapse. Drop a row only when >=2 distinct
+# strong non-English function words appear, so a lone ambiguous token never drops
+# a valid English row (validated: 0 false positives over 400 recent English rows,
+# all three known DE/FR PR Newswire clones caught).
+_NON_EN_WORDS = {
+    "und", "gibt", "dass", "fuer", "für", "bekannt", "erhaelt", "erhält",
+    "eine", "wird", "werden", "ueber", "über", "zur", "seine", "aktien",
+    "gemaess", "gemäß", "nicht", "milliarden", "seinen",
+    "que", "avec", "une", "pour", "etre", "être", "selon",
+    "resultats", "résultats", "milliards", "annonce", "ses",
+}
+_WORD_RE = re.compile(r"[a-zà-öø-ÿ]+")
+
+
+def _is_probably_english(article):
+    text = f"{article.get('title', '')} {article.get('summary', '')}".lower()
+    hits = _NON_EN_WORDS & set(_WORD_RE.findall(text))
+    return len(hits) < 2
 
 
 def fetch_watchlist_finnhub_articles() -> list[dict]:
@@ -2116,6 +2190,13 @@ def run_ingestion():
     t = time.time()
     print(f"\n[2/4] Pre-filtering {len(articles)} articles against keyword blocklist...")
     articles = [a for a in articles if not matches_ingest_blocklist(a)]
+    # Language gate (defect #2): drop non-English wire clones (PR Newswire /
+    # GlobeNewswire DE/FR copies of an English release) before the Gemini filter,
+    # so they never store and never surface on the rail. Also saves filter calls.
+    _before_lang = len(articles)
+    articles = [a for a in articles if _is_probably_english(a)]
+    if len(articles) != _before_lang:
+        print(f"  [2/4] language gate dropped {_before_lang - len(articles)} non-English rows")
     print(f"  [2/4] DONE: {len(articles)} after keyword pre-filter in {time.time() - t:.2f}s")
 
     # Dedup-before-filter: drop articles already in the DB BEFORE the per-article
