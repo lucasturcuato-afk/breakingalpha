@@ -89,6 +89,23 @@ MARKET_PULSE_V2 = os.environ.get("MARKET_PULSE_V2", "").strip().lower() in ("1",
 # invoked and behavior is byte-identical to today.
 LEAD_V2 = os.environ.get("LEAD_V2", "").strip().lower() in ("1", "true", "yes", "on")
 
+# Move 1 personalization: additive, shared, zero-Gemini persist of the selected
+# story set onto the briefing row (three-state, mirrors MATERIALITY_RANK_MODE):
+#   off    -> story_items is neither built nor written. Prod-neutral: the served
+#             brief is byte-identical to before. This is the DEFAULT.
+#   shadow -> story_items is built from the already-selected spine/floor and
+#             persisted on the row. Nothing reads it yet; it is accrual only.
+#   active -> same persist as shadow (the read-side re-rank consumes it in a
+#             later, separate change). Persist behavior is identical to shadow.
+# The persist reads only in-memory data synthesize already computed; it never
+# re-queries the corpus, never changes prose / lead / selection, and fails open
+# (any error -> story_items simply not written, brief unaffected).
+PERSONALIZATION_MODE = os.environ.get("PERSONALIZATION_MODE", "off").strip().lower()
+if PERSONALIZATION_MODE not in ("off", "shadow", "active"):
+    print(f"  [personalization] unknown PERSONALIZATION_MODE={PERSONALIZATION_MODE!r}, "
+          "falling back to 'off' (prod-neutral default)")
+    PERSONALIZATION_MODE = "off"
+
 MORNING_SYSTEM = """You are a senior investment banking analyst preparing the daily morning briefing for a capital markets team.
 
 HOUSE VOICE (highest priority, applies to every field; overrides any phrasing primed elsewhere in this prompt): write like a sharp analyst with a view, not a wire feed. (1) Never narrate who is watching, monitoring, observing, gauging, awaiting, or focusing on something, and never substitute 'analysts will focus on X' for an actual view: state the consequence or what is at stake directly. (2) Open market_pulse.narrative with an analytical through-line claim, never with 'the market is / closed [mood word]' and never with an index recap (the index moves may appear later in the body, just not as the opening line). The sentiment_word still carries the mood and still matches the prior-close regime; the opening line of the narrative carries the argument.
@@ -629,6 +646,92 @@ def _select_articles_for_synthesis(
     floor = list(best_per_sector.values())[:floor_count]
 
     return spine, floor
+
+
+def _resolve_tickers_for_names(names):
+    """Best-effort name -> ticker map via one batched companies SELECT.
+
+    Move 1 read-side personalization matches a user's watchlist_tickers against
+    each story's entities. Articles carry entity NAMES only, so resolve them to
+    tickers ONCE here at generation time and persist the tickers, killing the
+    read-time matching sub-build. Zero Gemini.
+
+    Fails open: any error, or an unresolvable name, yields no ticker for that
+    name. It NEVER raises and NEVER blocks the persist or the brief.
+    """
+    out = {}
+    clean = sorted({(n or "").strip() for n in names if isinstance(n, str) and n.strip()})
+    if not clean:
+        return out
+    try:
+        resp = (
+            supabase.table("companies")
+            .select("name, ticker")
+            .in_("name", clean)
+            .execute()
+        )
+        for r in resp.data or []:
+            nm = (r.get("name") or "").strip()
+            tk = (r.get("ticker") or "").strip()
+            if nm and tk:
+                out[nm] = tk
+    except Exception as e:
+        print(f"  [personalization] ticker resolve failed (continuing, no tickers): {e}")
+        return {}
+    return out
+
+
+def _build_story_items(spine, floor):
+    """Assemble the additive story_items payload from the ALREADY-SELECTED set.
+
+    Reads only in-memory article dicts produced by _select_articles_for_synthesis.
+    Does not re-query the corpus, re-rank, or alter selection. Returns a list of
+    dicts (native jsonb) or None if there is nothing to persist. Fails open: any
+    error yields None and the brief is unaffected.
+    """
+    try:
+        def _companies(a):
+            c = a.get("companies") or []
+            if isinstance(c, str):
+                try:
+                    c = json.loads(c)
+                except Exception:
+                    c = []
+            return [x for x in c if isinstance(x, str) and x.strip()]
+
+        rows = []
+        # bucket records where the story sat in the selection (spine = primary
+        # editorial depth, floor = per-sector breadth); the LLM's section
+        # assignment is not known at selection time, so bucket is the honest key.
+        for bucket, arts in (("spine", spine or []), ("floor", floor or [])):
+            for a in arts:
+                rows.append({"_a": a, "bucket": bucket, "companies": _companies(a)})
+
+        if not rows:
+            return None
+
+        all_names = {n for r in rows for n in r["companies"]}
+        ticker_map = _resolve_tickers_for_names(all_names)
+
+        items = []
+        for r in rows:
+            a = r["_a"]
+            companies = r["companies"]
+            tickers = sorted({ticker_map[n] for n in companies if n in ticker_map})
+            items.append({
+                "url":                a.get("url"),
+                "bucket":             r["bucket"],
+                "relevance_score":    a.get("relevance_score"),
+                "sector":             a.get("sector"),
+                "industry_verticals": a.get("industry_verticals") or [],
+                "companies":          companies,
+                "primary_company":    companies[0] if companies else None,
+                "tickers":            tickers,
+            })
+        return items or None
+    except Exception as e:
+        print(f"  [personalization] story_items build failed (continuing, not persisted): {e}")
+        return None
 
 
 def _validate_sector_breakdown(sb):
@@ -5733,8 +5836,17 @@ def run(brief_type="morning"):
     # no recompute, no re-fetch. None when no tape (weekend / thin) -> not written.
     _tape_snapshot = market_tape.serialize_tape_snapshot(tape_obj, as_of=now)
 
+    # Move 1 (flag-gated, additive): build the shared story_items payload from
+    # the already-selected spine/floor. None when PERSONALIZATION_MODE=off, so
+    # the insert path below stays byte-identical to before in the default case.
+    _story_items = (
+        _build_story_items(spine, floor)
+        if PERSONALIZATION_MODE in ("shadow", "active")
+        else None
+    )
+
     insert_resp = None
-    if extras:
+    if extras or _story_items is not None:
         row_with_extras = {**row, **extras}
         # Ordered insert candidates: with-tape (best), extras-only (existing
         # behavior, preserves market_pulse if the tape column is absent), base.
@@ -5742,6 +5854,15 @@ def run(brief_type="morning"):
         # a json-string would be stored as a jsonb string scalar and `->`/`->>`
         # could not key into it. The dict is stored as a queryable jsonb object.
         _candidates = []
+        if _story_items is not None:
+            # Richest attempt: base + extras + tape (if any) + story_items.
+            # story_items is a new nullable jsonb column; if it is not yet
+            # migrated this candidate raises and the ladder falls through to the
+            # tape / extras / base attempts, so the brief is never lost.
+            _best = {**row_with_extras}
+            if _tape_snapshot is not None:
+                _best["market_tape"] = _tape_snapshot
+            _candidates.append({**_best, "story_items": _story_items})
         if _tape_snapshot is not None:
             _candidates.append({**row_with_extras, "market_tape": _tape_snapshot})
         _candidates.append(row_with_extras)
@@ -5750,6 +5871,8 @@ def run(brief_type="morning"):
         for _cand in _candidates:
             try:
                 insert_resp = supabase.table("briefings").insert(_cand).execute()
+                if "story_items" in _cand:
+                    print(f"  ✨ story_items saved: {len(_story_items)} stories (mode={PERSONALIZATION_MODE})")
                 if "market_tape" in _cand:
                     print(f"  ✨ market_tape saved: regime={_tape_snapshot.get('regime')} vix={_tape_snapshot.get('vix_level')}")
                 if has_pulse and "market_pulse" in _cand:
