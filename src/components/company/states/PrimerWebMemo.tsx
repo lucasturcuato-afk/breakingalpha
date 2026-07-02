@@ -15,11 +15,17 @@ import { Globe, Loader2, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { MemoModal } from "@/components/memo/MemoModal";
+import { PrimerThinFallback } from "@/components/company/states/PrimerThinFallback";
 import {
   buildWebFallbackMemoContent,
   buildWebFallbackMemoSystemPrompt,
 } from "@/lib/company-intel";
 import { cn } from "@/lib/utils";
+
+// Default-OFF flag. When on, a thin-pool result degrades to the tiered
+// primary-source fallback (financials / filings / honest suppress) instead of a
+// bare "limited coverage" message. NEXT_PUBLIC so the client can read it.
+const THIN_FALLBACK_ENABLED = process.env.NEXT_PUBLIC_THIN_FALLBACK_ENABLED === "true";
 
 // Shape of /api/companies/web-fallback result items. Redeclared locally (same
 // pattern the directory page uses) to avoid importing across a route boundary.
@@ -119,7 +125,9 @@ export function PrimerWebMemo({ company, ticker }: Props) {
                 Generate a memo from web search?
               </p>
             )}
-            {error && (
+            {/* When the tiered fallback renders below, it carries its own
+                thin-coverage explainer, so suppress the bare error line. */}
+            {error && !(thin && THIN_FALLBACK_ENABLED) && (
               <p className="font-sans text-[11px] text-signal-dn mt-1">{error}</p>
             )}
           </div>
@@ -150,6 +158,10 @@ export function PrimerWebMemo({ company, ticker }: Props) {
           </button>
         )}
       </div>
+
+      {thin && THIN_FALLBACK_ENABLED && (
+        <PrimerThinFallback company={canonical || company} ticker={ticker} />
+      )}
 
       {canonical && results.length > 0 && (
         <MemoModal
