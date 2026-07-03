@@ -615,7 +615,7 @@ export default function TrendsPage() {
         type="button"
         onClick={onClick}
         className={cn(
-          "px-2.5 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border whitespace-nowrap",
+          "px-2.5 py-1 rounded-lg font-sans text-[10px] font-bold cursor-pointer transition-colors border whitespace-nowrap",
           active
             ? variant === "gold"
               ? "bg-gold-muted border-gold/30 text-gold"
@@ -759,7 +759,7 @@ export default function TrendsPage() {
             <span className="font-sans text-[9px] text-text-muted font-bold mr-1">Severity</span>
             {(["all", "low", "medium", "high", "critical"] as AnomalyFilter[]).map((level) => (
               <Pill key={level} active={anomalyFilter === level} onClick={() => setAnomalyFilter(level)}>
-                {level}
+                {level.charAt(0).toUpperCase() + level.slice(1)}
               </Pill>
             ))}
             {profileSectors.length > 0 && (
@@ -774,7 +774,7 @@ export default function TrendsPage() {
                 </Pill>
               </>
             )}
-            <span className="ml-auto font-data text-[11px] text-text-muted">
+            <span className="ml-auto font-sans text-[11px] text-text-muted">
               {filtered.length} signals
             </span>
           </div>
@@ -804,7 +804,7 @@ export default function TrendsPage() {
               </p>
               <p className="font-sans text-[13px] text-text-secondary leading-relaxed">
                 Signalera scanned{" "}
-                <span className="font-data font-semibold text-text-primary">{totalArticles.toLocaleString()}</span>{" "}
+                <span className="font-sans font-semibold text-text-primary">{totalArticles.toLocaleString()}</span>{" "}
                 articles and detected{" "}
                 <span className="font-semibold text-signal-up">
                   {profileSectors.length > 0 && newInMySectors > 0
@@ -812,9 +812,9 @@ export default function TrendsPage() {
                     : `${newTodayCount} new signals`}
                 </span>{" "}
                 today across{" "}
-                <span className="font-data font-semibold text-text-primary">{allSignals.length}</span>{" "}
+                <span className="font-sans font-semibold text-text-primary">{allSignals.length}</span>{" "}
                 active clusters{" \u00B7 "}
-                <span className="font-data">{crossSourceCount}</span> cross-source verified
+                <span className="font-sans">{crossSourceCount}</span> cross-source verified
                 {underreportedCount > 0 && (
                   <>{" \u00B7 "}<span className="font-semibold text-signal-ai">{underreportedCount} underreported</span></>
                 )}
@@ -843,7 +843,7 @@ export default function TrendsPage() {
                         <p className="font-sans text-[13px] font-semibold text-text-primary">{group.label}</p>
                         {group.dateLabel && <span className="font-sans text-[11px] text-text-secondary">{group.dateLabel}</span>}
                         <div className="flex-1 h-px bg-border-base" />
-                        <span className="font-sans text-[11px] text-text-secondary font-data">{group.signals.length} signals</span>
+                        <span className="font-sans text-[11px] text-text-secondary">{group.signals.length} signals</span>
                       </div>
 
                       {/* Signal cards — inline layout */}
@@ -878,25 +878,25 @@ export default function TrendsPage() {
                               <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   {s.cluster_type === "emerging" && (
-                                    <span className="font-data text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-signal-up/10 text-signal-up border border-signal-up/20">
-                                      {"\u2B06"} emerging
+                                    <span className="font-sans text-[9px] font-bold px-2 py-0.5 rounded bg-signal-up/10 text-signal-up border border-signal-up/20">
+                                      {"\u2B06"} Emerging
                                     </span>
                                   )}
                                   {s.top_sectors.slice(0, 1).map((v) => (
                                     <span
                                       key={v}
-                                      className="font-data text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-signal-ai/10 text-signal-ai border border-signal-ai/20"
+                                      className="font-sans text-[9px] font-bold px-2 py-0.5 rounded bg-signal-ai/10 text-signal-ai border border-signal-ai/20"
                                     >
                                       {v}
                                     </span>
                                   ))}
                                   {s.cross_source_flag && s.source_count >= 3 && (
-                                    <span className="font-data text-[9px] font-bold text-signal-up">
+                                    <span className="font-sans text-[9px] font-bold text-signal-up">
                                       {"\u2713"} {s.source_count} sources
                                     </span>
                                   )}
                                 </div>
-                                <span className="font-data text-[9px] text-text-faint">{timeAgo(s.created_at)}</span>
+                                <span className="font-sans text-[9px] text-text-faint">{timeAgo(s.created_at)}</span>
                               </div>
 
                               {/* Row 2: Headline left, Companies right */}
@@ -913,7 +913,7 @@ export default function TrendsPage() {
                                         <span
                                           key={i}
                                           className={cn(
-                                            "font-data text-[9px] px-1.5 py-0.5 rounded",
+                                            "font-sans text-[9px] px-1.5 py-0.5 rounded",
                                             isWatchlist
                                               ? "bg-gold-muted text-gold-dark border border-gold/30 font-semibold"
                                               : "text-text-muted",
@@ -991,17 +991,17 @@ export default function TrendsPage() {
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   {modalSignal.cluster_type === "emerging" && (
-                    <span className="font-data text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-signal-up/10 text-signal-up border border-signal-up/20">
+                    <span className="font-sans text-[9px] font-bold px-2 py-0.5 rounded bg-signal-up/10 text-signal-up border border-signal-up/20">
                       {"\u2B06"} Emerging
                     </span>
                   )}
                   {modalSignal.cross_source_flag && (
-                    <span className="font-data text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-signal-up/10 text-signal-up border border-signal-up/20">
+                    <span className="font-sans text-[9px] font-bold px-2 py-0.5 rounded bg-signal-up/10 text-signal-up border border-signal-up/20">
                       {"\u2713"} {modalSignal.source_count} sources verified
                     </span>
                   )}
                   {modalSignal.underrepresented_flag && (
-                    <span className="font-data text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-signal-ai/10 text-signal-ai border border-signal-ai/20">
+                    <span className="font-sans text-[9px] font-bold px-2 py-0.5 rounded bg-signal-ai/10 text-signal-ai border border-signal-ai/20">
                       {"\u25C7"} Underreported
                     </span>
                   )}
@@ -1031,19 +1031,19 @@ export default function TrendsPage() {
               <div className="grid grid-cols-4 gap-3">
                 <div className="bg-parchment rounded-lg p-3">
                   <p className="font-sans text-[9px] text-text-muted">Articles</p>
-                  <p className="font-data text-[18px] font-semibold text-espresso mt-1">{modalSignal.article_count}</p>
+                  <p className="font-sans text-[18px] font-semibold text-espresso mt-1">{modalSignal.article_count}</p>
                 </div>
                 <div className="bg-parchment rounded-lg p-3">
                   <p className="font-sans text-[9px] text-text-muted">Sources</p>
-                  <p className="font-data text-[18px] font-semibold text-espresso mt-1">{modalSignal.source_count}</p>
+                  <p className="font-sans text-[18px] font-semibold text-espresso mt-1">{modalSignal.source_count}</p>
                 </div>
                 <div className="bg-parchment rounded-lg p-3">
                   <p className="font-sans text-[9px] text-text-muted">First seen</p>
-                  <p className="font-data text-[14px] font-semibold text-espresso mt-1">{new Date(modalSignal.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</p>
+                  <p className="font-sans text-[14px] font-semibold text-espresso mt-1">{new Date(modalSignal.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</p>
                 </div>
                 <div className="bg-parchment rounded-lg p-3">
                   <p className="font-sans text-[9px] text-text-muted">Status</p>
-                  <p className={cn("font-data text-[14px] font-semibold mt-1", modalSignal.lookback_run_count <= 1 ? "text-signal-up" : "text-text-primary")}>
+                  <p className={cn("font-sans text-[14px] font-semibold mt-1", modalSignal.lookback_run_count <= 1 ? "text-signal-up" : "text-text-primary")}>
                     {modalSignal.lookback_run_count <= 1 ? "Emerging" : "Recurring"}
                   </p>
                 </div>
@@ -1062,7 +1062,7 @@ export default function TrendsPage() {
                         <span
                           key={i}
                           className={cn(
-                            "inline-flex items-center gap-1.5 font-data text-[10px] px-2.5 py-1 rounded",
+                            "inline-flex items-center gap-1.5 font-sans text-[10px] px-2.5 py-1 rounded",
                             isWatched
                               ? "bg-gold-muted text-gold-dark border border-gold/30 font-semibold"
                               : "bg-parchment-mid text-text-primary border border-border-base",
@@ -1125,7 +1125,7 @@ export default function TrendsPage() {
                             : "bg-parchment cursor-default",
                         )}
                       >
-                        <span className="font-data text-[9px] text-text-muted w-20 flex-shrink-0 truncate">
+                        <span className="font-sans text-[9px] text-text-muted w-20 flex-shrink-0 truncate">
                           {a.source || "Unknown"}
                         </span>
                         {(() => {
@@ -1138,7 +1138,7 @@ export default function TrendsPage() {
                               ? "bg-signal-warn/10 text-signal-warn"
                               : "bg-parchment-mid text-text-muted";
                           return (
-                            <span className={cn("font-data text-[8px] uppercase px-1.5 py-0.5 rounded flex-shrink-0", badgeClass)}>
+                            <span className={cn("font-sans text-[8px] px-1.5 py-0.5 rounded flex-shrink-0", badgeClass)}>
                               {contentType}
                             </span>
                           );
@@ -1149,7 +1149,7 @@ export default function TrendsPage() {
                         )}>
                           {a.title}
                         </span>
-                        <span className="font-data text-[9px] text-text-faint flex-shrink-0">
+                        <span className="font-sans text-[9px] text-text-faint flex-shrink-0">
                           {timeAgo(a.published_at)}
                         </span>
                       </a>

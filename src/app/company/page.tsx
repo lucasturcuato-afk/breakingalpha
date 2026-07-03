@@ -619,7 +619,7 @@ export default function CompanyIntelPage() {
                       )
                     }
                     className={cn(
-                      "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                      "px-3 py-1 rounded-lg font-sans text-[10px] font-bold cursor-pointer transition-colors border",
                       isActive
                         ? "border-gold bg-gold-muted text-gold"
                         : "border-border-base bg-white text-text-muted hover:text-text-primary",
@@ -633,7 +633,7 @@ export default function CompanyIntelPage() {
                 <button
                   type="button"
                   onClick={() => { setSelectedVerticals([]); setVerticalMatchMode("any"); }}
-                  className="px-3 py-1 font-data text-[10px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
+                  className="px-3 py-1 font-sans text-[10px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
                 >
                   Clear filters
                 </button>
@@ -655,7 +655,7 @@ export default function CompanyIntelPage() {
                 <button
                   type="button"
                   onClick={resetFilters}
-                  className="px-3 py-1.5 rounded-lg border border-border-base bg-white font-data text-[10px] font-bold uppercase text-text-muted hover:text-text-primary cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg border border-border-base bg-white font-sans text-[10px] font-bold text-text-muted hover:text-text-primary cursor-pointer"
                 >
                   Reset filters
                 </button>
@@ -718,7 +718,7 @@ export default function CompanyIntelPage() {
                         </button>
                       </td>
                       {/* Ticker */}
-                      <td className="w-20 px-2 py-2 font-data text-[11px] font-bold text-espresso">
+                      <td className="w-20 px-2 py-2 font-sans text-[11px] font-bold text-espresso">
                         {row.ticker ?? <span className="text-text-faint">--</span>}
                       </td>
                       {/* Name */}
@@ -737,7 +737,7 @@ export default function CompanyIntelPage() {
                             {row.sector}
                           </span>
                         ) : (
-                          <span className="font-data text-[10px] text-text-faint">--</span>
+                          <span className="font-sans text-[10px] text-text-faint">--</span>
                         )}
                       </td>
                       {/* Themes: width-measured cluster -- whole tags that fit,
@@ -752,12 +752,12 @@ export default function CompanyIntelPage() {
                         </span>
                       </td>
                       {/* Last seen */}
-                      <td className="px-2 py-2 font-data text-[10px] text-text-muted whitespace-nowrap">
+                      <td className="px-2 py-2 font-sans text-[10px] text-text-muted whitespace-nowrap">
                         {row.lastUpdated ? timeAgo(row.lastUpdated) : <span className="text-text-faint">--</span>}
                       </td>
                       {/* Alias count: distinct surface forms collapsed onto this canonical (per W2-A read-path PR #195) */}
                       <td className="w-10 px-2 py-2 text-center">
-                        <span className="font-data text-[10px] text-gold/60">{row.aliasCount}</span>
+                        <span className="font-sans text-[10px] text-gold/60">{row.aliasCount}</span>
                       </td>
                       {/* Action menu */}
                       <td className="w-8 px-2 py-2 text-center" onClick={(e) => { e.stopPropagation(); if (!isLocked) router.push(`/company/${encodeURIComponent(slugify(row.name))}`); }}>

@@ -10,53 +10,13 @@ import { cn } from "@/lib/utils";
 import { BookmarkButton } from "@/components/ui/bookmark";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { CompletenessBadge, SignalScore, SourceCredibilityBadge } from "@/lib/article-signal";
+import { SentimentPill, sentimentToTone } from "@/components/ui/sentiment-pill";
 import type { StoryData } from "@/components/dashboard";
 
 // Sherwood Direction C palette — literal hexes for values that must stay
 // constant across the theme flip (html.dark rebinds --espresso/--cream).
 const HERITAGE_GOLD = "#d4a84b";
 const DC_ESPRESSO = "#1a1208";
-
-type Tone = "BULLISH" | "BEARISH" | "NEUTRAL" | "MIXED" | "WATCH";
-
-function normaliseTone(t?: string | null): Tone {
-  if (!t) return "NEUTRAL";
-  const l = t.toLowerCase();
-  if (l.includes("bull") || l === "positive" || l.includes("risk-on")) return "BULLISH";
-  if (l.includes("bear") || l === "negative" || l.includes("risk-off")) return "BEARISH";
-  if (l.includes("mix")) return "MIXED";
-  if (l.includes("watch")) return "WATCH";
-  return "NEUTRAL";
-}
-
-function SentimentPill({ tone }: { tone: Tone }) {
-  const style: Record<Tone, { bg: string; fg: string; bd: string }> = {
-    BULLISH: { bg: "var(--pill-bull-bg)", fg: "var(--pill-bull-text)", bd: "var(--pill-bull-border)" },
-    BEARISH: { bg: "var(--pill-bear-bg)", fg: "var(--pill-bear-text)", bd: "var(--pill-bear-border)" },
-    NEUTRAL: { bg: "var(--pill-neutral-bg)", fg: "var(--pill-neutral-text)", bd: "var(--pill-neutral-border)" },
-    MIXED: { bg: "var(--pill-mixed-bg)", fg: "var(--pill-mixed-text)", bd: "var(--pill-mixed-border)" },
-    WATCH: { bg: "var(--pill-watch-bg)", fg: "var(--pill-watch-text)", bd: "var(--pill-watch-border)" },
-  };
-  const s = style[tone];
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        fontFamily: "var(--font-inter), Inter, sans-serif",
-        fontSize: 9,
-        fontWeight: 700,
-        letterSpacing: "0.10em",
-        padding: "3px 7px",
-        borderRadius: 4,
-        background: s.bg,
-        color: s.fg,
-        border: `1px solid ${s.bd}`,
-      }}
-    >
-      {tone}
-    </span>
-  );
-}
 
 const STOP_WORDS = new Set([
   "the","a","an","and","or","but","in","on","at","to","for","of","with","by",
@@ -116,7 +76,7 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
   const [thesisToast, setThesisToast] = useState("");
   const router = useRouter();
 
-  const storyTone = normaliseTone(story.sentiment);
+  const storyTone = sentimentToTone(story.sentiment);
 
   const completenessLabel =
     story.completeness === "full" ? "Full text"
@@ -223,7 +183,7 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
             )}
             <span>{story.source}</span>
             <span style={{ color: "var(--text-faint)" }}>·</span>
-            <span className="font-data" style={{ fontSize: 10 }}>
+            <span className="font-sans" style={{ fontSize: 10 }}>
               {story.timestamp}
             </span>
             {story.adjustedScore != null && (
@@ -236,7 +196,7 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
             {completenessLabel && <CompletenessBadge completeness={story.completeness} />}
           </div>
         </div>
-        <SentimentPill tone={storyTone} />
+        <SentimentPill tone={storyTone} size="sm" />
       </div>
 
       <div
@@ -285,7 +245,7 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
                 {story.tags.map((t) => (
                   <span
                     key={t}
-                    className="font-data"
+                    className="font-sans"
                     style={{
                       fontSize: 10,
                       fontWeight: 600,

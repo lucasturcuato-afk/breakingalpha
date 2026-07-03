@@ -402,7 +402,7 @@ export default function LiveFeedPage() {
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as SortOption)}
-            className="font-data text-[10px] bg-parchment-mid border border-border-base rounded-lg px-2.5 py-1.5 text-text-secondary cursor-pointer"
+            className="font-sans text-[10px] bg-parchment-mid border border-border-base rounded-lg px-2.5 py-1.5 text-text-secondary cursor-pointer"
           >
             <option value="newest">Newest first</option>
             <option value="oldest">Oldest first</option>
@@ -410,7 +410,7 @@ export default function LiveFeedPage() {
             <option value="sentiment">By sentiment</option>
           </select>
           {lastRefresh && (
-            <span className="font-data text-[9px] text-text-faint whitespace-nowrap">
+            <span className="font-sans text-[9px] text-text-faint whitespace-nowrap">
               Updated {lastRefresh.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </span>
           )}
@@ -513,13 +513,13 @@ export default function LiveFeedPage() {
                       <span className="font-sans text-[10px] font-semibold text-text-muted">
                         {group.label.charAt(0) + group.label.slice(1).toLowerCase()}
                       </span>
-                      <span className="font-data text-[9px] text-text-faint">
+                      <span className="font-sans text-[9px] text-text-faint">
                         {group.stories.length} {group.stories.length === 1 ? "article" : "articles"}
                       </span>
                       {group.label === "LAST HOUR" && newArticleIds.size > 0 && (
                         <span className="inline-flex items-center gap-1 ml-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-signal-up animate-pulse" />
-                          <span className="font-data text-[9px] text-signal-up font-semibold">
+                          <span className="font-sans text-[9px] text-signal-up font-semibold">
                             {newArticleIds.size} new
                           </span>
                         </span>
@@ -545,7 +545,7 @@ export default function LiveFeedPage() {
                             <button
                               type="button"
                               onClick={() => toggleDuplicates(story.id)}
-                              className="font-data text-[9px] font-semibold text-text-muted bg-parchment-mid border border-border-base rounded px-1.5 py-0.5 cursor-pointer hover:text-text-primary hover:border-border-hover transition-colors"
+                              className="font-sans text-[9px] font-semibold text-text-muted bg-parchment-mid border border-border-base rounded px-1.5 py-0.5 cursor-pointer hover:text-text-primary hover:border-border-hover transition-colors"
                             >
                               {isExpanded ? "▴" : "▾"} +{story.duplicateArticles.length} {story.duplicateArticles.length === 1 ? "source" : "sources"}
                               {!isExpanded && story.duplicateArticles.length > 0 && `: ${story.duplicateArticles.slice(0, 3).map((d) => d.source).join(", ")}`}
@@ -558,7 +558,7 @@ export default function LiveFeedPage() {
                                       <p className="font-sans text-[12px] text-text-primary leading-snug truncate">
                                         {dup.title}
                                       </p>
-                                      <p className="font-data text-[9px] text-text-muted mt-0.5">
+                                      <p className="font-sans text-[9px] text-text-muted mt-0.5">
                                         {dup.source}
                                         {dup.publishedAt && ` · ${timeAgo(dup.publishedAt)}`}
                                       </p>
@@ -597,7 +597,7 @@ export default function LiveFeedPage() {
                       <div style={{ maxHeight: '48px', overflow: 'hidden', pointerEvents: 'none', userSelect: 'none', opacity: 0.7 }}>
                         {filtered[GATE_LIMIT] && (
                           <div className="bg-white border border-border-base rounded-xl p-3">
-                            <p className="font-data text-[9px] text-text-muted">{filtered[GATE_LIMIT].source}</p>
+                            <p className="font-sans text-[9px] text-text-muted">{filtered[GATE_LIMIT].source}</p>
                             <p className="font-display text-[13px] font-bold text-espresso leading-snug mt-1 line-clamp-1">{filtered[GATE_LIMIT].title}</p>
                           </div>
                         )}
