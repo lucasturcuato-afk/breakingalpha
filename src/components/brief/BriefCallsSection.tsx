@@ -86,7 +86,7 @@ export default function BriefCallsSection({
       <h2 className="font-display text-[15px] font-semibold text-text-primary leading-snug">
         {heading}
       </h2>
-      <p className="font-display text-[13px] text-text-muted mt-0.5 mb-3">
+      <p className="font-sans text-[12px] text-text-muted mt-0.5 mb-3">
         Predictions from this brief, captured before the outcome. Scoring goes live
         once resolution ships.
       </p>
@@ -94,7 +94,7 @@ export default function BriefCallsSection({
       {calls.length === 0 ? (
         // Honest pending/empty state — never faked to look complete.
         <div className="rounded-lg border border-border-subtle bg-elevated px-4 py-4">
-          <p className="font-display text-[15px] text-text-muted">
+          <p className="font-sans text-[13px] text-text-muted">
             {status === "error"
               ? "Calls are momentarily unavailable."
               : "No scored calls were captured for this brief yet."}
