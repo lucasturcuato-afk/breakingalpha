@@ -1,7 +1,13 @@
 # Signalera/Breaking Alpha -- Claude Chat Handoff
-**Date:** 2026-06-16 (PT)
-**Last session focus:** Macro panel (macro-economics dashboard + brief surface), Company Intel overhaul (Financials tab, primary_company tagging, dark-mode fallback), grading substrate hardening, track-record polish, security lockdown (service-role client), e2e-to-advisory demotion.
-**Status:** Main is at `33957755`. ~41 PRs merged since last handoff (2026-06-03). Macro panel slice 2 + grading fixes + BLS/BEA data layers + primary_company tagging + Track Record reframe all landed. Lucas throttled back, small windows for recon/fixes now.
+**Date:** 2026-07-03 (PT)
+**Last session focus:** Web-fallback refinement, materiality ranking (shadow), lead selection overhaul, ingest hardening, XBRL expansion, filter optimization.
+**Status:** Main is at HEAD. ~30 PRs merged since 2026-06-16 (2026-06-16 through 2026-07-03). Web-fallback tier system + entity dedup fixes, identity-dedup snapshot, materiality ranking + lead-selection overhaul, tape serialization + persistence, ingest robustness (503 retry, gnews polish, non-English gating), XBRL 20-F/40-F support + SEC CIK population, filter prompt caching (dark), token usage tracking all landed.
+
+---
+
+## Recently Completed (2026-07-03) -- Web-fallback tiers, identity-dedup, lead overhaul, ingest hardening, XBRL expansion
+
+~30 PRs merged (2026-06-16 through 2026-07-03): web-fallback tier system + entity dedup fixes, identity-dedup snapshot (Option B), materiality ranking (shadow mode), lead-selection overhaul + tape refactor, ingest hardening (503 retry, gnews cleanup, non-English gating), XBRL expansion (20-F/40-F support, SEC CIK mint), filter prompt caching (dark flag), cached token count tracking, dashboard relevance fix.
 
 ---
 
@@ -962,6 +968,9 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 
 **Filter cost optimization (2026-06-02) — VALIDATION PLAN PENDING FIRST RUN**
 - **PRs #305–#310 merged to main, AWAITING FIRST REAL CRON RUN** — Five-PR arc shipped end-to-end; no code issues found in dev testing. Meter delta on next live run should confirm ~$5→$1.5/run. Key validation checkpoints: (1) #307 log `[filter:usage]` line emits per run with token breakdown + estimated cost; (2) run-over-run article count stable (no flood/collapse); (3) relevance_score distribution unchanged (rubric working as expected); (4) SEC article count unchanged via deterministic bypass; (5) brief headline + pool quality visually acceptable. FLASHLITE SCOPE: filter call only (backend/ingest.py:44 FILTER_MODEL); all 14 other Gemini steps stay on gemini-2.5-flash. INGEST GATE: both `relevant==true` AND `relevance_score>=6` must independently pass. Throwaway analysis scripts (backend/scripts/) untracked, safe to delete.
+
+**Filter prompt caching (2026-06-25) — FEATURE GATE DARK (FILTER_PROMPT_CACHE)**
+- **PRs #423 and #425 merged (2026-06-25–26)** — Cacheable filter-prompt reorder behind FILTER_PROMPT_CACHE flag (default off). PR #423 adds reorder logic + caching layer in backend/ingest.py; PR #425 wires FILTER_PROMPT_CACHE environment variable into CI pipeline. This is independent from PRs #305–#310 Flash-Lite optimization. Gate still dark; requires manual enablement + cost validation before prod flip. Related PRs: #424 (retry transient Gemini errors in eval), #426 (retry transient 503 UNAVAILABLE in filter).
 
 **Recently merged (2026-05-02) — Wave 3 in flight**
 - **PR #176 — feat(company-intel): web-search fallback for un-indexed companies** — MERGED at 8a99f3f. Feature gate default off (NEXT_PUBLIC_WEB_FALLBACK_ENABLED). Truncation fix included (7e07688: per-type maxOutputTokens ternary). **Manual Supabase step required:** Apply `sql/web_search_cache.sql` (6h TTL cache table) before flag enable. NOT required before merge — flag is default off, gate returns 503.
