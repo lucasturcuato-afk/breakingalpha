@@ -67,7 +67,7 @@ export function SourcePanel({ onGenerate, generating = false, initialCompany = "
   return (
     <div className="h-full flex flex-col">
       <div className="px-4 py-3 border-b border-border-base">
-        <h2 className="font-sans text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+        <h2 className="font-sans text-[10px] font-semibold text-text-muted">
           Deal Source
         </h2>
       </div>

@@ -890,7 +890,7 @@ export default function WatchlistPage() {
           {tickers.length > 0 && (
             <div className="grid grid-cols-4 gap-2">
               {[
-                { label: "TRACKING", sub: `${watchlist.length} items`, value: watchlist.length, icon: <Star size={12} />, color: "text-gold" },
+                { label: "Tracking", sub: `${watchlist.length} items`, value: watchlist.length, icon: <Star size={12} />, color: "text-gold" },
                 { label: "Gainers", sub: `of ${tickers.length} tickers`, value: gainers, icon: <TrendingUp size={12} />, color: "text-signal-up" },
                 { label: "Losers", sub: `of ${tickers.length} tickers`, value: losers, icon: <TrendingDown size={12} />, color: "text-signal-dn" },
                 { label: "Flat", sub: `of ${tickers.length} tickers`, value: flat, icon: <Minus size={12} />, color: "text-text-muted" },
@@ -900,7 +900,7 @@ export default function WatchlistPage() {
                     {s.icon}
                     <span className="font-data text-[16px] font-bold">{s.value}</span>
                   </div>
-                  <p className="font-data text-[9px] text-text-muted uppercase tracking-wider">{s.label}</p>
+                  <p className="font-sans text-[9px] text-text-muted">{s.label}</p>
                   <p className="font-data text-[8px] text-text-faint">{s.sub}</p>
                 </div>
               ))}
@@ -927,7 +927,7 @@ export default function WatchlistPage() {
 
           {/* Tracking list */}
           <div>
-            <p className="font-data text-[9px] uppercase tracking-widest text-text-muted mb-2.5">
+            <p className="font-sans text-[9px] text-text-muted mb-2.5">
               Tracking ({watchlist.length})
             </p>
 
@@ -947,7 +947,7 @@ export default function WatchlistPage() {
                 {sectorEntries.length > 0 && (
                   <>
                     {showDivider && (
-                      <p className="font-data text-[8px] uppercase tracking-widest text-text-faint mb-1.5">Sectors</p>
+                      <p className="font-sans text-[8px] text-text-faint mb-1.5">Sectors</p>
                     )}
                     {sectorEntries.map((entry) => {
                       const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
@@ -1005,7 +1005,7 @@ export default function WatchlistPage() {
                 {/* PUBLIC COMPANIES GROUP */}
                 {publicEntries.length > 0 && (
                   <>
-                    <p className="font-data text-[8px] uppercase tracking-widest text-text-faint mb-1.5 mt-1">Public Companies</p>
+                    <p className="font-sans text-[8px] text-text-faint mb-1.5 mt-1">Public companies</p>
                     <DndContext
                       sensors={dndSensors}
                       collisionDetection={closestCenter}
@@ -1047,7 +1047,7 @@ export default function WatchlistPage() {
                 {/* PRIVATE COMPANIES GROUP */}
                 {privateEntries.length > 0 && (
                   <>
-                    <p className="font-data text-[8px] uppercase tracking-widest text-text-faint mb-1.5 mt-1">Private Companies</p>
+                    <p className="font-sans text-[8px] text-text-faint mb-1.5 mt-1">Private companies</p>
                     <DndContext
                       sensors={dndSensors}
                       collisionDetection={closestCenter}
@@ -1101,7 +1101,7 @@ export default function WatchlistPage() {
               </div>
             ) : (
               <div>
-                <p className="font-data text-[9px] uppercase tracking-widest text-text-muted">Watchlist Feed</p>
+                <p className="font-sans text-[9px] text-text-muted">Watchlist feed</p>
                 <p className="font-data text-[11px] text-gold font-semibold">{displayedArticles.length} articles</p>
               </div>
             )}
@@ -1112,7 +1112,7 @@ export default function WatchlistPage() {
                   type="button"
                   onClick={() => setAgeFilter(f)}
                   className={cn(
-                    "px-2.5 py-1 rounded-md font-data text-[9px] cursor-pointer transition-colors border",
+                    "px-2.5 py-1 rounded-md font-sans text-[9px] cursor-pointer transition-colors border",
                     ageFilter === f
                       ? "border-gold bg-gold-muted text-gold font-semibold"
                       : "border-border-base bg-white dark:bg-elevated text-text-muted hover:text-text-primary",
@@ -1128,7 +1128,7 @@ export default function WatchlistPage() {
                   type="button"
                   onClick={() => setSortMode(mode)}
                   className={cn(
-                    "px-2.5 py-1 rounded-md font-data text-[9px] cursor-pointer transition-colors border",
+                    "px-2.5 py-1 rounded-md font-sans text-[9px] cursor-pointer transition-colors border",
                     sortMode === mode
                       ? "border-gold bg-gold-muted text-gold font-semibold"
                       : "border-border-base bg-white dark:bg-elevated text-text-muted hover:text-text-primary",
@@ -1423,7 +1423,7 @@ export default function WatchlistPage() {
             className="bg-white dark:bg-elevated border border-border-base dark:border-border-default rounded-xl p-5 shadow-2xl min-w-[220px]"
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">Keyboard Shortcuts</p>
+            <p className="font-sans text-[9px] text-text-muted font-semibold mb-3">Keyboard shortcuts</p>
             <div className="space-y-1.5">
               {[
                 { key: "J / K", desc: "Navigate" },

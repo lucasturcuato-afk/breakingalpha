@@ -18,7 +18,7 @@ export interface ArticlesTableProps {
   articles: CompanyDetailArticle[];
 }
 
-const TH = "px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-text-muted";
+const TH = "px-3 py-2 text-[10px] font-semibold text-text-muted";
 
 export function ArticlesTable({ articles }: ArticlesTableProps) {
   const anchorRefs = useRef<Array<HTMLAnchorElement | null>>([]);

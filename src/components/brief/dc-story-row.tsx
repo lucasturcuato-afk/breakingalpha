@@ -172,11 +172,9 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
                 display: "inline-block",
                 fontSize: 9,
                 fontWeight: 700,
-                letterSpacing: "0.10em",
-                textTransform: "uppercase",
-                color: "var(--gold-dark)",
-                background: "var(--gold-muted)",
-                border: "1px solid var(--gold-border)",
+                color: "var(--text-muted)",
+                background: "var(--parchment-mid)",
+                border: "1px solid var(--border-base)",
                 padding: "2px 7px",
                 borderRadius: 4,
                 marginBottom: 5,
@@ -217,9 +215,7 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
                   color: "var(--gold-dark)",
                   borderRadius: 4,
                   fontWeight: 700,
-                  letterSpacing: "0.06em",
                   fontSize: 10,
-                  textTransform: "uppercase",
                 }}
               >
                 {story.sector}
@@ -462,12 +458,10 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
                   marginLeft: 4,
                   padding: "2px 4px",
                   borderRadius: 4,
-                  background: "var(--gold-muted)",
+                  background: "var(--parchment-mid)",
                   fontSize: 8,
                   fontWeight: 700,
-                  color: "var(--gold)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
+                  color: "var(--text-muted)",
                 }}>
                   Soon
                 </span>

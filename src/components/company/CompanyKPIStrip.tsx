@@ -9,7 +9,7 @@
 // Cells 1-2 hydrate from /api/company-kpis. Cells 3-6 from companyDetail prop.
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { Delta, Eyebrow, SentimentPill, type SentimentTone } from "@/components/ui";
+import { Delta, SentimentPill, type SentimentTone } from "@/components/ui";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { CompanyDetail } from "@/lib/data-access/getCompanyDetail";
 import { shouldRenderPrivate } from "@/lib/company-privacy";
@@ -94,12 +94,11 @@ const valueStyle: CSSProperties = {
   fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em",
 };
 const subStyle: CSSProperties = {
-  fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-faint, #8a7a68)", marginTop: 1,
+  fontFamily: "var(--font-inter), Inter, sans-serif", fontSize: 10, color: "var(--text-faint, #8a7a68)", marginTop: 1,
 };
 const privateBadgeStyle: CSSProperties = {
   display: "inline-block", marginLeft: 6, padding: "1px 6px",
-  fontFamily: "var(--font-mono)", fontSize: 9, fontWeight: 700,
-  letterSpacing: "0.08em", textTransform: "uppercase",
+  fontFamily: "var(--font-inter), Inter, sans-serif", fontSize: 9, fontWeight: 700,
   color: "var(--text-faint, #8a7a68)",
   border: "1px solid var(--border-base)", borderRadius: 3, verticalAlign: "middle",
 };
@@ -112,7 +111,15 @@ interface CellProps {
 
 function Cell({ label, valueTestId, value, delta, sub, isLast, trailing, tooltip }: CellProps) {
   const showDelta = delta !== null && delta !== undefined && Number.isFinite(delta);
-  const labelNode = <Eyebrow as="span" variant="mono">{label}</Eyebrow>;
+  const labelNode = (
+    <span
+      data-testid="eyebrow-label"
+      className="font-sans text-[10px] font-bold m-0"
+      style={{ color: "var(--text-faint)" }}
+    >
+      {label}
+    </span>
+  );
   return (
     <div data-testid="kpi-card" style={isLast ? cellBase : cellRight}>
       {tooltip ? <Tooltip content={tooltip}>{labelNode}</Tooltip> : labelNode}

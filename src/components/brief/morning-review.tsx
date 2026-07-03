@@ -37,7 +37,7 @@ function VerdictPill({ verdict }: { verdict: "correct" | "wrong" | "partial" }) 
   return (
     <span
       className={cn(
-        "inline-flex items-center font-data text-[9px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded border",
+        "inline-flex items-center font-sans text-[9px] font-semibold px-2 py-0.5 rounded border",
         styles[verdict],
       )}
     >
@@ -50,8 +50,7 @@ function ReviewHeader() {
   return (
     <div className="flex items-center gap-2 mb-3">
       <span
-        className="font-data text-[9px] font-bold uppercase tracking-widest"
-        style={{ color: "var(--gold)" }}
+        className="font-sans text-[9px] font-bold text-text-muted"
       >
         Morning Brief Review
       </span>

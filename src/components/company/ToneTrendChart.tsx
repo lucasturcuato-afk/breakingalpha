@@ -192,7 +192,7 @@ export function ToneTrendChart({ company, compact = false, defaultRange = "30d" 
                 · {hovered.p.n} {hovered.p.n === 1 ? "article" : "articles"}
               </span>
             ) : (
-              <span className="font-data text-[10px] uppercase tracking-widest text-text-muted">
+              <span className="font-sans text-[10px] text-text-muted">
                 Tone over time
               </span>
             )}

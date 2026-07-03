@@ -260,7 +260,7 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
         onClick={handleToggle}
         className="flex items-center gap-1.5 cursor-pointer w-full"
       >
-        <span className="font-sans text-[11px] uppercase tracking-widest text-gold font-bold">
+        <span className="font-sans text-[11px] text-text-secondary font-bold">
           Why this thesis
         </span>
         <ChevronDown
@@ -286,8 +286,8 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
               {/* SOURCED FROM */}
               {data.articles.length > 0 && (
                 <div>
-                  <div className="font-sans text-[9px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-                    Sourced From
+                  <div className="font-sans text-[10px] text-text-muted font-semibold mb-1">
+                    Sourced from
                   </div>
                   <div className="space-y-0.5">
                     {data.articles.map((a) => (
@@ -302,8 +302,8 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
               {/* CLUSTER SIGNAL */}
               {data.clusters.length > 0 && (
                 <div>
-                  <div className="font-sans text-[9px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-                    Cluster Signal
+                  <div className="font-sans text-[10px] text-text-muted font-semibold mb-1">
+                    Cluster signal
                   </div>
                   <div className="space-y-0.5">
                     {data.clusters.map((c, i) => (
@@ -320,8 +320,8 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
               {/* SOURCE RELIABILITY */}
               {data.sourceReliability && (
                 <div>
-                  <div className="font-sans text-[9px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-                    Source Reliability
+                  <div className="font-sans text-[10px] text-text-muted font-semibold mb-1">
+                    Source reliability
                   </div>
                   <div className="font-sans text-[12px] text-text-secondary">
                     Average source reliability:{" "}
@@ -336,8 +336,8 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
               {/* PATTERN MATCH */}
               {data.patterns.length > 0 && (
                 <div>
-                  <div className="font-sans text-[9px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-                    Pattern Match
+                  <div className="font-sans text-[10px] text-text-muted font-semibold mb-1">
+                    Pattern match
                   </div>
                   <div className="space-y-0.5">
                     {data.patterns.map((p, i) => (
@@ -354,8 +354,8 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
               {/* ADVERSARIAL CHECK */}
               {data.adversarial && (data.adversarial.score !== null || data.adversarial.bearCase) && (
                 <div>
-                  <div className="font-sans text-[9px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-                    Adversarial Check
+                  <div className="font-sans text-[10px] text-text-muted font-semibold mb-1">
+                    Adversarial check
                   </div>
                   <div className="font-sans text-[12px] text-text-secondary">
                     {data.adversarial.score !== null && (
@@ -381,8 +381,8 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
               {/* SYSTEM CONTEXT */}
               {data.systemContext && (
                 <div>
-                  <div className="font-sans text-[9px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-                    System Context
+                  <div className="font-sans text-[10px] text-text-muted font-semibold mb-1">
+                    System context
                   </div>
                   <div className="font-sans text-[12px] text-text-muted italic">
                     {data.systemContext}

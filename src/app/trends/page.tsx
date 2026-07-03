@@ -720,7 +720,7 @@ export default function TrendsPage() {
         <div className="sticky top-0 z-10 bg-parchment border-b border-border-base px-6 py-3 space-y-2">
           {/* Row 1: Industry verticals */}
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            <span className="font-data text-[9px] uppercase tracking-widest text-gold font-bold mr-1 flex-shrink-0">SECTOR</span>
+            <span className="font-sans text-[9px] text-text-muted font-bold mr-1 flex-shrink-0">Sector</span>
             {INDUSTRY_VERTICALS.map((v) => (
               <Pill
                 key={v}
@@ -738,7 +738,7 @@ export default function TrendsPage() {
 
           {/* Row 2: Activity types */}
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            <span className="font-data text-[9px] uppercase tracking-widest text-gold font-bold mr-1 flex-shrink-0">ACTIVITY</span>
+            <span className="font-sans text-[9px] text-text-muted font-bold mr-1 flex-shrink-0">Activity</span>
             {ACTIVITY_TYPES.map((a) => (
               <Pill
                 key={a}
@@ -756,7 +756,7 @@ export default function TrendsPage() {
 
           {/* Row 3: Severity + show filters + my sectors */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-data text-[9px] uppercase tracking-widest text-gold font-bold mr-1">SEVERITY</span>
+            <span className="font-sans text-[9px] text-text-muted font-bold mr-1">Severity</span>
             {(["all", "low", "medium", "high", "critical"] as AnomalyFilter[]).map((level) => (
               <Pill key={level} active={anomalyFilter === level} onClick={() => setAnomalyFilter(level)}>
                 {level}
@@ -799,8 +799,8 @@ export default function TrendsPage() {
           <>
             {/* Signal Radar Header */}
             <div className="mb-5">
-              <p className="font-data text-[9px] uppercase tracking-widest text-gold font-bold mb-1">
-                Signal Radar
+              <p className="font-sans text-[9px] text-text-muted font-bold mb-1">
+                Signal radar
               </p>
               <p className="font-sans text-[13px] text-text-secondary leading-relaxed">
                 Signalera scanned{" "}
@@ -1030,19 +1030,19 @@ export default function TrendsPage() {
               {/* Evidence stats */}
               <div className="grid grid-cols-4 gap-3">
                 <div className="bg-parchment rounded-lg p-3">
-                  <p className="font-data text-[9px] uppercase tracking-widest text-text-muted">Articles</p>
+                  <p className="font-sans text-[9px] text-text-muted">Articles</p>
                   <p className="font-data text-[18px] font-semibold text-espresso mt-1">{modalSignal.article_count}</p>
                 </div>
                 <div className="bg-parchment rounded-lg p-3">
-                  <p className="font-data text-[9px] uppercase tracking-widest text-text-muted">Sources</p>
+                  <p className="font-sans text-[9px] text-text-muted">Sources</p>
                   <p className="font-data text-[18px] font-semibold text-espresso mt-1">{modalSignal.source_count}</p>
                 </div>
                 <div className="bg-parchment rounded-lg p-3">
-                  <p className="font-data text-[9px] uppercase tracking-widest text-text-muted">First seen</p>
+                  <p className="font-sans text-[9px] text-text-muted">First seen</p>
                   <p className="font-data text-[14px] font-semibold text-espresso mt-1">{new Date(modalSignal.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</p>
                 </div>
                 <div className="bg-parchment rounded-lg p-3">
-                  <p className="font-data text-[9px] uppercase tracking-widest text-text-muted">Status</p>
+                  <p className="font-sans text-[9px] text-text-muted">Status</p>
                   <p className={cn("font-data text-[14px] font-semibold mt-1", modalSignal.lookback_run_count <= 1 ? "text-signal-up" : "text-text-primary")}>
                     {modalSignal.lookback_run_count <= 1 ? "Emerging" : "Recurring"}
                   </p>
@@ -1052,7 +1052,7 @@ export default function TrendsPage() {
               {/* Companies */}
               {modalSignal.top_companies.length > 0 && (
                 <div>
-                  <p className="font-data text-[9px] uppercase tracking-widest text-text-muted mb-2">Companies mentioned</p>
+                  <p className="font-sans text-[9px] text-text-muted mb-2">Companies mentioned</p>
                   <div className="flex flex-wrap gap-1.5">
                     {modalSignal.top_companies.map((c, i) => {
                       const name = c.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
@@ -1095,7 +1095,7 @@ export default function TrendsPage() {
               {/* Themes */}
               {modalSignal.top_themes.length > 0 && (
                 <div>
-                  <p className="font-data text-[9px] uppercase tracking-widest text-text-muted mb-2">Themes</p>
+                  <p className="font-sans text-[9px] text-text-muted mb-2">Themes</p>
                   <div className="flex flex-wrap gap-1.5">
                     {modalSignal.top_themes.map((t, i) => (
                       <span key={i} className="font-sans text-[10px] px-2 py-0.5 rounded bg-signal-ai/10 text-signal-ai">
@@ -1108,7 +1108,7 @@ export default function TrendsPage() {
 
               {/* Source articles — clickable links */}
               <div>
-                <p className="font-data text-[9px] uppercase tracking-widest text-text-muted mb-2">Source articles</p>
+                <p className="font-sans text-[9px] text-text-muted mb-2">Source articles</p>
                 {(articleCache[modalSignal.id] ?? []).length > 0 ? (
                   <div className="space-y-1">
                     {(articleCache[modalSignal.id] ?? []).map((a) => (

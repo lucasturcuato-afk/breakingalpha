@@ -111,7 +111,7 @@ export function NotificationDropdown({
                     {n.body}
                   </p>
                 )}
-                <p className="font-mono text-[9px] text-text-faint mt-1 uppercase tracking-wide">
+                <p className="font-sans text-[9px] text-text-faint mt-1">
                   Snapshot at trigger time — quote may have moved since
                 </p>
               </div>

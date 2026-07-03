@@ -152,7 +152,7 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
               ? (
                   <span
                     style={getSectorStyle(story.sector)}
-                    className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
+                    className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded"
                   >
                     {story.sector}
                   </span>
@@ -313,7 +313,7 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
             >
               <MessageSquare size={11} />
               Ask AI
-              <span className="ml-1 px-1 py-0.5 rounded bg-gold-muted text-[8px] font-semibold text-gold uppercase tracking-wide">
+              <span className="ml-1 px-1 py-0.5 rounded bg-parchment-mid text-[8px] font-semibold text-text-muted">
                 Soon
               </span>
             </button>
@@ -394,7 +394,7 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
                 ? (
                     <span
                       style={getSectorStyle(story.sector)}
-                      className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide flex-shrink-0"
+                      className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0"
                     >
                       {story.sector}
                     </span>
@@ -530,7 +530,7 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
               >
                 <MessageSquare size={11} />
                 Ask AI
-                <span className="ml-1 px-1 py-0.5 rounded bg-gold-muted text-[8px] font-semibold text-gold uppercase tracking-wide">
+                <span className="ml-1 px-1 py-0.5 rounded bg-parchment-mid text-[8px] font-semibold text-text-muted">
                   Soon
                 </span>
               </button>

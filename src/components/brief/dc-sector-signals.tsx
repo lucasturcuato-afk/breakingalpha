@@ -122,9 +122,7 @@ export function DCSectorSignals({ breakdown }: DCSectorSignalsProps) {
                 className="font-sans"
                 style={{
                   fontSize: 10,
-                  letterSpacing: "0.14em",
-                  textTransform: "uppercase",
-                  color: "var(--gold-dark)",
+                  color: "var(--text-muted)",
                   fontWeight: 700,
                   margin: "0 0 8px",
                 }}

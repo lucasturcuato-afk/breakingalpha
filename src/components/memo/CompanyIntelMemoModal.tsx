@@ -473,9 +473,9 @@ export default function CompanyIntelMemoModal(props: CompanyIntelMemoModalProps)
               {webFallback && (
                 <span
                   className={cn(
-                    "font-data text-[9px] font-bold uppercase tracking-wider",
+                    "font-sans text-[11px] font-semibold text-text-muted",
                     "px-2 py-1 rounded-md border",
-                    "border-gold-border bg-gold-muted text-gold",
+                    "border-gold-border bg-gold-muted",
                   )}
                   title="Memo grounded in web search results, not the indexed news pipeline"
                 >
@@ -487,7 +487,7 @@ export default function CompanyIntelMemoModal(props: CompanyIntelMemoModalProps)
             {/* Canonical alias ribbon */}
             {showAliasRibbon && (
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <span className="font-data text-[9px] uppercase tracking-wider text-text-faint">
+                <span className="font-sans text-[11px] text-text-muted">
                   Also known as
                 </span>
                 {canonicalAliasRibbon!.map((alias, i) => (

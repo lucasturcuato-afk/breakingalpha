@@ -112,11 +112,9 @@ export function LeadHero({
       <p
         className="font-sans mb-2"
         style={{
-          color: "var(--gold)",
+          color: "var(--text-muted)",
           fontSize: "10px",
           fontWeight: 700,
-          letterSpacing: "0.14em",
-          textTransform: "uppercase",
         }}
       >
         {eyebrow}
@@ -141,14 +139,12 @@ export function LeadHero({
           <span
             className="inline-flex items-center font-sans"
             style={{
-              fontSize: "9.5px",
-              fontWeight: 700,
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              color: "var(--gold)",
+              fontSize: "10px",
+              fontWeight: 600,
+              color: "var(--text-secondary)",
               padding: "2px 8px",
               borderRadius: "4px",
-              background: "var(--gold-muted)",
+              background: "var(--parchment-mid)",
               border: "1px solid var(--gold-border)",
               maxWidth: "80px",
             }}

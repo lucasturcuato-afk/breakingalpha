@@ -41,7 +41,7 @@ export default function CatalystStrip({
 
   return (
     <section aria-label="Scheduled catalysts" className="w-full">
-      <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-amber-700/80">
+      <h3 className="mb-2 text-[11px] font-semibold text-text-muted">
         Scheduled catalysts
       </h3>
       <ul className="flex flex-wrap gap-2">
@@ -55,7 +55,7 @@ export default function CatalystStrip({
               <div className="flex items-baseline gap-2">
                 <span className="font-semibold text-stone-800">{c.name}</span>
                 {c.has_dot_plot ? (
-                  <span className="rounded bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-900">
+                  <span className="rounded bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
                     dot plot
                   </span>
                 ) : null}

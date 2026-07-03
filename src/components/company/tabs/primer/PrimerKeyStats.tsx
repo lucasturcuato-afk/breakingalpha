@@ -51,7 +51,7 @@ function fmtRange(lo: number | null, hi: number | null): string | null {
 }
 
 const SHELL = "bg-cream-hi border border-border-base rounded-lg p-4 space-y-3";
-const EYEBROW = "font-mono text-[9.5px] font-bold uppercase tracking-[0.10em] text-text-faint";
+const EYEBROW = "font-sans text-[9.5px] font-bold text-text-faint";
 
 export function PrimerKeyStats({ quote, loading }: PrimerKeyStatsProps) {
   // Build the present stats only; absent fields are dropped, not shown blank.
@@ -87,7 +87,7 @@ export function PrimerKeyStats({ quote, loading }: PrimerKeyStatsProps) {
         <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
           {stats.map((s) => (
             <div key={s.label} className="flex flex-col gap-0.5">
-              <dt className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-text-faint">
+              <dt className="font-sans text-[9px] font-bold text-text-faint">
                 {s.label}
               </dt>
               <dd className="font-sans text-[13px] text-espresso font-semibold tabular-nums">

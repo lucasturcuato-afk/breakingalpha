@@ -150,7 +150,7 @@ export function ThesisList({
           <div className="flex items-center gap-1.5 mt-0.5">
             <span
               style={getSectorStyle(thesis.sector)}
-              className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
+              className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded"
             >
               {thesis.sector}
             </span>

@@ -192,7 +192,7 @@ export function PreferencesForm({
         </h2>
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
-            <label className="font-sans text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-1.5 block">
+            <label className="font-sans text-[11px] font-semibold text-text-muted mb-1.5 block">
               First name
             </label>
             <Input
@@ -202,7 +202,7 @@ export function PreferencesForm({
             />
           </div>
           <div>
-            <label className="font-sans text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-1.5 block">
+            <label className="font-sans text-[11px] font-semibold text-text-muted mb-1.5 block">
               Firm or school
             </label>
             <Input
@@ -213,7 +213,7 @@ export function PreferencesForm({
           </div>
         </div>
         <div>
-          <label className="font-sans text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2 block">
+          <label className="font-sans text-[11px] font-semibold text-text-muted mb-2 block">
             Role
           </label>
           <div className="flex flex-wrap gap-2">
@@ -274,7 +274,7 @@ export function PreferencesForm({
 
         <div className="space-y-4">
           <div>
-            <label className="font-sans text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2 block">
+            <label className="font-sans text-[11px] font-semibold text-text-muted mb-2 block">
               Investment horizon
             </label>
             <div className="flex flex-wrap gap-2">
@@ -290,7 +290,7 @@ export function PreferencesForm({
           </div>
 
           <div>
-            <label className="font-sans text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2 block">
+            <label className="font-sans text-[11px] font-semibold text-text-muted mb-2 block">
               Workflow style
             </label>
             <div className="flex flex-wrap gap-2">
@@ -306,7 +306,7 @@ export function PreferencesForm({
           </div>
 
           <div>
-            <label className="font-sans text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2 block">
+            <label className="font-sans text-[11px] font-semibold text-text-muted mb-2 block">
               Risk appetite
             </label>
             <div className="flex flex-wrap gap-2">

@@ -333,7 +333,7 @@ export default function TrackRecordPage() {
             How market theses are developing as events unfold.
           </p>
           {showGradingHeader && (
-            <p className="font-data text-text-muted text-[11px] mt-1.5 inline-flex items-center gap-2 flex-wrap">
+            <p className="font-sans text-text-muted text-[11px] mt-1.5 inline-flex items-center gap-2 flex-wrap">
               <span>
                 <span className="font-semibold text-text-primary">{totalCount}</span>{" "}
                 {totalCount === 1 ? "thesis" : "theses"} tracked
@@ -352,7 +352,7 @@ export default function TrackRecordPage() {
             </p>
           )}
           {!showGradingHeader && formattedLastUpdated && (
-            <p className="font-data text-text-faint text-[11px] mt-1">
+            <p className="font-sans text-text-faint text-[11px] mt-1">
               Last updated: {formattedLastUpdated}
             </p>
           )}
@@ -422,7 +422,7 @@ export default function TrackRecordPage() {
                         {["Sector", "Status", "Count"].map((h) => (
                           <th
                             key={h}
-                            className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold py-2 px-2 text-left"
+                            className="font-sans text-[11px] text-text-muted font-semibold py-2 px-2 text-left"
                           >
                             {h}
                           </th>
@@ -438,7 +438,7 @@ export default function TrackRecordPage() {
                           <td className="py-2.5 px-2">
                             <span
                               style={getSectorStyle(g.sector)}
-                              className="font-sans text-[10px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
+                              className="font-sans text-[10px] font-semibold px-2 py-0.5 rounded"
                             >
                               {g.sector}
                             </span>
@@ -446,7 +446,7 @@ export default function TrackRecordPage() {
                           <td className="py-2.5 px-2">
                             <SectorStatus group={g} />
                           </td>
-                          <td className="py-2.5 px-2 font-data text-text-secondary">
+                          <td className="py-2.5 px-2 font-sans text-text-secondary">
                             {g.total} {g.total === 1 ? "thesis" : "theses"}
                           </td>
                         </tr>
@@ -493,7 +493,7 @@ export default function TrackRecordPage() {
             </Section>
 
             {/* RECENT THESES */}
-            <Section title="Recent Theses">
+            <Section title="Recent theses">
               {recentScored.length === 0 ? (
                 <EmptyInflightState />
               ) : (
@@ -538,7 +538,7 @@ export default function TrackRecordPage() {
                               {t.sector && (
                                 <span
                                   style={getSectorStyle(t.sector)}
-                                  className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
+                                  className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded"
                                 >
                                   {t.sector}
                                 </span>
@@ -549,7 +549,7 @@ export default function TrackRecordPage() {
                           <div className="flex flex-col items-end gap-1 flex-shrink-0">
                             <LiveVerdictBadge live={t.live} size="prominent" />
                             {t.generated_at && (
-                              <span className="font-data text-[10px] text-text-faint">
+                              <span className="font-sans text-[10px] text-text-faint">
                                 {formatDate(t.generated_at)}
                               </span>
                             )}
@@ -591,7 +591,7 @@ function StatusCard({
     "border-l-gold";
   return (
     <div className={`bg-white rounded-xl border border-border-base border-l-[3px] ${borderAccent} p-4`}>
-      <div className="font-sans text-[10px] uppercase tracking-widest text-text-muted mb-1.5">
+      <div className="font-sans text-[11px] text-text-muted mb-1.5">
         {label}
       </div>
       {loading ? (
@@ -607,7 +607,7 @@ function StatusCard({
         </div>
       )}
       {footer && (
-        <div className="font-data text-[10px] text-text-faint mt-2">{footer}</div>
+        <div className="font-sans text-[10px] text-text-faint mt-2">{footer}</div>
       )}
     </div>
   );
@@ -616,7 +616,7 @@ function StatusCard({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h2 className="font-sans text-[11px] font-semibold uppercase tracking-widest text-text-muted mb-3">
+      <h2 className="font-sans text-[11px] font-semibold text-text-muted mb-3">
         {title}
       </h2>
       {children}
@@ -691,7 +691,7 @@ function ThesisRankCard({
             {thesis.sector && (
               <span
                 style={getSectorStyle(thesis.sector)}
-                className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide"
+                className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded"
               >
                 {thesis.sector}
               </span>

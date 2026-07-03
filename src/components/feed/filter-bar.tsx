@@ -118,7 +118,7 @@ function FilterBarInner({
     <div className="bg-parchment dark:bg-surface px-4 py-2.5 space-y-2">
       {/* Row 1 — SECTORS */}
       <div className="flex items-center gap-3">
-        <span className="font-data text-[9px] font-bold uppercase tracking-widest text-gold w-[56px] flex-shrink-0">
+        <span className="font-sans text-[10px] font-semibold text-text-muted w-[56px] flex-shrink-0">
           Sectors
         </span>
         <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto flex-1">
@@ -136,7 +136,7 @@ function FilterBarInner({
 
       {/* Row 2 — ACTIVITY */}
       <div className="flex items-center gap-3">
-        <span className="font-data text-[9px] font-bold uppercase tracking-widest text-gold w-[56px] flex-shrink-0">
+        <span className="font-sans text-[10px] font-semibold text-text-muted w-[56px] flex-shrink-0">
           Activity
         </span>
         <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto flex-1">

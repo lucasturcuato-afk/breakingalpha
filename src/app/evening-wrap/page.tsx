@@ -668,8 +668,8 @@ export default function EveningWrapPage() {
         >
           <span>{dateStr}</span>
           <span className="font-data">{timeStr}</span>
-          <span style={{ background: "rgba(255,253,249,0.15)", color: "rgba(255,253,249,0.9)", padding: "4px 10px", borderRadius: 20, fontSize: 10, letterSpacing: "0.12em" }}>
-            5 MIN READ
+          <span style={{ background: "rgba(255,253,249,0.15)", color: "rgba(255,253,249,0.9)", padding: "4px 10px", borderRadius: 20, fontSize: 10 }}>
+            5 min read
           </span>
         </div>
       </header>
@@ -687,9 +687,9 @@ export default function EveningWrapPage() {
         }}
       >
         {([
-          { k: "CLOSE", v: closeWord ? closeWord.toUpperCase() : "–", c: closeWord ? (tone === "BEARISH" ? "var(--signal-dn)" : tone === "BULLISH" ? "var(--signal-up)" : "var(--signal-warn)") : undefined, tip: "AI's verdict on how the day closed, grounded in actual index and futures data." },
-          { k: "MOVERS", v: String(stories.length || "—"), tip: "Number of significant market-moving stories identified in today's session." },
-          { k: "THESES", v: thesesCount !== null ? `${thesesCount} active` : "—", tip: "Investment theses currently being tracked and validated by Signalera." },
+          { k: "Close", v: closeWord ? closeWord.toUpperCase() : "–", c: closeWord ? (tone === "BEARISH" ? "var(--signal-dn)" : tone === "BULLISH" ? "var(--signal-up)" : "var(--signal-warn)") : undefined, tip: "AI's verdict on how the day closed, grounded in actual index and futures data." },
+          { k: "Movers", v: String(stories.length || "—"), tip: "Number of significant market-moving stories identified in today's session." },
+          { k: "Theses", v: thesesCount !== null ? `${thesesCount} active` : "—", tip: "Investment theses currently being tracked and validated by Signalera." },
           {
             k: "VIX",
             v: vixQuote ? `${vixQuote.price} ${vixQuote.pct >= 0 ? "▲" : "▼"}${Math.abs(vixQuote.pct).toFixed(2)}%` : "—",
@@ -698,7 +698,7 @@ export default function EveningWrapPage() {
           },
         ] as Array<{ k: string; v: string; c?: string; tip: string }>).map((x, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span className="font-sans" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, letterSpacing: "0.16em", color: "var(--text-muted)" }}>
+            <span className="font-sans" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, color: "var(--text-muted)" }}>
               {x.k}
               <InfoTooltip content={x.tip} side="bottom" iconSize={10} />
             </span>
@@ -745,9 +745,7 @@ export default function EveningWrapPage() {
                 className="font-sans"
                 style={{
                   fontSize: 10,
-                  letterSpacing: "0.22em",
-                  textTransform: "uppercase",
-                  color: "var(--gold-dark)",
+                  color: "var(--text-muted)",
                   fontWeight: 800,
                   margin: "0 0 10px",
                 }}
@@ -810,11 +808,9 @@ export default function EveningWrapPage() {
                   className="font-sans"
                   style={{
                     fontSize: 10,
-                    letterSpacing: "0.20em",
-                    color: HERITAGE_GOLD,
+                    color: "var(--text-muted)",
                     margin: "0 0 14px",
                     fontWeight: 700,
-                    textTransform: "uppercase",
                     position: "relative",
                   }}
                 >
@@ -920,8 +916,6 @@ export default function EveningWrapPage() {
                           style={{
                             fontSize: 9,
                             color: "rgba(255,253,249,0.55)",
-                            letterSpacing: "0.12em",
-                            textTransform: "uppercase",
                             margin: "0 0 6px",
                             fontWeight: 600,
                           }}
@@ -1019,14 +1013,12 @@ export default function EveningWrapPage() {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 8,
-                    background: "#a88340",
+                    background: "var(--parchment-mid)",
                     color: DC_ESPRESSO,
                     padding: "5px 12px",
                     borderRadius: 20,
                     fontSize: 10,
-                    letterSpacing: "0.14em",
-                    textTransform: "uppercase",
-                    fontWeight: 800,
+                    fontWeight: 700,
                   }}
                 >
                   ★ Today&rsquo;s Story
@@ -1073,7 +1065,7 @@ export default function EveningWrapPage() {
                     </div>
                     <p
                       className="font-sans"
-                      style={{ fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--gold-dark)", fontWeight: 700, margin: "0 0 10px" }}
+                      style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, margin: "0 0 10px" }}
                     >
                       {p.label}
                     </p>
@@ -1094,7 +1086,7 @@ export default function EveningWrapPage() {
                 >
                   <p
                     className="font-sans"
-                    style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--gold-dark)", fontWeight: 700, marginBottom: 6 }}
+                    style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, marginBottom: 6 }}
                   >
                     Your Personalized Wrap
                   </p>
@@ -1210,7 +1202,7 @@ export default function EveningWrapPage() {
                   </h3>
                   <span
                     className="font-sans"
-                    style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 600 }}
+                    style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600 }}
                   >
                     {formatDatePretty(new Date(now.getTime() + 24 * 60 * 60 * 1000))}
                   </span>
@@ -1303,13 +1295,11 @@ export default function EveningWrapPage() {
                           style={{
                             fontSize: 9,
                             fontWeight: 700,
-                            letterSpacing: "0.12em",
-                            color: "var(--gold-dark)",
-                            background: "var(--gold-muted)",
+                            color: "var(--text-muted)",
+                            background: "var(--parchment-mid)",
                             padding: "3px 8px",
                             borderRadius: 3,
                             textAlign: "center",
-                            textTransform: "uppercase",
                             justifySelf: "start",
                           }}
                         >

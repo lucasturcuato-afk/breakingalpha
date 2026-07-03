@@ -60,11 +60,9 @@ export function MarketPulse({ pulse, className }: MarketPulseProps) {
       <p
         className="font-sans mb-3"
         style={{
-          color: "var(--gold)",
+          color: "var(--text-muted)",
           fontSize: "10px",
           fontWeight: 700,
-          letterSpacing: "0.14em",
-          textTransform: "uppercase",
         }}
       >
         Market Pulse
@@ -76,11 +74,9 @@ export function MarketPulse({ pulse, className }: MarketPulseProps) {
         <p
           className="font-sans mb-3"
           style={{
-            color: "var(--gold)",
+            color: "var(--text-muted)",
             fontSize: "11px",
             fontWeight: 700,
-            letterSpacing: "0.06em",
-            textTransform: "uppercase",
           }}
         >
           Markets closed today: {closedLabel}
@@ -146,10 +142,8 @@ export function MarketPulse({ pulse, className }: MarketPulseProps) {
         >
           <span
             style={{
-              color: "var(--gold)",
+              color: "var(--text-muted)",
               fontWeight: 700,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
               fontSize: "10px",
               marginRight: "0.5rem",
             }}

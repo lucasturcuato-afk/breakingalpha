@@ -48,7 +48,7 @@ export function SystemIntelligenceWidget() {
 
   return (
     <div className="border border-border-base rounded-lg px-3 py-1.5 flex items-center gap-2.5">
-      <span className="font-sans text-[10px] font-semibold uppercase tracking-wider text-text-muted whitespace-nowrap">
+      <span className="font-sans text-[10px] font-semibold text-text-muted whitespace-nowrap">
         <span className="text-gold">{"\u2726"} </span>
         Signalera Intelligence
       </span>

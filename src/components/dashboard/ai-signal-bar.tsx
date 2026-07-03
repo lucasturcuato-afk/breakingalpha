@@ -64,7 +64,7 @@ export function AISignalBar({
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <p className="font-sans text-[9px] uppercase tracking-widest text-gold font-semibold mb-0.5">
+        <p className="font-sans text-[9px] text-text-muted font-semibold mb-0.5">
           Signalera AI · Live Signal
           {matchesFocus && (
             <span className="ml-2 text-cream/60 normal-case tracking-normal">

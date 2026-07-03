@@ -237,8 +237,8 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
       {enrichedSavedDeals.length > 0 && (
         <div className="px-5 py-4 border-b border-border-base">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">
-              Saved Deals
+            <p className="text-[10px] font-semibold text-text-muted">
+              Saved deals
             </p>
             <Link
               href="/saved"
@@ -277,8 +277,8 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
 
       {/* Section 1 — Pipeline velocity */}
       <div className="px-5 py-4 border-b border-border-base">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted mb-3">
-          Pipeline Velocity
+        <p className="text-[10px] font-semibold text-text-muted mb-3">
+          Pipeline velocity
         </p>
         <div className="flex items-end gap-3">
           <div>
@@ -315,8 +315,8 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
 
       {/* Section 2 — Your Sectors */}
       <div className="px-5 py-4 border-b border-border-base">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted mb-3">
-          Your Sectors
+        <p className="text-[10px] font-semibold text-text-muted mb-3">
+          Your sectors
         </p>
         {!hasUserSectors ? (
           <div className="rounded-md border border-border-base dark:border-border-default bg-parchment-mid dark:bg-overlay px-3 py-2.5">
@@ -355,8 +355,8 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
             )}
             {otherSectors.length > 0 && (
               <>
-                <p className="text-[9px] font-semibold uppercase tracking-widest text-text-muted pt-0.5">
-                  Other Active
+                <p className="text-[9px] font-semibold text-text-muted pt-0.5">
+                  Other active
                 </p>
                 {otherSectors.map(([sector, count]) => (
                   <div key={sector} className="flex items-center gap-2">
@@ -375,8 +375,8 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
 
       {/* Section 3 — Largest deals */}
       <div className="px-5 py-4 border-b border-border-base">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted mb-3">
-          Largest Deals
+        <p className="text-[10px] font-semibold text-text-muted mb-3">
+          Largest deals
         </p>
         {largestDeals.length === 0 ? (
           <p className="text-[11px] text-text-muted">No valued deals yet</p>
@@ -418,8 +418,8 @@ export function DealFlowSidebar({ deals, userProfile, enrichedSavedDeals = [], t
 
       {/* Section 4 — By deal type */}
       <div className="px-5 py-4">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted mb-3">
-          By Deal Type
+        <p className="text-[10px] font-semibold text-text-muted mb-3">
+          By deal type
         </p>
         {topTypes.length === 0 ? (
           <p className="text-[11px] text-text-muted">No data yet</p>

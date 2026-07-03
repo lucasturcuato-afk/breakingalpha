@@ -99,8 +99,8 @@ function SystemIntelligencePanel({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 animate-in fade-in-0 slide-in-from-top-2 border-t-2 border-gold pt-3">
           {/* This Week's Learning */}
           <div className="bg-cream border border-gold-border rounded-xl p-3">
-            <h4 className="font-sans text-[10px] font-semibold text-gold-dark uppercase tracking-wider mb-2 inline-flex items-center gap-1">
-              This Week&apos;s Learning
+            <h4 className="font-sans text-[11px] font-semibold text-text-muted mb-2 inline-flex items-center gap-1">
+              This week&apos;s learning
               <InfoTooltip content="Insights Signalera surfaces from the past week's signal patterns and outcomes." side="right" iconSize={10} />
             </h4>
             {digest?.thesis_prompt_addendum ? (
@@ -116,8 +116,8 @@ function SystemIntelligencePanel({
 
           {/* Pattern Library */}
           <div className="bg-cream border border-gold-border rounded-xl p-3">
-            <h4 className="font-sans text-[10px] font-semibold text-gold-dark uppercase tracking-wider mb-2 inline-flex items-center gap-1">
-              Pattern Library
+            <h4 className="font-sans text-[11px] font-semibold text-text-muted mb-2 inline-flex items-center gap-1">
+              Pattern library
               <InfoTooltip content="Recurring market patterns Signalera tracks across briefs and memos." side="right" iconSize={10} />
             </h4>
             {patternsLoading ? (
@@ -131,7 +131,7 @@ function SystemIntelligencePanel({
                     <span className="font-sans text-[10px] text-text-secondary truncate mr-2">
                       {p.sector || "—"} · {p.horizon || "30d"} · {p.dominant_signal || "mixed"}
                     </span>
-                    <span className="font-data text-[10px] text-gold-dark flex-shrink-0">
+                    <span className="font-sans text-[10px] text-gold-dark flex-shrink-0">
                       {typeof p.win_rate === "number" ? `${(p.win_rate * 100).toFixed(0)}%` : "—"}
                     </span>
                   </div>
@@ -146,8 +146,8 @@ function SystemIntelligencePanel({
 
           {/* Source Credibility */}
           <div className="bg-cream border border-gold-border rounded-xl p-3">
-            <h4 className="font-sans text-[10px] font-semibold text-gold-dark uppercase tracking-wider mb-2 inline-flex items-center gap-1">
-              Source Credibility
+            <h4 className="font-sans text-[11px] font-semibold text-text-muted mb-2 inline-flex items-center gap-1">
+              Source credibility
               <InfoTooltip content="How Signalera weights each news source based on reliability and historical signal quality." side="right" iconSize={10} />
             </h4>
             {sourcesLoading ? (
@@ -161,7 +161,7 @@ function SystemIntelligencePanel({
                     <span className="font-sans text-[10px] text-text-secondary truncate mr-2">
                       {s.source || "Unknown"}
                     </span>
-                    <span className="font-data text-[10px] text-gold-dark flex-shrink-0">
+                    <span className="font-sans text-[10px] text-gold-dark flex-shrink-0">
                       {typeof s.win_rate === "number" ? `${(s.win_rate * 100).toFixed(0)}%` : "—"}
                     </span>
                   </div>
@@ -530,9 +530,9 @@ function ThesisBoardContent() {
                     { key: "HIGH" as const, label: "HIGH", count: convictionCounts.HIGH, tip: "Highest-confidence theses — strong directional signal with multiple supporting sources." },
                     { key: "MEDIUM" as const, label: "MEDIUM", count: convictionCounts.MEDIUM, tip: "Moderate-confidence theses — clear signal but fewer supporting data points." },
                     { key: "WATCH" as const, label: "WATCH", count: convictionCounts.WATCH, tip: "Early-stage signals worth monitoring — not yet strong enough for a directional call." },
-                    { key: "all" as const, label: "All Theses", count: theses.filter((t) => !userArchivedIds.has(t.id)).length },
+                    { key: "all" as const, label: "All theses", count: theses.filter((t) => !userArchivedIds.has(t.id)).length },
                     { key: "archived" as const, label: "Archived", count: userArchivedIds.size },
-                    { key: "pending_review" as const, label: "Pending Review", count: convictionCounts.pending_review, tip: "Newly generated theses awaiting your review — approve, archive, or adjust conviction." },
+                    { key: "pending_review" as const, label: "Pending review", count: convictionCounts.pending_review, tip: "Newly generated theses awaiting your review — approve, archive, or adjust conviction." },
                   ]
                 ).map((tab) => (
                   <button
@@ -552,7 +552,7 @@ function ThesisBoardContent() {
                   >
                     {tab.key === "archived" && <Archive size={10} />}
                     {tab.label}
-                    <span className="font-data text-[9px] opacity-70">{tab.count}</span>
+                    <span className="font-sans text-[9px] opacity-70">{tab.count}</span>
                     {"tip" in tab && (tab as { tip?: string }).tip && (
                       <InfoTooltip content={(tab as { tip: string }).tip} side="bottom" iconSize={9} className={convictionFilter === tab.key ? "text-cream/30 hover:text-cream/50" : ""} />
                     )}

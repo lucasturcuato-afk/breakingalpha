@@ -51,7 +51,7 @@ function formatAge(value: string | null): string {
 
 const TD = "px-3 py-2 align-middle";
 const CHIP =
-  "font-data inline-block rounded-[2px] border border-[var(--gold-border)] bg-[var(--gold-muted)] px-[6px] py-[2px] text-[9px] font-bold uppercase text-[var(--gold-dark)]";
+  "font-sans inline-block rounded-[2px] border border-border-subtle bg-[var(--row-alt)] px-[6px] py-[2px] text-[9px] font-bold text-text-muted";
 const LINK =
   "block truncate text-text-primary hover:text-gold-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold rounded-sm";
 
@@ -157,7 +157,7 @@ export function ArticlesRow({
               <span
                 data-testid="articles-row-web-badge"
                 title="Web-sourced (not yet in corpus)"
-                className="inline-block rounded-[2px] border border-border-subtle bg-[var(--row-alt)] px-[5px] py-[1px] text-[8px] font-bold uppercase tracking-wider text-text-muted dark:text-text-secondary"
+                className="inline-block rounded-[2px] border border-border-subtle bg-[var(--row-alt)] px-[5px] py-[1px] text-[8px] font-bold text-text-muted dark:text-text-secondary"
               >
                 Web
               </span>
@@ -225,7 +225,7 @@ export function ArticlesRow({
             className={`px-4 py-3 text-xs leading-relaxed text-text-secondary bg-[var(--row-alt)] ${rowBg}`}
           >
             {expandLabel ? (
-              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+              <div className="mb-1 text-[10px] font-semibold text-text-muted">
                 {expandLabel}
               </div>
             ) : null}

@@ -50,7 +50,7 @@ export function TopDeals({ deals }: TopDealsProps) {
           )}
         </div>
         {feature.deal_type && (
-          <span className="inline-block font-data text-[9px] uppercase tracking-wide font-bold text-gold bg-gold-muted px-1.5 py-0.5 rounded mb-2">
+          <span className="inline-block font-sans text-[9px] uppercase font-bold text-text-muted bg-parchment-mid px-1.5 py-0.5 rounded mb-2">
             {feature.deal_type}
           </span>
         )}
@@ -78,7 +78,7 @@ export function TopDeals({ deals }: TopDealsProps) {
               </h5>
               <span className="flex-shrink-0">
                 {deal.deal_type ? (
-                  <span className="font-data text-[9px] uppercase tracking-wide font-bold text-gold bg-gold-muted px-1.5 py-0.5 rounded">
+                  <span className="font-sans text-[9px] uppercase font-bold text-text-muted bg-parchment-mid px-1.5 py-0.5 rounded">
                     {deal.deal_type}
                   </span>
                 ) : null}

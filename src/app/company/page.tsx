@@ -596,11 +596,11 @@ export default function CompanyIntelPage() {
         ) : (
           <div className="mb-5">
             <div className="flex items-center gap-2 mb-1.5">
-              <p className="font-data text-[9px] uppercase tracking-widest text-gold">Sector</p>
+              <p className="font-sans text-[10px] text-text-muted">Sector</p>
               <button
                 type="button"
                 onClick={() => setVerticalMatchMode((m) => (m === "any" ? "all" : "any"))}
-                className="font-data text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full border border-gold-border bg-gold-muted text-gold cursor-pointer"
+                className="font-sans text-[10px] px-2 py-0.5 rounded-full border border-gold-border bg-gold-muted text-gold-dark cursor-pointer"
                 title="Toggle Match Any / Match All"
               >
                 Match {verticalMatchMode}
@@ -666,7 +666,7 @@ export default function CompanyIntelPage() {
           <div className="relative bg-white border border-border-base rounded-xl overflow-x-auto">
             <table className="w-full table-fixed text-left border-collapse min-w-[900px]">
               <thead className="bg-parchment-mid border-b border-border-base">
-                <tr className="font-data text-[9px] uppercase tracking-widest text-text-muted dark:text-text-secondary">
+                <tr className="font-sans text-[10px] text-text-muted dark:text-text-secondary">
                   <th className="w-8 px-2 py-2"></th>
                   <SortHeader label="Ticker" k="ticker" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="w-20 px-2 py-2" />
                   <SortHeader label="Name" k="name" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="px-2 py-2 min-w-[200px]" />
@@ -732,7 +732,7 @@ export default function CompanyIntelPage() {
                         {row.sector ? (
                           <span
                             style={getSectorStyle(row.sector)}
-                            className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide whitespace-nowrap"
+                            className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap"
                           >
                             {row.sector}
                           </span>
@@ -809,7 +809,7 @@ export default function CompanyIntelPage() {
 
         {/* Keyboard hint */}
         {!isSignedOut && !loading && visibleRows.length > 0 && (
-          <p className="mt-3 font-data text-[9px] uppercase tracking-widest text-text-faint">
+          <p className="mt-3 font-sans text-[10px] text-text-faint">
             j / k navigate &middot; w toggle watchlist &middot; Enter open &middot; Esc clear
           </p>
         )}

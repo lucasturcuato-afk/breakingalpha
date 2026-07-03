@@ -109,7 +109,7 @@ function FeedRowInner({ story, saved: savedProp, onBookmark }: FeedRowProps) {
                 ? (
                     <span
                       style={getSectorStyle(story.sector)}
-                      className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
+                      className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded"
                     >
                       {story.sector}
                     </span>
@@ -236,7 +236,7 @@ function FeedRowInner({ story, saved: savedProp, onBookmark }: FeedRowProps) {
               >
                 <MessageSquare size={11} />
                 Ask AI
-                <span className="ml-1 px-1 py-0.5 rounded bg-gold-muted text-[8px] font-semibold text-gold uppercase tracking-wide">
+                <span className="ml-1 px-1 py-0.5 rounded bg-parchment-mid text-[8px] font-semibold text-text-muted">
                   Soon
                 </span>
               </button>

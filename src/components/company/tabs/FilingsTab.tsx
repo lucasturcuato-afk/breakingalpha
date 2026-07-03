@@ -51,7 +51,7 @@ function ms(value: string | null): number {
   return Number.isFinite(t) ? t : 0;
 }
 
-const TH = "px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-text-muted";
+const TH = "px-3 py-2 text-[10px] font-semibold text-text-muted";
 
 export function FilingsTab({ filings, hasCik, cik }: FilingsTabProps) {
   const sorted = useMemo(

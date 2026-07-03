@@ -306,7 +306,7 @@ export function CompanyStockChart({ ticker, companyName }: CompanyStockChartProp
       {/* Header band: ticker + price + pct */}
       <div className="flex items-baseline justify-between gap-3 mb-3">
         <div className="flex items-baseline gap-2 min-w-0">
-          <span className="font-data text-[10px] uppercase tracking-widest text-gold font-semibold">
+          <span className="font-sans text-[10px] text-text-muted font-semibold">
             {ticker}
           </span>
           {loading ? (

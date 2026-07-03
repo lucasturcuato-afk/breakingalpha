@@ -179,7 +179,7 @@ export default function ThesisDetailPage() {
 
           <div className="flex items-center gap-2 flex-wrap">
             {thesis.sector && (
-              <span style={getSectorStyle(thesis.sector)} className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide">
+              <span style={getSectorStyle(thesis.sector)} className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded">
                 {thesis.sector}
               </span>
             )}
@@ -194,14 +194,14 @@ export default function ThesisDetailPage() {
               </span>
             )}
             {thesis.horizon && (
-              <span className="font-data text-[9px] text-text-muted">
+              <span className="font-sans text-[9px] text-text-muted">
                 Horizon: {thesis.horizon}
               </span>
             )}
           </div>
 
           {/* Timestamps */}
-          <div className="flex items-center gap-3 text-[10px] font-data text-text-muted">
+          <div className="flex items-center gap-3 text-[10px] font-sans text-text-muted">
             {thesis.generated_at && (
               <span className="inline-flex items-center gap-1">
                 <Clock size={10} />
@@ -216,7 +216,7 @@ export default function ThesisDetailPage() {
           {/* Rationale */}
           {thesis.rationale && (
             <div>
-              <h3 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold mb-1">Rationale</h3>
+              <h3 className="font-sans text-[11px] text-text-muted font-semibold mb-1">Rationale</h3>
               <p className="font-sans text-[12.5px] text-text-primary leading-relaxed">{thesis.rationale}</p>
             </div>
           )}
@@ -224,7 +224,7 @@ export default function ThesisDetailPage() {
           {/* Catalyst */}
           {(thesis.catalyst || thesis.catalyst_note) && (
             <div>
-              <h3 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold mb-1">Catalyst</h3>
+              <h3 className="font-sans text-[11px] text-text-muted font-semibold mb-1">Catalyst</h3>
               <p className="font-sans text-[12.5px] text-text-primary leading-relaxed">
                 {thesis.catalyst_note || thesis.catalyst}
               </p>
@@ -234,7 +234,7 @@ export default function ThesisDetailPage() {
           {/* Bear case */}
           {thesis.bear_case && (
             <div>
-              <h3 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold mb-1">Bear Case</h3>
+              <h3 className="font-sans text-[11px] text-text-muted font-semibold mb-1">Bear case</h3>
               <p className="font-sans text-[12.5px] text-text-secondary leading-relaxed">{thesis.bear_case}</p>
             </div>
           )}
@@ -242,7 +242,7 @@ export default function ThesisDetailPage() {
 
         {/* SECTION 2: What Signalera monitors */}
         <section className="bg-white rounded-xl border border-border-base p-5 space-y-3">
-          <h2 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold">
+          <h2 className="font-sans text-[11px] text-text-muted font-semibold">
             What Signalera monitors for this thesis
           </h2>
           <p className="font-sans text-[12px] text-text-secondary leading-relaxed">
@@ -270,7 +270,7 @@ export default function ThesisDetailPage() {
         {live && (
           <section className="bg-white rounded-xl border border-border-base p-5 space-y-4">
             <div>
-              <h2 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold mb-2">Current Signal</h2>
+              <h2 className="font-sans text-[11px] text-text-muted font-semibold mb-2">Current signal</h2>
               <div className="flex items-center gap-3">
                 <span className={`font-sans text-[12px] font-semibold px-2.5 py-1 rounded ${liveScoreChipClasses(live.verdict).replace(" italic", "")}`}>
                   {verdictDisplayLabel(live.verdict)}
@@ -283,14 +283,14 @@ export default function ThesisDetailPage() {
 
             {/* Plain-language breakdown */}
             <div>
-              <h3 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold mb-2">What we&apos;re seeing</h3>
+              <h3 className="font-sans text-[11px] text-text-muted font-semibold mb-2">What we&apos;re seeing</h3>
               <SignalBreakdown live={live} thesis={thesis} verdicts={verdicts} />
             </div>
 
             {/* What we're watching for */}
             <WatchingFor live={live} thesis={thesis} verdicts={verdicts} />
 
-            <div className="font-data text-[10px] text-text-faint">
+            <div className="font-sans text-[10px] text-text-faint">
               Age: {live.ageDays}d · Horizon: {live.horizonDays}d
             </div>
 
@@ -301,8 +301,8 @@ export default function ThesisDetailPage() {
 
         {/* SECTION 5: Review Timeline */}
         <section className="bg-white rounded-xl border border-border-base p-5">
-          <h2 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold mb-3">
-            Review Timeline
+          <h2 className="font-sans text-[11px] text-text-muted font-semibold mb-3">
+            Review timeline
           </h2>
           {verdicts.length === 0 ? (
             <p className="font-sans text-[12px] text-text-muted">
@@ -318,11 +318,11 @@ export default function ThesisDetailPage() {
                     <span className={`font-sans text-[11px] font-semibold ${verdictTextColor(v.verdict)}`}>
                       {verdictDisplayLabel(capitalize(v.verdict))}
                     </span>
-                    <span className="font-data text-[10px] text-text-muted">
+                    <span className="font-sans text-[10px] text-text-muted">
                       {formatDateTime(v.graded_at)}
                     </span>
                     {v.confidence !== null && (
-                      <span className="font-data text-[10px] text-text-faint">
+                      <span className="font-sans text-[10px] text-text-faint">
                         conf: {Math.round(v.confidence * 100)}%
                       </span>
                     )}
@@ -333,7 +333,7 @@ export default function ThesisDetailPage() {
                     </p>
                   )}
                   {v.grader_version && (
-                    <span className="font-data text-[9px] text-text-faint">{v.grader_version}</span>
+                    <span className="font-sans text-[9px] text-text-faint">{v.grader_version}</span>
                   )}
                 </div>
               ))}
@@ -427,7 +427,7 @@ function VerdictReasoning({ live, verdicts }: { live: LiveScoreResult; verdicts:
 
   return (
     <section className={`rounded-xl border border-border-base border-l-[3px] ${borderColor} ${bgColor} p-5 space-y-2`}>
-      <h2 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold">
+      <h2 className="font-sans text-[11px] text-text-muted font-semibold">
         {label}
       </h2>
       {notes ? (
@@ -440,7 +440,7 @@ function VerdictReasoning({ live, verdicts }: { live: LiveScoreResult; verdicts:
         </p>
       )}
       {gradedAt && notes && (
-        <p className="font-data text-[10px] text-text-faint">
+        <p className="font-sans text-[10px] text-text-faint">
           {verdictDisplayLabel(isConfirmed ? "Confirmed" : "Invalidated")} by Signalera&apos;s grader on {formatDateTime(gradedAt)}
         </p>
       )}
@@ -462,7 +462,7 @@ function WatchingFor({ live, thesis, verdicts }: { live: LiveScoreResult; thesis
 
     return (
       <div className="border-t border-border-base pt-3 space-y-1.5">
-        <h3 className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold">
+        <h3 className="font-sans text-[11px] text-text-muted font-semibold">
           This thesis has reached a terminal verdict
         </h3>
         <ul className="font-sans text-[12px] text-text-secondary leading-relaxed space-y-1">
@@ -493,7 +493,7 @@ function WatchingFor({ live, thesis, verdicts }: { live: LiveScoreResult; thesis
 
   return (
     <div className="border-t border-border-base pt-3 space-y-1.5">
-      <h3 className="font-sans text-[10px] uppercase tracking-widest text-gold font-semibold">
+      <h3 className="font-sans text-[11px] text-text-muted font-semibold">
         What we&apos;re watching for
       </h3>
       <ul className="font-sans text-[12px] text-text-secondary leading-relaxed space-y-1">

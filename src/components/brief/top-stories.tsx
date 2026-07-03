@@ -60,7 +60,7 @@ export function TopStories({
 
   return (
     <section>
-      <h2 className="font-sans text-[10px] uppercase tracking-widest font-bold text-text-muted mb-3">
+      <h2 className="font-sans text-[10px] font-bold text-text-muted mb-3">
         {label}
       </h2>
 

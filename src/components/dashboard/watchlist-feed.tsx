@@ -71,7 +71,7 @@ export function WatchlistFeed() {
             <InfoTooltip content="Real-time articles mentioning companies on your watchlist." side="right" iconSize={12} />
           </h3>
         </div>
-        <span className="font-data text-[9px] uppercase tracking-widest text-text-muted">
+        <span className="font-sans text-[9px] text-text-muted">
           {identifiers.length} tracked
         </span>
       </div>

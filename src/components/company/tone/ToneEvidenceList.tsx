@@ -66,7 +66,7 @@ export function ToneEvidenceList({ articles }: ToneEvidenceListProps) {
 
   return (
     <div data-testid="tone-evidence-list" className="mt-3">
-      <div className="font-data text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+      <div className="font-sans text-[10px] font-semibold text-text-muted">
         Behind this tone
       </div>
       <ul className="border-border-subtle mt-1.5 divide-y divide-[var(--border-subtle)] border-y">

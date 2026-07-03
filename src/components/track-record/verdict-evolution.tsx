@@ -197,8 +197,8 @@ export function VerdictEvolution({ scored }: { scored?: ScoredThesisLite[] } = {
 
   return (
     <div>
-      <h2 className="font-sans text-[11px] font-semibold uppercase tracking-widest text-text-muted mb-3">
-        Verdict Evolution
+      <h2 className="font-sans text-[11px] font-semibold text-text-muted mb-3">
+        Verdict evolution
       </h2>
       {loading ? (
         <VerdictSkeletonChart />
@@ -208,7 +208,7 @@ export function VerdictEvolution({ scored }: { scored?: ScoredThesisLite[] } = {
         <div className="bg-white rounded-xl border border-border-base p-4">
           <div className="flex items-end justify-between gap-3 mb-3">
             <div>
-              <div className="font-data text-[11px] uppercase tracking-widest text-text-muted">
+              <div className="font-sans text-[11px] text-text-muted">
                 Avg live score · last {DAYS_BACK}d
               </div>
               <div className="font-data text-2xl font-bold text-espresso mt-0.5">

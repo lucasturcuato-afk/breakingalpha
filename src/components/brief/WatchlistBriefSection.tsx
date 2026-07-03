@@ -82,9 +82,7 @@ export default function WatchlistBriefSection({
       className="font-sans"
       style={{
         fontSize: 10,
-        letterSpacing: "0.22em",
-        textTransform: "uppercase",
-        color: GOLD_DARK,
+        color: "var(--text-muted)",
         fontWeight: 800,
         margin: "0 0 12px",
       }}

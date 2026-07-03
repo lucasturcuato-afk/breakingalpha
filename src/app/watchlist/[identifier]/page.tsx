@@ -733,7 +733,7 @@ Constraints:
           )}>
             <div className="flex items-center gap-3 mb-1">
               <h1 className="font-display text-[28px] font-extrabold text-espresso">{decoded}</h1>
-              <span className="font-data text-[10px] text-gold bg-gold-muted border border-gold-border px-2 py-0.5 rounded-md uppercase">{typeLabel}</span>
+              <span className="font-sans text-[10px] text-text-muted bg-parchment-mid border border-border-base px-2 py-0.5 rounded-md capitalize">{typeLabel}</span>
             </div>
             {(storedDisplayName ?? LEGACY_TICKER_NAMES[decoded.toUpperCase()]) && (
               <p className="font-data text-[12px] text-text-muted mt-0.5">
@@ -759,7 +759,7 @@ Constraints:
         {isSector && (
           <div className="mt-4 flex items-center gap-3">
             <h1 className="font-display text-[28px] font-extrabold text-espresso">{decoded}</h1>
-            <span className="font-data text-[10px] text-gold bg-gold-muted border border-gold-border px-2 py-0.5 rounded-md uppercase">{typeLabel}</span>
+            <span className="font-sans text-[10px] text-text-muted bg-parchment-mid border border-border-base px-2 py-0.5 rounded-md capitalize">{typeLabel}</span>
           </div>
         )}
 
@@ -783,8 +783,8 @@ Constraints:
 
         {/* AI BRIEF SECTION */}
         <div className="mb-6">
-          <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">
-            AI Brief
+          <p className="font-sans text-[9px] text-text-muted font-semibold mb-3">
+            AI brief
           </p>
           {!loading && articles.length === 0 ? (
             <div className="bg-parchment-mid border border-border-base rounded-xl p-4">
@@ -855,7 +855,7 @@ Constraints:
                 <>
                   {briefGeneratedAt === null && !loading && articles.length > 0 && (
                     <div className="bg-parchment-mid border border-border-base rounded-xl p-4 mb-4">
-                      <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1">What you&apos;ll get</p>
+                      <p className="font-sans text-[9px] text-text-muted mb-1">What you&apos;ll get</p>
                       <p className="font-sans text-[12px] text-text-secondary leading-relaxed">
                         An AI-generated research brief grounded in {articles.length} recent {articles.length === 1 ? "article" : "articles"} — structured like a bulge bracket equity research note with company snapshot, key developments, investment considerations, and a signal.
                       </p>
@@ -923,8 +923,8 @@ Constraints:
         {/* PRICE ALERTS SECTION — ticker only */}
         {typeLabel === "ticker" && !!user && (
           <div className="mb-6">
-            <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">
-              Price Alerts
+            <p className="font-sans text-[9px] text-text-muted font-semibold mb-3">
+              Price alerts
             </p>
             {alertsLoading ? (
               <div className="h-10 bg-parchment-mid border border-border-base rounded-xl animate-pulse" />
@@ -1029,8 +1029,8 @@ Constraints:
           {/* Section header with sort controls */}
           <div className="flex items-center justify-between mb-3">
             <div>
-              <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold">
-                Recent Coverage ({articles.length})
+              <p className="font-sans text-[9px] text-text-muted font-semibold">
+                Recent coverage ({articles.length})
               </p>
               {articles.length > 0 && timeAgo(articles[0].published_at) && (
                 <p className="font-data text-[9px] text-text-faint mt-0.5">
@@ -1046,7 +1046,7 @@ Constraints:
                     type="button"
                     onClick={() => setSortMode(mode)}
                     className={cn(
-                      "px-2.5 py-1 rounded-md font-data text-[9px] cursor-pointer transition-colors border",
+                      "px-2.5 py-1 rounded-md font-sans text-[9px] cursor-pointer transition-colors border",
                       sortMode === mode
                         ? "border-gold bg-gold-muted text-gold font-semibold"
                         : "border-border-base bg-white text-text-muted hover:text-text-primary",
@@ -1259,7 +1259,7 @@ Constraints:
                 onClick={() => setNotesOpen(o => !o)}
                 className="flex items-center gap-2 group w-full text-left"
               >
-                <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold">
+                <p className="font-sans text-[9px] text-text-muted font-semibold">
                   Notes
                 </p>
                 {notesOpen ? (

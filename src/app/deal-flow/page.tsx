@@ -69,10 +69,10 @@ interface Deal {
 type StageFilter = "ALL" | "rumored" | "announced" | "under_loi" | "closed";
 
 const STAGE_CONFIG: Record<string, { label: string; color: string }> = {
-  rumored: { label: "RUMORED", color: "text-signal-warn bg-signal-warn/10 border-signal-warn/30" },
-  announced: { label: "ANNOUNCED", color: "text-signal-up bg-signal-up/10 border-signal-up/30" },
-  under_loi: { label: "UNDER LOI", color: "text-blue-600 bg-blue-50 border-blue-200" },
-  closed: { label: "CLOSED", color: "text-text-muted bg-parchment-mid border-border-base" },
+  rumored: { label: "Rumored", color: "text-signal-warn bg-signal-warn/10 border-signal-warn/30" },
+  announced: { label: "Announced", color: "text-signal-up bg-signal-up/10 border-signal-up/30" },
+  under_loi: { label: "Under LOI", color: "text-blue-600 bg-blue-50 border-blue-200" },
+  closed: { label: "Closed", color: "text-text-muted bg-parchment-mid border-border-base" },
 };
 
 
@@ -395,9 +395,9 @@ function DealFlowContent() {
         <div className="flex items-start justify-between mb-1">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <Briefcase size={14} className="text-gold" />
-              <span className="font-data text-[10px] uppercase tracking-widest text-gold font-bold">
-                Deal Flow Tracker
+              <Briefcase size={14} className="text-text-muted" />
+              <span className="font-sans text-[10px] text-text-muted font-bold">
+                Deal flow tracker
               </span>
             </div>
             <p className="font-sans text-[12px] text-text-muted">
@@ -418,8 +418,8 @@ function DealFlowContent() {
         {/* Add Deal Form */}
         {showForm && (
           <div className="bg-white border border-border-base rounded-xl p-5 mt-4 mb-4">
-            <p className="font-data text-[9px] uppercase tracking-widest text-gold font-bold mb-3">
-              New Deal
+            <p className="font-sans text-[9px] text-text-muted font-bold mb-3">
+              New deal
             </p>
             <div className="grid grid-cols-2 gap-2.5 mb-2.5">
               <Input
@@ -513,7 +513,7 @@ function DealFlowContent() {
                 <div className="font-display text-[24px] font-bold text-espresso mb-0.5">
                   {stat.value}
                 </div>
-                <div className="font-data text-[9px] uppercase tracking-widest text-text-muted">
+                <div className="font-sans text-[9px] text-text-muted">
                   {stat.label}
                 </div>
               </div>
@@ -564,7 +564,7 @@ function DealFlowContent() {
               type="button"
               onClick={() => setFilterStage("ALL")}
               className={cn(
-                "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                "px-3 py-1 rounded-lg font-sans text-[10px] font-bold cursor-pointer transition-colors border",
                 filterStage === "ALL"
                   ? "border-gold bg-gold-muted text-gold"
                   : "border-border-base bg-white dark:bg-elevated text-text-muted hover:text-text-primary",
@@ -581,7 +581,7 @@ function DealFlowContent() {
                   type="button"
                   onClick={() => setFilterStage(key as StageFilter)}
                   className={cn(
-                    "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                    "px-3 py-1 rounded-lg font-sans text-[10px] font-bold cursor-pointer transition-colors border",
                     isActive
                       ? "border-gold bg-gold-muted text-gold"
                       : "border-border-base bg-white text-text-muted hover:text-text-primary",
@@ -595,7 +595,7 @@ function DealFlowContent() {
               type="button"
               onClick={() => setShowAllTypes((v) => !v)}
               className={cn(
-                "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                "px-3 py-1 rounded-lg font-sans text-[10px] font-bold cursor-pointer transition-colors border",
                 showAllTypes
                   ? "border-gold bg-gold-muted text-gold"
                   : "border-border-base bg-white dark:bg-elevated text-text-muted hover:text-text-primary",
@@ -611,7 +611,7 @@ function DealFlowContent() {
           <div className="mb-4 space-y-3">
             {/* Row 1: Activity Type */}
             <div>
-              <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1.5">Activity Type</p>
+              <p className="font-sans text-[9px] text-text-muted mb-1.5">Activity type</p>
               <div className="flex items-center gap-1.5 flex-wrap">
                 {ACTIVITY_TYPES.map((type) => {
                   const isActive = selectedActivityTypes.includes(type);
@@ -625,7 +625,7 @@ function DealFlowContent() {
                         )
                       }
                       className={cn(
-                        "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                        "px-3 py-1 rounded-lg font-sans text-[10px] font-bold cursor-pointer transition-colors border",
                         isActive
                           ? getDealTypeStyle(type)
                           : "border-border-base bg-white text-text-muted hover:text-text-primary",
@@ -638,14 +638,14 @@ function DealFlowContent() {
               </div>
               {selectedActivityTypes.length >= 2 && (
                 <div className="flex items-center gap-1.5 mt-2">
-                  <span className="font-data text-[9px] uppercase tracking-widest text-text-faint">Match:</span>
+                  <span className="font-sans text-[9px] text-text-faint">Match:</span>
                   {(["any", "all"] as const).map((mode) => (
                     <button
                       key={mode}
                       type="button"
                       onClick={() => setActivityMatchMode(mode)}
                       className={cn(
-                        "px-2.5 py-0.5 rounded font-data text-[9px] font-bold uppercase cursor-pointer transition-colors border",
+                        "px-2.5 py-0.5 rounded font-sans text-[9px] font-bold cursor-pointer transition-colors border",
                         activityMatchMode === mode
                           ? "border-gold bg-gold-muted text-gold"
                           : "border-border-base bg-white text-text-muted hover:text-text-primary",
@@ -660,7 +660,7 @@ function DealFlowContent() {
 
             {/* Row 2: Sector (Industry Verticals) */}
             <div>
-              <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1.5">Sector</p>
+              <p className="font-sans text-[9px] text-text-muted mb-1.5">Sector</p>
               <div className="flex items-center gap-1.5 flex-wrap">
                 {INDUSTRY_VERTICALS.map((v) => {
                   const isActive = selectedVerticals.includes(v);
@@ -676,7 +676,7 @@ function DealFlowContent() {
                         if (isActivating) fireEvent("sector_filter_applied", { sector: v });
                       }}
                       className={cn(
-                        "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                        "px-3 py-1 rounded-lg font-sans text-[10px] font-bold cursor-pointer transition-colors border",
                         isActive
                           ? "border-gold bg-gold-muted text-gold"
                           : "border-border-base bg-white text-text-muted hover:text-text-primary",
@@ -689,14 +689,14 @@ function DealFlowContent() {
               </div>
               {selectedVerticals.length >= 2 && (
                 <div className="flex items-center gap-1.5 mt-2">
-                  <span className="font-data text-[9px] uppercase tracking-widest text-text-faint">Match:</span>
+                  <span className="font-sans text-[9px] text-text-faint">Match:</span>
                   {(["any", "all"] as const).map((mode) => (
                     <button
                       key={mode}
                       type="button"
                       onClick={() => setVerticalMatchMode(mode)}
                       className={cn(
-                        "px-2.5 py-0.5 rounded font-data text-[9px] font-bold uppercase cursor-pointer transition-colors border",
+                        "px-2.5 py-0.5 rounded font-sans text-[9px] font-bold cursor-pointer transition-colors border",
                         verticalMatchMode === mode
                           ? "border-gold bg-gold-muted text-gold"
                           : "border-border-base bg-white text-text-muted hover:text-text-primary",
@@ -764,8 +764,8 @@ function DealFlowContent() {
         {/* Deal count */}
         {!loading && filtered.length > 0 && (
           <div className="mb-3">
-            <p className="font-data text-[10px] text-text-faint">
-              {filtered.length} {filtered.length === 1 ? "DEAL" : "DEALS"}
+            <p className="font-sans text-[10px] text-text-faint">
+              {filtered.length} {filtered.length === 1 ? "deal" : "deals"}
               {filterStage !== "ALL" && ` · ${STAGE_CONFIG[filterStage]?.label}`}
             </p>
             <p className="font-sans text-[11px] text-text-faint mt-0.5">
@@ -847,7 +847,7 @@ function DealFlowContent() {
                         </span>
                       )}
                       <span className={cn(
-                        "px-2 py-0.5 rounded-md font-data text-[10px] font-bold uppercase border",
+                        "px-2 py-0.5 rounded-md font-sans text-[10px] font-bold border",
                         stageConf.color,
                       )}>
                         {stageConf.label}
@@ -859,7 +859,7 @@ function DealFlowContent() {
                   <div className="flex items-center gap-2 flex-wrap mb-2">
                     {deal.deal_type && (
                       <span className={cn(
-                        "font-data text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border",
+                        "font-sans text-[10px] font-bold px-2 py-0.5 rounded-md border",
                         getDealTypeStyle(deal.deal_type),
                       )}>
                         {deal.deal_type}
@@ -868,7 +868,7 @@ function DealFlowContent() {
                     {deal.sector && (
                       <span
                         className={cn(
-                          "font-data text-[10px] font-bold px-2 py-0.5 rounded-md border",
+                          "font-sans text-[10px] font-bold px-2 py-0.5 rounded-md border",
                           isHighRelevance
                             ? "text-gold bg-gold/10 border-gold/20"
                             : "bg-white/[0.06] text-[#9a9a94] border border-white/[0.10] dark:bg-white/[0.06] dark:text-[#9a9a94] dark:border-white/[0.10]",
@@ -892,7 +892,7 @@ function DealFlowContent() {
                     <div className="mt-3 pt-3 border-t border-border-subtle">
                       {deal.thesis && (
                         <div className="bg-gold-muted border border-gold-border rounded-lg p-3 mb-3">
-                          <p className="font-data text-[9px] uppercase tracking-widest text-gold font-bold mb-1">
+                          <p className="font-sans text-[9px] text-text-muted font-bold mb-1">
                             Signal
                           </p>
                           <p className="font-sans text-[12px] text-text-secondary leading-relaxed italic">
@@ -935,12 +935,12 @@ function DealFlowContent() {
                       onClick={(e) => openMemo(deal, e)}
                       className={cn(
                         "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg",
-                        "bg-gold text-cream font-data text-[10px] font-bold uppercase",
+                        "bg-gold text-cream font-sans text-[10px] font-bold",
                         "hover:bg-gold-dark transition-colors cursor-pointer",
                       )}
                     >
                       <Sparkles size={10} />
-                      Generate Memo
+                      Generate memo
                     </button>
                   </div>
                 </div>

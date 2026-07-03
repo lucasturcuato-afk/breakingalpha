@@ -325,7 +325,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
             <div className="flex items-center gap-2 flex-wrap">
               <span
                 style={getSectorStyle(thesis.sector)}
-                className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
+                className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded"
               >
                 {thesis.sector}
               </span>
@@ -398,7 +398,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
 
         {/* Full Analysis */}
         <div>
-          <div className="font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2 border-l-2 border-gold pl-2">Full Analysis</div>
+          <div className="font-sans text-[10px] font-semibold text-text-muted mb-2 border-l-2 border-border-base pl-2">Full analysis</div>
           <div className="bg-parchment-mid border border-border-base rounded-lg px-4 py-3">
             <div className="font-sans text-[12px] text-text-primary leading-relaxed">
               {thesis.rationale || thesis.summary}
@@ -417,7 +417,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
               <button
                 type="button"
                 onClick={() => setBearOpen((v) => !v)}
-                className="flex items-center gap-1.5 font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider cursor-pointer hover:text-text-secondary transition-colors border-l-2 border-gold pl-2"
+                className="flex items-center gap-1.5 font-sans text-[10px] font-semibold text-text-muted cursor-pointer hover:text-text-secondary transition-colors border-l-2 border-border-base pl-2"
               >
                 Bear Case
                 {bearOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
@@ -436,7 +436,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
 
         {/* Live Evidence Feed */}
         <div>
-          <div className="font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2 border-l-2 border-gold pl-2">
+          <div className="font-sans text-[10px] font-semibold text-text-muted mb-2 border-l-2 border-border-base pl-2">
             <span className="text-signal-up">●</span> Live Evidence Feed
           </div>
           {articles.length === 0 ? (
@@ -533,7 +533,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
 
         {/* Catalyst */}
         <div>
-          <div className="font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2 border-l-2 border-gold pl-2">Catalyst</div>
+          <div className="font-sans text-[10px] font-semibold text-text-muted mb-2 border-l-2 border-border-base pl-2">Catalyst</div>
           <div className="font-sans text-[12px] text-text-primary">
             {thesis.catalyst_note || thesis.catalyst || (
               <span className="text-text-muted italic">No catalyst recorded for this thesis.</span>
@@ -545,7 +545,7 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
 
         {/* Your Notes */}
         <div>
-          <div className="font-sans text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2 border-l-2 border-gold pl-2">Your Notes</div>
+          <div className="font-sans text-[10px] font-semibold text-text-muted mb-2 border-l-2 border-border-base pl-2">Your notes</div>
           {noteLoading ? (
             <SectionSkeleton />
           ) : (

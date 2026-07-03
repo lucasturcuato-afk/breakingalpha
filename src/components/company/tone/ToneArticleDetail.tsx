@@ -96,7 +96,7 @@ export function ToneArticleDetail({ article, onClose }: ToneArticleDetailProps) 
       >
         {/* ── Head: eyebrow + close ── */}
         <div className="border-border-subtle flex items-center justify-between border-b px-5 py-3">
-          <span className="font-data text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+          <span className="font-sans text-[10px] font-semibold text-text-muted">
             Tone evidence
           </span>
           <button
@@ -136,7 +136,7 @@ export function ToneArticleDetail({ article, onClose }: ToneArticleDetailProps) 
               data-testid="tone-article-detail-reason"
               className="border-gold-border bg-gold-muted mt-4 rounded-md border px-4 py-3"
             >
-              <div className="font-data text-[10px] font-semibold uppercase tracking-widest text-gold-dark">
+              <div className="font-sans text-[10px] font-semibold text-text-muted">
                 Why this tone
               </div>
               <p className="mt-1.5 font-sans text-[13px] leading-relaxed text-text-primary">
@@ -147,7 +147,7 @@ export function ToneArticleDetail({ article, onClose }: ToneArticleDetailProps) 
 
           {summary ? (
             <div className="mt-4">
-              <div className="font-data text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+              <div className="font-sans text-[10px] font-semibold text-text-muted">
                 Summary
               </div>
               <p className="mt-1.5 font-sans text-[13px] leading-relaxed text-text-secondary">

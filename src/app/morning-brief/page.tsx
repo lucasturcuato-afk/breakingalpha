@@ -733,8 +733,8 @@ export default function MorningBriefPage() {
         >
           <span>{dateStr}</span>
           <span className="font-data">{timeStr}</span>
-          <span style={{ background: "rgba(255,253,249,0.15)", color: "rgba(255,253,249,0.9)", padding: "4px 10px", borderRadius: 20, fontSize: 10, letterSpacing: "0.12em" }}>
-            4 MIN READ
+          <span style={{ background: "rgba(255,253,249,0.15)", color: "rgba(255,253,249,0.9)", padding: "4px 10px", borderRadius: 20, fontSize: 10 }}>
+            4 min read
           </span>
         </div>
       </header>
@@ -757,7 +757,7 @@ export default function MorningBriefPage() {
       >
         {([
           {
-            k: "MOOD",
+            k: "Mood",
             loading,
             v: String(moodWord).toUpperCase(),
             c: tone === "BEARISH" ? "var(--signal-dn)" : tone === "BULLISH" ? "var(--signal-up)" : "var(--signal-warn)",
@@ -765,14 +765,14 @@ export default function MorningBriefPage() {
             tip: "Today's overall market sentiment, derived from VIX levels and price action.",
           },
           {
-            k: "STORIES",
+            k: "Stories",
             loading: storiesLoading,
             v: String(stories.length),
             skeletonW: 28,
             tip: "Total articles ingested and analyzed by Signalera's pipeline today.",
           },
           {
-            k: "THESES",
+            k: "Theses",
             loading: thesesLoading,
             v: thesesCount !== null ? `${thesesCount} active` : "0 active",
             skeletonW: 56,
@@ -788,7 +788,7 @@ export default function MorningBriefPage() {
           },
         ] as Array<{ k: string; v: string; loading: boolean; c?: string; skeletonW: number; tip: string }>).map((x, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span className="font-sans" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, letterSpacing: "0.16em", color: "var(--text-muted)" }}>
+            <span className="font-sans" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, color: "var(--text-muted)" }}>
               {x.k}
               <InfoTooltip content={x.tip} side="bottom" iconSize={10} />
             </span>
@@ -886,11 +886,9 @@ export default function MorningBriefPage() {
                   className="font-sans"
                   style={{
                     fontSize: 10,
-                    letterSpacing: "0.20em",
-                    color: HERITAGE_GOLD,
+                    color: "var(--text-muted)",
                     margin: "0 0 14px",
                     fontWeight: 700,
-                    textTransform: "uppercase",
                     position: "relative",
                   }}
                 >
@@ -995,9 +993,7 @@ export default function MorningBriefPage() {
                 className="font-sans"
                 style={{
                   fontSize: 10,
-                  letterSpacing: "0.22em",
-                  textTransform: "uppercase",
-                  color: "var(--gold-dark)",
+                  color: "var(--text-muted)",
                   fontWeight: 800,
                   margin: "0 0 10px",
                 }}
@@ -1052,13 +1048,11 @@ export default function MorningBriefPage() {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 8,
-                    background: "#a88340",
+                    background: "var(--parchment-mid)",
                     color: DC_ESPRESSO,
                     padding: "5px 12px",
                     borderRadius: 20,
                     fontSize: 10,
-                    letterSpacing: "0.14em",
-                    textTransform: "uppercase",
                     fontWeight: 800,
                   }}
                 >
@@ -1120,9 +1114,7 @@ export default function MorningBriefPage() {
                       className="font-sans"
                       style={{
                         fontSize: 10,
-                        letterSpacing: "0.16em",
-                        textTransform: "uppercase",
-                        color: "var(--gold-dark)",
+                        color: "var(--text-muted)",
                         fontWeight: 700,
                         margin: "0 0 10px",
                       }}
@@ -1165,9 +1157,7 @@ export default function MorningBriefPage() {
                     className="font-sans"
                     style={{
                       fontSize: 10,
-                      letterSpacing: "0.16em",
-                      textTransform: "uppercase",
-                      color: "var(--gold-dark)",
+                      color: "var(--text-muted)",
                       fontWeight: 800,
                       alignSelf: "center",
                     }}
@@ -1222,7 +1212,7 @@ export default function MorningBriefPage() {
                 >
                   <p
                     className="font-sans"
-                    style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--gold-dark)", fontWeight: 700, marginBottom: 6 }}
+                    style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, marginBottom: 6 }}
                   >
                     Your Personalized Briefing
                   </p>
@@ -1354,17 +1344,15 @@ export default function MorningBriefPage() {
                       </div>
                       {deal.deal_type && (
                         <span
-                          className="font-data"
+                          className="font-sans"
                           style={{
                             display: "inline-block",
                             alignSelf: "flex-start",
                             fontSize: 9,
                             fontWeight: 800,
-                            letterSpacing: "0.12em",
-                            textTransform: "uppercase",
-                            color: "var(--gold-dark)",
-                            background: "var(--gold-muted)",
-                            border: "1px solid var(--gold-border)",
+                            color: "var(--text-muted)",
+                            background: "var(--parchment-mid)",
+                            border: "1px solid var(--border-base)",
                             padding: "3px 8px",
                             borderRadius: 4,
                           }}
