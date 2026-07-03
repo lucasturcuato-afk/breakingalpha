@@ -14,6 +14,7 @@ import { DCAnalystSection } from "@/components/brief/dc-analyst-section";
 import { DCSectorSignals } from "@/components/brief/dc-sector-signals";
 import MacroPanel, { type MacroPanelData } from "@/components/brief/MacroPanel";
 import CatalystStrip from "@/components/brief/CatalystStrip";
+import BriefCallsSection from "@/components/brief/BriefCallsSection";
 import { ActiveThesesWidget } from "@/components/dashboard/active-theses-widget";
 import { WatchlistWidget } from "@/components/dashboard/watchlist-widget";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
@@ -1035,6 +1036,12 @@ export default function MorningBriefPage() {
               status={watchlistStatus}
               briefType="morning"
             />
+
+            {/* ── Today's Calls — scored objects (Open state; real morning_brief_calls,
+                 grading not live yet). Additive: no existing per-call rendering replaced. ── */}
+            <section style={{ marginBottom: 40 }}>
+              <BriefCallsSection briefId={briefing.id} heading="Today's Calls" />
+            </section>
 
             {/* ── Today's Lead ── */}
             <section style={{ marginBottom: 40 }}>

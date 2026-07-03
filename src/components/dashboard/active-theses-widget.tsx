@@ -55,7 +55,7 @@ export function ActiveThesesWidget({
           <h4 className="font-display text-[12px] font-semibold text-text-primary leading-snug">
             {neutralizeThesisTitle(thesis.title)}
           </h4>
-          <p className="font-sans text-[11px] text-text-secondary leading-snug mt-0.5 line-clamp-2">
+          <p className="font-display text-[12px] text-text-secondary leading-snug mt-0.5 line-clamp-2">
             {redactRationale(thesis.preview)}
           </p>
         </Link>

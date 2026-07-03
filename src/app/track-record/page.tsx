@@ -8,6 +8,8 @@ import { LineChart, Clock, TrendingUp, TrendingDown, Activity } from "lucide-rea
 import { getSectorStyle } from "@/lib/sector-colors";
 import { EmptyState } from "@/components/ui/empty-state";
 import { VerdictEvolution } from "@/components/track-record/verdict-evolution";
+import { ScoredObject } from "@/components/scored-object/ScoredObject";
+import { openThesisProps } from "@/lib/scored-object-map";
 import {
   computeLiveScore,
   liveScoreChipClasses,
@@ -45,6 +47,7 @@ interface ThesisMeta {
   generated_at: string | null;
   check_after: string | null;
   outcome: string | null;
+  confidence: number | null;
   signal_breakdown: Record<string, unknown> | null;
   adversarial_score: number | null;
   // Optional persisted columns (sql/live_score_columns.sql).
@@ -60,6 +63,9 @@ interface ScoredThesis {
   ticker: string | null;
   conviction: string | null;
   generated_at: string | null;
+  check_after: string | null;
+  horizon: string | null;
+  confidence: number | null;
   outcome: TerminalVerdict;
   live: LiveScoreResult;
 }
@@ -102,11 +108,11 @@ export default function TrackRecordPage() {
         let thesesMeta: ThesisMeta[] = [];
         const fullCols =
           "id, title, sector, ticker, conviction, horizon, generated_at, check_after, " +
-          "outcome, signal_breakdown, adversarial_score, live_score, live_verdict, " +
+          "outcome, confidence, signal_breakdown, adversarial_score, live_score, live_verdict, " +
           "live_score_updated_at";
         const minimalCols =
           "id, title, sector, ticker, conviction, horizon, generated_at, check_after, " +
-          "outcome, signal_breakdown, adversarial_score";
+          "outcome, confidence, signal_breakdown, adversarial_score";
         const tryFull = await supabase.from("theses").select(fullCols);
         if (tryFull.error) {
           const fallback = await supabase.from("theses").select(minimalCols);
@@ -157,6 +163,9 @@ export default function TrackRecordPage() {
             sector: t.sector,
             ticker: t.ticker,
             conviction: t.conviction,
+            check_after: t.check_after,
+            horizon: t.horizon,
+            confidence: t.confidence,
             generated_at: t.generated_at,
             outcome: (t.outcome as TerminalVerdict) ?? null,
             live,
@@ -488,41 +497,67 @@ export default function TrackRecordPage() {
               {recentScored.length === 0 ? (
                 <EmptyInflightState />
               ) : (
+                // HYBRID (design rollout): open theses (no terminal outcome) render
+                // as the Open ScoredObject; already-resolved theses keep their real
+                // LiveVerdictBadge unchanged so no real verdict is hidden. Both sit in
+                // the same grid with aligned spacing. Unifying resolved theses onto
+                // ScoredObject's resolved states is a separate task (needs the real
+                // resolution model) — Track Record intentionally shows two treatments
+                // until then.
                 <div className="grid gap-2">
-                  {recentScored.map((t) => (
-                    <Link
-                      key={t.id}
-                      href={`/track-record/${t.id}`}
-                      className="card-hover-lift block bg-white rounded-xl border border-border-base p-3 hover:border-gold/40 transition-colors"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="font-sans font-semibold text-[13px] text-espresso leading-snug">
-                            {neutralizeThesisTitle(t.title)}
+                  {recentScored.map((t) =>
+                    t.outcome == null ? (
+                      <Link
+                        key={t.id}
+                        href={`/track-record/${t.id}`}
+                        className="card-hover-lift block rounded-lg"
+                      >
+                        <ScoredObject
+                          {...openThesisProps({
+                            claim: neutralizeThesisTitle(t.title),
+                            sector: t.sector,
+                            generated_at: t.generated_at,
+                            check_after: t.check_after,
+                            horizon: t.horizon,
+                            confidence: t.confidence,
+                          })}
+                        />
+                      </Link>
+                    ) : (
+                      <Link
+                        key={t.id}
+                        href={`/track-record/${t.id}`}
+                        className="card-hover-lift block bg-white rounded-xl border border-border-base p-3 hover:border-gold/40 transition-colors"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-sans font-semibold text-[13px] text-espresso leading-snug">
+                              {neutralizeThesisTitle(t.title)}
+                            </div>
+                            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                              {t.sector && (
+                                <span
+                                  style={getSectorStyle(t.sector)}
+                                  className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
+                                >
+                                  {t.sector}
+                                </span>
+                              )}
+                              <TickerOrPrivate ticker={t.ticker} />
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                            {t.sector && (
-                              <span
-                                style={getSectorStyle(t.sector)}
-                                className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
-                              >
-                                {t.sector}
+                          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                            <LiveVerdictBadge live={t.live} size="prominent" />
+                            {t.generated_at && (
+                              <span className="font-data text-[10px] text-text-faint">
+                                {formatDate(t.generated_at)}
                               </span>
                             )}
-                            <TickerOrPrivate ticker={t.ticker} />
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                          <LiveVerdictBadge live={t.live} size="prominent" />
-                          {t.generated_at && (
-                            <span className="font-data text-[10px] text-text-faint">
-                              {formatDate(t.generated_at)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </Link>
-                  ))}
+                      </Link>
+                    ),
+                  )}
                 </div>
               )}
             </Section>

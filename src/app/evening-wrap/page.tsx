@@ -10,6 +10,7 @@ import { ExportMenu } from "@/components/brief/export-menu";
 import { ShareButton } from "@/components/brief/share-button";
 import { DCStoryRow } from "@/components/brief/dc-story-row";
 import WatchlistBriefSection from "@/components/brief/WatchlistBriefSection";
+import BriefCallsSection from "@/components/brief/BriefCallsSection";
 import type { WatchlistBriefSection as WatchlistSectionData } from "@/lib/watchlist-brief";
 import { sessionIngestFloor, publishedFloor, storiesHeadingLabel, storedRailIds, reorderByIds } from "@/lib/story-rail-window";
 import { DCAnalystSection } from "@/components/brief/dc-analyst-section";
@@ -991,6 +992,23 @@ export default function EveningWrapPage() {
               status={watchlistStatus}
               briefType="evening"
             />
+
+            {/* ── This Morning's Calls — scored objects (Open state; real
+                 morning_brief_calls for this trading session, grading not live yet).
+                 Matched by PT session date since the evening briefing id differs from
+                 the morning brief that owns the calls. ── */}
+            <section style={{ marginBottom: 40 }}>
+              <BriefCallsSection
+                briefDate={
+                  briefing?.created_at
+                    ? new Date(briefing.created_at).toLocaleDateString("en-CA", {
+                        timeZone: "America/Los_Angeles",
+                      })
+                    : null
+                }
+                heading="This Morning's Calls"
+              />
+            </section>
 
             {/* ── Today's Story ── */}
             <section style={{ marginBottom: 40 }}>
