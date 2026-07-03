@@ -966,7 +966,7 @@ export default function WatchlistPage() {
                           )}
                         >
                           {/* Sector name — full width, no fixed constraint */}
-                          <span className="font-sans text-[12px] font-bold text-text-primary truncate min-w-0 flex-1">
+                          <span className="font-display text-[12px] font-bold text-text-primary truncate min-w-0 flex-1">
                             {toDisplayName(entry.identifier)}
                           </span>
                           <div className="flex items-center gap-2 flex-shrink-0">
@@ -1574,7 +1574,7 @@ function SortableEntryRow(props: {
 
       {/* LEFT: identifier + optional display_name subtitle */}
       <div className="flex flex-col min-w-0 flex-1">
-        <span className="font-sans text-[13px] font-bold text-text-primary truncate">
+        <span className="font-display text-[13px] font-bold text-text-primary truncate">
           {entry.identifier}
         </span>
         {subtitle && (

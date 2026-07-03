@@ -93,7 +93,7 @@ export function WatchlistFeed() {
               <div className="flex items-start gap-2">
                 <span
                   className={cn(
-                    "shrink-0 mt-1 px-1.5 py-0.5 rounded font-data text-[8px] font-bold uppercase",
+                    "shrink-0 mt-1 px-1.5 py-0.5 rounded font-display text-[8px] font-bold uppercase",
                     "bg-gold-muted text-gold border border-gold/20",
                   )}
                 >
@@ -108,16 +108,16 @@ export function WatchlistFeed() {
                     />
                   </p>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className="font-data text-[9px] text-text-muted">
+                    <span className="font-sans text-[9px] text-text-muted">
                       {a.source}
                     </span>
                     {a.published_at && (
-                      <span className="font-data text-[9px] text-text-faint">
+                      <span className="font-sans text-[9px] text-text-faint">
                         {timeAgo(a.published_at)}
                       </span>
                     )}
                     {a.relevance_score != null && (
-                      <span className="font-data text-[9px] text-gold/70">
+                      <span className="font-display text-[9px] text-gold/70">
                         {a.relevance_score}/10
                       </span>
                     )}

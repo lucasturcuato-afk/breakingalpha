@@ -361,7 +361,7 @@ export default function TrackRecordPage() {
               <span className="track-record-pending-dot w-1.5 h-1.5 rounded-full bg-gold flex-shrink-0" />
               <div className="flex items-center gap-3">
                 <span className="font-sans text-[11px] text-text-primary">
-                  <span className="font-data font-semibold">{awaitingCount}</span>{" "}
+                  <span className="font-display font-semibold">{awaitingCount}</span>{" "}
                   {awaitingCount === 1 ? "thesis" : "theses"} awaiting first review
                   {overdueCount > 0 ? ` · ${overdueCount} overdue` : ""}
                 </span>
@@ -712,7 +712,7 @@ function TickerOrPrivate({
 }) {
   if (!ticker) return null;
   return (
-    <span className="font-data text-[9px] text-gold-dark bg-gold-muted px-1.5 py-0.5 rounded">
+    <span className="font-display text-[9px] text-gold-dark bg-gold-muted px-1.5 py-0.5 rounded">
       {ticker}
     </span>
   );

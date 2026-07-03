@@ -26,7 +26,7 @@ function Field({ label, value }: { label: string; value: string }) {
       <span className="font-sans text-[9px] font-bold text-text-faint">
         {label}
       </span>
-      <span className="font-sans text-[13px] text-espresso font-semibold">{value}</span>
+      <span className="font-display text-[13px] text-espresso font-semibold">{value}</span>
     </div>
   );
 }

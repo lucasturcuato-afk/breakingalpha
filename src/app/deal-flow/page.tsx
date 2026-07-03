@@ -720,7 +720,7 @@ function DealFlowContent() {
                     setSelectedVerticals([]);
                     setVerticalMatchMode("any");
                   }}
-                  className="font-data text-[10px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
+                  className="font-sans text-[10px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
                 >
                   Clear all filters
                 </button>
@@ -810,7 +810,7 @@ function DealFlowContent() {
                         {deal.company}
                       </span>
                       {deal.acquirer && (
-                        <span className="font-data text-[10px] text-text-muted">
+                        <span className="font-display text-[10px] text-text-muted">
                           ← {deal.acquirer}
                         </span>
                       )}
@@ -818,7 +818,7 @@ function DealFlowContent() {
                         type="button"
                         onClick={(e) => { e.stopPropagation(); handleAddToWatchlist(deal.company); }}
                         className={cn(
-                          "font-data text-[11px] cursor-pointer flex-shrink-0",
+                          "font-sans text-[11px] cursor-pointer flex-shrink-0",
                           isAdded ? "text-signal-up" : "text-gold hover:text-gold-dark",
                         )}
                         aria-label={isAdded ? "Remove from watchlist" : "Add to watchlist"}
@@ -842,7 +842,7 @@ function DealFlowContent() {
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {displayValue && (
-                        <span className="font-data text-[12px] font-semibold text-gold">
+                        <span className="font-display text-[12px] font-semibold text-gold">
                           {displayValue}
                         </span>
                       )}
@@ -878,12 +878,12 @@ function DealFlowContent() {
                       </span>
                     )}
                     {deal.updated_at && (
-                      <span className="font-data text-[10px] text-text-faint">
+                      <span className="font-sans text-[10px] text-text-faint">
                         {timeAgo(deal.updated_at)}
                       </span>
                     )}
                     {deal.auto_extracted && (
-                      <span className="font-data text-[9px] text-gold/40">🤖 AI</span>
+                      <span className="font-sans text-[9px] text-gold/40">🤖 AI</span>
                     )}
                   </div>
 
@@ -906,7 +906,7 @@ function DealFlowContent() {
                         </p>
                       )}
                       {deal.source && (
-                        <p className="font-data text-[10px] text-text-faint mb-2">
+                        <p className="font-sans text-[10px] text-text-faint mb-2">
                           Source: {deal.source}
                         </p>
                       )}
@@ -916,7 +916,7 @@ function DealFlowContent() {
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
-                          className="font-data text-[11px] text-gold hover:text-gold-dark"
+                          className="font-sans text-[11px] text-gold hover:text-gold-dark"
                         >
                           Read Source →
                         </a>
@@ -926,7 +926,7 @@ function DealFlowContent() {
 
                   {/* Footer row */}
                   <div className="flex items-center justify-between mt-2">
-                    <span className="font-data text-[10px] text-text-faint flex items-center gap-1">
+                    <span className="font-sans text-[10px] text-text-faint flex items-center gap-1">
                       {isExp ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
                       {isExp ? "collapse" : "expand"}
                     </span>

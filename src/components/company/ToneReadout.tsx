@@ -16,7 +16,6 @@ import {
   type ToneSummary,
 } from "@/lib/tone";
 
-const MONO = "var(--font-mono), ui-monospace, monospace";
 const SERIF = "var(--font-display), serif";
 const SANS = "var(--font-sans), sans-serif";
 
@@ -62,7 +61,7 @@ export function ToneReadout({ tone, scale = "panel" }: ToneReadoutProps) {
         <div style={{ fontFamily: SERIF, fontSize: z.level, fontWeight: 700, color: "var(--text-faint)" }}>
           Not enough recent coverage
         </div>
-        <div style={{ fontFamily: MONO, fontSize: z.evidence, color: "var(--text-faint)", marginTop: 3 }}>
+        <div style={{ fontFamily: SANS, fontSize: z.evidence, color: "var(--text-faint)", marginTop: 3 }}>
           {seen === 0 ? "No articles in the last 7 days" : `Based on ${seen} ${seen === 1 ? "article" : "articles"} so far`}
         </div>
       </div>
@@ -88,7 +87,7 @@ export function ToneReadout({ tone, scale = "panel" }: ToneReadoutProps) {
           <span
             data-testid="tone-direction"
             style={{
-              fontFamily: MONO,
+              fontFamily: SERIF,
               fontSize: z.meta,
               fontWeight: 600,
               color: DIRECTION_COLOR[tone.direction],

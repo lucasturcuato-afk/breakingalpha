@@ -701,7 +701,7 @@ export default function MorningBriefPage() {
           style={{ display: "flex", alignItems: "center", gap: 22, fontSize: 11, color: "rgba(255,253,249,0.85)", fontWeight: 600 }}
         >
           <span>{dateStr}</span>
-          <span className="font-data">{timeStr}</span>
+          <span className="font-sans">{timeStr}</span>
           <span style={{ background: "rgba(255,253,249,0.15)", color: "rgba(255,253,249,0.9)", padding: "4px 10px", borderRadius: 20, fontSize: 10 }}>
             4 min read
           </span>
@@ -1147,7 +1147,7 @@ export default function MorningBriefPage() {
                       }}
                     >
                       <span
-                        className="font-data"
+                        className="font-display"
                         style={{
                           fontSize: 12,
                           fontWeight: 800,
@@ -1300,7 +1300,7 @@ export default function MorningBriefPage() {
                           {deal.company}
                         </h4>
                         <span
-                          className="font-data"
+                          className="font-display"
                           style={{
                             fontSize: 12,
                             fontWeight: 700,

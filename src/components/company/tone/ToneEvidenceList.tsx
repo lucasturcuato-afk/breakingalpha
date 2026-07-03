@@ -82,7 +82,7 @@ export function ToneEvidenceList({ articles }: ToneEvidenceListProps) {
               <span className="min-w-0 flex-1 truncate font-sans text-[12.5px] text-text-primary">
                 {a.title || "Untitled"}
               </span>
-              <span className="flex-shrink-0 font-data text-[10px] text-text-faint">
+              <span className="flex-shrink-0 font-display text-[10px] text-text-faint">
                 {formatAge(a.publishedAt)}
               </span>
             </button>

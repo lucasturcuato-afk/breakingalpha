@@ -89,7 +89,7 @@ function ToneCellMeta({ tone }: { tone: ToneSummary }) {
 const cellBase: CSSProperties = { padding: "11px 14px", minWidth: 0 };
 const cellRight: CSSProperties = { ...cellBase, borderRight: "1px solid var(--border-subtle)" };
 const valueStyle: CSSProperties = {
-  fontFamily: "var(--font-mono)", fontSize: 19, fontWeight: 700,
+  fontFamily: "var(--font-playfair-display)", fontSize: 19, fontWeight: 700,
   color: "var(--espresso, #2a1f15)", marginTop: 3,
   fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em",
 };

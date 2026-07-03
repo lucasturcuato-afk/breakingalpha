@@ -117,7 +117,7 @@ export function CompanyAutoResolve({ query }: Props) {
       <button
         type="button"
         onClick={onRetry}
-        className="flex-shrink-0 font-data text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg border cursor-pointer"
+        className="flex-shrink-0 font-sans text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg border cursor-pointer"
         style={{ borderColor: "var(--gold-border)", background: "var(--gold-muted)", color: "var(--gold-deep)" }}
       >
         Try again

@@ -637,7 +637,7 @@ export default function EveningWrapPage() {
           style={{ display: "flex", alignItems: "center", gap: 22, fontSize: 11, color: "rgba(255,253,249,0.85)", fontWeight: 600 }}
         >
           <span>{dateStr}</span>
-          <span className="font-data">{timeStr}</span>
+          <span className="font-sans">{timeStr}</span>
           <span style={{ background: "rgba(255,253,249,0.15)", color: "rgba(255,253,249,0.9)", padding: "4px 10px", borderRadius: 20, fontSize: 10 }}>
             5 min read
           </span>

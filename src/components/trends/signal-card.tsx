@@ -81,7 +81,7 @@ export function SignalCard({ signal }: SignalCardProps) {
             </span>
           ))}
         </div>
-        <span className="font-data text-[9px] text-text-faint">{signal.timestamp}</span>
+        <span className="font-sans text-[9px] text-text-faint">{signal.timestamp}</span>
       </div>
 
       {/* Title + sparkline */}

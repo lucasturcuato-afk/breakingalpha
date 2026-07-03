@@ -323,7 +323,7 @@ export function CompanyStockChart({ ticker, companyName }: CompanyStockChartProp
                 {formatPrice(headerPrice, data?.currency ?? null)}
               </span>
               <span
-                className="font-data text-[12px] font-semibold leading-none"
+                className="font-display text-[12px] font-semibold leading-none"
                 style={{ color: headerPct >= 0 ? "var(--signal-up)" : "var(--signal-dn)" }}
               >
                 {formatPct(headerPct)}
@@ -352,7 +352,7 @@ export function CompanyStockChart({ ticker, companyName }: CompanyStockChartProp
                 onClick={() => setRange(r.key)}
                 disabled={disabledRange}
                 className={
-                  "font-data text-[10px] font-semibold px-2 py-1 rounded transition-colors " +
+                  "font-sans text-[10px] font-semibold px-2 py-1 rounded transition-colors " +
                   (disabledRange
                     ? "text-text-faint border border-transparent opacity-40 cursor-not-allowed "
                     : "cursor-pointer ") +

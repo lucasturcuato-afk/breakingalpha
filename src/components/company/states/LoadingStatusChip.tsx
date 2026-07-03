@@ -20,7 +20,7 @@ const CHIP_STYLE = {
   background: "var(--gold-muted)",
   border: "1px solid var(--gold-border)",
   color: "var(--gold-dark)",
-  fontFamily: "var(--font-mono), ui-monospace, monospace",
+  fontFamily: "var(--font-sans), sans-serif",
   fontSize: 10,
   letterSpacing: "0.08em",
   textTransform: "uppercase" as const,

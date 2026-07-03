@@ -50,17 +50,17 @@ export function CompetitorAlertsWidget() {
       {alerts.slice(0, 5).map((alert, i) => (
         <div key={i} className="bg-parchment rounded-lg px-3 py-2">
           <div className="flex items-center gap-1.5 mb-1">
-            <span className="font-data text-[9px] font-bold text-signal-warn uppercase">
+            <span className="font-display text-[9px] font-bold text-signal-warn uppercase">
               {alert.watchlistTicker.toUpperCase()} competitor
             </span>
-            <span className="font-data text-[9px] text-text-faint">
+            <span className="font-sans text-[9px] text-text-faint">
               {timeAgo(alert.article.published_at)}
             </span>
           </div>
           <p className="font-sans text-[11px] text-text-primary leading-snug line-clamp-2">
             {alert.article.title}
           </p>
-          <p className="font-data text-[9px] text-text-muted mt-0.5">
+          <p className="font-sans text-[9px] text-text-muted mt-0.5">
             {alert.article.source} · about {alert.competitor}
           </p>
         </div>

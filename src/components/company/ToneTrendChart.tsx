@@ -184,7 +184,7 @@ export function ToneTrendChart({ company, compact = false, defaultRange = "30d" 
         <div className="flex items-baseline justify-between gap-3 mb-2">
           <div className="min-w-0">
             {hovered ? (
-              <span className="font-data text-[11px] text-text-secondary">
+              <span className="font-display text-[11px] text-text-secondary">
                 {formatDay(hovered.p.date)} ·{" "}
                 <span style={{ color: hovered.p.score >= 0 ? "var(--signal-up)" : "var(--signal-dn)" }}>
                   {formatSignedScore(hovered.p.score)}
@@ -206,7 +206,7 @@ export function ToneTrendChart({ company, compact = false, defaultRange = "30d" 
                   type="button"
                   onClick={() => setRange(r.key)}
                   className={
-                    "font-data text-[10px] font-semibold px-2 py-1 rounded transition-colors cursor-pointer " +
+                    "font-sans text-[10px] font-semibold px-2 py-1 rounded transition-colors cursor-pointer " +
                     (active
                       ? "bg-gold-muted text-gold border border-gold-border"
                       : "text-text-secondary hover:bg-parchment-mid border border-transparent")

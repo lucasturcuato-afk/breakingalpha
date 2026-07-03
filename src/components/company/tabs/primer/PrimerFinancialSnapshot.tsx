@@ -88,7 +88,7 @@ export function PrimerFinancialSnapshot({ financials }: PrimerFinancialSnapshotP
               <dt className="font-sans text-[9px] font-bold text-text-faint">
                 {r.label}
               </dt>
-              <dd className="font-sans text-[13px] text-espresso font-semibold tabular-nums">
+              <dd className="font-display text-[13px] text-espresso font-semibold">
                 {r.display}
               </dd>
             </div>
@@ -111,7 +111,7 @@ export function PrimerFinancialSnapshot({ financials }: PrimerFinancialSnapshotP
                 <dt className="font-sans text-[9px] font-bold text-text-faint">
                   {m.label}
                 </dt>
-                <dd className="font-sans text-[13px] text-espresso font-semibold tabular-nums">
+                <dd className="font-display text-[13px] text-espresso font-semibold">
                   {m.display}
                 </dd>
               </div>

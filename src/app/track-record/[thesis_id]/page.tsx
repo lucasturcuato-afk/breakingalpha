@@ -171,7 +171,7 @@ export default function ThesisDetailPage() {
               {neutralizeThesisTitle(thesis.title)}
             </h1>
             {live && (
-              <span className={`flex-shrink-0 font-data text-[11px] font-semibold px-2 py-0.5 rounded ${liveScoreChipClasses(live.verdict)}`}>
+              <span className={`flex-shrink-0 font-sans text-[11px] font-semibold px-2 py-0.5 rounded ${liveScoreChipClasses(live.verdict)}`}>
                 {verdictDisplayLabel(live.verdict)}
               </span>
             )}
@@ -189,7 +189,7 @@ export default function ThesisDetailPage() {
               </span>
             )}
             {thesis.ticker && (
-              <span className="font-data text-[9px] text-gold-dark bg-gold-muted px-1.5 py-0.5 rounded">
+              <span className="font-display text-[9px] text-gold-dark bg-gold-muted px-1.5 py-0.5 rounded">
                 {thesis.ticker}
               </span>
             )}
@@ -275,7 +275,7 @@ export default function ThesisDetailPage() {
                 <span className={`font-sans text-[12px] font-semibold px-2.5 py-1 rounded ${liveScoreChipClasses(live.verdict).replace(" italic", "")}`}>
                   {verdictDisplayLabel(live.verdict)}
                 </span>
-                <span className="font-data text-[12px] text-text-secondary">
+                <span className="font-display text-[12px] text-text-secondary">
                   {live.score > 0 ? "+" : ""}{live.score} of ±{SCORE_SCALE}
                 </span>
               </div>
@@ -375,7 +375,7 @@ function SignalBreakdown({ live, thesis, verdicts }: { live: LiveScoreResult; th
             <span className="font-sans text-[12px] text-text-primary leading-snug">
               {s.sentence}
             </span>
-            <span className="font-data text-[10px] text-text-faint ml-1.5">
+            <span className="font-display text-[10px] text-text-faint ml-1.5">
               ({s.value > 0 ? "+" : ""}{Math.round(s.value)})
             </span>
           </div>

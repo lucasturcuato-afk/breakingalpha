@@ -46,7 +46,7 @@ interface WebFallbackStateProps {
   onCiteClick?: (n: number) => void;
 }
 
-const MONO = "var(--font-mono), ui-monospace, monospace";
+const SERIF = "var(--font-display), serif";
 const SANS = "var(--font-sans), sans-serif";
 
 function extractTldr(memo: string): { tldr: string | null; body: string } {
@@ -90,7 +90,7 @@ export function WebFallbackState({ memo, sources, canonicalName, aliasResolved, 
             background: "rgba(139,92,246,0.06)",
             border: "1px solid var(--purple)",
             color: "var(--purple)",
-            fontFamily: MONO, fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
+            fontFamily: SANS, fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
           }}
         >
           WEB-SOURCED
@@ -107,7 +107,7 @@ export function WebFallbackState({ memo, sources, canonicalName, aliasResolved, 
             borderRadius: 6,
           }}
         >
-          <div style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", color: "var(--purple)", marginBottom: 5, textTransform: "uppercase" }}>
+          <div style={{ fontFamily: SANS, fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", color: "var(--purple)", marginBottom: 5, textTransform: "uppercase" }}>
             TLDR
           </div>
           <p style={{ fontFamily: SANS, fontSize: 13, lineHeight: 1.55, color: "var(--text-primary)", margin: 0 }}>
@@ -122,7 +122,7 @@ export function WebFallbackState({ memo, sources, canonicalName, aliasResolved, 
         </div>
       ) : null}
 
-      <p style={{ fontFamily: MONO, fontSize: 10, color: "var(--text-faint)", margin: 0 }}>
+      <p style={{ fontFamily: SANS, fontSize: 10, color: "var(--text-faint)", margin: 0 }}>
         Web-grounded. Auto-upgrades to article-grounded once indexed.
       </p>
 
@@ -138,7 +138,7 @@ export function WebFallbackState({ memo, sources, canonicalName, aliasResolved, 
               data-testid="web-fallback-source-row"
               style={{ display: "grid", gridTemplateColumns: "32px 1fr auto", gap: 8, alignItems: "baseline", fontFamily: SANS, fontSize: 12 }}
             >
-              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: "var(--purple)" }}>[w{n}]</span>
+              <span style={{ fontFamily: SERIF, fontSize: 10, fontWeight: 700, color: "var(--purple)" }}>[w{n}]</span>
               <a
                 href={s.url}
                 target="_blank"
@@ -147,7 +147,7 @@ export function WebFallbackState({ memo, sources, canonicalName, aliasResolved, 
               >
                 {s.title}
               </a>
-              <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--text-faint)" }}>
+              <span style={{ fontFamily: SERIF, fontSize: 10, color: "var(--text-faint)" }}>
                 {hostname(s.url) || s.source}
                 {s.publishedAt ? ` . ${s.publishedAt.slice(0, 10)}` : ""}
               </span>

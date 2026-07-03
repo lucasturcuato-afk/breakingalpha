@@ -68,7 +68,7 @@ export function SystemIntelligenceWidget() {
       {embeddingTotal > 0 && (
         <>
           <span className="border-l border-border-base h-3" aria-hidden="true" />
-          <span className="font-data text-[10px] text-text-secondary whitespace-nowrap">
+          <span className="font-display text-[10px] text-text-secondary whitespace-nowrap">
             {embeddingTotal} embeddings
           </span>
         </>
@@ -77,9 +77,9 @@ export function SystemIntelligenceWidget() {
       {data?.avgQualityScore != null && (
         <>
           <span className="border-l border-border-base h-3" aria-hidden="true" />
-          <span className="font-data text-[10px] text-text-secondary whitespace-nowrap">
+          <span className="font-sans text-[10px] text-text-secondary whitespace-nowrap">
             Quality{" "}
-            <span className={data.avgQualityScore >= 7 ? "text-signal-up font-semibold" : data.avgQualityScore >= 4 ? "text-gold font-semibold" : "text-signal-dn font-semibold"}>
+            <span className={`font-display ${data.avgQualityScore >= 7 ? "text-signal-up font-semibold" : data.avgQualityScore >= 4 ? "text-gold font-semibold" : "text-signal-dn font-semibold"}`}>
               {data.avgQualityScore.toFixed(1)}
             </span>
           </span>

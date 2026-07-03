@@ -44,7 +44,7 @@ export function TopDeals({ deals }: TopDealsProps) {
             {feature.company}
           </h4>
           {feature.value && (
-            <span className="font-data text-[15px] font-semibold text-gold flex-shrink-0 mt-0.5">
+            <span className="font-display text-[15px] font-semibold text-gold flex-shrink-0 mt-0.5">
               {feature.value}
             </span>
           )}
@@ -83,7 +83,7 @@ export function TopDeals({ deals }: TopDealsProps) {
                   </span>
                 ) : null}
               </span>
-              <span className="font-data text-[12px] font-semibold text-gold flex-shrink-0">
+              <span className="font-display text-[12px] font-semibold text-gold flex-shrink-0">
                 {deal.value || "—"}
               </span>
               <p className="font-sans text-[12px] text-text-secondary dark:text-[#e8e8e4] truncate">

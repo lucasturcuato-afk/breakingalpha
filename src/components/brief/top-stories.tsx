@@ -162,7 +162,7 @@ export function TopStories({
                 }}
               >
                 <div className="bg-white dark:bg-elevated border border-border-base rounded-xl p-3">
-                  <p className="font-data text-[9px] text-text-muted">{peek.source}</p>
+                  <p className="font-sans text-[9px] text-text-muted">{peek.source}</p>
                   <p className="font-display text-[13px] font-bold text-espresso dark:text-cream leading-snug mt-1 line-clamp-1">
                     {peek.title}
                   </p>

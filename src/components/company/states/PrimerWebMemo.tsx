@@ -139,7 +139,7 @@ export function PrimerWebMemo({ company, ticker }: Props) {
             disabled={loading}
             className={cn(
               "flex-shrink-0 ml-4 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg",
-              "font-data text-[10px] font-bold uppercase border cursor-pointer transition-colors",
+              "font-sans text-[10px] font-bold uppercase border cursor-pointer transition-colors",
               "border-gold/40 bg-white text-gold hover:bg-gold/10",
               loading && "opacity-60 cursor-wait",
             )}

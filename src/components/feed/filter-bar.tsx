@@ -42,7 +42,7 @@ const FilterPill = memo(function FilterPill({ label, count, isActive, onToggle }
       )}
     >
       <span>{label}</span>
-      <span className="font-data text-[9px] opacity-70">{count}</span>
+      <span className="font-sans text-[9px] opacity-70">{count}</span>
     </button>
   );
 });
@@ -75,7 +75,7 @@ function UtilChip({ label, icon, isActive, onToggle, badge }: UtilChipProps) {
       {icon}
       <span>{label}</span>
       {badge != null && badge > 0 && (
-        <span className="font-data text-[9px] opacity-70">{badge}</span>
+        <span className="font-sans text-[9px] opacity-70">{badge}</span>
       )}
     </button>
   );
