@@ -22,6 +22,16 @@ export interface CompanyRef {
   id?: string | null;
   name?: string | null;
   slug?: string | null;
+  /** Optional exact ticker; the most reliable key, since every CIK-bearing
+   * companies row carries a ticker while null-CIK name duplicates do not. */
+  ticker?: string | null;
+}
+
+interface CompanyRow {
+  id: string;
+  name: string | null;
+  ticker: string | null;
+  sec_cik: number | null;
 }
 
 export interface CikResolution {
@@ -51,36 +61,116 @@ const FILING_COLS = "accession_number, form_type, filing_date, primary_doc_url, 
 
 const EMPTY_RESOLUTION: CikResolution = { cik: null, companyId: null, name: null, ticker: null };
 
-// A Company Intel slug ("nvidia-corporation") or display name maps to the
-// canonical companies.name via the same canonicalize() the detail page uses.
-function refToCanonicalName(ref: CompanyRef): string | null {
-  const raw = ref.name ?? ref.slug ?? null;
-  if (!raw) return null;
-  return canonicalize(raw.replace(/-/g, " "));
+function toResolution(row: CompanyRow): CikResolution {
+  return {
+    cik: row.sec_cik ?? null,
+    companyId: row.id,
+    name: row.name ?? null,
+    ticker: row.ticker ?? null,
+  };
 }
 
 /**
- * Resolve a Company Intel company (id, name, or slug) to its SEC CIK.
- * `cik` is null when the company has no mapped CIK (private/pre-IPO). Never throws.
+ * Among candidate rows, prefer one that actually carries a sec_cik. The
+ * companies table stores duplicates: the CIK lives on a short canonical / ticker
+ * row ("AMD", cik 2488) while full or legal name variants ("Advanced Micro
+ * Devices Inc") exist as SEPARATE rows with a null sec_cik. A naive first-match
+ * returns the null-CIK duplicate, so a CIK-bearing candidate must always win.
+ */
+export function pickPreferCik(rows: CompanyRow[]): CompanyRow | null {
+  if (rows.length === 0) return null;
+  return rows.find((r) => r.sec_cik != null) ?? rows[0];
+}
+
+const aliasKey = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, " ");
+
+/** Fetch companies whose name matches any of the given surface forms exactly
+ * (case-insensitive). Collects across forms so the CIK-bearing variant can win. */
+async function matchCompaniesByName(
+  supabase: SupabaseClient,
+  names: string[],
+): Promise<CompanyRow[]> {
+  const seen = new Set<string>();
+  const out: CompanyRow[] = [];
+  for (const n of [...new Set(names.filter((x) => x && x.length >= 2))]) {
+    const { data } = await supabase.from("companies").select(COMPANY_COLS).ilike("name", n).limit(10);
+    for (const r of (data ?? []) as CompanyRow[]) {
+      if (!seen.has(r.id)) { seen.add(r.id); out.push(r); }
+    }
+  }
+  return out;
+}
+
+/** Resolve a surface form through the aliases table (lookup_key -> canonical_id
+ * -> companies row). This bridges a full legal name to the CIK-bearing company
+ * that the duplicated companies.name never links to ("Advanced Micro Devices"
+ * -> AMD / cik 2488, "ASML Holding" -> ASML / cik 937966). */
+async function matchCompaniesByAlias(
+  supabase: SupabaseClient,
+  keys: string[],
+): Promise<CompanyRow[]> {
+  const ids = new Set<string>();
+  for (const k of [...new Set(keys.filter((x) => x && x.length >= 2))]) {
+    const { data } = await supabase.from("aliases").select("canonical_id").ilike("lookup_key", k).limit(10);
+    for (const a of data ?? []) if (a.canonical_id) ids.add(a.canonical_id as string);
+  }
+  if (ids.size === 0) return [];
+  const { data } = await supabase.from("companies").select(COMPANY_COLS).in("id", [...ids]).limit(20);
+  return (data ?? []) as CompanyRow[];
+}
+
+/**
+ * Resolve a Company Intel company (id, name, slug, or ticker) to its SEC CIK,
+ * always preferring the row that HAS a sec_cik over a null-CIK name duplicate.
+ *
+ * Order: exact id -> exact ticker -> exact name (raw + canonicalized) -> alias
+ * match -> fall back to the best non-CIK match (so name/companyId are still set
+ * and the caller renders an honest no-data state). `cik` is null when the
+ * company genuinely has no mapped CIK (private / pre-IPO / on-demand mint, or a
+ * duplicate the alias table does not yet link to its filer row). Never throws.
  */
 export async function resolveCompanyCik(
   supabase: SupabaseClient,
   ref: CompanyRef,
 ): Promise<CikResolution> {
   try {
+    // 1. Exact id (unique key; unchanged behavior).
     if (ref.id) {
       const { data } = await supabase.from("companies").select(COMPANY_COLS).eq("id", ref.id).limit(1);
-      const row = data?.[0];
-      if (row) return { cik: row.sec_cik ?? null, companyId: row.id, name: row.name ?? null, ticker: row.ticker ?? null };
+      const row = (data?.[0] as CompanyRow) ?? null;
+      if (row) return toResolution(row);
     }
-    const name = refToCanonicalName(ref);
-    if (name) {
-      const { data } = await supabase.from("companies").select(COMPANY_COLS).ilike("name", name).limit(1);
-      const row = data?.[0];
-      if (row) return { cik: row.sec_cik ?? null, companyId: row.id, name: row.name ?? null, ticker: row.ticker ?? null };
-      return { ...EMPTY_RESOLUTION, name };
+
+    const raw = (ref.name ?? ref.slug ?? "").replace(/-/g, " ").trim();
+    const canon = raw ? canonicalize(raw) : "";
+    const ticker = ref.ticker?.trim() ?? "";
+
+    // 2. Exact ticker: the CIK lives on the ticker'd row, so this is the most
+    //    reliable key when the caller has it.
+    if (ticker) {
+      const { data } = await supabase.from("companies").select(COMPANY_COLS).ilike("ticker", ticker).limit(5);
+      const row = pickPreferCik((data ?? []) as CompanyRow[]);
+      if (row?.sec_cik != null) return toResolution(row);
     }
-    return EMPTY_RESOLUTION;
+
+    if (!raw) return ticker ? EMPTY_RESOLUTION : EMPTY_RESOLUTION;
+
+    // 3. Exact name (raw AND canonicalized), preferring a CIK-bearing match so a
+    //    null-CIK duplicate never shadows the filer row.
+    const nameRows = await matchCompaniesByName(supabase, [raw, canon]);
+    const directCik = pickPreferCik(nameRows);
+    if (directCik?.sec_cik != null) return toResolution(directCik);
+
+    // 4. Alias table: bridge a full legal name to the CIK-bearing company.
+    const aliasRows = await matchCompaniesByAlias(supabase, [aliasKey(raw), aliasKey(canon)]);
+    const aliasCik = pickPreferCik(aliasRows);
+    if (aliasCik?.sec_cik != null) return toResolution(aliasCik);
+
+    // 5. No CIK anywhere: return the best available match so name/companyId are
+    //    populated and the caller renders an honest no-data (Tier C) state.
+    const fallback = directCik ?? aliasCik ?? nameRows[0] ?? aliasRows[0] ?? null;
+    if (fallback) return toResolution(fallback);
+    return { ...EMPTY_RESOLUTION, name: canon || raw || null };
   } catch (e) {
     console.error("[sec-filings] resolveCompanyCik failed:", e);
     return EMPTY_RESOLUTION;
