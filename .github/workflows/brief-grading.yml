@@ -4,17 +4,13 @@ on:
   schedule:
     # GitHub cron is UTC. 22:00 UTC weekdays targets after the US market close:
     # 6pm ET during EDT, 5pm ET during EST. DST shifts the ET hour by one, but
-    # both land after the 4pm ET close so the same-session Finnhub quote is final.
-    # No client_payload on a schedule event, so this runs daily same-session (no backfill).
+    # both land after the 4pm ET close so the same-session daily candle is final.
+    # Live-forward only: the grader has no backfill mode by design (grading old
+    # calls produces false verdicts), so there is no backfill input anymore.
     - cron: '0 22 * * 1-5'
   repository_dispatch:
     types: [grade-brief]
   workflow_dispatch:
-    inputs:
-      backfill:
-        description: 'Grade all ungraded calls'
-        required: false
-        default: 'false'
 
 jobs:
   grade:
@@ -36,11 +32,6 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          BACKFILL_FLAG=""
-          if [ "${{ github.event.client_payload.backfill || github.event.inputs.backfill }}" = "true" ]; then
-            BACKFILL_FLAG="--backfill"
-          fi
-          python -m backend.grading.grade_brief_calls $BACKFILL_FLAG
+        run: python -m backend.grading.grade_brief_calls

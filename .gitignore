@@ -79,3 +79,6 @@ auth-state.json
 
 # Backfill tool generated artifacts
 scripts/out/
+
+# Tiingo price cache (backend/market_data.py)
+.cache/

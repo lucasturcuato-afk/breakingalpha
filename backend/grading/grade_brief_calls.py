@@ -1,26 +1,35 @@
 """
-Brief call grading job.
+Brief call grading job (runner).
 
-Fetches ungraded ``morning_brief_calls`` rows, pulls Finnhub market data
-for the mapped symbol, computes the actual direction and verdict, then
-persists the result to ``morning_brief_call_outcomes``.
+Fetches today's ungraded ``morning_brief_calls`` rows, resolves each one
+through the claim_type router (backend/grading/resolver.py), and persists
+the structured outcome to ``morning_brief_call_outcomes``.
+
+Grading is attribution-aware (backend/grading/price_attribution.py): a
+call is only credited when the named entity moved meaningfully beyond
+its sector/market benchmark in the predicted direction. Calls that
+cannot be graded honestly (aggregate/macro claims, unmapped symbols,
+missing price or benchmark data) are recorded with verdict "ungradable"
+and an explicit reason instead of being silently skipped.
+
+Requires sql/0010_call_attribution_grading.sql to be applied first
+(attribution + metadata columns, "ungradable" verdict, nullable
+actual_direction).
+
+Live-forward only. There is deliberately NO backfill mode: grading old
+calls produces verdicts nobody stood behind at the time, and the legacy
+quote-based backfill graded them against today's prices, which is worse.
 
 Run
 ---
-    python -m backend.grading.grade_brief_calls              # grade today only
-    python -m backend.grading.grade_brief_calls --backfill   # grade all ungraded
+    python -m backend.grading.grade_brief_calls    # grade today only
 
 Intended cron: 5:00 PM PT daily (after US market close), via
-``/api/grading/grade-brief`` → GitHub repository_dispatch →
+``/api/grading/grade-brief`` -> GitHub repository_dispatch ->
 ``.github/workflows/brief-grading.yml``.
 
-Edge cases handled
-------------------
-- Missing Finnhub key → raises once at quote call, logged + skipped.
-- Finnhub returns ``c == 0`` (no quote / weekend / holiday) → skip call.
-- Unmapped sector name → skip with warning.
-- Gemini unavailable → fall back to a one-line deterministic note.
-- Insert race condition (row already graded) → caught and logged.
+All market data flows through the paced backend/market_data.py helper
+(0.5s between Finnhub calls); this module makes no HTTP requests itself.
 """
 
 from __future__ import annotations
@@ -30,132 +39,37 @@ import os
 import sys
 from datetime import date
 
-import requests
 from supabase import create_client
 
-
-# Sector → sector ETF (SPDR Select) mapping. Keys are lower-cased
-# normalized sector labels that the claim extractor is likely to emit.
-SECTOR_ETF_MAP = {
-    "technology": "XLK",
-    "tech": "XLK",
-    "software": "XLK",
-    "semiconductors": "XLK",
-    "energy": "XLE",
-    "oil": "XLE",
-    "gas": "XLE",
-    "financials": "XLF",
-    "financial": "XLF",
-    "banks": "XLF",
-    "bank": "XLF",
-    "healthcare": "XLV",
-    "health": "XLV",
-    "biotech": "XLV",
-    "pharma": "XLV",
-    "consumer discretionary": "XLY",
-    "consumer disc": "XLY",
-    "retail": "XLY",
-    "consumer staples": "XLP",
-    "staples": "XLP",
-    "industrials": "XLI",
-    "industrial": "XLI",
-    "manufacturing": "XLI",
-    "materials": "XLB",
-    "mining": "XLB",
-    "real estate": "XLRE",
-    "reit": "XLRE",
-    "utilities": "XLU",
-    "utility": "XLU",
-    "communications": "XLC",
-    "telecom": "XLC",
-    "media": "XLC",
-}
-
-SECTOR_ETF_SYMBOLS = {
-    "XLK",
-    "XLE",
-    "XLF",
-    "XLV",
-    "XLY",
-    "XLP",
-    "XLI",
-    "XLB",
-    "XLRE",
-    "XLU",
-    "XLC",
-}
+# Re-exported for compatibility: the sector map lived here historically.
+from backend.grading.benchmarks import (  # noqa: F401
+    SECTOR_ETF_MAP,
+    SECTOR_ETF_SYMBOLS,
+    sectors_for_tickers,
+)
+from backend.grading.price_attribution import PriceAttributionGrader
+from backend.grading.resolver import Outcome, default_resolver
 
 
-def finnhub_quote(symbol: str) -> dict | None:
-    """Return the Finnhub /quote payload for a symbol, or None on failure."""
-    api_key = os.environ.get("FINNHUB_API_KEY")
-    if not api_key:
-        raise RuntimeError("FINNHUB_API_KEY not set")
-    try:
-        r = requests.get(
-            f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={api_key}",
-            timeout=10,
+def gemini_verdict_notes(claim_text: str, expected: str, outcome: Outcome) -> str:
+    """Generate 1-2 sentence reasoning via Gemini. Display text only; the
+    verdict itself is computed deterministically before this runs.
+    Graceful deterministic fallback on any failure."""
+    meta = outcome.metadata
+    entity_pct = meta.get("entity_move_pct")
+    fallback = (
+        f"{expected.capitalize()} call graded {outcome.verdict}"
+        f" ({outcome.attribution}): {meta.get('entity_symbol')}"
+        f" moved {entity_pct:+.2f}% vs "
+        + (
+            ", ".join(
+                f"{b['symbol']} {b['move_pct']:+.2f}%"
+                for b in meta.get("benchmarks", [])
+            )
+            or "no benchmark"
         )
-        r.raise_for_status()
-        data = r.json()
-        # Finnhub returns {c:0, o:0, ...} for unknown/halted/closed symbols.
-        if not data.get("c"):
-            return None
-        return data  # { c, o, h, l, pc, t }
-    except Exception as e:
-        print(f"[grade] Finnhub quote failed for {symbol}: {e}", file=sys.stderr)
-        return None
-
-
-def determine_symbol(claim: dict) -> str | None:
-    """Map a morning_brief_calls row to a Finnhub symbol to query."""
-    t = claim.get("claim_type")
-    sym = claim.get("target_symbol")
-    if t == "aggregate":
-        return "SPY"  # default broad US equity proxy
-    if t in ("index", "ticker"):
-        return sym
-    if t == "sector":
-        if sym and sym.upper() in SECTOR_ETF_SYMBOLS:
-            return sym.upper()
-        if sym:
-            return SECTOR_ETF_MAP.get(sym.lower())
-    return None
-
-
-def compute_direction(pct_change: float) -> str:
-    """Bucket a percent change into up/down/flat with a 0.1% dead band."""
-    if pct_change > 0.001:
-        return "up"
-    if pct_change < -0.001:
-        return "down"
-    return "flat"
-
-
-def compute_verdict(expected: str, actual: str) -> str:
-    """Compare the claim's expected direction to the realized actual."""
-    if expected == "bullish" and actual == "up":
-        return "correct"
-    if expected == "bearish" and actual == "down":
-        return "correct"
-    if expected == "neutral" and actual == "flat":
-        return "correct"
-    if expected == "neutral" and actual in ("up", "down"):
-        return "partial"
-    if expected in ("bullish", "bearish") and actual == "flat":
-        return "partial"
-    return "wrong"  # opposite direction
-
-
-def gemini_verdict_notes(
-    claim_text: str,
-    expected: str,
-    actual: str,
-    pct_change: float,
-    symbol: str,
-) -> str:
-    """Generate 1-2 sentence reasoning via Gemini. Graceful fallback on failure."""
-    verdict = compute_verdict(expected, actual)
+        + "."
+    )
     try:
         from google import genai  # google-genai
 
@@ -163,106 +77,152 @@ def gemini_verdict_notes(
         if not api_key:
             raise RuntimeError("GEMINI_API_KEY not set")
         client = genai.Client(api_key=api_key)
-        prompt = f"""You are grading a market call from a morning brief.
+        bench_lines = "\n".join(
+            f"- {b['role']} benchmark {b['symbol']}: {b['move_pct']:+.2f}% "
+            f"(entity excess {b['excess_pct']:+.2f}%)"
+            for b in meta.get("benchmarks", [])
+        ) or "- none (broad index, graded on absolute move)"
+        prompt = f"""You are grading a market call from a morning brief with benchmark attribution.
 
 Claim: {claim_text}
 Expected direction: {expected}
-Symbol traded: {symbol}
-Actual move: {pct_change * 100:.2f}% ({actual})
+Entity: {meta.get("entity_symbol")} moved {entity_pct:+.2f}% ({outcome.actual_direction})
+Benchmarks over the same session:
+{bench_lines}
+Attribution: {outcome.attribution} (clean = moved beyond benchmarks; confounded = market/sector carried it; inconclusive = below threshold)
+Verdict: {outcome.verdict}
 
-Write 1-2 sentences of honest reasoning about why this call was {verdict}.
-Tone: confident, never defensive. Be specific about what moved the market.
-Output only the reasoning — no preamble, no formatting."""
+Write 1-2 sentences of honest reasoning about why this call was {outcome.verdict}.
+If the attribution is confounded, say plainly that the market or sector move explains it.
+Tone: confident, never defensive. Output only the reasoning, no preamble, no formatting."""
         resp = client.models.generate_content(
             model="gemini-2.5-flash", contents=prompt
         )
-        return resp.text.strip() if resp.text else ""
+        return resp.text.strip() if resp.text else fallback
     except Exception as e:
         print(f"[grade] Gemini notes failed: {e}", file=sys.stderr)
-        return f"{expected.capitalize()} call; {actual} close at {pct_change * 100:+.2f}%."
+        return fallback
+
+
+def ungradable_notes(outcome: Outcome) -> str:
+    """Deterministic, human-readable refusal reason. No LLM: we do not
+    ask a model to narrate why we declined to grade."""
+    reason = outcome.metadata.get("ungradable_reason", "unknown")
+    detail = outcome.metadata.get("ungradable_detail", "")
+    labels = {
+        "unmapped_symbol": "Not graded: unmapped symbol.",
+        "no_price_data": "Not graded: no price data for the session.",
+        "no_benchmark_data": "Not graded: benchmark data unavailable.",
+        "no_honest_grader": "Not graded: no honest grader for this claim type yet.",
+    }
+    label = labels.get(reason, f"Not graded: {reason}.")
+    return f"{label} {detail}".strip()
+
+
+def outcome_row(call: dict, outcome: Outcome, notes: str) -> dict:
+    return {
+        "call_id": call["id"],
+        "actual_open": outcome.actual_open,
+        "actual_close": outcome.actual_close,
+        "actual_pct_change": outcome.actual_pct_change,
+        "actual_direction": outcome.actual_direction,
+        "verdict": outcome.verdict,
+        "attribution": outcome.attribution,
+        "metadata": outcome.metadata,
+        "verdict_notes": notes,
+    }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Grade morning brief market calls against Finnhub quotes."
+        description=(
+            "Grade today's morning brief calls with benchmark attribution. "
+            "Live-forward only; there is no backfill mode."
+        )
     )
-    parser.add_argument(
-        "--backfill",
-        action="store_true",
-        help="Grade all ungraded calls, not just today's.",
-    )
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
+    del args
+    if unknown:
+        # Fail loudly on --backfill (or anything else): grading old calls
+        # is banned, not silently ignored.
+        print(
+            f"[grade] Unsupported arguments {unknown}. Backfill grading was "
+            "removed: grading old calls produces false verdicts.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
 
     supabase_url = os.environ["SUPABASE_URL"]
     supabase_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
     sb = create_client(supabase_url, supabase_key)
 
-    # Fetch candidate calls.
-    query = sb.table("morning_brief_calls").select("*")
-    if not args.backfill:
-        query = query.eq("brief_date", date.today().isoformat())
-    calls = query.execute().data or []
+    # Today's calls only (live-forward).
+    calls = (
+        sb.table("morning_brief_calls")
+        .select("*")
+        .eq("brief_date", date.today().isoformat())
+        .execute()
+        .data
+        or []
+    )
 
     # Filter out already-graded calls (idempotent re-runs).
     if calls:
-        graded_ids: set[str] = set()
         graded_resp = (
             sb.table("morning_brief_call_outcomes")
             .select("call_id")
             .in_("call_id", [c["id"] for c in calls])
             .execute()
         )
-        for row in graded_resp.data or []:
-            graded_ids.add(row["call_id"])
+        graded_ids = {row["call_id"] for row in graded_resp.data or []}
         calls = [c for c in calls if c["id"] not in graded_ids]
 
     print(f"[grade] {len(calls)} ungraded calls to process")
+    if not calls:
+        return
 
+    # One batched companies lookup for every ticker claim in the run.
+    tickers = {
+        (c.get("target_symbol") or "").strip().upper()
+        for c in calls
+        if c.get("claim_type") == "ticker" and c.get("target_symbol")
+    }
+    ticker_sectors = sectors_for_tickers(sb, tickers)
+
+    resolver = default_resolver(PriceAttributionGrader(ticker_sectors=ticker_sectors))
+
+    graded = ungraded = failed = 0
     for call in calls:
-        symbol = determine_symbol(call)
-        if not symbol:
-            print(
-                f"[grade] Skip {call['id']}: no symbol mapping for "
-                f"{call.get('claim_type')}/{call.get('target_symbol')}"
+        outcome = resolver.resolve(call)
+        if outcome.is_gradable:
+            notes = gemini_verdict_notes(
+                call["claim_text"], call["expected_direction"], outcome
             )
-            continue
-        quote = finnhub_quote(symbol)
-        if not quote:
-            print(f"[grade] Skip {call['id']}: no quote for {symbol}")
-            continue
-        close = quote.get("c")
-        open_ = quote.get("o")
-        if not open_ or not close:
-            print(f"[grade] Skip {call['id']}: missing open/close for {symbol}")
-            continue
-        pct = (close - open_) / open_
-        direction = compute_direction(pct)
-        verdict = compute_verdict(call["expected_direction"], direction)
-        notes = gemini_verdict_notes(
-            call["claim_text"],
-            call["expected_direction"],
-            direction,
-            pct,
-            symbol,
-        )
+        else:
+            notes = ungradable_notes(outcome)
         try:
             sb.table("morning_brief_call_outcomes").insert(
-                {
-                    "call_id": call["id"],
-                    "actual_open": open_,
-                    "actual_close": close,
-                    "actual_pct_change": pct,
-                    "actual_direction": direction,
-                    "verdict": verdict,
-                    "verdict_notes": notes,
-                }
+                outcome_row(call, outcome, notes)
             ).execute()
-            print(
-                f"[grade] Graded {call['id']}: {verdict} "
-                f"({direction}, {pct * 100:+.2f}%)"
-            )
         except Exception as e:
+            failed += 1
             print(f"[grade] Insert failed for {call['id']}: {e}", file=sys.stderr)
+            continue
+        if outcome.is_gradable:
+            graded += 1
+            print(
+                f"[grade] Graded {call['id']}: {outcome.verdict}/{outcome.attribution} "
+                f"({outcome.actual_direction}, "
+                f"{(outcome.actual_pct_change or 0) * 100:+.2f}%)"
+            )
+        else:
+            ungraded += 1
+            print(
+                f"[grade] Ungradable {call['id']}: "
+                f"{outcome.metadata.get('ungradable_reason')}"
+            )
+
+    print(f"[grade] Done: {graded} graded, {ungraded} ungradable, {failed} failed")
 
 
 if __name__ == "__main__":

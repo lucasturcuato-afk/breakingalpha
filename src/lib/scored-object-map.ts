@@ -53,6 +53,12 @@ export interface OpenCallInput {
   claim_text: string;
   target_symbol?: string | null;
   claim_type?: string | null;
+  /**
+   * Present on the row but intentionally NEVER rendered: it is an
+   * unguided LLM self-report, not a validated probability. The grader's
+   * attribution_confidence (outcome metadata) is the only trustworthy
+   * confidence. Kept in the data for future calibration work.
+   */
   confidence?: number | null;
   created_at?: string | null;
   brief_date?: string | null;
@@ -72,7 +78,7 @@ export function openCallProps(c: OpenCallInput): ScoredObjectProps {
     sector: eyebrow,
     claim: c.claim_text,
     calledDate: shortDate(c.created_at ?? c.brief_date),
-    confidencePct: toPct(c.confidence),
+    // confidencePct is deliberately omitted: see OpenCallInput.confidence.
     // Grading basis is the market close (how these are scored once resolution
     // ships); the resolve DATE is not a stored field, so it is left to the
     // component's neutral fallback rather than invented.
