@@ -214,7 +214,7 @@ export function BriefTab({ company, content, systemPrompt }: BriefTabProps) {
           <Skeleton className="h-3 w-5/6" />
           <Skeleton className="h-3 w-3/4" />
           {phase === "generating" ? (
-            <p className="font-data text-[11px] uppercase tracking-[0.10em] text-text-faint text-center pt-2">
+            <p className="font-sans text-[11px] text-text-faint text-center pt-2">
               Generating brief... this typically takes 5-10 seconds.
             </p>
           ) : null}
@@ -280,7 +280,7 @@ export function BriefTab({ company, content, systemPrompt }: BriefTabProps) {
       />
       <div className="flex items-start justify-between gap-3 mb-4">
         {cachedAt ? (
-          <p className="font-data text-[10px] uppercase tracking-[0.10em] text-text-faint">
+          <p className="font-sans text-[10px] text-text-faint">
             Cached {relativeTime(cachedAt)}
           </p>
         ) : (
@@ -332,7 +332,7 @@ export function BriefTab({ company, content, systemPrompt }: BriefTabProps) {
                 >
                   <h3
                     data-testid="brief-tldr-eyebrow"
-                    className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-gold-dark"
+                    className="font-sans text-[9px] font-bold text-text-faint"
                   >
                     TLDR
                   </h3>
@@ -348,7 +348,7 @@ export function BriefTab({ company, content, systemPrompt }: BriefTabProps) {
                 data-testid={`brief-section-${slugify(label)}`}
                 className="space-y-1"
               >
-                <h3 className="font-mono text-[9.5px] font-bold uppercase tracking-[0.10em] text-text-faint">
+                <h3 className="font-sans text-[9.5px] font-bold text-text-faint">
                   {ordinal} · {label}
                 </h3>
                 <div className={bodyProse}>
@@ -360,7 +360,7 @@ export function BriefTab({ company, content, systemPrompt }: BriefTabProps) {
         </div>
       ) : (
         <div className="space-y-2">
-          <p className="font-data text-[10px] uppercase tracking-[0.10em] text-text-faint">
+          <p className="font-sans text-[10px] text-text-faint">
             Showing unparsed memo
           </p>
           <div

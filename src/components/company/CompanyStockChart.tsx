@@ -306,7 +306,7 @@ export function CompanyStockChart({ ticker, companyName }: CompanyStockChartProp
       {/* Header band: ticker + price + pct */}
       <div className="flex items-baseline justify-between gap-3 mb-3">
         <div className="flex items-baseline gap-2 min-w-0">
-          <span className="font-data text-[10px] uppercase tracking-widest text-gold font-semibold">
+          <span className="font-sans text-[10px] text-text-muted font-semibold">
             {ticker}
           </span>
           {loading ? (
@@ -323,7 +323,7 @@ export function CompanyStockChart({ ticker, companyName }: CompanyStockChartProp
                 {formatPrice(headerPrice, data?.currency ?? null)}
               </span>
               <span
-                className="font-data text-[12px] font-semibold leading-none"
+                className="font-display text-[12px] font-semibold leading-none"
                 style={{ color: headerPct >= 0 ? "var(--signal-up)" : "var(--signal-dn)" }}
               >
                 {formatPct(headerPct)}
@@ -352,7 +352,7 @@ export function CompanyStockChart({ ticker, companyName }: CompanyStockChartProp
                 onClick={() => setRange(r.key)}
                 disabled={disabledRange}
                 className={
-                  "font-data text-[10px] font-semibold px-2 py-1 rounded transition-colors " +
+                  "font-sans text-[10px] font-semibold px-2 py-1 rounded transition-colors " +
                   (disabledRange
                     ? "text-text-faint border border-transparent opacity-40 cursor-not-allowed "
                     : "cursor-pointer ") +

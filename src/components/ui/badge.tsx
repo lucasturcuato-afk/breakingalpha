@@ -44,7 +44,7 @@ function Badge({ className, variant = "default", ...props }: BadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center font-sans text-[9px] font-extrabold uppercase tracking-wide",
+        "inline-flex items-center font-sans text-[9px] font-semibold",
         "px-2 py-0.5 rounded-md whitespace-nowrap",
         variantStyles[variant],
         className,

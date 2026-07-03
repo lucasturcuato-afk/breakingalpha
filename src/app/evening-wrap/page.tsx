@@ -10,6 +10,8 @@ import { ExportMenu } from "@/components/brief/export-menu";
 import { ShareButton } from "@/components/brief/share-button";
 import { DCStoryRow } from "@/components/brief/dc-story-row";
 import WatchlistBriefSection from "@/components/brief/WatchlistBriefSection";
+import BriefCallsSection from "@/components/brief/BriefCallsSection";
+import { SentimentPill } from "@/components/ui/sentiment-pill";
 import type { WatchlistBriefSection as WatchlistSectionData } from "@/lib/watchlist-brief";
 import { sessionIngestFloor, publishedFloor, storiesHeadingLabel, storedRailIds, reorderByIds } from "@/lib/story-rail-window";
 import { DCAnalystSection } from "@/components/brief/dc-analyst-section";
@@ -130,37 +132,6 @@ function normaliseTone(t?: string | null): Tone {
   return "NEUTRAL";
 }
 
-function SentimentPill({ tone, size = "md" }: { tone: Tone; size?: "sm" | "md" }) {
-  const style: Record<Tone, { bg: string; fg: string; bd: string }> = {
-    BULLISH: { bg: "var(--pill-bull-bg)", fg: "var(--pill-bull-text)", bd: "var(--pill-bull-border)" },
-    BEARISH: { bg: "var(--pill-bear-bg)", fg: "var(--pill-bear-text)", bd: "var(--pill-bear-border)" },
-    NEUTRAL: { bg: "var(--pill-neutral-bg)", fg: "var(--pill-neutral-text)", bd: "var(--pill-neutral-border)" },
-    MIXED:   { bg: "var(--pill-mixed-bg)",   fg: "var(--pill-mixed-text)",   bd: "var(--pill-mixed-border)" },
-    WATCH:   { bg: "var(--pill-watch-bg)",   fg: "var(--pill-watch-text)",   bd: "var(--pill-watch-border)" },
-  };
-  const s = style[tone];
-  const font = size === "sm" ? 9 : 10;
-  const pad = size === "sm" ? "3px 7px" : "4px 9px";
-  const tr = size === "sm" ? "0.10em" : "0.12em";
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        fontFamily: "var(--font-inter), Inter, sans-serif",
-        fontSize: font,
-        fontWeight: 700,
-        letterSpacing: tr,
-        padding: pad,
-        borderRadius: 4,
-        background: s.bg,
-        color: s.fg,
-        border: `1px solid ${s.bd}`,
-      }}
-    >
-      {tone}
-    </span>
-  );
-}
 
 function formatDatePretty(d: Date): string {
   return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
@@ -666,9 +637,9 @@ export default function EveningWrapPage() {
           style={{ display: "flex", alignItems: "center", gap: 22, fontSize: 11, color: "rgba(255,253,249,0.85)", fontWeight: 600 }}
         >
           <span>{dateStr}</span>
-          <span className="font-data">{timeStr}</span>
-          <span style={{ background: "rgba(255,253,249,0.15)", color: "rgba(255,253,249,0.9)", padding: "4px 10px", borderRadius: 20, fontSize: 10, letterSpacing: "0.12em" }}>
-            5 MIN READ
+          <span className="font-sans">{timeStr}</span>
+          <span style={{ background: "rgba(255,253,249,0.15)", color: "rgba(255,253,249,0.9)", padding: "4px 10px", borderRadius: 20, fontSize: 10 }}>
+            5 min read
           </span>
         </div>
       </header>
@@ -686,9 +657,9 @@ export default function EveningWrapPage() {
         }}
       >
         {([
-          { k: "CLOSE", v: closeWord ? closeWord.toUpperCase() : "–", c: closeWord ? (tone === "BEARISH" ? "var(--signal-dn)" : tone === "BULLISH" ? "var(--signal-up)" : "var(--signal-warn)") : undefined, tip: "AI's verdict on how the day closed, grounded in actual index and futures data." },
-          { k: "MOVERS", v: String(stories.length || "—"), tip: "Number of significant market-moving stories identified in today's session." },
-          { k: "THESES", v: thesesCount !== null ? `${thesesCount} active` : "—", tip: "Investment theses currently being tracked and validated by Signalera." },
+          { k: "Close", v: closeWord ? closeWord.toUpperCase() : "–", c: closeWord ? (tone === "BEARISH" ? "var(--signal-dn)" : tone === "BULLISH" ? "var(--signal-up)" : "var(--signal-warn)") : undefined, tip: "AI's verdict on how the day closed, grounded in actual index and futures data." },
+          { k: "Movers", v: String(stories.length || "—"), tip: "Number of significant market-moving stories identified in today's session." },
+          { k: "Theses", v: thesesCount !== null ? `${thesesCount} active` : "—", tip: "Investment theses currently being tracked and validated by Signalera." },
           {
             k: "VIX",
             v: vixQuote ? `${vixQuote.price} ${vixQuote.pct >= 0 ? "▲" : "▼"}${Math.abs(vixQuote.pct).toFixed(2)}%` : "—",
@@ -697,7 +668,7 @@ export default function EveningWrapPage() {
           },
         ] as Array<{ k: string; v: string; c?: string; tip: string }>).map((x, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span className="font-sans" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, letterSpacing: "0.16em", color: "var(--text-muted)" }}>
+            <span className="font-sans" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, color: "var(--text-muted)" }}>
               {x.k}
               <InfoTooltip content={x.tip} side="bottom" iconSize={10} />
             </span>
@@ -744,9 +715,7 @@ export default function EveningWrapPage() {
                 className="font-sans"
                 style={{
                   fontSize: 10,
-                  letterSpacing: "0.22em",
-                  textTransform: "uppercase",
-                  color: "var(--gold-dark)",
+                  color: "var(--text-muted)",
                   fontWeight: 800,
                   margin: "0 0 10px",
                 }}
@@ -809,11 +778,9 @@ export default function EveningWrapPage() {
                   className="font-sans"
                   style={{
                     fontSize: 10,
-                    letterSpacing: "0.20em",
-                    color: HERITAGE_GOLD,
+                    color: "var(--text-muted)",
                     margin: "0 0 14px",
                     fontWeight: 700,
-                    textTransform: "uppercase",
                     position: "relative",
                   }}
                 >
@@ -919,8 +886,6 @@ export default function EveningWrapPage() {
                           style={{
                             fontSize: 9,
                             color: "rgba(255,253,249,0.55)",
-                            letterSpacing: "0.12em",
-                            textTransform: "uppercase",
                             margin: "0 0 6px",
                             fontWeight: 600,
                           }}
@@ -992,6 +957,23 @@ export default function EveningWrapPage() {
               briefType="evening"
             />
 
+            {/* ── This Morning's Calls — scored objects (Open state; real
+                 morning_brief_calls for this trading session, grading not live yet).
+                 Matched by PT session date since the evening briefing id differs from
+                 the morning brief that owns the calls. ── */}
+            <section style={{ marginBottom: 40 }}>
+              <BriefCallsSection
+                briefDate={
+                  briefing?.created_at
+                    ? new Date(briefing.created_at).toLocaleDateString("en-CA", {
+                        timeZone: "America/Los_Angeles",
+                      })
+                    : null
+                }
+                heading="This Morning's Calls"
+              />
+            </section>
+
             {/* ── Today's Story ── */}
             <section style={{ marginBottom: 40 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
@@ -1001,14 +983,12 @@ export default function EveningWrapPage() {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 8,
-                    background: "#a88340",
+                    background: "var(--parchment-mid)",
                     color: DC_ESPRESSO,
                     padding: "5px 12px",
                     borderRadius: 20,
                     fontSize: 10,
-                    letterSpacing: "0.14em",
-                    textTransform: "uppercase",
-                    fontWeight: 800,
+                    fontWeight: 700,
                   }}
                 >
                   ★ Today&rsquo;s Story
@@ -1055,7 +1035,7 @@ export default function EveningWrapPage() {
                     </div>
                     <p
                       className="font-sans"
-                      style={{ fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--gold-dark)", fontWeight: 700, margin: "0 0 10px" }}
+                      style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, margin: "0 0 10px" }}
                     >
                       {p.label}
                     </p>
@@ -1076,7 +1056,7 @@ export default function EveningWrapPage() {
                 >
                   <p
                     className="font-sans"
-                    style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--gold-dark)", fontWeight: 700, marginBottom: 6 }}
+                    style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, marginBottom: 6 }}
                   >
                     Your Personalized Wrap
                   </p>
@@ -1192,7 +1172,7 @@ export default function EveningWrapPage() {
                   </h3>
                   <span
                     className="font-sans"
-                    style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 600 }}
+                    style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600 }}
                   >
                     {formatDatePretty(new Date(now.getTime() + 24 * 60 * 60 * 1000))}
                   </span>
@@ -1285,13 +1265,11 @@ export default function EveningWrapPage() {
                           style={{
                             fontSize: 9,
                             fontWeight: 700,
-                            letterSpacing: "0.12em",
-                            color: "var(--gold-dark)",
-                            background: "var(--gold-muted)",
+                            color: "var(--text-muted)",
+                            background: "var(--parchment-mid)",
                             padding: "3px 8px",
                             borderRadius: 3,
                             textAlign: "center",
-                            textTransform: "uppercase",
                             justifySelf: "start",
                           }}
                         >

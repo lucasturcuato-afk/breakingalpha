@@ -23,7 +23,7 @@ const mdComponents: Components = {
     </h2>
   ),
   h3: ({ children }) => (
-    <h3 className="font-sans text-[11px] font-bold text-gold uppercase tracking-wider mb-2 mt-4">
+    <h3 className="font-display text-[15px] font-semibold text-text-primary mb-2 mt-4">
       {children}
     </h3>
   ),
@@ -33,7 +33,7 @@ const mdComponents: Components = {
     </p>
   ),
   strong: ({ children }) => (
-    <strong className="font-bold text-gold">{children}</strong>
+    <strong className="font-bold text-text-primary">{children}</strong>
   ),
   hr: () => <hr className="border-border-base my-4" />,
   ul: ({ children }) => (
@@ -275,7 +275,7 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border-base flex-shrink-0">
           <div>
-            <p className="font-data text-[9px] uppercase tracking-widest text-gold font-bold mb-1">
+            <p className="font-display text-[13px] text-text-muted mb-1">
               {TYPE_LABELS[type]}
             </p>
             <div className="flex items-center gap-2">
@@ -284,7 +284,7 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
               </h2>
               {type === "company-web" && (
                 <span
-                  className="font-data text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md border"
+                  className="font-sans text-[10px] font-semibold px-1.5 py-0.5 rounded-md border"
                   style={{
                     color: "var(--gold)",
                     backgroundColor: "var(--gold-muted)",
@@ -345,7 +345,7 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
                   body (1-indexed). */}
               {sources && sources.length > 0 && (
                 <div className="mt-6 pt-4 border-t border-border-base">
-                  <p className="font-data text-[10px] uppercase tracking-widest text-gold font-bold mb-2">
+                  <p className="font-display text-[13px] text-text-muted mb-2">
                     Sources
                   </p>
                   <ol className="list-decimal pl-5 space-y-1.5">

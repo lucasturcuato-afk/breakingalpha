@@ -271,13 +271,13 @@ export function WatchlistAddInput({
             type="button"
             onClick={() => onAddTypeChange(t)}
             className={cn(
-              "px-3 py-1 rounded-md font-data text-[10px] cursor-pointer transition-colors",
+              "px-3 py-1 rounded-md font-sans text-[10px] cursor-pointer transition-colors",
               addType === t
                 ? "bg-gold-muted border border-gold-border text-gold font-semibold"
                 : "bg-parchment-mid border border-border-base text-text-muted hover:text-text-primary",
             )}
           >
-            {t.toUpperCase()}
+            {t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
@@ -295,7 +295,7 @@ export function WatchlistAddInput({
                   disabled={tracked}
                   onClick={() => onAdd(s)}
                   className={cn(
-                    "px-2 py-1 rounded-md font-data text-[9px] cursor-pointer transition-colors border",
+                    "px-2 py-1 rounded-md font-sans text-[9px] cursor-pointer transition-colors border",
                     tracked
                       ? "opacity-40 cursor-default border-border-base text-text-faint bg-parchment-mid"
                       : "border-gold/40 bg-gold-muted text-gold hover:bg-gold/10",
@@ -367,7 +367,7 @@ export function WatchlistAddInput({
                       )}
                     >
                       <div className="min-w-0">
-                        <span className="font-data text-[12px] font-semibold text-espresso">
+                        <span className="font-sans text-[12px] font-semibold text-espresso">
                           {s.label}
                         </span>
                         {s.sublabel && s.sublabel !== s.label && (
@@ -377,7 +377,7 @@ export function WatchlistAddInput({
                         )}
                       </div>
                       {isTracked && (
-                        <span className="font-data text-[9px] text-text-faint flex-shrink-0">
+                        <span className="font-sans text-[9px] text-text-faint flex-shrink-0">
                           tracked
                         </span>
                       )}

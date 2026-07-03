@@ -260,7 +260,7 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
         onClick={handleToggle}
         className="flex items-center gap-1.5 cursor-pointer w-full"
       >
-        <span className="font-sans text-[11px] uppercase tracking-widest text-gold font-bold">
+        <span className="font-sans text-[11px] text-text-secondary font-bold">
           Why this thesis
         </span>
         <ChevronDown
@@ -286,8 +286,8 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
               {/* SOURCED FROM */}
               {data.articles.length > 0 && (
                 <div>
-                  <div className="font-sans text-[9px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-                    Sourced From
+                  <div className="font-sans text-[10px] text-text-muted font-semibold mb-1">
+                    Sourced from
                   </div>
                   <div className="space-y-0.5">
                     {data.articles.map((a) => (
@@ -302,15 +302,15 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
               {/* CLUSTER SIGNAL */}
               {data.clusters.length > 0 && (
                 <div>
-                  <div className="font-sans text-[9px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-                    Cluster Signal
+                  <div className="font-sans text-[10px] text-text-muted font-semibold mb-1">
+                    Cluster signal
                   </div>
                   <div className="space-y-0.5">
                     {data.clusters.map((c, i) => (
                       <div key={i} className="font-sans text-[12px] text-text-secondary">
                         {c.label} ({c.cluster_type || "general"}) &mdash; strength{" "}
-                        <span className="font-data">{c.strength_score?.toFixed(2) ?? "--"}</span>,{" "}
-                        <span className="font-data">{c.article_count ?? 0}</span> articles
+                        <span className="font-display">{c.strength_score?.toFixed(2) ?? "--"}</span>,{" "}
+                        <span className="font-display">{c.article_count ?? 0}</span> articles
                       </div>
                     ))}
                   </div>
@@ -320,12 +320,12 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
               {/* SOURCE RELIABILITY */}
               {data.sourceReliability && (
                 <div>
-                  <div className="font-sans text-[9px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-                    Source Reliability
+                  <div className="font-sans text-[10px] text-text-muted font-semibold mb-1">
+                    Source reliability
                   </div>
                   <div className="font-sans text-[12px] text-text-secondary">
                     Average source reliability:{" "}
-                    <span className="font-data text-gold font-semibold">
+                    <span className="font-display text-gold font-semibold">
                       {data.sourceReliability.avgWinRate}% win rate
                     </span>{" "}
                     across {data.sourceReliability.sourceCount} sources
@@ -336,14 +336,14 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
               {/* PATTERN MATCH */}
               {data.patterns.length > 0 && (
                 <div>
-                  <div className="font-sans text-[9px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-                    Pattern Match
+                  <div className="font-sans text-[10px] text-text-muted font-semibold mb-1">
+                    Pattern match
                   </div>
                   <div className="space-y-0.5">
                     {data.patterns.map((p, i) => (
                       <div key={i} className="font-sans text-[12px] text-text-secondary">
                         Sector pattern: <span className="font-semibold">{p.dominant_signal || "mixed"}</span> signals confirm{" "}
-                        <span className="font-data text-gold">{p.win_rate !== null ? `${Math.round(p.win_rate * 100)}%` : "--"}</span> of the time
+                        <span className="font-display text-gold">{p.win_rate !== null ? `${Math.round(p.win_rate * 100)}%` : "--"}</span> of the time
                         ({p.n_observed ?? 0} samples, {p.horizon || "any"})
                       </div>
                     ))}
@@ -354,14 +354,14 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
               {/* ADVERSARIAL CHECK */}
               {data.adversarial && (data.adversarial.score !== null || data.adversarial.bearCase) && (
                 <div>
-                  <div className="font-sans text-[9px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-                    Adversarial Check
+                  <div className="font-sans text-[10px] text-text-muted font-semibold mb-1">
+                    Adversarial check
                   </div>
                   <div className="font-sans text-[12px] text-text-secondary">
                     {data.adversarial.score !== null && (
                       <span>
                         Adversarial score:{" "}
-                        <span className="font-data font-semibold">
+                        <span className="font-display font-semibold">
                           {typeof data.adversarial.score === "number" ? data.adversarial.score.toFixed(2) : "--"}
                         </span>{" "}
                         ({data.adversarial.passed ? "passed" : "failed"})
@@ -381,8 +381,8 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
               {/* SYSTEM CONTEXT */}
               {data.systemContext && (
                 <div>
-                  <div className="font-sans text-[9px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-                    System Context
+                  <div className="font-sans text-[10px] text-text-muted font-semibold mb-1">
+                    System context
                   </div>
                   <div className="font-sans text-[12px] text-text-muted italic">
                     {data.systemContext}

@@ -8,6 +8,8 @@ import { LineChart, Clock, TrendingUp, TrendingDown, Activity } from "lucide-rea
 import { getSectorStyle } from "@/lib/sector-colors";
 import { EmptyState } from "@/components/ui/empty-state";
 import { VerdictEvolution } from "@/components/track-record/verdict-evolution";
+import { ScoredObject } from "@/components/scored-object/ScoredObject";
+import { openThesisProps } from "@/lib/scored-object-map";
 import {
   computeLiveScore,
   liveScoreChipClasses,
@@ -45,6 +47,7 @@ interface ThesisMeta {
   generated_at: string | null;
   check_after: string | null;
   outcome: string | null;
+  confidence: number | null;
   signal_breakdown: Record<string, unknown> | null;
   adversarial_score: number | null;
   // Optional persisted columns (sql/live_score_columns.sql).
@@ -60,6 +63,9 @@ interface ScoredThesis {
   ticker: string | null;
   conviction: string | null;
   generated_at: string | null;
+  check_after: string | null;
+  horizon: string | null;
+  confidence: number | null;
   outcome: TerminalVerdict;
   live: LiveScoreResult;
 }
@@ -102,11 +108,11 @@ export default function TrackRecordPage() {
         let thesesMeta: ThesisMeta[] = [];
         const fullCols =
           "id, title, sector, ticker, conviction, horizon, generated_at, check_after, " +
-          "outcome, signal_breakdown, adversarial_score, live_score, live_verdict, " +
+          "outcome, confidence, signal_breakdown, adversarial_score, live_score, live_verdict, " +
           "live_score_updated_at";
         const minimalCols =
           "id, title, sector, ticker, conviction, horizon, generated_at, check_after, " +
-          "outcome, signal_breakdown, adversarial_score";
+          "outcome, confidence, signal_breakdown, adversarial_score";
         const tryFull = await supabase.from("theses").select(fullCols);
         if (tryFull.error) {
           const fallback = await supabase.from("theses").select(minimalCols);
@@ -157,6 +163,9 @@ export default function TrackRecordPage() {
             sector: t.sector,
             ticker: t.ticker,
             conviction: t.conviction,
+            check_after: t.check_after,
+            horizon: t.horizon,
+            confidence: t.confidence,
             generated_at: t.generated_at,
             outcome: (t.outcome as TerminalVerdict) ?? null,
             live,
@@ -324,7 +333,7 @@ export default function TrackRecordPage() {
             How market theses are developing as events unfold.
           </p>
           {showGradingHeader && (
-            <p className="font-data text-text-muted text-[11px] mt-1.5 inline-flex items-center gap-2 flex-wrap">
+            <p className="font-sans text-text-muted text-[11px] mt-1.5 inline-flex items-center gap-2 flex-wrap">
               <span>
                 <span className="font-semibold text-text-primary">{totalCount}</span>{" "}
                 {totalCount === 1 ? "thesis" : "theses"} tracked
@@ -343,7 +352,7 @@ export default function TrackRecordPage() {
             </p>
           )}
           {!showGradingHeader && formattedLastUpdated && (
-            <p className="font-data text-text-faint text-[11px] mt-1">
+            <p className="font-sans text-text-faint text-[11px] mt-1">
               Last updated: {formattedLastUpdated}
             </p>
           )}
@@ -352,7 +361,7 @@ export default function TrackRecordPage() {
               <span className="track-record-pending-dot w-1.5 h-1.5 rounded-full bg-gold flex-shrink-0" />
               <div className="flex items-center gap-3">
                 <span className="font-sans text-[11px] text-text-primary">
-                  <span className="font-data font-semibold">{awaitingCount}</span>{" "}
+                  <span className="font-display font-semibold">{awaitingCount}</span>{" "}
                   {awaitingCount === 1 ? "thesis" : "theses"} awaiting first review
                   {overdueCount > 0 ? ` · ${overdueCount} overdue` : ""}
                 </span>
@@ -413,7 +422,7 @@ export default function TrackRecordPage() {
                         {["Sector", "Status", "Count"].map((h) => (
                           <th
                             key={h}
-                            className="font-sans text-[10px] uppercase tracking-widest text-text-muted font-semibold py-2 px-2 text-left"
+                            className="font-sans text-[11px] text-text-muted font-semibold py-2 px-2 text-left"
                           >
                             {h}
                           </th>
@@ -429,7 +438,7 @@ export default function TrackRecordPage() {
                           <td className="py-2.5 px-2">
                             <span
                               style={getSectorStyle(g.sector)}
-                              className="font-sans text-[10px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
+                              className="font-sans text-[10px] font-semibold px-2 py-0.5 rounded"
                             >
                               {g.sector}
                             </span>
@@ -437,7 +446,7 @@ export default function TrackRecordPage() {
                           <td className="py-2.5 px-2">
                             <SectorStatus group={g} />
                           </td>
-                          <td className="py-2.5 px-2 font-data text-text-secondary">
+                          <td className="py-2.5 px-2 font-sans text-text-secondary">
                             {g.total} {g.total === 1 ? "thesis" : "theses"}
                           </td>
                         </tr>
@@ -484,45 +493,71 @@ export default function TrackRecordPage() {
             </Section>
 
             {/* RECENT THESES */}
-            <Section title="Recent Theses">
+            <Section title="Recent theses">
               {recentScored.length === 0 ? (
                 <EmptyInflightState />
               ) : (
+                // HYBRID (design rollout): open theses (no terminal outcome) render
+                // as the Open ScoredObject; already-resolved theses keep their real
+                // LiveVerdictBadge unchanged so no real verdict is hidden. Both sit in
+                // the same grid with aligned spacing. Unifying resolved theses onto
+                // ScoredObject's resolved states is a separate task (needs the real
+                // resolution model) — Track Record intentionally shows two treatments
+                // until then.
                 <div className="grid gap-2">
-                  {recentScored.map((t) => (
-                    <Link
-                      key={t.id}
-                      href={`/track-record/${t.id}`}
-                      className="card-hover-lift block bg-white rounded-xl border border-border-base p-3 hover:border-gold/40 transition-colors"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="font-sans font-semibold text-[13px] text-espresso leading-snug">
-                            {neutralizeThesisTitle(t.title)}
+                  {recentScored.map((t) =>
+                    t.outcome == null ? (
+                      <Link
+                        key={t.id}
+                        href={`/track-record/${t.id}`}
+                        className="card-hover-lift block rounded-lg"
+                      >
+                        <ScoredObject
+                          {...openThesisProps({
+                            claim: neutralizeThesisTitle(t.title),
+                            sector: t.sector,
+                            generated_at: t.generated_at,
+                            check_after: t.check_after,
+                            horizon: t.horizon,
+                            confidence: t.confidence,
+                          })}
+                        />
+                      </Link>
+                    ) : (
+                      <Link
+                        key={t.id}
+                        href={`/track-record/${t.id}`}
+                        className="card-hover-lift block bg-white rounded-xl border border-border-base p-3 hover:border-gold/40 transition-colors"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-sans font-semibold text-[13px] text-espresso leading-snug">
+                              {neutralizeThesisTitle(t.title)}
+                            </div>
+                            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                              {t.sector && (
+                                <span
+                                  style={getSectorStyle(t.sector)}
+                                  className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded"
+                                >
+                                  {t.sector}
+                                </span>
+                              )}
+                              <TickerOrPrivate ticker={t.ticker} />
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                            {t.sector && (
-                              <span
-                                style={getSectorStyle(t.sector)}
-                                className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
-                              >
-                                {t.sector}
+                          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                            <LiveVerdictBadge live={t.live} size="prominent" />
+                            {t.generated_at && (
+                              <span className="font-sans text-[10px] text-text-faint">
+                                {formatDate(t.generated_at)}
                               </span>
                             )}
-                            <TickerOrPrivate ticker={t.ticker} />
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                          <LiveVerdictBadge live={t.live} size="prominent" />
-                          {t.generated_at && (
-                            <span className="font-data text-[10px] text-text-faint">
-                              {formatDate(t.generated_at)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </Link>
-                  ))}
+                      </Link>
+                    ),
+                  )}
                 </div>
               )}
             </Section>
@@ -556,7 +591,7 @@ function StatusCard({
     "border-l-gold";
   return (
     <div className={`bg-white rounded-xl border border-border-base border-l-[3px] ${borderAccent} p-4`}>
-      <div className="font-sans text-[10px] uppercase tracking-widest text-text-muted mb-1.5">
+      <div className="font-sans text-[11px] text-text-muted mb-1.5">
         {label}
       </div>
       {loading ? (
@@ -572,7 +607,7 @@ function StatusCard({
         </div>
       )}
       {footer && (
-        <div className="font-data text-[10px] text-text-faint mt-2">{footer}</div>
+        <div className="font-sans text-[10px] text-text-faint mt-2">{footer}</div>
       )}
     </div>
   );
@@ -581,7 +616,7 @@ function StatusCard({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h2 className="font-sans text-[11px] font-semibold uppercase tracking-widest text-text-muted mb-3">
+      <h2 className="font-sans text-[11px] font-semibold text-text-muted mb-3">
         {title}
       </h2>
       {children}
@@ -656,7 +691,7 @@ function ThesisRankCard({
             {thesis.sector && (
               <span
                 style={getSectorStyle(thesis.sector)}
-                className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide"
+                className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded"
               >
                 {thesis.sector}
               </span>
@@ -677,7 +712,7 @@ function TickerOrPrivate({
 }) {
   if (!ticker) return null;
   return (
-    <span className="font-data text-[9px] text-gold-dark bg-gold-muted px-1.5 py-0.5 rounded">
+    <span className="font-display text-[9px] text-gold-dark bg-gold-muted px-1.5 py-0.5 rounded">
       {ticker}
     </span>
   );

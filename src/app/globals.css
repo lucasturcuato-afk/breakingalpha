@@ -91,6 +91,7 @@
   --duration-fast: var(--duration-fast);
   --duration-base: var(--duration-base);
   --duration-slow: var(--duration-slow);
+  --duration-resolve: var(--duration-resolve);
 
   /* ── Easing ── */
   --ease-out: var(--ease-out);
@@ -369,6 +370,16 @@ html.dark .skeleton-shimmer {
   animation: track-record-pending-dot 2s ease-in-out infinite;
 }
 
+/* Resolve moment (spec §5): open -> verdict. Slow, deliberate fade-up, the one
+   expensive animation in the system. Uses --duration-resolve (~550ms) + --ease-out. */
+@keyframes resolve-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.resolve-fade-up {
+  animation: resolve-fade-up var(--duration-resolve) var(--ease-out) both;
+}
+
 /* Consolidated reduced-motion fallbacks */
 @media (prefers-reduced-motion: reduce) {
   .brand-mark-pulse { animation: none; opacity: 1; }
@@ -378,6 +389,7 @@ html.dark .skeleton-shimmer {
   .ai-signal-glow { animation: none; }
   .skeleton-shimmer { animation: none; }
   .track-record-pending-dot { animation: none; opacity: 0.85; }
+  .resolve-fade-up { animation: none; }
 }
 
 /* Conviction ring inner cutout — matches parent surface */

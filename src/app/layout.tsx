@@ -1,14 +1,20 @@
 import type { Metadata, Viewport } from "next";
-import { Playfair_Display, Inter, JetBrains_Mono } from "next/font/google";
+import { Newsreader, Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { UserProfileProvider } from "@/hooks/useUserProfile";
 import { SignaleraTour, TourHelpButton } from "@/components/tour/SignaleraTour";
 import "./globals.css";
 
-const playfairDisplay = Playfair_Display({
+// Display serif swapped Playfair Display -> Newsreader (visual-identity spec §1):
+// a sturdy, low-contrast text serif that reads authoritative rather than glam.
+// The CSS var name is kept as --font-playfair-display so every existing
+// reference (globals.css h1/h2, .font-display, component font-[family-name:...])
+// inherits the swap with zero churn. Weights 400/500/600 per spec, plus 700 to
+// preserve existing bold display headings (option A).
+const displaySerif = Newsreader({
   variable: "--font-playfair-display",
   subsets: ["latin"],
-  weight: ["400", "600", "700", "800"],
+  weight: ["400", "500", "600", "700"],
   display: "swap",
 });
 
@@ -46,7 +52,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${playfairDisplay.variable} ${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${displaySerif.variable} ${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>

@@ -73,11 +73,10 @@ export function PrintMasthead({ kind, dateStr }: PrintMastheadProps) {
           </span>
         </span>
         <span
-          className="font-sans uppercase text-neutral-700 inline-flex items-center gap-2"
+          className="font-sans text-neutral-700 inline-flex items-center gap-2"
           style={{
             fontFamily: "Helvetica, Arial, sans-serif",
             fontSize: 10,
-            letterSpacing: "0.18em",
           }}
         >
           <span

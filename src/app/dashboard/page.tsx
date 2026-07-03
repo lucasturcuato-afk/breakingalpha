@@ -642,7 +642,7 @@ export default function DashboardPage() {
         <div className="mt-4">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
-              <h2 className="font-sans text-[10px] font-medium uppercase tracking-wider text-text-muted inline-flex items-center gap-1.5">
+              <h2 className="font-sans text-[11px] font-medium text-text-muted inline-flex items-center gap-1.5">
                 Top Stories — hover to expand
                 <InfoTooltip content={`The highest-signal stories from the last ${TOP_STORIES_MAX_AGE_DAYS} days, ranked by Signalera's relevance algorithm.`} side="bottom" iconSize={10} />
               </h2>

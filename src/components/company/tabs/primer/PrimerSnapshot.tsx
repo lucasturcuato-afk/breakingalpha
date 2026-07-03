@@ -23,10 +23,10 @@ const DASH = "--";
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-text-faint">
+      <span className="font-sans text-[9px] font-bold text-text-faint">
         {label}
       </span>
-      <span className="font-sans text-[13px] text-espresso font-semibold">{value}</span>
+      <span className="font-display text-[13px] text-espresso font-semibold">{value}</span>
     </div>
   );
 }
@@ -37,7 +37,7 @@ export function PrimerSnapshot({ companyName, ticker, sector, industry }: Primer
       data-testid="primer-snapshot"
       className="bg-cream-hi border border-border-base rounded-lg p-4 space-y-3"
     >
-      <h3 className="font-mono text-[9.5px] font-bold uppercase tracking-[0.10em] text-text-faint">
+      <h3 className="font-sans text-[9.5px] font-bold text-text-faint">
         Snapshot
       </h3>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

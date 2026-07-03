@@ -19,7 +19,7 @@ import type { ThesisItem, ThesisStatus } from "./thesis-types";
 // ── Column definitions ──
 
 const KANBAN_COLUMNS = [
-  { id: "pending_review", label: "Pending Review" },
+  { id: "pending_review", label: "Pending review" },
   { id: "HIGH", label: "HIGH" },
   { id: "MEDIUM", label: "MEDIUM" },
   { id: "WATCH", label: "WATCH" },
@@ -96,7 +96,7 @@ function DroppableColumn({
     >
       {/* Column header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border-base">
-        <h3 className="font-sans text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+        <h3 className="font-sans text-[11px] font-semibold text-text-muted">
           {label}
         </h3>
         <span

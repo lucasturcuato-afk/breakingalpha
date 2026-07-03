@@ -21,7 +21,7 @@ const mdComponents: Components = {
     </h2>
   ),
   h3: ({ children }) => (
-    <h3 className="font-sans text-[11px] font-bold text-gold uppercase tracking-wider mb-2 mt-4">
+    <h3 className="font-display text-[15px] font-semibold text-text-primary mb-2 mt-4">
       {children}
     </h3>
   ),
@@ -31,7 +31,7 @@ const mdComponents: Components = {
     </p>
   ),
   strong: ({ children }) => (
-    <strong className="font-bold text-gold">{children}</strong>
+    <strong className="font-bold text-text-primary">{children}</strong>
   ),
   hr: () => <hr className="border-border-base my-4" />,
   ul: ({ children }) => (
@@ -181,8 +181,8 @@ export function IntelligenceChat({ userId }: IntelligenceChatProps) {
     <div className="max-w-3xl mx-auto flex flex-col h-[calc(100vh-180px)]">
       {/* Header */}
       <div className="mb-4">
-        <p className="font-data text-[9px] uppercase tracking-widest text-gold font-bold">
-          AI Research Assistant
+        <p className="font-sans text-[13px] text-text-muted">
+          AI research assistant
         </p>
         <h1 className="font-display text-[28px] font-extrabold text-espresso">
           Intelligence

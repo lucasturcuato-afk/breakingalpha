@@ -62,7 +62,7 @@ export function MoodBar({
       {/* Badge */}
       <span
         className={cn(
-          "flex-shrink-0 px-2.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide",
+          "flex-shrink-0 px-2.5 py-0.5 rounded-md text-[10px] font-semibold",
           config.badgeClass,
         )}
       >

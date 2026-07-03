@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 // a layout refactor, not a color change). The dark: variant is carried over
 // from the merged dark-mode work, not introduced here.
 const TAG =
-  "font-data text-[9px] text-text-muted dark:text-text-secondary bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded";
+  "font-display text-[9px] text-text-muted dark:text-text-secondary bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded";
 
 const GAP = 4; // gap-1 (0.25rem)
 const PLUS_RESERVE = 24; // px reserved for the "+N" chip while more tags remain
@@ -69,7 +69,7 @@ export function ThemeTags({ themes }: { themes: string[] }) {
   }, [themes]);
 
   if (themes.length === 0) {
-    return <span className="font-data text-[10px] text-text-faint">--</span>;
+    return <span className="font-display text-[10px] text-text-faint">--</span>;
   }
 
   const lastResort = shown === 0; // not even one whole tag fits the column
@@ -92,7 +92,7 @@ export function ThemeTags({ themes }: { themes: string[] }) {
           </span>
         ))}
         {moreCount > 0 && (
-          <span className="font-data text-[9px] text-text-faint shrink-0">
+          <span className="font-display text-[9px] text-text-faint shrink-0">
             +{moreCount}
           </span>
         )}

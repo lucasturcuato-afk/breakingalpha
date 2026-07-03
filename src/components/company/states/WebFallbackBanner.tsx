@@ -22,6 +22,7 @@ interface WebFallbackBannerProps {
 }
 
 const MONO = "var(--font-mono), ui-monospace, monospace";
+const SERIF = "var(--font-display), serif";
 
 export function WebFallbackBanner({ from, to, className }: WebFallbackBannerProps) {
   return (
@@ -59,9 +60,9 @@ export function WebFallbackBanner({ from, to, className }: WebFallbackBannerProp
       >
         ALIAS RESOLVED
       </span>
-      <span style={{ color: "var(--espresso)", fontWeight: 600 }}>{from}</span>
+      <span style={{ fontFamily: SERIF, color: "var(--espresso)", fontWeight: 600 }}>{from}</span>
       <span aria-hidden="true" style={{ color: "var(--text-faint)" }}>-&gt;</span>
-      <span style={{ color: "var(--espresso)", fontWeight: 600 }}>{to}</span>
+      <span style={{ fontFamily: SERIF, color: "var(--espresso)", fontWeight: 600 }}>{to}</span>
     </div>
   );
 }

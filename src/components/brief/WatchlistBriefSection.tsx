@@ -82,9 +82,7 @@ export default function WatchlistBriefSection({
       className="font-sans"
       style={{
         fontSize: 10,
-        letterSpacing: "0.22em",
-        textTransform: "uppercase",
-        color: GOLD_DARK,
+        color: "var(--text-muted)",
         fontWeight: 800,
         margin: "0 0 12px",
       }}
@@ -160,7 +158,7 @@ export default function WatchlistBriefSection({
             {/* Ticker -> watchlist detail page */}
             <Link
               href={`/watchlist/${encodeURIComponent(b.ticker)}`}
-              className="font-data"
+              className="font-display"
               style={{
                 flex: "0 0 auto",
                 fontSize: 12,

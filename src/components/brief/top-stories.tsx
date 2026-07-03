@@ -60,7 +60,7 @@ export function TopStories({
 
   return (
     <section>
-      <h2 className="font-sans text-[10px] uppercase tracking-widest font-bold text-text-muted mb-3">
+      <h2 className="font-sans text-[10px] font-bold text-text-muted mb-3">
         {label}
       </h2>
 
@@ -162,7 +162,7 @@ export function TopStories({
                 }}
               >
                 <div className="bg-white dark:bg-elevated border border-border-base rounded-xl p-3">
-                  <p className="font-data text-[9px] text-text-muted">{peek.source}</p>
+                  <p className="font-sans text-[9px] text-text-muted">{peek.source}</p>
                   <p className="font-display text-[13px] font-bold text-espresso dark:text-cream leading-snug mt-1 line-clamp-1">
                     {peek.title}
                   </p>

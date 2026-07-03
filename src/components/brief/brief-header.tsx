@@ -59,7 +59,7 @@ export function BriefHeader({
       {/* Eyebrow */}
       <p
         className="font-sans mb-1"
-        style={{ color: 'var(--gold)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}
+        style={{ color: 'var(--text-muted)', fontSize: '10px', fontWeight: 700 }}
       >
         {isMorning ? "Morning Review" : "Evening Wrap"}
       </p>
@@ -126,7 +126,7 @@ export function BriefHeader({
       >
         <p
           className="font-sans mb-3"
-          style={{ color: 'var(--gold)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}
+          style={{ color: 'var(--text-muted)', fontSize: '10px', fontWeight: 700 }}
         >
           Today&apos;s Lead
         </p>

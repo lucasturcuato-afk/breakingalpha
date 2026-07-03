@@ -418,7 +418,7 @@ function SendOthersModal({
     <Modal title="Send brief via email" onClose={onClose} maxWidth="520px">
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <label className="block font-sans text-[11px] font-semibold uppercase tracking-widest text-text-muted mb-1.5">
+          <label className="block font-sans text-[11px] font-semibold text-text-muted mb-1.5">
             Recipients
           </label>
           <div
@@ -470,8 +470,8 @@ function SendOthersModal({
           </p>
         </div>
         <div>
-          <label className="block font-sans text-[11px] font-semibold uppercase tracking-widest text-text-muted mb-1.5">
-            Subject <span className="text-text-faint font-normal normal-case">(optional)</span>
+          <label className="block font-sans text-[11px] font-semibold text-text-muted mb-1.5">
+            Subject <span className="text-text-faint font-normal">(optional)</span>
           </label>
           <input
             type="text"

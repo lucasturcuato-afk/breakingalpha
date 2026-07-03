@@ -21,7 +21,7 @@ export function PrimerBusinessOverview({ description }: PrimerBusinessOverviewPr
       data-testid="primer-business-overview"
       className="bg-cream-hi border border-border-base rounded-lg p-4 space-y-2"
     >
-      <h3 className="font-mono text-[9.5px] font-bold uppercase tracking-[0.10em] text-text-faint">
+      <h3 className="font-sans text-[9.5px] font-bold text-text-faint">
         Business overview
       </h3>
       <p className="font-sans text-[13px] text-text-secondary leading-relaxed">{description}</p>

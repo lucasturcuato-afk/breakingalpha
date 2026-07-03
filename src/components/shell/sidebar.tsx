@@ -396,7 +396,7 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto px-2 lg:px-3 py-3.5 space-y-5">
           {!!user && (
             <div className="hidden lg:flex items-center justify-between px-3">
-              <span className="font-sans text-[10px] font-semibold uppercase tracking-widest text-text-faint">
+              <span className="font-sans text-[11px] font-semibold text-text-faint">
                 {customizeMode ? "Customise sections" : "Sections"}
               </span>
               <button
@@ -737,7 +737,7 @@ function NavGroup({
   return (
     <div>
       {/* Eyebrow header: hidden at icon-only width to avoid unreadable wrapping. */}
-      <p className="hidden lg:block px-3 mb-1.5 font-sans text-[10px] font-semibold uppercase tracking-widest text-text-faint">
+      <p className="hidden lg:block px-3 mb-1.5 font-sans text-[11px] font-semibold text-text-faint">
         {label}
       </p>
       <ul className="space-y-0.5">

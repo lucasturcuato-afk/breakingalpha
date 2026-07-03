@@ -72,9 +72,9 @@ const EQUITY_COMPONENTS: RowDef[] = [
   { key: "temporary_equity", label: "+ Temporary equity", fmt: "usd", sub: true },
 ];
 
-const TH = "px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-text-muted";
+const TH = "px-3 py-2 text-[10px] font-semibold text-text-muted";
 const SECTION_TH =
-  "px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted";
+  "px-3 pt-3 pb-1 text-[10px] font-semibold text-text-muted";
 
 function ValueCell({ cell, fmt }: { cell: FinancialCell | undefined; fmt: Fmt }) {
   if (!cell || !Number.isFinite(cell.value)) {

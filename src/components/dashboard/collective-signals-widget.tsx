@@ -34,12 +34,12 @@ export function CollectiveSignalsWidget() {
     <div className="space-y-3">
       {data.trendingTickers.length > 0 && (
         <div>
-          <p className="font-data text-[9px] uppercase tracking-widest text-text-muted mb-1.5">
+          <p className="font-sans text-[9px] text-text-muted mb-1.5">
             Trending on Signalera
           </p>
           <div className="flex flex-wrap gap-1.5">
             {data.trendingTickers.map(t => (
-              <span key={t.ticker} className="font-data text-[10px] px-2 py-0.5 rounded bg-gold-muted text-gold-dark border border-gold/20">
+              <span key={t.ticker} className="font-display text-[10px] px-2 py-0.5 rounded bg-gold-muted text-gold-dark border border-gold/20">
                 {t.ticker} · {t.watcherCount} watching
               </span>
             ))}
@@ -48,7 +48,7 @@ export function CollectiveSignalsWidget() {
       )}
       {data.activeSectors.length > 0 && (
         <div>
-          <p className="font-data text-[9px] uppercase tracking-widest text-text-muted mb-1.5">
+          <p className="font-sans text-[9px] text-text-muted mb-1.5">
             Active sectors this week
           </p>
           <div className="flex flex-wrap gap-1.5">

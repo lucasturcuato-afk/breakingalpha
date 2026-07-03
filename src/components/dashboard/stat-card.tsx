@@ -69,7 +69,7 @@ export function StatCard({
 
       <div className="px-3 pt-3 pb-2.5">
         {/* Label */}
-        <p className="font-sans text-[10px] uppercase tracking-widest text-text-muted">
+        <p className="font-sans text-[11px] text-text-muted">
           {label}
         </p>
 
@@ -78,16 +78,13 @@ export function StatCard({
           <div className="mt-1.5">
             <div className="flex items-baseline gap-2">
               <span
-                className={cn(
-                  "font-data text-[21px] font-bold",
-                  accentGold ? "text-gold" : "text-espresso",
-                )}
+                className="font-display text-[22px] font-semibold text-espresso"
               >
                 {value}
               </span>
               <span
                 className={cn(
-                  "font-data text-[11px] font-semibold",
+                  "font-display text-[11px] font-semibold",
                   changeColor,
                 )}
               >
@@ -102,7 +99,7 @@ export function StatCard({
           <div className="flex items-baseline gap-2 mt-1.5">
             <span
               className={cn(
-                "font-data text-[21px] font-bold",
+                "font-display text-[21px] font-bold",
                 accentGold ? "text-gold" : "text-espresso",
               )}
             >
@@ -110,7 +107,7 @@ export function StatCard({
             </span>
             <span
               className={cn(
-                "font-data text-[11px] font-semibold",
+                "font-display text-[11px] font-semibold",
                 changeColor,
               )}
             >
@@ -182,7 +179,7 @@ export function StatCard({
             {detailRows.map((row, i) => (
               <div key={i} className="flex items-center justify-between">
                 <span className="font-sans text-[10px] text-text-muted">{row.label}</span>
-                <span className="font-data text-[11px] font-semibold text-text-primary">{row.value}</span>
+                <span className="font-display text-[11px] font-semibold text-text-primary">{row.value}</span>
               </div>
             ))}
           </div>

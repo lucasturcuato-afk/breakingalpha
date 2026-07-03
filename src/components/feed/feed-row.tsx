@@ -7,42 +7,11 @@ import { getSectorStyle, getTagPillStyle } from "@/lib/sector-colors";
 import { memo, useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
-import { Badge } from "@/components/ui/badge";
+import { SentimentPill, sentimentToTone } from "@/components/ui/sentiment-pill";
 import { Sparkles, Plus, MessageSquare, ExternalLink, Bookmark, BookmarkCheck, Loader2 } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { CompletenessBadge, SignalScore, SourceCredibilityBadge } from "@/lib/article-signal";
 import type { StoryData } from "@/components/dashboard";
-import type { BadgeVariant } from "@/components/ui/badge";
-
-function sentimentToVariant(sentiment: string): BadgeVariant {
-  switch (sentiment.toLowerCase()) {
-    case "positive":
-    case "bullish":
-      return "bullish";
-    case "negative":
-    case "bearish":
-      return "bearish";
-    case "risk-off":
-      return "risk-off";
-    default:
-      return "default";
-  }
-}
-
-function sentimentLabel(sentiment: string): string {
-  switch (sentiment.toLowerCase()) {
-    case "positive":
-    case "bullish":
-      return "Bullish";
-    case "negative":
-    case "bearish":
-      return "Bearish";
-    case "risk-off":
-      return "Risk-Off";
-    default:
-      return sentiment;
-  }
-}
 
 interface FeedRowProps {
   story: StoryData;
@@ -90,9 +59,7 @@ function FeedRowInner({ story, saved: savedProp, onBookmark }: FeedRowProps) {
         <div className="flex-1 min-w-0">
           {/* Meta row */}
           <div className="flex items-center gap-2 mb-1">
-            <Badge variant={sentimentToVariant(story.sentiment)}>
-              {sentimentLabel(story.sentiment)}
-            </Badge>
+            <SentimentPill tone={sentimentToTone(story.sentiment)} size="xs" />
             <div className="flex flex-wrap gap-1.5">
               {/* Industry Vertical Pills */}
               {(story.industry_verticals ?? []).length > 0
@@ -109,7 +76,7 @@ function FeedRowInner({ story, saved: savedProp, onBookmark }: FeedRowProps) {
                 ? (
                     <span
                       style={getSectorStyle(story.sector)}
-                      className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded uppercase tracking-wide"
+                      className="font-sans text-[9px] font-semibold px-2 py-0.5 rounded"
                     >
                       {story.sector}
                     </span>
@@ -130,7 +97,7 @@ function FeedRowInner({ story, saved: savedProp, onBookmark }: FeedRowProps) {
             <span className="font-sans text-[11px] text-text-muted font-medium">
               {story.source}
             </span>
-            <span className="font-data text-[10px] text-text-faint ml-auto flex-shrink-0">
+            <span className="font-sans text-[10px] text-text-faint ml-auto flex-shrink-0">
               {story.timestamp}
             </span>
             <CompletenessBadge completeness={story.completeness} />
@@ -236,7 +203,7 @@ function FeedRowInner({ story, saved: savedProp, onBookmark }: FeedRowProps) {
               >
                 <MessageSquare size={11} />
                 Ask AI
-                <span className="ml-1 px-1 py-0.5 rounded bg-gold-muted text-[8px] font-semibold text-gold uppercase tracking-wide">
+                <span className="ml-1 px-1 py-0.5 rounded bg-parchment-mid text-[8px] font-semibold text-text-muted">
                   Soon
                 </span>
               </button>

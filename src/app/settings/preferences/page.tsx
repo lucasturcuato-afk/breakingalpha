@@ -29,7 +29,7 @@ export default async function PreferencesPage() {
     <AppShell pageTitle="Preferences">
       <div className="max-w-3xl mx-auto px-6 py-10">
         <header className="mb-8">
-          <p className="font-sans text-[11px] font-semibold uppercase tracking-wide text-gold-dark mb-1">
+          <p className="font-sans text-[11px] font-semibold text-text-muted mb-1">
             Settings
           </p>
           <h1 className="font-display text-[28px] font-extrabold text-espresso">

@@ -14,7 +14,6 @@ import { formatEvidence, levelPolarity, type ToneSummary } from "@/lib/tone";
 
 const PENDING = "__pending__";
 const SANS = "var(--font-inter), Inter, sans-serif";
-const MONO = "var(--font-mono), ui-monospace, monospace";
 
 const btnBase = { fontFamily: SANS, fontSize: 12, fontWeight: 600, padding: "5px 10px", borderRadius: 6 } as const;
 const btnSecondary = { ...btnBase, background: "var(--cream)", border: "1px solid var(--border-base)", color: "var(--espresso)" } as const;
@@ -128,10 +127,11 @@ export function CompanyDetailHeader({ detail }: Props) {
             {detail.ticker ? (
               <span
                 data-testid="company-header-ticker"
+                className="font-display"
                 style={{
-                  fontFamily: MONO, fontSize: 11, fontWeight: 700, color: "var(--gold-deep)",
+                  fontSize: 11, fontWeight: 700, color: "var(--text-muted)",
                   padding: "2px 7px", borderRadius: 3,
-                  background: "var(--gold-faint)", border: "1px solid var(--gold-border)",
+                  background: "var(--cream)", border: "1px solid var(--border-base)",
                 }}
               >
                 {detail.ticker}
@@ -152,7 +152,7 @@ export function CompanyDetailHeader({ detail }: Props) {
             {tone.sufficient ? (
               <span
                 data-testid="company-header-tone-evidence"
-                style={{ fontFamily: MONO, fontSize: 10, color: "var(--text-faint)" }}
+                style={{ fontFamily: SANS, fontSize: 10, color: "var(--text-faint)" }}
               >
                 {formatEvidence(tone.evidence)}
               </span>

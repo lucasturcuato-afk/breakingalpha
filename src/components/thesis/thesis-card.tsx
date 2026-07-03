@@ -169,7 +169,7 @@ function AgeIndicator({ generatedAt, outcome }: { generatedAt?: string | null; o
   }, [generatedAt, outcome]);
   if (!label) return null;
   return (
-    <span className={`font-mono text-[10px] mt-0.5 inline-block ${
+    <span className={`font-sans text-[10px] mt-0.5 inline-block ${
       isStale ? "text-amber-500" : "text-[var(--text-muted)]"
     }`}>
       {label}
@@ -262,7 +262,7 @@ export function ThesisCard({ thesis, isSelected }: ThesisCardProps) {
                 e.stopPropagation();
                 setBearOpen((v) => !v);
               }}
-              className="font-data text-[9px] text-text-muted hover:text-text-secondary transition-colors cursor-pointer"
+              className="font-sans text-[9px] text-text-muted hover:text-text-secondary transition-colors cursor-pointer"
             >
               Bear case {bearOpen ? "↑" : "↓"}
             </button>
@@ -284,7 +284,7 @@ export function ThesisCard({ thesis, isSelected }: ThesisCardProps) {
         {/* Footer: timestamp + hover actions */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="font-data text-[9px] text-text-faint">{thesis.updatedAt}</span>
+            <span className="font-sans text-[9px] text-text-faint">{thesis.updatedAt}</span>
             {thesis.outcome && (
               <span className={`font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded ${
                 thesis.outcome === "confirmed" ? "bg-signal-up/10 text-signal-up" :
@@ -302,7 +302,7 @@ export function ThesisCard({ thesis, isSelected }: ThesisCardProps) {
               </span>
             )}
             {thesis.ticker && (
-              <span className="font-data text-[9px] text-gold-dark bg-gold-muted px-1.5 py-0.5 rounded">
+              <span className="font-display text-[9px] text-gold-dark bg-gold-muted px-1.5 py-0.5 rounded">
                 {thesis.ticker}
               </span>
             )}

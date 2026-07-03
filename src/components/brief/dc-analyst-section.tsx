@@ -171,8 +171,6 @@ export function DCAnalystSection({
             style={{
               fontSize: 9,
               fontWeight: 700,
-              letterSpacing: "0.14em",
-              textTransform: "uppercase",
               color: "var(--text-muted)",
               marginRight: 4,
             }}

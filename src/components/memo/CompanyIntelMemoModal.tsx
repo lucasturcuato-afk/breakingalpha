@@ -358,7 +358,7 @@ export default function CompanyIntelMemoModal(props: CompanyIntelMemoModalProps)
         </h2>
       ),
       h3: ({ children }) => (
-        <h3 className="font-sans text-[11px] font-bold text-gold uppercase tracking-wider mb-2 mt-5">
+        <h3 className="font-display text-[15px] font-semibold text-text-primary mb-2 mt-5">
           {renderChildrenWithCites(children)}
         </h3>
       ),
@@ -463,7 +463,7 @@ export default function CompanyIntelMemoModal(props: CompanyIntelMemoModalProps)
         {/* Header */}
         <div className="flex items-start justify-between gap-4 px-8 py-5 border-b border-border-base flex-shrink-0">
           <div className="min-w-0 flex-1">
-            <p className="font-data text-[9px] uppercase tracking-widest text-gold font-bold mb-1.5">
+            <p className="font-display text-[13px] text-text-muted mb-1.5">
               {TYPE_LABELS[type]}
             </p>
             <div className="flex items-center gap-3 flex-wrap">
@@ -473,9 +473,9 @@ export default function CompanyIntelMemoModal(props: CompanyIntelMemoModalProps)
               {webFallback && (
                 <span
                   className={cn(
-                    "font-data text-[9px] font-bold uppercase tracking-wider",
+                    "font-sans text-[11px] font-semibold text-text-muted",
                     "px-2 py-1 rounded-md border",
-                    "border-gold-border bg-gold-muted text-gold",
+                    "border-gold-border bg-gold-muted",
                   )}
                   title="Memo grounded in web search results, not the indexed news pipeline"
                 >
@@ -487,7 +487,7 @@ export default function CompanyIntelMemoModal(props: CompanyIntelMemoModalProps)
             {/* Canonical alias ribbon */}
             {showAliasRibbon && (
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <span className="font-data text-[9px] uppercase tracking-wider text-text-faint">
+                <span className="font-sans text-[11px] text-text-muted">
                   Also known as
                 </span>
                 {canonicalAliasRibbon!.map((alias, i) => (
@@ -517,7 +517,7 @@ export default function CompanyIntelMemoModal(props: CompanyIntelMemoModalProps)
                 <Sparkles size={11} className="text-gold flex-shrink-0" />
                 <p className="font-sans text-[11px] text-text-secondary">
                   Did you mean{" "}
-                  <span className="font-bold text-gold">
+                  <span className="font-semibold text-text-primary">
                     {aliasResolved.canonicalName}
                   </span>
                   ? You typed{" "}
@@ -563,7 +563,7 @@ export default function CompanyIntelMemoModal(props: CompanyIntelMemoModalProps)
 
             {/* Sources rail (right, narrow, sticky-ish via own scroll container) */}
             <aside className="overflow-y-auto px-6 py-6 bg-parchment-mid/40 hidden lg:block">
-              <p className="font-data text-[10px] uppercase tracking-widest text-gold font-bold mb-3">
+              <p className="font-display text-[13px] text-text-muted mb-3">
                 Sources
               </p>
               {loading ? (

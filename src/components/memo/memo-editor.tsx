@@ -201,7 +201,7 @@ export function MemoEditor({ memo, sourceData, generating = false, error }: Memo
                     : "border-l-border-subtle",
                 )}
               >
-                <h3 className="font-sans text-[10px] font-bold uppercase tracking-widest text-gold mb-2">
+                <h3 className="font-sans text-[10px] font-bold text-text-muted mb-2">
                   {section.title}
                 </h3>
                 {section.content.map((line, j) => {

@@ -596,11 +596,11 @@ export default function CompanyIntelPage() {
         ) : (
           <div className="mb-5">
             <div className="flex items-center gap-2 mb-1.5">
-              <p className="font-data text-[9px] uppercase tracking-widest text-gold">Sector</p>
+              <p className="font-sans text-[10px] text-text-muted">Sector</p>
               <button
                 type="button"
                 onClick={() => setVerticalMatchMode((m) => (m === "any" ? "all" : "any"))}
-                className="font-data text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full border border-gold-border bg-gold-muted text-gold cursor-pointer"
+                className="font-sans text-[10px] px-2 py-0.5 rounded-full border border-gold-border bg-gold-muted text-gold-dark cursor-pointer"
                 title="Toggle Match Any / Match All"
               >
                 Match {verticalMatchMode}
@@ -619,7 +619,7 @@ export default function CompanyIntelPage() {
                       )
                     }
                     className={cn(
-                      "px-3 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                      "px-3 py-1 rounded-lg font-sans text-[10px] font-bold cursor-pointer transition-colors border",
                       isActive
                         ? "border-gold bg-gold-muted text-gold"
                         : "border-border-base bg-white text-text-muted hover:text-text-primary",
@@ -633,7 +633,7 @@ export default function CompanyIntelPage() {
                 <button
                   type="button"
                   onClick={() => { setSelectedVerticals([]); setVerticalMatchMode("any"); }}
-                  className="px-3 py-1 font-data text-[10px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
+                  className="px-3 py-1 font-sans text-[10px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
                 >
                   Clear filters
                 </button>
@@ -655,7 +655,7 @@ export default function CompanyIntelPage() {
                 <button
                   type="button"
                   onClick={resetFilters}
-                  className="px-3 py-1.5 rounded-lg border border-border-base bg-white font-data text-[10px] font-bold uppercase text-text-muted hover:text-text-primary cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg border border-border-base bg-white font-sans text-[10px] font-bold text-text-muted hover:text-text-primary cursor-pointer"
                 >
                   Reset filters
                 </button>
@@ -666,7 +666,7 @@ export default function CompanyIntelPage() {
           <div className="relative bg-white border border-border-base rounded-xl overflow-x-auto">
             <table className="w-full table-fixed text-left border-collapse min-w-[900px]">
               <thead className="bg-parchment-mid border-b border-border-base">
-                <tr className="font-data text-[9px] uppercase tracking-widest text-text-muted dark:text-text-secondary">
+                <tr className="font-sans text-[10px] text-text-muted dark:text-text-secondary">
                   <th className="w-8 px-2 py-2"></th>
                   <SortHeader label="Ticker" k="ticker" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="w-20 px-2 py-2" />
                   <SortHeader label="Name" k="name" sortKey={sortKey} sortDir={sortDir} onClick={onHeaderClick} className="px-2 py-2 min-w-[200px]" />
@@ -718,7 +718,7 @@ export default function CompanyIntelPage() {
                         </button>
                       </td>
                       {/* Ticker */}
-                      <td className="w-20 px-2 py-2 font-data text-[11px] font-bold text-espresso">
+                      <td className="w-20 px-2 py-2 font-sans text-[11px] font-bold text-espresso">
                         {row.ticker ?? <span className="text-text-faint">--</span>}
                       </td>
                       {/* Name */}
@@ -732,12 +732,12 @@ export default function CompanyIntelPage() {
                         {row.sector ? (
                           <span
                             style={getSectorStyle(row.sector)}
-                            className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide whitespace-nowrap"
+                            className="font-sans text-[9px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap"
                           >
                             {row.sector}
                           </span>
                         ) : (
-                          <span className="font-data text-[10px] text-text-faint">--</span>
+                          <span className="font-sans text-[10px] text-text-faint">--</span>
                         )}
                       </td>
                       {/* Themes: width-measured cluster -- whole tags that fit,
@@ -752,12 +752,12 @@ export default function CompanyIntelPage() {
                         </span>
                       </td>
                       {/* Last seen */}
-                      <td className="px-2 py-2 font-data text-[10px] text-text-muted whitespace-nowrap">
+                      <td className="px-2 py-2 font-sans text-[10px] text-text-muted whitespace-nowrap">
                         {row.lastUpdated ? timeAgo(row.lastUpdated) : <span className="text-text-faint">--</span>}
                       </td>
                       {/* Alias count: distinct surface forms collapsed onto this canonical (per W2-A read-path PR #195) */}
                       <td className="w-10 px-2 py-2 text-center">
-                        <span className="font-data text-[10px] text-gold/60">{row.aliasCount}</span>
+                        <span className="font-sans text-[10px] text-gold/60">{row.aliasCount}</span>
                       </td>
                       {/* Action menu */}
                       <td className="w-8 px-2 py-2 text-center" onClick={(e) => { e.stopPropagation(); if (!isLocked) router.push(`/company/${encodeURIComponent(slugify(row.name))}`); }}>
@@ -809,7 +809,7 @@ export default function CompanyIntelPage() {
 
         {/* Keyboard hint */}
         {!isSignedOut && !loading && visibleRows.length > 0 && (
-          <p className="mt-3 font-data text-[9px] uppercase tracking-widest text-text-faint">
+          <p className="mt-3 font-sans text-[10px] text-text-faint">
             j / k navigate &middot; w toggle watchlist &middot; Enter open &middot; Esc clear
           </p>
         )}

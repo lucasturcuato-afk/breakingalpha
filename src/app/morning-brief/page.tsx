@@ -14,6 +14,8 @@ import { DCAnalystSection } from "@/components/brief/dc-analyst-section";
 import { DCSectorSignals } from "@/components/brief/dc-sector-signals";
 import MacroPanel, { type MacroPanelData } from "@/components/brief/MacroPanel";
 import CatalystStrip from "@/components/brief/CatalystStrip";
+import BriefCallsSection from "@/components/brief/BriefCallsSection";
+import { SentimentPill } from "@/components/ui/sentiment-pill";
 import { ActiveThesesWidget } from "@/components/dashboard/active-theses-widget";
 import { WatchlistWidget } from "@/components/dashboard/watchlist-widget";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
@@ -119,38 +121,6 @@ function normaliseTone(t?: string | null): Tone {
   if (l.includes("mix")) return "MIXED";
   if (l.includes("watch")) return "WATCH";
   return "NEUTRAL";
-}
-
-function SentimentPill({ tone, size = "md" }: { tone: Tone; size?: "sm" | "md" }) {
-  const style: Record<Tone, { bg: string; fg: string; bd: string }> = {
-    BULLISH: { bg: "var(--pill-bull-bg)", fg: "var(--pill-bull-text)", bd: "var(--pill-bull-border)" },
-    BEARISH: { bg: "var(--pill-bear-bg)", fg: "var(--pill-bear-text)", bd: "var(--pill-bear-border)" },
-    NEUTRAL: { bg: "var(--pill-neutral-bg)", fg: "var(--pill-neutral-text)", bd: "var(--pill-neutral-border)" },
-    MIXED:   { bg: "var(--pill-mixed-bg)",   fg: "var(--pill-mixed-text)",   bd: "var(--pill-mixed-border)" },
-    WATCH:   { bg: "var(--pill-watch-bg)",   fg: "var(--pill-watch-text)",   bd: "var(--pill-watch-border)" },
-  };
-  const s = style[tone];
-  const font = size === "sm" ? 9 : 10;
-  const pad = size === "sm" ? "3px 7px" : "4px 9px";
-  const tr = size === "sm" ? "0.10em" : "0.12em";
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        fontFamily: "var(--font-inter), Inter, sans-serif",
-        fontSize: font,
-        fontWeight: 700,
-        letterSpacing: tr,
-        padding: pad,
-        borderRadius: 4,
-        background: s.bg,
-        color: s.fg,
-        border: `1px solid ${s.bd}`,
-      }}
-    >
-      {tone}
-    </span>
-  );
 }
 
 function formatDatePretty(d: Date): string {
@@ -731,9 +701,9 @@ export default function MorningBriefPage() {
           style={{ display: "flex", alignItems: "center", gap: 22, fontSize: 11, color: "rgba(255,253,249,0.85)", fontWeight: 600 }}
         >
           <span>{dateStr}</span>
-          <span className="font-data">{timeStr}</span>
-          <span style={{ background: "rgba(255,253,249,0.15)", color: "rgba(255,253,249,0.9)", padding: "4px 10px", borderRadius: 20, fontSize: 10, letterSpacing: "0.12em" }}>
-            4 MIN READ
+          <span className="font-sans">{timeStr}</span>
+          <span style={{ background: "rgba(255,253,249,0.15)", color: "rgba(255,253,249,0.9)", padding: "4px 10px", borderRadius: 20, fontSize: 10 }}>
+            4 min read
           </span>
         </div>
       </header>
@@ -756,7 +726,7 @@ export default function MorningBriefPage() {
       >
         {([
           {
-            k: "MOOD",
+            k: "Mood",
             loading,
             v: String(moodWord).toUpperCase(),
             c: tone === "BEARISH" ? "var(--signal-dn)" : tone === "BULLISH" ? "var(--signal-up)" : "var(--signal-warn)",
@@ -764,14 +734,14 @@ export default function MorningBriefPage() {
             tip: "Today's overall market sentiment, derived from VIX levels and price action.",
           },
           {
-            k: "STORIES",
+            k: "Stories",
             loading: storiesLoading,
             v: String(stories.length),
             skeletonW: 28,
             tip: "Total articles ingested and analyzed by Signalera's pipeline today.",
           },
           {
-            k: "THESES",
+            k: "Theses",
             loading: thesesLoading,
             v: thesesCount !== null ? `${thesesCount} active` : "0 active",
             skeletonW: 56,
@@ -787,7 +757,7 @@ export default function MorningBriefPage() {
           },
         ] as Array<{ k: string; v: string; loading: boolean; c?: string; skeletonW: number; tip: string }>).map((x, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span className="font-sans" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, letterSpacing: "0.16em", color: "var(--text-muted)" }}>
+            <span className="font-sans" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, color: "var(--text-muted)" }}>
               {x.k}
               <InfoTooltip content={x.tip} side="bottom" iconSize={10} />
             </span>
@@ -885,11 +855,9 @@ export default function MorningBriefPage() {
                   className="font-sans"
                   style={{
                     fontSize: 10,
-                    letterSpacing: "0.20em",
-                    color: HERITAGE_GOLD,
+                    color: "var(--text-muted)",
                     margin: "0 0 14px",
                     fontWeight: 700,
-                    textTransform: "uppercase",
                     position: "relative",
                   }}
                 >
@@ -994,9 +962,7 @@ export default function MorningBriefPage() {
                 className="font-sans"
                 style={{
                   fontSize: 10,
-                  letterSpacing: "0.22em",
-                  textTransform: "uppercase",
-                  color: "var(--gold-dark)",
+                  color: "var(--text-muted)",
                   fontWeight: 800,
                   margin: "0 0 10px",
                 }}
@@ -1036,6 +1002,12 @@ export default function MorningBriefPage() {
               briefType="morning"
             />
 
+            {/* ── Today's Calls — scored objects (Open state; real morning_brief_calls,
+                 grading not live yet). Additive: no existing per-call rendering replaced. ── */}
+            <section style={{ marginBottom: 40 }}>
+              <BriefCallsSection briefId={briefing.id} heading="Today's Calls" />
+            </section>
+
             {/* ── Today's Lead ── */}
             <section style={{ marginBottom: 40 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
@@ -1045,13 +1017,11 @@ export default function MorningBriefPage() {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 8,
-                    background: "#a88340",
+                    background: "var(--parchment-mid)",
                     color: DC_ESPRESSO,
                     padding: "5px 12px",
                     borderRadius: 20,
                     fontSize: 10,
-                    letterSpacing: "0.14em",
-                    textTransform: "uppercase",
                     fontWeight: 800,
                   }}
                 >
@@ -1113,9 +1083,7 @@ export default function MorningBriefPage() {
                       className="font-sans"
                       style={{
                         fontSize: 10,
-                        letterSpacing: "0.16em",
-                        textTransform: "uppercase",
-                        color: "var(--gold-dark)",
+                        color: "var(--text-muted)",
                         fontWeight: 700,
                         margin: "0 0 10px",
                       }}
@@ -1158,9 +1126,7 @@ export default function MorningBriefPage() {
                     className="font-sans"
                     style={{
                       fontSize: 10,
-                      letterSpacing: "0.16em",
-                      textTransform: "uppercase",
-                      color: "var(--gold-dark)",
+                      color: "var(--text-muted)",
                       fontWeight: 800,
                       alignSelf: "center",
                     }}
@@ -1181,7 +1147,7 @@ export default function MorningBriefPage() {
                       }}
                     >
                       <span
-                        className="font-data"
+                        className="font-display"
                         style={{
                           fontSize: 12,
                           fontWeight: 800,
@@ -1215,7 +1181,7 @@ export default function MorningBriefPage() {
                 >
                   <p
                     className="font-sans"
-                    style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--gold-dark)", fontWeight: 700, marginBottom: 6 }}
+                    style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, marginBottom: 6 }}
                   >
                     Your Personalized Briefing
                   </p>
@@ -1334,7 +1300,7 @@ export default function MorningBriefPage() {
                           {deal.company}
                         </h4>
                         <span
-                          className="font-data"
+                          className="font-display"
                           style={{
                             fontSize: 12,
                             fontWeight: 700,
@@ -1347,17 +1313,15 @@ export default function MorningBriefPage() {
                       </div>
                       {deal.deal_type && (
                         <span
-                          className="font-data"
+                          className="font-sans"
                           style={{
                             display: "inline-block",
                             alignSelf: "flex-start",
                             fontSize: 9,
                             fontWeight: 800,
-                            letterSpacing: "0.12em",
-                            textTransform: "uppercase",
-                            color: "var(--gold-dark)",
-                            background: "var(--gold-muted)",
-                            border: "1px solid var(--gold-border)",
+                            color: "var(--text-muted)",
+                            background: "var(--parchment-mid)",
+                            border: "1px solid var(--border-base)",
                             padding: "3px 8px",
                             borderRadius: 4,
                           }}

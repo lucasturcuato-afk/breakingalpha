@@ -1,5 +1,20 @@
 export type SentimentTone = "BULLISH" | "BEARISH" | "NEUTRAL" | "MIXED" | "WATCH";
 
+/**
+ * Single source of truth for mapping any raw sentiment string (DB values,
+ * "risk-on/off", "positive/negative", etc.) to a SentimentTone. Every surface
+ * that renders sentiment should route through this + <SentimentPill/> so the
+ * label treatment (title-case, one voice) can never drift per-surface again.
+ */
+export function sentimentToTone(raw: string | null | undefined): SentimentTone {
+  const l = (raw ?? "").toLowerCase();
+  if (l.includes("bull") || l === "positive" || l.includes("risk-on")) return "BULLISH";
+  if (l.includes("bear") || l === "negative" || l.includes("risk-off")) return "BEARISH";
+  if (l.includes("mix")) return "MIXED";
+  if (l.includes("watch")) return "WATCH";
+  return "NEUTRAL";
+}
+
 export type SentimentPillSize = "xs" | "sm" | "md" | "lg";
 
 interface SentimentPillProps {
@@ -40,8 +55,8 @@ export function SentimentPill({ tone, label, size = "md", className, testId }: S
         display: "inline-block",
         fontFamily: "var(--font-inter), Inter, sans-serif",
         fontSize: z.font,
-        fontWeight: 700,
-        letterSpacing: z.tr,
+        fontWeight: 600,
+        letterSpacing: "normal",
         padding: z.pad,
         borderRadius: 4,
         background: s.bg,
@@ -50,7 +65,7 @@ export function SentimentPill({ tone, label, size = "md", className, testId }: S
         whiteSpace: "nowrap",
       }}
     >
-      {label ?? tone}
+      {label ?? tone.charAt(0) + tone.slice(1).toLowerCase()}
     </span>
   );
 }

@@ -111,7 +111,7 @@ export default function SavedDealsPage() {
             </Link>
             <div className="flex items-center gap-2 mb-1">
               <Bookmark size={14} className="text-gold" fill="currentColor" />
-              <span className="font-data text-[10px] uppercase tracking-widest text-gold font-bold">
+              <span className="font-sans text-[10px] uppercase tracking-widest text-gold font-bold">
                 Saved Deals
               </span>
             </div>
@@ -134,14 +134,14 @@ export default function SavedDealsPage() {
         {/* Sort controls — shown whenever there are saved deals */}
         {hasSaved && (
           <div className="flex items-center gap-1 mb-4">
-            <span className="font-data text-[10px] uppercase tracking-widest text-text-muted mr-1">Sort:</span>
+            <span className="font-sans text-[10px] uppercase tracking-widest text-text-muted mr-1">Sort:</span>
             {(["saved_at", "company", "value"] as SortKey[]).map((key) => (
               <button
                 key={key}
                 type="button"
                 onClick={() => setSortKey(key)}
                 className={cn(
-                  "px-2.5 py-1 rounded-lg font-data text-[10px] font-bold uppercase cursor-pointer transition-colors border",
+                  "px-2.5 py-1 rounded-lg font-sans text-[10px] font-bold uppercase cursor-pointer transition-colors border",
                   sortKey === key
                     ? "border-gold bg-gold/10 text-gold"
                     : "border-border-base bg-white dark:bg-[#1e1e1e] text-text-muted hover:text-text-primary",
@@ -172,7 +172,7 @@ export default function SavedDealsPage() {
             </p>
             <Link
               href="/deal-flow"
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gold text-cream font-data text-[11px] font-bold uppercase hover:bg-gold-dark transition-colors"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gold text-cream font-sans text-[11px] font-bold uppercase hover:bg-gold-dark transition-colors"
             >
               <Briefcase size={12} />
               Go to Deal Flow
@@ -205,38 +205,38 @@ export default function SavedDealsPage() {
                           {deal.company}
                         </span>
                         {deal.acquirer && (
-                          <span className="font-data text-[10px] text-text-muted">
+                          <span className="font-display text-[10px] text-text-muted">
                             ← {deal.acquirer}
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className={cn(
-                          "px-2 py-0.5 rounded-md font-data text-[10px] font-bold uppercase border",
+                          "px-2 py-0.5 rounded-md font-sans text-[10px] font-bold uppercase border",
                           stageConf.color,
                         )}>
                           {stageConf.label}
                         </span>
                         {deal.deal_type && (
-                          <span className="font-data text-[10px] text-text-muted">
+                          <span className="font-sans text-[10px] text-text-muted">
                             {deal.deal_type}
                           </span>
                         )}
                         {deal.sector && (
-                          <span className="font-data text-[10px] text-text-faint">
+                          <span className="font-sans text-[10px] text-text-faint">
                             {deal.sector}
                           </span>
                         )}
                       </div>
                       {deal.saved_at && (
-                        <p className="font-data text-[10px] text-text-muted mt-1.5">
+                        <p className="font-sans text-[10px] text-text-muted mt-1.5">
                           Saved {new Date(deal.saved_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                         </p>
                       )}
                     </div>
                     <div className="flex items-start gap-2 flex-shrink-0">
                       {displayValue && (
-                        <span className="font-data text-[13px] font-semibold text-gold">
+                        <span className="font-display text-[13px] font-semibold text-gold">
                           {displayValue}
                         </span>
                       )}
@@ -255,7 +255,7 @@ export default function SavedDealsPage() {
                       href={deal.source_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 mt-2 font-data text-[10px] text-gold hover:opacity-80 transition-opacity"
+                      className="inline-flex items-center gap-1 mt-2 font-sans text-[10px] text-gold hover:opacity-80 transition-opacity"
                     >
                       View source →
                     </a>

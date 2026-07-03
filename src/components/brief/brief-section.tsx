@@ -63,7 +63,7 @@ export function BriefSection({
     >
       <h3
         className={cn(
-          "font-data text-[10px] uppercase tracking-widest font-bold mb-2.5",
+          "font-sans text-[10px] font-bold mb-2.5",
           accentColor === "gold" ? "text-gold" : "text-signal-ai",
         )}
       >

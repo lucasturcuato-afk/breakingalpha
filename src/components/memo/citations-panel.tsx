@@ -28,7 +28,7 @@ export function CitationsPanel({ citations = defaultCitations, hasMemo = false }
   return (
     <div className="h-full flex flex-col">
       <div className="px-4 py-3 border-b border-border-base">
-        <h2 className="font-sans text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+        <h2 className="font-sans text-[10px] font-semibold text-text-muted">
           Citations & Context
         </h2>
       </div>
@@ -36,7 +36,7 @@ export function CitationsPanel({ citations = defaultCitations, hasMemo = false }
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {/* Related articles */}
         <div className="mb-5">
-          <h3 className="font-sans text-[10px] font-semibold uppercase tracking-widest text-text-faint mb-2.5">
+          <h3 className="font-sans text-[10px] font-semibold text-text-faint mb-2.5">
             Related Articles
           </h3>
           <div className="space-y-1">
@@ -83,7 +83,7 @@ export function CitationsPanel({ citations = defaultCitations, hasMemo = false }
         {/* AI actions */}
         {hasMemo && (
           <div>
-            <h3 className="font-sans text-[10px] font-semibold uppercase tracking-widest text-text-faint mb-2.5">
+            <h3 className="font-sans text-[10px] font-semibold text-text-faint mb-2.5">
               AI Actions
             </h3>
             <div className="space-y-1.5">

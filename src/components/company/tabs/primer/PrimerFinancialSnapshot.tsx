@@ -71,11 +71,11 @@ export function PrimerFinancialSnapshot({ financials }: PrimerFinancialSnapshotP
       className="bg-cream-hi border border-border-base rounded-lg p-4 space-y-3"
     >
       <div className="flex items-baseline justify-between gap-2">
-        <h3 className="font-mono text-[9.5px] font-bold uppercase tracking-[0.10em] text-text-faint">
+        <h3 className="font-sans text-[9.5px] font-bold text-text-faint">
           Financial snapshot
         </h3>
         {latest ? (
-          <span className="font-mono text-[9px] uppercase tracking-[0.10em] text-text-faint">
+          <span className="font-sans text-[9px] text-text-faint">
             {latest.label}
           </span>
         ) : null}
@@ -85,10 +85,10 @@ export function PrimerFinancialSnapshot({ financials }: PrimerFinancialSnapshotP
         <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
           {rows.map((r) => (
             <div key={r.label} className="flex flex-col gap-0.5">
-              <dt className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-text-faint">
+              <dt className="font-sans text-[9px] font-bold text-text-faint">
                 {r.label}
               </dt>
-              <dd className="font-sans text-[13px] text-espresso font-semibold tabular-nums">
+              <dd className="font-display text-[13px] text-espresso font-semibold">
                 {r.display}
               </dd>
             </div>
@@ -108,10 +108,10 @@ export function PrimerFinancialSnapshot({ financials }: PrimerFinancialSnapshotP
           <dl className="grid grid-cols-3 gap-x-4 gap-y-2 pt-2">
             {margins.map((m) => (
               <div key={m.label} className="flex flex-col gap-0.5">
-                <dt className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-text-faint">
+                <dt className="font-sans text-[9px] font-bold text-text-faint">
                   {m.label}
                 </dt>
-                <dd className="font-sans text-[13px] text-espresso font-semibold tabular-nums">
+                <dd className="font-display text-[13px] text-espresso font-semibold">
                   {m.display}
                 </dd>
               </div>

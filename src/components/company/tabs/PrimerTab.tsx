@@ -164,7 +164,7 @@ export function PrimerTab({
 
       {/* Recent developments: the existing brief, embedded unchanged. */}
       <section data-testid="primer-recent-developments" className="space-y-2">
-        <h3 className="font-mono text-[9.5px] font-bold uppercase tracking-[0.10em] text-text-faint">
+        <h3 className="font-sans text-[9.5px] font-bold text-text-faint">
           Recent developments
         </h3>
         {briefSlot}

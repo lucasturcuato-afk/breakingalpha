@@ -12,6 +12,8 @@ import { Eyebrow } from "@/components/ui";
 import type { AliasMention } from "@/lib/data-access/getCompanyDetail";
 
 const MONO = "var(--font-mono), ui-monospace, monospace";
+const SERIF = "var(--font-display), serif";
+const SANS = "var(--font-sans), sans-serif";
 
 interface Props {
   canonical: string;
@@ -48,7 +50,7 @@ export function CompanyAliasRibbon({ canonical, aliasMentions, maxBeforeCollapse
           CANONICAL
         </span>
       </Eyebrow>
-      <span style={{ color: "var(--espresso)", fontWeight: 600 }}>{canonical}</span>
+      <span style={{ fontFamily: SERIF, color: "var(--espresso)", fontWeight: 600 }}>{canonical}</span>
       <span style={{ color: "var(--text-faint)" }}>·</span>
       <span>aka</span>
       {visible.map((alias, i) => (
@@ -59,7 +61,7 @@ export function CompanyAliasRibbon({ canonical, aliasMentions, maxBeforeCollapse
             data-testid="alias-ribbon-chip"
             aria-label={`View mentions for alias ${alias.name}, ${alias.n} mentions`}
             className="inline-flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold rounded-sm"
-            style={{ fontFamily: MONO, fontSize: 11, background: "transparent", border: "none", padding: 0, cursor: "pointer" }}
+            style={{ fontFamily: SERIF, fontSize: 11, background: "transparent", border: "none", padding: 0, cursor: "pointer" }}
           >
             <span style={{ color: "var(--espresso)" }}>{alias.name}</span>
             <span style={{ color: "var(--text-faint)" }}>{alias.n}</span>
@@ -74,7 +76,7 @@ export function CompanyAliasRibbon({ canonical, aliasMentions, maxBeforeCollapse
           onClick={() => setExpanded(true)}
           className="text-text-muted dark:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold rounded-sm"
           style={{
-            fontFamily: MONO, fontSize: 11,
+            fontFamily: SANS, fontSize: 11,
             background: "transparent", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline",
           }}
         >

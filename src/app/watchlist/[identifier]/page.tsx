@@ -720,7 +720,7 @@ Constraints:
         <button
           type="button"
           onClick={() => router.push("/watchlist")}
-          className="inline-flex items-center gap-1.5 font-data text-[11px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
+          className="inline-flex items-center gap-1.5 font-sans text-[11px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
         >
           <ArrowLeft size={14} /> Watchlist
         </button>
@@ -733,33 +733,33 @@ Constraints:
           )}>
             <div className="flex items-center gap-3 mb-1">
               <h1 className="font-display text-[28px] font-extrabold text-espresso">{decoded}</h1>
-              <span className="font-data text-[10px] text-gold bg-gold-muted border border-gold-border px-2 py-0.5 rounded-md uppercase">{typeLabel}</span>
+              <span className="font-sans text-[10px] text-text-muted bg-parchment-mid border border-border-base px-2 py-0.5 rounded-md capitalize">{typeLabel}</span>
             </div>
             {(storedDisplayName ?? LEGACY_TICKER_NAMES[decoded.toUpperCase()]) && (
-              <p className="font-data text-[12px] text-text-muted mt-0.5">
+              <p className="font-sans text-[12px] text-text-muted mt-0.5">
                 {storedDisplayName ?? LEGACY_TICKER_NAMES[decoded.toUpperCase()]}
               </p>
             )}
             {quote ? (
               <div className="flex items-center gap-3">
-                <span className="font-data text-[24px] font-bold text-espresso">${quote.price}</span>
-                <span className={cn("font-data text-[16px] font-semibold", quote.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
+                <span className="font-display text-[24px] font-bold text-espresso">${quote.price}</span>
+                <span className={cn("font-display text-[16px] font-semibold", quote.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
                   {quote.pct >= 0 ? "+" : ""}{quote.pct}%
                 </span>
-                <span className="font-data text-[10px] text-text-faint">as of market close</span>
+                <span className="font-sans text-[10px] text-text-faint">as of market close</span>
                 <button type="button" onClick={refreshQuote} disabled={quoteRefreshing} className="ml-auto p-1 rounded hover:bg-parchment-mid cursor-pointer disabled:opacity-50">
                   <RefreshCw size={11} className={cn("text-text-muted", quoteRefreshing && "animate-spin")} />
                 </button>
               </div>
             ) : (
-              !loading && <span className="font-data text-[13px] text-text-faint">Price unavailable</span>
+              !loading && <span className="font-sans text-[13px] text-text-faint">Price unavailable</span>
             )}
           </div>
         )}
         {isSector && (
           <div className="mt-4 flex items-center gap-3">
             <h1 className="font-display text-[28px] font-extrabold text-espresso">{decoded}</h1>
-            <span className="font-data text-[10px] text-gold bg-gold-muted border border-gold-border px-2 py-0.5 rounded-md uppercase">{typeLabel}</span>
+            <span className="font-sans text-[10px] text-text-muted bg-parchment-mid border border-border-base px-2 py-0.5 rounded-md capitalize">{typeLabel}</span>
           </div>
         )}
 
@@ -783,8 +783,8 @@ Constraints:
 
         {/* AI BRIEF SECTION */}
         <div className="mb-6">
-          <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">
-            AI Brief
+          <p className="font-sans text-[9px] text-text-muted font-semibold mb-3">
+            AI brief
           </p>
           {!loading && articles.length === 0 ? (
             <div className="bg-parchment-mid border border-border-base rounded-xl p-4">
@@ -803,10 +803,10 @@ Constraints:
               {cachedBriefText && !memoOpen && (
                 <div className="mb-3">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="font-data text-[9px] text-text-faint">
+                    <span className="font-sans text-[9px] text-text-faint">
                       Generated {cachedBriefGeneratedAt ? timeAgo(cachedBriefGeneratedAt.toISOString()) : "recently"}
                     </span>
-                    <span className="font-data text-[8px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded">
+                    <span className="font-sans text-[8px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded">
                       Cached
                     </span>
                   </div>
@@ -855,11 +855,11 @@ Constraints:
                 <>
                   {briefGeneratedAt === null && !loading && articles.length > 0 && (
                     <div className="bg-parchment-mid border border-border-base rounded-xl p-4 mb-4">
-                      <p className="font-data text-[9px] uppercase tracking-widest text-gold mb-1">What you&apos;ll get</p>
+                      <p className="font-sans text-[9px] text-text-muted mb-1">What you&apos;ll get</p>
                       <p className="font-sans text-[12px] text-text-secondary leading-relaxed">
                         An AI-generated research brief grounded in {articles.length} recent {articles.length === 1 ? "article" : "articles"} — structured like a bulge bracket equity research note with company snapshot, key developments, investment considerations, and a signal.
                       </p>
-                      <p className="font-data text-[10px] text-text-faint italic mt-1.5">
+                      <p className="font-sans text-[10px] text-text-faint italic mt-1.5">
                         AI-generated · Based on recent coverage · Not financial advice
                       </p>
                     </div>
@@ -883,10 +883,10 @@ Constraints:
                     {briefGeneratedAt !== null ? "Regenerate Brief" : "Generate Brief"}
                   </button>
                   {loading && (
-                    <p className="font-data text-[10px] text-text-faint mt-2">Loading articles...</p>
+                    <p className="font-sans text-[10px] text-text-faint mt-2">Loading articles...</p>
                   )}
                   {briefGeneratedAt !== null && (
-                    <p className="font-data text-[9px] text-text-faint mt-2">
+                    <p className="font-sans text-[9px] text-text-faint mt-2">
                       Last generated {timeAgo(briefGeneratedAt.toISOString())}
                     </p>
                   )}
@@ -911,7 +911,7 @@ Constraints:
                   >
                     Export PDF
                   </button>
-                  <p className="font-data text-[9px] text-text-faint mt-1 text-center">Opens print dialog — select &ldquo;Save as PDF&rdquo;</p>
+                  <p className="font-sans text-[9px] text-text-faint mt-1 text-center">Opens print dialog — select &ldquo;Save as PDF&rdquo;</p>
                 </div>
               )}
             </>
@@ -923,8 +923,8 @@ Constraints:
         {/* PRICE ALERTS SECTION — ticker only */}
         {typeLabel === "ticker" && !!user && (
           <div className="mb-6">
-            <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">
-              Price Alerts
+            <p className="font-sans text-[9px] text-text-muted font-semibold mb-3">
+              Price alerts
             </p>
             {alertsLoading ? (
               <div className="h-10 bg-parchment-mid border border-border-base rounded-xl animate-pulse" />
@@ -949,7 +949,7 @@ Constraints:
                           key={alert.id}
                           className="flex items-center gap-3 px-3 py-2 bg-white border border-border-base rounded-xl"
                         >
-                          <span className="font-data text-[11px] text-text-muted flex-1">
+                          <span className="font-display text-[11px] text-text-muted flex-1">
                             {typeLabel_} {thresholdDisplay}
                           </span>
                           <button
@@ -987,13 +987,13 @@ Constraints:
                   </div>
                 )}
                 {alerts.length >= 5 ? (
-                  <p className="font-data text-[10px] text-text-faint italic">Maximum 5 alerts per ticker</p>
+                  <p className="font-sans text-[10px] text-text-faint italic">Maximum 5 alerts per ticker</p>
                 ) : (
                   <div className="flex items-center gap-2">
                     <select
                       value={alertType}
                       onChange={(e) => setAlertType(e.target.value as typeof alertType)}
-                      className="font-data text-[11px] border border-border-base rounded-lg px-2 py-1.5 bg-white text-text-primary focus:outline-none focus:border-gold cursor-pointer"
+                      className="font-sans text-[11px] border border-border-base rounded-lg px-2 py-1.5 bg-white text-text-primary focus:outline-none focus:border-gold cursor-pointer"
                     >
                       <option value="percent_change">% move</option>
                       <option value="price_above">Above $</option>
@@ -1006,13 +1006,13 @@ Constraints:
                       value={alertThreshold}
                       onChange={(e) => setAlertThreshold(e.target.value)}
                       placeholder={alertType === "percent_change" ? "e.g. 5" : "e.g. 150.00"}
-                      className="font-data text-[11px] border border-border-base rounded-lg px-2 py-1.5 bg-white text-text-primary w-24 focus:outline-none focus:border-gold"
+                      className="font-sans text-[11px] border border-border-base rounded-lg px-2 py-1.5 bg-white text-text-primary w-24 focus:outline-none focus:border-gold"
                     />
                     <button
                       type="button"
                       onClick={handleAddAlert}
                       disabled={!alertThreshold || parseFloat(alertThreshold) <= 0}
-                      className="px-3 py-1.5 rounded-lg bg-gold text-cream font-data text-[11px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1.5 rounded-lg bg-gold text-cream font-sans text-[11px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Add alert
                     </button>
@@ -1029,11 +1029,11 @@ Constraints:
           {/* Section header with sort controls */}
           <div className="flex items-center justify-between mb-3">
             <div>
-              <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold">
-                Recent Coverage ({articles.length})
+              <p className="font-sans text-[9px] text-text-muted font-semibold">
+                Recent coverage ({articles.length})
               </p>
               {articles.length > 0 && timeAgo(articles[0].published_at) && (
-                <p className="font-data text-[9px] text-text-faint mt-0.5">
+                <p className="font-sans text-[9px] text-text-faint mt-0.5">
                   Updated {timeAgo(articles[0].published_at)}
                 </p>
               )}
@@ -1046,7 +1046,7 @@ Constraints:
                     type="button"
                     onClick={() => setSortMode(mode)}
                     className={cn(
-                      "px-2.5 py-1 rounded-md font-data text-[9px] cursor-pointer transition-colors border",
+                      "px-2.5 py-1 rounded-md font-sans text-[9px] cursor-pointer transition-colors border",
                       sortMode === mode
                         ? "border-gold bg-gold-muted text-gold font-semibold"
                         : "border-border-base bg-white text-text-muted hover:text-text-primary",
@@ -1095,7 +1095,7 @@ Constraints:
                               {(a.industry_verticals ?? []).map((v) => (
                                 <span
                                   key={v}
-                                  className="font-data text-[9px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200"
+                                  className="font-sans text-[9px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200"
                                 >
                                   {v}
                                 </span>
@@ -1103,25 +1103,25 @@ Constraints:
                               {(a.activity_types ?? []).map((t) => (
                                 <span
                                   key={t}
-                                  className="font-data text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200"
+                                  className="font-sans text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200"
                                 >
                                   {t}
                                 </span>
                               ))}
                               {a.source && (
-                                <span className="font-data text-[9px] text-text-muted">
+                                <span className="font-sans text-[9px] text-text-muted">
                                   {a.source}
                                 </span>
                               )}
                               {a.published_at && timeAgo(a.published_at) && (
-                                <span className="font-data text-[9px] text-text-faint ml-auto">
+                                <span className="font-sans text-[9px] text-text-faint ml-auto">
                                   {timeAgo(a.published_at)}
                                 </span>
                               )}
                               <button
                                 type="button"
                                 onClick={() => setArticleMemoEntry(a)}
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded font-data text-[9px] text-gold bg-gold-muted border border-gold-border hover:bg-gold/10 cursor-pointer transition-colors"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded font-sans text-[9px] text-gold bg-gold-muted border border-gold-border hover:bg-gold/10 cursor-pointer transition-colors"
                               >
                                 <Sparkles size={9} />
                                 Memo
@@ -1161,7 +1161,7 @@ Constraints:
                                     return next;
                                   })
                                 }
-                                className="flex items-center gap-1.5 mt-1 ml-2 font-data text-[10px] cursor-pointer transition-colors"
+                                className="flex items-center gap-1.5 mt-1 ml-2 font-sans text-[10px] cursor-pointer transition-colors"
                                 style={{ color: '#d97706', background: 'none', border: 'none', padding: '2px 4px' }}
                               >
                                 <ChevronDown
@@ -1181,10 +1181,10 @@ Constraints:
                                     >
                                       <div className="flex flex-wrap items-center gap-1.5 mb-1">
                                         {ra.source && (
-                                          <span className="font-data text-[9px] text-text-muted">{ra.source}</span>
+                                          <span className="font-sans text-[9px] text-text-muted">{ra.source}</span>
                                         )}
                                         {ra.published_at && timeAgo(ra.published_at) && (
-                                          <span className="font-data text-[9px] text-text-faint ml-auto">
+                                          <span className="font-sans text-[9px] text-text-faint ml-auto">
                                             {timeAgo(ra.published_at)}
                                           </span>
                                         )}
@@ -1218,7 +1218,7 @@ Constraints:
                         <div style={{ maxHeight: '48px', overflow: 'hidden', pointerEvents: 'none', userSelect: 'none', opacity: 0.7 }}>
                           {clusters[GATE_LIMIT] && (
                             <div className="bg-white border border-border-base rounded-xl p-3">
-                              <p className="font-data text-[9px] text-text-muted">{clusters[GATE_LIMIT].leadArticle.source}</p>
+                              <p className="font-sans text-[9px] text-text-muted">{clusters[GATE_LIMIT].leadArticle.source}</p>
                               <p className="font-display text-[13px] font-bold text-espresso leading-snug mt-1 line-clamp-1">{clusters[GATE_LIMIT].leadArticle.title}</p>
                             </div>
                           )}
@@ -1259,7 +1259,7 @@ Constraints:
                 onClick={() => setNotesOpen(o => !o)}
                 className="flex items-center gap-2 group w-full text-left"
               >
-                <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold">
+                <p className="font-sans text-[9px] text-text-muted font-semibold">
                   Notes
                 </p>
                 {notesOpen ? (
@@ -1287,12 +1287,12 @@ Constraints:
                       />
                       <div className="flex justify-end items-center gap-2 mt-1.5">
                         {noteSaved && (
-                          <span className="font-data text-[9px] text-signal-up">Saved ✓</span>
+                          <span className="font-sans text-[9px] text-signal-up">Saved ✓</span>
                         )}
                         <button
                           type="button"
                           onClick={() => handleNoteSave(noteText)}
-                          className="px-3 py-1 rounded-md bg-gold text-cream font-data text-[10px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
+                          className="px-3 py-1 rounded-md bg-gold text-cream font-sans text-[10px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
                         >
                           Save note
                         </button>

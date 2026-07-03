@@ -94,7 +94,47 @@
   --duration-fast: 100ms;
   --duration-base: 150ms;
   --duration-slow: 250ms;
+  /* Spec §5: the resolve moment (open -> verdict) is the emotional peak and gets
+     the one slow, deliberate timing. Everything else stays at --duration-base.
+     Uses the existing --ease-out. */
+  --duration-resolve: 550ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── Typography scale (spec §2) ──
+     Newsreader unless a surface is explicitly functional UI (Inter) or tabular
+     (JetBrains Mono). Hierarchy on reading surfaces comes from size/weight/color
+     only — never from switching families mid-card. */
+  --type-display-xl-size: 50px;   /* track-record % */
+  --type-display-xl-weight: 500;
+  --type-display-xl-tracking: -0.01em;
+  --type-display-xl-leading: 0.9;
+  --type-verdict-size: 31px;       /* Right / Wrong verdict word */
+  --type-verdict-weight: 500;
+  --type-verdict-leading: 1.05;
+  --type-verdict-phrase-size: 24px; /* "No clean read" runs smaller (it's a phrase) */
+  --type-claim-size: 19px;
+  --type-claim-weight: 500;
+  --type-claim-leading: 1.35;
+  --type-title-size: 19px;
+  --type-title-weight: 500;
+  --type-receipt-size: 15px;       /* receipt / calibration line, Newsreader 400 */
+  --type-receipt-weight: 400;
+  --type-receipt-leading: 1.45;
+  --type-note-size: 14px;          /* attribution note, Newsreader 400 ITALIC */
+  --type-note-weight: 400;
+  --type-eyebrow-size: 13px;       /* header eyebrow / seal, Newsreader 400 */
+  --type-eyebrow-weight: 400;
+
+  /* ── Design-system rules (spec §3, enforced by convention) ──
+     Rule A — gold (--gold) means one thing on the scored object: "scored against
+       reality, now permanent." It marks ONLY the resolved seal glyph (◆ Scored).
+       Do not use gold as general decoration on that surface. (The established
+       gold focus-ring and `watch` sentiment pill are separate, allowed uses.)
+     Rule B — verdict-state spine colors map to existing tokens, NOT --signal-warn:
+       open         -> --border-hi
+       right         -> --signal-up
+       wrong         -> --signal-dn
+       inconclusive  -> --text-muted   (neutral "no clean read", never amber) */
 
   /* ── Layout constants ── */
   --sidebar-width: 220px;

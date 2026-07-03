@@ -890,7 +890,7 @@ export default function WatchlistPage() {
           {tickers.length > 0 && (
             <div className="grid grid-cols-4 gap-2">
               {[
-                { label: "TRACKING", sub: `${watchlist.length} items`, value: watchlist.length, icon: <Star size={12} />, color: "text-gold" },
+                { label: "Tracking", sub: `${watchlist.length} items`, value: watchlist.length, icon: <Star size={12} />, color: "text-gold" },
                 { label: "Gainers", sub: `of ${tickers.length} tickers`, value: gainers, icon: <TrendingUp size={12} />, color: "text-signal-up" },
                 { label: "Losers", sub: `of ${tickers.length} tickers`, value: losers, icon: <TrendingDown size={12} />, color: "text-signal-dn" },
                 { label: "Flat", sub: `of ${tickers.length} tickers`, value: flat, icon: <Minus size={12} />, color: "text-text-muted" },
@@ -898,10 +898,10 @@ export default function WatchlistPage() {
                 <div key={s.label} className="bg-white dark:bg-elevated border border-border-base rounded-xl p-3 text-center">
                   <div className={cn("flex items-center justify-center gap-1 mb-0.5", s.color)}>
                     {s.icon}
-                    <span className="font-data text-[16px] font-bold">{s.value}</span>
+                    <span className="font-sans text-[16px] font-bold">{s.value}</span>
                   </div>
-                  <p className="font-data text-[9px] text-text-muted uppercase tracking-wider">{s.label}</p>
-                  <p className="font-data text-[8px] text-text-faint">{s.sub}</p>
+                  <p className="font-sans text-[9px] text-text-muted">{s.label}</p>
+                  <p className="font-sans text-[8px] text-text-faint">{s.sub}</p>
                 </div>
               ))}
             </div>
@@ -911,14 +911,14 @@ export default function WatchlistPage() {
             <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: '8px', marginTop: '4px' }}>
               <Link
                 href="/watchlist/export"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-base bg-white dark:bg-elevated text-text-muted font-data text-[10px] hover:text-text-primary transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-base bg-white dark:bg-elevated text-text-muted font-sans text-[10px] hover:text-text-primary transition-colors cursor-pointer"
               >
                 Export Report
               </Link>
               <a
                 href="/api/export/watchlist-xlsx"
                 download
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-base bg-white dark:bg-elevated text-text-muted font-data text-[10px] hover:text-text-primary transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-base bg-white dark:bg-elevated text-text-muted font-sans text-[10px] hover:text-text-primary transition-colors cursor-pointer"
               >
                 Export Excel (.xlsx)
               </a>
@@ -927,7 +927,7 @@ export default function WatchlistPage() {
 
           {/* Tracking list */}
           <div>
-            <p className="font-data text-[9px] uppercase tracking-widest text-text-muted mb-2.5">
+            <p className="font-sans text-[9px] text-text-muted mb-2.5">
               Tracking ({watchlist.length})
             </p>
 
@@ -947,7 +947,7 @@ export default function WatchlistPage() {
                 {sectorEntries.length > 0 && (
                   <>
                     {showDivider && (
-                      <p className="font-data text-[8px] uppercase tracking-widest text-text-faint mb-1.5">Sectors</p>
+                      <p className="font-sans text-[8px] text-text-faint mb-1.5">Sectors</p>
                     )}
                     {sectorEntries.map((entry) => {
                       const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
@@ -966,12 +966,12 @@ export default function WatchlistPage() {
                           )}
                         >
                           {/* Sector name — full width, no fixed constraint */}
-                          <span className="font-data text-[12px] font-bold text-text-primary truncate min-w-0 flex-1">
+                          <span className="font-display text-[12px] font-bold text-text-primary truncate min-w-0 flex-1">
                             {toDisplayName(entry.identifier)}
                           </span>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             {articleCount > 0 && (
-                              <span className="font-data text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
+                              <span className="font-sans text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
                                 {articleCount >= 20 ? "20+" : articleCount}
                               </span>
                             )}
@@ -1005,7 +1005,7 @@ export default function WatchlistPage() {
                 {/* PUBLIC COMPANIES GROUP */}
                 {publicEntries.length > 0 && (
                   <>
-                    <p className="font-data text-[8px] uppercase tracking-widest text-text-faint mb-1.5 mt-1">Public Companies</p>
+                    <p className="font-sans text-[8px] text-text-faint mb-1.5 mt-1">Public companies</p>
                     <DndContext
                       sensors={dndSensors}
                       collisionDetection={closestCenter}
@@ -1047,7 +1047,7 @@ export default function WatchlistPage() {
                 {/* PRIVATE COMPANIES GROUP */}
                 {privateEntries.length > 0 && (
                   <>
-                    <p className="font-data text-[8px] uppercase tracking-widest text-text-faint mb-1.5 mt-1">Private Companies</p>
+                    <p className="font-sans text-[8px] text-text-faint mb-1.5 mt-1">Private companies</p>
                     <DndContext
                       sensors={dndSensors}
                       collisionDetection={closestCenter}
@@ -1096,13 +1096,13 @@ export default function WatchlistPage() {
             {selectedIdentifier ? (
               <div className="flex items-center gap-2">
                 <span className="font-display text-[15px] font-bold text-espresso">{selectedDisplayLabel}</span>
-                <span className="font-data text-[9px] text-text-faint">{displayedArticles.length} articles</span>
-                <button onClick={() => setSelectedIdentifier(null)} className="font-data text-[9px] text-text-muted hover:text-text-primary cursor-pointer ml-1">← All</button>
+                <span className="font-sans text-[9px] text-text-faint">{displayedArticles.length} articles</span>
+                <button onClick={() => setSelectedIdentifier(null)} className="font-sans text-[9px] text-text-muted hover:text-text-primary cursor-pointer ml-1">← All</button>
               </div>
             ) : (
               <div>
-                <p className="font-data text-[9px] uppercase tracking-widest text-text-muted">Watchlist Feed</p>
-                <p className="font-data text-[11px] text-gold font-semibold">{displayedArticles.length} articles</p>
+                <p className="font-sans text-[9px] text-text-muted">Watchlist feed</p>
+                <p className="font-sans text-[11px] text-gold font-semibold">{displayedArticles.length} articles</p>
               </div>
             )}
             <div className="flex items-center gap-1.5">
@@ -1112,7 +1112,7 @@ export default function WatchlistPage() {
                   type="button"
                   onClick={() => setAgeFilter(f)}
                   className={cn(
-                    "px-2.5 py-1 rounded-md font-data text-[9px] cursor-pointer transition-colors border",
+                    "px-2.5 py-1 rounded-md font-sans text-[9px] cursor-pointer transition-colors border",
                     ageFilter === f
                       ? "border-gold bg-gold-muted text-gold font-semibold"
                       : "border-border-base bg-white dark:bg-elevated text-text-muted hover:text-text-primary",
@@ -1128,7 +1128,7 @@ export default function WatchlistPage() {
                   type="button"
                   onClick={() => setSortMode(mode)}
                   className={cn(
-                    "px-2.5 py-1 rounded-md font-data text-[9px] cursor-pointer transition-colors border",
+                    "px-2.5 py-1 rounded-md font-sans text-[9px] cursor-pointer transition-colors border",
                     sortMode === mode
                       ? "border-gold bg-gold-muted text-gold font-semibold"
                       : "border-border-base bg-white dark:bg-elevated text-text-muted hover:text-text-primary",
@@ -1203,26 +1203,26 @@ export default function WatchlistPage() {
                 <div key={a.id} className="bg-white dark:bg-elevated border border-border-base dark:border-border-default rounded-xl p-3">
                   <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                     {(a.industry_verticals ?? []).map((v) => (
-                      <span key={v} className="font-data text-[9px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200">
+                      <span key={v} className="font-sans text-[9px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200">
                         {v}
                       </span>
                     ))}
                     {(a.activity_types ?? []).map((t) => (
-                      <span key={t} className="font-data text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                      <span key={t} className="font-sans text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
                         {t}
                       </span>
                     ))}
-                    {a.source && <span className="font-data text-[9px] text-text-muted">{a.source}</span>}
+                    {a.source && <span className="font-sans text-[9px] text-text-muted">{a.source}</span>}
                     {a.id.startsWith("finnhub-") && (
-                      <span className="font-data text-[9px] text-text-faint">via Finnhub</span>
+                      <span className="font-sans text-[9px] text-text-faint">via Finnhub</span>
                     )}
                     {a.published_at && timeAgo(a.published_at) && (
-                      <span className="font-data text-[9px] text-text-faint ml-auto">{timeAgo(a.published_at)}</span>
+                      <span className="font-sans text-[9px] text-text-faint ml-auto">{timeAgo(a.published_at)}</span>
                     )}
                     <button
                       type="button"
                       onClick={() => setArticleMemoEntry(a)}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded font-data text-[9px] text-gold bg-gold-muted border border-gold-border hover:bg-gold/10 cursor-pointer transition-colors"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded font-sans text-[9px] text-gold bg-gold-muted border border-gold-border hover:bg-gold/10 cursor-pointer transition-colors"
                     >
                       <Sparkles size={9} />
                       Memo
@@ -1239,7 +1239,7 @@ export default function WatchlistPage() {
                         {a.title}
                       </h4>
                       {(!a.summary || a.summary.trim().length < 15) ? (
-                        <span className="font-data text-[9px] text-text-faint italic mt-0.5 block">
+                        <span className="font-sans text-[9px] text-text-faint italic mt-0.5 block">
                           Headline only
                         </span>
                       ) : (
@@ -1254,7 +1254,7 @@ export default function WatchlistPage() {
                         {a.title}
                       </h4>
                       {(!a.summary || a.summary.trim().length < 15) ? (
-                        <span className="font-data text-[9px] text-text-faint italic mt-0.5 block">
+                        <span className="font-sans text-[9px] text-text-faint italic mt-0.5 block">
                           Headline only
                         </span>
                       ) : (
@@ -1386,7 +1386,7 @@ export default function WatchlistPage() {
       )}
 
       {dragError && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-signal-dn text-white font-data text-[11px] px-4 py-2 rounded-lg shadow-lg z-50">
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-signal-dn text-white font-sans text-[11px] px-4 py-2 rounded-lg shadow-lg z-50">
           {dragError}
         </div>
       )}
@@ -1423,7 +1423,7 @@ export default function WatchlistPage() {
             className="bg-white dark:bg-elevated border border-border-base dark:border-border-default rounded-xl p-5 shadow-2xl min-w-[220px]"
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="font-data text-[9px] uppercase tracking-widest text-gold font-semibold mb-3">Keyboard Shortcuts</p>
+            <p className="font-sans text-[9px] text-text-muted font-semibold mb-3">Keyboard shortcuts</p>
             <div className="space-y-1.5">
               {[
                 { key: "J / K", desc: "Navigate" },
@@ -1434,7 +1434,7 @@ export default function WatchlistPage() {
               ].map(({ key, desc }) => (
                 <div key={key} className="flex items-center justify-between gap-4">
                   <kbd className="font-mono text-[10px] bg-parchment-mid border border-border-base rounded px-1.5 py-0.5 text-text-primary">{key}</kbd>
-                  <span className="font-data text-[11px] text-text-muted">{desc}</span>
+                  <span className="font-sans text-[11px] text-text-muted">{desc}</span>
                 </div>
               ))}
             </div>
@@ -1446,7 +1446,7 @@ export default function WatchlistPage() {
       <button
         type="button"
         onClick={() => setShowShortcutLegend(prev => !prev)}
-        className="fixed bottom-6 right-6 z-50 w-8 h-8 rounded-full bg-white dark:bg-elevated border border-border-base shadow-md flex items-center justify-center font-data text-[12px] text-text-muted hover:text-espresso hover:border-gold transition-colors cursor-pointer"
+        className="fixed bottom-6 right-6 z-50 w-8 h-8 rounded-full bg-white dark:bg-elevated border border-border-base shadow-md flex items-center justify-center font-sans text-[12px] text-text-muted hover:text-espresso hover:border-gold transition-colors cursor-pointer"
         aria-label="Keyboard shortcuts"
       >
         ?
@@ -1564,7 +1564,7 @@ function SortableEntryRow(props: {
               className="pointer-events-none"
             />
             {entry.pinned_position != null && (
-              <span className="font-data text-[9px] font-bold leading-none">
+              <span className="font-sans text-[9px] font-bold leading-none">
                 {entry.pinned_position}
               </span>
             )}
@@ -1574,18 +1574,18 @@ function SortableEntryRow(props: {
 
       {/* LEFT: identifier + optional display_name subtitle */}
       <div className="flex flex-col min-w-0 flex-1">
-        <span className="font-data text-[13px] font-bold text-text-primary truncate">
+        <span className="font-display text-[13px] font-bold text-text-primary truncate">
           {entry.identifier}
         </span>
         {subtitle && (
-          <span className="font-data text-[9px] text-text-faint">{subtitle}</span>
+          <span className="font-sans text-[9px] text-text-faint">{subtitle}</span>
         )}
       </div>
 
       {/* RIGHT: article count, price, hover actions, chevron */}
       <div className="flex items-center gap-2 flex-shrink-0 self-center">
         {articleCount > 0 && (
-          <span className="font-data text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
+          <span className="font-sans text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
             {articleCount >= 20 ? "20+" : articleCount}
           </span>
         )}

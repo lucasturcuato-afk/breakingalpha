@@ -28,7 +28,7 @@ export function DealCard({ deal }: DealCardProps) {
           {deal.value}
         </span>
       </div>
-      <span className="inline-block font-sans text-[9px] uppercase tracking-wide font-bold text-text-muted bg-parchment-mid dark:bg-overlay px-1.5 py-0.5 rounded">
+      <span className="inline-block font-sans text-[9px] font-bold text-text-muted bg-parchment-mid dark:bg-overlay px-1.5 py-0.5 rounded">
         {deal.dealType}
       </span>
       <p className="font-sans text-[11px] text-text-secondary leading-snug mt-1.5">

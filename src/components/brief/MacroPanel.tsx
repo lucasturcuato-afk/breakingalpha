@@ -65,8 +65,6 @@ const FULL_GROUPS: Array<{ title: string; keys: string[] }> = [
   { title: "Growth", keys: ["gdp"] },
 ];
 
-const GOLD_DARK = "var(--gold-dark)";
-
 function formatValue(value: number, unit: string): string {
   if (unit === "K") {
     const sign = value >= 0 ? "+" : "";
@@ -90,9 +88,7 @@ function releasesByKey(panel: MacroPanelData): Map<string, MacroRelease> {
 
 const EYEBROW: React.CSSProperties = {
   fontSize: 10,
-  letterSpacing: "0.18em",
-  textTransform: "uppercase",
-  color: GOLD_DARK,
+  color: "var(--text-muted)",
   fontWeight: 800,
 };
 
@@ -148,7 +144,7 @@ function CompactStrip({ byKey }: { byKey: Map<string, MacroRelease> }) {
           <span className="font-sans" style={{ fontSize: 11.5, color: "var(--text-secondary)", fontWeight: 600 }}>
             {c.display}
           </span>
-          <span className="font-data" style={{ fontSize: 13, color: "var(--espresso)", fontWeight: 800 }}>
+          <span className="font-display" style={{ fontSize: 13, color: "var(--espresso)", fontWeight: 800 }}>
             {c.valueText}
           </span>
           {c.tag ? (
@@ -171,7 +167,7 @@ function FigureCell({ figure }: { figure: MacroFigure }) {
       <span className="font-sans" style={{ fontSize: 10.5, color: "var(--text-secondary)" }}>
         {figure.label}
       </span>
-      <span className="font-data" style={{ fontSize: 12.5, color: "var(--espresso)", fontWeight: 800 }}>
+      <span className="font-display" style={{ fontSize: 12.5, color: "var(--espresso)", fontWeight: 800 }}>
         {formatValue(figure.value, figure.unit)}
       </span>
       {figure.prior !== null && figure.prior !== undefined ? (
@@ -241,8 +237,6 @@ function FullPanel({ byKey, read }: { byKey: Map<string, MacroRelease>; read?: s
             className="font-sans"
             style={{
               fontSize: 10,
-              letterSpacing: "0.14em",
-              textTransform: "uppercase",
               color: "var(--text-secondary)",
               fontWeight: 700,
               margin: "0 0 2px",

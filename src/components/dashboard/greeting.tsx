@@ -79,7 +79,7 @@ export function Greeting({
 
   return (
     <div>
-      <p className="font-sans text-[11px] uppercase tracking-widest text-gold font-medium">
+      <p className="font-sans text-[11px] text-text-muted font-medium">
         {dateStr} · {marketStatus}
       </p>
       <h2 className="font-display text-[26px] font-extrabold text-espresso mt-0.5 leading-tight">

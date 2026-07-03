@@ -49,12 +49,10 @@ export function Topbar({
           {pageTitle}
         </h1>
         <span
-          className="font-sans font-medium uppercase leading-none select-none"
+          className="font-sans font-medium leading-none select-none text-text-faint"
           style={{
-            color: "var(--gold)",
-            fontSize: "9px",
-            letterSpacing: "0.15em",
-            opacity: 0.75,
+            fontSize: "10px",
+            opacity: 0.9,
           }}
           aria-label="Beta release"
         >
@@ -78,7 +76,7 @@ export function Topbar({
           <span className="flex-1 text-left font-sans text-[12px] text-text-faint">
             Ask Signalera anything...
           </span>
-          <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded bg-gold-muted text-[9px] font-sans font-semibold text-gold uppercase tracking-wide">
+          <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded bg-parchment-mid text-[10px] font-sans font-semibold text-text-muted">
             Coming soon
           </span>
         </div>

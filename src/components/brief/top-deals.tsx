@@ -44,13 +44,13 @@ export function TopDeals({ deals }: TopDealsProps) {
             {feature.company}
           </h4>
           {feature.value && (
-            <span className="font-data text-[15px] font-semibold text-gold flex-shrink-0 mt-0.5">
+            <span className="font-display text-[15px] font-semibold text-gold flex-shrink-0 mt-0.5">
               {feature.value}
             </span>
           )}
         </div>
         {feature.deal_type && (
-          <span className="inline-block font-data text-[9px] uppercase tracking-wide font-bold text-gold bg-gold-muted px-1.5 py-0.5 rounded mb-2">
+          <span className="inline-block font-sans text-[9px] uppercase font-bold text-text-muted bg-parchment-mid px-1.5 py-0.5 rounded mb-2">
             {feature.deal_type}
           </span>
         )}
@@ -78,12 +78,12 @@ export function TopDeals({ deals }: TopDealsProps) {
               </h5>
               <span className="flex-shrink-0">
                 {deal.deal_type ? (
-                  <span className="font-data text-[9px] uppercase tracking-wide font-bold text-gold bg-gold-muted px-1.5 py-0.5 rounded">
+                  <span className="font-sans text-[9px] uppercase font-bold text-text-muted bg-parchment-mid px-1.5 py-0.5 rounded">
                     {deal.deal_type}
                   </span>
                 ) : null}
               </span>
-              <span className="font-data text-[12px] font-semibold text-gold flex-shrink-0">
+              <span className="font-display text-[12px] font-semibold text-gold flex-shrink-0">
                 {deal.value || "—"}
               </span>
               <p className="font-sans text-[12px] text-text-secondary dark:text-[#e8e8e4] truncate">
