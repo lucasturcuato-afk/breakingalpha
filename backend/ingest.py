@@ -1636,8 +1636,11 @@ def upsert_company(name, themes, sentiment):
 
 
 def _normalize_title(title):
-    """Lowercase, strip punctuation, collapse whitespace for exact-title dedup."""
-    t = title.lower()
+    """Lowercase, strip punctuation, collapse whitespace for exact-title dedup.
+    Decodes HTML entities first (defect FIX 2) so an entity-encoded title and its
+    decoded twin (e.g. "Rearm &amp; Rebuild" vs "Rearm & Rebuild") produce the
+    same dedup key instead of diverging on the stray "amp"."""
+    t = _html.unescape(title or "").lower()
     t = re.sub(r"[^\w\s]", "", t)
     t = re.sub(r"\s+", " ", t).strip()
     return t
@@ -1805,7 +1808,10 @@ def _article_row(article, analysis, clean_companies):
     # frontend code still reading the old column keeps working.
     sector_fallback = industry_verticals[0] if industry_verticals else ""
     return {
-        "title": article["title"],
+        # Decode HTML entities in the stored title (defect FIX 2): PR Newswire /
+        # Bloomberg feeds leak literal &amp; / &#39; / &quot; into the title.
+        # Shared by both store paths, so this covers every source, not just gnews.
+        "title": _html.unescape(article["title"] or ""),
         "summary": article["summary"] or "",
         "url": article["url"],
         "source": article["source"],

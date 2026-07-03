@@ -102,6 +102,19 @@ function isHeadlineEcho(summary: string, title: string): boolean {
   return longer.startsWith(shorter) && longer.length - shorter.length <= 8;
 }
 
+// Truncate the expand body at a WORD boundary at/under `cap` (defect FIX 3), so
+// a long summary reads as a deliberate teaser instead of a mid-word glitch. Cap
+// length is unchanged; only the break point moves back to the last space, with
+// any trailing punctuation trimmed before the ellipsis is appended by the caller.
+function truncateAtWord(text: string, cap: number): { text: string; truncated: boolean } {
+  if (text.length <= cap) return { text, truncated: false };
+  const slice = text.slice(0, cap);
+  const lastSpace = slice.lastIndexOf(" ");
+  const cut = lastSpace > 0 ? slice.slice(0, lastSpace) : slice;
+  // Trim trailing punctuation (incl. an em dash via its \u2014 escape) before the ellipsis.
+  return { text: cut.replace(/[\s.,;:!?\u2014-]+$/, ""), truncated: true };
+}
+
 export interface DCStoryRowProps {
   story: StoryData;
   index: number;
@@ -129,6 +142,7 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
   // "Headline only" note instead of a blank panel or the title echoed back.
   const cleanedSummary = story.summary ? stripHtml(story.summary) : "";
   const bodyText = isHeadlineEcho(cleanedSummary, story.title) ? "" : cleanedSummary.trim();
+  const bodyPreview = truncateAtWord(bodyText, 480);
 
   return (
     <div
@@ -266,8 +280,8 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
                   margin: "14px 0 10px",
                 }}
               >
-                {bodyText.slice(0, 480)}
-                {bodyText.length > 480 ? "…" : ""}
+                {bodyPreview.text}
+                {bodyPreview.truncated ? "…" : ""}
               </p>
             ) : (
               <p
