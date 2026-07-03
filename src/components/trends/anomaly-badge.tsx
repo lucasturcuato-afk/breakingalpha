@@ -19,7 +19,7 @@ export function AnomalyBadge({ level, className }: AnomalyBadgeProps) {
     <span
       className={cn(
         "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border",
-        "font-sans text-[9px] font-extrabold uppercase tracking-wide",
+        "font-sans text-[10px] font-semibold capitalize",
         levelStyles[level],
         className,
       )}

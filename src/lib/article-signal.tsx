@@ -14,7 +14,7 @@ export function CompletenessBadge({ completeness }: { completeness?: Completenes
 
   const styles: Record<Completeness, { bg: string; label: string }> = {
     full: { bg: "bg-signal-up/10 text-signal-up", label: "Full text \u2713" },
-    summary: { bg: "bg-gold/10 text-gold-dark", label: "Summary" },
+    summary: { bg: "bg-parchment-mid text-text-secondary", label: "Summary" },
     // Light: solid bg-parchment-mid + text-muted (unchanged). Dark: the faint
     // white/10 fill reads as a near-invisible lift and text-muted is sub-AA on
     // it, so define the pill with a border (the same border-subtle token the
@@ -35,7 +35,7 @@ export function CompletenessBadge({ completeness }: { completeness?: Completenes
 export function SignalScore({ score }: { score?: number | null }) {
   if (score == null) return null;
   return (
-    <span className="font-data text-[10px] text-gold font-semibold tracking-tight">
+    <span className="font-sans text-[10px] text-text-muted font-semibold">
       Signal: {score.toFixed(1)}
     </span>
   );
@@ -56,7 +56,7 @@ export function SourceCredibilityBadge({
   if (winRate == null || winRate === 0) return null;
   if (sampleSize != null && sampleSize < MIN_SAMPLE) return null;
   return (
-    <span className="font-data text-[9px] text-gold-dark bg-gold/10 px-1.5 py-0.5 rounded">
+    <span className="font-sans text-[9px] text-text-secondary bg-parchment-mid px-1.5 py-0.5 rounded">
       Source: {Math.round(winRate)}% win rate
     </span>
   );

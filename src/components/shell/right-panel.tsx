@@ -67,7 +67,7 @@ export function PanelWidget({ title, action, children }: PanelWidgetProps) {
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-sans text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+        <h3 className="font-sans text-[12px] font-semibold text-text-muted">
           {title}
         </h3>
         {action}

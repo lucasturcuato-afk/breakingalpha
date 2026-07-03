@@ -40,8 +40,8 @@ export function SentimentPill({ tone, label, size = "md", className, testId }: S
         display: "inline-block",
         fontFamily: "var(--font-inter), Inter, sans-serif",
         fontSize: z.font,
-        fontWeight: 700,
-        letterSpacing: z.tr,
+        fontWeight: 600,
+        letterSpacing: "normal",
         padding: z.pad,
         borderRadius: 4,
         background: s.bg,
@@ -50,7 +50,7 @@ export function SentimentPill({ tone, label, size = "md", className, testId }: S
         whiteSpace: "nowrap",
       }}
     >
-      {label ?? tone}
+      {label ?? tone.charAt(0) + tone.slice(1).toLowerCase()}
     </span>
   );
 }

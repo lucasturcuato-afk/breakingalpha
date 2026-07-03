@@ -69,7 +69,7 @@ export function StatCard({
 
       <div className="px-3 pt-3 pb-2.5">
         {/* Label */}
-        <p className="font-sans text-[10px] uppercase tracking-widest text-text-muted">
+        <p className="font-sans text-[11px] text-text-muted">
           {label}
         </p>
 
@@ -78,10 +78,7 @@ export function StatCard({
           <div className="mt-1.5">
             <div className="flex items-baseline gap-2">
               <span
-                className={cn(
-                  "font-data text-[21px] font-bold",
-                  accentGold ? "text-gold" : "text-espresso",
-                )}
+                className="font-display text-[22px] font-semibold text-espresso"
               >
                 {value}
               </span>

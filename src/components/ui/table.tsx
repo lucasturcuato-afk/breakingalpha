@@ -53,7 +53,7 @@ const TableHead = forwardRef<HTMLTableCellElement, ThHTMLAttributes<HTMLTableCel
     <th
       ref={ref}
       className={cn(
-        "h-9 px-3 text-left align-middle text-[10px] font-semibold uppercase tracking-wide text-text-muted",
+        "h-9 px-3 text-left align-middle text-[11px] font-semibold text-text-muted",
         "border-b border-border-base",
         className,
       )}
