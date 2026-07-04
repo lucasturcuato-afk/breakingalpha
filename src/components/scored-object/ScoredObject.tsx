@@ -12,11 +12,17 @@
  * PURELY PRESENTATIONAL. Every value is a prop. The resolved states
  * (right / wrong / inconclusive) carry NO data source and NO invented numbers:
  * if a receipt/calibration/attribution field is not passed, it is not rendered.
- * Resolution logic does not exist yet, so these states must only be instantiated
- * from an obvious demo/preview harness, never a live surface.
+ * On live surfaces, resolved states may ONLY be produced by the outcome mapper
+ * (scored-object-map.ts scoredCallProps) from a real morning_brief_call_outcomes
+ * row; hand-written resolved props belong exclusively to /preview/scored-object.
+ *
+ * "notGraded" is the honest absence-of-verdict state: the call's window closed
+ * but no credible grade exists (ungradable outcome, or never graded). It must
+ * not look like a verdict (no gold seal, no verdict word) and must not look
+ * like a still-pending Open either.
  */
 
-export type ScoredState = "open" | "right" | "wrong" | "inconclusive";
+export type ScoredState = "open" | "right" | "wrong" | "inconclusive" | "notGraded";
 
 export interface ScoredObjectProps {
   /** Verdict state. Drives the spine, seal, and verdict-zone rendering. */
@@ -53,6 +59,13 @@ export interface ScoredObjectProps {
   calibration?: string;
   /** Attribution note, sentence case, e.g. "Attribution: clean." Rendered italic. */
   attribution?: string;
+
+  // ── notGraded-state verdict zone ──
+  /**
+   * Why no grade exists, e.g. "Window closed without a grade." or
+   * "No price data for the session." Rendered muted; never a verdict.
+   */
+  notGradedReason?: string;
 }
 
 /** Verdict-state spine + verdict-word color, mapped to existing tokens (spec §3, Rule B). */
@@ -61,10 +74,12 @@ const STATE_COLOR: Record<ScoredState, string> = {
   right: "var(--signal-up)",
   wrong: "var(--signal-dn)",
   inconclusive: "var(--text-muted)",
+  // Dimmer than Open: an absence, not an active wait and not a verdict.
+  notGraded: "var(--border-subtle)",
 };
 
 /** Default verdict label per state (a label, not data; overridable via `verdict`). */
-const STATE_VERDICT: Record<Exclude<ScoredState, "open">, string> = {
+const STATE_VERDICT: Record<Exclude<ScoredState, "open" | "notGraded">, string> = {
   right: "Right",
   wrong: "Wrong",
   inconclusive: "No clean read",
@@ -75,6 +90,7 @@ const SERIF = "var(--font-playfair-display), serif";
 export function ScoredObject(props: ScoredObjectProps) {
   const { state, sector, claim } = props;
   const isOpen = state === "open";
+  const isNotGraded = state === "notGraded";
   const spine = STATE_COLOR[state];
 
   return (
@@ -109,6 +125,12 @@ export function ScoredObject(props: ScoredObjectProps) {
                 style={{ backgroundColor: "var(--text-muted)" }}
               />
               Open
+            </span>
+          ) : isNotGraded ? (
+            // Absence of a verdict: no pending dot (nothing is coming), and
+            // no gold seal (reality has not spoken through us here).
+            <span className="text-text-muted" style={{ fontSize: "var(--type-eyebrow-size)" }}>
+              Not graded
             </span>
           ) : (
             // Resolved seal. Gold is used ONLY on the ◆ glyph (spec §3, Rule A);
@@ -165,6 +187,17 @@ export function ScoredObject(props: ScoredObjectProps) {
                 {props.resolvesSource ? `, against ${props.resolvesSource}.` : "."}
               </p>
             )}
+          </>
+        ) : isNotGraded ? (
+          <>
+            <hr className="mt-3 mb-3 border-t border-border-subtle" />
+            {/* Honest absence: muted note typography, never verdict typography. */}
+            <p
+              className="text-text-muted"
+              style={{ fontSize: "var(--type-receipt-size)", lineHeight: "var(--type-receipt-leading)" }}
+            >
+              {props.notGradedReason ?? "Window closed without a grade."}
+            </p>
           </>
         ) : (
           <div className="resolve-fade-up mt-3">

@@ -1,21 +1,29 @@
 "use client";
 
 /**
- * BriefCallsSection — renders a brief's predictive calls as OPEN ScoredObjects.
+ * BriefCallsSection — renders a brief's predictive calls as ScoredObjects,
+ * resolved against REAL grader outcomes.
  *
- * Data is REAL (morning_brief_calls, public-readable) but grading is NOT live yet,
- * so every call renders in the Open state only — no verdict, no percentage beyond
- * the real stored confidence, nothing invented. When a brief has no captured calls
- * the section shows an explicit pending note rather than faking completeness.
+ * Data is real end to end: calls come from morning_brief_calls and verdicts
+ * from morning_brief_call_outcomes (both public-readable), written by the
+ * attribution grader. A call renders a resolved state ONLY when a real
+ * outcome row exists; otherwise it is Open (window still live) or an honest
+ * "Not graded" (window closed, no credible grade). No verdict is ever
+ * fabricated, and the stored LLM confidence is never rendered.
  *
- * Self-contained + fail-soft: a query error or missing brief id degrades to the
- * pending note and never breaks the surrounding brief.
+ * Fail-soft on the outcomes read: if the outcomes query errors, calls fall
+ * back to the Open state (the least-claiming state) rather than guessing
+ * about expiry or verdicts, and the surrounding brief never breaks.
  */
 
 import { useEffect, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { ScoredObject } from "@/components/scored-object/ScoredObject";
-import { openCallProps } from "@/lib/scored-object-map";
+import {
+  openCallProps,
+  scoredCallProps,
+  type CallOutcomeRow,
+} from "@/lib/scored-object-map";
 
 interface BriefCall {
   id: string;
@@ -42,6 +50,9 @@ export default function BriefCallsSection({
   heading?: string;
 }) {
   const [calls, setCalls] = useState<BriefCall[]>([]);
+  // null = outcomes unavailable (query failed): render Open, claim nothing.
+  const [outcomes, setOutcomes] = useState<Map<string, CallOutcomeRow> | null>(null);
+  const [todayPt, setTodayPt] = useState<string>("");
   const [status, setStatus] = useState<LoadState>("loading");
 
   useEffect(() => {
@@ -67,7 +78,37 @@ export default function BriefCallsSection({
           setStatus("error");
           return;
         }
-        setCalls((data as BriefCall[] | null) ?? []);
+        const rows = (data as BriefCall[] | null) ?? [];
+        setCalls(rows);
+        // Session date for the open-vs-window-closed distinction only.
+        setTodayPt(
+          new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }),
+        );
+
+        if (rows.length > 0) {
+          const { data: outcomeData, error: outcomeError } = await sb
+            .from("morning_brief_call_outcomes")
+            .select(
+              "call_id, verdict, attribution, actual_pct_change, actual_direction, verdict_notes, graded_at, metadata",
+            )
+            .in("call_id", rows.map((r) => r.id));
+          if (cancelled) return;
+          if (outcomeError) {
+            setOutcomes(null); // fall back to Open; never guess a verdict
+          } else {
+            // Latest row per call (no unique constraint on call_id in the DB).
+            const byCall = new Map<string, CallOutcomeRow>();
+            for (const o of (outcomeData as CallOutcomeRow[] | null) ?? []) {
+              const prev = byCall.get(o.call_id);
+              if (!prev || (o.graded_at ?? "") > (prev.graded_at ?? "")) {
+                byCall.set(o.call_id, o);
+              }
+            }
+            setOutcomes(byCall);
+          }
+        } else {
+          setOutcomes(new Map());
+        }
         setStatus("loaded");
       } catch {
         if (!cancelled) setStatus("error");
@@ -87,8 +128,8 @@ export default function BriefCallsSection({
         {heading}
       </h2>
       <p className="font-sans text-[12px] text-text-muted mt-0.5 mb-3">
-        Predictions from this brief, captured before the outcome. Scoring goes live
-        once resolution ships.
+        Predictions from this brief, captured before the outcome and scored
+        against the market close with benchmark attribution.
       </p>
 
       {calls.length === 0 ? (
@@ -103,7 +144,12 @@ export default function BriefCallsSection({
       ) : (
         <div className="grid gap-2">
           {calls.map((c) => (
-            <ScoredObject key={c.id} {...openCallProps(c)} />
+            <ScoredObject
+              key={c.id}
+              {...(outcomes && todayPt
+                ? scoredCallProps(c, outcomes.get(c.id) ?? null, todayPt)
+                : openCallProps(c))}
+            />
           ))}
         </div>
       )}
