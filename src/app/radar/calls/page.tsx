@@ -100,6 +100,23 @@ type TopMode = "record" | "pinned" | "resolving";
 const TOP_MODE_KEY = "radar-calls-top";
 const PINNED_KEY = "radar-calls-pinned";
 
+const BRIEF_GROUPS: { key: string; label: string }[] = [
+  { key: "ticker", label: "Single names" },
+  { key: "sector", label: "Sectors" },
+  { key: "index", label: "Indices" },
+  { key: "aggregate", label: "Macro" },
+];
+
+function groupBriefCalls(calls: BriefCallRow[]): { label: string; calls: BriefCallRow[] }[] {
+  return BRIEF_GROUPS.map((g) => ({
+    label: g.label,
+    calls: calls.filter((c) => (c.claim_type ?? "") === g.key),
+  }))
+    .concat([{ label: "Other", calls: calls.filter((c) => !BRIEF_GROUPS.some((g) => g.key === (c.claim_type ?? ""))) }])
+    .filter((g) => g.calls.length > 0)
+    .sort((a, b) => b.calls.length - a.calls.length);
+}
+
 function todayPt(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 }
@@ -164,8 +181,12 @@ export default function CallsPage() {
   const [mapClaimId, setMapClaimId] = useState<string | null>(null);
   const [mapArticles, setMapArticles] = useState<MapArticle[] | null>(null);
   const [mapLoading, setMapLoading] = useState(false);
+  const [draftText, setDraftText] = useState<string | null>(null);
 
   useEffect(() => {
+    // Prefill authoring from ?draft= (Track action on articles elsewhere).
+    const draft = new URLSearchParams(window.location.search).get("draft");
+    if (draft) setDraftText(draft.slice(0, 400));
     const stored = window.localStorage.getItem(TOP_MODE_KEY);
     if (stored === "record" || stored === "pinned" || stored === "resolving") setTopMode(stored);
     try {
@@ -381,7 +402,7 @@ export default function CallsPage() {
 
   return (
     <AppShell pageTitle="Radar">
-      <div className="motion-page-enter p-6 max-w-[1080px]">
+      <div data-radar-page className="motion-page-enter p-6 max-w-[1080px]">
         <RadarTabs active="calls" />
 
         {loading ? null : (
@@ -416,14 +437,16 @@ export default function CallsPage() {
                 </button>
               ))}
             </div>
-            {topMode === "record" && <RecordHero record={record} />}
-            {topMode === "pinned" && (
-              <PinnedHero claims={pinnedClaims} today={today} outcomeFor={outcomeForClaim} />
-            )}
-            {topMode === "resolving" && <ResolvingHero claims={resolvingSoon} today={today} />}
+            <div key={topMode} className="motion-rise-in">
+              {topMode === "record" && <RecordHero record={record} />}
+              {topMode === "pinned" && (
+                <PinnedHero claims={pinnedClaims} today={today} outcomeFor={outcomeForClaim} />
+              )}
+              {topMode === "resolving" && <ResolvingHero claims={resolvingSoon} today={today} />}
+            </div>
 
             {/* ── Authoring ── */}
-            <AuthorClaim onSaved={load} disabled={unavailable} />
+            <AuthorClaim onSaved={load} disabled={unavailable} initialText={draftText} />
 
             {/* ── Your calls ── */}
             <section className="mt-8">
@@ -522,8 +545,16 @@ export default function CallsPage() {
                   No brief calls captured in the last two weeks.
                 </p>
               ) : (
+                groupBriefCalls(briefCalls.slice(0, 12)).map((group) => (
+                <div key={group.label} className="mb-6 last:mb-0">
+                  <h3 className="mb-2.5 flex items-baseline gap-2 border-b border-border-subtle pb-1.5 font-sans text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">
+                    {group.label}
+                    <span className="font-mono text-[10px] font-normal" style={{ color: "var(--gold)" }}>
+                      {group.calls.length}
+                    </span>
+                  </h3>
                 <div className="motion-stagger grid gap-3 md:grid-cols-2">
-                  {briefCalls.slice(0, 8).map((c) => {
+                  {group.calls.map((c) => {
                     const props = briefOutcomes
                       ? scoredCallProps(c, briefOutcomes.get(c.id) ?? null, today)
                       : scoredCallProps(c, null, c.brief_date ?? today);
@@ -556,6 +587,8 @@ export default function CallsPage() {
                     );
                   })}
                 </div>
+                </div>
+                ))
               )}
             </section>
 
@@ -786,8 +819,19 @@ function ResolvingHero({ claims, today }: { claims: UserClaim[]; today: string }
 
 /* ── Authoring flow ── */
 
-function AuthorClaim({ onSaved, disabled }: { onSaved: () => Promise<void>; disabled: boolean }) {
+function AuthorClaim({
+  onSaved,
+  disabled,
+  initialText,
+}: {
+  onSaved: () => Promise<void>;
+  disabled: boolean;
+  initialText?: string | null;
+}) {
   const [text, setText] = useState("");
+  useEffect(() => {
+    if (initialText) setText(initialText);
+  }, [initialText]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [proposal, setProposal] = useState<AuthorProposal | null>(null);

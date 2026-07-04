@@ -394,9 +394,25 @@ html.dark .skeleton-shimmer {
 .motion-rise-in {
   animation: motion-rise-in var(--duration-slow) var(--ease-out) both;
 }
-/* Page-level entrance when switching Radar sub-tabs / settings views. */
+/* Page-level entrance when switching Radar sub-tabs / settings views.
+   Longer than content entrances (--duration-page) with a slightly
+   deeper rise: a deliberate scene change. */
+@keyframes motion-page-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .motion-page-enter {
-  animation: motion-rise-in var(--duration-slow) var(--ease-out) both;
+  animation: motion-page-in var(--duration-page) var(--ease-out) both;
+}
+/* Outgoing page: RadarTabs adds this before navigating so the old tab
+   fades OUT (down-and-away) while the new one fades in on arrival —
+   exit + enter, never a hard swap. */
+@keyframes motion-page-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(10px); }
+}
+.motion-page-exit {
+  animation: motion-page-out var(--duration-page-exit) var(--ease-out) both;
 }
 /* Gentle list stagger: 40ms steps, capped so long lists never crawl. */
 .motion-stagger > * {
@@ -409,6 +425,25 @@ html.dark .skeleton-shimmer {
 .motion-stagger > :nth-child(6) { animation-delay: 200ms; }
 .motion-stagger > :nth-child(7) { animation-delay: 240ms; }
 .motion-stagger > :nth-child(n + 8) { animation-delay: 280ms; }
+/* Evidence-map breathing: a slow, subtle life-pulse on node dots.
+   Per-node delays are seeded from the article id in the component. */
+@keyframes map-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.82; }
+  50% { transform: scale(1.14); opacity: 1; }
+}
+.evidence-map-breathe {
+  animation: map-breathe 3.4s ease-in-out infinite;
+}
+
+/* While a map popup is open, de-emphasize the other node labels so the
+   popup is always readable and nothing visually collides. */
+[data-popup-open="true"] .map-leaf-label:not(.is-active) {
+  opacity: 0.22;
+}
+.map-leaf-label {
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+
 /* Hover-revealed rows (article actions, call resolution info). */
 .motion-fade-reveal {
   opacity: 0;
@@ -429,10 +464,11 @@ html.dark .skeleton-shimmer {
   .skeleton-shimmer { animation: none; }
   .track-record-pending-dot { animation: none; opacity: 0.85; }
   .resolve-fade-up { animation: none; }
-  .motion-rise-in, .motion-page-enter, .motion-stagger > * { animation: none; }
+  .motion-rise-in, .motion-page-enter, .motion-page-exit, .motion-stagger > * { animation: none; }
   .motion-fade-reveal { opacity: 1; transition: none; }
   .evidence-map-node { transition: none !important; transform: none !important; }
   .evidence-map-glow { display: none; }
+  .evidence-map-breathe { animation: none; }
 }
 
 /* Conviction ring inner cutout — matches parent surface */

@@ -9,7 +9,8 @@
  */
 
 import { useState } from "react";
-import { Sparkles, ExternalLink } from "lucide-react";
+import Link from "next/link";
+import { Sparkles, ExternalLink, Crosshair } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { withCompanyLine } from "@/lib/memo-company-line";
 
@@ -24,9 +25,14 @@ export interface MemoableArticle {
 export function ArticleMemoActions({
   article,
   alwaysVisible = false,
+  trackHref,
 }: {
   article: MemoableArticle;
   alwaysVisible?: boolean;
+  /** Optional "Track" action: routes to the Calls authoring flow with
+   *  this article as the draft intent (e.g. `/radar/calls?draft=...`).
+   *  The user still authors and confirms; nothing is tracked silently. */
+  trackHref?: string;
 }) {
   const [memoOpen, setMemoOpen] = useState(false);
   return (
@@ -49,6 +55,16 @@ export function ArticleMemoActions({
           <Sparkles size={11} />
           Generate Memo
         </button>
+        {trackHref && (
+          <Link
+            href={trackHref}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 font-sans text-[11px] text-text-muted hover:text-text-primary"
+          >
+            <Crosshair size={11} />
+            Track
+          </Link>
+        )}
         {article.url && (
           <a
             href={article.url}

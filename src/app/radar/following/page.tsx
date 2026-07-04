@@ -212,7 +212,7 @@ export default function FollowingPage() {
 
   return (
     <AppShell pageTitle="Radar">
-      <div className="motion-page-enter p-6 max-w-[1080px]">
+      <div data-radar-page className="motion-page-enter p-6 max-w-[1080px]">
         <RadarTabs active="following" />
 
         {loading ? null : isEmpty ? (
@@ -308,6 +308,7 @@ export default function FollowingPage() {
               />
             )}
 
+            <div key={view} className="motion-rise-in">
             {allArticles.length === 0 ? (
               <div className="rounded-xl border border-border-subtle bg-elevated px-5 py-6">
                 <p className="font-sans text-[13px] text-text-muted">
@@ -342,6 +343,8 @@ export default function FollowingPage() {
                 )}
               </>
             )}
+
+            </div>
 
             {/* Quiet follows: honest collapse, never padded. */}
             {quiet.length > 0 && (

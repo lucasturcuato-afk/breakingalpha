@@ -471,7 +471,7 @@ function ThesisBoardContent() {
 
   return (
     <AppShell pageTitle="Radar" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
-      <div className="motion-page-enter p-6">
+      <div data-radar-page className="motion-page-enter p-6">
         <RadarTabs active="calls" context="Evidence workspace" />
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-border-subtle bg-elevated px-4 py-2.5">
           <p className="font-sans text-[12px] italic text-text-muted">

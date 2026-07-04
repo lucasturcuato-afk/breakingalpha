@@ -83,6 +83,15 @@ const MAP_ARTICLES = [
   { id: "m5", title: "Chip export rules tighten for a second time this year", source: "Bloomberg", activity_types: ["Regulation & Legal"], published_at: "2026-06-29T08:00:00Z" },
   { id: "m6", title: "Export control carve-outs debated for allied fabs", source: "Reuters", activity_types: ["Regulation & Legal"], published_at: "2026-06-29T13:00:00Z" },
   { id: "m7", title: "Accelerator startups chase inference niche funding", source: "The Information", activity_types: ["Venture Capital"], published_at: "2026-06-28T11:00:00Z" },
+  { id: "m8", title: "NVIDIA networking attach rates climb with rack-scale systems", source: "Reuters", activity_types: ["Earnings & Results"], published_at: "2026-06-28T09:00:00Z" },
+  { id: "m9", title: "NVIDIA software revenue becomes the quiet margin story", source: "Bloomberg", activity_types: ["Earnings & Results"], published_at: "2026-06-27T10:00:00Z" },
+  { id: "m10", title: "Data-center REITs sign record pre-leases near cheap power", source: "WSJ", activity_types: ["Macro & Policy"], published_at: "2026-06-27T14:00:00Z" },
+  { id: "m11", title: "Utilities fast-track interconnects for AI campuses", source: "FT", activity_types: ["Macro & Policy"], published_at: "2026-06-26T08:00:00Z" },
+  { id: "m12", title: "Nuclear restart deals priced into hyperscaler PPAs", source: "Bloomberg", activity_types: ["Macro & Policy"], published_at: "2026-06-26T12:00:00Z" },
+  { id: "m13", title: "Allied fab carve-outs pass first committee vote", source: "Reuters", activity_types: ["Regulation & Legal"], published_at: "2026-06-25T09:00:00Z" },
+  { id: "m14", title: "License backlog grows at export control office", source: "WSJ", activity_types: ["Regulation & Legal"], published_at: "2026-06-25T15:00:00Z" },
+  { id: "m15", title: "Inference-chip startup raises series C at higher mark", source: "The Information", activity_types: ["Venture Capital"], published_at: "2026-06-24T11:00:00Z" },
+  { id: "m16", title: "Photonics interconnect deals draw strategic investors", source: "FT", activity_types: ["Venture Capital"], published_at: "2026-06-24T16:00:00Z" },
 ];
 
 function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
@@ -170,7 +179,7 @@ export default function RadarPreviewPage() {
           />
         </Labeled>
 
-        <Labeled label="Evidence map — interactive topical clusters (move the cursor)">
+        <Labeled label="Evidence map — multi-level relational graph, 16 articles (move the cursor; expand +N orbs)">
           <EvidenceMap
             centerLabel="NVDA gives back the ramp hype by earnings"
             articles={MAP_ARTICLES}

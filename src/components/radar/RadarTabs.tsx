@@ -13,6 +13,7 @@
  */
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export type RadarTab = "following" | "watchlist" | "calls";
 
@@ -22,6 +23,10 @@ const TABS: { key: RadarTab; label: string; href: string }[] = [
   { key: "calls", label: "Calls", href: "/radar/calls" },
 ];
 
+/* Exit duration mirrors --duration-page-exit in tokens.css. Kept as a
+   constant because the navigation timeout must match the CSS. */
+const PAGE_EXIT_MS = 240;
+
 export function RadarTabs({
   active,
   context,
@@ -29,6 +34,24 @@ export function RadarTabs({
   active: RadarTab | null;
   context?: string;
 }) {
+  const router = useRouter();
+
+  /* Exit + enter, not a hard swap: fade the outgoing page (the nearest
+     [data-radar-page] wrapper) out, then navigate; the incoming page
+     plays motion-page-enter on mount. Reduced-motion users navigate
+     immediately. Falls back to plain navigation when no wrapper exists. */
+  const navigate = (e: React.MouseEvent, href: string, isActive: boolean) => {
+    if (isActive || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    const page = document.querySelector<HTMLElement>("[data-radar-page]");
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!page || reduced) return; // let Link navigate normally
+    e.preventDefault();
+    page.classList.remove("motion-page-enter");
+    page.classList.add("motion-page-exit");
+    router.prefetch(href);
+    window.setTimeout(() => router.push(href), PAGE_EXIT_MS);
+  };
+
   return (
     <nav
       aria-label="Radar sections"
@@ -43,6 +66,7 @@ export function RadarTabs({
           <Link
             key={tab.key}
             href={tab.href}
+            onClick={(e) => navigate(e, tab.href, isActive)}
             aria-current={isActive ? "page" : undefined}
             className={
               "relative px-3 pb-2.5 text-[13px] transition-colors " +

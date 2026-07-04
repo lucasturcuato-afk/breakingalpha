@@ -6,6 +6,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/shell";
 import { RadarTabs } from "@/components/radar/RadarTabs";
 import { WatchlistGallery, type GalleryFilter } from "@/components/radar/WatchlistGallery";
+import { ArticleMemoActions } from "@/components/radar/ArticleMemoActions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
@@ -855,7 +856,7 @@ export default function WatchlistPage() {
 
   return (
     <AppShell pageTitle="Radar" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
-      <div className="motion-page-enter px-6 pt-4 -mb-1">
+      <div data-radar-page className="motion-page-enter px-6 pt-4 -mb-1">
         <RadarTabs active="watchlist" />
         {!isMobile && watchlist.length > 0 && (
           <WatchlistGallery
@@ -1222,7 +1223,7 @@ export default function WatchlistPage() {
           ) : (
             <div className="space-y-2">
               {displayedArticles.map((a) => (
-                <div key={a.id} className="bg-white dark:bg-elevated border border-border-base dark:border-border-default rounded-xl p-3">
+                <div key={a.id} className="group card-hover-lift bg-white dark:bg-elevated border border-border-base dark:border-border-default rounded-xl p-3">
                   <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                     {(a.industry_verticals ?? []).map((v) => (
                       <span key={v} className="font-sans text-[9px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200">
@@ -1241,14 +1242,6 @@ export default function WatchlistPage() {
                     {a.published_at && timeAgo(a.published_at) && (
                       <span className="font-sans text-[9px] text-text-faint ml-auto">{timeAgo(a.published_at)}</span>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => setArticleMemoEntry(a)}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded font-sans text-[9px] text-gold bg-gold-muted border border-gold-border hover:bg-gold/10 cursor-pointer transition-colors"
-                    >
-                      <Sparkles size={9} />
-                      Memo
-                    </button>
                   </div>
                   {a.url ? (
                     <a
@@ -1286,6 +1279,10 @@ export default function WatchlistPage() {
                       )}
                     </div>
                   )}
+                  <ArticleMemoActions
+                    article={a}
+                    trackHref={`/radar/calls?draft=${encodeURIComponent(a.title)}`}
+                  />
                 </div>
               ))}
             </div>
