@@ -324,7 +324,7 @@ export default function TrackRecordPage() {
       moodHeadline={moodHeadline}
       moodDetails={moodDetails}
     >
-      <div className="p-6 space-y-6 max-w-[960px]">
+      <div className="motion-page-enter p-6 space-y-6 max-w-[960px]">
         <RadarTabs active="calls" context="Evidence tracker" />
         <p className="-mt-2 mb-2 font-sans text-[12px] italic text-text-muted">
           Evidence leanings from nightly review, not graded verdicts; graded calls live in Calls.

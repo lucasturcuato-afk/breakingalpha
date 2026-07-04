@@ -10,6 +10,7 @@
 import { RadarTabs } from "@/components/radar/RadarTabs";
 import { WatchlistGallery, type GalleryFilter } from "@/components/radar/WatchlistGallery";
 import { ScoredObject } from "@/components/scored-object/ScoredObject";
+import { EvidenceMap } from "@/components/radar/EvidenceMap";
 import { scoredCallProps, type CallOutcomeRow } from "@/lib/scored-object-map";
 import { useState } from "react";
 
@@ -72,6 +73,17 @@ const CLAIM_OUTCOME: CallOutcomeRow = {
     window: { from: "2026-06-20T00:00:00+00:00", to: "2026-06-30T23:59:59+00:00" },
   },
 };
+
+
+const MAP_ARTICLES = [
+  { id: "m1", title: "NVIDIA locks multi-year HBM supply as accelerator backlog stretches", source: "Reuters", activity_types: ["Earnings & Results"], published_at: "2026-07-01T10:00:00Z" },
+  { id: "m2", title: "NVIDIA data-center revenue guide tops estimates again", source: "Bloomberg", activity_types: ["Earnings & Results"], published_at: "2026-07-01T12:00:00Z" },
+  { id: "m3", title: "Hyperscaler capex budgets raised for 2027 buildouts", source: "FT", activity_types: ["Macro & Policy"], published_at: "2026-06-30T09:00:00Z" },
+  { id: "m4", title: "Power constraints reshape data-center site selection", source: "WSJ", activity_types: ["Macro & Policy"], published_at: "2026-06-30T15:00:00Z" },
+  { id: "m5", title: "Chip export rules tighten for a second time this year", source: "Bloomberg", activity_types: ["Regulation & Legal"], published_at: "2026-06-29T08:00:00Z" },
+  { id: "m6", title: "Export control carve-outs debated for allied fabs", source: "Reuters", activity_types: ["Regulation & Legal"], published_at: "2026-06-29T13:00:00Z" },
+  { id: "m7", title: "Accelerator startups chase inference niche funding", source: "The Information", activity_types: ["Venture Capital"], published_at: "2026-06-28T11:00:00Z" },
+];
 
 function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -155,6 +167,20 @@ export default function RadarPreviewPage() {
               notGradedReason:
                 "No bounded price window; tracked as context only.",
             }}
+          />
+        </Labeled>
+
+        <Labeled label="Evidence map — interactive topical clusters (move the cursor)">
+          <EvidenceMap
+            centerLabel="NVDA gives back the ramp hype by earnings"
+            articles={MAP_ARTICLES}
+          />
+        </Labeled>
+
+        <Labeled label="Evidence map — honest thin state (1 article)">
+          <EvidenceMap
+            centerLabel="Private credit stress shows up in BDC marks"
+            articles={[MAP_ARTICLES[0]]}
           />
         </Labeled>
 

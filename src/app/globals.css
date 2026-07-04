@@ -303,11 +303,12 @@ html.dark .brand-mark-pulse:hover {
   animation: bar-sweep-in 400ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* Card hover lift */
+/* Card hover lift — THE hover motion for cards app-wide. Timing comes
+   from the shared tokens (values unchanged: 150ms / ease-out). */
 .card-hover-lift {
   transition:
-    transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
-    box-shadow 150ms cubic-bezier(0.16, 1, 0.3, 1);
+    transform var(--duration-base) var(--ease-out),
+    box-shadow var(--duration-base) var(--ease-out);
 }
 .card-hover-lift:hover {
   transform: translateY(-2px);
@@ -380,6 +381,44 @@ html.dark .skeleton-shimmer {
   animation: resolve-fade-up var(--duration-resolve) var(--ease-out) both;
 }
 
+/* ── One motion language (Radar pass) ──
+   Hovers: --duration-base (150ms). Entrances: --duration-slow (250ms).
+   Single easing family: --ease-out. Components must use these utilities
+   or the tokens directly; no locally invented timings. */
+
+/* Content/tab entrance: fade with a subtle rise. */
+@keyframes motion-rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.motion-rise-in {
+  animation: motion-rise-in var(--duration-slow) var(--ease-out) both;
+}
+/* Page-level entrance when switching Radar sub-tabs / settings views. */
+.motion-page-enter {
+  animation: motion-rise-in var(--duration-slow) var(--ease-out) both;
+}
+/* Gentle list stagger: 40ms steps, capped so long lists never crawl. */
+.motion-stagger > * {
+  animation: motion-rise-in var(--duration-slow) var(--ease-out) both;
+}
+.motion-stagger > :nth-child(2) { animation-delay: 40ms; }
+.motion-stagger > :nth-child(3) { animation-delay: 80ms; }
+.motion-stagger > :nth-child(4) { animation-delay: 120ms; }
+.motion-stagger > :nth-child(5) { animation-delay: 160ms; }
+.motion-stagger > :nth-child(6) { animation-delay: 200ms; }
+.motion-stagger > :nth-child(7) { animation-delay: 240ms; }
+.motion-stagger > :nth-child(n + 8) { animation-delay: 280ms; }
+/* Hover-revealed rows (article actions, call resolution info). */
+.motion-fade-reveal {
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+.group:hover .motion-fade-reveal,
+.group:focus-within .motion-fade-reveal {
+  opacity: 1;
+}
+
 /* Consolidated reduced-motion fallbacks */
 @media (prefers-reduced-motion: reduce) {
   .brand-mark-pulse { animation: none; opacity: 1; }
@@ -390,6 +429,10 @@ html.dark .skeleton-shimmer {
   .skeleton-shimmer { animation: none; }
   .track-record-pending-dot { animation: none; opacity: 0.85; }
   .resolve-fade-up { animation: none; }
+  .motion-rise-in, .motion-page-enter, .motion-stagger > * { animation: none; }
+  .motion-fade-reveal { opacity: 1; transition: none; }
+  .evidence-map-node { transition: none !important; transform: none !important; }
+  .evidence-map-glow { display: none; }
 }
 
 /* Conviction ring inner cutout — matches parent surface */

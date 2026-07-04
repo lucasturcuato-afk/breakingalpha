@@ -183,7 +183,7 @@ export function WatchlistGallery({
           {/* Hero entity: dark panel, monogram + top story development. */}
           <button
             onClick={() => onFocus(hero.entry.identifier)}
-            className="block w-full rounded-xl bg-espresso px-5 py-5 text-left text-cream transition-transform hover:scale-[1.002] dark:border dark:border-border-default dark:bg-elevated"
+            className="motion-rise-in card-hover-lift block w-full rounded-xl bg-espresso px-5 py-5 text-left text-cream dark:border dark:border-border-default dark:bg-elevated"
           >
             <div className="flex items-start gap-4">
               <TypeBadge entry={hero.entry} price={prices[hero.entry.identifier]} />
@@ -210,14 +210,14 @@ export function WatchlistGallery({
 
           {/* Entity moments: aligned 2-up grid. */}
           {moments.length > 0 && (
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="motion-stagger mt-4 grid gap-3 md:grid-cols-2">
               {moments.map(({ entry, articles }) => {
                 const story = topStory(articles);
                 return (
                   <button
                     key={entry.id}
                     onClick={() => onFocus(entry.identifier)}
-                    className="flex items-start gap-3 rounded-lg border border-border-subtle bg-elevated px-4 py-3.5 text-left hover:border-gold"
+                    className="card-hover-lift flex items-start gap-3 rounded-lg border border-border-subtle bg-elevated px-4 py-3.5 text-left hover:border-gold"
                   >
                     <TypeBadge entry={entry} price={prices[entry.identifier]} />
                     <div className="min-w-0 flex-1">

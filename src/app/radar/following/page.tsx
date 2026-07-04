@@ -212,7 +212,7 @@ export default function FollowingPage() {
 
   return (
     <AppShell pageTitle="Radar">
-      <div className="p-6 max-w-[1080px]">
+      <div className="motion-page-enter p-6 max-w-[1080px]">
         <RadarTabs active="following" />
 
         {loading ? null : isEmpty ? (
@@ -330,7 +330,7 @@ export default function FollowingPage() {
               <>
                 {lead && <LeadDevelopment entry={lead} />}
                 {secondaries.length > 0 && (
-                  <div className="mt-6 grid gap-4 md:grid-cols-2">
+                  <div className="motion-stagger mt-6 grid gap-4 md:grid-cols-2">
                     {secondaries.map((entry, i) => (
                       <SecondaryCard
                         key={entry.article.id}
@@ -433,7 +433,7 @@ function SecondaryCard({
   return (
     <article
       className={
-        "group rounded-lg border border-border-subtle bg-elevated px-4 py-3.5 " +
+        "group card-hover-lift rounded-lg border border-border-subtle bg-elevated px-4 py-3.5 " +
         (wide ? "md:col-span-2 md:flex md:items-baseline md:gap-6" : "")
       }
     >
@@ -496,7 +496,7 @@ function ActivityView({
             {tag}
             <span className="ml-2 font-normal text-text-faint">{entries.length}</span>
           </h3>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="motion-stagger grid gap-4 md:grid-cols-2">
             {entries.slice(0, 6).map((entry, i) => (
               <SecondaryCard key={entry.article.id} entry={entry} wide={i === 0 && entries.length > 2} />
             ))}

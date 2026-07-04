@@ -855,7 +855,7 @@ export default function WatchlistPage() {
 
   return (
     <AppShell pageTitle="Radar" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
-      <div className="px-6 pt-4 -mb-1">
+      <div className="motion-page-enter px-6 pt-4 -mb-1">
         <RadarTabs active="watchlist" />
         {!isMobile && watchlist.length > 0 && (
           <WatchlistGallery

@@ -95,7 +95,7 @@ export function ScoredObject(props: ScoredObjectProps) {
 
   return (
     <article
-      className="relative overflow-hidden rounded-lg bg-elevated border border-border-subtle"
+      className="card-hover-lift relative overflow-hidden rounded-lg bg-elevated border border-border-subtle"
       style={{ fontFamily: SERIF }}
     >
       {/* Left spine — 3px, full height, verdict-state color. Not rounded. */}

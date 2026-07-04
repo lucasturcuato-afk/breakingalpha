@@ -104,6 +104,39 @@ function todayPt(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 }
 
+/** A plain sentence for what a call is watching for and how it
+ *  resolves, derived from its resolution method. Informative, never
+ *  decorative; context-only claims state their honest note. */
+function resolutionSentence(c: UserClaim): string {
+  if (c.source === "adopted") {
+    return `Resolves with the original brief call against the ${c.resolution_window_end ?? "session"} market close, with benchmark attribution.`;
+  }
+  if (!c.gradeable) {
+    return c.gradeability_note ?? "Tracked as context only; no price resolution.";
+  }
+  const dir =
+    c.expected_direction === "bearish"
+      ? "to the downside"
+      : c.expected_direction === "neutral"
+        ? "by holding flat"
+        : "to the upside";
+  const windowText =
+    c.resolution_window_start && c.resolution_window_start !== c.resolution_window_end
+      ? `over ${c.resolution_window_start} to ${c.resolution_window_end}`
+      : `against the ${c.resolution_window_end ?? "session"} close`;
+  if (c.claim_type === "index") {
+    return `Watching whether ${c.target_symbol} moves ${dir} on its own, ${windowText}; indices are graded on their absolute move.`;
+  }
+  if (c.claim_type === "sector") {
+    return `Watching whether ${c.target_symbol} beats SPY ${dir} ${windowText}.`;
+  }
+  return `Watching whether ${c.target_symbol} beats its sector ETF and SPY ${dir} ${windowText}; a move the market explains is not credited.`;
+}
+
+function briefResolutionSentence(c: BriefCallRow): string {
+  return `Resolves against the ${c.brief_date ?? "session"} market close with benchmark attribution: only a move beyond sector and market counts.`;
+}
+
 function claimToCallInput(c: UserClaim): OpenCallInput {
   return {
     claim_text: c.user_claim,
@@ -348,7 +381,7 @@ export default function CallsPage() {
 
   return (
     <AppShell pageTitle="Radar">
-      <div className="p-6 max-w-[1080px]">
+      <div className="motion-page-enter p-6 max-w-[1080px]">
         <RadarTabs active="calls" />
 
         {loading ? null : (
@@ -404,7 +437,7 @@ export default function CallsPage() {
                   outcomes only.
                 </p>
               ) : (
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="motion-stagger grid gap-3 md:grid-cols-2">
                   {claims.map((c) => {
                     const outcome = outcomeForClaim(c);
                     let props = scoredCallProps(claimToCallInput(c), outcome, today);
@@ -419,7 +452,7 @@ export default function CallsPage() {
                       };
                     }
                     return (
-                      <div key={c.id}>
+                      <div key={c.id} className="group">
                         <div className="mb-1 flex items-baseline justify-between px-1 font-sans text-[11px] text-text-faint">
                           <span>
                             {c.source === "adopted"
@@ -447,7 +480,12 @@ export default function CallsPage() {
                             </button>
                           </span>
                         </div>
-                        <ScoredObject {...props} />
+                        <div className="card-hover-lift">
+                          <ScoredObject {...props} />
+                        </div>
+                        <p className="motion-fade-reveal mt-1 px-1 font-sans text-[11px] leading-snug text-text-muted">
+                          {resolutionSentence(c)}
+                        </p>
                       </div>
                     );
                   })}
@@ -484,7 +522,7 @@ export default function CallsPage() {
                   No brief calls captured in the last two weeks.
                 </p>
               ) : (
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="motion-stagger grid gap-3 md:grid-cols-2">
                   {briefCalls.slice(0, 8).map((c) => {
                     const props = briefOutcomes
                       ? scoredCallProps(c, briefOutcomes.get(c.id) ?? null, today)
@@ -493,7 +531,7 @@ export default function CallsPage() {
                       (uc) => uc.adopted_from_call_id === c.id,
                     );
                     return (
-                      <div key={c.id}>
+                      <div key={c.id} className="group">
                         <div className="mb-1 flex items-baseline justify-between px-1 font-sans text-[11px] text-text-faint">
                           <span>Signalera brief · {c.brief_date}</span>
                           <button
@@ -508,7 +546,12 @@ export default function CallsPage() {
                                 : "Track this call"}
                           </button>
                         </div>
-                        <ScoredObject {...props} />
+                        <div className="card-hover-lift">
+                          <ScoredObject {...props} />
+                        </div>
+                        <p className="motion-fade-reveal mt-1 px-1 font-sans text-[11px] leading-snug text-text-muted">
+                          {briefResolutionSentence(c)}
+                        </p>
                       </div>
                     );
                   })}

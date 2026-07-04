@@ -33,10 +33,8 @@ export function ArticleMemoActions({
     <>
       <div
         className={
-          "mt-2 flex items-center gap-2 transition-opacity " +
-          (alwaysVisible
-            ? ""
-            : "opacity-0 group-hover:opacity-100 focus-within:opacity-100")
+          "mt-2 flex items-center gap-2 " +
+          (alwaysVisible ? "" : "motion-fade-reveal")
         }
       >
         <button
