@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/shell";
 import { RadarTabs } from "@/components/radar/RadarTabs";
+import { WatchlistGallery, type GalleryFilter } from "@/components/radar/WatchlistGallery";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
@@ -393,6 +394,7 @@ export default function WatchlistPage() {
   const [selectedIdentifier, setSelectedIdentifier] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<"newest" | "relevant">("newest");
   const [ageFilter, setAgeFilter] = useState<"all" | "today" | "week" | "month">("all");
+  const [galleryFilter, setGalleryFilter] = useState<GalleryFilter>("all");
   const [dragError, setDragError] = useState<string | null>(null);
   const dragErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedEntryIndex, setSelectedEntryIndex] = useState<number | null>(null);
@@ -855,8 +857,24 @@ export default function WatchlistPage() {
     <AppShell pageTitle="Watchlist" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
       <div className="px-6 pt-4 -mb-1">
         <RadarTabs active="watchlist" />
+        {!isMobile && watchlist.length > 0 && (
+          <WatchlistGallery
+            entries={watchlist}
+            prices={prices}
+            articlesByIdentifier={articlesByIdentifier}
+            filter={galleryFilter}
+            onFilterChange={setGalleryFilter}
+            onFocus={(identifier) => {
+              setSelectedIdentifier(identifier);
+              document
+                .getElementById("radar-watchlist-workspace")
+                ?.scrollIntoView({ behavior: "smooth" });
+            }}
+          />
+        )}
       </div>
       <div
+        id="radar-watchlist-workspace"
         style={{
           display: 'flex',
           gap: '24px',
