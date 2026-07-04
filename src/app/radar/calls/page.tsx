@@ -35,12 +35,16 @@ import {
   neutralizeThesisTitle,
   verdictDisplayLabel,
 } from "@/lib/track-record-live-score";
+import { matchFollow, type FollowRow } from "@/lib/radar-following";
+import { EvidenceMap } from "@/components/radar/EvidenceMap";
+import type { Article as MapArticle } from "@/lib/clustering-utils";
 
 const SERIF = "var(--font-playfair-display), serif";
 
 interface UserClaim {
   id: string;
   user_claim: string;
+  evidence_entities?: string[] | null;
   claim_type: string;
   target_symbol: string | null;
   expected_direction: string | null;
@@ -82,6 +86,14 @@ interface AuthorProposal {
   gradeable: boolean;
   gradeability_note: string | null;
   confidence_in_reduction: number | null;
+  gradeable_alternative: {
+    claim_type: string;
+    target_symbol: string;
+    expected_direction: string;
+    resolution_window_start: string;
+    resolution_window_end: string;
+    rationale: string;
+  } | null;
 }
 
 type TopMode = "record" | "pinned" | "resolving";
@@ -115,6 +127,10 @@ export default function CallsPage() {
   const [pinned, setPinned] = useState<string[]>([]);
   const [adoptBusy, setAdoptBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [leaningsOpen, setLeaningsOpen] = useState(false);
+  const [mapClaimId, setMapClaimId] = useState<string | null>(null);
+  const [mapArticles, setMapArticles] = useState<MapArticle[] | null>(null);
+  const [mapLoading, setMapLoading] = useState(false);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(TOP_MODE_KEY);
@@ -222,6 +238,53 @@ export default function CallsPage() {
     } finally {
       setAdoptBusy(null);
       setTimeout(() => setToast(null), 2500);
+    }
+  };
+
+  const toggleEvidenceMap = async (claim: UserClaim) => {
+    if (mapClaimId === claim.id) {
+      setMapClaimId(null);
+      setMapArticles(null);
+      return;
+    }
+    setMapClaimId(claim.id);
+    setMapArticles(null);
+    setMapLoading(true);
+    try {
+      const sb = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      );
+      const keywords = [
+        ...(claim.evidence_entities ?? []),
+        ...(claim.target_symbol ? [claim.target_symbol] : []),
+      ].filter(Boolean);
+      const synthetic: FollowRow = {
+        id: claim.id,
+        follow_type: "company",
+        target: claim.target_symbol ?? claim.user_claim,
+        display_name: null,
+        matched_keywords: keywords,
+        embedding: null,
+        muted: false,
+        created_at: claim.created_at,
+      };
+      const matched = await matchFollow(sb, synthetic, 14);
+      setMapArticles(
+        matched.map((a) => ({
+          ...a,
+          source: a.source ?? undefined,
+          summary: a.summary ?? undefined,
+          url: a.url ?? undefined,
+          published_at: a.published_at ?? undefined,
+          industry_verticals: a.industry_verticals ?? undefined,
+          activity_types: a.activity_types ?? undefined,
+        })),
+      );
+    } catch {
+      setMapArticles([]);
+    } finally {
+      setMapLoading(false);
     }
   };
 
@@ -365,6 +428,12 @@ export default function CallsPage() {
                           </span>
                           <span className="flex gap-2">
                             <button
+                              onClick={() => void toggleEvidenceMap(c)}
+                              className="hover:text-text-primary"
+                            >
+                              {mapClaimId === c.id ? "Hide map" : "Evidence map"}
+                            </button>
+                            <button
                               onClick={() => togglePin(c.id)}
                               className="hover:text-text-primary"
                             >
@@ -382,6 +451,22 @@ export default function CallsPage() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+              {mapClaimId && (
+                <div className="mt-4">
+                  {mapLoading ? (
+                    <p className="font-sans text-[12px] text-text-faint">
+                      Matching the corpus…
+                    </p>
+                  ) : mapArticles ? (
+                    <EvidenceMap
+                      centerLabel={
+                        claims.find((c) => c.id === mapClaimId)?.user_claim ?? ""
+                      }
+                      articles={mapArticles}
+                    />
+                  ) : null}
                 </div>
               )}
             </section>
@@ -431,43 +516,62 @@ export default function CallsPage() {
               )}
             </section>
 
-            {/* ── Tier 2: theses as SOFT evidence leanings, visually distinct ── */}
+            {/* ── Tier 2: theses as SOFT evidence leanings. Deliberately
+                 DEMOTED behind a default-closed disclosure: the primary
+                 Calls experience is the user's own graded calls, not the
+                 system-thesis workstation. ── */}
             {theses.length > 0 && (
-              <section className="mt-8 border-t border-border-subtle pt-5">
-                <h2 className="mb-1 font-sans text-[12px] font-semibold uppercase tracking-[0.14em] text-text-muted">
-                  Evidence leanings
-                </h2>
-                <p className="mb-3 font-sans text-[12px] text-text-faint">
-                  Theses graded by evidence review, not benchmark attribution.
-                  A leaning is not a verdict; the full workspace is in{" "}
-                  <Link href="/radar/theses" className="underline hover:text-text-primary">
-                    Theses
-                  </Link>{" "}
-                  and the{" "}
-                  <Link href="/radar/track-record" className="underline hover:text-text-primary">
-                    Tracker
-                  </Link>
-                  .
-                </p>
-                <div className="flex flex-col gap-1.5">
-                  {theses.map((t) => (
-                    <Link
-                      key={t.id}
-                      href={`/radar/theses?thesis=${t.id}`}
-                      className="flex items-baseline justify-between gap-3 rounded-md px-3 py-2 hover:bg-overlay"
-                    >
-                      <span
-                        className="min-w-0 flex-1 truncate text-text-secondary"
-                        style={{ fontFamily: SERIF, fontSize: "14px" }}
-                      >
-                        {neutralizeThesisTitle(t.title)}
-                      </span>
-                      <span className="shrink-0 font-sans text-[11px] italic text-text-muted">
-                        {verdictDisplayLabel(t.live_verdict ?? "Awaiting verdict")}
-                      </span>
-                    </Link>
-                  ))}
-                </div>
+              <section className="mt-8 border-t border-border-subtle pt-4">
+                <button
+                  onClick={() => setLeaningsOpen((v) => !v)}
+                  className="flex w-full items-baseline justify-between gap-3 text-left"
+                >
+                  <span className="font-sans text-[12px] font-semibold uppercase tracking-[0.14em] text-text-muted">
+                    Evidence leanings
+                    <span className="ml-2 font-normal normal-case tracking-normal text-text-faint">
+                      {theses.length} system theses · LLM-judged, not verdicts
+                    </span>
+                  </span>
+                  <span className="font-sans text-[12px] text-text-faint">
+                    {leaningsOpen ? "Hide" : "Show"}
+                  </span>
+                </button>
+                {leaningsOpen && (
+                  <div className="mt-3">
+                    <p className="mb-3 font-sans text-[12px] text-text-faint">
+                      Theses graded by evidence review, not benchmark
+                      attribution. A leaning is not a verdict; the full
+                      workspace is in{" "}
+                      <Link href="/radar/theses" className="underline hover:text-text-primary">
+                        the evidence workspace
+                      </Link>{" "}
+                      and the{" "}
+                      <Link href="/radar/track-record" className="underline hover:text-text-primary">
+                        Tracker
+                      </Link>
+                      .
+                    </p>
+                    <div className="flex flex-col gap-1.5">
+                      {theses.map((t) => (
+                        <Link
+                          key={t.id}
+                          href={`/radar/theses?thesis=${t.id}`}
+                          className="flex items-baseline justify-between gap-3 rounded-md px-3 py-2 hover:bg-overlay"
+                        >
+                          <span
+                            className="min-w-0 flex-1 truncate text-text-secondary"
+                            style={{ fontFamily: SERIF, fontSize: "14px" }}
+                          >
+                            {neutralizeThesisTitle(t.title)}
+                          </span>
+                          <span className="shrink-0 font-sans text-[11px] italic text-text-muted">
+                            {verdictDisplayLabel(t.live_verdict ?? "Awaiting verdict")}
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 
@@ -775,13 +879,47 @@ function AuthorClaim({ onSaved, disabled }: { onSaved: () => Promise<void>; disa
                 </div>
               </>
             ) : (
-              <p>
-                <span className="font-semibold">Not price-gradeable:</span>{" "}
-                {proposal.gradeability_note}
-              </p>
+              <>
+                <p>
+                  <span className="font-semibold">Not price-gradeable as written:</span>{" "}
+                  {proposal.gradeability_note}
+                </p>
+                {proposal.gradeable_alternative && (
+                  <p className="mt-1.5 text-text-faint">
+                    Proxy that captures the intent:{" "}
+                    {proposal.gradeable_alternative.rationale}
+                  </p>
+                )}
+              </>
             )}
           </div>
-          <div className="mt-3 flex gap-2 font-sans text-[13px]">
+          <div className="mt-3 flex flex-wrap gap-2 font-sans text-[13px]">
+            {/* Propose-and-confirm, not reject: a one-tap gradeable proxy
+                when the claim as written cannot be price-graded. The user's
+                words stay the headline either way. */}
+            {!proposal.gradeable && proposal.gradeable_alternative && (
+              <button
+                onClick={() => {
+                  const alt = proposal.gradeable_alternative!;
+                  setProposal({
+                    ...proposal,
+                    claim_type: alt.claim_type,
+                    target_symbol: alt.target_symbol,
+                    expected_direction: alt.expected_direction,
+                    resolution_window_start: alt.resolution_window_start,
+                    resolution_window_end: alt.resolution_window_end,
+                    gradeable: true,
+                    gradeability_note: null,
+                  });
+                }}
+                className="rounded-md border px-3.5 py-1.5 font-semibold text-espresso dark:text-foreground"
+                style={{ borderColor: "var(--gold)", backgroundColor: "color-mix(in srgb, var(--gold) 12%, transparent)" }}
+              >
+                Make it gradeable: {proposal.gradeable_alternative.target_symbol} ·{" "}
+                {proposal.gradeable_alternative.expected_direction} · by{" "}
+                {proposal.gradeable_alternative.resolution_window_end}
+              </button>
+            )}
             <button
               onClick={() => void confirm()}
               disabled={busy}

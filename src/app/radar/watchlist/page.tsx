@@ -854,7 +854,7 @@ export default function WatchlistPage() {
   }, [selectedEntryIndex, allEntries]);
 
   return (
-    <AppShell pageTitle="Watchlist" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
+    <AppShell pageTitle="Radar" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
       <div className="px-6 pt-4 -mb-1">
         <RadarTabs active="watchlist" />
         {!isMobile && watchlist.length > 0 && (

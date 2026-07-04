@@ -38,6 +38,21 @@ interface AuthorProposal {
   gradeable: boolean;
   gradeability_note: string | null;
   confidence_in_reduction: number | null;
+  /**
+   * When the claim as written is not price-gradeable, a concrete
+   * gradeable proxy reduction (specific ticker/ETF + direction +
+   * bounded window that captures the intent), offered as a one-tap
+   * "Make it gradeable" option. Null when nothing priceable honestly
+   * fits. Never replaces the user's words; only the resolution.
+   */
+  gradeable_alternative: {
+    claim_type: (typeof CLAIM_TYPES)[number];
+    target_symbol: string;
+    expected_direction: (typeof DIRECTIONS)[number];
+    resolution_window_start: string;
+    resolution_window_end: string;
+    rationale: string;
+  } | null;
 }
 
 function authoringPrompt(claimText: string, todayIso: string): string {
@@ -51,7 +66,9 @@ Our only v1 grading method is price attribution: after a bounded window closes, 
 - a clear direction (bullish / bearish / neutral),
 - a bounded window ending no more than ${MAX_WINDOW_DAYS} days from today (window_end strictly after today).
 
-If the claim is about earnings beats, economic data, discrete events, private companies, crypto without an obvious listed proxy the user named, or has no bounded horizon, it is NOT gradeable in v1: set gradeable=false and write a plain, honest gradeability_note saying what we'd need to grade it. Do not force a price reduction onto a claim that is not a price claim.
+If the claim is about earnings beats, economic data, discrete events, private companies, crypto without an obvious listed proxy the user named, or has no bounded horizon, it is NOT gradeable in v1 AS WRITTEN: set gradeable=false and write a plain, honest gradeability_note saying what we'd need to grade it. Do not force a price reduction onto a claim that is not a price claim.
+
+WHEN gradeable=false, also try to propose gradeable_alternative: the closest honest PRICE proxy that captures the claim's intent, as a specific listed ticker, sector, or index ETF plus a clear direction and a bounded window (<= ${MAX_WINDOW_DAYS} days). Examples: an industrial-policy claim -> XLI; an "AI capex" claim -> a named beneficiary or SMH; a rates claim -> TLT direction. Include a one-sentence rationale for why the proxy captures the intent. If no listed proxy honestly captures it, set gradeable_alternative to null; never invent a stretch.
 
 Respond with ONLY a JSON object, no markdown fence:
 {
@@ -63,7 +80,15 @@ Respond with ONLY a JSON object, no markdown fence:
   "evidence_entities": string[],         // entities the claim references
   "gradeable": boolean,
   "gradeability_note": string | null,    // required when gradeable=false
-  "confidence_in_reduction": number      // 0-1, your confidence the reduction faithfully captures the claim
+  "confidence_in_reduction": number,     // 0-1, your confidence the reduction faithfully captures the claim
+  "gradeable_alternative": {             // only when gradeable=false and an honest proxy exists; else null
+    "claim_type": "ticker" | "sector" | "index",
+    "target_symbol": string,
+    "expected_direction": "bullish" | "bearish" | "neutral",
+    "resolution_window_start": "YYYY-MM-DD",
+    "resolution_window_end": "YYYY-MM-DD",
+    "rationale": string                  // one sentence: why this proxy captures the intent
+  } | null
 }`;
 }
 
@@ -122,6 +147,41 @@ function validateProposal(raw: unknown, todayIso: string): AuthorProposal | null
       ? Math.round(p.confidence_in_reduction * 100) / 100
       : null;
 
+  // Validate the gradeable alternative with the SAME server-side rules;
+  // a proxy that fails them is dropped, never softened.
+  let alternative: AuthorProposal["gradeable_alternative"] = null;
+  if (!gradeable && typeof p.gradeable_alternative === "object" && p.gradeable_alternative !== null) {
+    const alt = p.gradeable_alternative as Record<string, unknown>;
+    const altType = alt.claim_type as AuthorProposal["claim_type"];
+    const altSymbol = typeof alt.target_symbol === "string" ? alt.target_symbol.trim() : "";
+    const altDir = DIRECTIONS.includes(alt.expected_direction as never)
+      ? (alt.expected_direction as (typeof DIRECTIONS)[number])
+      : null;
+    const altStart = isoDate(alt.resolution_window_start) ?? todayIso;
+    const altEnd = isoDate(alt.resolution_window_end);
+    const altRationale = typeof alt.rationale === "string" ? alt.rationale.trim() : "";
+    const altWindowOk =
+      altEnd !== null &&
+      altEnd > todayIso &&
+      (new Date(altEnd).getTime() - new Date(todayIso).getTime()) / 86400_000 <= MAX_WINDOW_DAYS;
+    if (
+      ["ticker", "sector", "index"].includes(altType) &&
+      altSymbol &&
+      altDir &&
+      altWindowOk &&
+      altRationale
+    ) {
+      alternative = {
+        claim_type: altType,
+        target_symbol: altSymbol,
+        expected_direction: altDir,
+        resolution_window_start: altStart <= altEnd! ? altStart : todayIso,
+        resolution_window_end: altEnd!,
+        rationale: altRationale,
+      };
+    }
+  }
+
   return {
     claim_type: claimType,
     target_symbol:
@@ -137,6 +197,7 @@ function validateProposal(raw: unknown, todayIso: string): AuthorProposal | null
     gradeable,
     gradeability_note: note,
     confidence_in_reduction: conf,
+    gradeable_alternative: alternative,
   };
 }
 

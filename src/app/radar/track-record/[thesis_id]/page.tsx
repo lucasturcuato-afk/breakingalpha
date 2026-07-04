@@ -133,7 +133,7 @@ export default function ThesisDetailPage() {
 
   if (loading) {
     return (
-      <AppShell pageTitle="Thesis Detail" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
+      <AppShell pageTitle="Radar" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
         <div className="p-6 max-w-[960px] space-y-4">
           <div className="skeleton-shimmer h-6 w-48 rounded" />
           <div className="skeleton-shimmer h-32 w-full rounded-xl" />
@@ -145,7 +145,7 @@ export default function ThesisDetailPage() {
 
   if (!thesis) {
     return (
-      <AppShell pageTitle="Thesis Detail" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
+      <AppShell pageTitle="Radar" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
         <div className="p-6 max-w-[960px]">
           <Link href="/radar/track-record" className="inline-flex items-center gap-1 text-text-muted hover:text-espresso text-[12px] mb-4">
             <ArrowLeft size={12} /> Back to Thesis Tracker
@@ -157,7 +157,7 @@ export default function ThesisDetailPage() {
   }
 
   return (
-    <AppShell pageTitle={thesis.title ? neutralizeThesisTitle(thesis.title) : "Thesis Detail"} mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
+    <AppShell pageTitle="Radar" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
       <div className="p-6 max-w-[960px] space-y-6">
         {/* Back link */}
         <Link href="/radar/track-record" className="inline-flex items-center gap-1 text-text-muted hover:text-espresso text-[12px]">

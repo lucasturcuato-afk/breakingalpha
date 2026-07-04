@@ -24,6 +24,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/shell";
 import { RadarTabs } from "@/components/radar/RadarTabs";
 import type { FollowArticle } from "@/lib/radar-following";
+import { ArticleMemoActions } from "@/components/radar/ArticleMemoActions";
+import { EvidenceMap } from "@/components/radar/EvidenceMap";
 
 interface FollowSummary {
   id: string;
@@ -38,7 +40,7 @@ interface Development {
   articles: FollowArticle[];
 }
 
-type ViewMode = "topic" | "activity" | "timeline";
+type ViewMode = "topic" | "activity" | "timeline" | "map";
 const VIEW_STORAGE_KEY = "radar-following-view";
 
 const STARTER_TOPICS = [
@@ -94,10 +96,11 @@ export default function FollowingPage() {
   const [addText, setAddText] = useState("");
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [mapFollowId, setMapFollowId] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(VIEW_STORAGE_KEY);
-    if (stored === "topic" || stored === "activity" || stored === "timeline") {
+    if (stored === "topic" || stored === "activity" || stored === "timeline" || stored === "map") {
       setView(stored);
     }
   }, []);
@@ -237,6 +240,7 @@ export default function FollowingPage() {
                     ["topic", "By topic"],
                     ["activity", "By activity"],
                     ["timeline", "Timeline"],
+                    ["map", "Map"],
                   ] as [ViewMode, string][]
                 ).map(([key, label]) => (
                   <button
@@ -312,6 +316,12 @@ export default function FollowingPage() {
                   follow, an industry, or a topic to widen the net.
                 </p>
               </div>
+            ) : view === "map" ? (
+              <MapView
+                developments={active}
+                mapFollowId={mapFollowId}
+                setMapFollowId={setMapFollowId}
+              />
             ) : view === "timeline" ? (
               <TimelineView entries={allArticles} />
             ) : view === "activity" ? (
@@ -374,22 +384,11 @@ function Kicker({ follow }: { follow: FollowSummary }) {
 }
 
 function SourceLine({ article }: { article: FollowArticle }) {
+  // View-source lives in the shared hover action row (ArticleMemoActions),
+  // matching the live-feed affordance, not a static link here.
   return (
     <p className="mt-2 font-sans text-[12px] text-text-faint">
       {[article.source, timeAgo(article.published_at)].filter(Boolean).join(" · ")}
-      {article.url && (
-        <>
-          {" · "}
-          <a
-            href={article.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline hover:text-text-primary"
-          >
-            Read source →
-          </a>
-        </>
-      )}
     </p>
   );
 }
@@ -400,7 +399,7 @@ function LeadDevelopment({
   entry: { article: FollowArticle; follow: FollowSummary };
 }) {
   return (
-    <article className="border-t-2 pb-2" style={{ borderTopColor: "var(--gold)" }}>
+    <article className="group border-t-2 pb-2" style={{ borderTopColor: "var(--gold)" }}>
       <div className="pt-4">
         <Kicker follow={entry.follow} />
         <h2
@@ -418,6 +417,7 @@ function LeadDevelopment({
           </p>
         )}
         <SourceLine article={entry.article} />
+        <ArticleMemoActions article={entry.article} />
       </div>
     </article>
   );
@@ -433,7 +433,7 @@ function SecondaryCard({
   return (
     <article
       className={
-        "rounded-lg border border-border-subtle bg-elevated px-4 py-3.5 " +
+        "group rounded-lg border border-border-subtle bg-elevated px-4 py-3.5 " +
         (wide ? "md:col-span-2 md:flex md:items-baseline md:gap-6" : "")
       }
     >
@@ -446,6 +446,7 @@ function SecondaryCard({
           {entry.article.title}
         </h3>
         <SourceLine article={entry.article} />
+        <ArticleMemoActions article={entry.article} />
       </div>
     </article>
   );
@@ -466,7 +467,7 @@ function TimelineView({
           <span className="w-16 shrink-0 text-right font-mono text-[11px] text-text-faint">
             {timeAgo(entry.article.published_at)}
           </span>
-          <div>
+          <div className="group">
             <Kicker follow={entry.follow} />
             <p
               className="mt-0.5 text-text-primary"
@@ -474,6 +475,7 @@ function TimelineView({
             >
               {entry.article.title}
             </p>
+            <ArticleMemoActions article={entry.article} />
           </div>
         </li>
       ))}
@@ -501,6 +503,53 @@ function ActivityView({
           </div>
         </section>
       ))}
+    </div>
+  );
+}
+
+function MapView({
+  developments,
+  mapFollowId,
+  setMapFollowId,
+}: {
+  developments: Development[];
+  mapFollowId: string | null;
+  setMapFollowId: (id: string) => void;
+}) {
+  const selected =
+    developments.find((d) => d.follow.id === mapFollowId) ?? developments[0];
+  if (!selected) return null;
+  return (
+    <div>
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {developments.map((d) => (
+          <button
+            key={d.follow.id}
+            onClick={() => setMapFollowId(d.follow.id)}
+            className={
+              "rounded-full border px-2.5 py-1 font-sans text-[12px] " +
+              (d.follow.id === selected.follow.id
+                ? "border-gold font-semibold text-text-primary"
+                : "border-border-default text-text-muted hover:text-text-primary")
+            }
+          >
+            {followLabel(d.follow)}
+            <span className="ml-1 text-text-faint">{d.articles.length}</span>
+          </button>
+        ))}
+      </div>
+      <EvidenceMap
+        centerLabel={followLabel(selected.follow)}
+        articles={selected.articles.map((a) => ({
+          ...a,
+          source: a.source ?? undefined,
+          summary: a.summary ?? undefined,
+          url: a.url ?? undefined,
+          published_at: a.published_at ?? undefined,
+          industry_verticals: a.industry_verticals ?? undefined,
+          activity_types: a.activity_types ?? undefined,
+        }))}
+      />
     </div>
   );
 }

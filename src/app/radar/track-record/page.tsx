@@ -319,13 +319,16 @@ export default function TrackRecordPage() {
 
   return (
     <AppShell
-      pageTitle="Thesis Tracker"
+      pageTitle="Radar"
       mood={mood}
       moodHeadline={moodHeadline}
       moodDetails={moodDetails}
     >
       <div className="p-6 space-y-6 max-w-[960px]">
-        <RadarTabs active="calls" context="Thesis Tracker" />
+        <RadarTabs active="calls" context="Evidence tracker" />
+        <p className="-mt-2 mb-2 font-sans text-[12px] italic text-text-muted">
+          Evidence leanings from nightly review, not graded verdicts; graded calls live in Calls.
+        </p>
         {/* HEADER */}
         <div>
           <h1 className="font-display text-[28px] font-bold text-espresso leading-tight">

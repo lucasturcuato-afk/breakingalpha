@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import { RadarTabs } from "@/components/radar/RadarTabs";
+import Link from "next/link";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { ThesisList } from "@/components/thesis/ThesisList";
 import { ThesisDetailPanel } from "@/components/thesis/thesis-detail-panel";
@@ -469,9 +470,18 @@ function ThesisBoardContent() {
   }, [theses, archivedTheses, convictionFilter, profile, userArchivedIds]);
 
   return (
-    <AppShell pageTitle="Thesis Board" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
+    <AppShell pageTitle="Radar" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
       <div className="p-6">
-        <RadarTabs active="calls" context="Thesis workspace" />
+        <RadarTabs active="calls" context="Evidence workspace" />
+        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-border-subtle bg-elevated px-4 py-2.5">
+          <p className="font-sans text-[12px] italic text-text-muted">
+            Evidence workspace: system theses judged by evidence review. Leanings, never graded
+            verdicts. Your graded calls live in Calls.
+          </p>
+          <Link href="/radar/calls" className="font-sans text-[12px] text-text-secondary underline hover:text-text-primary">
+            ← Back to Calls
+          </Link>
+        </div>
         {loading ? (
           <div className="space-y-3">
             <div className="grid grid-cols-4 gap-3">
