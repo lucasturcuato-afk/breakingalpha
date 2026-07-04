@@ -627,7 +627,7 @@ export default function MorningBriefPage() {
         status: "new-signal",
         generated_at: new Date().toISOString(),
       });
-      router.push("/thesis-board");
+      router.push("/radar/theses");
     } catch (err) {
       console.error("Failed to add thesis:", err);
     } finally {

@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useCallback, useRef, type CSSProperties, 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/shell";
+import { RadarTabs } from "@/components/radar/RadarTabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
@@ -852,12 +853,15 @@ export default function WatchlistPage() {
 
   return (
     <AppShell pageTitle="Watchlist" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
+      <div className="px-6 pt-4 -mb-1">
+        <RadarTabs active="watchlist" />
+      </div>
       <div
         style={{
           display: 'flex',
           gap: '24px',
           padding: isMobile ? '12px' : '24px',
-          height: 'calc(100vh - var(--topbar-height) - var(--moodbar-height))',
+          height: 'calc(100vh - var(--topbar-height) - var(--moodbar-height) - 58px)',
           flexDirection: isMobile ? 'column' : 'row',
         }}
       >

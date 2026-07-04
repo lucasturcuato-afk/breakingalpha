@@ -92,7 +92,7 @@ const TOUR_STEPS: DriveStep[] = [
     },
   },
   {
-    element: "[data-tour='thesis-board-link']",
+    element: "[data-tour='radar-link']",
     popover: {
       title: "Thesis Board",
       description:
@@ -102,7 +102,7 @@ const TOUR_STEPS: DriveStep[] = [
     },
   },
   {
-    element: "[data-tour='track-record-link']",
+    element: "[data-tour='radar-link']",
     popover: {
       title: "Track Record",
       description:

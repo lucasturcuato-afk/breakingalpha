@@ -147,7 +147,7 @@ export default function ThesisDetailPage() {
     return (
       <AppShell pageTitle="Thesis Detail" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
         <div className="p-6 max-w-[960px]">
-          <Link href="/track-record" className="inline-flex items-center gap-1 text-text-muted hover:text-espresso text-[12px] mb-4">
+          <Link href="/radar/track-record" className="inline-flex items-center gap-1 text-text-muted hover:text-espresso text-[12px] mb-4">
             <ArrowLeft size={12} /> Back to Thesis Tracker
           </Link>
           <p className="text-text-secondary">Thesis not found.</p>
@@ -160,7 +160,7 @@ export default function ThesisDetailPage() {
     <AppShell pageTitle={thesis.title ? neutralizeThesisTitle(thesis.title) : "Thesis Detail"} mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
       <div className="p-6 max-w-[960px] space-y-6">
         {/* Back link */}
-        <Link href="/track-record" className="inline-flex items-center gap-1 text-text-muted hover:text-espresso text-[12px]">
+        <Link href="/radar/track-record" className="inline-flex items-center gap-1 text-text-muted hover:text-espresso text-[12px]">
           <ArrowLeft size={12} /> Back to Thesis Tracker
         </Link>
 

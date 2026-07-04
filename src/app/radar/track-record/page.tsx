@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
+import { RadarTabs } from "@/components/radar/RadarTabs";
 import Link from "next/link";
 import { LineChart, Clock, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import { getSectorStyle } from "@/lib/sector-colors";
@@ -324,6 +325,7 @@ export default function TrackRecordPage() {
       moodDetails={moodDetails}
     >
       <div className="p-6 space-y-6 max-w-[960px]">
+        <RadarTabs active="calls" context="Thesis Tracker" />
         {/* HEADER */}
         <div>
           <h1 className="font-display text-[28px] font-bold text-espresso leading-tight">
@@ -509,7 +511,7 @@ export default function TrackRecordPage() {
                     t.outcome == null ? (
                       <Link
                         key={t.id}
-                        href={`/track-record/${t.id}`}
+                        href={`/radar/track-record/${t.id}`}
                         className="card-hover-lift block rounded-lg"
                       >
                         <ScoredObject
@@ -526,7 +528,7 @@ export default function TrackRecordPage() {
                     ) : (
                       <Link
                         key={t.id}
-                        href={`/track-record/${t.id}`}
+                        href={`/radar/track-record/${t.id}`}
                         className="card-hover-lift block bg-white rounded-xl border border-border-base p-3 hover:border-gold/40 transition-colors"
                       >
                         <div className="flex items-start justify-between gap-2">
@@ -678,7 +680,7 @@ function ThesisRankCard({
   const iconColor = positive ? "text-signal-up" : "text-signal-dn";
   return (
     <Link
-      href={`/track-record/${thesis.id}`}
+      href={`/radar/track-record/${thesis.id}`}
       className="card-hover-lift block bg-white rounded-xl border border-border-base p-3 hover:border-gold/40 transition-colors"
     >
       <div className="flex items-start gap-2">

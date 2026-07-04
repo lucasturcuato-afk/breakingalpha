@@ -36,7 +36,7 @@ const SYSTEM_PROMPT =
   "Be specific, cite sources by title, and maintain an analyst's tone. Never invent facts. " +
   "When you reference any specific article, thesis, or trend in your response, format it as a markdown link: " +
   "for articles use [article title](article_url) with the URL from the article context, " +
-  "for theses use [thesis title](/thesis-board) linking to the thesis board, " +
+  "for theses use [thesis title](/radar/theses) linking to the thesis board, " +
   "for trends use [trend title](/trends) linking to the trends page. " +
   "Always include the URL or path in the link. Never write just the title without a link.";
 

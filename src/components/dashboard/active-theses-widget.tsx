@@ -42,7 +42,7 @@ export function ActiveThesesWidget({
       {theses.map((thesis) => (
         <Link
           key={thesis.id}
-          href={`/thesis-board?id=${thesis.id}`}
+          href={`/radar/theses?thesis=${thesis.id}`}
           className={cn(
             "block p-2.5 rounded-lg",
             "transition-colors duration-[var(--duration-fast)]",
@@ -62,7 +62,7 @@ export function ActiveThesesWidget({
       ))}
 
       <Link
-        href="/thesis-board"
+        href="/radar/theses"
         className="block font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors"
       >
         View all theses →

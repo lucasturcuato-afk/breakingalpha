@@ -34,6 +34,7 @@ import {
   Search,
   TrendingUp,
   Star,
+  Radar as RadarIcon,
   LineChart,
   Sparkles,
   Settings,
@@ -67,12 +68,10 @@ const DEFAULT_SECTIONS: NavItem[] = [
   { id: "morning-brief", label: "Morning Brief", href: "/morning-brief", icon: <Clock size={16} />, liveDot: true, kind: "main" },
   { id: "evening-wrap", label: "Evening Wrap", href: "/evening-wrap", icon: <Globe size={16} />, kind: "main" },
   { id: "live-feed", label: "Live Feed", href: "/live-feed", icon: <AlignLeft size={16} />, kind: "main" },
-  { id: "thesis-board", label: "Thesis Board", href: "/thesis-board", icon: <FileText size={16} />, kind: "research" },
+  { id: "radar", label: "Radar", href: "/radar", icon: <RadarIcon size={16} />, kind: "research" },
   { id: "deal-flow", label: "Deal Flow", href: "/deal-flow", icon: <Briefcase size={16} />, kind: "research" },
   { id: "company", label: "Company Intel", href: "/company", icon: <Search size={16} />, kind: "research" },
   { id: "trends", label: "Trends", href: "/trends", icon: <TrendingUp size={16} />, kind: "research" },
-  { id: "track-record", label: "Thesis Tracker", href: "/track-record", icon: <LineChart size={16} />, kind: "research" },
-  { id: "watchlist", label: "Watchlist", href: "/watchlist", icon: <Star size={16} />, kind: "research" },
   { id: "intelligence", label: "Intelligence", href: "/intelligence", icon: <Sparkles size={16} />, kind: "research" },
 ];
 
@@ -252,10 +251,20 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
         }
         const raw = (data as { sidebar_section_order?: unknown } | null)?.sidebar_section_order;
         if (isValidPrefs(raw)) {
+          // Radar replaced three sections; remap saved ids so user order survives.
+          const LEGACY_TO_RADAR = new Set(["thesis-board", "track-record", "watchlist"]);
+          const remap = (ids: string[]) => {
+            const out: string[] = [];
+            for (const o of ids) {
+              const mapped = LEGACY_TO_RADAR.has(o) ? "radar" : o;
+              if (!out.includes(mapped)) out.push(mapped);
+            }
+            return out;
+          };
           const known = new Set(DEFAULT_ORDER);
-          const filteredOrder = raw.order.filter((o) => known.has(o));
+          const filteredOrder = remap(raw.order).filter((o) => known.has(o));
           const missing = DEFAULT_ORDER.filter((o) => !filteredOrder.includes(o));
-          const filteredHidden = raw.hidden.filter((h) => known.has(h));
+          const filteredHidden = remap(raw.hidden).filter((h) => known.has(h));
           setPrefs({ order: [...filteredOrder, ...missing], hidden: filteredHidden });
         }
         setPrefsLoaded(true);
@@ -744,7 +753,7 @@ function NavGroup({
         {items.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
           const isLiveFeed = item.href === "/live-feed";
-          const isWatchlist = item.href === "/watchlist";
+          const isWatchlist = item.href === "/radar";
 
           // Live-feed unread or watchlist count at icon-only width: render as
           // a small corner dot so users still see "there is something" without

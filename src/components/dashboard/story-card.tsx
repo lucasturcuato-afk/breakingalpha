@@ -247,7 +247,7 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
 
                       const best = scored[0];
                       if (best.score >= MATCH_THRESHOLD) {
-                        router.push(`/thesis-board?thesis=${best.id}`);
+                        router.push(`/radar/theses?thesis=${best.id}`);
                       } else {
                         setThesisToast("No closely related thesis found — visit Thesis Board to build one");
                         setTimeout(() => setThesisToast(""), 3500);
@@ -462,7 +462,7 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
 
                         const best = scored[0];
                         if (best.score >= MATCH_THRESHOLD) {
-                          router.push(`/thesis-board?thesis=${best.id}`);
+                          router.push(`/radar/theses?thesis=${best.id}`);
                         } else {
                           setThesisToast("No closely related thesis found — visit Thesis Board to build one");
                           setTimeout(() => setThesisToast(""), 3500);

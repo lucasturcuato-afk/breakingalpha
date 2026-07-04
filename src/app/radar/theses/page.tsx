@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/shell";
+import { RadarTabs } from "@/components/radar/RadarTabs";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { ThesisList } from "@/components/thesis/ThesisList";
 import { ThesisDetailPanel } from "@/components/thesis/thesis-detail-panel";
@@ -470,6 +471,7 @@ function ThesisBoardContent() {
   return (
     <AppShell pageTitle="Thesis Board" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
       <div className="p-6">
+        <RadarTabs active="calls" context="Thesis workspace" />
         {loading ? (
           <div className="space-y-3">
             <div className="grid grid-cols-4 gap-3">
