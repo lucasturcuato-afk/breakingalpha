@@ -1,0 +1,205 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getSupabaseWithUser } from "@/lib/supabase-server";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * User claims CRUD.
+ *
+ * GET returns the user's claims joined with their real outcomes:
+ *  - authored claims -> user_claim_outcomes rows (attribution grader)
+ *  - adopted claims  -> the ORIGINAL morning_brief_call_outcomes row via
+ *    adopted_from_call_id (adopted calls are never re-graded)
+ * No outcome row means the claim renders open/not-graded; nothing is
+ * fabricated.
+ *
+ * POST persists a proposal the user confirmed in the authoring flow.
+ * user_claim is stored VERBATIM. Server re-validates gradeability the
+ * same way the author route does.
+ *
+ * Degrades gracefully when tables are missing (migration sql/0012):
+ * GET -> { claims: [], unavailable: true }.
+ */
+
+const CLAIM_TYPES = ["ticker", "sector", "index", "aggregate", "other"] as const;
+const DIRECTIONS = ["bullish", "bearish", "neutral"] as const;
+const MAX_CLAIM_CHARS = 400;
+const MAX_WINDOW_DAYS = 90;
+
+function isMissingTable(error: { code?: string; message?: string } | null): boolean {
+  return error?.code === "42P01" || /does not exist/i.test(error?.message ?? "");
+}
+
+export async function GET() {
+  const { supabase, user } = await getSupabaseWithUser();
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  const { data: claims, error } = await supabase
+    .from("user_claims")
+    .select(
+      "id, user_claim, claim_type, target_symbol, expected_direction, resolution_method, resolution_window_start, resolution_window_end, evidence_entities, gradeable, gradeability_note, status, source, adopted_from_call_id, created_at",
+    )
+    .eq("user_id", user.id)
+    .neq("status", "archived")
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (error) {
+    if (isMissingTable(error)) {
+      return NextResponse.json({ claims: [], outcomes: {}, adoptedOutcomes: {}, unavailable: true });
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  const rows = claims ?? [];
+  const outcomes: Record<string, unknown> = {};
+  const adoptedOutcomes: Record<string, unknown> = {};
+
+  const authoredIds = rows.filter((c) => c.source === "authored").map((c) => c.id);
+  if (authoredIds.length) {
+    const { data } = await supabase
+      .from("user_claim_outcomes")
+      .select(
+        "claim_id, verdict, attribution, actual_pct_change, actual_direction, verdict_notes, graded_at, metadata",
+      )
+      .in("claim_id", authoredIds)
+      .order("graded_at", { ascending: false });
+    for (const o of data ?? []) {
+      if (!(o.claim_id in outcomes)) outcomes[o.claim_id] = o;
+    }
+  }
+
+  const adoptedCallIds = rows
+    .map((c) => c.adopted_from_call_id)
+    .filter((id): id is string => Boolean(id));
+  if (adoptedCallIds.length) {
+    const { data } = await supabase
+      .from("morning_brief_call_outcomes")
+      .select(
+        "call_id, verdict, attribution, actual_pct_change, actual_direction, verdict_notes, graded_at, metadata",
+      )
+      .in("call_id", adoptedCallIds)
+      .order("graded_at", { ascending: false });
+    for (const o of data ?? []) {
+      if (!(o.call_id in adoptedOutcomes)) adoptedOutcomes[o.call_id] = o;
+    }
+  }
+
+  return NextResponse.json({ claims: rows, outcomes, adoptedOutcomes });
+}
+
+export async function POST(request: NextRequest) {
+  const { supabase, user } = await getSupabaseWithUser();
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const userClaim = typeof body.user_claim === "string" ? body.user_claim.trim() : "";
+  if (!userClaim || userClaim.length > MAX_CLAIM_CHARS) {
+    return NextResponse.json({ error: "user_claim required (<=400 chars)" }, { status: 400 });
+  }
+  const claimType = CLAIM_TYPES.includes(body.claim_type as never)
+    ? (body.claim_type as string)
+    : "other";
+  const direction = DIRECTIONS.includes(body.expected_direction as never)
+    ? (body.expected_direction as string)
+    : null;
+  const isoDate = (v: unknown): string | null =>
+    typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+  const windowStart = isoDate(body.resolution_window_start);
+  const windowEnd = isoDate(body.resolution_window_end);
+  const targetSymbol =
+    typeof body.target_symbol === "string" && body.target_symbol.trim()
+      ? body.target_symbol.trim()
+      : null;
+
+  // Server-side gradeability enforcement (never trust the client).
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const priceable = ["ticker", "sector", "index"].includes(claimType);
+  const windowOk =
+    windowEnd !== null &&
+    windowEnd > todayIso &&
+    (new Date(windowEnd).getTime() - new Date(todayIso).getTime()) / 86400_000 <= MAX_WINDOW_DAYS;
+  const gradeable =
+    body.gradeable === true && priceable && Boolean(targetSymbol) && Boolean(direction) && windowOk;
+  const gradeabilityNote =
+    typeof body.gradeability_note === "string" && body.gradeability_note.trim()
+      ? body.gradeability_note.trim()
+      : gradeable
+        ? null
+        : "Not price-gradeable in v1; tracked as context only.";
+
+  const conf =
+    typeof body.confidence_in_reduction === "number" &&
+    body.confidence_in_reduction >= 0 &&
+    body.confidence_in_reduction <= 1
+      ? body.confidence_in_reduction
+      : null;
+
+  const { data, error } = await supabase
+    .from("user_claims")
+    .insert({
+      user_id: user.id,
+      user_claim: userClaim,
+      claim_type: claimType,
+      target_symbol: claimType === "ticker" ? targetSymbol?.toUpperCase() : targetSymbol,
+      expected_direction: direction,
+      resolution_method: {
+        method: gradeable ? "price_attribution" : "none",
+        version: 1,
+      },
+      resolution_window_start: gradeable ? (windowStart ?? todayIso) : windowStart,
+      resolution_window_end: windowEnd,
+      evidence_entities: Array.isArray(body.evidence_entities)
+        ? (body.evidence_entities as unknown[])
+            .filter((e): e is string => typeof e === "string")
+            .slice(0, 8)
+        : [],
+      gradeable,
+      gradeability_note: gradeabilityNote,
+      confidence_in_reduction: conf,
+      status: "open",
+      source: "authored",
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    if (isMissingTable(error)) {
+      return NextResponse.json(
+        { error: "Calls are not set up yet (migration pending)." },
+        { status: 503 },
+      );
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ id: data.id, gradeable });
+}
+
+export async function PATCH(request: NextRequest) {
+  const { supabase, user } = await getSupabaseWithUser();
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  let body: { id?: string; status?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  // Users may only archive; verdict-bearing statuses belong to the grader.
+  if (!body.id || body.status !== "archived") {
+    return NextResponse.json({ error: "id and status='archived' required" }, { status: 400 });
+  }
+  const { error } = await supabase
+    .from("user_claims")
+    .update({ status: "archived" })
+    .eq("id", body.id)
+    .eq("user_id", user.id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}

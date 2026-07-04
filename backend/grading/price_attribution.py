@@ -128,6 +128,33 @@ def resolve_tier(claim_type: str, symbol: str) -> AttributionTier:
     return TIER_SINGLE_STOCK
 
 
+def window_scale(sessions: int) -> float:
+    """
+    Threshold scale for multi-session grading windows: sqrt(sessions),
+    the standard vol-of-sum heuristic. V1 HEURISTIC to validate against
+    real outcomes later; isolated here so tuning is one edit.
+    sessions <= 1 returns 1.0, keeping single-session grading (all brief
+    calls) numerically identical.
+    """
+    if sessions <= 1:
+        return 1.0
+    return round(sessions ** 0.5, 3)
+
+
+def scale_tier_for_sessions(tier: AttributionTier, sessions: int) -> AttributionTier:
+    """Scaled copy of a tier for an N-session window. classify_attribution
+    already takes the tier as a parameter, so this extends grading to
+    windows without touching the classification logic itself."""
+    scale = window_scale(sessions)
+    if scale == 1.0:
+        return tier
+    return AttributionTier(
+        name=tier.name,
+        dead_band_pct=round(tier.dead_band_pct * scale, 3),
+        min_excess_pct=round(tier.min_excess_pct * scale, 3),
+    )
+
+
 @dataclass(frozen=True)
 class BenchmarkMove:
     symbol: str
@@ -295,7 +322,10 @@ class PriceAttributionGrader:
             )
 
         tier = resolve_tier(claim_type, target)
-        window = _grading_window(call.get("brief_date"))
+        # Multi-session extension (user claims): an optional window_start
+        # widens the grading window; brief calls never set it, so their
+        # path is unchanged.
+        window = _grading_window(call.get("brief_date"), call.get("window_start"))
         if window is None:
             return ungradable(
                 REASON_NO_PRICE_DATA,
@@ -312,8 +342,15 @@ class PriceAttributionGrader:
                 grader=self.name,
             )
 
+        # Session count comes from the entity's actual candles; thresholds
+        # scale by sqrt(sessions) (v1 heuristic). Single session: scale 1.0,
+        # tier unchanged.
+        sessions = int(entity.get("candle_count") or 1)
+        scale = window_scale(sessions)
+        tier = scale_tier_for_sessions(tier, sessions)
+
         benchmarks, coverage, bench_error = self._fetch_benchmarks(
-            claim_type, target, day_start, day_end
+            claim_type, target, day_start, day_end, bar_scale=scale
         )
         if bench_error:
             return ungradable(REASON_NO_BENCHMARK_DATA, bench_error, grader=self.name)
@@ -366,6 +403,13 @@ class PriceAttributionGrader:
                     "from": day_start.isoformat(),
                     "to": day_end.isoformat(),
                 },
+                # Multi-session keys are added only for windowed grades so
+                # single-session (brief call) metadata stays byte-identical.
+                **(
+                    {"window_sessions": sessions, "threshold_scale": scale}
+                    if sessions > 1
+                    else {}
+                ),
             },
         )
 
@@ -384,9 +428,12 @@ class PriceAttributionGrader:
         entity_symbol: str,
         day_start: datetime,
         day_end: datetime,
+        bar_scale: float = 1.0,
     ) -> tuple[list[BenchmarkMove], str, str | None]:
         """Returns (benchmarks, coverage, error). A non-None error means
-        required benchmark data failed and the call is ungradable."""
+        required benchmark data failed and the call is ungradable.
+        bar_scale scales the benchmarks' meaningful-move bars for
+        multi-session windows; the default 1.0 is the brief-call path."""
         sym = entity_symbol.upper()
         if claim_type == "index" or sym in BROAD_INDEX_ETFS:
             # The index is the market; grading is absolute.
@@ -396,8 +443,12 @@ class PriceAttributionGrader:
         if claim_type == "ticker" and sym not in SECTOR_ETF_SYMBOLS:
             sector_etf = sector_etf_for_label(self._ticker_sectors.get(sym))
             if sector_etf and sector_etf != sym:
-                wanted.append(("sector", sector_etf, TIER_SECTOR_ETF.min_excess_pct))
-        wanted.append(("market", MARKET_BENCHMARK, TIER_BROAD_INDEX.min_excess_pct))
+                wanted.append(
+                    ("sector", sector_etf, round(TIER_SECTOR_ETF.min_excess_pct * bar_scale, 3))
+                )
+        wanted.append(
+            ("market", MARKET_BENCHMARK, round(TIER_BROAD_INDEX.min_excess_pct * bar_scale, 3))
+        )
 
         moves: list[BenchmarkMove] = []
         for role, bench_sym, bar in wanted:
@@ -418,20 +469,33 @@ class PriceAttributionGrader:
         return moves, coverage, None
 
 
-def _grading_window(brief_date: object) -> tuple[datetime, datetime] | None:
-    """Whole-UTC-day window around the call's brief_date so
-    fetch_historical_candle returns exactly that session's daily candle.
-    Live-forward only: the window is the call's own date, never today."""
-    if isinstance(brief_date, date) and not isinstance(brief_date, datetime):
-        d = brief_date
-    elif isinstance(brief_date, str) and brief_date:
+def _parse_grading_date(value: object) -> date | None:
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, str) and value:
         try:
-            d = date.fromisoformat(brief_date[:10])
+            return date.fromisoformat(value[:10])
         except ValueError:
             return None
-    else:
+    return None
+
+
+def _grading_window(
+    brief_date: object, window_start: object = None
+) -> tuple[datetime, datetime] | None:
+    """Whole-UTC-day window around the call's brief_date so
+    fetch_historical_candle returns exactly that session's daily candle.
+    Live-forward only: the window is the call's own date, never today.
+    Optional window_start (user claims) widens the window to
+    [window_start, brief_date]; ignored unless it is a valid earlier
+    date, so brief calls are unaffected."""
+    d = _parse_grading_date(brief_date)
+    if d is None:
         return None
+    start = _parse_grading_date(window_start)
+    if start is None or start >= d:
+        start = d
     return (
-        datetime.combine(d, time(0, 0), tzinfo=timezone.utc),
+        datetime.combine(start, time(0, 0), tzinfo=timezone.utc),
         datetime.combine(d, time(23, 59, 59), tzinfo=timezone.utc),
     )
