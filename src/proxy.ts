@@ -27,6 +27,9 @@ export async function proxy(request: NextRequest) {
   const isPublicPath =
     path === '/' ||
     path === '/preview' ||
+    // Fixture harnesses (/preview/radar etc) open in LOCAL DEV ONLY so
+    // visual smoke tests can run unauthenticated; prod stays gated.
+    (path.startsWith('/preview/') && process.env.NODE_ENV === 'development') ||
     path === '/about' ||
     path === '/morning-brief' ||
     path === '/live-feed' ||

@@ -39,7 +39,7 @@ const MORE_NAV: MobileNavItem[] = [
   { label: "Morning Brief", href: "/morning-brief", icon: <Clock size={16} /> },
   { label: "Evening Wrap", href: "/evening-wrap", icon: <Globe size={16} /> },
   { label: "Company Intel", href: "/company", icon: <Search size={16} /> },
-  { label: "Thesis Board", href: "/radar/theses", icon: <FileText size={16} /> },
+  { label: "Tracked Views", href: "/radar/calls?views=open", icon: <FileText size={16} /> },
   { label: "Thesis Tracker", href: "/radar/track-record", icon: <LineChart size={16} /> },
 ];
 

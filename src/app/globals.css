@@ -414,6 +414,17 @@ html.dark .skeleton-shimmer {
 .motion-page-exit {
   animation: motion-page-out var(--duration-page-exit) var(--ease-out) both;
 }
+/* While a page is settling (initial motion-page-enter still playing),
+   inner entrance animations complete instantly so every section fades
+   in as ONE unit with the page. The gate lifts after the enter ends
+   (use-motion-settled.ts), restoring normal animation for keyed
+   view/filter switches. */
+[data-motion-settling] .motion-rise-in,
+[data-motion-settling] .motion-stagger > * {
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+}
+
 /* Gentle list stagger: 40ms steps, capped so long lists never crawl. */
 .motion-stagger > * {
   animation: motion-rise-in var(--duration-slow) var(--ease-out) both;
@@ -433,6 +444,16 @@ html.dark .skeleton-shimmer {
 }
 .evidence-map-breathe {
   animation: map-breathe 3.4s ease-in-out infinite;
+}
+
+/* Reactive branch lines: the hovered/nearest branch flows with a slow
+   dash drift back to the center. Membership only, never stance. */
+@keyframes map-edge-flow {
+  to { stroke-dashoffset: -14; }
+}
+.map-edge-flow {
+  stroke-dasharray: 8 6;
+  animation: map-edge-flow 1100ms linear infinite;
 }
 
 /* While a map popup is open, de-emphasize the other node labels so the
@@ -466,9 +487,11 @@ html.dark .skeleton-shimmer {
   .resolve-fade-up { animation: none; }
   .motion-rise-in, .motion-page-enter, .motion-page-exit, .motion-stagger > * { animation: none; }
   .motion-fade-reveal { opacity: 1; transition: none; }
-  .evidence-map-node { transition: none !important; transform: none !important; }
+  /* Keep the centering translate; kill only the parallax drift. */
+  .evidence-map-node { transition: none !important; transform: translate(-50%, -50%) !important; }
   .evidence-map-glow { display: none; }
   .evidence-map-breathe { animation: none; }
+  .map-edge-flow { animation: none; stroke-dasharray: none; }
 }
 
 /* Conviction ring inner cutout — matches parent surface */

@@ -24,7 +24,7 @@ const commands: CommandItem[] = [
   { id: "evening", label: "Evening Wrap", section: "Pages", href: "/evening-wrap", icon: <Clock size={14} /> },
   { id: "feed", label: "Live Feed", section: "Pages", href: "/live-feed", icon: <FileText size={14} /> },
   { id: "radar", label: "Radar", section: "Research", href: "/radar", icon: <Star size={14} /> },
-  { id: "thesis", label: "Thesis Board", section: "Research", href: "/radar/theses", icon: <FileText size={14} /> },
+  { id: "thesis", label: "Tracked Views", section: "Research", href: "/radar/calls?views=open", icon: <FileText size={14} /> },
   { id: "tracker", label: "Thesis Tracker", section: "Research", href: "/radar/track-record", icon: <TrendingUp size={14} /> },
   { id: "deal", label: "Deal Flow", section: "Research", href: "/deal-flow", icon: <Briefcase size={14} /> },
   { id: "watchlist", label: "Watchlist", section: "Research", href: "/radar/watchlist", icon: <Star size={14} /> },

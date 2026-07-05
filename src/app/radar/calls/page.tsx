@@ -21,7 +21,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
 import { RadarTabs } from "@/components/radar/RadarTabs";
@@ -31,13 +30,13 @@ import {
   type CallOutcomeRow,
   type OpenCallInput,
 } from "@/lib/scored-object-map";
-import {
-  neutralizeThesisTitle,
-  verdictDisplayLabel,
-} from "@/lib/track-record-live-score";
 import { matchFollow, type FollowRow } from "@/lib/radar-following";
+import { TrackedViews } from "@/components/thesis/TrackedViews";
 import { EvidenceMap } from "@/components/radar/EvidenceMap";
 import type { Article as MapArticle } from "@/lib/clustering-utils";
+import { GroupJumpNav, useGroupScrollSpy } from "@/components/radar/GroupJumpNav";
+import { useMotionSettled } from "@/lib/use-motion-settled";
+import { useTopicClusters } from "@/lib/use-topic-clusters";
 
 const SERIF = "var(--font-playfair-display), serif";
 
@@ -68,14 +67,6 @@ interface BriefCallRow {
   confidence: number | null;
 }
 
-interface ThesisLean {
-  id: string;
-  title: string;
-  sector: string | null;
-  live_verdict: string | null;
-  outcome: string | null;
-}
-
 interface AuthorProposal {
   claim_type: string;
   target_symbol: string | null;
@@ -100,20 +91,42 @@ type TopMode = "record" | "pinned" | "resolving";
 const TOP_MODE_KEY = "radar-calls-top";
 const PINNED_KEY = "radar-calls-pinned";
 
-const BRIEF_GROUPS: { key: string; label: string }[] = [
-  { key: "ticker", label: "Single names" },
-  { key: "sector", label: "Sectors" },
-  { key: "index", label: "Indices" },
-  { key: "aggregate", label: "Macro" },
-];
+interface BriefGroup {
+  id: string;
+  label: string;
+  calls: BriefCallRow[];
+}
 
-function groupBriefCalls(calls: BriefCallRow[]): { label: string; calls: BriefCallRow[] }[] {
-  return BRIEF_GROUPS.map((g) => ({
-    label: g.label,
-    calls: calls.filter((c) => (c.claim_type ?? "") === g.key),
-  }))
-    .concat([{ label: "Other", calls: calls.filter((c) => !BRIEF_GROUPS.some((g) => g.key === (c.claim_type ?? ""))) }])
-    .filter((g) => g.calls.length > 0)
+function groupSlug(label: string): string {
+  return label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
+/**
+ * Group brief calls by what they are ABOUT: single-name calls under
+ * their company's real sector (from the companies table), then sector
+ * calls, indices, and macro. A ticker with no resolved sector lands in
+ * an honest "Single names" bucket rather than a guessed sector.
+ */
+function groupBriefCalls(
+  calls: BriefCallRow[],
+  tickerSectors: Record<string, string>,
+): BriefGroup[] {
+  const groups = new Map<string, BriefCallRow[]>();
+  const push = (label: string, c: BriefCallRow) => {
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label)!.push(c);
+  };
+  for (const c of calls) {
+    const type = c.claim_type ?? "";
+    if (type === "ticker") {
+      push((c.target_symbol && tickerSectors[c.target_symbol]) || "Single names", c);
+    } else if (type === "sector") push("Sector calls", c);
+    else if (type === "index") push("Indices", c);
+    else if (type === "aggregate") push("Macro", c);
+    else push("Other", c);
+  }
+  return [...groups.entries()]
+    .map(([label, groupCalls]) => ({ id: groupSlug(label), label, calls: groupCalls }))
     .sort((a, b) => b.calls.length - a.calls.length);
 }
 
@@ -165,28 +178,36 @@ function claimToCallInput(c: UserClaim): OpenCallInput {
 }
 
 export default function CallsPage() {
+  const motionSettled = useMotionSettled();
   const [claims, setClaims] = useState<UserClaim[]>([]);
+  const [tickerSectors, setTickerSectors] = useState<Record<string, string>>({});
   const [claimOutcomes, setClaimOutcomes] = useState<Record<string, CallOutcomeRow>>({});
   const [adoptedOutcomes, setAdoptedOutcomes] = useState<Record<string, CallOutcomeRow>>({});
   const [unavailable, setUnavailable] = useState(false);
   const [briefCalls, setBriefCalls] = useState<BriefCallRow[]>([]);
   const [briefOutcomes, setBriefOutcomes] = useState<Map<string, CallOutcomeRow> | null>(null);
-  const [theses, setTheses] = useState<ThesisLean[]>([]);
   const [loading, setLoading] = useState(true);
   const [topMode, setTopMode] = useState<TopMode>("record");
   const [pinned, setPinned] = useState<string[]>([]);
   const [adoptBusy, setAdoptBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [leaningsOpen, setLeaningsOpen] = useState(false);
   const [mapClaimId, setMapClaimId] = useState<string | null>(null);
   const [mapArticles, setMapArticles] = useState<MapArticle[] | null>(null);
   const [mapLoading, setMapLoading] = useState(false);
   const [draftText, setDraftText] = useState<string | null>(null);
+  const [deepLinkThesisId, setDeepLinkThesisId] = useState<string | null>(null);
+  const [openViews, setOpenViews] = useState(false);
 
   useEffect(() => {
     // Prefill authoring from ?draft= (Track action on articles elsewhere).
-    const draft = new URLSearchParams(window.location.search).get("draft");
+    const params = new URLSearchParams(window.location.search);
+    const draft = params.get("draft");
     if (draft) setDraftText(draft.slice(0, 400));
+    // Deep links from the retired /radar/theses destination: ?thesis=<id>
+    // opens that tracked view inline; ?views=open just opens the section.
+    const thesisId = params.get("thesis");
+    if (thesisId) setDeepLinkThesisId(thesisId);
+    if (params.get("views") === "open") setOpenViews(true);
     const stored = window.localStorage.getItem(TOP_MODE_KEY);
     if (stored === "record" || stored === "pinned" || stored === "resolving") setTopMode(stored);
     try {
@@ -236,6 +257,30 @@ export default function CallsPage() {
         .limit(20);
       const calls = (callRows as BriefCallRow[] | null) ?? [];
       setBriefCalls(calls);
+
+      // Real sectors for single-name calls, from the companies table;
+      // unresolved tickers stay in an honest generic group.
+      const symbols = [
+        ...new Set(
+          calls
+            .filter((c) => (c.claim_type ?? "") === "ticker" && c.target_symbol)
+            .map((c) => c.target_symbol!),
+        ),
+      ];
+      if (symbols.length) {
+        const { data: companyRows } = await sb
+          .from("companies")
+          .select("ticker, sector")
+          .in("ticker", symbols);
+        const sectorByTicker: Record<string, string> = {};
+        for (const row of (companyRows as { ticker: string | null; sector: string | null }[] | null) ?? []) {
+          if (row.ticker && row.sector) sectorByTicker[row.ticker] = row.sector;
+        }
+        setTickerSectors(sectorByTicker);
+      } else {
+        setTickerSectors({});
+      }
+
       if (calls.length) {
         const { data: outcomeRows, error: outcomeError } = await sb
           .from("morning_brief_call_outcomes")
@@ -256,14 +301,6 @@ export default function CallsPage() {
       } else {
         setBriefOutcomes(new Map());
       }
-
-      // Tier-2: theses as soft evidence leanings.
-      const { data: thesisRows } = await sb
-        .from("theses")
-        .select("id, title, sector, live_verdict, outcome")
-        .order("generated_at", { ascending: false })
-        .limit(6);
-      setTheses((thesisRows as ThesisLean[] | null) ?? []);
     } finally {
       setLoading(false);
     }
@@ -398,11 +435,25 @@ export default function CallsPage() {
     [claims, pinned],
   );
 
+  const briefGroups = useMemo(
+    () => groupBriefCalls(briefCalls.slice(0, 12), tickerSectors),
+    [briefCalls, tickerSectors],
+  );
+  const briefSpy = useGroupScrollSpy(briefGroups.map((g) => g.id));
+
+  // Shared clustering resource for the per-claim evidence map.
+  const mapArticleIds = useMemo(() => (mapArticles ?? []).map((a) => a.id), [mapArticles]);
+  const claimClusters = useTopicClusters(mapArticleIds.length >= 4 ? mapArticleIds : null);
+
   const today = todayPt();
 
   return (
     <AppShell pageTitle="Radar">
-      <div data-radar-page className="motion-page-enter p-6 max-w-[1080px]">
+      <div
+        data-radar-page
+        data-motion-settling={motionSettled ? undefined : ""}
+        className="motion-page-enter p-6 max-w-[1080px]"
+      >
         <RadarTabs active="calls" />
 
         {loading ? null : (
@@ -526,6 +577,9 @@ export default function CallsPage() {
                         claims.find((c) => c.id === mapClaimId)?.user_claim ?? ""
                       }
                       articles={mapArticles}
+                      tree={claimClusters.tree}
+                      clusterStatus={claimClusters.status}
+                      onVisibleNodes={claimClusters.labelNodes}
                     />
                   ) : null}
                 </div>
@@ -545,8 +599,16 @@ export default function CallsPage() {
                   No brief calls captured in the last two weeks.
                 </p>
               ) : (
-                groupBriefCalls(briefCalls.slice(0, 12)).map((group) => (
-                <div key={group.label} className="mb-6 last:mb-0">
+                <>
+                <GroupJumpNav
+                  groups={briefGroups.map((g) => ({ id: g.id, label: g.label, count: g.calls.length }))}
+                  activeId={briefSpy.activeId}
+                  onSelect={briefSpy.jumpTo}
+                  ariaLabel="Jump to call group"
+                  bleed
+                />
+                {briefGroups.map((group) => (
+                <div key={group.id} id={`group-${group.id}`} className="mb-6 scroll-mt-14 last:mb-0">
                   <h3 className="mb-2.5 flex items-baseline gap-2 border-b border-border-subtle pb-1.5 font-sans text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">
                     {group.label}
                     <span className="font-mono text-[10px] font-normal" style={{ color: "var(--gold)" }}>
@@ -588,68 +650,17 @@ export default function CallsPage() {
                   })}
                 </div>
                 </div>
-                ))
+                ))}
+                </>
               )}
             </section>
 
-            {/* ── Tier 2: theses as SOFT evidence leanings. Deliberately
-                 DEMOTED behind a default-closed disclosure: the primary
-                 Calls experience is the user's own graded calls, not the
-                 system-thesis workstation. ── */}
-            {theses.length > 0 && (
-              <section className="mt-8 border-t border-border-subtle pt-4">
-                <button
-                  onClick={() => setLeaningsOpen((v) => !v)}
-                  className="flex w-full items-baseline justify-between gap-3 text-left"
-                >
-                  <span className="font-sans text-[12px] font-semibold uppercase tracking-[0.14em] text-text-muted">
-                    Evidence leanings
-                    <span className="ml-2 font-normal normal-case tracking-normal text-text-faint">
-                      {theses.length} system theses · LLM-judged, not verdicts
-                    </span>
-                  </span>
-                  <span className="font-sans text-[12px] text-text-faint">
-                    {leaningsOpen ? "Hide" : "Show"}
-                  </span>
-                </button>
-                {leaningsOpen && (
-                  <div className="mt-3">
-                    <p className="mb-3 font-sans text-[12px] text-text-faint">
-                      Theses graded by evidence review, not benchmark
-                      attribution. A leaning is not a verdict; the full
-                      workspace is in{" "}
-                      <Link href="/radar/theses" className="underline hover:text-text-primary">
-                        the evidence workspace
-                      </Link>{" "}
-                      and the{" "}
-                      <Link href="/radar/track-record" className="underline hover:text-text-primary">
-                        Tracker
-                      </Link>
-                      .
-                    </p>
-                    <div className="flex flex-col gap-1.5">
-                      {theses.map((t) => (
-                        <Link
-                          key={t.id}
-                          href={`/radar/theses?thesis=${t.id}`}
-                          className="flex items-baseline justify-between gap-3 rounded-md px-3 py-2 hover:bg-overlay"
-                        >
-                          <span
-                            className="min-w-0 flex-1 truncate text-text-secondary"
-                            style={{ fontFamily: SERIF, fontSize: "14px" }}
-                          >
-                            {neutralizeThesisTitle(t.title)}
-                          </span>
-                          <span className="shrink-0 font-sans text-[11px] italic text-text-muted">
-                            {verdictDisplayLabel(t.live_verdict ?? "Awaiting verdict")}
-                          </span>
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </section>
-            )}
+            {/* ── Tier 2: the thesis workspace, folded in as TRACKED
+                 VIEWS. Deliberately demoted below the graded calls:
+                 soft evidence leanings, LLM-judged, never Right/Wrong.
+                 Detail (evidence feed, why-this-thesis, notes, archive,
+                 review timeline) expands in place; no separate page. ── */}
+            <TrackedViews initialThesisId={deepLinkThesisId} initialOpen={openViews} />
 
             {toast && (
               <div className="fixed bottom-6 right-6 rounded-md bg-espresso px-4 py-2 font-sans text-[13px] text-cream shadow-lg dark:bg-overlay dark:text-foreground">

@@ -12,6 +12,10 @@ import { WatchlistGallery, type GalleryFilter } from "@/components/radar/Watchli
 import { ScoredObject } from "@/components/scored-object/ScoredObject";
 import { EvidenceMap } from "@/components/radar/EvidenceMap";
 import { scoredCallProps, type CallOutcomeRow } from "@/lib/scored-object-map";
+import { ThesisList } from "@/components/thesis/ThesisList";
+import { ThesisDetailPanel } from "@/components/thesis/thesis-detail-panel";
+import { ReviewTimeline, type VerdictRow } from "@/components/thesis/TrackedViews";
+import type { ThesisItem } from "@/components/thesis";
 import { useState } from "react";
 
 const SERIF = "var(--font-playfair-display), serif";
@@ -74,6 +78,58 @@ const CLAIM_OUTCOME: CallOutcomeRow = {
   },
 };
 
+
+const FIXTURE_THESES: ThesisItem[] = [
+  {
+    id: "th1",
+    title: "Grid interconnect queues become the datacenter bottleneck",
+    conviction: "HIGH",
+    sector: "Energy & Oil/Gas",
+    summary: "Utility interconnect backlogs are now the binding constraint on new datacenter capacity.",
+    rationale:
+      "Interconnect queues in PJM and ERCOT have stretched past 40 months while hyperscaler capex guides keep rising. If power, not chips, is the binding constraint, the value migrates to whoever controls approved grid capacity.",
+    bear_case: "Queue reform and behind-the-meter generation could clear backlogs faster than expected.",
+    catalyst_note: "FERC queue-reform order implementation through 2026.",
+    status: "active",
+    updatedAt: "2026-07-01",
+    ticker: "ETR",
+    generated_at: "2026-06-12T08:00:00Z",
+  },
+  {
+    id: "th2",
+    title: "HBM supply agreements tighten accelerator competition",
+    conviction: "MEDIUM",
+    sector: "Technology",
+    summary: "Multi-year HBM lockups raise the barrier for second-tier accelerator vendors.",
+    status: "active",
+    updatedAt: "2026-06-28",
+    ticker: "MU",
+    generated_at: "2026-06-20T08:00:00Z",
+  },
+  {
+    id: "th3",
+    title: "BDC marks lag private credit stress",
+    conviction: "WATCH",
+    sector: "Financial Services",
+    summary: "Non-accruals are drifting up while marks stay firm.",
+    status: "active",
+    updatedAt: "2026-06-25",
+    generated_at: "2026-06-22T08:00:00Z",
+  },
+];
+const FIXTURE_LEANINGS: Record<string, string | null> = {
+  th1: "Tracking confirmed",
+  th2: "Awaiting verdict",
+  th3: "Inconclusive after 12d",
+};
+const FIXTURE_THESIS_ARTICLES = [
+  { id: "ta1", title: "PJM interconnection queue tops 3,000 pending projects", source: "Utility Dive", published_at: "2026-06-30T10:00:00Z", sector: "Energy & Oil/Gas", sentiment: "positive" },
+  { id: "ta2", title: "Hyperscalers sign behind-the-meter nuclear PPAs", source: "Reuters", published_at: "2026-06-29T10:00:00Z", sector: "Energy & Oil/Gas", sentiment: "neutral" },
+];
+const FIXTURE_VERDICTS: VerdictRow[] = [
+  { id: "v1", verdict: "inconclusive", graded_at: "2026-06-18T09:00:00Z", confidence: 0.55, notes: "Evidence thin; interconnect data mixed.", grader_version: "evidence_grader_v2" },
+  { id: "v2", verdict: "confirmed", graded_at: "2026-07-01T09:00:00Z", confidence: 0.72, notes: "Queue growth and PPA activity both support the constraint thesis.", grader_version: "evidence_grader_v2" },
+];
 
 const MAP_ARTICLES = [
   { id: "m1", title: "NVIDIA locks multi-year HBM supply as accelerator backlog stretches", source: "Reuters", activity_types: ["Earnings & Results"], published_at: "2026-07-01T10:00:00Z" },
@@ -201,6 +257,39 @@ export default function RadarPreviewPage() {
             <span className="shrink-0 font-sans text-[11px] italic text-text-muted">
               Leaning supportive
             </span>
+          </div>
+        </Labeled>
+
+        <Labeled label="Calls — Tracked views: thesis workspace folded inline (list + in-place detail; the live section is a quiet default-closed disclosure)">
+          <div className="grid gap-4 md:grid-cols-[1fr_1.6fr]" style={{ height: "540px" }}>
+            <div className="min-h-0 overflow-y-auto">
+              <ThesisList
+                theses={FIXTURE_THESES}
+                selectedId={FIXTURE_THESES[0].id}
+                onSelect={() => {}}
+                filter="all"
+                leaningById={FIXTURE_LEANINGS}
+              />
+            </div>
+            <div className="flex min-h-0 flex-col gap-2">
+              <div className="min-h-0 flex-1">
+                <ThesisDetailPanel
+                  thesis={FIXTURE_THESES[0]}
+                  articles={FIXTURE_THESIS_ARTICLES}
+                  onArchive={() => {}}
+                  activeSignalCount={FIXTURE_THESES.length}
+                />
+              </div>
+              <div className="rounded-lg border border-border-subtle bg-elevated px-3.5 py-2.5">
+                <p className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-text-muted">
+                  Review timeline
+                  <span className="ml-2 font-normal normal-case tracking-normal italic text-text-faint">
+                    currently leaning supportive
+                  </span>
+                </p>
+                <ReviewTimeline verdicts={FIXTURE_VERDICTS} />
+              </div>
+            </div>
           </div>
         </Labeled>
       </div>

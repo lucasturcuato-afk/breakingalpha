@@ -55,7 +55,7 @@ export function DCAnalystSection({
         status: "new-signal",
         generated_at: new Date().toISOString(),
       });
-      router.push("/radar/theses");
+      router.push("/radar/calls?views=open");
     } catch (err) {
       console.error("Failed to add thesis:", err);
     } finally {

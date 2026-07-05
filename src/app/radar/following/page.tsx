@@ -25,7 +25,10 @@ import { AppShell } from "@/components/shell";
 import { RadarTabs } from "@/components/radar/RadarTabs";
 import type { FollowArticle } from "@/lib/radar-following";
 import { ArticleMemoActions } from "@/components/radar/ArticleMemoActions";
-import { EvidenceMap } from "@/components/radar/EvidenceMap";
+import { EvidenceMap, type MapArticle } from "@/components/radar/EvidenceMap";
+import { GroupJumpNav, useGroupScrollSpy } from "@/components/radar/GroupJumpNav";
+import { useTopicClusters } from "@/lib/use-topic-clusters";
+import { useMotionSettled } from "@/lib/use-motion-settled";
 
 interface FollowSummary {
   id: string;
@@ -97,10 +100,13 @@ export default function FollowingPage() {
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [mapFollowId, setMapFollowId] = useState<string | null>(null);
+  const motionSettled = useMotionSettled();
 
   useEffect(() => {
+    // The list always renders first; the map is opt-in per visit via
+    // "View as map" and is deliberately NOT restored across sessions.
     const stored = window.localStorage.getItem(VIEW_STORAGE_KEY);
-    if (stored === "topic" || stored === "activity" || stored === "timeline" || stored === "map") {
+    if (stored === "topic" || stored === "activity" || stored === "timeline") {
       setView(stored);
     }
   }, []);
@@ -195,7 +201,32 @@ export default function FollowingPage() {
   const lead = allArticles[0] ?? null;
   const secondaries = allArticles.slice(1, 7);
 
-  const byActivity = useMemo(() => {
+  // Shared clustering resource over everything followed: the SAME tree
+  // powers the theme-grouped list, its jump nav, and the map's "all"
+  // view. Computed once server-side per article set, cached across
+  // users; the hook dedupes fetches client-side.
+  const unionIds = useMemo(() => allArticles.map((e) => e.article.id), [allArticles]);
+  const { tree: unionTree } = useTopicClusters(unionIds.length >= 4 ? unionIds : null);
+
+  const entryById = useMemo(
+    () => new Map(allArticles.map((e) => [e.article.id, e])),
+    [allArticles],
+  );
+
+  // Theme groups from the shared clusters; honest tag-frequency
+  // fallback (first tag) while clusters are loading or unavailable.
+  const themeGroups = useMemo((): ThemeGroup[] => {
+    if (unionTree) {
+      return unionTree.clusters
+        .map((c) => ({
+          id: c.id,
+          label: c.label ?? "Related coverage",
+          entries: c.articleIds
+            .map((id) => entryById.get(id))
+            .filter((e): e is { article: FollowArticle; follow: FollowSummary } => !!e),
+        }))
+        .filter((g) => g.entries.length > 0);
+    }
     const groups = new Map<string, { article: FollowArticle; follow: FollowSummary }[]>();
     for (const entry of allArticles) {
       const tags = entry.article.activity_types?.length
@@ -205,14 +236,24 @@ export default function FollowingPage() {
       if (!groups.has(tag)) groups.set(tag, []);
       groups.get(tag)!.push(entry);
     }
-    return [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
-  }, [allArticles]);
+    return [...groups.entries()]
+      .sort((a, b) => b[1].length - a[1].length)
+      .map(([tag, entries]) => ({
+        id: tag.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+        label: tag,
+        entries,
+      }));
+  }, [unionTree, entryById, allArticles]);
 
   const isEmpty = !loading && follows.length === 0;
 
   return (
     <AppShell pageTitle="Radar">
-      <div data-radar-page className="motion-page-enter p-6 max-w-[1080px]">
+      <div
+        data-radar-page
+        data-motion-settling={motionSettled ? undefined : ""}
+        className="motion-page-enter p-6 max-w-[1080px]"
+      >
         <RadarTabs active="following" />
 
         {loading ? null : isEmpty ? (
@@ -238,9 +279,9 @@ export default function FollowingPage() {
                 {(
                   [
                     ["topic", "By topic"],
-                    ["activity", "By activity"],
+                    ["activity", "By theme"],
                     ["timeline", "Timeline"],
-                    ["map", "Map"],
+                    ["map", "View as map"],
                   ] as [ViewMode, string][]
                 ).map(([key, label]) => (
                   <button
@@ -320,13 +361,14 @@ export default function FollowingPage() {
             ) : view === "map" ? (
               <MapView
                 developments={active}
+                allEntries={allArticles}
                 mapFollowId={mapFollowId}
                 setMapFollowId={setMapFollowId}
               />
             ) : view === "timeline" ? (
               <TimelineView entries={allArticles} />
             ) : view === "activity" ? (
-              <ActivityView groups={byActivity} />
+              <ThemeView groups={themeGroups} />
             ) : (
               <>
                 {lead && <LeadDevelopment entry={lead} />}
@@ -486,52 +528,111 @@ function TimelineView({
   );
 }
 
-function ActivityView({
-  groups,
-}: {
-  groups: [string, { article: FollowArticle; follow: FollowSummary }[]][];
-}) {
+interface ThemeGroup {
+  id: string;
+  label: string;
+  entries: { article: FollowArticle; follow: FollowSummary }[];
+}
+
+/**
+ * Theme-grouped list: the SAME cluster labels the map uses, with the
+ * sticky jump nav so no group requires scrolling to reach.
+ */
+function ThemeView({ groups }: { groups: ThemeGroup[] }) {
+  const { activeId, jumpTo } = useGroupScrollSpy(groups.map((g) => g.id));
   return (
-    <div className="space-y-7">
-      {groups.map(([tag, entries]) => (
-        <section key={tag}>
-          <h3 className="mb-3 border-b border-border-subtle pb-1.5 font-sans text-[12px] font-semibold uppercase tracking-[0.14em] text-text-muted">
-            {tag}
-            <span className="ml-2 font-normal text-text-faint">{entries.length}</span>
-          </h3>
-          <div className="motion-stagger grid gap-4 md:grid-cols-2">
-            {entries.slice(0, 6).map((entry, i) => (
-              <SecondaryCard key={entry.article.id} entry={entry} wide={i === 0 && entries.length > 2} />
-            ))}
-          </div>
-        </section>
-      ))}
+    <div>
+      <GroupJumpNav
+        groups={groups.map((g) => ({ id: g.id, label: g.label, count: g.entries.length }))}
+        activeId={activeId}
+        onSelect={jumpTo}
+        ariaLabel="Jump to theme"
+        bleed
+      />
+      <div className="space-y-7">
+        {groups.map((group) => (
+          <section key={group.id} id={`group-${group.id}`} className="scroll-mt-14">
+            <h3 className="mb-3 border-b border-border-subtle pb-1.5 font-sans text-[12px] font-semibold uppercase tracking-[0.14em] text-text-muted">
+              {group.label}
+              <span className="ml-2 font-normal text-text-faint">{group.entries.length}</span>
+            </h3>
+            <div className="motion-stagger grid gap-4 md:grid-cols-2">
+              {group.entries.map((entry, i) => (
+                <SecondaryCard
+                  key={entry.article.id}
+                  entry={entry}
+                  wide={i === 0 && group.entries.length > 2}
+                />
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
     </div>
   );
 }
 
+function toMapArticle(a: FollowArticle): MapArticle {
+  return {
+    ...a,
+    source: a.source ?? undefined,
+    summary: a.summary ?? undefined,
+    url: a.url ?? undefined,
+    published_at: a.published_at ?? undefined,
+    industry_verticals: a.industry_verticals ?? undefined,
+    activity_types: a.activity_types ?? undefined,
+  };
+}
+
 function MapView({
   developments,
+  allEntries,
   mapFollowId,
   setMapFollowId,
 }: {
   developments: Development[];
+  allEntries: { article: FollowArticle; follow: FollowSummary }[];
   mapFollowId: string | null;
   setMapFollowId: (id: string) => void;
 }) {
-  const selected =
-    developments.find((d) => d.follow.id === mapFollowId) ?? developments[0];
-  if (!selected) return null;
+  const selected = mapFollowId
+    ? developments.find((d) => d.follow.id === mapFollowId) ?? null
+    : null;
+  const articles: MapArticle[] = useMemo(
+    () =>
+      selected
+        ? selected.articles.map(toMapArticle)
+        : allEntries.map((e) => toMapArticle(e.article)),
+    [selected, allEntries],
+  );
+  // Same shared resource the list view reads; per-follow subsets get
+  // their own cached tree keyed by their article set.
+  const ids = useMemo(() => articles.map((a) => a.id), [articles]);
+  const { tree, status, labelNodes } = useTopicClusters(ids.length >= 4 ? ids : null);
+
+  if (developments.length === 0) return null;
   return (
     <div>
       <div className="mb-3 flex flex-wrap gap-1.5">
+        <button
+          onClick={() => setMapFollowId("")}
+          className={
+            "rounded-full border px-2.5 py-1 font-sans text-[12px] " +
+            (!selected
+              ? "border-gold font-semibold text-text-primary"
+              : "border-border-default text-text-muted hover:text-text-primary")
+          }
+        >
+          Everything you follow
+          <span className="ml-1 text-text-faint">{allEntries.length}</span>
+        </button>
         {developments.map((d) => (
           <button
             key={d.follow.id}
             onClick={() => setMapFollowId(d.follow.id)}
             className={
               "rounded-full border px-2.5 py-1 font-sans text-[12px] " +
-              (d.follow.id === selected.follow.id
+              (d.follow.id === selected?.follow.id
                 ? "border-gold font-semibold text-text-primary"
                 : "border-border-default text-text-muted hover:text-text-primary")
             }
@@ -542,16 +643,11 @@ function MapView({
         ))}
       </div>
       <EvidenceMap
-        centerLabel={followLabel(selected.follow)}
-        articles={selected.articles.map((a) => ({
-          ...a,
-          source: a.source ?? undefined,
-          summary: a.summary ?? undefined,
-          url: a.url ?? undefined,
-          published_at: a.published_at ?? undefined,
-          industry_verticals: a.industry_verticals ?? undefined,
-          activity_types: a.activity_types ?? undefined,
-        }))}
+        centerLabel={selected ? followLabel(selected.follow) : "Everything you follow"}
+        articles={articles}
+        tree={tree}
+        clusterStatus={status}
+        onVisibleNodes={labelNodes}
       />
     </div>
   );

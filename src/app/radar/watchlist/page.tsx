@@ -7,6 +7,8 @@ import { AppShell } from "@/components/shell";
 import { RadarTabs } from "@/components/radar/RadarTabs";
 import { WatchlistGallery, type GalleryFilter } from "@/components/radar/WatchlistGallery";
 import { ArticleMemoActions } from "@/components/radar/ArticleMemoActions";
+import { GroupJumpNav } from "@/components/radar/GroupJumpNav";
+import { useMotionSettled } from "@/lib/use-motion-settled";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
@@ -384,6 +386,7 @@ function cleanDisplayName(name: string | null | undefined): string | null {
 export default function WatchlistPage() {
   const { mood, moodHeadline, moodDetails } = useLiveMood();
   const router = useRouter();
+  const motionSettled = useMotionSettled();
   const [memoEntry, setMemoEntry] = useState<WatchlistEntry | null>(null);
   const [articleMemoEntry, setArticleMemoEntry] = useState<MatchedArticle | null>(null);
   const [watchlist, setWatchlist] = useState<WatchlistEntry[]>([]);
@@ -856,7 +859,11 @@ export default function WatchlistPage() {
 
   return (
     <AppShell pageTitle="Radar" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
-      <div data-radar-page className="motion-page-enter px-6 pt-4 -mb-1">
+      <div
+        data-radar-page
+        data-motion-settling={motionSettled ? undefined : ""}
+        className="motion-page-enter px-6 pt-4 -mb-1"
+      >
         <RadarTabs active="watchlist" />
         {!isMobile && watchlist.length > 0 && (
           <WatchlistGallery
@@ -1115,6 +1122,23 @@ export default function WatchlistPage() {
 
         {/* RIGHT COL — full width on mobile */}
         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', paddingBottom: isMobile ? '64px' : '0' }}>
+          {/* Persistent entity filter: move between what you track
+              without scrolling. Sticky within the feed's own scroll box. */}
+          {watchlist.length > 1 && (
+            <GroupJumpNav
+              ariaLabel="Filter feed by tracked entity"
+              groups={[
+                { id: "__all", label: "All", count: undefined },
+                ...watchlist.map((e) => ({
+                  id: e.identifier,
+                  label: e.display_name || toDisplayName(e.identifier),
+                  count: (articlesByIdentifier[e.identifier] ?? []).length,
+                })),
+              ]}
+              activeId={selectedIdentifier ?? "__all"}
+              onSelect={(id) => setSelectedIdentifier(id === "__all" ? null : id)}
+            />
+          )}
           <div className="flex items-center justify-between mb-3">
             {selectedIdentifier ? (
               <div className="flex items-center gap-2">

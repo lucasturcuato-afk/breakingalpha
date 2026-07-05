@@ -1,13 +1,15 @@
 # Signalera/Breaking Alpha -- Claude Chat Handoff
 **Date:** 2026-07-05 (PT)
 **Last session focus:** Radar unified clustering & evidence map, Following theme view + motion sync, Calls sector grouping, outputs schema hardening.
-**Status:** Main is at HEAD. feat/radar-unified branch has 4 new commits on top of 6e7e317 (uncommitted working tree). Shared clustering resource (hierarchical + lazy labeling, cached), EvidenceMap fisheye wedge layout, Following "By theme" + GroupJumpNav, Calls sector rollup, motion-settle gating; tsc/lint/build all pass.
+**Status:** feat/radar-unified is 1 docs commit (2475b25) ahead of 6e7e317; ALL feature changes are uncommitted in the working tree, awaiting review. Shared clustering resource (hierarchical + lazy labeling, cached), EvidenceMap fisheye wedge layout, Following "By theme" + GroupJumpNav, Calls sector rollup + inline Tracked views, motion-settle gating; tsc/lint/build all pass.
 
 ---
 
-## Recently Completed (2026-07-05) -- Radar unified clustering, evidence map fisheye, Following theme+motion
+## Recently Completed (2026-07-05) -- Radar unified clustering, evidence map, Following theme+motion, thesis workspace consolidation
 
 Shared hierarchical clustering resource (src/lib/radar-clusters.ts + src/lib/radar-cluster-label.ts, pgvector hierarchical agglomerative, lazy-labeled via Gemini, cached per node); EvidenceMap rewritten as progressive-disclosure fisheye wedge layout; Following page: map no longer localStorage-restored, "By theme" replaces "By activity" (grouped by cluster labels), GroupJumpNav sticky jump rail, Calls page sector-groups single-name calls; motion-settle gating on page enter (src/lib/use-motion-settled.ts); npm run build success, tsc/lint 0 errors, visual smoke confirmed distinct cluster labels + expansion + in-bounds popups.
+
+Thesis workspace folded into Calls tab as demoted inline "Tracked views" section (new src/components/thesis/TrackedViews.tsx: active/archived toggle, ThesisList+ThesisDetailPanel expanding in place, per-thesis Review Timeline disclosure reading thesis_verdicts, archive/restore via /api/user-thesis-states, thesis_viewed/thesis_dismissed events preserved); /radar/theses retired as destination, server redirect to /radar/calls preserving ?thesis= deep links; 12 in-app link callsites updated (nav, command palette, dashboard widgets, story cards, feed row, briefs, evening wrap, intelligence prompt text); /radar/theses/layout.tsx deleted. Presentation intentionally de-featured (kanban board, stats row, SystemIntelligencePanel, 7-tab conviction filter, recommended ranking flagged for Phase 2; underlying APIs/tables untouched); preview-harness gained Tracked-views fixture section. Verification: tsc 0 errors, lint 0 errors (pre-existing warnings only), build success, Playwright visual smoke on /preview/radar confirmed.
 
 ---
 

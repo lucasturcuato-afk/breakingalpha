@@ -12,12 +12,25 @@
  * "No news today" collapse for quiet entities. Filters:
  * All / Public / Private / Industries.
  *
- * Purely presentational over the page's existing data (watchlist rows,
+ * Presentational over the page's existing data (watchlist rows,
  * quotes, matched articles); management (add, pin, reorder, remove,
- * alerts, export) lives in the workspace below, unchanged.
+ * alerts, export) lives in the workspace below, unchanged. Every card
+ * carries the standard hover action row (generate memo, track, view
+ * source) on its top story, same as dashboard/Following articles.
  */
 
 import Link from "next/link";
+import { ArticleMemoActions } from "@/components/radar/ArticleMemoActions";
+
+/** Card-level click focuses the entity; keyboard parity via Enter/Space. */
+function cardKeyHandler(activate: () => void) {
+  return (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      activate();
+    }
+  };
+}
 
 export interface GalleryEntry {
   id: string;
@@ -180,10 +193,15 @@ export function WatchlistGallery({
 
       {hero ? (
         <>
-          {/* Hero entity: dark panel, monogram + top story development. */}
-          <button
+          {/* Hero entity: dark panel, monogram + top story development.
+              A div-with-button-role (not a button) so the standard
+              hover action row can nest real buttons inside it. */}
+          <div
+            role="button"
+            tabIndex={0}
             onClick={() => onFocus(hero.entry.identifier)}
-            className="motion-rise-in card-hover-lift block w-full rounded-xl bg-espresso px-5 py-5 text-left text-cream dark:border dark:border-border-default dark:bg-elevated"
+            onKeyDown={cardKeyHandler(() => onFocus(hero.entry.identifier))}
+            className="group motion-rise-in card-hover-lift block w-full cursor-pointer rounded-xl bg-espresso px-5 py-5 text-left text-cream dark:border dark:border-border-default dark:bg-elevated"
           >
             <div className="flex items-start gap-4">
               <TypeBadge entry={hero.entry} price={prices[hero.entry.identifier]} />
@@ -204,9 +222,20 @@ export function WatchlistGallery({
                   {topStory(hero.articles)?.source}
                   {hero.articles.length > 1 && ` · ${hero.articles.length - 1} more today`}
                 </p>
+                {(() => {
+                  const story = topStory(hero.articles);
+                  return story ? (
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <ArticleMemoActions
+                        article={story}
+                        trackHref={`/radar/calls?draft=${encodeURIComponent(story.title)}`}
+                      />
+                    </div>
+                  ) : null;
+                })()}
               </div>
             </div>
-          </button>
+          </div>
 
           {/* Entity moments: aligned 2-up grid. */}
           {moments.length > 0 && (
@@ -214,10 +243,13 @@ export function WatchlistGallery({
               {moments.map(({ entry, articles }) => {
                 const story = topStory(articles);
                 return (
-                  <button
+                  <div
                     key={entry.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => onFocus(entry.identifier)}
-                    className="card-hover-lift flex items-start gap-3 rounded-lg border border-border-subtle bg-elevated px-4 py-3.5 text-left hover:border-gold"
+                    onKeyDown={cardKeyHandler(() => onFocus(entry.identifier))}
+                    className="group card-hover-lift flex cursor-pointer items-start gap-3 rounded-lg border border-border-subtle bg-elevated px-4 py-3.5 text-left hover:border-gold"
                   >
                     <TypeBadge entry={entry} price={prices[entry.identifier]} />
                     <div className="min-w-0 flex-1">
@@ -237,8 +269,16 @@ export function WatchlistGallery({
                         {story?.source}
                         {articles.length > 1 && ` · ${articles.length - 1} more`}
                       </p>
+                      {story && (
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <ArticleMemoActions
+                            article={story}
+                            trackHref={`/radar/calls?draft=${encodeURIComponent(story.title)}`}
+                          />
+                        </div>
+                      )}
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>

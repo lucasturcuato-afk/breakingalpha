@@ -8,6 +8,7 @@ import type { ThesisItem } from "./thesis-types";
 import { ConvictionRing } from "./ConvictionRing";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { isOnWatchlist } from "@/lib/personalization";
+import { verdictDisplayLabel } from "@/lib/track-record-live-score";
 
 interface ThesisListProps {
   theses: ThesisItem[];
@@ -19,6 +20,9 @@ interface ThesisListProps {
   isPendingReview?: boolean;
   onQuickAction?: (id: string, status: string) => void;
   matchedSectors?: string[];
+  /** live_verdict per thesis id; when given, rows show the neutral
+   *  evidence-leaning label (never a hard verdict). */
+  leaningById?: Record<string, string | null | undefined>;
 }
 
 function convictionToSentiment(conviction: string | null): string {
@@ -62,6 +66,7 @@ export function ThesisList({
   isPendingReview,
   onQuickAction,
   matchedSectors,
+  leaningById,
 }: ThesisListProps) {
   const { profile } = useUserProfile();
   const [expandedTickerGroups, setExpandedTickerGroups] = useState<Set<string>>(new Set());
@@ -157,6 +162,11 @@ export function ThesisList({
             {thesis.ticker && (
               <span className="font-display text-[9px] text-gold-dark">
                 {thesis.ticker}
+              </span>
+            )}
+            {leaningById && (
+              <span className="font-sans text-[9px] italic text-text-muted">
+                {verdictDisplayLabel(leaningById[thesis.id] ?? "Awaiting verdict")}
               </span>
             )}
             {isArchiveView && (

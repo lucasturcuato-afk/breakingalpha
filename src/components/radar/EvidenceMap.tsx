@@ -1,88 +1,90 @@
 "use client";
 
 /**
- * EvidenceMap — a multi-level relational graph of matched articles.
+ * EvidenceMap — a progressive-disclosure relational graph of matched
+ * articles, powered by the SHARED clustering resource (semantic
+ * clusters from pipeline embeddings, lazily LLM-labeled; see
+ * lib/radar-clusters.ts). The same tree drives the grouped list view
+ * and the group-jump nav, so the map never invents its own taxonomy.
  *
- * STRUCTURE: center (the claim/topic) → cluster hubs (sectors of
- * coverage) → optional subsector hubs (finer groupings, produced by
- * re-clustering a cluster's members with the same clusterArticles
- * util) → article leaves. Closeness of relation maps to proximity:
- * the closest-in-relation article sits nearest its parent, the next
- * further out, radiating outward — and every article traces back to
- * the center through its branch.
+ * ORGANIZED SURFACE, UNLIMITED DEPTH: the surface shows the center
+ * plus a bounded set of top-level clusters, each a breathing orb with
+ * "label · count". Clicking a cluster expands its contents in place:
+ * sub-clusters, and at the deepest level every individual article —
+ * nothing is capped away, depth is tucked behind expansion. One branch
+ * expands at a time (fisheye): the open wedge takes most of the circle
+ * and collapsed siblings compress, so the canvas stays tidy at any
+ * depth. All positions animate between layouts.
  *
- * SEMANTICS (honesty): branch lines convey topical relatedness and
- * membership ONLY — never support/contradict/stance. The legend says
- * so, always visible.
+ * EDGE-AWARE: every node clamps inside the canvas with margin; labels
+ * flip horizontally near the left/right edges and vertically around
+ * the middle; the hover popup flips on both axes so nothing ever
+ * clips the container, including mid-animation (positions and their
+ * labels move together).
  *
- * DENSITY: each branch shows a bounded number of leaves; the rest
- * collapse into an expandable "+N more" orb, so a busy topic stays
- * readable past 15+ articles instead of blurring into a blob. Angular
- * wedges keep branches separated; leaf labels sit radially outward
- * (away from the center) so neighboring labels never collide; while a
- * popup is open all other labels de-emphasize (globals.css
- * [data-popup-open]).
+ * REACTIVE LINES: hovering a node (or cursor proximity to one)
+ * brightens and thickens its whole branch back to the center with a
+ * slow dash flow; other edges recede. Lines convey topical membership
+ * ONLY — never stance — and the legend says so, always visible.
  *
- * LIFE: node dots breathe on a slow seeded loop; nodes gravitate
- * toward the cursor with distance falloff; the nearest node
- * highlights; hover scales/brightens a node and opens the action card
- * (view source, generate memo) positioned OUTWARD from the center
- * where the canvas is empty, edge-clamped so it never clips. All
- * motion uses the shared tokens and fully disables under
+ * LABELS are descriptive and lazy: top level arrives labeled; deeper
+ * levels are named on expansion via onVisibleNodes (the page wires
+ * this to the shared label endpoint). Unnamed nodes show "···" until
+ * their honest label lands. Without embeddings the map falls back to
+ * heuristic story-grouping with tag labels, deduped so a map can never
+ * show two clusters with the same name.
+ *
+ * LIFE: orbs breathe on seeded loops, gravitate toward the cursor,
+ * and the nearest node highlights. Everything disables under
  * prefers-reduced-motion.
- *
- * THIN STATE: with too few articles to cluster, matched articles
- * render as proper actionable cards with the honest note.
  */
 
-import { useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { clusterArticles, type Article } from "@/lib/clustering-utils";
+import {
+  buildFallbackTree,
+  type ClusterNode,
+  type ClusterTree,
+} from "@/lib/radar-clusters";
 import { ArticleMemoActions } from "@/components/radar/ArticleMemoActions";
 
 const SERIF = "var(--font-playfair-display), serif";
 const MIN_ARTICLES = 4;
-const MAX_CLUSTERS = 6;
-const LEAVES_PER_BRANCH = 3; // visible before "+N more"
-const EXPANDED_LEAVES = 7;
 
 /** Vertical squash so the ellipse fills a wide canvas gracefully. */
-const Y_SQUASH = 0.82;
-/** Ring radii (% of canvas) per depth. */
-const R_CLUSTER = 19;
-const R_LEAF_BASE = 31;
-const R_LEAF_STEP = 5.5;
-const R_SUBSECTOR = 30;
-const R_SUBLEAF_BASE = 41;
-const R_SUBLEAF_STEP = 4.5;
+const Y_SQUASH = 0.78;
+/** Ring radius per hub depth (% of canvas). */
+const R_HUB_BASE = 26;
+const R_HUB_STEP = 15;
+/** Fisheye: the expanded wedge's share of its parent's angle. */
+const EXPANDED_SHARE = 0.62;
+/** Leaf band packing. */
+const LEAF_BAND_STEP = 7.5;
 
-type MapArticle = Article & { primary_company?: string | null };
+export type MapArticle = Article & { primary_company?: string | null };
 
-interface LeafNode {
+interface PlacedHub {
+  kind: "hub";
+  id: string;
+  node: ClusterNode;
+  depth: number;
+  expanded: boolean;
+  x: number;
+  y: number;
+  parent: { x: number; y: number };
+  /** Node ids from the top-level hub down to this one (inclusive). */
+  chain: string[];
+}
+interface PlacedLeaf {
   kind: "leaf";
   id: string;
   article: MapArticle;
   x: number;
   y: number;
   parent: { x: number; y: number };
+  chain: string[];
 }
-interface MoreNode {
-  kind: "more";
-  id: string;
-  count: number;
-  x: number;
-  y: number;
-  parent: { x: number; y: number };
-}
-interface HubNode {
-  kind: "hub";
-  id: string;
-  label: string;
-  depth: 1 | 2; // cluster | subsector
-  x: number;
-  y: number;
-  parent: { x: number; y: number };
-}
-type GraphNode = LeafNode | MoreNode | HubNode;
+type PlacedNode = PlacedHub | PlacedLeaf;
 
 function useReducedMotion(): boolean {
   return useSyncExternalStore(
@@ -96,141 +98,122 @@ function useReducedMotion(): boolean {
   );
 }
 
-/** Deterministic id hash (djb2) for stable jitter/delays; no Math.random. */
+/** Deterministic id hash (djb2) for stable breathe delays; no Math.random. */
 function hash(s: string): number {
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
   return Math.abs(h);
 }
 
-function clusterLabel(articles: MapArticle[]): string {
-  const counts = new Map<string, number>();
-  for (const a of articles) {
-    for (const tag of [...(a.activity_types ?? []), ...(a.industry_verticals ?? [])]) {
-      counts.set(tag, (counts.get(tag) ?? 0) + 1);
-    }
-  }
-  const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
-  return top ? top[0] : "Related coverage";
-}
-
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s;
 }
 
-function polar(cx: number, cy: number, r: number, angle: number) {
-  return { x: cx + r * Math.cos(angle), y: cy + r * Y_SQUASH * Math.sin(angle) };
+function polar(r: number, angle: number) {
+  return { x: 50 + r * Math.cos(angle), y: 50 + r * Y_SQUASH * Math.sin(angle) };
 }
 
 function clampPos(p: { x: number; y: number }) {
-  return { x: Math.min(93, Math.max(7, p.x)), y: Math.min(90, Math.max(10, p.y)) };
+  return { x: Math.min(94, Math.max(6, p.x)), y: Math.min(91, Math.max(9, p.y)) };
 }
 
 /**
- * Radial tree layout. Each cluster owns an angular wedge; leaves get
- * evenly spaced slots inside it at increasing radius (closest relation
- * first). Clusters with enough members subdivide into subsectors by
- * re-clustering their members.
+ * Fisheye wedge layout. Every visible node owns an angular wedge of
+ * the circle; an expanded node's wedge grows to EXPANDED_SHARE of its
+ * parent wedge and its children subdivide it recursively. Leaves pack
+ * into concentric bands inside their parent's wedge — every article
+ * places, dozens or more, denser bands further out.
  */
-function layoutGraph(articles: MapArticle[], expanded: Set<string>): GraphNode[] {
-  const center = { x: 50, y: 50 };
-  const clusters = clusterArticles(articles).slice(0, MAX_CLUSTERS);
-  const n = clusters.length;
-  const wedge = ((2 * Math.PI) / n) * 0.76;
-  const nodes: GraphNode[] = [];
+function layoutTree(
+  clusters: ClusterNode[],
+  expandedPath: string[],
+  articleById: Map<string, MapArticle>,
+): PlacedNode[] {
+  const placed: PlacedNode[] = [];
 
-  clusters.forEach((cluster, i) => {
-    const theta = (i / n) * 2 * Math.PI - Math.PI / 2;
-    const hubPos = polar(center.x, center.y, R_CLUSTER, theta);
-    const members: MapArticle[] = [cluster.leadArticle, ...cluster.relatedArticles];
-    const hubId = `hub-${i}`;
-    nodes.push({
-      kind: "hub",
-      id: hubId,
-      label: clusterLabel(members),
-      depth: 1,
-      x: hubPos.x,
-      y: hubPos.y,
-      parent: center,
-    });
+  const placeLevel = (
+    siblings: ClusterNode[],
+    depth: number,
+    angleStart: number,
+    angleSpan: number,
+    parentPos: { x: number; y: number },
+    parentChain: string[],
+  ) => {
+    if (siblings.length === 0) return;
+    const expandedId = expandedPath[depth - 1] ?? null;
+    const hasExpanded = siblings.some((s) => s.id === expandedId);
+    const collapsedShare = hasExpanded
+      ? (1 - EXPANDED_SHARE) / Math.max(1, siblings.length - 1)
+      : 1 / siblings.length;
 
-    // Finer structure: re-cluster the members among themselves. Two or
-    // more genuine subgroups -> subsector level; otherwise flat leaves.
-    const subs = members.length >= 5 ? clusterArticles(members) : [];
-    const useSubs = subs.length >= 2 && subs.some((s) => s.relatedArticles.length > 0);
+    let cursor = angleStart;
+    for (const node of siblings) {
+      const isExpanded = node.id === expandedId;
+      const share = hasExpanded ? (isExpanded ? EXPANDED_SHARE : collapsedShare) : collapsedShare;
+      const wedge = angleSpan * share;
+      const theta = cursor + wedge / 2;
+      cursor += wedge;
 
-    if (!useSubs) {
-      placeLeaves(nodes, members, hubId, hubPos, theta, wedge, expanded, false);
-      return;
-    }
-
-    const subCount = Math.min(subs.length, 3);
-    subs.slice(0, subCount).forEach((sub, j) => {
-      const subTheta = theta - wedge / 2 + (wedge * (j + 0.5)) / subCount;
-      const subPos = polar(center.x, center.y, R_SUBSECTOR, subTheta);
-      const subMembers = [sub.leadArticle, ...sub.relatedArticles];
-      const subId = `${hubId}-sub-${j}`;
-      nodes.push({
+      const pos = clampPos(polar(R_HUB_BASE + R_HUB_STEP * (depth - 1), theta));
+      const chain = [...parentChain, node.id];
+      placed.push({
         kind: "hub",
-        id: subId,
-        label: clusterLabel(subMembers),
-        depth: 2,
-        x: subPos.x,
-        y: subPos.y,
-        parent: hubPos,
+        id: node.id,
+        node,
+        depth,
+        expanded: isExpanded,
+        x: pos.x,
+        y: pos.y,
+        parent: parentPos,
+        chain,
       });
-      placeLeaves(nodes, subMembers, subId, subPos, subTheta, wedge / subCount, expanded, true);
-    });
-    // Members past the subsector cap collapse into the LAST subsector's
-    // "+N more" rather than disappearing.
-    const shownIds = new Set(
-      subs.slice(0, subCount).flatMap((s) => [s.leadArticle.id, ...s.relatedArticles.map((a) => a.id)]),
-    );
-    const overflow = members.filter((m) => !shownIds.has(m.id));
-    if (overflow.length > 0) {
-      const moreTheta = theta + wedge / 2 + 0.12;
-      const morePos = clampPos(polar(center.x, center.y, R_SUBSECTOR, moreTheta));
-      const moreId = `${hubId}-overflow`;
-      if (expanded.has(moreId)) {
-        placeLeaves(nodes, overflow.slice(0, 4), hubId, morePos, moreTheta, wedge / 3, expanded, true);
+      if (!isExpanded) continue;
+
+      if (node.children.length > 0) {
+        placeLevel(node.children, depth + 1, cursor - wedge, wedge, pos, chain);
       } else {
-        nodes.push({ kind: "more", id: moreId, count: overflow.length, x: morePos.x, y: morePos.y, parent: hubPos });
+        // Deepest level: every article, packed in bands. Recency inward.
+        const leaves = node.leafIds
+          .map((id) => articleById.get(id))
+          .filter((a): a is MapArticle => !!a)
+          .sort((a, b) => {
+            const tA = a.published_at ? new Date(a.published_at).getTime() : 0;
+            const tB = b.published_at ? new Date(b.published_at).getTime() : 0;
+            return tB - tA;
+          });
+        const usable = wedge * 0.86;
+        let index = 0;
+        let band = 0;
+        while (index < leaves.length) {
+          const rBand = R_HUB_BASE + R_HUB_STEP * depth + band * LEAF_BAND_STEP;
+          // Slots per band grow with arc length; min 3 so thin wedges still fill.
+          const cap = Math.max(3, Math.floor((usable * rBand) / 9));
+          const slice = leaves.slice(index, index + cap);
+          slice.forEach((article, j) => {
+            const angle =
+              slice.length === 1
+                ? theta
+                : theta - usable / 2 + (usable * (j + 0.5)) / slice.length;
+            const p = clampPos(polar(rBand, angle));
+            placed.push({
+              kind: "leaf",
+              id: article.id,
+              article,
+              x: p.x,
+              y: p.y,
+              parent: pos,
+              chain,
+            });
+          });
+          index += cap;
+          band += 1;
+        }
       }
     }
-  });
+  };
 
-  return nodes;
-}
-
-function placeLeaves(
-  nodes: GraphNode[],
-  members: MapArticle[],
-  branchId: string,
-  parentPos: { x: number; y: number },
-  theta: number,
-  wedge: number,
-  expanded: Set<string>,
-  isSubLevel: boolean,
-) {
-  const isExpanded = expanded.has(branchId);
-  const cap = isExpanded ? EXPANDED_LEAVES : LEAVES_PER_BRANCH;
-  const visible = members.slice(0, cap);
-  const hidden = members.length - visible.length;
-  const slots = visible.length + (hidden > 0 ? 1 : 0);
-  const rBase = isSubLevel ? R_SUBLEAF_BASE : R_LEAF_BASE;
-  const rStep = isSubLevel ? R_SUBLEAF_STEP : R_LEAF_STEP;
-
-  visible.forEach((article, j) => {
-    // Closest-in-relation nearest the parent: radius grows with rank.
-    const angle = slots === 1 ? theta : theta - wedge / 2 + (wedge * (j + 0.5)) / slots;
-    const pos = clampPos(polar(50, 50, rBase + Math.floor(j / 2) * rStep + (j % 2) * (rStep / 2), angle));
-    nodes.push({ kind: "leaf", id: article.id, article, x: pos.x, y: pos.y, parent: parentPos });
-  });
-  if (hidden > 0) {
-    const angle = theta - wedge / 2 + (wedge * (slots - 0.5)) / slots;
-    const pos = clampPos(polar(50, 50, rBase + rStep, angle));
-    nodes.push({ kind: "more", id: branchId, count: hidden, x: pos.x, y: pos.y, parent: parentPos });
-  }
+  placeLevel(clusters, 1, -Math.PI / 2, Math.PI * 2, { x: 50, y: 50 }, []);
+  return placed;
 }
 
 function ThinState({ articles }: { articles: MapArticle[] }) {
@@ -264,20 +247,81 @@ function ThinState({ articles }: { articles: MapArticle[] }) {
 export function EvidenceMap({
   centerLabel,
   articles,
+  tree = null,
+  clusterStatus = "unavailable",
+  onVisibleNodes,
 }: {
   centerLabel: string;
   articles: MapArticle[];
+  /** Shared clustering resource; omit to use the heuristic fallback. */
+  tree?: ClusterTree | null;
+  clusterStatus?: "idle" | "loading" | "ready" | "unavailable";
+  /** Called with visible, still-unlabeled nodes so the page can label lazily. */
+  onVisibleNodes?: (nodes: ClusterNode[]) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expandedPath, setExpandedPath] = useState<string[]>([]);
   const reducedMotion = useReducedMotion();
 
-  const nodes = useMemo(() => layoutGraph(articles, expanded), [articles, expanded]);
+  const articleById = useMemo(
+    () => new Map(articles.map((a) => [a.id, a])),
+    [articles],
+  );
+
+  // Semantic tree when available; honest heuristic fallback otherwise.
+  const effectiveTree: ClusterTree | null = useMemo(() => {
+    if (tree) return tree;
+    if (clusterStatus === "loading") return null;
+    const groups = clusterArticles(articles).map((c) => [
+      c.leadArticle.id,
+      ...c.relatedArticles.map((a) => a.id),
+    ]);
+    return buildFallbackTree(articles, groups);
+  }, [tree, clusterStatus, articles]);
+
+  const nodes = useMemo(
+    () => (effectiveTree ? layoutTree(effectiveTree.clusters, expandedPath, articleById) : []),
+    [effectiveTree, expandedPath, articleById],
+  );
+
+  // Lazy labeling: report visible unlabeled hubs whenever disclosure changes.
+  const visibleUnlabeled = useMemo(
+    () =>
+      nodes
+        .filter((n): n is PlacedHub => n.kind === "hub")
+        .map((n) => n.node)
+        .filter((n) => !n.generic && n.label === null),
+    [nodes],
+  );
+  const unlabeledKey = visibleUnlabeled.map((n) => n.id).join("|");
+  const onVisibleNodesRef = useRef(onVisibleNodes);
+  onVisibleNodesRef.current = onVisibleNodes;
+  useEffect(() => {
+    if (visibleUnlabeled.length > 0) onVisibleNodesRef.current?.(visibleUnlabeled);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unlabeledKey]);
 
   if (articles.length < MIN_ARTICLES) return <ThinState articles={articles} />;
+
+  if (!effectiveTree) {
+    return (
+      <div className="motion-rise-in flex h-[320px] w-full items-center justify-center rounded-xl border border-border-subtle bg-elevated">
+        <p className="font-sans text-[12px] text-text-muted">Clustering coverage…</p>
+      </div>
+    );
+  }
+
+  const toggleExpand = (hub: PlacedHub) => {
+    setHoveredId(null);
+    setExpandedPath((prev) => {
+      const depthIdx = hub.depth - 1;
+      if (prev[depthIdx] === hub.id) return prev.slice(0, depthIdx);
+      return [...hub.chain];
+    });
+  };
 
   const onMouseMove = (e: React.MouseEvent) => {
     if (reducedMotion) return;
@@ -290,10 +334,9 @@ export function EvidenceMap({
   };
 
   let nearestId: string | null = null;
-  if (cursor && !reducedMotion) {
+  if (cursor && !reducedMotion && !hoveredId) {
     let best = 13;
     for (const node of nodes) {
-      if (node.kind === "hub") continue;
       const d = Math.hypot(node.x - cursor.x, (node.y - cursor.y) * 0.75);
       if (d < best) {
         best = d;
@@ -302,8 +345,13 @@ export function EvidenceMap({
     }
   }
 
+  // The branch to light up: the hovered (or cursor-nearest) node's
+  // chain of ancestors back to the center.
+  const focusNode = nodes.find((n) => n.id === (hoveredId ?? nearestId));
+  const focusChain = new Set(focusNode ? [...focusNode.chain, focusNode.id] : []);
+
   /* Exaggerated-but-smooth gravitation toward the cursor. */
-  const parallax = (node: GraphNode): string => {
+  const parallax = (node: PlacedNode): string => {
     if (!cursor || reducedMotion) return "translate(-50%, -50%)";
     const dx = cursor.x - node.x;
     const dy = cursor.y - node.y;
@@ -313,19 +361,16 @@ export function EvidenceMap({
     return `translate(calc(-50% + ${((dx / norm) * strength).toFixed(1)}px), calc(-50% + ${((dy / norm) * strength).toFixed(1)}px))`;
   };
 
-  /* Popup opens OUTWARD (away from center) where the canvas is empty,
-     with edge clamps so it never clips the container. */
-  const popupStyle = (node: GraphNode): React.CSSProperties => {
+  /* Popup flips on BOTH axes so it can never leave the container. */
+  const popupStyle = (node: PlacedNode): React.CSSProperties => {
     const style: React.CSSProperties = {};
-    const nearTop = node.y < 24;
-    const nearBottom = node.y > 76;
-    const outwardUp = node.y < 50;
-    if ((outwardUp && !nearTop) || nearBottom) style.bottom = "calc(100% + 10px)";
-    else style.top = "calc(100% + 10px)";
-    if (node.x < 18) {
+    // Upper half opens downward into free canvas, lower half upward.
+    if (node.y <= 50) style.top = "calc(100% + 10px)";
+    else style.bottom = "calc(100% + 10px)";
+    if (node.x < 20) {
       style.left = 0;
       style.transform = "none";
-    } else if (node.x > 82) {
+    } else if (node.x > 80) {
       style.right = 0;
       style.transform = "none";
     } else {
@@ -335,7 +380,20 @@ export function EvidenceMap({
     return style;
   };
 
-  const tall = nodes.length > 18;
+  /* Labels flip horizontally near the side edges so text never clips. */
+  const labelPlacement = (node: PlacedNode): { className: string; style: React.CSSProperties } => {
+    const vertical = node.y >= 50 ? "top-full mt-1.5" : "bottom-full mb-1.5";
+    if (node.x < 10) {
+      return { className: `${vertical} left-0 text-left`, style: { transform: "none" } };
+    }
+    if (node.x > 90) {
+      return { className: `${vertical} right-0 text-right`, style: { transform: "none" } };
+    }
+    return { className: `${vertical} left-1/2 text-center`, style: { transform: "translateX(-50%)" } };
+  };
+
+  const maxDepthVisible = expandedPath.length;
+  const tall = nodes.length > 20 || maxDepthVisible >= 2;
   const hovered = nodes.find((n) => n.id === hoveredId);
 
   return (
@@ -346,7 +404,10 @@ export function EvidenceMap({
         onMouseLeave={() => setCursor(null)}
         data-popup-open={hovered ? "true" : "false"}
         className="relative w-full overflow-hidden rounded-xl border border-border-subtle bg-elevated"
-        style={{ height: tall ? "680px" : "580px" }}
+        style={{
+          height: tall ? "680px" : "580px",
+          transition: "height var(--duration-slow) var(--ease-out)",
+        }}
       >
         {/* Cursor glow. */}
         {cursor && !reducedMotion && (
@@ -370,24 +431,34 @@ export function EvidenceMap({
           viewBox="0 0 100 100"
           preserveAspectRatio="none"
         >
-          {nodes.map((node) => (
-            <line
-              key={`edge-${node.id}`}
-              x1={node.parent.x}
-              y1={node.parent.y}
-              x2={node.x}
-              y2={node.y}
-              stroke={
-                node.kind === "hub"
-                  ? "color-mix(in srgb, var(--gold) 32%, transparent)"
-                  : "var(--border-hi)"
-              }
-              strokeWidth={node.kind === "hub" ? 1.4 : 1}
-              vector-effect="non-scaling-stroke"
-              opacity={hoveredId && node.id !== hoveredId ? 0.35 : 0.8}
-              style={{ transition: "opacity var(--duration-base) var(--ease-out)" }}
-            />
-          ))}
+          {nodes.map((node) => {
+            const onFocusBranch = focusChain.has(node.id);
+            const anyFocus = focusChain.size > 0;
+            return (
+              <line
+                key={`edge-${node.id}`}
+                className={onFocusBranch && !reducedMotion ? "map-edge-flow" : undefined}
+                x1={node.parent.x}
+                y1={node.parent.y}
+                x2={node.x}
+                y2={node.y}
+                stroke={
+                  onFocusBranch
+                    ? "color-mix(in srgb, var(--gold) 62%, transparent)"
+                    : node.kind === "hub"
+                      ? "color-mix(in srgb, var(--gold) 32%, transparent)"
+                      : "var(--border-hi)"
+                }
+                strokeWidth={onFocusBranch ? 1.8 : node.kind === "hub" ? 1.4 : 1}
+                vectorEffect="non-scaling-stroke"
+                opacity={anyFocus && !onFocusBranch ? 0.28 : onFocusBranch ? 1 : 0.8}
+                style={{
+                  transition:
+                    "opacity var(--duration-base) var(--ease-out), stroke var(--duration-base) var(--ease-out), x1 var(--duration-slow) var(--ease-out), y1 var(--duration-slow) var(--ease-out), x2 var(--duration-slow) var(--ease-out), y2 var(--duration-slow) var(--ease-out)",
+                }}
+              />
+            );
+          })}
         </svg>
 
         {/* Center: the claim/topic. */}
@@ -421,80 +492,76 @@ export function EvidenceMap({
         {nodes.map((node) => {
           const isHovered = hoveredId === node.id;
           const isNearest = nearestId === node.id;
-          const labelOutward = node.y >= 50;
+          const label = labelPlacement(node);
 
           if (node.kind === "hub") {
-            return (
-              <div
-                key={node.id}
-                className="evidence-map-node pointer-events-none absolute z-10"
-                style={{
-                  left: `${node.x}%`,
-                  top: `${node.y}%`,
-                  transform: parallax(node),
-                  transition: "transform var(--duration-base) var(--ease-out)",
-                }}
-              >
-                <div
-                  className="mx-auto rounded-full border"
-                  style={{
-                    width: node.depth === 1 ? 20 : 14,
-                    height: node.depth === 1 ? 20 : 14,
-                    backgroundColor: "color-mix(in srgb, var(--gold) 14%, transparent)",
-                    borderColor: "color-mix(in srgb, var(--gold) 55%, transparent)",
-                  }}
-                />
-                <p
-                  className={`map-leaf-label absolute left-1/2 w-[110px] -translate-x-1/2 text-center font-sans font-semibold uppercase tracking-[0.1em] text-text-muted ${labelOutward ? "top-full mt-1" : "bottom-full mb-1"}`}
-                  style={{ fontSize: node.depth === 1 ? "9.5px" : "8.5px" }}
-                >
-                  {node.label}
-                </p>
-              </div>
-            );
-          }
-
-          if (node.kind === "more") {
+            const count = node.node.articleIds.length;
+            const dotSize = node.depth === 1 ? Math.min(30, 18 + count) : 14;
+            const seedDelay = `${hash(node.id) % 2400}ms`;
             return (
               <button
                 key={node.id}
-                className="evidence-map-node absolute z-10"
+                type="button"
+                className="evidence-map-node absolute"
+                aria-expanded={node.expanded}
+                title={
+                  node.expanded
+                    ? "Collapse"
+                    : `Expand ${node.node.label ?? "cluster"} (${count} article${count === 1 ? "" : "s"})`
+                }
                 style={{
                   left: `${node.x}%`,
                   top: `${node.y}%`,
                   transform: parallax(node),
-                  transition: "transform var(--duration-base) var(--ease-out)",
+                  transition:
+                    "left var(--duration-slow) var(--ease-out), top var(--duration-slow) var(--ease-out), transform var(--duration-base) var(--ease-out)",
+                  zIndex: 10,
                 }}
-                onClick={() =>
-                  setExpanded((prev) => {
-                    const next = new Set(prev);
-                    next.add(node.id);
-                    return next;
-                  })
-                }
-                title={`Show ${node.count} more articles`}
+                onClick={() => toggleExpand(node)}
+                onMouseEnter={() => setHoveredId(node.id)}
+                onMouseLeave={() => setHoveredId(null)}
               >
                 <span
-                  className="mx-auto flex items-center justify-center rounded-full border border-dashed font-sans text-[9px] font-semibold text-text-muted"
+                  className={`${reducedMotion ? "" : "evidence-map-breathe "}mx-auto block rounded-full border`}
                   style={{
-                    width: 26,
-                    height: 26,
-                    borderColor: "var(--border-strong)",
-                    backgroundColor: "var(--background)",
+                    width: dotSize,
+                    height: dotSize,
+                    animationDelay: seedDelay,
+                    backgroundColor: node.expanded
+                      ? "color-mix(in srgb, var(--gold) 30%, transparent)"
+                      : "color-mix(in srgb, var(--gold) 14%, transparent)",
+                    borderColor:
+                      isHovered || isNearest
+                        ? "var(--gold)"
+                        : "color-mix(in srgb, var(--gold) 55%, transparent)",
+                    boxShadow:
+                      isHovered || isNearest
+                        ? "0 0 0 5px color-mix(in srgb, var(--gold) 18%, transparent)"
+                        : "none",
+                    transition:
+                      "background-color var(--duration-base) var(--ease-out), border-color var(--duration-base) var(--ease-out), box-shadow var(--duration-base) var(--ease-out)",
+                  }}
+                />
+                <span
+                  className={`map-leaf-label ${isHovered ? "is-active" : ""} absolute w-[116px] font-sans font-semibold uppercase tracking-[0.1em] ${label.className}`}
+                  style={{
+                    ...label.style,
+                    fontSize: node.depth === 1 ? "9.5px" : "8.5px",
+                    color: isHovered || isNearest ? "var(--foreground)" : "var(--text-muted)",
                   }}
                 >
-                  +{node.count}
-                </span>
-                <span
-                  className={`map-leaf-label absolute left-1/2 w-[70px] -translate-x-1/2 text-center font-sans text-[9px] text-text-faint ${labelOutward ? "top-full mt-0.5" : "bottom-full mb-0.5"}`}
-                >
-                  more
+                  {node.node.label ?? "···"}
+                  {!node.expanded && (
+                    <span className="ml-1 font-normal normal-case tracking-normal text-text-faint">
+                      · {count}
+                    </span>
+                  )}
                 </span>
               </button>
             );
           }
 
-          // Article leaf: orb + radial label + outward popup.
+          // Article leaf: orb + radial label + flip-aware popup.
           const seedDelay = `${hash(node.id) % 2400}ms`;
           return (
             <div
@@ -504,7 +571,8 @@ export function EvidenceMap({
                 left: `${node.x}%`,
                 top: `${node.y}%`,
                 transform: parallax(node),
-                transition: "transform var(--duration-base) var(--ease-out)",
+                transition:
+                  "left var(--duration-slow) var(--ease-out), top var(--duration-slow) var(--ease-out), transform var(--duration-base) var(--ease-out)",
                 zIndex: isHovered ? 40 : 10,
               }}
               onMouseEnter={() => setHoveredId(node.id)}
@@ -529,8 +597,9 @@ export function EvidenceMap({
                 }}
               />
               <p
-                className={`map-leaf-label ${isHovered ? "is-active" : ""} absolute left-1/2 w-[104px] -translate-x-1/2 text-center font-sans text-[9.5px] leading-tight ${labelOutward ? "top-full mt-1.5" : "bottom-full mb-1.5"}`}
+                className={`map-leaf-label ${isHovered ? "is-active" : ""} absolute w-[104px] font-sans text-[9.5px] leading-tight ${label.className}`}
                 style={{
+                  ...label.style,
                   color: isHovered || isNearest ? "var(--foreground)" : "var(--text-faint)",
                 }}
               >
@@ -569,6 +638,7 @@ export function EvidenceMap({
             }}
           />
           Grouped by topic, not by stance. Lines are membership, never support or contradiction.
+          <span className="ml-2 text-text-faint/80">Click a cluster to expand it.</span>
         </p>
       </div>
     </div>
