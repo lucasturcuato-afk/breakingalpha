@@ -82,3 +82,4 @@ scripts/out/
 
 # Tiingo price cache (backend/market_data.py)
 .cache/
+venv/
