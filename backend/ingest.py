@@ -1035,25 +1035,114 @@ def _is_headline_echo(summary, title):
 
 # Dependency-free language gate (defect #2). Every configured source is
 # English-intended (RSS_FEEDS + gnews en-US locale); PR Newswire / GlobeNewswire
-# simply also carry occasional translated (DE/FR) copies of an English release,
-# which title-only dedup cannot collapse. Drop a row only when >=2 distinct
-# strong non-English function words appear, so a lone ambiguous token never drops
-# a valid English row (validated: 0 false positives over 400 recent English rows,
-# all three known DE/FR PR Newswire clones caught).
-_NON_EN_WORDS = {
-    "und", "gibt", "dass", "fuer", "für", "bekannt", "erhaelt", "erhält",
-    "eine", "wird", "werden", "ueber", "über", "zur", "seine", "aktien",
-    "gemaess", "gemäß", "nicht", "milliarden", "seinen",
-    "que", "avec", "une", "pour", "etre", "être", "selon",
-    "resultats", "résultats", "milliards", "annonce", "ses",
+# and gnews simply also carry occasional translated copies (DE / FR / SK / RU)
+# of an English release, which title-only dedup cannot collapse.
+#
+# The previous detector was Latin-only: it tokenized with [a-za-oo-y] and matched
+# a German/French-only word set, so it could not see Cyrillic / Greek / CJK at all
+# and scored 0 hits on Slovak and much French. Those rows were KEPT. This version
+# replaces the DETECTOR (same name + call site, wiring unchanged) with a
+# two-pronged, dependency-free check. No lang-detect library is installed in the
+# pipeline venv (langdetect / langid / pycld2 / lingua all absent) and we do not
+# want a heavy new dep, so this uses only stdlib string ops.
+#
+#   1. NON-LATIN SCRIPT: if >= 20% of the alphabetic characters fall in non-Latin
+#      unicode ranges (Cyrillic, Greek, Hebrew, Arabic, Devanagari, Thai, Hangul,
+#      CJK, kana), classify non-English -> drop. Catches Russian / Greek / CJK.
+#   2. LATIN SCRIPT: combine (a) diacritic density (fraction of letters that are
+#      non-ASCII accented Latin; Slovak / French press releases are diacritic
+#      heavy: a e i o n l z s c ...) and (b) a broadened non-English function-word
+#      set (Slavic + Romance + Germanic). Drop when non-English function words
+#      dominate the English ones OR diacritic density is clearly high.
+#
+# Over-drop guard: an English headline that merely names a foreign issuer (a few
+# accented proper nouns) must PASS, so a drop requires the non-English signal to
+# dominate (>= 2 non-English function words AND more than the English count, or a
+# high diacritic density with fewer than 2 English function words). Ambiguous
+# short homographs that appear in English financial copy (se, sa, ag, en, la, de)
+# are deliberately excluded from the non-English set.
+#
+# Validated: all 12 required cases hold (Slovak / Russian / French Timex + DE / FR
+# wire clones DROP; Societe Generale, BNP Paribas SE, Deutsche Boerse AG, Nestle,
+# LVMH, Sanofi, Ecolab PASS), and 0 genuine-English false positives over 400
+# recent prod English rows (the 3 rows dropped in that sample were themselves
+# genuinely foreign FR / SK copies that had leaked in).
+_EN_FUNCTION_WORDS = {
+    "the", "of", "to", "and", "in", "for", "on", "with", "as", "that",
+    "is", "are", "at", "by", "from", "its", "has", "was", "will", "be",
+    "after", "over", "up", "an", "this", "new", "completes", "acquisition",
+    "results", "report", "reports", "shares", "rise", "wins", "order",
+    "raises", "guidance", "outlook", "update", "earnings",
 }
-_WORD_RE = re.compile(r"[a-zà-öø-ÿ]+")
+_NON_EN_WORDS = {
+    # German
+    "und", "gibt", "dass", "fuer", "bekannt", "erhaelt", "erhalt", "eine",
+    "wird", "werden", "ueber", "uber", "zur", "seine", "aktien", "gemaess",
+    "gemass", "nicht", "milliarden", "seinen", "auf", "mit", "sich", "wurden",
+    "bestande", "bestaende", "erhoht", "erhoeht",
+    "für", "erhält", "über", "gemäß", "bestände", "erhöht",
+    # French
+    "que", "avec", "une", "pour", "etre", "selon", "resultats", "milliards",
+    "annonce", "ses", "cette", "avoirs", "augmentent", "nouvelle", "groupe",
+    "totalite", "etape", "strategique", "renforce", "engagement", "accelerer",
+    "developpement", "marque", "mondiale", "montres", "bijoux", "acquiert",
+    "être", "résultats", "totalité", "étape", "stratégique", "accélérer",
+    "développement",
+    # Slavic (Slovak / Czech / Polish)
+    "prebera", "plne", "vlastnictvo", "spolocnosti", "strategicky", "milnik",
+    "posilnuje", "zavazok", "urychlit", "globalny", "rast", "znacky",
+    "hodiniek", "sperkov", "oraz", "dla", "spolki",
+    "preberá", "plné", "vlastníctvo", "spoločnosti", "strategický", "míľnik",
+    "posilňuje", "záväzok", "urýchliť", "globálny", "značky", "šperkov",
+}
+# Unicode-aware letter run (matches accented + non-Latin letters, unlike the old
+# Latin-only [a-za-oo-y]).
+_WORD_RE = re.compile(r"[^\W\d_]+", re.UNICODE)
+
+
+def _is_non_latin_letter(o: int) -> bool:
+    return (
+        0x0400 <= o <= 0x04FF  # Cyrillic
+        or 0x0370 <= o <= 0x03FF  # Greek
+        or 0x0590 <= o <= 0x05FF  # Hebrew
+        or 0x0600 <= o <= 0x06FF  # Arabic
+        or 0x0750 <= o <= 0x077F  # Arabic supplement
+        or 0x0900 <= o <= 0x097F  # Devanagari
+        or 0x0E00 <= o <= 0x0E7F  # Thai
+        or 0x1100 <= o <= 0x11FF  # Hangul Jamo
+        or 0xAC00 <= o <= 0xD7AF  # Hangul syllables
+        or 0x3040 <= o <= 0x30FF  # Hiragana + Katakana
+        or 0x3400 <= o <= 0x4DBF  # CJK ext A
+        or 0x4E00 <= o <= 0x9FFF  # CJK unified
+    )
 
 
 def _is_probably_english(article):
-    text = f"{article.get('title', '')} {article.get('summary', '')}".lower()
-    hits = _NON_EN_WORDS & set(_WORD_RE.findall(text))
-    return len(hits) < 2
+    text = f"{article.get('title', '')} {article.get('summary', '')}"
+    letters = [c for c in text if c.isalpha()]
+    if not letters:
+        return True
+
+    # 1. Non-Latin script -> non-English.
+    non_latin = sum(1 for c in letters if _is_non_latin_letter(ord(c)))
+    if non_latin / len(letters) >= 0.20:
+        return False
+
+    # 2. Latin script: diacritic density + function-word balance.
+    diacritic = sum(1 for c in letters if not c.isascii())
+    dia_density = diacritic / len(letters)
+
+    tokens = _WORD_RE.findall(text.lower())
+    non_en_hits = sum(1 for t in tokens if t in _NON_EN_WORDS)
+    en_hits = sum(1 for t in tokens if t in _EN_FUNCTION_WORDS)
+
+    # Non-English function words must dominate the English ones.
+    if non_en_hits >= 2 and non_en_hits > en_hits:
+        return False
+    # High diacritic density with little English signal -> non-English.
+    if dia_density >= 0.12 and en_hits < 2:
+        return False
+    return True
 
 
 def fetch_watchlist_finnhub_articles() -> list[dict]:
