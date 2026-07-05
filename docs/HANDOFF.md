@@ -1,7 +1,15 @@
 # Signalera/Breaking Alpha -- Claude Chat Handoff
-**Date:** 2026-07-03 (PT)
-**Last session focus:** Web-fallback refinement, materiality ranking (shadow), lead selection overhaul, ingest hardening, XBRL expansion, filter optimization.
-**Status:** Main is at HEAD. ~30 PRs merged since 2026-06-16 (2026-06-16 through 2026-07-03). Web-fallback tier system + entity dedup fixes, identity-dedup snapshot, materiality ranking + lead-selection overhaul, tape serialization + persistence, ingest robustness (503 retry, gnews polish, non-English gating), XBRL 20-F/40-F support + SEC CIK population, filter prompt caching (dark), token usage tracking all landed.
+**Date:** 2026-07-05 (PT)
+**Last session focus:** Radar unified clustering & evidence map, Following theme view + motion sync, Calls sector grouping, outputs schema hardening.
+**Status:** feat/radar-unified is 1 docs commit (2475b25) ahead of 6e7e317; ALL feature changes are uncommitted in the working tree, awaiting review. Shared clustering resource (hierarchical + lazy labeling, cached), EvidenceMap fisheye wedge layout, Following "By theme" + GroupJumpNav, Calls sector rollup + inline Tracked views, motion-settle gating; tsc/lint/build all pass.
+
+---
+
+## Recently Completed (2026-07-05) -- Radar unified clustering, evidence map, Following theme+motion, thesis workspace consolidation
+
+Shared hierarchical clustering resource (src/lib/radar-clusters.ts + src/lib/radar-cluster-label.ts, pgvector hierarchical agglomerative, lazy-labeled via Gemini, cached per node); EvidenceMap rewritten as progressive-disclosure fisheye wedge layout; Following page: map no longer localStorage-restored, "By theme" replaces "By activity" (grouped by cluster labels), GroupJumpNav sticky jump rail, Calls page sector-groups single-name calls; motion-settle gating on page enter (src/lib/use-motion-settled.ts); npm run build success, tsc/lint 0 errors, visual smoke confirmed distinct cluster labels + expansion + in-bounds popups.
+
+Thesis workspace folded into Calls tab as demoted inline "Tracked views" section (new src/components/thesis/TrackedViews.tsx: active/archived toggle, ThesisList+ThesisDetailPanel expanding in place, per-thesis Review Timeline disclosure reading thesis_verdicts, archive/restore via /api/user-thesis-states, thesis_viewed/thesis_dismissed events preserved); /radar/theses retired as destination, server redirect to /radar/calls preserving ?thesis= deep links; 12 in-app link callsites updated (nav, command palette, dashboard widgets, story cards, feed row, briefs, evening wrap, intelligence prompt text); /radar/theses/layout.tsx deleted. Presentation intentionally de-featured (kanban board, stats row, SystemIntelligencePanel, 7-tab conviction filter, recommended ranking flagged for Phase 2; underlying APIs/tables untouched); preview-harness gained Tracked-views fixture section. Verification: tsc 0 errors, lint 0 errors (pre-existing warnings only), build success, Playwright visual smoke on /preview/radar confirmed.
 
 ---
 
@@ -961,6 +969,10 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 - **Real comp data integration** — Polygon/FMP API integration + Lucas budget conversation. Deferred.
 
 ## Pending / Known Issues
+
+**Radar clusters outputs table verification (2026-07-05) — blockers from feat/radar-unified**
+- **E2E_USER credentials fail Supabase sign-in (400)** — `.env.local` E2E_USER password appears stale. Blocks browser smoke tests of auth-gated pages (Watchlist, Following, Calls). Fix: reset E2E_USER password in Supabase dashboard.
+- **recordOutput failures non-fatal, verification pending** — src/app/api/radar/clusters/label/route.ts writes to outputs table (output_type radar_cluster_label, keyed by node_id, 7d TTL). Failures degrade gracefully to in-memory cache. Worth confirming one row lands after first real cluster-label fetch (verify outputs table has no overly-strict CHECK constraint on output_type).
 
 **Primary_company backfill (2026-06-12) — PR #354 EXECUTED + verified, no action needed**
 - **PR #354 (feat/backfill): companies[]-only primary_company backfill tool** — `--execute` ran 2026-06-12 20:59→21:21 UTC and applied 10,669 of the 10,670 dry-run change set across 742 companies (audit log `backfill_audit_20260612T205944Z.jsonl`). Verified live in prod 2026-06-16: spot-checked audited article_ids all carry their `add_company` in `companies[]`; the original change set is fully drained. No schema change (companies[] ARRAY extraction only). The earlier "~30 rows" estimate in this doc was wrong; real change set was 10,670.

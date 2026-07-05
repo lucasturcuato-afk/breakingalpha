@@ -17,7 +17,9 @@ export type OutputType =
   | 'user_addendum'
   | 'mention_alert'
   | 'cross_reference'
-  | 'company_overview';
+  | 'company_overview'
+  | 'radar_clusters'
+  | 'radar_cluster_label';
 
 interface RecordOutputParams {
   output_type: OutputType;

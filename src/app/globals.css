@@ -303,11 +303,12 @@ html.dark .brand-mark-pulse:hover {
   animation: bar-sweep-in 400ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* Card hover lift */
+/* Card hover lift — THE hover motion for cards app-wide. Timing comes
+   from the shared tokens (values unchanged: 150ms / ease-out). */
 .card-hover-lift {
   transition:
-    transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
-    box-shadow 150ms cubic-bezier(0.16, 1, 0.3, 1);
+    transform var(--duration-base) var(--ease-out),
+    box-shadow var(--duration-base) var(--ease-out);
 }
 .card-hover-lift:hover {
   transform: translateY(-2px);
@@ -380,6 +381,100 @@ html.dark .skeleton-shimmer {
   animation: resolve-fade-up var(--duration-resolve) var(--ease-out) both;
 }
 
+/* ── One motion language (Radar pass) ──
+   Hovers: --duration-base (150ms). Entrances: --duration-slow (250ms).
+   Single easing family: --ease-out. Components must use these utilities
+   or the tokens directly; no locally invented timings. */
+
+/* Content/tab entrance: fade with a subtle rise. */
+@keyframes motion-rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.motion-rise-in {
+  animation: motion-rise-in var(--duration-slow) var(--ease-out) both;
+}
+/* Page-level entrance when switching Radar sub-tabs / settings views.
+   Longer than content entrances (--duration-page) with a slightly
+   deeper rise: a deliberate scene change. */
+@keyframes motion-page-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.motion-page-enter {
+  animation: motion-page-in var(--duration-page) var(--ease-out) both;
+}
+/* Outgoing page: RadarTabs adds this before navigating so the old tab
+   fades OUT (down-and-away) while the new one fades in on arrival —
+   exit + enter, never a hard swap. */
+@keyframes motion-page-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(10px); }
+}
+.motion-page-exit {
+  animation: motion-page-out var(--duration-page-exit) var(--ease-out) both;
+}
+/* While a page is settling (initial motion-page-enter still playing),
+   inner entrance animations complete instantly so every section fades
+   in as ONE unit with the page. The gate lifts after the enter ends
+   (use-motion-settled.ts), restoring normal animation for keyed
+   view/filter switches. */
+[data-motion-settling] .motion-rise-in,
+[data-motion-settling] .motion-stagger > * {
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+}
+
+/* Gentle list stagger: 40ms steps, capped so long lists never crawl. */
+.motion-stagger > * {
+  animation: motion-rise-in var(--duration-slow) var(--ease-out) both;
+}
+.motion-stagger > :nth-child(2) { animation-delay: 40ms; }
+.motion-stagger > :nth-child(3) { animation-delay: 80ms; }
+.motion-stagger > :nth-child(4) { animation-delay: 120ms; }
+.motion-stagger > :nth-child(5) { animation-delay: 160ms; }
+.motion-stagger > :nth-child(6) { animation-delay: 200ms; }
+.motion-stagger > :nth-child(7) { animation-delay: 240ms; }
+.motion-stagger > :nth-child(n + 8) { animation-delay: 280ms; }
+/* Evidence-map breathing: a slow, subtle life-pulse on node dots.
+   Per-node delays are seeded from the article id in the component. */
+@keyframes map-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.82; }
+  50% { transform: scale(1.14); opacity: 1; }
+}
+.evidence-map-breathe {
+  animation: map-breathe 3.4s ease-in-out infinite;
+}
+
+/* Reactive branch lines: the hovered/nearest branch flows with a slow
+   dash drift back to the center. Membership only, never stance. */
+@keyframes map-edge-flow {
+  to { stroke-dashoffset: -14; }
+}
+.map-edge-flow {
+  stroke-dasharray: 8 6;
+  animation: map-edge-flow 1100ms linear infinite;
+}
+
+/* While a map popup is open, de-emphasize the other node labels so the
+   popup is always readable and nothing visually collides. */
+[data-popup-open="true"] .map-leaf-label:not(.is-active) {
+  opacity: 0.22;
+}
+.map-leaf-label {
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+
+/* Hover-revealed rows (article actions, call resolution info). */
+.motion-fade-reveal {
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+.group:hover .motion-fade-reveal,
+.group:focus-within .motion-fade-reveal {
+  opacity: 1;
+}
+
 /* Consolidated reduced-motion fallbacks */
 @media (prefers-reduced-motion: reduce) {
   .brand-mark-pulse { animation: none; opacity: 1; }
@@ -390,6 +485,13 @@ html.dark .skeleton-shimmer {
   .skeleton-shimmer { animation: none; }
   .track-record-pending-dot { animation: none; opacity: 0.85; }
   .resolve-fade-up { animation: none; }
+  .motion-rise-in, .motion-page-enter, .motion-page-exit, .motion-stagger > * { animation: none; }
+  .motion-fade-reveal { opacity: 1; transition: none; }
+  /* Keep the centering translate; kill only the parallax drift. */
+  .evidence-map-node { transition: none !important; transform: translate(-50%, -50%) !important; }
+  .evidence-map-glow { display: none; }
+  .evidence-map-breathe { animation: none; }
+  .map-edge-flow { animation: none; stroke-dasharray: none; }
 }
 
 /* Conviction ring inner cutout — matches parent surface */

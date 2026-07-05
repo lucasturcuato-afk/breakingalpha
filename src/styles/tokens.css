@@ -98,6 +98,11 @@
      the one slow, deliberate timing. Everything else stays at --duration-base.
      Uses the existing --ease-out. */
   --duration-resolve: 550ms;
+  /* Radar page/tab transitions: deliberately longer than content
+     entrances so switching surfaces feels like a scene change, not a
+     plop. Exit runs shorter than enter so navigation never drags. */
+  --duration-page: 480ms;
+  --duration-page-exit: 240ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
   /* ── Typography scale (spec §2) ──

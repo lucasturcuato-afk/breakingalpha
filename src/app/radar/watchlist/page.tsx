@@ -4,6 +4,11 @@ import { useState, useMemo, useEffect, useCallback, useRef, type CSSProperties, 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/shell";
+import { RadarTabs } from "@/components/radar/RadarTabs";
+import { WatchlistGallery, type GalleryFilter } from "@/components/radar/WatchlistGallery";
+import { ArticleMemoActions } from "@/components/radar/ArticleMemoActions";
+import { GroupJumpNav } from "@/components/radar/GroupJumpNav";
+import { useMotionSettled } from "@/lib/use-motion-settled";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
@@ -381,6 +386,7 @@ function cleanDisplayName(name: string | null | undefined): string | null {
 export default function WatchlistPage() {
   const { mood, moodHeadline, moodDetails } = useLiveMood();
   const router = useRouter();
+  const motionSettled = useMotionSettled();
   const [memoEntry, setMemoEntry] = useState<WatchlistEntry | null>(null);
   const [articleMemoEntry, setArticleMemoEntry] = useState<MatchedArticle | null>(null);
   const [watchlist, setWatchlist] = useState<WatchlistEntry[]>([]);
@@ -392,6 +398,7 @@ export default function WatchlistPage() {
   const [selectedIdentifier, setSelectedIdentifier] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<"newest" | "relevant">("newest");
   const [ageFilter, setAgeFilter] = useState<"all" | "today" | "week" | "month">("all");
+  const [galleryFilter, setGalleryFilter] = useState<GalleryFilter>("all");
   const [dragError, setDragError] = useState<string | null>(null);
   const dragErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedEntryIndex, setSelectedEntryIndex] = useState<number | null>(null);
@@ -851,13 +858,36 @@ export default function WatchlistPage() {
   }, [selectedEntryIndex, allEntries]);
 
   return (
-    <AppShell pageTitle="Watchlist" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
+    <AppShell pageTitle="Radar" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
       <div
+        data-radar-page
+        data-motion-settling={motionSettled ? undefined : ""}
+        className="motion-page-enter px-6 pt-4 -mb-1"
+      >
+        <RadarTabs active="watchlist" />
+        {!isMobile && watchlist.length > 0 && (
+          <WatchlistGallery
+            entries={watchlist}
+            prices={prices}
+            articlesByIdentifier={articlesByIdentifier}
+            filter={galleryFilter}
+            onFilterChange={setGalleryFilter}
+            onFocus={(identifier) => {
+              setSelectedIdentifier(identifier);
+              document
+                .getElementById("radar-watchlist-workspace")
+                ?.scrollIntoView({ behavior: "smooth" });
+            }}
+          />
+        )}
+      </div>
+      <div
+        id="radar-watchlist-workspace"
         style={{
           display: 'flex',
           gap: '24px',
           padding: isMobile ? '12px' : '24px',
-          height: 'calc(100vh - var(--topbar-height) - var(--moodbar-height))',
+          height: 'calc(100vh - var(--topbar-height) - var(--moodbar-height) - 58px)',
           flexDirection: isMobile ? 'column' : 'row',
         }}
       >
@@ -1092,6 +1122,23 @@ export default function WatchlistPage() {
 
         {/* RIGHT COL — full width on mobile */}
         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', paddingBottom: isMobile ? '64px' : '0' }}>
+          {/* Persistent entity filter: move between what you track
+              without scrolling. Sticky within the feed's own scroll box. */}
+          {watchlist.length > 1 && (
+            <GroupJumpNav
+              ariaLabel="Filter feed by tracked entity"
+              groups={[
+                { id: "__all", label: "All", count: undefined },
+                ...watchlist.map((e) => ({
+                  id: e.identifier,
+                  label: e.display_name || toDisplayName(e.identifier),
+                  count: (articlesByIdentifier[e.identifier] ?? []).length,
+                })),
+              ]}
+              activeId={selectedIdentifier ?? "__all"}
+              onSelect={(id) => setSelectedIdentifier(id === "__all" ? null : id)}
+            />
+          )}
           <div className="flex items-center justify-between mb-3">
             {selectedIdentifier ? (
               <div className="flex items-center gap-2">
@@ -1200,7 +1247,7 @@ export default function WatchlistPage() {
           ) : (
             <div className="space-y-2">
               {displayedArticles.map((a) => (
-                <div key={a.id} className="bg-white dark:bg-elevated border border-border-base dark:border-border-default rounded-xl p-3">
+                <div key={a.id} className="group card-hover-lift bg-white dark:bg-elevated border border-border-base dark:border-border-default rounded-xl p-3">
                   <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                     {(a.industry_verticals ?? []).map((v) => (
                       <span key={v} className="font-sans text-[9px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200">
@@ -1219,14 +1266,6 @@ export default function WatchlistPage() {
                     {a.published_at && timeAgo(a.published_at) && (
                       <span className="font-sans text-[9px] text-text-faint ml-auto">{timeAgo(a.published_at)}</span>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => setArticleMemoEntry(a)}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded font-sans text-[9px] text-gold bg-gold-muted border border-gold-border hover:bg-gold/10 cursor-pointer transition-colors"
-                    >
-                      <Sparkles size={9} />
-                      Memo
-                    </button>
                   </div>
                   {a.url ? (
                     <a
@@ -1264,6 +1303,10 @@ export default function WatchlistPage() {
                       )}
                     </div>
                   )}
+                  <ArticleMemoActions
+                    article={a}
+                    trackHref={`/radar/calls?draft=${encodeURIComponent(a.title)}`}
+                  />
                 </div>
               ))}
             </div>

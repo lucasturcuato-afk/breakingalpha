@@ -7,6 +7,7 @@ import {
   LayoutGrid,
   AlignLeft,
   Star,
+  Radar as RadarIcon,
   Briefcase,
   TrendingUp,
   Search,
@@ -29,7 +30,7 @@ interface MobileNavItem {
 const MOBILE_NAV: MobileNavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: <LayoutGrid size={18} /> },
   { label: "Feed", href: "/live-feed", icon: <AlignLeft size={18} /> },
-  { label: "Watch", href: "/watchlist", icon: <Star size={18} /> },
+  { label: "Radar", href: "/radar", icon: <RadarIcon size={18} /> },
   { label: "Deals", href: "/deal-flow", icon: <Briefcase size={18} /> },
   { label: "Trends", href: "/trends", icon: <TrendingUp size={18} /> },
 ];
@@ -38,8 +39,8 @@ const MORE_NAV: MobileNavItem[] = [
   { label: "Morning Brief", href: "/morning-brief", icon: <Clock size={16} /> },
   { label: "Evening Wrap", href: "/evening-wrap", icon: <Globe size={16} /> },
   { label: "Company Intel", href: "/company", icon: <Search size={16} /> },
-  { label: "Thesis Board", href: "/thesis-board", icon: <FileText size={16} /> },
-  { label: "Thesis Tracker", href: "/track-record", icon: <LineChart size={16} /> },
+  { label: "Tracked Views", href: "/radar/calls?views=open", icon: <FileText size={16} /> },
+  { label: "Thesis Tracker", href: "/radar/track-record", icon: <LineChart size={16} /> },
 ];
 
 /**

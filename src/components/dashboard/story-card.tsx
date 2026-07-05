@@ -247,9 +247,9 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
 
                       const best = scored[0];
                       if (best.score >= MATCH_THRESHOLD) {
-                        router.push(`/thesis-board?thesis=${best.id}`);
+                        router.push(`/radar/calls?thesis=${best.id}`);
                       } else {
-                        setThesisToast("No closely related thesis found — visit Thesis Board to build one");
+                        setThesisToast("No closely related thesis found — see Tracked views in Calls");
                         setTimeout(() => setThesisToast(""), 3500);
                       }
                     }
@@ -462,9 +462,9 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
 
                         const best = scored[0];
                         if (best.score >= MATCH_THRESHOLD) {
-                          router.push(`/thesis-board?thesis=${best.id}`);
+                          router.push(`/radar/calls?thesis=${best.id}`);
                         } else {
-                          setThesisToast("No closely related thesis found — visit Thesis Board to build one");
+                          setThesisToast("No closely related thesis found — see Tracked views in Calls");
                           setTimeout(() => setThesisToast(""), 3500);
                         }
                       }
