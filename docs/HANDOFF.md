@@ -5,6 +5,12 @@
 
 ---
 
+## Recently Completed (2026-07-06) -- Today's Stories dedup + embedding layer optimization
+
+Merged #439/#445 (identity-dedup snapshot with semantic-dup collapse + HTML decode + word-boundary truncation), #451 (non-Latin/diacritic language gate), #452 (cosine similarity clustering 0.80 threshold), #456 (priority-tier embedding on Radar+Calls set first). Embedding ceiling remains structural (~18% of daily corpus embedded); coverage within rail/Radar budget via priority tier replication of radar-following.ts SQL predicates.
+
+---
+
 ## Recently Completed (2026-07-05) -- Radar unified clustering, evidence map, Following theme+motion, thesis workspace consolidation
 
 Shared hierarchical clustering resource (src/lib/radar-clusters.ts + src/lib/radar-cluster-label.ts, pgvector hierarchical agglomerative, lazy-labeled via Gemini, cached per node); EvidenceMap rewritten as progressive-disclosure fisheye wedge layout; Following page: map no longer localStorage-restored, "By theme" replaces "By activity" (grouped by cluster labels), GroupJumpNav sticky jump rail, Calls page sector-groups single-name calls; motion-settle gating on page enter (src/lib/use-motion-settled.ts); npm run build success, tsc/lint 0 errors, visual smoke confirmed distinct cluster labels + expansion + in-bounds popups.
@@ -969,6 +975,20 @@ Company Intel memo quality upgraded: replaced COMPANY_INDUSTRY string map with C
 - **Real comp data integration** — Polygon/FMP API integration + Lucas budget conversation. Deferred.
 
 ## Pending / Known Issues
+
+**Embedding coverage ceiling (2026-07-06) — structural bound, monitor + Lucas coordination**
+- **Issue:** embedding_job (step 14, MAX_ITEMS_PER_RUN=200 newest-first) embeds ~400/weekday vs ~2,500-2,900/day ingest (18% coverage). PR #456 addresses rail+Radar need via priority tier (replicates radar-following.ts SQL predicates, over-fetches 12 per follow for robustness), stays within budget. Broader corpus coverage remains capped.
+- **Action:** Cap raise or higher throughput requires Lucas coordination. Track in backlog as separate systemic fix from rail/Radar coverage.
+
+**Radar follow-8 tiebreak flickering (2026-07-06) — Lucas flag from PR #456**
+- **Issue:** radar-following.ts orders published_at DESC with NO id tiebreak, so the 8th article flickers at gnews timestamp ties (latent Radar quality). PR #456 over-fetches 12 to be robust; doesn't fix root cause.
+- **Action:** Note for Lucas: consider adding id ASC as secondary sort in radar-following.ts to stabilize the displayed set.
+
+**Topic-follow semantic-only coverage (2026-07-06) — best-effort, verified working**
+- **Note:** Topic-follow matches with no keyword hit (semantic leg only) are best-effort covered. Keyword ILIKE gate (len>=6 title-leg) + taxonomy jsonb-containment pre-filter both in #456. Validated working; no action needed.
+
+**PR #444 sequencing dependency (2026-07-06) — must consume POST-dedup rail**
+- **Blocker:** PR #444 (feat(brief): story_items persist on briefing row) currently DRAFT. Must consume the POST-dedup rail set from #439/#445, else story_items will diverge from story_rail_ids (identity-dedup snapshot). No schema conflict, just sequencing: verify #444 reads deduped story_rail_ids before merging.
 
 **Radar clusters outputs table verification (2026-07-05) — blockers from feat/radar-unified**
 - **E2E_USER credentials fail Supabase sign-in (400)** — `.env.local` E2E_USER password appears stale. Blocks browser smoke tests of auth-gated pages (Watchlist, Following, Calls). Fix: reset E2E_USER password in Supabase dashboard.
