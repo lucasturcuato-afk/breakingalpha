@@ -1,4 +1,9 @@
-import { describe, it, expect, vi } from "vitest";
+/**
+ * Unit tests for personalization-rail.ts. Pure, deterministic, no network.
+ * Run: npx tsx --test src/lib/personalization-rail.test.ts
+ */
+import { test } from "node:test";
+import assert from "node:assert/strict";
 import {
   applyRailPersonalization,
   personalizeRailOrder,
@@ -16,75 +21,67 @@ const rail: RailItem[] = [
 
 const profile: RailProfile = { watchlist_tickers: ["XOM"], sectors: ["Healthcare"] };
 
-describe("resolvePersonalizationMode", () => {
-  it("coerces unknown to off", () => {
-    expect(resolvePersonalizationMode("nonsense")).toBe("off");
-    expect(resolvePersonalizationMode(undefined)).toBe("off");
-    expect(resolvePersonalizationMode("SHADOW")).toBe("shadow");
-    expect(resolvePersonalizationMode(" active ")).toBe("active");
-  });
+test("resolvePersonalizationMode coerces unknown to off", () => {
+  assert.equal(resolvePersonalizationMode("nonsense"), "off");
+  assert.equal(resolvePersonalizationMode(undefined), "off");
+  assert.equal(resolvePersonalizationMode("SHADOW"), "shadow");
+  assert.equal(resolvePersonalizationMode(" active "), "active");
 });
 
-describe("personalizeRailOrder (pure)", () => {
-  it("reorders by watchlist then sector bonus, dropping/adding nothing", () => {
-    const out = personalizeRailOrder(rail, profile);
-    // b: 9 + 5 (watchlist) = 14; c: 8 + 2 (sector) = 10; a: 10.
-    expect(out.map((i) => i.id)).toEqual(["b", "a", "c"]);
-    expect(out).toHaveLength(rail.length);
-    expect(new Set(out.map((i) => i.id))).toEqual(new Set(["a", "b", "c"]));
-  });
-
-  it("is stable for equal scores (original order preserved)", () => {
-    const flat: RailItem[] = [
-      { id: "x", adjustedScore: 5 },
-      { id: "y", adjustedScore: 5 },
-      { id: "z", adjustedScore: 5 },
-    ];
-    expect(personalizeRailOrder(flat, {}).map((i) => i.id)).toEqual(["x", "y", "z"]);
-  });
-
-  it("does not mutate the input array", () => {
-    const copy = [...rail];
-    personalizeRailOrder(rail, profile);
-    expect(rail).toEqual(copy);
-  });
+test("personalizeRailOrder reorders by watchlist then sector bonus, dropping/adding nothing", () => {
+  const out = personalizeRailOrder(rail, profile);
+  // b: 9 + 5 (watchlist) = 14; c: 8 + 2 (sector) = 10; a: 10 (tiebreak keeps a before c).
+  assert.deepEqual(out.map((i) => i.id), ["b", "a", "c"]);
+  assert.equal(out.length, rail.length);
+  assert.deepEqual(new Set(out.map((i) => i.id)), new Set(["a", "b", "c"]));
 });
 
-describe("applyRailPersonalization (gate)", () => {
-  it("off: returns the exact input (byte-identical order and reference)", () => {
-    const out = applyRailPersonalization(rail, profile, "off");
-    expect(out).toBe(rail);
-  });
-
-  it("shadow: logs a diff but returns the original order", () => {
-    const log = vi.fn();
-    const out = applyRailPersonalization(rail, profile, "shadow", log);
-    expect(out.map((i) => i.id)).toEqual(["a", "b", "c"]);
-    expect(log).toHaveBeenCalledTimes(1);
-    expect(log.mock.calls[0][0]).toContain("shadow");
-    expect(log.mock.calls[0][0]).toContain('"personalized":["b","a","c"]');
-  });
-
-  it("active: returns the personalized order", () => {
-    const out = applyRailPersonalization(rail, profile, "active", () => {});
-    expect(out.map((i) => i.id)).toEqual(["b", "a", "c"]);
-  });
-
-  it("fail-closed: missing profile returns the original order", () => {
-    expect(applyRailPersonalization(rail, null, "active", () => {})).toBe(rail);
-    expect(applyRailPersonalization(rail, {}, "active", () => {})).toBe(rail);
-  });
-
-  it("fail-closed: empty rail returns input", () => {
-    const empty: RailItem[] = [];
-    expect(applyRailPersonalization(empty, profile, "active", () => {})).toBe(empty);
-  });
+test("personalizeRailOrder is stable for equal scores (original order preserved)", () => {
+  const flat: RailItem[] = [
+    { id: "x", adjustedScore: 5 },
+    { id: "y", adjustedScore: 5 },
+    { id: "z", adjustedScore: 5 },
+  ];
+  assert.deepEqual(personalizeRailOrder(flat, {}).map((i) => i.id), ["x", "y", "z"]);
 });
 
-describe("itemMatchesWatchlist", () => {
-  it("case-insensitive ticker match, false when no watchlist", () => {
-    expect(itemMatchesWatchlist({ id: "a", tags: ["xom"] }, profile)).toBe(true);
-    expect(itemMatchesWatchlist({ id: "a", tags: ["AAPL"] }, profile)).toBe(false);
-    expect(itemMatchesWatchlist({ id: "a", tags: ["XOM"] }, {})).toBe(false);
-  });
+test("personalizeRailOrder does not mutate the input array", () => {
+  const copy = [...rail];
+  personalizeRailOrder(rail, profile);
+  assert.deepEqual(rail, copy);
+});
+
+test("applyRailPersonalization off returns the exact input (byte-identical order and reference)", () => {
+  const out = applyRailPersonalization(rail, profile, "off");
+  assert.equal(out, rail);
+});
+
+test("applyRailPersonalization shadow logs a diff but returns the original order", () => {
+  const logs: string[] = [];
+  const out = applyRailPersonalization(rail, profile, "shadow", (m) => logs.push(m));
+  assert.deepEqual(out.map((i) => i.id), ["a", "b", "c"]);
+  assert.equal(logs.length, 1);
+  assert.ok(logs[0].includes("shadow"));
+  assert.ok(logs[0].includes('"personalized":["b","a","c"]'));
+});
+
+test("applyRailPersonalization active returns the personalized order", () => {
+  const out = applyRailPersonalization(rail, profile, "active", () => {});
+  assert.deepEqual(out.map((i) => i.id), ["b", "a", "c"]);
+});
+
+test("applyRailPersonalization fail-closed: missing profile returns the original order", () => {
+  assert.equal(applyRailPersonalization(rail, null, "active", () => {}), rail);
+  assert.equal(applyRailPersonalization(rail, {}, "active", () => {}), rail);
+});
+
+test("applyRailPersonalization fail-closed: empty rail returns input", () => {
+  const empty: RailItem[] = [];
+  assert.equal(applyRailPersonalization(empty, profile, "active", () => {}), empty);
+});
+
+test("itemMatchesWatchlist is case-insensitive and false when no watchlist", () => {
+  assert.equal(itemMatchesWatchlist({ id: "a", tags: ["xom"] }, profile), true);
+  assert.equal(itemMatchesWatchlist({ id: "a", tags: ["AAPL"] }, profile), false);
+  assert.equal(itemMatchesWatchlist({ id: "a", tags: ["XOM"] }, {}), false);
 });

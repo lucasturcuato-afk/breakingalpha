@@ -36,6 +36,7 @@ import { useUserProfile } from "@/hooks/useUserProfile";
 import { useLiveMood } from "@/hooks/useLiveMood";
 import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
 import type { ContentDescriptor } from "@/lib/personalization";
+import { applyRailPersonalization, getPersonalizationMode } from "@/lib/personalization-rail";
 import { PersonalizationBanner } from "@/components/personalization/PersonalizationBanner";
 
 function getSupabase() {
@@ -541,7 +542,16 @@ export default function MorningBriefPage() {
 
   const rankedStories = useMemo(() => {
     if (!profile) return stories;
-    return sortByRelevance(stories, profile, storyToContent);
+    // Baseline = the existing per-user relevance order (prod behavior). The
+    // PERSONALIZATION_MODE flag then gates the Layer 1 rail scorer on top:
+    // off returns the baseline unchanged (prod-neutral), shadow logs the
+    // divergence and serves the baseline, active serves the personalized order.
+    const baseline = sortByRelevance(stories, profile, storyToContent);
+    return applyRailPersonalization(
+      baseline,
+      { watchlist_tickers: profile.watchlist_tickers, sectors: profile.sectors },
+      getPersonalizationMode(),
+    );
   }, [stories, profile]);
 
   const tone = normaliseTone(briefing?.market_tone);
