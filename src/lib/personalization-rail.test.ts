@@ -12,6 +12,7 @@ import {
   type RailItem,
   type RailProfile,
 } from "./personalization-rail";
+import { applyStoryRailWindow } from "./story-rail-window";
 
 const rail: RailItem[] = [
   { id: "a", sector: "Technology", tags: ["AAPL"], adjustedScore: 10 },
@@ -84,4 +85,23 @@ test("itemMatchesWatchlist is case-insensitive and false when no watchlist", () 
   assert.equal(itemMatchesWatchlist({ id: "a", tags: ["xom"] }, profile), true);
   assert.equal(itemMatchesWatchlist({ id: "a", tags: ["AAPL"] }, profile), false);
   assert.equal(itemMatchesWatchlist({ id: "a", tags: ["XOM"] }, {}), false);
+});
+
+test("applyStoryRailWindow off restores the stored shared-rail order (byte-identical)", () => {
+  const ids = ["c", "a", "b"]; // stored shared order
+  const out = applyStoryRailWindow(rail, ids, profile, "off");
+  assert.deepEqual(out.map((i) => i.id), ["c", "a", "b"]);
+});
+
+test("applyStoryRailWindow active personalizes the windowed order", () => {
+  const ids = ["c", "a", "b"]; // stored shared order fed to the personalizer
+  const out = applyStoryRailWindow(rail, ids, profile, "active");
+  // From base scores: b 9+5=14, c 8+2=10, a 10 (c before a by tiebreak: c precedes a in the windowed input).
+  assert.deepEqual(out.map((i) => i.id), ["b", "c", "a"]);
+});
+
+test("applyStoryRailWindow fail-closed: missing profile serves the shared order", () => {
+  const ids = ["b", "c", "a"];
+  const out = applyStoryRailWindow(rail, ids, null, "active");
+  assert.deepEqual(out.map((i) => i.id), ["b", "c", "a"]);
 });

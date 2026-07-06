@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+// Layer 1 personalization flag. Minimal thread only: the value is surfaced so the
+// client rail seam can honor it; all reorder logic lives in the lib.
+import { getPersonalizationMode } from "@/lib/personalization-rail";
 
 /* ── User profile types for personalization ── */
 interface UserProfile {
@@ -466,6 +469,7 @@ export async function GET(request: NextRequest) {
   const resp = NextResponse.json({
     briefing,
     pref_applied: true,
+    personalization_mode: getPersonalizationMode(),
     personalization: buildBriefPersonalization(userProfile, type),
     user_addendum: userAddendum,
     brief_output_id: briefOutputId,
