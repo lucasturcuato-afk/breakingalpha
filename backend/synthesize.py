@@ -2228,17 +2228,20 @@ def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None):
     regime = (tape or {}).get("regime") if isinstance(tape, dict) else None
     vocab = market_tape.REGIME_VOCAB.get((regime or "").strip().lower(), ())
     if brief_type == "evening":
-        scope = (
-            "SCOPE: this is the EVENING brief. You MAY render a settled, full-session "
-            "verdict ('stocks closed', 'the session ended'). Paragraph 1 is the "
-            "close-of-day index read."
+        claim_scope = (
+            "CLAIM SCOPE (EVENING, absolute): the session has CLOSED. Render the "
+            "settled full-session verdict; closing verbs are correct ('closed up', "
+            "'ended the day', 'finished the session'). Paragraph 1 is the close-of-day "
+            "index read."
         )
     else:
-        scope = (
-            "SCOPE: this is the MORNING brief, generated pre-open. Frame the tape as "
-            "the PRIOR SESSION'S CLOSE and the posture heading INTO the open "
-            "(opened/opening/early-session/heading in). NEVER assert a settled "
-            "whole-day close that has not happened yet."
+        claim_scope = (
+            "CLAIM SCOPE (MORNING, absolute): the session is IN PROGRESS. Describe the "
+            "market as it OPENED and is TRADING in the EARLY SESSION, using "
+            "opening/early-session verbs ONLY ('opened higher', 'is trading up', "
+            "'early gains', 'up in early trade'). FORBIDDEN: any settled whole-day or "
+            "closing verdict ('closed', 'closed up', 'ended the day', 'finished', 'on "
+            "the day') - the session has NOT closed yet."
         )
     story_lines = []
     for s in (top_stories or [])[:5]:
@@ -2263,6 +2266,7 @@ def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None):
     user = (
         "Write the Market Pulse. The SUBJECT is the MARKET (index-level equities + "
         "the macro backdrop), NOT any single company or sector.\n\n"
+        f"{claim_scope}\n\n"
         f"{facts}\n\n"
         f"MACRO BACKDROP (fetched facts, do not invent):\n{macro_block}\n\n"
         f"RANKED STORIES (COLOR ONLY - examples woven in AFTER the market read, never "
@@ -2277,11 +2281,15 @@ def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None):
         "market read.\n"
         "- Characterize direction ONLY from the TAPE FACTS above. If the tape is "
         "quiet, say so. Do not assert a move the tape does not support.\n"
+        "- ENTITY FIDELITY: name every company EXACTLY as written in the RANKED "
+        "STORIES above (correct name and capitalization). Do NOT invent, abbreviate, "
+        "or malform a name (no constructions like 'The Unum'). Name ONLY organizations "
+        "that appear in the stories or tape above; name no others.\n"
         f"- The mood must be consistent with the regime "
         f"({(regime or 'unknown').upper()}"
         + (f"; e.g. words like {', '.join(vocab[:4])}" if vocab else "")
         + ").\n"
-        f"- {scope}\n"
+        "- Obey the CLAIM SCOPE stated at the top exactly.\n"
         "- BREVITY IS ALLOWED: on a thin tape a short read is correct. Do NOT pad."
     )
     try:
