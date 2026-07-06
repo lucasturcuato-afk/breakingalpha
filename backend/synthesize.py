@@ -3005,6 +3005,9 @@ def run(brief_type="morning"):
             # flag is OFF this block is skipped entirely and behavior is byte-identical
             # to today (generate_market_pulse is never invoked). Soft-fail: on a miss
             # the monolith narrative is kept and the existing chain runs on it.
+            # True only when a validate_pulse_opening-PASSING V2 narrative is wired in;
+            # gates skipping the lead-anchoring rewrite downstream.
+            _pulse_v2_ok = False
             if MARKET_PULSE_V2 and isinstance(_mp, dict):
                 try:
                     _pulse_stories = _pulse_top_stories(spine, floor, _companies_of)
@@ -3021,6 +3024,7 @@ def run(brief_type="morning"):
                         _pc = overview_grounding.validate_pulse_opening(
                             _v2, _final_corpus_companies, brief_type
                         )
+                        _pulse_v2_ok = _pc["ok"]
                         if not _pc["ok"]:
                             for _pr in _pc["reasons"]:
                                 print(f"  ⚠ MARKET_PULSE_V2 opening violation: {_pr}")
@@ -3036,11 +3040,13 @@ def run(brief_type="morning"):
                             )
                             if _v2r and _pc2["ok"]:
                                 _v2 = _v2r
+                                _pulse_v2_ok = True
                                 print("  [MARKET_PULSE_V2] re-ask resolved opening violation")
                             else:
                                 _v2 = overview_grounding.build_minimal_overview(
                                     tape_obj, (_lead_title or data.get("headline") or "")
                                 )
+                                _pulse_v2_ok = False
                                 print("  [MARKET_PULSE_V2] re-ask still violating; using minimal grounded template")
                         _mp["narrative"] = _v2
                         print("  ✨ MARKET_PULSE_V2: dedicated tape-first pulse narrative wired in")
@@ -3050,44 +3056,64 @@ def run(brief_type="morning"):
             if isinstance(_mp, dict) and isinstance(_mp.get("narrative"), str) and _mp["narrative"].strip():
                 # T3 post-check on the CURRENT narrative; rewrite + re-check.
                 _best_title = _lead_title or (data.get("headline") or "")
-                _new = _rewrite_market_wide_grounded(
-                    data, tape_obj, _final_corpus_companies, _best_title, article_text,
-                    lead_is_dominant=_lead_is_dominant,
-                )
-                _candidate = _new if _new else _mp["narrative"]
-                _vres = overview_grounding.validate_overview(
-                    _candidate, article_text, _final_corpus_companies, tape_obj
-                )
-                if not _vres["ok"]:
-                    for _r in _vres["reasons"]:
-                        print(f"  ⚠ grounding post-check violation: {_r}")
-                    # ONE bounded re-ask naming the violation.
-                    _correction = "FIX THESE GROUNDING VIOLATIONS: " + "; ".join(_vres["reasons"])
-                    _reasked = _rewrite_market_wide_grounded(
-                        data, tape_obj, _final_corpus_companies, _best_title,
-                        article_text, extra_correction=_correction,
+                if MARKET_PULSE_V2 and _pulse_v2_ok:
+                    # The V2 tape-first pulse already passed validate_pulse_opening. Do
+                    # NOT run the lead-anchoring market-wide rewrite: it can clobber the
+                    # tape-first hero back into a single-story/sector read (the morning-
+                    # clobber bug). Keep ONLY the grounding safety net: validate_overview,
+                    # and on failure go straight to the minimal grounded fallback.
+                    _candidate = _mp["narrative"]
+                    _vres = overview_grounding.validate_overview(
+                        _candidate, article_text, _final_corpus_companies, tape_obj
+                    )
+                    if not _vres["ok"]:
+                        for _r in _vres["reasons"]:
+                            print(f"  ⚠ grounding post-check violation (V2 pulse): {_r}")
+                        _candidate = overview_grounding.build_minimal_overview(
+                            tape_obj, _best_title
+                        )
+                        print("  [grounding post-check] V2 pulse failed grounding; using minimal grounded template")
+                    else:
+                        print("  [final-lead gate] V2 tape-first pulse kept (rewrite skipped)")
+                else:
+                    _new = _rewrite_market_wide_grounded(
+                        data, tape_obj, _final_corpus_companies, _best_title, article_text,
                         lead_is_dominant=_lead_is_dominant,
                     )
-                    if _reasked:
-                        _rcheck = overview_grounding.validate_overview(
-                            _reasked, article_text, _final_corpus_companies, tape_obj
+                    _candidate = _new if _new else _mp["narrative"]
+                    _vres = overview_grounding.validate_overview(
+                        _candidate, article_text, _final_corpus_companies, tape_obj
+                    )
+                    if not _vres["ok"]:
+                        for _r in _vres["reasons"]:
+                            print(f"  ⚠ grounding post-check violation: {_r}")
+                        # ONE bounded re-ask naming the violation.
+                        _correction = "FIX THESE GROUNDING VIOLATIONS: " + "; ".join(_vres["reasons"])
+                        _reasked = _rewrite_market_wide_grounded(
+                            data, tape_obj, _final_corpus_companies, _best_title,
+                            article_text, extra_correction=_correction,
+                            lead_is_dominant=_lead_is_dominant,
                         )
-                        if _rcheck["ok"]:
-                            _candidate = _reasked
-                            print("  [grounding post-check] re-ask resolved all violations")
+                        if _reasked:
+                            _rcheck = overview_grounding.validate_overview(
+                                _reasked, article_text, _final_corpus_companies, tape_obj
+                            )
+                            if _rcheck["ok"]:
+                                _candidate = _reasked
+                                print("  [grounding post-check] re-ask resolved all violations")
+                            else:
+                                _candidate = overview_grounding.build_minimal_overview(
+                                    tape_obj, _best_title
+                                )
+                                print("  [grounding post-check] re-ask still violating; using minimal grounded template")
                         else:
                             _candidate = overview_grounding.build_minimal_overview(
                                 tape_obj, _best_title
                             )
-                            print("  [grounding post-check] re-ask still violating; using minimal grounded template")
-                    else:
-                        _candidate = overview_grounding.build_minimal_overview(
-                            tape_obj, _best_title
-                        )
-                        print("  [grounding post-check] re-ask failed; using minimal grounded template")
-                elif _new:
-                    print(f"  [final-lead gate] grounded market-wide hero "
-                          f"(lead {'centers' if _lead_is_dominant else 'as example'})")
+                            print("  [grounding post-check] re-ask failed; using minimal grounded template")
+                    elif _new:
+                        print(f"  [final-lead gate] grounded market-wide hero "
+                              f"(lead {'centers' if _lead_is_dominant else 'as example'})")
                 _mp["narrative"] = _candidate
 
             # T4 (scoped to FLAG + LOG): body-ticker direction contradictions.
