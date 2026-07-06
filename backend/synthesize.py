@@ -1863,6 +1863,52 @@ def _lead_session_move(preselected):
         return None, None, None
 
 
+def _pool_name_session_moves(pool, cap=20):
+    """Build a {company_name_lower: session_pct} map for the materiality ranker's
+    per-name driver tiers. Reuses the EXISTING lead-quote path (_resolve_lead_ticker
+    + market_tape.fetch_quote, Yahoo, no new dependency). BOUNDED: walks the pool
+    highest-relevance-first, dedups by company name, and stops after `cap` resolved
+    quotes so a large coverage pool cannot fan out into one call per article. Pure
+    read (no writes); fully soft-fail, never raises out. Returns ({}, 0) on any
+    failure or empty pool."""
+    moves: dict = {}
+    calls = 0
+    try:
+        def _rel(a):
+            try:
+                return int(a.get("relevance_score") or 0)
+            except (TypeError, ValueError):
+                return 0
+        seen: set = set()
+        for a in sorted(pool or [], key=_rel, reverse=True):
+            cos = a.get("companies") or []
+            if isinstance(cos, str):
+                try:
+                    cos = json.loads(cos)
+                except Exception:
+                    cos = [cos] if cos.strip() else []
+            for co in cos:
+                nm = str(co or "").strip().lower()
+                if not nm or nm in seen:
+                    continue
+                seen.add(nm)
+                ticker = _resolve_lead_ticker(co)
+                if not ticker:
+                    continue
+                try:
+                    q = market_tape.fetch_quote(ticker)
+                except Exception:
+                    q = None
+                if q and q.get("pct") is not None:
+                    moves[nm] = float(q["pct"])
+                    calls += 1
+                if calls >= cap:
+                    return moves, calls
+    except Exception as e:
+        print(f"  ⚠ materiality name-moves fetch skipped (non-fatal): {e}")
+    return moves, calls
+
+
 def _resolve_final_lead(data, spine, floor, companies_of_fn):
     """T1: resolve the FINAL chosen overview/lead subject AFTER generation, on
     BOTH the pre-pick and the Gemini self-select path. Returns
@@ -2162,6 +2208,10 @@ def run(brief_type="morning"):
     _materiality_tape = None
     _now = datetime.now(timezone.utc)
     _pool = None
+    # Materiality shadow pick title; captured in the block below and compared
+    # post-generation against the real served headline. Initialized here (outside
+    # the lead-selection try) so it is always defined at the shipped-lead capture.
+    _materiality_shadow_title = None
     try:
         from lead_preselect import preselect_primary_story, build_preselect_directive
 
@@ -2211,17 +2261,24 @@ def run(brief_type="morning"):
                     print(f"  ⚠ materiality tape fetch failed (non-fatal): {_te}")
                     _materiality_tape = None
                 _prior_lead = _fetch_prior_brief_lead()
+                # Per-name session moves for the pool's top candidate names, so the
+                # driver tiers (tape-driver bonus / mover-contradicts-tape penalty)
+                # can actually fire. Bounded + deduped (reuses the lead-quote path).
+                _name_moves, _name_move_calls = _pool_name_session_moves(_pool) if _pool else ({}, 0)
+                if _name_moves:
+                    print(f"  🧪 [materiality] fetched {_name_move_calls} name session moves for driver tiers")
                 _mat = _ir.compute_materiality_lead(
                     _pool, _now, tape=_materiality_tape,
+                    name_session_pct=_name_moves,
                     prior_lead_title=_prior_lead,
                     mega_deal_urls=_ir._mega_deal_urls(supabase, _now),
                 ) if _pool else None
                 if _mat and _mat.get("article"):
                     _mat_title = str(_mat["article"].get("title") or "")[:200]
-                    _shipped_title = str((preselected or {}).get("title") or "")[:200]
-                    _diverged = _mat_title[:80].lower() != _shipped_title[:80].lower()
+                    _materiality_shadow_title = _mat_title
+                    _prepick_title = str((preselected or {}).get("title") or "")[:200]
                     print(f"  🧪 [materiality:{MATERIALITY_RANK_MODE}] would lead "
-                          f"{_mat['cluster_key']}: {_mat_title[:70]} (diverged={_diverged})")
+                          f"{_mat['cluster_key']}: {_mat_title[:70]} (pre-pick: {_prepick_title[:50]})")
                     try:
                         import lead_preselect as _lp2
                         _lp2._LAST_DECISION_LOG.update({
@@ -2234,8 +2291,10 @@ def run(brief_type="morning"):
                             "materiality_delta": _mat.get("materiality_delta"),
                             "materiality_continuity_delta": _mat.get("continuity_delta"),
                             "materiality_reasons": _mat.get("materiality_reasons"),
-                            "materiality_diverged_from_shipped": _diverged,
                             "materiality_prior_lead": _prior_lead,
+                            "materiality_name_move_count": _name_move_calls,
+                            # materiality_diverged_from_shipped + shipped_lead are
+                            # set POST-generation vs the real served headline below.
                         })
                     except Exception:
                         pass
@@ -3157,6 +3216,22 @@ def run(brief_type="morning"):
                 f"here reflect the prior session close ({last_trading_session})."
                 + "\n\n" + narr
             )
+
+    # Materiality shadow: record the REAL served lead (the final headline) and
+    # recompute divergence against it, not against the pre-generation pick. This is
+    # the metric that answers "would materiality have led differently than what
+    # actually shipped." Shadow-only: nothing here changes the served brief.
+    if _materiality_shadow_title:
+        try:
+            import lead_preselect as _lp_ship
+            _shipped_lead = str(data.get("headline") or "")[:200]
+            _lp_ship._LAST_DECISION_LOG.update({
+                "shipped_lead": _shipped_lead,
+                "materiality_diverged_from_shipped":
+                    _materiality_shadow_title[:80].lower() != _shipped_lead[:80].lower(),
+            })
+        except Exception as _se:
+            print(f"  ⚠ shipped-lead capture skipped (non-fatal): {_se}")
 
     now = datetime.now(timezone.utc).isoformat()
     row = {

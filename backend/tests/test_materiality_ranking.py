@@ -214,5 +214,49 @@ class TapeHelperTests(unittest.TestCase):
             {"quotes": {"^GSPC": {"pct": 0.2}, "^VIX": {"pct": -1.0}}}))
 
 
+class NameMovesActivateDriverTierTests(unittest.TestCase):
+    """Regression for the shadow call-site fix (synthesize threads name_session_pct):
+    the per-name driver tier (4, tape-driver-direction-consistent) can ONLY fire
+    when per-name session moves are supplied. The pre-fix call site omitted
+    name_session_pct, so this tier was structurally dead -> empty reasons + degraded
+    passthrough. This pins the mechanism the fix restores."""
+
+    TAPE_UP = {
+        "quotes": {"^GSPC": {"pct": 1.2, "price": 6200}, "^VIX": {"pct": -4.0, "price": 16}},
+        "regime": "risk-on", "vix_level": 16,
+    }
+
+    def _nvidia_cluster(self):
+        pool = [
+            art("Nvidia jumps as AI demand accelerates", "Reuters", rel=9, companies=["Nvidia"], url="u_nv1"),
+            art("Nvidia rallies on data-center strength", "Bloomberg", rel=9, companies=["Nvidia"], url="u_nv2"),
+            art("Nvidia shares climb to a record", "CNBC", rel=9, companies=["Nvidia"], url="u_nv3"),
+        ]
+        scored = ir.score_clusters(pool, NOW)
+        return next(c for c in scored if c["cluster_key"].startswith("co:nvidia"))
+
+    def test_driver_tier_fires_with_name_moves(self):
+        c = self._nvidia_cluster()
+        d = ir.materiality_delta(
+            c, tape=self.TAPE_UP,
+            driver_names=ir._driver_names_from_moves({"Nvidia": 6.0}),
+            name_session_pct={"Nvidia": 6.0},
+        )
+        self.assertTrue(any("tape driver" in r for r in d["reasons"]),
+                        f"driver tier must fire when name moves are supplied; reasons={d['reasons']}")
+        self.assertGreater(d["delta"], 0)
+
+    def test_driver_tier_silent_without_name_moves(self):
+        # The exact pre-fix bug: no name moves -> empty driver set -> tier (4) dead.
+        c = self._nvidia_cluster()
+        d = ir.materiality_delta(
+            c, tape=self.TAPE_UP,
+            driver_names=ir._driver_names_from_moves(None),
+            name_session_pct=None,
+        )
+        self.assertFalse(any("tape driver" in r for r in d["reasons"]),
+                         f"without name moves the driver tier must stay silent; reasons={d['reasons']}")
+
+
 if __name__ == "__main__":
     unittest.main()
