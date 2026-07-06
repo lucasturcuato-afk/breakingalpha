@@ -256,6 +256,153 @@ def _fmt_pct(pct) -> str | None:
         return None
 
 
+# ── MARKET_PULSE_V2 opening-subject check (pure) ─────────────────────────────
+# The V2 dedicated Market Pulse call must open on the INDEX-LEVEL market read, not
+# on a single company or a lone sector. These pure checks let the harness assert
+# the flag WITHOUT calling Gemini: (a) the opening must reference index-level
+# market terms; (b) the opening subject must not be a single corpus company/ticker
+# or a lone sector label. On a violation the caller does ONE bounded re-ask then
+# falls back to build_minimal_overview (which leads with the tape by construction).
+
+# Index / market-level terms that count as an equity-market read.
+_MARKET_TERMS = (
+    "s&p", "s&p 500", "nasdaq", "dow", "dow jones", "russell", "russell 2000",
+    "vix", "index", "indices", "equities", "equity market", "stocks", "the tape",
+    "tape", "wall street", "broad market", "broader market", "risk-on", "risk off",
+    "risk-off", "risk on", "market", "session", "breadth",
+)
+
+# Lone sector labels that must not be the SUBJECT of the opening (a sector may be
+# color, never the market's stand-in). Kept lowercase; matched as a leading token.
+_SECTOR_LABELS = frozenset({
+    "insurance", "energy", "healthcare", "technology", "tech", "financials",
+    "financial", "industrials", "materials", "utilities", "consumer",
+    "biotech", "pharma", "semiconductors", "semiconductor", "chips", "banks",
+    "banking", "real estate", "reits", "crypto", "defense", "aerospace",
+    "retail", "autos", "auto", "media", "telecom", "software", "hardware",
+    "oil", "gas", "mining", "airlines", "housing", "homebuilders",
+})
+
+
+def _first_sentence(text: str) -> str:
+    if not isinstance(text, str) or not text.strip():
+        return ""
+    # First paragraph, first sentence.
+    para = text.strip().split("\n\n", 1)[0].strip()
+    parts = _SENT_SPLIT.split(para)
+    return (parts[0].strip() if parts else para).strip()
+
+
+def opening_has_market_terms(text: str) -> bool:
+    """True when the opening (first paragraph) references index-level market terms:
+    a tape number, an index name, a regime word, or a market/breadth term. Pure."""
+    if not isinstance(text, str) or not text.strip():
+        return False
+    para = text.strip().split("\n\n", 1)[0].lower()
+    if re.search(r"[+-]?\d+(?:\.\d+)?\s*%", para):  # any percent figure
+        return True
+    return any(term in para for term in _MARKET_TERMS)
+
+
+def opening_subject_is_single_focus(text: str, roster) -> bool:
+    """Heuristic: True when the opening SENTENCE leads with a single corpus company
+    / ticker OR a lone sector label AND lacks index/market terms. This is the
+    'sector-as-market hero' / 'single-name hero' detector. Pure, never raises.
+
+    roster: the resolved corpus company names (used to detect a company-led open).
+    """
+    sent = _first_sentence(text)
+    if not sent:
+        return False
+    low = sent.lower().strip()
+    roster_lc = {str(c).strip().lower() for c in (roster or []) if str(c).strip()}
+
+    # What LEADS the sentence decides the subject, regardless of a market term that
+    # appears later as an object ("Insurance dominated the tape" leads with a sector).
+    # A single-focus open is one whose FIRST token(s) are a sector label or a corpus
+    # company / capitalized org, UNLESS the sentence opens directly on an index name
+    # or a tape figure (then the market is the subject).
+
+    # Rescue: the sentence opens on an index name or a leading tape figure.
+    if re.match(r"^[+-]?\$?\d+(?:\.\d+)?\s*%", low):
+        return False
+    _INDEX_START = (
+        "s&p", "nasdaq", "dow", "russell", "the s&p", "the nasdaq", "the dow",
+        "the russell", "vix", "the vix", "equities", "stocks", "the tape",
+        "the market", "markets", "the broader market", "the broad market",
+        "wall street", "the session", "index", "indices", "major indices",
+    )
+    if any(low.startswith(t) for t in _INDEX_START):
+        return False
+
+    # Lone sector label as the leading token(s): "Insurance ...", "Energy names ...".
+    lead_word = re.split(r"[\s,.:;]+", low, maxsplit=1)[0]
+    if lead_word in _SECTOR_LABELS:
+        return True
+    lead_two = " ".join(re.split(r"\s+", low)[:2])
+    if lead_two in _SECTOR_LABELS:
+        return True
+
+    # A corpus company / ticker as the opening subject (allow a leading article/quote).
+    head = low[:80]
+    for name in roster_lc:
+        if name and re.match(r"^[\"'(]?" + re.escape(name) + r"\b", head):
+            return True
+    # A standalone capitalized org phrase leads the sentence (covers names not in the
+    # roster but that the entity-check would also flag).
+    for org in candidate_orgs(sent):
+        if low.startswith(org.lower()):
+            return True
+
+    # No single-focus lead detected. If the opening still carries NO index/market
+    # term at all, it is not a market read either, but that is caught separately by
+    # opening_has_market_terms; here we only decide the single-focus question.
+    return False
+
+
+def opening_claim_scope_violation(text: str, brief_type: str | None) -> bool:
+    """Morning briefs must not open with a settled whole-day CLOSE verdict; evening
+    briefs may. Returns True (violation) when a morning opening asserts a settled
+    close ('stocks closed', 'the session ended', 'finished the day'). Pure."""
+    if brief_type != "morning":
+        return False
+    para = (text or "").strip().split("\n\n", 1)[0].lower()
+    if not para:
+        return False
+    _CLOSED_CLAIMS = (
+        "closed higher", "closed lower", "closed up", "closed down", "closed mixed",
+        "closed the session", "closed the day", "finished the day", "finished higher",
+        "finished lower", "ended the session", "ended the day", "the session ended",
+        "settled higher", "settled lower", "wrapped the session", "wrapped the day",
+        "posted a full-day", "on the day, stocks",
+    )
+    return any(c in para for c in _CLOSED_CLAIMS)
+
+
+def validate_pulse_opening(
+    text: str, roster, brief_type: str | None = None
+) -> dict:
+    """MARKET_PULSE_V2 deterministic post-check over the dedicated pulse narrative.
+    Returns {"ok": bool, "reasons": [...]}. Pure. The caller does ONE bounded
+    re-ask on a violation, then the minimal grounded template."""
+    reasons: list[str] = []
+    if not opening_has_market_terms(text):
+        reasons.append(
+            "opening does not reference index-level market terms (index name, tape "
+            "figure, regime, or breadth)"
+        )
+    if opening_subject_is_single_focus(text, roster):
+        reasons.append(
+            "opening SUBJECT is a single company or a lone sector, not the market"
+        )
+    if opening_claim_scope_violation(text, brief_type):
+        reasons.append(
+            "morning pulse opens with a settled whole-day CLOSE verdict "
+            "(morning must use opened/opening/early-session framing)"
+        )
+    return {"ok": not reasons, "reasons": reasons}
+
+
 def build_minimal_overview(tape: dict | None, best_story_title: str | None = None) -> str:
     """Last-resort grounded template built ONLY from the fetched tape numbers
     plus, optionally, the single best-supported corpus story as a mention. Short

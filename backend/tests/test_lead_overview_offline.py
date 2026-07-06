@@ -880,5 +880,118 @@ class Assertion18_HeroGroundingCaughtAndThinPoolBrief(unittest.TestCase):
                         "the thin-pool hero must self-validate")
 
 
+# ── MARKET_PULSE_V2: dedicated tape-first pulse opening post-check ────────────
+#
+# These exercise the PURE deterministic post-check the V2 wire-in runs on the
+# dedicated pulse narrative (overview_grounding.validate_pulse_opening and its
+# component predicates). The Gemini call itself (generate_market_pulse) is
+# integration-only and is NOT asserted; synthesize.py is intentionally NOT
+# imported (it builds Supabase + Gemini clients at import). Prose QUALITY is not
+# harness-assertable; the flag-off default exists so Noah eyeballs the first real
+# render before flipping it on.
+
+# The documented "today's shape": a broad risk-on tape with an insurance-deal lead.
+# The bug is an opening whose SUBJECT is the insurance sector; the fix is a
+# tape-first opening with the sector only as color.
+RISK_ON_TAPE = BROAD_RALLY_TAPE
+INSURANCE_ROSTER = ["Chubb", "AIG", "Broadcom", "Nvidia"]
+
+
+class Assertion19_PulseInsuranceSectorSubjectFlagged(unittest.TestCase):
+    """THE flag test: an insurance-sector-subject opening is FLAGGED and a tape-first
+    opening (index terms + regime, sector only as color) PASSES."""
+
+    def test_insurance_sector_subject_opening_is_flagged(self):
+        bad = (
+            "Insurance dominated the tape as Chubb's $30 billion acquisition reshaped "
+            "the sector.\n\nThe S&P 500 rose +1.32%."
+        )
+        res = og.validate_pulse_opening(bad, INSURANCE_ROSTER, "evening")
+        self.assertFalse(res["ok"], "an insurance-sector-subject opening must be flagged")
+        self.assertTrue(
+            any("single company or a lone sector" in r for r in res["reasons"]),
+            f"the sector-subject reason must fire, got {res['reasons']}",
+        )
+
+    def test_single_company_subject_opening_is_flagged(self):
+        bad = "Chubb led the day after agreeing to a $30 billion acquisition."
+        res = og.validate_pulse_opening(bad, INSURANCE_ROSTER, "evening")
+        self.assertFalse(res["ok"], "a single-company-subject opening must be flagged")
+
+    def test_tape_first_opening_passes(self):
+        good = (
+            "The S&P 500 closed +1.32% and the Nasdaq +1.55% in a broad risk-on "
+            "session, with the VIX easing to 14.2 as breadth widened. Insurance was "
+            "one bright spot: Chubb's acquisition added to the day's deal color.\n\n"
+            "Under the surface, the rally was cyclical."
+        )
+        res = og.validate_pulse_opening(good, INSURANCE_ROSTER, "evening")
+        self.assertTrue(res["ok"], f"a tape-first opening must pass: {res['reasons']}")
+
+    def test_opening_market_terms_predicate(self):
+        self.assertTrue(og.opening_has_market_terms("The S&P 500 rose 1.3% today."))
+        self.assertTrue(og.opening_has_market_terms("Equities firmed as breadth improved."))
+        self.assertFalse(
+            og.opening_has_market_terms("Chubb's acquisition reshaped underwriting."),
+            "an opening with no index/market term must not count as a market read",
+        )
+
+
+class Assertion20_PulseClaimScopeByBriefType(unittest.TestCase):
+    """Morning must use opened/opening/early-session framing (a settled whole-day
+    close verdict is flagged); evening may render a settled close."""
+
+    MORNING_CLOSE_CLAIM = (
+        "The S&P 500 closed higher and the Nasdaq finished the day up as risk "
+        "appetite returned."
+    )
+    MORNING_OPEN_FRAME = (
+        "The S&P 500 opens on firmer footing after the prior session closed +1.3%, "
+        "with the VIX easing into the open."
+    )
+    EVENING_CLOSE_CLAIM = (
+        "The S&P 500 closed higher and the Nasdaq finished the day up as risk "
+        "appetite returned across the tape."
+    )
+
+    def test_morning_settled_close_verdict_flagged(self):
+        self.assertTrue(
+            og.opening_claim_scope_violation(self.MORNING_CLOSE_CLAIM, "morning"),
+            "a morning pulse asserting a settled whole-day close must be flagged",
+        )
+        res = og.validate_pulse_opening(self.MORNING_CLOSE_CLAIM, [], "morning")
+        self.assertFalse(res["ok"])
+        self.assertTrue(any("CLOSE verdict" in r for r in res["reasons"]))
+
+    def test_morning_opening_frame_passes_scope(self):
+        self.assertFalse(
+            og.opening_claim_scope_violation(self.MORNING_OPEN_FRAME, "morning"),
+            "prior-close / into-the-open framing must not be flagged for morning",
+        )
+
+    def test_evening_close_verdict_allowed(self):
+        self.assertFalse(
+            og.opening_claim_scope_violation(self.EVENING_CLOSE_CLAIM, "evening"),
+            "a settled close is allowed for the evening brief",
+        )
+        res = og.validate_pulse_opening(self.EVENING_CLOSE_CLAIM, [], "evening")
+        self.assertTrue(res["ok"], f"an evening close-verdict tape read must pass: {res['reasons']}")
+
+
+class Assertion21_PulseThinTapeBrevityReachable(unittest.TestCase):
+    """The thin-tape brevity path: the minimal grounded fallback (what the V2 wire-in
+    falls back to when the re-ask still violates) is short AND tape-grounded AND
+    passes the pulse opening post-check (it leads with the tape)."""
+
+    def test_minimal_fallback_passes_pulse_opening_and_is_brief(self):
+        hero = og.build_minimal_overview(QUIET_TAPE, "Acme Robotics raises $400M")
+        self.assertLess(len(hero), 280, "the thin-tape fallback must stay brief")
+        res = og.validate_pulse_opening(hero, ["Acme Robotics"], "morning")
+        self.assertTrue(res["ok"], f"the minimal grounded fallback must pass the pulse opening check: {res['reasons']}")
+        # It leads with the tape, not the single name.
+        self.assertTrue(og.opening_has_market_terms(hero))
+        self.assertFalse(og.opening_subject_is_single_focus(hero, ["Acme Robotics"]))
+
+
 if __name__ == "__main__":
     unittest.main()
