@@ -109,6 +109,19 @@ RELEVANCE_GRADE_SHADOW_SAMPLE_RATE = float(
     os.environ.get("RELEVANCE_GRADE_SHADOW_SAMPLE_RATE", "0.10")
 )
 
+# Cost guard for `new` mode: skip the full-Flash re-grade on articles the Flash-Lite
+# filter already marked relevant=False. The ingest gate (search "result.get(\"relevant\")")
+# drops any not-relevant article BEFORE it reads relevance_score, so a not-relevant
+# article is never stored and its re-grade is never consumed. Skipping it therefore
+# leaves the STORED set and every stored score/band byte-identical while cutting the
+# grader call volume by the filter's reject rate (measured ~92% on 2026-07-07: 25,712
+# grader calls vs 2,144 stored). DEFAULT OFF so merging changes nothing until Noah
+# sets GRADER_SKIP_IRRELEVANT=1. No effect under legacy/shadow (shadow never overwrites
+# the stored score and is already sample-bounded).
+GRADER_SKIP_IRRELEVANT = os.environ.get("GRADER_SKIP_IRRELEVANT", "").strip().lower() in (
+    "1", "true", "yes", "on"
+)
+
 if RELEVANCE_GRADE_MODE not in ("legacy", "shadow", "new"):
     print(
         f"  [relevance-grade] unknown RELEVANCE_GRADE_MODE={RELEVANCE_GRADE_MODE!r}, "
@@ -709,6 +722,12 @@ def apply_relevance_grade(article, result):
 
     # new: the re-anchored grade becomes authoritative. SEC stays deterministic.
     if is_sec:
+        return result
+    # Cost guard: a not-relevant article is dropped by the ingest gate on its
+    # `relevant` flag (which grade_relevance never changes), regardless of its
+    # score, so re-grading it is wasted spend that no consumer reads. Skipping it
+    # keeps the stored set and every stored score identical. Default OFF.
+    if GRADER_SKIP_IRRELEVANT and not result.get("relevant"):
         return result
     grade = grade_relevance(article)
     if grade is not None:
