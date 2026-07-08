@@ -233,5 +233,63 @@ class GradeRelevanceParseTest(unittest.TestCase):
         self.assertIsNone(self._run_with_text('{"band": "weak", "reason": "x"}'))
 
 
+# ---------------------------------------------------------------------------
+# 4. GRADER_SKIP_IRRELEVANT cost guard (new mode only).
+#    A not-relevant article is dropped by the ingest gate on its `relevant` flag
+#    regardless of score, so its re-grade is never consumed. With the flag ON we
+#    skip that wasted grade; a RELEVANT article's path is unchanged. Flag OFF
+#    preserves the pre-change behavior exactly (regression guard).
+# ---------------------------------------------------------------------------
+class SkipIrrelevantTest(unittest.TestCase):
+    def setUp(self):
+        self._mode = ingest.RELEVANCE_GRADE_MODE
+        self._skip = ingest.GRADER_SKIP_IRRELEVANT
+        ingest.RELEVANCE_GRADE_MODE = "new"
+
+    def tearDown(self):
+        ingest.RELEVANCE_GRADE_MODE = self._mode
+        ingest.GRADER_SKIP_IRRELEVANT = self._skip
+
+    def _irrelevant_result(self, score=3):
+        r = _legacy_result(score)
+        r["relevant"] = False        # filter rejected it; the gate drops it regardless of score
+        return r
+
+    def test_flag_on_skips_grade_for_irrelevant(self):
+        ingest.GRADER_SKIP_IRRELEVANT = True
+        article = {"title": "5 stocks to buy now", "summary": "", "source": "Yahoo", "url": "u"}
+        result = self._irrelevant_result(3)
+        with patch.object(ingest, "grade_relevance",
+                          side_effect=AssertionError("must not grade a not-relevant article")) as g:
+            out = ingest.apply_relevance_grade(article, result)
+        g.assert_not_called()                                # the expensive grade is skipped
+        self.assertEqual(out["relevance_score"], 3)          # legacy score left as-is
+        self.assertFalse(out["relevant"])                    # still not-relevant -> gate drops it
+        self.assertNotIn("relevance_band", out)              # nothing written
+
+    def test_flag_on_still_grades_relevant(self):
+        ingest.GRADER_SKIP_IRRELEVANT = True
+        article = {"title": "Acme acquires Beta for $2bn", "summary": "", "source": "PE Hub", "url": "u"}
+        result = _legacy_result(10)                           # relevant=True
+        with patch.object(ingest, "grade_relevance",
+                          return_value={"score": 9, "band": "material_first_order", "reason": "M&A $2bn"}) as g:
+            out = ingest.apply_relevance_grade(article, result)
+        g.assert_called_once()                                # relevant article graded exactly as before
+        self.assertEqual(out["relevance_score"], 9)          # new score authoritative
+        self.assertEqual(out["relevance_band"], "material_first_order")
+
+    def test_flag_off_grades_irrelevant_unchanged_behavior(self):
+        # Regression guard: with the flag OFF (default), a not-relevant article is
+        # STILL graded, exactly as before this change.
+        ingest.GRADER_SKIP_IRRELEVANT = False
+        article = {"title": "5 stocks to buy now", "summary": "", "source": "Yahoo", "url": "u"}
+        result = self._irrelevant_result(3)
+        with patch.object(ingest, "grade_relevance",
+                          return_value={"score": 1, "band": "template_demoted", "reason": "listicle"}) as g:
+            out = ingest.apply_relevance_grade(article, result)
+        g.assert_called_once()                                # unchanged: still grades everything
+        self.assertEqual(out["relevance_score"], 1)          # overwritten as before
+
+
 if __name__ == "__main__":
     unittest.main()
