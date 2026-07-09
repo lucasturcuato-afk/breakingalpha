@@ -355,22 +355,106 @@ def pulse_unsupported_entities(narrative: str, top_stories, macro_strip: str | N
     return sorted(set(bad))
 
 
+# ── Numeric-figure provenance (fabricated-number guard) ──────────────────────
+# The pulse must not state a specific figure that its inputs do not support (it
+# wrote "Micron ... $3 billion" when no source carried that number). Only unit-
+# bearing or comma-grouped figures are checked; bare integers/years are ignored.
+_FIG_MULT = {"t": 1e12, "tn": 1e12, "trillion": 1e12, "b": 1e9, "bn": 1e9,
+             "billion": 1e9, "m": 1e6, "mn": 1e6, "million": 1e6}
+_MONEY_RE = re.compile(r"\$?\s*(\d+(?:\.\d+)?)\s*(trillion|billion|million|tn|bn|mn|[bmt])\b", re.I)
+_PCT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%")
+_KCOUNT_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(?:thousand|k)\b", re.I)
+# comma-grouped number NOT immediately followed by a K/thousand unit (that case is
+# the K-count above; matching it here too would double-count at the wrong scale).
+_COMMA_RE = re.compile(r"\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b(?!(?:\.\d+)?\s*(?:thousand|k)\b)", re.I)
+
+
+def _pulse_figures(text: str) -> list[tuple[str, float, str]]:
+    """Extract (kind, magnitude, raw) for money / percent / count figures."""
+    out: list[tuple[str, float, str]] = []
+    t = text or ""
+    for m in _MONEY_RE.finditer(t):
+        out.append(("money", float(m.group(1)) * _FIG_MULT.get(m.group(2).lower(), 1.0), m.group(0).strip()))
+    for m in _PCT_RE.finditer(t):
+        out.append(("pct", float(m.group(1)), m.group(0).strip()))
+    for m in _KCOUNT_RE.finditer(t):
+        out.append(("count", float(m.group(1).replace(",", "")) * 1000.0, m.group(0).strip()))
+    for m in _COMMA_RE.finditer(t):
+        out.append(("count", float(m.group(0).replace(",", "")), m.group(0).strip()))
+    return out
+
+
+def _sourced_figure_set(tape, macro_strip, top_stories) -> list[tuple[str, float, str]]:
+    """Every figure the pulse was GIVEN: macro strip + story text + tape (pcts,
+    levels, VIX), plus pairwise differences of sourced counts (derived changes like
+    a payroll delta of +57K)."""
+    figs: list[tuple[str, float, str]] = []
+    for tp in (macro_strip or "", _pulse_supported_text(top_stories, None)):
+        figs.extend(_pulse_figures(tp))
+    for v in ((tape or {}).get("quotes") or {}).values():
+        for key, kind in (("pct", "pct"), ("price", "count")):
+            try:
+                figs.append((kind, float(v.get(key)), "tape"))
+            except (TypeError, ValueError):
+                pass
+    try:
+        figs.append(("count", float((tape or {}).get("vix_level")), "tape"))
+    except (TypeError, ValueError):
+        pass
+    counts = [mag for (k, mag, _r) in figs if k == "count"]
+    for i in range(len(counts)):
+        for j in range(i + 1, len(counts)):
+            figs.append(("count", abs(counts[i] - counts[j]), "derived"))
+    return figs
+
+
+def _figure_sourced(kind: str, mag: float, sourced) -> bool:
+    for (sk, smag, _r) in sourced:
+        if sk != kind:
+            continue
+        if kind == "pct" and abs(mag - smag) <= 0.15:
+            return True
+        if kind == "money" and (mag == smag or (smag > 0 and abs(mag - smag) / smag <= 0.02)):
+            return True
+        if kind == "count" and (abs(mag - smag) <= 1 or (smag > 0 and abs(mag - smag) / smag <= 0.01)):
+            return True
+    return False
+
+
+def pulse_unsourced_figures(narrative: str, tape, macro_strip, top_stories) -> list[str]:
+    """Figures in the narrative not supported by the pulse's inputs (trivial rounding
+    + unit forms allowed). A fabricated magnitude (a $3B no source states) is flagged;
+    a qualitative claim carries no figure and is never flagged."""
+    sourced = _sourced_figure_set(tape, macro_strip, top_stories)
+    seen: set[str] = set()
+    bad: list[str] = []
+    for (kind, mag, raw) in _pulse_figures(narrative):
+        if not _figure_sourced(kind, mag, sourced) and raw.lower() not in seen:
+            seen.add(raw.lower())
+            bad.append(raw)
+    return bad
+
+
 def validate_pulse_grounding(narrative: str, tape: dict | None, macro_strip: str | None,
                              top_stories) -> dict:
     """Grounding check for the DEDICATED V2 pulse. Supported set = the pulse's own
-    inputs (tape + macro strip + top stories), NOT the article corpus. Keeps the
-    (already-fixed) tape DIRECTION check. A company in none of the pulse's inputs
-    is still a hallucination and fails. Pure; same shape as validate_overview."""
+    inputs (tape + macro strip + top stories), NOT the article corpus. Checks entities,
+    the tape DIRECTION, AND numeric-figure provenance. A company or a figure in none of
+    the pulse's inputs is a hallucination and fails. Pure; same shape as before."""
     ents = pulse_unsupported_entities(narrative, top_stories, macro_strip)
     tapes = tape_claim_violations(narrative, tape)
+    figs = pulse_unsourced_figures(narrative, tape, macro_strip, top_stories)
     reasons: list[str] = []
     if ents:
         reasons.append("unsupported entities: " + ", ".join(ents))
     reasons.extend(tapes)
+    if figs:
+        reasons.append("unsourced figures: " + ", ".join(figs))
     return {
-        "ok": not ents and not tapes,
+        "ok": not ents and not tapes and not figs,
         "unsupported_entities": ents,
         "tape_violations": tapes,
+        "unsourced_figures": figs,
         "reasons": reasons,
     }
 

@@ -1073,5 +1073,40 @@ class ValidatePulseGroundingTests(unittest.TestCase):
         self.assertTrue(res["tape_violations"])
 
 
+class NumericFigureGuardTests(unittest.TestCase):
+    """The pulse must not state a figure its inputs do not support. Sourced figures
+    (tape %s, macro values, story-title figures, derived deltas) pass; a fabricated
+    magnitude fails; a qualitative claim (no figure) never fails."""
+
+    TAPE = {"regime": "risk-on", "quotes": {"^GSPC": {"pct": 0.85, "price": 7533.9},
+            "^IXIC": {"pct": 1.25}, "^RUT": {"pct": 1.36}}, "vix_level": 16.05}
+    MACRO = ("Nonfarm payrolls (June 2026): level (SA) 158984.0K (prior 158927.0K)\n"
+             "Unemployment rate: rate (SA) 4.2% (prior 4.3%)")
+    STORIES = [{"title": "Micron Raises Planned Spending to Meet Memory Chip Demand", "companies": ["Micron"]},
+               {"title": "SK Hynix Said to Guide US Offering Price 3.1% Above Korea Close", "companies": ["SK Hynix"]}]
+
+    def test_fabricated_dollar_figure_flagged(self):
+        n = "US stocks rose, S&P 500 up 0.85%. Micron announced plans to invest up to $3 billion."
+        r = og.validate_pulse_grounding(n, self.TAPE, self.MACRO, self.STORIES)
+        self.assertFalse(r["ok"])
+        self.assertIn("$3 billion", r["unsourced_figures"])
+
+    def test_sourced_and_derived_figures_pass(self):
+        # 0.85/1.25/1.36% from tape; 158,984.0K + 4.2% from macro; 57,000 is the derived delta.
+        n = ("US stocks rose, S&P 500 up 0.85%, Nasdaq up 1.25%, Russell up 1.36%. "
+             "Nonfarm payrolls rose 57,000 to 158,984.0K, unemployment 4.2%. Micron is boosting US spending.")
+        r = og.validate_pulse_grounding(n, self.TAPE, self.MACRO, self.STORIES)
+        self.assertTrue(r["ok"], r["reasons"])
+
+    def test_story_title_figure_is_sourced(self):
+        stories = self.STORIES + [{"title": "Micron Boosts US Spending to $250 Billion", "companies": ["Micron"]}]
+        n = "US stocks rose, S&P 500 up 0.85%. Micron announced plans to invest up to $250 billion."
+        self.assertTrue(og.validate_pulse_grounding(n, self.TAPE, self.MACRO, stories)["ok"])
+
+    def test_qualitative_claim_never_flagged(self):
+        n = "US stocks rose, S&P 500 up 0.85%. Micron is boosting US spending to meet chip demand."
+        self.assertTrue(og.validate_pulse_grounding(n, self.TAPE, self.MACRO, self.STORIES)["ok"])
+
+
 if __name__ == "__main__":
     unittest.main()
