@@ -2146,23 +2146,78 @@ def _rewrite_market_wide_grounded(data, tape, corpus_companies, relegated_title,
     return None
 
 
+# Typical BLS/BEA publication timing per release, used to ESTIMATE a release date
+# from the data period (the sources carry no publication date). Employment prints
+# on the first Friday of the following month; CPI/PPI mid-following-month; PCE/GDP
+# late-following-month. Good enough for a today / recent / dated gradient.
+_MACRO_RELEASE_DAY = {
+    "nonfarm_payrolls": "first_friday", "unemployment": "first_friday",
+    "cpi": 12, "core_cpi": 12, "ppi": 13, "pce": 27, "gdp": 28,
+}
+_MACRO_MONTHS = {m.lower(): i for i, m in enumerate(
+    ["", "January", "February", "March", "April", "May", "June", "July",
+     "August", "September", "October", "November", "December"])}
+
+
+def _macro_period_month(period):
+    """Parse a release period into (year, data-period-END month). Handles monthly
+    ('June 2026') and quarterly ('Q2 2026'). None if unparseable."""
+    toks = (period or "").strip().split()
+    if not toks:
+        return None
+    try:
+        year = int(toks[-1])
+    except ValueError:
+        return None
+    head = toks[0].lower()
+    if head.startswith("q") and len(head) >= 2 and head[1].isdigit():
+        q = int(head[1])
+        return (year, q * 3) if 1 <= q <= 4 else None
+    mo = _MACRO_MONTHS.get(head)
+    return (year, mo) if mo else None
+
+
+def _macro_release_recency(key, period, today):
+    """Estimate a release's publication date from its data period + the standard
+    schedule, then age it against the brief date. ESTIMATE (no source pub date).
+    Returns (est_date, days_old) or None."""
+    parsed = _macro_period_month(period)
+    if not parsed:
+        return None
+    py, pm = parsed
+    rm, ry = (pm + 1, py) if pm < 12 else (1, py + 1)
+    rule = _MACRO_RELEASE_DAY.get(key, 15)
+    if rule == "first_friday":
+        d = date(ry, rm, 1)
+        while d.weekday() != 4:  # Friday
+            d += timedelta(days=1)
+    else:
+        d = date(ry, rm, int(rule))
+    return d, (today - d).days
+
+
 def _pulse_macro_strip():
     """MARKET_PULSE_V2: build a compact macro backdrop strip for the dedicated pulse
     call. Reuses the SAME data-layer fetchers the morning macro_panel uses
     (macro_calendar + bea_calendar) and renders only the numbers actually present.
-    Numbers never pass through the model here (they are fetched facts). Soft-fail to
-    '' so a data-layer miss never blocks the pulse call. Not exercised by the
-    offline harness (it hits the data layers)."""
+    Each line is TAGGED with its release recency (RELEASED TODAY / recent backdrop /
+    dated), estimated from the data period + standard release schedule, so the pulse
+    can frame catalyst-vs-backdrop by age. The sources carry NO publication date, so
+    the tag date is an estimate. Returns (strip_text, is_release_day). Soft-fail to
+    ('', False). Not exercised by the offline harness (it hits the data layers)."""
     try:
         releases = macro_calendar.fetch_macro_releases() + bea_calendar.fetch_bea_releases()
     except Exception as e:
         print(f"  ⚠ pulse macro strip fetch failed (non-fatal): {e}")
-        return ""
+        return "", False
+    today = datetime.now(timezone.utc).date()
     lines = []
+    release_today = False
     for r in releases or []:
         try:
             name = getattr(r, "name", "") or ""
             period = getattr(r, "period", "") or ""
+            key = getattr(r, "key", "") or ""
             figs = []
             for f in (getattr(r, "figures", None) or [])[:2]:
                 val = getattr(f, "value", None)
@@ -2175,11 +2230,25 @@ def _pulse_macro_strip():
                 if prior is not None:
                     bit += f" (prior {prior}{unit})"
                 figs.append(bit)
-            if name and figs:
-                lines.append(f"{name} ({period}): " + "; ".join(figs))
+            if not (name and figs):
+                continue
+            rec = _macro_release_recency(key, period, today)
+            if rec is not None:
+                est, age = rec
+                if 0 <= age <= 1:
+                    tag = f"RELEASED TODAY (~{est.isoformat()}), the day's catalyst"
+                    release_today = True
+                elif age < 0 or age <= 10:
+                    when = f"{age} days ago" if age > 0 else "just now (est)"
+                    tag = f"released ~{est.isoformat()}, {when}: recent BACKDROP, NOT today's news"
+                else:
+                    tag = f"released ~{est.isoformat()}, {age} days ago: DATED, context only"
+            else:
+                tag = "release date unknown: treat as backdrop"
+            lines.append(f"{name} ({period}; {tag}): " + "; ".join(figs))
         except Exception:
             continue
-    return "\n".join(lines)
+    return "\n".join(lines), release_today
 
 
 def _pulse_top_stories(spine, floor, companies_of_fn, limit=5):
@@ -2201,7 +2270,8 @@ def _pulse_top_stories(spine, floor, companies_of_fn, limit=5):
     return out
 
 
-def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None):
+def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None,
+                          macro_is_release_day=False):
     """MARKET_PULSE_V2: ONE bounded, focused Gemini call that produces
     market_pulse.narrative with the TAPE + MACRO as the SUBJECT and stories only as
     color. This is the dedicated call that fixes the article-dominated monolith
@@ -2254,6 +2324,21 @@ def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None):
     stories_block = "\n".join(story_lines) if story_lines else "(no ranked stories)"
     macro_block = macro.strip() if isinstance(macro, str) and macro.strip() else "(no fresh macro prints)"
     prior_block = (prior_ctx or "").strip()
+    if macro_is_release_day:
+        macro_framing = (
+            "MACRO FRAMING: a major economic release dropped TODAY (tagged 'RELEASED "
+            "TODAY' in the strip). It IS the day's catalyst - lead paragraph 1 with it "
+            "and the market's reaction to it, tied to the tape."
+        )
+    else:
+        macro_framing = (
+            "MACRO FRAMING: NO major release dropped today. Lead paragraph 1 with the "
+            "TAPE action, not macro. Every print in the strip is standing BACKDROP (see "
+            "its recency tag) - frame it as prior context ('last week's jobs report "
+            "still colors the tape'), and NEVER say investors are digesting, reacting "
+            "to, or awaiting it today or this morning. Do NOT present a dated print as "
+            "fresh news."
+        )
 
     system = (
         "You write ONE field of a daily market brief: market_pulse.narrative, the "
@@ -2272,7 +2357,9 @@ def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None):
         "the macro backdrop), NOT any single company or sector.\n\n"
         f"{claim_scope}\n\n"
         f"{facts}\n\n"
-        f"MACRO BACKDROP (fetched facts, do not invent):\n{macro_block}\n\n"
+        f"MACRO BACKDROP (fetched facts, do not invent; each print tagged with its "
+        f"release recency):\n{macro_block}\n\n"
+        f"{macro_framing}\n\n"
         f"RANKED STORIES (COLOR ONLY - examples woven in AFTER the market read, never "
         f"the subject):\n{stories_block}\n\n"
         + (f"PRIOR SESSION CONTEXT: {prior_block}\n\n" if prior_block else "")
@@ -3033,10 +3120,11 @@ def run(brief_type="morning"):
             if MARKET_PULSE_V2 and isinstance(_mp, dict):
                 try:
                     _pulse_stories = _pulse_top_stories(spine, floor, _companies_of)
-                    _pulse_macro = _pulse_macro_strip()
+                    _pulse_macro, _macro_release_today = _pulse_macro_strip()
                     _prior_ctx = _fetch_prior_brief_lead()
                     _v2 = generate_market_pulse(
-                        brief_type, tape_obj, _pulse_macro, _pulse_stories, prior_ctx=_prior_ctx
+                        brief_type, tape_obj, _pulse_macro, _pulse_stories, prior_ctx=_prior_ctx,
+                        macro_is_release_day=_macro_release_today,
                     )
                     if _v2:
                         # Deterministic subject-check: opening must be the index-level
@@ -3052,7 +3140,7 @@ def run(brief_type="morning"):
                                 print(f"  ⚠ MARKET_PULSE_V2 opening violation: {_pr}")
                             _v2r = generate_market_pulse(
                                 brief_type, tape_obj, _pulse_macro, _pulse_stories,
-                                prior_ctx=_prior_ctx,
+                                prior_ctx=_prior_ctx, macro_is_release_day=_macro_release_today,
                             )
                             _pc2 = (
                                 overview_grounding.validate_pulse_opening(
@@ -3094,7 +3182,7 @@ def run(brief_type="morning"):
                             print(f"  ⚠ pulse grounding violation (V2): {_r}")
                         _v2re = generate_market_pulse(
                             brief_type, tape_obj, _pulse_macro, _pulse_stories,
-                            prior_ctx=_prior_ctx,
+                            prior_ctx=_prior_ctx, macro_is_release_day=_macro_release_today,
                         )
                         _reok = bool(
                             _v2re
