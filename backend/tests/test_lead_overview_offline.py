@@ -1107,6 +1107,15 @@ class NumericFigureGuardTests(unittest.TestCase):
         n = "US stocks rose, S&P 500 up 0.85%. Micron is boosting US spending to meet chip demand."
         self.assertTrue(og.validate_pulse_grounding(n, self.TAPE, self.MACRO, self.STORIES)["ok"])
 
+    def test_down_move_percent_matches_signed_tape(self):
+        # Narrative carries direction in words ("fell 0.88%"); the tape stores -0.88.
+        # Magnitude match, so a real down-move % is not false-flagged.
+        tape = {"regime": "neutral", "quotes": {"^GSPC": {"pct": -0.28},
+                "^IXIC": {"pct": 0.20}, "^RUT": {"pct": -0.88}}, "vix_level": 16.9}
+        n = "US stocks closed mixed, the S&P 500 down 0.28% and the Nasdaq up 0.20%; the Russell 2000 fell 0.88%."
+        r = og.validate_pulse_grounding(n, tape, "", [])
+        self.assertTrue(r["ok"], r["reasons"])
+
 
 if __name__ == "__main__":
     unittest.main()

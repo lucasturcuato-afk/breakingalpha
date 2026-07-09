@@ -412,7 +412,9 @@ def _figure_sourced(kind: str, mag: float, sourced) -> bool:
     for (sk, smag, _r) in sourced:
         if sk != kind:
             continue
-        if kind == "pct" and abs(mag - smag) <= 0.15:
+        # Percentages match on MAGNITUDE: the narrative carries direction in words
+        # ("down 0.88%") while the tape stores the signed pct (-0.88).
+        if kind == "pct" and abs(abs(mag) - abs(smag)) <= 0.15:
             return True
         if kind == "money" and (mag == smag or (smag > 0 and abs(mag - smag) / smag <= 0.02)):
             return True
