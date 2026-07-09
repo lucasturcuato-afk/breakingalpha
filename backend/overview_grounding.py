@@ -26,6 +26,7 @@ Every violation is logged. Nothing ungrounded ships.
 """
 from __future__ import annotations
 
+import json
 import re
 
 # Sentence terminators we split on so a candidate org never spans a sentence.
@@ -90,6 +91,26 @@ _MACRO_TERMS = frozenset({
     "industrial production", "ism manufacturing", "ism services", "ism",
     "consumer confidence", "consumer sentiment", "housing starts",
     "fomc", "fed funds", "federal funds rate",
+})
+
+# Multi-word NON-org proper nouns the V2 pulse legitimately references as color:
+# geographies/regions, government bodies / central banks, and rate/data series.
+# These are NEVER companies, so the pulse grounding check ignores them (a real
+# hallucinated COMPANY not in the stories is still rejected).
+_NON_ORG_TERMS = frozenset({
+    # geographies / regions
+    "middle east", "middle eastern", "strait of hormuz", "strait hormuz",
+    "europe", "european union", "eurozone", "asia", "asia pacific",
+    "latin america", "north america", "south america", "central america",
+    "united states", "united kingdom", "hong kong", "wall street",
+    "main street", "persian gulf", "red sea", "south china sea", "east asia",
+    "far east", "the gulf",
+    # government bodies / central banks / rate & data series
+    "federal reserve", "the fed", "us treasury", "u.s. treasury",
+    "treasury department", "white house", "capitol hill", "supreme court",
+    "european central bank", "bank of japan", "bank of england",
+    "10-year treasury", "10 year treasury", "two-year treasury",
+    "10-year yield", "the 10-year",
 })
 
 
@@ -261,6 +282,87 @@ def validate_overview(text: str, corpus_text: str, roster, tape: dict | None) ->
     Pure. The caller decides re-ask vs minimal-template fallback from `ok`."""
     ents = unsupported_entities(text, corpus_text, roster)
     tapes = tape_claim_violations(text, tape)
+    reasons: list[str] = []
+    if ents:
+        reasons.append("unsupported entities: " + ", ".join(ents))
+    reasons.extend(tapes)
+    return {
+        "ok": not ents and not tapes,
+        "unsupported_entities": ents,
+        "tape_violations": tapes,
+        "reasons": reasons,
+    }
+
+
+# ── V2 pulse grounding: validate against the pulse's OWN inputs ───────────────
+#
+# The monolith validate_overview checks entities against the ARTICLE CORPUS. The
+# V2 pulse is given a NARROWER, DIFFERENT input set (tape + macro strip + the top
+# stories), and it legitimately references vocabulary the corpus never contains
+# (macro series, geographies, government bodies). Checking it against the corpus
+# false-flags that vocabulary class-by-class. This checks the V2 narrative
+# against EXACTLY what V2 was given, and nothing else: a company named that is in
+# NONE of {top_stories, tape, macro} is still a genuine hallucination and fails.
+
+
+def _strip_possessive(s: str) -> str:
+    """Drop a trailing possessive so 'CME Group's' validates as 'CME Group'."""
+    return re.sub(r"[’']s$", "", s or "").strip()
+
+
+def _pulse_supported_text(top_stories, macro_strip: str | None) -> str:
+    """Lowercased bag of everything the V2 pulse was GIVEN: the top-stories'
+    titles / one-liners / sectors / companies, plus the rendered macro strip."""
+    parts: list[str] = []
+    for s in (top_stories or []):
+        if not isinstance(s, dict):
+            parts.append(str(s))
+            continue
+        for k in ("title", "one_liner", "sector"):
+            v = s.get(k)
+            if isinstance(v, str) and v.strip():
+                parts.append(v)
+        cos = s.get("companies") or []
+        if isinstance(cos, str):
+            try:
+                cos = json.loads(cos)
+            except Exception:
+                cos = [cos]
+        for c in (cos or []):
+            if str(c).strip():
+                parts.append(str(c))
+    if isinstance(macro_strip, str) and macro_strip.strip():
+        parts.append(macro_strip)
+    return " ".join(parts).lower()
+
+
+def pulse_unsupported_entities(narrative: str, top_stories, macro_strip: str | None) -> list[str]:
+    """Company-shaped entities in the V2 narrative that are supported by NEITHER
+    the pulse's stories/macro inputs NOR the tape/macro/non-org vocabulary. Only
+    genuine hallucinated ORGS remain. Possessives are normalized; geographies /
+    government bodies / data series / index + macro terms are never flagged."""
+    supported = _pulse_supported_text(top_stories, macro_strip)
+    bad: list[str] = []
+    for o in candidate_orgs(narrative):
+        ol = _strip_possessive(o.strip().lower())
+        if not ol:
+            continue
+        if ol in _INDEX_NAMES or ol in _MACRO_TERMS or ol in _NON_ORG_TERMS:
+            continue
+        if org_supported(ol, supported, set()):
+            continue
+        bad.append(o)
+    return sorted(set(bad))
+
+
+def validate_pulse_grounding(narrative: str, tape: dict | None, macro_strip: str | None,
+                             top_stories) -> dict:
+    """Grounding check for the DEDICATED V2 pulse. Supported set = the pulse's own
+    inputs (tape + macro strip + top stories), NOT the article corpus. Keeps the
+    (already-fixed) tape DIRECTION check. A company in none of the pulse's inputs
+    is still a hallucination and fails. Pure; same shape as validate_overview."""
+    ents = pulse_unsupported_entities(narrative, top_stories, macro_strip)
+    tapes = tape_claim_violations(narrative, tape)
     reasons: list[str] = []
     if ents:
         reasons.append("unsupported entities: " + ", ".join(ents))

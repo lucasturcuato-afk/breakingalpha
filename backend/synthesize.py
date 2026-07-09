@@ -3058,21 +3058,37 @@ def run(brief_type="morning"):
                 _best_title = _lead_title or (data.get("headline") or "")
                 if MARKET_PULSE_V2 and _pulse_v2_ok:
                     # The V2 tape-first pulse already passed validate_pulse_opening. Do
-                    # NOT run the lead-anchoring market-wide rewrite: it can clobber the
-                    # tape-first hero back into a single-story/sector read (the morning-
-                    # clobber bug). Keep ONLY the grounding safety net: validate_overview,
-                    # and on failure go straight to the minimal grounded fallback.
+                    # NOT run the lead-anchoring market-wide rewrite (it clobbers the
+                    # tape-first hero back into a single-story/sector read). Ground it
+                    # against the pulse's OWN inputs (tape + macro + stories), NOT the
+                    # article corpus, so legitimate macro/geography/gov vocabulary is
+                    # not false-flagged. ONE bounded re-ask, then the minimal fallback.
                     _candidate = _mp["narrative"]
-                    _vres = overview_grounding.validate_overview(
-                        _candidate, article_text, _final_corpus_companies, tape_obj
+                    _vres = overview_grounding.validate_pulse_grounding(
+                        _candidate, tape_obj, _pulse_macro, _pulse_stories
                     )
                     if not _vres["ok"]:
                         for _r in _vres["reasons"]:
-                            print(f"  ⚠ grounding post-check violation (V2 pulse): {_r}")
-                        _candidate = overview_grounding.build_minimal_overview(
-                            tape_obj, _best_title
+                            print(f"  ⚠ pulse grounding violation (V2): {_r}")
+                        _v2re = generate_market_pulse(
+                            brief_type, tape_obj, _pulse_macro, _pulse_stories,
+                            prior_ctx=_prior_ctx,
                         )
-                        print("  [grounding post-check] V2 pulse failed grounding; using minimal grounded template")
+                        _reok = bool(
+                            _v2re
+                            and overview_grounding.validate_pulse_opening(
+                                _v2re, _final_corpus_companies, brief_type)["ok"]
+                            and overview_grounding.validate_pulse_grounding(
+                                _v2re, tape_obj, _pulse_macro, _pulse_stories)["ok"]
+                        )
+                        if _reok:
+                            _candidate = _v2re
+                            print("  [pulse grounding] re-ask resolved violations")
+                        else:
+                            _candidate = overview_grounding.build_minimal_overview(
+                                tape_obj, _best_title
+                            )
+                            print("  [pulse grounding] re-ask still violating; using minimal grounded template")
                     else:
                         print("  [final-lead gate] V2 tape-first pulse kept (rewrite skipped)")
                 else:

@@ -1031,5 +1031,47 @@ class ValidateOverviewFalseTripTests(unittest.TestCase):
         self.assertTrue(res["tape_violations"])
 
 
+class ValidatePulseGroundingTests(unittest.TestCase):
+    """The V2 pulse validates against its OWN inputs (tape + macro + stories), not
+    the article corpus. Legitimate non-company vocabulary must not false-flag; a
+    real hallucinated company (in NO input) and a tape contradiction must fail."""
+
+    UP_TAPE = {"regime": "risk-on", "quotes": {"^GSPC": {"pct": 0.64}}, "vix_level": 16.1}
+    MACRO = "Nonfarm Payrolls (Jun): +158984K; Unemployment 4.2%"
+    STORIES = [
+        {"title": "CME Group announces Treasury Link", "sector": "Financials", "companies": ["CME Group"]},
+        {"title": "Micron to boost US semiconductor supply chain", "sector": "Tech", "companies": ["Micron"]},
+        {"title": "BlackRock launches IQQ ETF", "sector": "Financials", "companies": ["BlackRock"]},
+    ]
+
+    def test_possessive_geography_govbody_do_not_trip(self):
+        narr = ("U.S. equities closed higher, the S&P 500 gaining 0.64%, risk-on, VIX at 16.1. "
+                "Nonfarm payrolls rose. Geopolitical tensions in the Middle East and the Strait "
+                "of Hormuz kept oil elevated, and the Fed stayed in focus. CME Group's new "
+                "Treasury Link and Micron's investment drew attention.")
+        res = og.validate_pulse_grounding(narr, self.UP_TAPE, self.MACRO, self.STORIES)
+        self.assertTrue(res["ok"], res["reasons"])
+
+    def test_company_in_stories_passes(self):
+        res = og.validate_pulse_grounding(
+            "Equities rose, risk-on. BlackRock launched a new ETF.",
+            self.UP_TAPE, self.MACRO, self.STORIES)
+        self.assertTrue(res["ok"], res["reasons"])
+
+    def test_hallucinated_company_still_fails(self):
+        res = og.validate_pulse_grounding(
+            "Equities rose in a risk-on session; Globex Dynamics Corp surged on no news.",
+            self.UP_TAPE, self.MACRO, self.STORIES)
+        self.assertFalse(res["ok"])
+        self.assertIn("Globex Dynamics Corp", res["unsupported_entities"])
+
+    def test_tape_direction_contradiction_still_fails(self):
+        res = og.validate_pulse_grounding(
+            "Stocks fell sharply in a broad selloff and declined into the close.",
+            self.UP_TAPE, self.MACRO, self.STORIES)
+        self.assertFalse(res["ok"])
+        self.assertTrue(res["tape_violations"])
+
+
 if __name__ == "__main__":
     unittest.main()
