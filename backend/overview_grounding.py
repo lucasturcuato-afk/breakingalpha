@@ -76,6 +76,22 @@ _INDEX_NAMES = frozenset({
     "nasdaq composite", "the close",
 })
 
+# Macro indicators + release labels legitimately woven into the pulse from the
+# macro strip (macro_calendar + bea_calendar), NOT the article corpus. These are
+# economic data series, never companies, so they are always SUPPORTED for the
+# entity check. A real company name in no source is still rejected.
+_MACRO_TERMS = frozenset({
+    "nonfarm payrolls", "nonfarm payroll", "payrolls", "nonfarm", "jobs report",
+    "unemployment rate", "unemployment", "initial jobless claims", "jobless claims",
+    "cpi", "consumer price index", "core cpi", "core consumer price index",
+    "pce", "core pce", "personal consumption expenditures",
+    "core personal consumption expenditures", "ppi", "producer price index",
+    "gdp", "gross domestic product", "retail sales", "durable goods",
+    "industrial production", "ism manufacturing", "ism services", "ism",
+    "consumer confidence", "consumer sentiment", "housing starts",
+    "fomc", "fed funds", "federal funds rate",
+})
+
 
 def candidate_orgs(text: str) -> set[str]:
     """Sentence-bounded proper-noun org extractor. Splits on sentence
@@ -122,6 +138,8 @@ def org_supported(org: str, corpus_lc: str, roster_lc: set[str]) -> bool:
         return True
     if o in _INDEX_NAMES:
         return True
+    if o in _MACRO_TERMS:
+        return True
     if o in roster_lc or o in corpus_lc:
         return True
     toks = o.split()
@@ -162,9 +180,13 @@ _DOWN_WORDS = (
     "fell", "fall", "falls", "falling", "drop", "dropped", "drops", "slump",
     "slumped", "slide", "slid", "sink", "sank", "plunge", "plunged", "tumble",
     "tumbled", "selloff", "sell-off", "sold off", "lower", "decline",
-    "declined", "declines", "risk-off", "risk off", "de-risk", "de-risking",
+    "declined", "declines", "risk-off", "risk off",
     "retreat", "retreated", "sank",
 )
+# NOTE: "de-risk"/"de-risking" are deliberately NOT market-direction words: they
+# describe a company balance-sheet action (e.g. an insurer ceding reserves) and
+# false-tripped the check on a clearly risk-on tape. Market risk-off is still
+# caught by "risk-off"/"risk off".
 # Words that explicitly assert calm/strength when the tape is weak, or vice
 # versa. These are the "mixed/resilient/rallying" claims the tape directive bans.
 _STRENGTH_WORDS = ("resilient", "resilience", "rallying", "rallied", "buoyant")
@@ -209,8 +231,12 @@ def tape_claim_violations(text: str, tape: dict | None) -> list[str]:
     has_up = any(w in low for w in _UP_WORDS)
     has_down = any(w in low for w in _DOWN_WORDS)
     has_strength = any(w in low for w in _STRENGTH_WORDS)
+    # Fire only on a NET contradiction: the narrative's DOMINANT direction opposes
+    # the tape. A lone opposite word inside otherwise-consistent language (e.g. one
+    # company "de-risking" or "lower guidance" in a plainly risk-on read) is not a
+    # market-direction claim and must not false-trip.
     if direction == "down":
-        if has_up:
+        if has_up and not has_down:
             violations.append(
                 "overview claims an UP / rallying market but the fetched tape is DOWN"
             )
@@ -219,7 +245,7 @@ def tape_claim_violations(text: str, tape: dict | None) -> list[str]:
                 "overview describes the tape as resilient/rallying but it is DOWN"
             )
     elif direction == "up":
-        if has_down:
+        if has_down and not has_up:
             violations.append(
                 "overview claims a DOWN / risk-off market but the fetched tape is UP"
             )

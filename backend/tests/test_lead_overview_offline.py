@@ -993,5 +993,43 @@ class Assertion21_PulseThinTapeBrevityReachable(unittest.TestCase):
         self.assertFalse(og.opening_subject_is_single_focus(hero, ["Acme Robotics"]))
 
 
+class ValidateOverviewFalseTripTests(unittest.TestCase):
+    """Regression for the two validate_overview false-trips that bounced GOOD V2
+    primaries to the minimal template. Corrections, not weakening: real grounding
+    violations must still be caught."""
+
+    UP_TAPE = {"regime": "risk-on", "quotes": {"^GSPC": {"pct": 0.72}}, "vix_level": 15.6}
+
+    def test_macro_term_is_supported(self):
+        # "Nonfarm Payrolls" comes from the macro strip, not the article corpus.
+        text = ("Equities opened higher, the S&P 500 up 0.72%. The market took a "
+                "positive read from the latest Nonfarm Payrolls report.")
+        res = og.validate_overview(text, "unum fortitude re", {"Unum"}, self.UP_TAPE)
+        self.assertTrue(res["ok"], res["reasons"])
+        self.assertNotIn("Nonfarm Payrolls", " ".join(res["unsupported_entities"]))
+
+    def test_company_de_risking_does_not_trip_direction(self):
+        # A company "de-risking" on a plainly risk-on tape is not a market claim.
+        text = ("Equities closed higher in a buoyant, risk-on session. Unum "
+                "continued its strategic de-risking, ceding reserves to Fortitude Re.")
+        res = og.validate_overview(text, "unum fortitude re", {"Unum", "Fortitude Re"}, self.UP_TAPE)
+        self.assertTrue(res["ok"], res["reasons"])
+
+    def test_real_unsupported_org_still_rejected(self):
+        # Guardrail: a company in NO source is still flagged.
+        res = og.validate_overview("Acme Robotics Inc surged on the news.",
+                                   "unum fortitude", set(), self.UP_TAPE)
+        self.assertFalse(res["ok"])
+        self.assertIn("Acme Robotics Inc", res["unsupported_entities"])
+
+    def test_genuine_direction_contradiction_still_caught(self):
+        # Guardrail: a net-down narrative on an up tape still fires.
+        res = og.validate_overview(
+            "Stocks fell sharply in a broad selloff and declined into the close.",
+            "", set(), self.UP_TAPE)
+        self.assertFalse(res["ok"])
+        self.assertTrue(res["tape_violations"])
+
+
 if __name__ == "__main__":
     unittest.main()
