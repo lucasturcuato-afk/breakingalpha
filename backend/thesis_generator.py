@@ -73,7 +73,7 @@ SIMILARITY_THRESHOLD = 0.65       # cosine sim > this → cluster is covered
 MAX_CLUSTERS = 10                 # cap per-run, mirrors TS route
 MAX_ARTICLES_PER_CLUSTER = 3
 LOOKBACK_DAYS = 7                 # window for trend_clusters lookup
-GEMINI_MODEL = "gemini-2.5-flash"
+from models import GEMINI_MODEL
 GEMINI_TEMPERATURE = 0.3
 GEMINI_MAX_TOKENS = 2000
 THESIS_SOURCE = "ai-generated-cron"   # distinguishes cron from user theses

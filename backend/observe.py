@@ -27,14 +27,10 @@ from supabase import create_client
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 
-# Real models used by the live pipeline. The filter/ingest path runs on
-# gemini-2.5-flash-lite (ingest.py FILTER_MODEL) and synthesis runs on
-# gemini-2.5-flash (synthesize.py GEMINI_MODEL). There is no centralized model
-# config in this repo, and importing either module to read the constants is not
-# safe (it triggers client init), so these stay manual snapshots. Update them if
-# either file changes its model.
-MODEL_INGEST = "gemini-2.5-flash-lite"
-MODEL_SYNTH  = "gemini-2.5-flash"
+# Real models used by the live pipeline, sourced from the single shared constant
+# (models.py is a leaf module: importing it is safe, no client init). The filter/
+# ingest path runs on GEMINI_FILTER_MODEL; synthesis runs on GEMINI_MODEL.
+from models import GEMINI_MODEL as MODEL_SYNTH, GEMINI_FILTER_MODEL as MODEL_INGEST
 
 # Soft import of the usage-log flush. Never breaks observe import.
 try:

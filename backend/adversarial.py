@@ -44,7 +44,7 @@ except Exception as e:
     gemini_client = None
     logger.warning("adversarial: Gemini client unavailable (%s)", e)
 
-GEMINI_MODEL = "gemini-2.5-flash"
+from models import GEMINI_MODEL
 
 
 # ==========================================================================

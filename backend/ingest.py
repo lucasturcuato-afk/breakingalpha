@@ -45,12 +45,12 @@ RSS_FETCH_TIMEOUT_SEC = 20
 
 supabase = get_service_client()
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-GEMINI_MODEL = "gemini-2.5-flash"
+from models import GEMINI_MODEL
 # Filter step ONLY: the per-article relevance/sentiment classifier runs on the
 # cheaper Flash-Lite model. Every other Gemini step stays on GEMINI_MODEL. The
 # V3 rubric (LOW-template override + analyst-action 6-7 band) was validated on
 # Flash-Lite; see the temp-0.2 confirmation in the PR.
-FILTER_MODEL = "gemini-2.5-flash-lite"
+from models import GEMINI_FILTER_MODEL as FILTER_MODEL
 
 # ---------------------------------------------------------------------------
 # RE-ANCHORED RELEVANCE GRADER (RELEVANCE_GRADE_MODE) -- LUCAS-REVIEWED CORE SCORER.
@@ -83,7 +83,7 @@ RELEVANCE_GRADE_MODE = os.environ.get("RELEVANCE_GRADE_MODE", "shadow").strip().
 # The new grader runs on full Flash (not Flash-Lite): Flash-Lite is the proximate
 # cause of the high-clustering (it ignored the existing detailed LOW override at a
 # measured 0% hit rate). thinking_budget=0 keeps the cost/latency delta small.
-RELEVANCE_GRADE_MODEL = os.environ.get("RELEVANCE_GRADE_MODEL", "gemini-2.5-flash").strip()
+RELEVANCE_GRADE_MODEL = os.environ.get("RELEVANCE_GRADE_MODEL", GEMINI_MODEL).strip()
 
 # Ingest gate UNDER `new` MODE ONLY. Data-derived from the offline distribution
 # (docs/recon/relevance-recalibration.md): the new grader's own bands map tightly

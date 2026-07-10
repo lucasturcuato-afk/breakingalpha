@@ -43,7 +43,7 @@ except Exception as e:
     gemini_client = None
     logger.warning("brief_feedback_loop: Gemini client unavailable at import (%s)", e)
 
-GEMINI_MODEL = "gemini-2.5-flash"
+from models import GEMINI_MODEL
 
 
 # ==========================================================================

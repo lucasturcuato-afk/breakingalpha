@@ -38,7 +38,7 @@ supabase_admin = (
     create_client(os.environ["SUPABASE_URL"], _SERVICE_KEY) if _SERVICE_KEY else supabase
 )
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-GEMINI_MODEL = "gemini-2.5-flash"
+from models import GEMINI_MODEL
 
 # PR1 tape-aware materiality lead ranking (three-state, mirrors RELEVANCE_GRADE_MODE):
 #   off    -> the materiality re-rank never runs; selection is exactly as before.
