@@ -61,4 +61,5 @@ jobs:
           INGEST_BLOCKLIST_MODE: ${{ vars.INGEST_BLOCKLIST_MODE }}
           FILTER_PROMPT_CACHE: ${{ vars.FILTER_PROMPT_CACHE }}
           GRADER_SKIP_IRRELEVANT: ${{ vars.GRADER_SKIP_IRRELEVANT }}
+          MARKET_PULSE_V2: ${{ vars.MARKET_PULSE_V2 }}
         run: python run.py ${{ steps.mode.outputs.mode }}
