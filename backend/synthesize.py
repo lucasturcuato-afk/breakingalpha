@@ -57,6 +57,13 @@ if MATERIALITY_RANK_MODE not in ("off", "shadow", "active"):
           "falling back to 'off' (prod-neutral default)")
     MATERIALITY_RANK_MODE = "off"
 
+# MARKET_PULSE_V2: when true, market_pulse.narrative is produced by a dedicated
+# tape-first Gemini call (generate_market_pulse) that overwrites the monolith's
+# narrative BEFORE the existing grounding post-check + D13 temporal normalization
+# run. DEFAULT OFF: when off, generate_market_pulse is never invoked and behavior
+# is byte-identical to today.
+MARKET_PULSE_V2 = os.environ.get("MARKET_PULSE_V2", "").strip().lower() in ("1", "true", "yes", "on")
+
 MORNING_SYSTEM = """You are a senior investment banking analyst preparing the daily morning briefing for a capital markets team.
 
 HOUSE VOICE (highest priority, applies to every field; overrides any phrasing primed elsewhere in this prompt): write like a sharp analyst with a view, not a wire feed. (1) Never narrate who is watching, monitoring, observing, gauging, awaiting, or focusing on something, and never substitute 'analysts will focus on X' for an actual view: state the consequence or what is at stake directly. (2) Open market_pulse.narrative with an analytical through-line claim, never with 'the market is / closed [mood word]' and never with an index recap (the index moves may appear later in the body, just not as the opening line). The sentiment_word still carries the mood and still matches the prior-close regime; the opening line of the narrative carries the argument.
@@ -2139,6 +2146,286 @@ def _rewrite_market_wide_grounded(data, tape, corpus_companies, relegated_title,
     return None
 
 
+# Typical BLS/BEA publication timing per release, used to ESTIMATE a release date
+# from the data period (the sources carry no publication date). Employment prints
+# on the first Friday of the following month; CPI/PPI mid-following-month; PCE/GDP
+# late-following-month. Good enough for a today / recent / dated gradient.
+_MACRO_RELEASE_DAY = {
+    "nonfarm_payrolls": "first_friday", "unemployment": "first_friday",
+    "cpi": 12, "core_cpi": 12, "ppi": 13, "pce": 27, "gdp": 28,
+}
+_MACRO_MONTHS = {m.lower(): i for i, m in enumerate(
+    ["", "January", "February", "March", "April", "May", "June", "July",
+     "August", "September", "October", "November", "December"])}
+
+
+def _macro_period_month(period):
+    """Parse a release period into (year, data-period-END month). Handles monthly
+    ('June 2026') and quarterly ('Q2 2026'). None if unparseable."""
+    toks = (period or "").strip().split()
+    if not toks:
+        return None
+    try:
+        year = int(toks[-1])
+    except ValueError:
+        return None
+    head = toks[0].lower()
+    if head.startswith("q") and len(head) >= 2 and head[1].isdigit():
+        q = int(head[1])
+        return (year, q * 3) if 1 <= q <= 4 else None
+    mo = _MACRO_MONTHS.get(head)
+    return (year, mo) if mo else None
+
+
+def _macro_release_recency(key, period, today):
+    """Estimate a release's publication date from its data period + the standard
+    schedule, then age it against the brief date. ESTIMATE (no source pub date).
+    Returns (est_date, days_old) or None."""
+    parsed = _macro_period_month(period)
+    if not parsed:
+        return None
+    py, pm = parsed
+    rm, ry = (pm + 1, py) if pm < 12 else (1, py + 1)
+    rule = _MACRO_RELEASE_DAY.get(key, 15)
+    if rule == "first_friday":
+        d = date(ry, rm, 1)
+        while d.weekday() != 4:  # Friday
+            d += timedelta(days=1)
+    else:
+        d = date(ry, rm, int(rule))
+    return d, (today - d).days
+
+
+def _pulse_macro_strip():
+    """MARKET_PULSE_V2: build a compact macro backdrop strip for the dedicated pulse
+    call. Reuses the SAME data-layer fetchers the morning macro_panel uses
+    (macro_calendar + bea_calendar) and renders only the numbers actually present.
+    Each line is TAGGED with its release recency (RELEASED TODAY / recent backdrop /
+    dated), estimated from the data period + standard release schedule, so the pulse
+    can frame catalyst-vs-backdrop by age. The sources carry NO publication date, so
+    the tag date is an estimate. Returns (strip_text, is_release_day). Soft-fail to
+    ('', False). Not exercised by the offline harness (it hits the data layers)."""
+    try:
+        releases = macro_calendar.fetch_macro_releases() + bea_calendar.fetch_bea_releases()
+    except Exception as e:
+        print(f"  ⚠ pulse macro strip fetch failed (non-fatal): {e}")
+        return "", False
+    today = datetime.now(timezone.utc).date()
+    lines = []
+    release_today = False
+    for r in releases or []:
+        try:
+            name = getattr(r, "name", "") or ""
+            period = getattr(r, "period", "") or ""
+            key = getattr(r, "key", "") or ""
+            figs = []
+            for f in (getattr(r, "figures", None) or [])[:2]:
+                val = getattr(f, "value", None)
+                if val is None:
+                    continue
+                unit = getattr(f, "unit", "") or ""
+                label = getattr(f, "label", "") or ""
+                prior = getattr(f, "prior", None)
+                bit = f"{label} {val}{unit}".strip()
+                if prior is not None:
+                    bit += f" (prior {prior}{unit})"
+                figs.append(bit)
+            if not (name and figs):
+                continue
+            rec = _macro_release_recency(key, period, today)
+            if rec is not None:
+                est, age = rec
+                if 0 <= age <= 1:
+                    tag = f"RELEASED TODAY (~{est.isoformat()}), the day's catalyst"
+                    release_today = True
+                elif age < 0 or age <= 10:
+                    when = f"{age} days ago" if age > 0 else "just now (est)"
+                    tag = f"released ~{est.isoformat()}, {when}: recent BACKDROP, NOT today's news"
+                else:
+                    tag = f"released ~{est.isoformat()}, {age} days ago: DATED, context only"
+            else:
+                tag = "release date unknown: treat as backdrop"
+            lines.append(f"{name} ({period}; {tag}): " + "; ".join(figs))
+        except Exception:
+            continue
+    return "\n".join(lines), release_today
+
+
+def _pulse_top_stories(spine, floor, companies_of_fn, limit=5):
+    """MARKET_PULSE_V2: reduce the ranked spine (then floor) to the top N stories as
+    color for the dedicated pulse call: title + one-liner + sector, no bodies. Pure
+    over the passed lists."""
+    out = []
+    for a in (list(spine or []) + list(floor or [])):
+        title = (a.get("title") or "").strip()
+        if not title:
+            continue
+        sector = (a.get("sector") or "").strip()
+        one_liner = (a.get("summary") or a.get("relevance_reason") or "").strip()
+        one_liner = one_liner[:180]
+        cos = companies_of_fn(a) if companies_of_fn else []
+        out.append({"title": title, "sector": sector, "one_liner": one_liner, "companies": cos})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None,
+                          macro_is_release_day=False):
+    """MARKET_PULSE_V2: ONE bounded, focused Gemini call that produces
+    market_pulse.narrative with the TAPE + MACRO as the SUBJECT and stories only as
+    color. This is the dedicated call that fixes the article-dominated monolith
+    anchoring the hero on the lead story's sector. Returns the narrative string, or
+    None on failure (caller keeps the monolith narrative).
+
+    Inputs:
+      brief_type  : "morning" | "evening" (drives claim-scope framing).
+      tape        : fetch_tape() dict (indices + VIX + regime).
+      macro       : compact macro strip string (may be '').
+      top_stories : [{title, sector, one_liner, companies}] as color only.
+      prior_ctx   : optional prior-session context string (prior brief lead).
+
+    Contract (stated in the prompt AND enforced by the deterministic post-check in
+    overview_grounding.validate_pulse_opening): paragraph 1 is the index-level equity
+    read with the macro backdrop woven in; no single company or single sector is the
+    SUBJECT of paragraph 1; stories are color after the market read; morning uses
+    opened/opening/early-session framing (never a settled whole-day close), evening
+    may render a closed full-session verdict; brevity is allowed on thin tape.
+
+    The model call is wired here; it is NOT exercised by the offline harness (which
+    tests only the pure post-check). Gemini is never called at import time."""
+    facts = _tape_facts_block(tape)
+    regime = (tape or {}).get("regime") if isinstance(tape, dict) else None
+    vocab = market_tape.REGIME_VOCAB.get((regime or "").strip().lower(), ())
+    if brief_type == "evening":
+        claim_scope = (
+            "CLAIM SCOPE (EVENING, absolute): the session has CLOSED. Render the "
+            "settled full-session verdict; closing verbs are correct ('closed up', "
+            "'ended the day', 'finished the session'). Paragraph 1 is the close-of-day "
+            "index read."
+        )
+    else:
+        claim_scope = (
+            "CLAIM SCOPE (MORNING, absolute): the session is IN PROGRESS. Describe the "
+            "market as it OPENED and is TRADING in the EARLY SESSION, using "
+            "opening/early-session verbs ONLY ('opened higher', 'is trading up', "
+            "'early gains', 'up in early trade'). FORBIDDEN: any settled whole-day or "
+            "closing verdict ('closed', 'closed up', 'ended the day', 'finished', 'on "
+            "the day') - the session has NOT closed yet."
+        )
+    story_lines = []
+    for s in (top_stories or [])[:5]:
+        t = (s.get("title") or "").strip()
+        if not t:
+            continue
+        sec = (s.get("sector") or "").strip()
+        ol = (s.get("one_liner") or "").strip()
+        story_lines.append(f"- [{sec}] {t}" + (f" - {ol}" if ol else ""))
+    stories_block = "\n".join(story_lines) if story_lines else "(no ranked stories)"
+    macro_block = macro.strip() if isinstance(macro, str) and macro.strip() else "(no fresh macro prints)"
+    prior_block = (prior_ctx or "").strip()
+    if macro_is_release_day:
+        macro_framing = (
+            "MACRO FRAMING: a major economic release dropped TODAY (tagged 'RELEASED "
+            "TODAY' in the strip). It IS the day's catalyst - lead paragraph 1 with it "
+            "and the market's reaction to it, tied to the tape."
+        )
+    else:
+        macro_framing = (
+            "MACRO FRAMING: NO major release dropped today. Lead paragraph 1 with the "
+            "TAPE action, not macro. Every print in the strip is standing BACKDROP (see "
+            "its recency tag) - frame it as prior context ('last week's jobs report "
+            "still colors the tape'), and NEVER say investors are digesting, reacting "
+            "to, or awaiting it today or this morning. Do NOT present a dated print as "
+            "fresh news."
+        )
+
+    system = (
+        "You write ONE field of a daily market brief: market_pulse.narrative, the "
+        "hero read of the whole market. Return JSON only: {\"narrative\": \"<3-4 "
+        "short paragraphs (fewer on a thin tape), separated by \\n\\n>\"}. No other "
+        "keys, no prose outside the JSON. Zero em-dashes; use hyphens, colons, parens.\n\n"
+        "You are ONE sharp markets analyst explaining the day to a smart person who "
+        "is NOT in the market every day (the Buffett 'sisters' test). Write like a "
+        "wire wrap (AP / Bloomberg markets desk), not an AI summary: plain words, "
+        "short sentences, concrete named forces. Every sentence carries a fact or a "
+        "named force; if a sentence does neither, cut it. State the read and what it "
+        "turns on; never narrate who is 'watching' or 'awaiting'."
+    )
+    user = (
+        "Write the Market Pulse. The SUBJECT is the MARKET (index-level equities + "
+        "the macro backdrop), NOT any single company or sector.\n\n"
+        f"{claim_scope}\n\n"
+        f"{facts}\n\n"
+        f"MACRO BACKDROP (fetched facts, do not invent; each print tagged with its "
+        f"release recency):\n{macro_block}\n\n"
+        f"{macro_framing}\n\n"
+        f"RANKED STORIES (COLOR ONLY - examples woven in AFTER the market read, never "
+        f"the subject):\n{stories_block}\n\n"
+        + (f"PRIOR SESSION CONTEXT: {prior_block}\n\n" if prior_block else "")
+        + "RULES (absolute):\n"
+        "- LEVER 1 - LEAD WITH THE WHY IN SENTENCE ONE: the first sentence pairs the "
+        "market move WITH its driver AND the indices, together. Model it on the wire "
+        "standard: 'US stocks rose as pressure on tech eased, with the Nasdaq up 1.1% "
+        "and the S&P 500 up 0.4%.' That is direction + why + indices in ONE sentence. "
+        "FORBIDDEN: stating the move and letting its cause arrive two or more sentences "
+        "later. The SUBJECT stays the market (index-level equities), never a single "
+        "company or single sector.\n"
+        "- REAL WHY, NOT TAUTOLOGY: the driver in sentence one must be something OTHER "
+        "than the price action itself - a named catalyst, a sector move, a rates / oil / "
+        "breadth / credit force. If NO real external driver is present in the inputs, say "
+        "so honestly ('drifted higher in quiet trading with no dominant catalyst; last "
+        "week's soft-landing jobs read still underpins sentiment'). BANNED as causes "
+        "because they merely restate the move: 'as risk-on sentiment drove "
+        "participation', 'on positive momentum', 'amid investor optimism', 'as buyers "
+        "stepped in'. Do NOT manufacture a driver; an honest no-catalyst line beats a "
+        "fake why.\n"
+        "- LEVER 2 - NAME THE FORCE, KILL THE HEDGE: name the concrete force doing the "
+        "work (the catalyst, the macro print, yields, breadth, the sector leading or "
+        "lagging). BANNED filler, never write these: 'could signal a shift in how "
+        "investors assess ...', 'underscores the broader trend', 'highlights how ...', "
+        "'reflecting a ... mood', 'suggesting continued ...', 'amid ongoing ...'. If a "
+        "sentence names no concrete force or fact, delete it.\n"
+        "- LEVER 3 - READ THE INTERNALS: when the index spread is informative, "
+        "interpret it in ONE clause grounded in the tape numbers above: small-caps "
+        "(Russell) out front = broad participation; megacaps (Nasdaq) carrying a flat "
+        "Russell = narrow leadership; Dow lagging = cyclicals/value soft. Say what the "
+        "spread MEANS; do not just list three numbers.\n"
+        "- LEVER 4 - VOICE: plain, short, one analyst. No jargon for sport, no throat-"
+        "clearing, no AI hedging. Shape: 3-4 short paragraphs - (1) tape + why, (2) "
+        "internals + macro, (3-4) the day's stories as one-line color. Tight; do not pad.\n"
+        "- A sector trend MAY be mentioned, but the pulse must NEVER read as a single-"
+        "sector overview. Any story named is at most a one-line EXAMPLE after the "
+        "market read.\n"
+        "- Characterize direction ONLY from the TAPE FACTS above. If the tape is "
+        "quiet, say so plainly. Do not assert a move the tape does not support.\n"
+        "- ENTITY FIDELITY: name every company EXACTLY as written in the RANKED "
+        "STORIES above (correct name and capitalization). Do NOT invent, abbreviate, "
+        "or malform a name (no constructions like 'The Unum'). Name ONLY organizations "
+        "that appear in the stories or tape above; name no others.\n"
+        "- FIGURE FIDELITY: state a specific figure (dollar amount, percent, count, "
+        "date, magnitude) ONLY if that exact figure appears in the STORY input or the "
+        "TAPE / MACRO data above. Index moves, VIX, and macro values from the tape/strip "
+        "are sourced and fine. Otherwise stay QUALITATIVE ('Micron is boosting US "
+        "spending', not 'Micron will invest $3 billion'). When unsure of any number, "
+        "drop it: a qualitative claim is never wrong; a fabricated figure is.\n"
+        f"- The mood must be consistent with the regime "
+        f"({(regime or 'unknown').upper()}"
+        + (f"; e.g. words like {', '.join(vocab[:4])}" if vocab else "")
+        + "), but SHOW it through the facts, do not name the mood as a label.\n"
+        "- Obey the CLAIM SCOPE stated at the top exactly.\n"
+        "- BREVITY IS ALLOWED: on a thin tape a short read is correct. Do NOT pad."
+    )
+    try:
+        raw = gemini_generate(system=system, user_content=user, temperature=0.3, max_tokens=1024)
+        parsed = _parse_brief_json(raw)
+        if parsed and isinstance(parsed.get("narrative"), str) and parsed["narrative"].strip():
+            return parsed["narrative"].strip()
+    except Exception as e:
+        print(f"  ⚠ MARKET_PULSE_V2 dedicated call failed (non-fatal): {e}")
+    return None
+
+
 def run(brief_type="morning"):
     print(f"📝 Synthesizing {brief_type} briefing...")
 
@@ -2834,47 +3121,140 @@ def run(brief_type="morning"):
             # what_to_watch) is NEVER read or written here - only the hero.
             _lead_is_dominant = (_final_gate.get("subject") != "market_wide")
             _mp = data.get("market_pulse")
+
+            # MARKET_PULSE_V2 (default OFF): produce market_pulse.narrative from a
+            # dedicated tape-first call and OVERWRITE the monolith narrative HERE,
+            # BEFORE the existing grounded rewrite + post-check + (later) D13 temporal
+            # normalization run. Those all still run on the new narrative. When the
+            # flag is OFF this block is skipped entirely and behavior is byte-identical
+            # to today (generate_market_pulse is never invoked). Soft-fail: on a miss
+            # the monolith narrative is kept and the existing chain runs on it.
+            # True only when a validate_pulse_opening-PASSING V2 narrative is wired in;
+            # gates skipping the lead-anchoring rewrite downstream.
+            _pulse_v2_ok = False
+            if MARKET_PULSE_V2 and isinstance(_mp, dict):
+                try:
+                    _pulse_stories = _pulse_top_stories(spine, floor, _companies_of)
+                    _pulse_macro, _macro_release_today = _pulse_macro_strip()
+                    _prior_ctx = _fetch_prior_brief_lead()
+                    _v2 = generate_market_pulse(
+                        brief_type, tape_obj, _pulse_macro, _pulse_stories, prior_ctx=_prior_ctx,
+                        macro_is_release_day=_macro_release_today,
+                    )
+                    if _v2:
+                        # Deterministic subject-check: opening must be the index-level
+                        # market read, not a single company/sector, with brief-type
+                        # claim scope. ONE bounded re-ask, then the minimal grounded
+                        # fallback (never ship a sector-as-market hero).
+                        _pc = overview_grounding.validate_pulse_opening(
+                            _v2, _final_corpus_companies, brief_type
+                        )
+                        _pulse_v2_ok = _pc["ok"]
+                        if not _pc["ok"]:
+                            for _pr in _pc["reasons"]:
+                                print(f"  ⚠ MARKET_PULSE_V2 opening violation: {_pr}")
+                            _v2r = generate_market_pulse(
+                                brief_type, tape_obj, _pulse_macro, _pulse_stories,
+                                prior_ctx=_prior_ctx, macro_is_release_day=_macro_release_today,
+                            )
+                            _pc2 = (
+                                overview_grounding.validate_pulse_opening(
+                                    _v2r, _final_corpus_companies, brief_type
+                                )
+                                if _v2r else {"ok": False}
+                            )
+                            if _v2r and _pc2["ok"]:
+                                _v2 = _v2r
+                                _pulse_v2_ok = True
+                                print("  [MARKET_PULSE_V2] re-ask resolved opening violation")
+                            else:
+                                _v2 = overview_grounding.build_minimal_overview(
+                                    tape_obj, (_lead_title or data.get("headline") or "")
+                                )
+                                _pulse_v2_ok = False
+                                print("  [MARKET_PULSE_V2] re-ask still violating; using minimal grounded template")
+                        _mp["narrative"] = _v2
+                        print("  ✨ MARKET_PULSE_V2: dedicated tape-first pulse narrative wired in")
+                except Exception as e:
+                    print(f"  ⚠ MARKET_PULSE_V2 wire-in skipped (non-fatal): {e}")
+
             if isinstance(_mp, dict) and isinstance(_mp.get("narrative"), str) and _mp["narrative"].strip():
                 # T3 post-check on the CURRENT narrative; rewrite + re-check.
                 _best_title = _lead_title or (data.get("headline") or "")
-                _new = _rewrite_market_wide_grounded(
-                    data, tape_obj, _final_corpus_companies, _best_title, article_text,
-                    lead_is_dominant=_lead_is_dominant,
-                )
-                _candidate = _new if _new else _mp["narrative"]
-                _vres = overview_grounding.validate_overview(
-                    _candidate, article_text, _final_corpus_companies, tape_obj
-                )
-                if not _vres["ok"]:
-                    for _r in _vres["reasons"]:
-                        print(f"  ⚠ grounding post-check violation: {_r}")
-                    # ONE bounded re-ask naming the violation.
-                    _correction = "FIX THESE GROUNDING VIOLATIONS: " + "; ".join(_vres["reasons"])
-                    _reasked = _rewrite_market_wide_grounded(
-                        data, tape_obj, _final_corpus_companies, _best_title,
-                        article_text, extra_correction=_correction,
-                        lead_is_dominant=_lead_is_dominant,
+                if MARKET_PULSE_V2 and _pulse_v2_ok:
+                    # The V2 tape-first pulse already passed validate_pulse_opening. Do
+                    # NOT run the lead-anchoring market-wide rewrite (it clobbers the
+                    # tape-first hero back into a single-story/sector read). Ground it
+                    # against the pulse's OWN inputs (tape + macro + stories), NOT the
+                    # article corpus, so legitimate macro/geography/gov vocabulary is
+                    # not false-flagged. ONE bounded re-ask, then the minimal fallback.
+                    _candidate = _mp["narrative"]
+                    _vres = overview_grounding.validate_pulse_grounding(
+                        _candidate, tape_obj, _pulse_macro, _pulse_stories
                     )
-                    if _reasked:
-                        _rcheck = overview_grounding.validate_overview(
-                            _reasked, article_text, _final_corpus_companies, tape_obj
+                    if not _vres["ok"]:
+                        for _r in _vres["reasons"]:
+                            print(f"  ⚠ pulse grounding violation (V2): {_r}")
+                        _v2re = generate_market_pulse(
+                            brief_type, tape_obj, _pulse_macro, _pulse_stories,
+                            prior_ctx=_prior_ctx, macro_is_release_day=_macro_release_today,
                         )
-                        if _rcheck["ok"]:
-                            _candidate = _reasked
-                            print("  [grounding post-check] re-ask resolved all violations")
+                        _reok = bool(
+                            _v2re
+                            and overview_grounding.validate_pulse_opening(
+                                _v2re, _final_corpus_companies, brief_type)["ok"]
+                            and overview_grounding.validate_pulse_grounding(
+                                _v2re, tape_obj, _pulse_macro, _pulse_stories)["ok"]
+                        )
+                        if _reok:
+                            _candidate = _v2re
+                            print("  [pulse grounding] re-ask resolved violations")
                         else:
                             _candidate = overview_grounding.build_minimal_overview(
                                 tape_obj, _best_title
                             )
-                            print("  [grounding post-check] re-ask still violating; using minimal grounded template")
+                            print("  [pulse grounding] re-ask still violating; using minimal grounded template")
                     else:
-                        _candidate = overview_grounding.build_minimal_overview(
-                            tape_obj, _best_title
+                        print("  [final-lead gate] V2 tape-first pulse kept (rewrite skipped)")
+                else:
+                    _new = _rewrite_market_wide_grounded(
+                        data, tape_obj, _final_corpus_companies, _best_title, article_text,
+                        lead_is_dominant=_lead_is_dominant,
+                    )
+                    _candidate = _new if _new else _mp["narrative"]
+                    _vres = overview_grounding.validate_overview(
+                        _candidate, article_text, _final_corpus_companies, tape_obj
+                    )
+                    if not _vres["ok"]:
+                        for _r in _vres["reasons"]:
+                            print(f"  ⚠ grounding post-check violation: {_r}")
+                        # ONE bounded re-ask naming the violation.
+                        _correction = "FIX THESE GROUNDING VIOLATIONS: " + "; ".join(_vres["reasons"])
+                        _reasked = _rewrite_market_wide_grounded(
+                            data, tape_obj, _final_corpus_companies, _best_title,
+                            article_text, extra_correction=_correction,
+                            lead_is_dominant=_lead_is_dominant,
                         )
-                        print("  [grounding post-check] re-ask failed; using minimal grounded template")
-                elif _new:
-                    print(f"  [final-lead gate] grounded market-wide hero "
-                          f"(lead {'centers' if _lead_is_dominant else 'as example'})")
+                        if _reasked:
+                            _rcheck = overview_grounding.validate_overview(
+                                _reasked, article_text, _final_corpus_companies, tape_obj
+                            )
+                            if _rcheck["ok"]:
+                                _candidate = _reasked
+                                print("  [grounding post-check] re-ask resolved all violations")
+                            else:
+                                _candidate = overview_grounding.build_minimal_overview(
+                                    tape_obj, _best_title
+                                )
+                                print("  [grounding post-check] re-ask still violating; using minimal grounded template")
+                        else:
+                            _candidate = overview_grounding.build_minimal_overview(
+                                tape_obj, _best_title
+                            )
+                            print("  [grounding post-check] re-ask failed; using minimal grounded template")
+                    elif _new:
+                        print(f"  [final-lead gate] grounded market-wide hero "
+                              f"(lead {'centers' if _lead_is_dominant else 'as example'})")
                 _mp["narrative"] = _candidate
 
             # T4 (scoped to FLAG + LOG): body-ticker direction contradictions.

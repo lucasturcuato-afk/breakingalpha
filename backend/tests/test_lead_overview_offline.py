@@ -880,5 +880,242 @@ class Assertion18_HeroGroundingCaughtAndThinPoolBrief(unittest.TestCase):
                         "the thin-pool hero must self-validate")
 
 
+# ── MARKET_PULSE_V2: dedicated tape-first pulse opening post-check ────────────
+#
+# These exercise the PURE deterministic post-check the V2 wire-in runs on the
+# dedicated pulse narrative (overview_grounding.validate_pulse_opening and its
+# component predicates). The Gemini call itself (generate_market_pulse) is
+# integration-only and is NOT asserted; synthesize.py is intentionally NOT
+# imported (it builds Supabase + Gemini clients at import). Prose QUALITY is not
+# harness-assertable; the flag-off default exists so Noah eyeballs the first real
+# render before flipping it on.
+
+# The documented "today's shape": a broad risk-on tape with an insurance-deal lead.
+# The bug is an opening whose SUBJECT is the insurance sector; the fix is a
+# tape-first opening with the sector only as color.
+RISK_ON_TAPE = BROAD_RALLY_TAPE
+INSURANCE_ROSTER = ["Chubb", "AIG", "Broadcom", "Nvidia"]
+
+
+class Assertion19_PulseInsuranceSectorSubjectFlagged(unittest.TestCase):
+    """THE flag test: an insurance-sector-subject opening is FLAGGED and a tape-first
+    opening (index terms + regime, sector only as color) PASSES."""
+
+    def test_insurance_sector_subject_opening_is_flagged(self):
+        bad = (
+            "Insurance dominated the tape as Chubb's $30 billion acquisition reshaped "
+            "the sector.\n\nThe S&P 500 rose +1.32%."
+        )
+        res = og.validate_pulse_opening(bad, INSURANCE_ROSTER, "evening")
+        self.assertFalse(res["ok"], "an insurance-sector-subject opening must be flagged")
+        self.assertTrue(
+            any("single company or a lone sector" in r for r in res["reasons"]),
+            f"the sector-subject reason must fire, got {res['reasons']}",
+        )
+
+    def test_single_company_subject_opening_is_flagged(self):
+        bad = "Chubb led the day after agreeing to a $30 billion acquisition."
+        res = og.validate_pulse_opening(bad, INSURANCE_ROSTER, "evening")
+        self.assertFalse(res["ok"], "a single-company-subject opening must be flagged")
+
+    def test_tape_first_opening_passes(self):
+        good = (
+            "The S&P 500 closed +1.32% and the Nasdaq +1.55% in a broad risk-on "
+            "session, with the VIX easing to 14.2 as breadth widened. Insurance was "
+            "one bright spot: Chubb's acquisition added to the day's deal color.\n\n"
+            "Under the surface, the rally was cyclical."
+        )
+        res = og.validate_pulse_opening(good, INSURANCE_ROSTER, "evening")
+        self.assertTrue(res["ok"], f"a tape-first opening must pass: {res['reasons']}")
+
+    def test_opening_market_terms_predicate(self):
+        self.assertTrue(og.opening_has_market_terms("The S&P 500 rose 1.3% today."))
+        self.assertTrue(og.opening_has_market_terms("Equities firmed as breadth improved."))
+        self.assertFalse(
+            og.opening_has_market_terms("Chubb's acquisition reshaped underwriting."),
+            "an opening with no index/market term must not count as a market read",
+        )
+
+
+class Assertion20_PulseClaimScopeByBriefType(unittest.TestCase):
+    """Morning must use opened/opening/early-session framing (a settled whole-day
+    close verdict is flagged); evening may render a settled close."""
+
+    MORNING_CLOSE_CLAIM = (
+        "The S&P 500 closed higher and the Nasdaq finished the day up as risk "
+        "appetite returned."
+    )
+    MORNING_OPEN_FRAME = (
+        "The S&P 500 opens on firmer footing after the prior session closed +1.3%, "
+        "with the VIX easing into the open."
+    )
+    EVENING_CLOSE_CLAIM = (
+        "The S&P 500 closed higher and the Nasdaq finished the day up as risk "
+        "appetite returned across the tape."
+    )
+
+    def test_morning_settled_close_verdict_flagged(self):
+        self.assertTrue(
+            og.opening_claim_scope_violation(self.MORNING_CLOSE_CLAIM, "morning"),
+            "a morning pulse asserting a settled whole-day close must be flagged",
+        )
+        res = og.validate_pulse_opening(self.MORNING_CLOSE_CLAIM, [], "morning")
+        self.assertFalse(res["ok"])
+        self.assertTrue(any("CLOSE verdict" in r for r in res["reasons"]))
+
+    def test_morning_opening_frame_passes_scope(self):
+        self.assertFalse(
+            og.opening_claim_scope_violation(self.MORNING_OPEN_FRAME, "morning"),
+            "prior-close / into-the-open framing must not be flagged for morning",
+        )
+
+    def test_evening_close_verdict_allowed(self):
+        self.assertFalse(
+            og.opening_claim_scope_violation(self.EVENING_CLOSE_CLAIM, "evening"),
+            "a settled close is allowed for the evening brief",
+        )
+        res = og.validate_pulse_opening(self.EVENING_CLOSE_CLAIM, [], "evening")
+        self.assertTrue(res["ok"], f"an evening close-verdict tape read must pass: {res['reasons']}")
+
+
+class Assertion21_PulseThinTapeBrevityReachable(unittest.TestCase):
+    """The thin-tape brevity path: the minimal grounded fallback (what the V2 wire-in
+    falls back to when the re-ask still violates) is short AND tape-grounded AND
+    passes the pulse opening post-check (it leads with the tape)."""
+
+    def test_minimal_fallback_passes_pulse_opening_and_is_brief(self):
+        hero = og.build_minimal_overview(QUIET_TAPE, "Acme Robotics raises $400M")
+        self.assertLess(len(hero), 280, "the thin-tape fallback must stay brief")
+        res = og.validate_pulse_opening(hero, ["Acme Robotics"], "morning")
+        self.assertTrue(res["ok"], f"the minimal grounded fallback must pass the pulse opening check: {res['reasons']}")
+        # It leads with the tape, not the single name.
+        self.assertTrue(og.opening_has_market_terms(hero))
+        self.assertFalse(og.opening_subject_is_single_focus(hero, ["Acme Robotics"]))
+
+
+class ValidateOverviewFalseTripTests(unittest.TestCase):
+    """Regression for the two validate_overview false-trips that bounced GOOD V2
+    primaries to the minimal template. Corrections, not weakening: real grounding
+    violations must still be caught."""
+
+    UP_TAPE = {"regime": "risk-on", "quotes": {"^GSPC": {"pct": 0.72}}, "vix_level": 15.6}
+
+    def test_macro_term_is_supported(self):
+        # "Nonfarm Payrolls" comes from the macro strip, not the article corpus.
+        text = ("Equities opened higher, the S&P 500 up 0.72%. The market took a "
+                "positive read from the latest Nonfarm Payrolls report.")
+        res = og.validate_overview(text, "unum fortitude re", {"Unum"}, self.UP_TAPE)
+        self.assertTrue(res["ok"], res["reasons"])
+        self.assertNotIn("Nonfarm Payrolls", " ".join(res["unsupported_entities"]))
+
+    def test_company_de_risking_does_not_trip_direction(self):
+        # A company "de-risking" on a plainly risk-on tape is not a market claim.
+        text = ("Equities closed higher in a buoyant, risk-on session. Unum "
+                "continued its strategic de-risking, ceding reserves to Fortitude Re.")
+        res = og.validate_overview(text, "unum fortitude re", {"Unum", "Fortitude Re"}, self.UP_TAPE)
+        self.assertTrue(res["ok"], res["reasons"])
+
+    def test_real_unsupported_org_still_rejected(self):
+        # Guardrail: a company in NO source is still flagged.
+        res = og.validate_overview("Acme Robotics Inc surged on the news.",
+                                   "unum fortitude", set(), self.UP_TAPE)
+        self.assertFalse(res["ok"])
+        self.assertIn("Acme Robotics Inc", res["unsupported_entities"])
+
+    def test_genuine_direction_contradiction_still_caught(self):
+        # Guardrail: a net-down narrative on an up tape still fires.
+        res = og.validate_overview(
+            "Stocks fell sharply in a broad selloff and declined into the close.",
+            "", set(), self.UP_TAPE)
+        self.assertFalse(res["ok"])
+        self.assertTrue(res["tape_violations"])
+
+
+class ValidatePulseGroundingTests(unittest.TestCase):
+    """The V2 pulse validates against its OWN inputs (tape + macro + stories), not
+    the article corpus. Legitimate non-company vocabulary must not false-flag; a
+    real hallucinated company (in NO input) and a tape contradiction must fail."""
+
+    UP_TAPE = {"regime": "risk-on", "quotes": {"^GSPC": {"pct": 0.64}}, "vix_level": 16.1}
+    MACRO = "Nonfarm Payrolls (Jun): +158984K; Unemployment 4.2%"
+    STORIES = [
+        {"title": "CME Group announces Treasury Link", "sector": "Financials", "companies": ["CME Group"]},
+        {"title": "Micron to boost US semiconductor supply chain", "sector": "Tech", "companies": ["Micron"]},
+        {"title": "BlackRock launches IQQ ETF", "sector": "Financials", "companies": ["BlackRock"]},
+    ]
+
+    def test_possessive_geography_govbody_do_not_trip(self):
+        narr = ("U.S. equities closed higher, the S&P 500 gaining 0.64%, risk-on, VIX at 16.1. "
+                "Nonfarm payrolls rose. Geopolitical tensions in the Middle East and the Strait "
+                "of Hormuz kept oil elevated, and the Fed stayed in focus. CME Group's new "
+                "Treasury Link and Micron's investment drew attention.")
+        res = og.validate_pulse_grounding(narr, self.UP_TAPE, self.MACRO, self.STORIES)
+        self.assertTrue(res["ok"], res["reasons"])
+
+    def test_company_in_stories_passes(self):
+        res = og.validate_pulse_grounding(
+            "Equities rose, risk-on. BlackRock launched a new ETF.",
+            self.UP_TAPE, self.MACRO, self.STORIES)
+        self.assertTrue(res["ok"], res["reasons"])
+
+    def test_hallucinated_company_still_fails(self):
+        res = og.validate_pulse_grounding(
+            "Equities rose in a risk-on session; Globex Dynamics Corp surged on no news.",
+            self.UP_TAPE, self.MACRO, self.STORIES)
+        self.assertFalse(res["ok"])
+        self.assertIn("Globex Dynamics Corp", res["unsupported_entities"])
+
+    def test_tape_direction_contradiction_still_fails(self):
+        res = og.validate_pulse_grounding(
+            "Stocks fell sharply in a broad selloff and declined into the close.",
+            self.UP_TAPE, self.MACRO, self.STORIES)
+        self.assertFalse(res["ok"])
+        self.assertTrue(res["tape_violations"])
+
+
+class NumericFigureGuardTests(unittest.TestCase):
+    """The pulse must not state a figure its inputs do not support. Sourced figures
+    (tape %s, macro values, story-title figures, derived deltas) pass; a fabricated
+    magnitude fails; a qualitative claim (no figure) never fails."""
+
+    TAPE = {"regime": "risk-on", "quotes": {"^GSPC": {"pct": 0.85, "price": 7533.9},
+            "^IXIC": {"pct": 1.25}, "^RUT": {"pct": 1.36}}, "vix_level": 16.05}
+    MACRO = ("Nonfarm payrolls (June 2026): level (SA) 158984.0K (prior 158927.0K)\n"
+             "Unemployment rate: rate (SA) 4.2% (prior 4.3%)")
+    STORIES = [{"title": "Micron Raises Planned Spending to Meet Memory Chip Demand", "companies": ["Micron"]},
+               {"title": "SK Hynix Said to Guide US Offering Price 3.1% Above Korea Close", "companies": ["SK Hynix"]}]
+
+    def test_fabricated_dollar_figure_flagged(self):
+        n = "US stocks rose, S&P 500 up 0.85%. Micron announced plans to invest up to $3 billion."
+        r = og.validate_pulse_grounding(n, self.TAPE, self.MACRO, self.STORIES)
+        self.assertFalse(r["ok"])
+        self.assertIn("$3 billion", r["unsourced_figures"])
+
+    def test_sourced_and_derived_figures_pass(self):
+        # 0.85/1.25/1.36% from tape; 158,984.0K + 4.2% from macro; 57,000 is the derived delta.
+        n = ("US stocks rose, S&P 500 up 0.85%, Nasdaq up 1.25%, Russell up 1.36%. "
+             "Nonfarm payrolls rose 57,000 to 158,984.0K, unemployment 4.2%. Micron is boosting US spending.")
+        r = og.validate_pulse_grounding(n, self.TAPE, self.MACRO, self.STORIES)
+        self.assertTrue(r["ok"], r["reasons"])
+
+    def test_story_title_figure_is_sourced(self):
+        stories = self.STORIES + [{"title": "Micron Boosts US Spending to $250 Billion", "companies": ["Micron"]}]
+        n = "US stocks rose, S&P 500 up 0.85%. Micron announced plans to invest up to $250 billion."
+        self.assertTrue(og.validate_pulse_grounding(n, self.TAPE, self.MACRO, stories)["ok"])
+
+    def test_qualitative_claim_never_flagged(self):
+        n = "US stocks rose, S&P 500 up 0.85%. Micron is boosting US spending to meet chip demand."
+        self.assertTrue(og.validate_pulse_grounding(n, self.TAPE, self.MACRO, self.STORIES)["ok"])
+
+    def test_down_move_percent_matches_signed_tape(self):
+        # Narrative carries direction in words ("fell 0.88%"); the tape stores -0.88.
+        # Magnitude match, so a real down-move % is not false-flagged.
+        tape = {"regime": "neutral", "quotes": {"^GSPC": {"pct": -0.28},
+                "^IXIC": {"pct": 0.20}, "^RUT": {"pct": -0.88}}, "vix_level": 16.9}
+        n = "US stocks closed mixed, the S&P 500 down 0.28% and the Nasdaq up 0.20%; the Russell 2000 fell 0.88%."
+        r = og.validate_pulse_grounding(n, tape, "", [])
+        self.assertTrue(r["ok"], r["reasons"])
+
+
 if __name__ == "__main__":
     unittest.main()
