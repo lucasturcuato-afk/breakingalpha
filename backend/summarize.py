@@ -71,7 +71,7 @@ except Exception as e:  # missing key, network, malformed — all non-fatal at i
     gemini_client = None
     logger.warning("summarize: Gemini client unavailable at import (%s)", e)
 
-GEMINI_MODEL = "gemini-2.5-flash"  # matches synthesize.py; canonical model for this repo
+from models import GEMINI_MODEL  # shared canonical model id
 
 # --- Optional rich console -------------------------------------------------
 # Fall back to plain print if rich is not installed. Either path produces

@@ -67,6 +67,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from supabase import create_client
 from google import genai
+from models import GEMINI_MODEL
 try:
     from usage_log import log_gemini_usage
 except Exception:  # pragma: no cover - usage logging must never break import
@@ -1035,14 +1036,14 @@ def generate_cluster_headline(cluster, label):
 
         client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
         resp = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=GEMINI_MODEL,
             contents=prompt,
             config={
                 "thinking_config": {"thinking_budget": 0},
                 "response_mime_type": "application/json",
             },
         )
-        log_gemini_usage("trend_headline", "gemini-2.5-flash", resp)
+        log_gemini_usage("trend_headline", GEMINI_MODEL, resp)
         result = json.loads(resp.text)
         return result.get("headline"), result.get("tagline")
     except Exception as e:

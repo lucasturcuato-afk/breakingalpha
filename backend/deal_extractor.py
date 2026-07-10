@@ -27,7 +27,7 @@ except Exception:  # pragma: no cover - usage logging must never break import
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-GEMINI_MODEL = "gemini-2.5-flash"
+from models import GEMINI_MODEL
 
 SYSTEM_PROMPT = """You are a senior investment banking analyst
 extracting deal intelligence from financial news articles.

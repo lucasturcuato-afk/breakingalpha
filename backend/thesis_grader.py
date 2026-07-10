@@ -78,7 +78,7 @@ except Exception as e:  # missing key or import problem — degrade gracefully
     gemini_client = None
     logger.warning("thesis_grader: Gemini client unavailable (%s)", e)
 
-GEMINI_MODEL = "gemini-2.5-flash"
+from models import GEMINI_MODEL
 FINNHUB_BASE = "https://finnhub.io/api/v1"
 FINNHUB_TOKEN = os.environ.get("FINNHUB_API_KEY", "")
 
