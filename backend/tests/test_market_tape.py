@@ -11,12 +11,14 @@ Run from repo root: python3 -m unittest backend.tests.test_market_tape
 """
 import json
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 from backend.market_tape import (
     DRIVER_MIN_ABS_PCT,
     DRIVER_TOP_K,
     MATERIALITY_MIN_DISTINCT_SOURCES,
+    QUOTE_MAX_AGE_HOURS,
     REGIME_DEFAULT_WORD,
     REGIME_VOCAB,
     build_overview_subject_directive,
@@ -26,6 +28,7 @@ from backend.market_tape import (
     enforce_tape_consistency,
     overview_subject_gate,
     parse_yahoo_daily,
+    quote_is_fresh,
     serialize_tape_snapshot,
     tape_has_material_move,
 )
@@ -461,6 +464,97 @@ class SerializeTapeSnapshotTests(unittest.TestCase):
         # stored), on which nested access is impossible. Guards the insert site
         # against re-introducing json.dumps for this jsonb column.
         self.assertIsInstance(json.dumps(snap), str)
+
+
+class QuoteFreshnessTests(unittest.TestCase):
+    """FRESHNESS ASSERT: a quote timestamp must belong to the current session.
+    This is the P0 defense against an index panel frozen to a prior-session
+    close while VIX / oil / names move."""
+
+    # A fixed Wednesday 2026-07-08 20:00 UTC (16:00 ET, a normal weekday close).
+    WED = datetime(2026, 7, 8, 20, 0, 0, tzinfo=timezone.utc)
+    # A fixed Saturday 2026-07-11 12:00 UTC.
+    SAT = datetime(2026, 7, 11, 12, 0, 0, tzinfo=timezone.utc)
+
+    def test_current_session_is_fresh(self):
+        ts = int(self.WED.timestamp())  # stamped now
+        self.assertTrue(quote_is_fresh(ts, now_utc=self.WED))
+
+    def test_within_overnight_gap_is_fresh(self):
+        # 20h old on a weekday: within QUOTE_MAX_AGE_HOURS.
+        ts = int(self.WED.timestamp()) - 20 * 3600
+        self.assertTrue(quote_is_fresh(ts, now_utc=self.WED))
+
+    def test_prior_session_echo_is_stale_on_weekday(self):
+        # ~44h old: a two-session-old echo. This is the frozen-panel bug shape.
+        ts = int(self.WED.timestamp()) - 44 * 3600
+        self.assertFalse(quote_is_fresh(ts, now_utc=self.WED))
+        # Sanity: just over the trading-day limit is stale.
+        ts_edge = int(self.WED.timestamp()) - (QUOTE_MAX_AGE_HOURS + 1) * 3600
+        self.assertFalse(quote_is_fresh(ts_edge, now_utc=self.WED))
+
+    def test_missing_timestamp_is_not_fresh(self):
+        # No timestamp == cannot prove current session == fail loud.
+        self.assertFalse(quote_is_fresh(None, now_utc=self.WED))
+
+    def test_weekend_allows_friday_close(self):
+        # Sat noon, quote stamped Fri 16:00 ET (~44h back) is legitimately fresh.
+        friday_close = int((self.SAT.timestamp())) - 44 * 3600
+        self.assertTrue(quote_is_fresh(friday_close, now_utc=self.SAT))
+
+    def test_future_timestamp_is_not_fresh(self):
+        ts = int(self.WED.timestamp()) + 3600
+        self.assertFalse(quote_is_fresh(ts, now_utc=self.WED))
+
+
+class SerializeStaleAndEnrichmentTests(unittest.TestCase):
+    """Snapshot carries the stale-drop list and additive enrichment (Agent C)."""
+
+    BASE = {
+        "quotes": {
+            "^GSPC": {"price": 7600.0, "prev": 7500.0, "pct": 1.33, "ts": 1},
+            "^VIX": {"price": 14.2, "prev": 15.0, "pct": -5.33, "ts": 1},
+        },
+        "regime": "risk-on",
+        "vix_level": 14.2,
+    }
+
+    def test_stale_key_present_and_empty_by_default(self):
+        snap = serialize_tape_snapshot(self.BASE)
+        self.assertEqual(snap["stale"], [])
+
+    def test_stale_symbols_carried_to_snapshot(self):
+        tape = {**self.BASE, "stale": ["^DJI", "^RUT"]}
+        snap = serialize_tape_snapshot(tape)
+        self.assertEqual(snap["stale"], ["^DJI", "^RUT"])
+
+    def test_enrichment_absent_when_not_fetched(self):
+        # No enrichment key on the tape -> not present on snapshot (read-stable).
+        snap = serialize_tape_snapshot(self.BASE)
+        self.assertNotIn("enrichment", snap)
+
+    def test_enrichment_passthrough_when_present(self):
+        enrichment = {
+            "rates": {"teny_level": 4.21, "teny_bps_change": 3.0},
+            "oil": {"wti_level": 71.51, "wti_pct": -0.1},
+            "sector_leadership": {"leaders": [], "laggards": [], "is_proxy": True},
+            "breadth": None,
+            "breadth_available": False,
+        }
+        tape = {**self.BASE, "enrichment": enrichment}
+        snap = serialize_tape_snapshot(tape)
+        self.assertEqual(snap["enrichment"], enrichment)
+        # Contract for Agent C: breadth is explicitly unavailable from this source.
+        self.assertFalse(snap["enrichment"]["breadth_available"])
+        self.assertIsNone(snap["enrichment"]["breadth"])
+        self.assertTrue(snap["enrichment"]["sector_leadership"]["is_proxy"])
+
+    def test_index_pct_is_single_source(self):
+        # The pct in the snapshot is the exact value from parse_yahoo_daily,
+        # never recomputed. Guards against a second producer drifting.
+        snap = serialize_tape_snapshot(self.BASE)
+        self.assertEqual(snap["indices"]["sp500"]["pct"], 1.33)
+        self.assertEqual(snap["indices"]["sp500"]["level"], 7600.0)
 
 
 if __name__ == "__main__":
