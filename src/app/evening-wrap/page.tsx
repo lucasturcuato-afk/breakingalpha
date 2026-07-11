@@ -22,6 +22,7 @@ import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { stripHtml } from "@/lib/strip-html";
+import { reconcileCloseWord } from "@/lib/tape-adjective";
 import { Moon } from "lucide-react";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { useRouter } from "next/navigation";
@@ -484,11 +485,24 @@ export default function EveningWrapPage() {
   const dateStr = formatDatePretty(now);
   const timeStr = formatTimePretty(now);
 
-  // Close verdict comes ONLY from the tape-grounded sentiment_word. When the
-  // backend could not ground the word (tape fetch failed), it ships null and
-  // the hero renders without a verdict rather than asserting a fabricated
+  // Close verdict comes from the tape-grounded sentiment_word, then passes a
+  // presentation-layer truth gate. The backend word is minted from a VIX/SPX
+  // regime ladder that never looks at breadth (backend/market_tape.py), so a
+  // narrow up-drift (S&P green, Russell red) could still render "buoyant"
+  // directly above prose saying small-caps lagged. reconcileCloseWord() keeps
+  // the grounded word when it is consistent with the ACTUAL scorecard tape
+  // (S&P magnitude + Russell breadth, both already fetched below), and
+  // substitutes an honest word only when the backend word overclaims. When the
+  // backend could not ground the word AND we have no live tape, it ships null
+  // and the hero renders without a verdict rather than asserting a fabricated
   // tone. Never default to "mixed" or to the LLM market_tone here.
-  const closeWord = briefing?.market_pulse?.sentiment_word || null;
+  const closeWord = reconcileCloseWord(
+    briefing?.market_pulse?.sentiment_word || null,
+    {
+      spxPct: scorecard["^GSPC"]?.pct,
+      russellPct: scorecard["^RUT"]?.pct,
+    },
+  );
   const closeBody =
     briefing?.market_pulse?.narrative
     || briefing?.summary

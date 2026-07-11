@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import type { MoodType } from "@/components/shell";
 import { formatChange, type DisplayUnit } from "@/lib/format-change";
 import { computeRegime, type RegimeResult } from "@/lib/market-regime";
+import { classifyTape } from "@/lib/tape-adjective";
 
 /**
  * Single source of truth for the global mood bar.
@@ -75,7 +76,11 @@ export interface MoodResult {
 // quotes (watchlist tickers, futures, etc.) can pass their own list to the
 // hook (`useLiveMood({ extraSymbols })`); those quotes are exposed via
 // `watchlistQuotes` but do not influence the banner pill.
-const BANNER_SYMBOLS = ["VIX", "SPY", "TNX"] as const;
+// IWM (Russell 2000) is pulled purely as a BREADTH signal so the banner
+// narrative cannot overclaim "Markets advancing" on a narrow up-drift where
+// small-caps lagged. It is not rendered in the detail strip; it only gates the
+// headline wording via classifyTape(). See src/lib/tape-adjective.ts.
+const BANNER_SYMBOLS = ["VIX", "SPY", "TNX", "IWM"] as const;
 
 // Cache TTL — 30 s as required by the SSOT spec. The server route already
 // caches at 90 s; this client cache prevents per-mount fetch storms.
@@ -181,20 +186,29 @@ function subscribe(symbols: readonly string[], cb: () => void): () => void {
 
 // Banner narrative per regime-ladder branch. The wording is display-only and
 // intentionally NOT part of the shared regime SSOT.
-function narrativeFor({ regime, branch }: RegimeResult): string {
+//
+// `breadthConfirms` is threaded through so an advancing regime that runs on
+// thin breadth (S&P green, Russell flat/red) reads "Markets drifting higher"
+// (a narrow drift) instead of "Markets advancing" (a broad move). Same truth
+// gate as the evening-wrap hero pill, so the two surfaces can never disagree.
+function narrativeFor({ regime, branch }: RegimeResult, breadthConfirms: boolean): string {
   switch (branch) {
     case "vix-extreme":
       return "Risk-Off regime";
     case "vix-elevated":
       return regime === "risk-off" ? "Elevated volatility" : "Cautious markets";
     case "vix-calm":
-      return "Risk-On regime";
+      return regime === "risk-on" && !breadthConfirms
+        ? "Markets drifting higher"
+        : "Risk-On regime";
     case "spx-tiebreak":
-      return regime === "risk-on"
-        ? "Markets advancing"
-        : regime === "risk-off"
-          ? "Markets pulling back"
-          : "Markets steady";
+      if (regime === "risk-on") {
+        return breadthConfirms ? "Markets advancing" : "Markets drifting higher";
+      }
+      if (regime === "risk-off") {
+        return breadthConfirms ? "Markets pulling back" : "Markets slipping";
+      }
+      return "Markets steady";
   }
 }
 
@@ -202,10 +216,19 @@ function deriveBanner(cards: Record<string, MarketCardData | null>): MoodBanner 
   const vixCard = cards["VIX"];
   const spyCard = cards["SPY"];
   const tnxCard = cards["TNX"];
+  const iwmCard = cards["IWM"];
 
   const vixVal = vixCard ? parseFloat(vixCard.value) : null;
   const vixPct = vixCard?.pct ?? 0;
   const spyPct = spyCard?.pct ?? 0;
+
+  // Breadth gate: does the Russell (IWM) confirm the S&P direction? Threaded
+  // into the narrative so the strip never claims a broad advance on thin
+  // breadth. Uses the same classifier as the evening-wrap hero pill.
+  const breadthConfirms = classifyTape({
+    spxPct: spyCard?.pct,
+    russellPct: iwmCard?.pct,
+  }).breadthConfirms;
 
   let moodTerm: CanonicalMoodTerm = "neutral";
   let narrative = "Markets steady";
@@ -223,7 +246,7 @@ function deriveBanner(cards: Record<string, MarketCardData | null>): MoodBanner 
       spxPctChange: spyPct,
     });
     moodTerm = result.regime;
-    narrative = narrativeFor(result);
+    narrative = narrativeFor(result, breadthConfirms);
   }
 
   if (tnxCard && tnxCard.value !== "—") {
