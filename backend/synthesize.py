@@ -1397,6 +1397,83 @@ def _fetch_prior_brief_lead():
     return None
 
 
+def _et_session_date(dt_utc):
+    """Map a UTC datetime to its ET trading-session calendar date (identity of the
+    session a brief belongs to). An evening brief generated at ~02:xx UTC belongs
+    to the PRIOR ET calendar day, so the raw UTC date is wrong for session
+    matching; ET is the exchange's day. Pure; falls back to the UTC date if the
+    tz database is unavailable so it can never raise."""
+    if dt_utc is None:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+        if dt_utc.tzinfo is None:
+            dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+        return dt_utc.astimezone(ZoneInfo("America/New_York")).date()
+    except Exception:
+        try:
+            return dt_utc.date()
+        except Exception:
+            return None
+
+
+def _parse_iso_utc(s):
+    """Parse an ISO8601 timestamp (with or without trailing Z / offset) to an
+    aware UTC datetime. Returns None on anything unparseable. Pure, never raises."""
+    if not s or not isinstance(s, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _fetch_prior_session_tape(current_session_date):
+    """Read the persisted market_tape snapshot from the most recent briefing whose
+    ET trading-session date is DISTINCT from the current run's session date, so the
+    direct freeze detector compares against a genuinely PRIOR session (Friday for a
+    Monday brief, not Sunday, and not "yesterday" blindly). A morning brief and the
+    evening brief of the same session share a session date and must NOT be compared
+    against each other (they are the same session; identical levels are expected).
+
+    Selection: the session date is derived from the snapshot's own `as_of` when
+    present (it equals the row's created_at), else from created_at. The first row
+    (most recent by created_at) whose session date differs from
+    `current_session_date` wins. Returns the market_tape dict or None.
+
+    Read-only, soft-fail to None: the first brief, a missing column, or any query
+    error means no prior tape and therefore no detection - which is fine, a freeze
+    can only be detected against a prior session. Never raises."""
+    if current_session_date is None:
+        return None
+    try:
+        resp = (
+            supabase.table("briefings")
+            .select("created_at, market_tape")
+            .not_.is_("market_tape", "null")
+            .order("created_at", desc=True)
+            .limit(8)
+            .execute()
+        )
+    except Exception as e:
+        print(f"  ⚠ prior-session tape lookup failed (non-fatal): {e}")
+        return None
+    for row in (resp.data or []):
+        snap = row.get("market_tape")
+        if not isinstance(snap, dict):
+            continue
+        as_of = _parse_iso_utc(snap.get("as_of")) or _parse_iso_utc(row.get("created_at"))
+        sess = _et_session_date(as_of)
+        if sess is None or sess == current_session_date:
+            continue
+        print(f"  🧊 Prior-session tape for freeze check: session={sess} (current={current_session_date})")
+        return snap
+    return None
+
+
 def _maybe_inject_tape_directive(brief_type, system, tape=None):
     """Fetch the latest tape and prepend the surface-appropriate grounding block.
 
@@ -1423,7 +1500,20 @@ def _maybe_inject_tape_directive(brief_type, system, tape=None):
             # runs only when MATERIALITY_RANK_MODE=off; the shadow/active path
             # hoists an enrich=True fetch upstream). Merged #463 prose is dead
             # without an enriched tape reaching this caller.
-            tape = market_tape.fetch_tape(enrich=True)
+            #
+            # FREEZE DETECTOR WIRING (#467): same prior-distinct-session read as the
+            # materiality path, so the fallback brief is also freeze-checked. Flag,
+            # never fail; first-brief / no-prior returns None -> no detection.
+            _prior_tape = _fetch_prior_session_tape(
+                _et_session_date(datetime.now(timezone.utc))
+            )
+            tape = market_tape.fetch_tape(enrich=True, prior_session_tape=_prior_tape)
+            _fs = (tape or {}).get("frozen_suspect") or []
+            if _fs:
+                print(f"  🧊🚨 FROZEN-SUSPECT indices {_fs}: fetched level is identical to "
+                      f"the prior session's persisted level to the penny - the index panel may "
+                      f"be echoing a stale close. Carried on tape['frozen_suspect'] and persisted "
+                      f"on the snapshot; brief NOT blocked (data alarm only).")
         except Exception as e:
             print(f"  ⚠ tape fetch failed (non-fatal): {e}")
     if not tape:
@@ -3096,7 +3186,23 @@ def run(brief_type="morning"):
                     # (serialize_tape_snapshot). Without enrich the rates / oil /
                     # sector-ETF prose from #463 silently degrades (dead path) and
                     # the snapshot omits enrichment. +13 bounded Yahoo GETs, no LLM.
-                    _materiality_tape = market_tape.fetch_tape(enrich=True)
+                    #
+                    # FREEZE DETECTOR WIRING (#467 was inert): read the prior DISTINCT
+                    # session's persisted tape and hand it to fetch_tape so
+                    # indices_frozen_suspect can fire. First-brief / missing-prior
+                    # returns None -> no detection, which is correct (nothing to
+                    # compare). Flag, do NOT fail: a freeze is a DATA ALARM for Noah,
+                    # never a reason to kill the brief.
+                    _prior_tape = _fetch_prior_session_tape(_et_session_date(_now))
+                    _materiality_tape = market_tape.fetch_tape(
+                        enrich=True, prior_session_tape=_prior_tape
+                    )
+                    _fs = (_materiality_tape or {}).get("frozen_suspect") or []
+                    if _fs:
+                        print(f"  🧊🚨 FROZEN-SUSPECT indices {_fs}: fetched level is identical "
+                              f"to the prior session's persisted level to the penny - the index "
+                              f"panel may be echoing a stale close. Carried on tape['frozen_suspect'] "
+                              f"and persisted on the snapshot; brief NOT blocked (data alarm only).")
                 except Exception as _te:
                     print(f"  ⚠ materiality tape fetch failed (non-fatal): {_te}")
                     _materiality_tape = None
