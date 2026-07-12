@@ -140,7 +140,7 @@ export function CompanyTrendCard({
           <h3 style={{ fontFamily: SERIF, fontSize: 14, fontWeight: 700, margin: 0, color: "var(--espresso)" }}>
             Signal Trend
             <span style={{ color: "var(--text-faint)", fontWeight: 400 }}> · </span>
-            <span style={{ fontFamily: SERIF, fontSize: 11, color: "var(--text-faint)", fontWeight: 600, letterSpacing: "0.05em" }}>
+            <span style={{ fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", fontSize: 11, color: "var(--text-faint)", fontWeight: 600, letterSpacing: "0.05em" }}>
               {mentions7d.length}d
             </span>
           </h3>

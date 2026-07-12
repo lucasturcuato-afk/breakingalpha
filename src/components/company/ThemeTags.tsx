@@ -92,7 +92,7 @@ export function ThemeTags({ themes }: { themes: string[] }) {
           </span>
         ))}
         {moreCount > 0 && (
-          <span className="font-display text-[9px] text-text-faint shrink-0">
+          <span className="font-data text-[9px] text-text-faint shrink-0">
             +{moreCount}
           </span>
         )}

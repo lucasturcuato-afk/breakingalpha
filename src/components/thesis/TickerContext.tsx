@@ -69,7 +69,7 @@ export function TickerContext({ ticker, thesisCreatedAt, variant = "compact" }: 
 
   if (data.current_price != null) {
     segments.push(
-      <span key="price" className="font-display text-[11px] text-espresso font-semibold">
+      <span key="price" className="font-data text-[11px] text-espresso font-semibold">
         ${fmtPrice(data.current_price)}
       </span>
     );
@@ -78,7 +78,7 @@ export function TickerContext({ ticker, thesisCreatedAt, variant = "compact" }: 
   if (data.price_change_pct != null) {
     const c = pctColor(data.price_change_pct);
     segments.push(
-      <span key="today" className={`font-display text-[11px] ${c}`}>
+      <span key="today" className={`font-data text-[11px] ${c}`}>
         {arrow(data.price_change_pct)}{fmtPct(data.price_change_pct)} today
       </span>
     );
@@ -86,7 +86,7 @@ export function TickerContext({ ticker, thesisCreatedAt, variant = "compact" }: 
 
   if (data.week52_high != null && data.week52_low != null) {
     segments.push(
-      <span key="52w" className="font-display text-[11px] text-text-secondary">
+      <span key="52w" className="font-data text-[11px] text-text-secondary">
         52w: ${fmtPrice(data.week52_low)} &mdash; ${fmtPrice(data.week52_high)}
       </span>
     );
@@ -95,7 +95,7 @@ export function TickerContext({ ticker, thesisCreatedAt, variant = "compact" }: 
   if (data.momentum_vs_thesis != null) {
     const c = pctColor(data.momentum_vs_thesis);
     segments.push(
-      <span key="thesis" className={`font-display text-[11px] ${c}`}>
+      <span key="thesis" className={`font-data text-[11px] ${c}`}>
         Since thesis: {arrow(data.momentum_vs_thesis)}{fmtPct(data.momentum_vs_thesis)}
       </span>
     );
@@ -134,7 +134,7 @@ export function TickerContext({ ticker, thesisCreatedAt, variant = "compact" }: 
   if (data.price_change_pct_5d != null) {
     const c = pctColor(data.price_change_pct_5d);
     expandedSegments.push(
-      <span key="5d" className={`font-display text-[11px] ${c}`}>
+      <span key="5d" className={`font-data text-[11px] ${c}`}>
         5d: {arrow(data.price_change_pct_5d)}{fmtPct(data.price_change_pct_5d)}
       </span>
     );
@@ -143,7 +143,7 @@ export function TickerContext({ ticker, thesisCreatedAt, variant = "compact" }: 
   if (data.price_change_pct_1mo != null) {
     const c = pctColor(data.price_change_pct_1mo);
     expandedSegments.push(
-      <span key="1mo" className={`font-display text-[11px] ${c}`}>
+      <span key="1mo" className={`font-data text-[11px] ${c}`}>
         1mo: {arrow(data.price_change_pct_1mo)}{fmtPct(data.price_change_pct_1mo)}
       </span>
     );
@@ -151,7 +151,7 @@ export function TickerContext({ ticker, thesisCreatedAt, variant = "compact" }: 
 
   if (data.options_implied_move != null) {
     expandedSegments.push(
-      <span key="iv" className="font-display text-[11px] text-text-secondary">
+      <span key="iv" className="font-data text-[11px] text-text-secondary">
         Implied move: &plusmn;{fmtPct(data.options_implied_move)}
       </span>
     );

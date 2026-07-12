@@ -219,7 +219,7 @@ export function BehavioralInsights() {
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="bg-parchment-mid border border-border-base rounded-xl p-3">
-      <div className="font-display text-[20px] font-semibold text-espresso">
+      <div className="font-data text-[20px] font-semibold text-espresso">
         {value}
       </div>
       <div className="font-sans text-[10px] uppercase tracking-wider text-text-muted mt-0.5">

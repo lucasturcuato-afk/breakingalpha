@@ -506,7 +506,7 @@ function ThesisBoardContent() {
                 { label: "WATCH", value: convictionCounts.WATCH, color: "text-text-muted" },
               ].map((stat) => (
                 <div key={stat.label} className="bg-cream rounded-xl p-3 border border-border-base">
-                  <div className={`font-display text-2xl font-semibold ${stat.color || "text-text-primary"}`}>{stat.value}</div>
+                  <div className={`font-data text-2xl font-semibold ${stat.color || "text-text-primary"}`}>{stat.value}</div>
                   <div className="font-sans text-[11px] text-text-muted mt-0.5">{stat.label}</div>
                 </div>
               ))}

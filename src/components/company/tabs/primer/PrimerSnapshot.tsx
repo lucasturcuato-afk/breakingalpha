@@ -20,13 +20,13 @@ interface PrimerSnapshotProps {
 
 const DASH = "--";
 
-function Field({ label, value }: { label: string; value: string }) {
+function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex flex-col gap-0.5">
       <span className="font-sans text-[9px] font-bold text-text-faint">
         {label}
       </span>
-      <span className="font-display text-[13px] text-espresso font-semibold">{value}</span>
+      <span className={`${mono ? "font-data" : "font-display"} text-[13px] text-espresso font-semibold`}>{value}</span>
     </div>
   );
 }
@@ -42,7 +42,7 @@ export function PrimerSnapshot({ companyName, ticker, sector, industry }: Primer
       </h3>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Field label="Company" value={companyName} />
-        <Field label="Ticker" value={ticker || "Private"} />
+        <Field label="Ticker" value={ticker || "Private"} mono />
         <Field label="Sector" value={sector || DASH} />
         <Field label="Industry" value={industry || DASH} />
       </div>

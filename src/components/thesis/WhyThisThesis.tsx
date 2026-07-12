@@ -309,8 +309,8 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
                     {data.clusters.map((c, i) => (
                       <div key={i} className="font-sans text-[12px] text-text-secondary">
                         {c.label} ({c.cluster_type || "general"}) &mdash; strength{" "}
-                        <span className="font-display">{c.strength_score?.toFixed(2) ?? "--"}</span>,{" "}
-                        <span className="font-display">{c.article_count ?? 0}</span> articles
+                        <span className="font-data">{c.strength_score?.toFixed(2) ?? "--"}</span>,{" "}
+                        <span className="font-data">{c.article_count ?? 0}</span> articles
                       </div>
                     ))}
                   </div>
@@ -325,7 +325,7 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
                   </div>
                   <div className="font-sans text-[12px] text-text-secondary">
                     Average source reliability:{" "}
-                    <span className="font-display text-gold font-semibold">
+                    <span className="font-data text-gold font-semibold">
                       {data.sourceReliability.avgWinRate}% win rate
                     </span>{" "}
                     across {data.sourceReliability.sourceCount} sources
@@ -343,7 +343,7 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
                     {data.patterns.map((p, i) => (
                       <div key={i} className="font-sans text-[12px] text-text-secondary">
                         Sector pattern: <span className="font-semibold">{p.dominant_signal || "mixed"}</span> signals confirm{" "}
-                        <span className="font-display text-gold">{p.win_rate !== null ? `${Math.round(p.win_rate * 100)}%` : "--"}</span> of the time
+                        <span className="font-data text-gold">{p.win_rate !== null ? `${Math.round(p.win_rate * 100)}%` : "--"}</span> of the time
                         ({p.n_observed ?? 0} samples, {p.horizon || "any"})
                       </div>
                     ))}
@@ -361,7 +361,7 @@ export function WhyThisThesis({ thesisId }: { thesisId: string }) {
                     {data.adversarial.score !== null && (
                       <span>
                         Adversarial score:{" "}
-                        <span className="font-display font-semibold">
+                        <span className="font-data font-semibold">
                           {typeof data.adversarial.score === "number" ? data.adversarial.score.toFixed(2) : "--"}
                         </span>{" "}
                         ({data.adversarial.passed ? "passed" : "failed"})

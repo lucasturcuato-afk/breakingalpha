@@ -39,7 +39,7 @@ export function CollectiveSignalsWidget() {
           </p>
           <div className="flex flex-wrap gap-1.5">
             {data.trendingTickers.map(t => (
-              <span key={t.ticker} className="font-display text-[10px] px-2 py-0.5 rounded bg-gold-muted text-gold-dark border border-gold/20">
+              <span key={t.ticker} className="font-data text-[10px] px-2 py-0.5 rounded bg-gold-muted text-gold-dark border border-gold/20">
                 {t.ticker} · {t.watcherCount} watching
               </span>
             ))}

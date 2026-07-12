@@ -236,7 +236,7 @@ export default function SavedDealsPage() {
                     </div>
                     <div className="flex items-start gap-2 flex-shrink-0">
                       {displayValue && (
-                        <span className="font-display text-[13px] font-semibold text-gold">
+                        <span className="font-data text-[13px] font-semibold text-gold">
                           {displayValue}
                         </span>
                       )}

@@ -1300,7 +1300,7 @@ export default function MorningBriefPage() {
                           {deal.company}
                         </h4>
                         <span
-                          className="font-display"
+                          className="font-data"
                           style={{
                             fontSize: 12,
                             fontWeight: 700,

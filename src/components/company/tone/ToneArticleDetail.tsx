@@ -123,7 +123,7 @@ export function ToneArticleDetail({ article, onClose }: ToneArticleDetailProps) 
                 <time dateTime={article.publishedAt ?? undefined}>{published}</time>
               </>
             ) : null}
-            {age ? <span className="font-display">({age})</span> : null}
+            {age ? <span className="font-data">({age})</span> : null}
           </div>
 
           <div className="mt-3">

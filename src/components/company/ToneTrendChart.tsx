@@ -184,7 +184,7 @@ export function ToneTrendChart({ company, compact = false, defaultRange = "30d" 
         <div className="flex items-baseline justify-between gap-3 mb-2">
           <div className="min-w-0">
             {hovered ? (
-              <span className="font-display text-[11px] text-text-secondary">
+              <span className="font-data text-[11px] text-text-secondary">
                 {formatDay(hovered.p.date)} ·{" "}
                 <span style={{ color: hovered.p.score >= 0 ? "var(--signal-up)" : "var(--signal-dn)" }}>
                   {formatSignedScore(hovered.p.score)}

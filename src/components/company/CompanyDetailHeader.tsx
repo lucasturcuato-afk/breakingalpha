@@ -127,7 +127,7 @@ export function CompanyDetailHeader({ detail }: Props) {
             {detail.ticker ? (
               <span
                 data-testid="company-header-ticker"
-                className="font-display"
+                className="font-data"
                 style={{
                   fontSize: 11, fontWeight: 700, color: "var(--text-muted)",
                   padding: "2px 7px", borderRadius: 3,

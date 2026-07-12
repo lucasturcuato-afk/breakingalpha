@@ -155,7 +155,7 @@ export function ThesisList({
               {thesis.sector}
             </span>
             {thesis.ticker && (
-              <span className="font-display text-[9px] text-gold-dark">
+              <span className="font-data text-[9px] text-gold-dark">
                 {thesis.ticker}
               </span>
             )}

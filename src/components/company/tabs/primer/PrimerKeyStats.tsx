@@ -90,7 +90,7 @@ export function PrimerKeyStats({ quote, loading }: PrimerKeyStatsProps) {
               <dt className="font-sans text-[9px] font-bold text-text-faint">
                 {s.label}
               </dt>
-              <dd className="font-display text-[13px] text-espresso font-semibold">
+              <dd className="font-data text-[13px] text-espresso font-semibold">
                 {s.value}
               </dd>
               {s.note ? (
