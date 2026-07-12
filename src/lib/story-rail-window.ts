@@ -18,13 +18,6 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatPTDateLong, ptDateSlug } from "@/lib/format-pt";
-import {
-  applyRailPersonalization,
-  getPersonalizationMode,
-  type PersonalizationMode,
-  type RailItem,
-  type RailProfile,
-} from "@/lib/personalization-rail";
 
 export type BriefingType = "morning" | "evening";
 
@@ -99,28 +92,6 @@ export async function storedRailIds(
 export function reorderByIds<T extends { id: string }>(rows: T[] | null, ids: string[]): T[] {
   const byId = new Map((rows ?? []).map((r) => [r.id, r]));
   return ids.map((id) => byId.get(id)).filter((r): r is T => r != null);
-}
-
-/**
- * The read-time story-rail seam: restore the stored shared-rail order, then apply
- * the per-user Layer 1 reorder gated by PERSONALIZATION_MODE. Pure: no I/O, no
- * model call, no DB write. Composition only, so the two behaviors stay testable
- * in isolation (reorderByIds + applyRailPersonalization).
- *
- * off (default): returns exactly reorderByIds(rows, ids), byte-identical to the
- * shared-rail order today. shadow: logs the id-order divergence and serves the
- * shared order. active: serves the per-user personalized order. Fail-closed: a
- * missing profile or any error yields the shared order (applyRailPersonalization
- * never throws).
- */
-export function applyStoryRailWindow<T extends RailItem>(
-  rows: T[] | null,
-  ids: string[],
-  profile: RailProfile | null | undefined,
-  mode: PersonalizationMode = getPersonalizationMode(),
-): T[] {
-  const windowed = reorderByIds(rows, ids);
-  return applyRailPersonalization(windowed, profile, mode);
 }
 
 /**
