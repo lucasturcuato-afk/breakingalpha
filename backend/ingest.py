@@ -1147,6 +1147,85 @@ def _is_non_latin_letter(o: int) -> bool:
     )
 
 
+# Short-row language detector (defect #3). #464's positive-English prong only fires
+# on rows >= _LONG_TEXT_TOKENS, so a SHORT foreign headline (a Spanish gnews title
+# with a thin or empty summary) never reaches the evidence check and passes. That
+# hole cannot be tuned shut: a short Spanish title and a short English title both
+# carry zero English function words, so the length + evidence metric does not
+# separate them. Closing it needs a signal that lives in short text (character
+# n-grams), i.e. a real detector.
+#
+# The detector is used ONLY as a CONFIDENT-FOREIGN check, never as an is-English
+# check. Financial headlines are ticker- and proper-noun-dense, so a detector is
+# legitimately UNSURE about real English ("SK Hynix raises $26.5bn in US market
+# debut" -> id 0.14). Dropping on uncertainty would silently lose real articles, so
+# we DROP only on a high-confidence foreign verdict; an English verdict, low
+# confidence, an empty title, a missing detector, or ANY exception all return KEEP.
+# Detector uncertainty never causes a drop.
+#
+# Detector choice: lingua. langdetect was evaluated first (pure Python, 2.4 MB) and
+# REJECTED. On 1497 short real-English prod rows it returned a confident foreign
+# verdict (prob >= 0.95) for 94 of them and hit prob 1.000 on plain English
+# ("8-K - WD 40 CO" -> de 1.0), so no threshold gives zero false positives. lingua
+# is heavier (prebuilt wheels, no compiler needed, but ~200 MB of bundled n-gram
+# models) yet its confidence is calibrated: over the same 1497 rows the highest
+# foreign confidence on a real English title is 0.479, while the Spanish e&/Vodafone
+# leak scores 0.970. Judged on the TITLE ONLY; title+summary is unusable because
+# gnews summaries are ticker / foreign-brand noise that pushes real English rows to
+# 0.99+ foreign confidence.
+#
+# Threshold: false positives are zero at every value in [0.55, 0.90] over the 1497
+# hard-case rows (short titles, thin/empty summaries, ticker- and proper-noun-heavy,
+# foreign-issuer names). Set at 0.70, well above the 0.479 English ceiling; catches
+# 14 of 17 foreign targets (Spanish / Slovak / Russian / French / German / Italian /
+# Portuguese short headlines). Missing a foreign leak is visible and fixable; a
+# silently dropped English story is not, so the threshold favors keeping.
+_FOREIGN_CONFIDENCE_THRESHOLD = 0.70
+_lang_detector = None
+_lang_detector_ready = False
+
+
+def _get_lang_detector():
+    """Lazily build the lingua detector once. Returns None if lingua is absent or
+    fails to build, so the caller degrades to KEEP rather than crashing ingest. The
+    build is deferred (not at import) so importing ingest.py never loads the models.
+    """
+    global _lang_detector, _lang_detector_ready
+    if _lang_detector_ready:
+        return _lang_detector
+    _lang_detector_ready = True
+    try:
+        from lingua import LanguageDetectorBuilder
+
+        _lang_detector = LanguageDetectorBuilder.from_all_languages().build()
+    except Exception:
+        _lang_detector = None
+    return _lang_detector
+
+
+def _is_confidently_foreign(title) -> bool:
+    """True ONLY when the detector is >= _FOREIGN_CONFIDENCE_THRESHOLD sure the title
+    is a specific non-English language. Uncertainty, an English verdict, an empty
+    title, a missing detector, or ANY error all return False (KEEP)."""
+    text = (title or "").strip()
+    if not text:
+        return False
+    detector = _get_lang_detector()
+    if detector is None:
+        return False
+    try:
+        values = detector.compute_language_confidence_values(text)
+        if not values:
+            return False
+        top = values[0]
+        return (
+            top.language.iso_code_639_1.name != "EN"
+            and top.value >= _FOREIGN_CONFIDENCE_THRESHOLD
+        )
+    except Exception:
+        return False
+
+
 def _is_probably_english(article):
     text = f"{article.get('title', '')} {article.get('summary', '')}"
     letters = [c for c in text if c.isalpha()]
@@ -1164,6 +1243,14 @@ def _is_probably_english(article):
     tokens = _WORD_RE.findall(text.lower())
     en_hits = sum(1 for t in tokens if t in _EN_FUNCTION_WORDS)
     if len(tokens) >= _LONG_TEXT_TOKENS and en_hits < _MIN_EN_EVIDENCE:
+        return False
+
+    # 3. Short-row hole (defect #3): rows under _LONG_TEXT_TOKENS never reach the
+    #    evidence check above, so a short foreign headline passes. Drop it ONLY when
+    #    a real detector is highly confident the TITLE is a specific non-English
+    #    language. Any doubt (low confidence, English, empty, detector error) keeps
+    #    the row.
+    if len(tokens) < _LONG_TEXT_TOKENS and _is_confidently_foreign(article.get("title", "")):
         return False
     return True
 
