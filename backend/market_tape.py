@@ -21,6 +21,7 @@ the unit tests can exercise the pure pieces directly.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 import requests
 
@@ -160,6 +161,45 @@ YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 _YAHOO_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; Signalera/1.0)"}
 _DAY_SECONDS = 86400
 
+# ── Freshness guard (P0: stale-index defense) ───────────────────────────────
+# A quote timestamp (regularMarketTime, unix seconds) must belong to the CURRENT
+# session to be trusted. On a weekend / holiday, or after a silently-stale fetch,
+# Yahoo can echo a prior session's close indefinitely; that is exactly how an
+# index panel freezes to the penny across two sessions while VIX/oil/names move.
+# We treat a quote as stale when its timestamp is older than this many hours at
+# fetch time. 30h covers a normal overnight gap (Fri close -> Mon open is handled
+# by the weekend allowance below) without tolerating a two-session-old echo.
+QUOTE_MAX_AGE_HOURS = 30
+# On weekends the last real session is Friday, so a quote can legitimately be up
+# to ~72h old. We do NOT hard-fail then; we only flag it. The current-session
+# assert is meaningful on trading days.
+_WEEKEND_MAX_AGE_HOURS = 80
+
+
+def _quote_age_hours(ts: int | None, *, now_utc: datetime | None = None) -> float | None:
+    """Age of a quote timestamp in hours. None when ts is missing/unusable."""
+    if ts is None:
+        return None
+    try:
+        now = now_utc or datetime.now(timezone.utc)
+        return (now.timestamp() - float(ts)) / 3600.0
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def quote_is_fresh(ts: int | None, *, now_utc: datetime | None = None) -> bool:
+    """FRESHNESS ASSERT: True when a quote timestamp belongs to the current
+    session (age within QUOTE_MAX_AGE_HOURS, or the weekend allowance on Sat/Sun).
+    A missing timestamp is NOT fresh: we cannot prove the current session, so we
+    fail loud rather than trust an unstamped price. Pure, never raises."""
+    age = _quote_age_hours(ts, now_utc=now_utc)
+    if age is None:
+        return False
+    now = now_utc or datetime.now(timezone.utc)
+    # Python weekday(): Mon=0 .. Sun=6. Sat/Sun get the wider allowance.
+    limit = _WEEKEND_MAX_AGE_HOURS if now.weekday() >= 5 else QUOTE_MAX_AGE_HOURS
+    return 0 <= age <= limit
+
 
 def parse_yahoo_daily(chart_json: dict) -> dict | None:
     """
@@ -257,28 +297,85 @@ TAPE_SYMBOLS = {
     "^VIX": "VIX",
 }
 
+# Additive enrichment (Agent C consumes these; existing tape keys are untouched).
+# These are fetched through the SAME baseline-correct Yahoo daily path, so they
+# are freshness-checked identically to the indices. ^TNX is the CBOE 10-year
+# yield *10 (a 4.21% yield quotes as 42.1); CL=F is front-month WTI crude.
+# NOTE ON WHAT IS *NOT* OBTAINABLE HERE: the Yahoo per-symbol chart endpoint
+# returns OHLC for one instrument only. It exposes NO index constituents and NO
+# advance/decline line, so a REAL market-breadth measure (pct of members up, A/D)
+# cannot be derived from this source. Sector leadership is approximated below via
+# the sector ETFs; it is a proxy (ETF day-moves), not true constituent breadth.
+ENRICH_SYMBOLS = {
+    "^TNX": "10Y Treasury Yield",
+    "CL=F": "WTI Crude",
+}
 
-def fetch_tape() -> dict | None:
+# Sector-leadership proxy: the 11 SPDR Select Sector ETFs. Their per-ETF daily
+# move is a coarse leadership read (which sectors led / lagged), NOT breadth.
+SECTOR_ETFS = {
+    "XLK": "Technology",
+    "XLF": "Financials",
+    "XLE": "Energy",
+    "XLV": "Health Care",
+    "XLY": "Consumer Discretionary",
+    "XLP": "Consumer Staples",
+    "XLI": "Industrials",
+    "XLB": "Materials",
+    "XLU": "Utilities",
+    "XLRE": "Real Estate",
+    "XLC": "Communication Services",
+}
+
+
+def fetch_tape(*, enrich: bool = False) -> dict | None:
     """
     Fetch the close-of-day tape and compute the regime.
 
-    Returns {"quotes": {symbol: quote}, "regime": str, "vix_level": float}
-    or None when the tape is unusable. Regime needs ^VIX (level + pct) and
-    ^GSPC (pct); ^IXIC / ^RUT are included when available but a miss on either
-    does not sink the tape (partial tape still grounds the prompt).
+    Returns {"quotes": {symbol: quote}, "regime": str, "vix_level": float,
+    "enrichment": {...}, "stale": [symbols]} or None when the tape is unusable.
+    Regime needs ^VIX (level + pct) and ^GSPC (pct); ^IXIC / ^RUT are included
+    when available but a miss on either does not sink the tape (partial tape
+    still grounds the prompt).
+
+    FRESHNESS (P0): every index/VIX quote must belong to the current session.
+    A quote whose timestamp is stale (older than QUOTE_MAX_AGE_HOURS on a trading
+    day) is DROPPED LOUD, not silently served: we log a hard warning and remove
+    it from the tape. A visibly missing index panel beats a confidently-wrong one
+    frozen to the penny across two sessions. If the freshness drop kills ^VIX or
+    ^GSPC the whole tape is declared unusable rather than grounding on stale data.
+
+    `enrich`: OFF by default so no existing caller's behavior or network cost
+    changes. Agent C opts in with fetch_tape(enrich=True) at the persistence
+    site to additively pull rates/oil/sector-ETF quotes into the snapshot.
     """
+    now_utc = datetime.now(timezone.utc)
     quotes = {}
+    stale = []
     for sym in TAPE_SYMBOLS:
         q = fetch_quote(sym)
-        if q:
-            quotes[sym] = q
+        if not q:
+            continue
+        ts = q.get("ts")
+        if not quote_is_fresh(ts, now_utc=now_utc):
+            age = _quote_age_hours(ts, now_utc=now_utc)
+            age_str = f"{age:.1f}h" if age is not None else "no-timestamp"
+            logger.warning(
+                "market_tape: STALE index quote DROPPED %s (label=%s ts=%s age=%s) - "
+                "refusing to serve a prior-session snapshot as today's tape",
+                sym, TAPE_SYMBOLS[sym], ts, age_str,
+            )
+            stale.append(sym)
+            continue
+        quotes[sym] = q
 
     vix = quotes.get("^VIX")
     spx = quotes.get("^GSPC")
     if not vix or not spx:
         logger.warning(
-            "market_tape: tape unusable (vix=%s spx=%s) - synthesis will run ungrounded",
-            bool(vix), bool(spx),
+            "market_tape: tape unusable (vix=%s spx=%s stale_dropped=%s) - "
+            "synthesis will run ungrounded",
+            bool(vix), bool(spx), stale or None,
         )
         return None
 
@@ -287,7 +384,82 @@ def fetch_tape() -> dict | None:
         vix_pct_change=vix["pct"],
         spx_pct_change=spx["pct"],
     )
-    return {"quotes": quotes, "regime": regime, "vix_level": vix["price"]}
+    tape = {
+        "quotes": quotes,
+        "regime": regime,
+        "vix_level": vix["price"],
+        "stale": stale,
+    }
+    if enrich:
+        tape["enrichment"] = fetch_enrichment(now_utc=now_utc)
+    return tape
+
+
+def fetch_enrichment(*, now_utc: datetime | None = None) -> dict:
+    """ADDITIVE (Agent C): fetch rates (10Y level + bps change), oil (WTI), and a
+    sector-leadership proxy (SPDR sector-ETF day moves). Same baseline-correct
+    Yahoo daily path + freshness assert as the core tape, so a stale enrichment
+    quote is dropped LOUD rather than served. Never raises; a total miss returns
+    a well-formed dict with null/empty sub-fields (read-side stable).
+
+    BREADTH IS NOT INCLUDED: the Yahoo per-symbol chart endpoint exposes no index
+    constituents and no advance/decline line, so a real breadth measure (pct of
+    members up, A/D) is NOT obtainable from this source. `leaders`/`laggards` are
+    an ETF-move PROXY for sector leadership, not breadth. Callers must NOT present
+    the proxy as market breadth."""
+    now = now_utc or datetime.now(timezone.utc)
+
+    def _fresh_quote(sym: str, label: str) -> dict | None:
+        q = fetch_quote(sym)
+        if not q:
+            return None
+        if not quote_is_fresh(q.get("ts"), now_utc=now):
+            logger.warning(
+                "market_tape: STALE enrichment quote DROPPED %s (%s) - not served",
+                sym, label,
+            )
+            return None
+        return q
+
+    # Rates: ^TNX quotes the 10Y yield * 10 (42.1 == 4.21%). Level is that / 10;
+    # bps change is (price - prev) in ^TNX points * 10 (each ^TNX point == 10bps).
+    tnx = _fresh_quote("^TNX", "10Y Treasury Yield")
+    rates = {"teny_level": None, "teny_bps_change": None}
+    if tnx and tnx.get("price") is not None:
+        rates["teny_level"] = round(float(tnx["price"]) / 10.0, 2)
+        prev = tnx.get("prev")
+        if prev:
+            rates["teny_bps_change"] = round((float(tnx["price"]) - float(prev)) * 10.0, 1)
+
+    oil_q = _fresh_quote("CL=F", "WTI Crude")
+    oil = {
+        "wti_level": (round(float(oil_q["price"]), 2) if oil_q and oil_q.get("price") is not None else None),
+        "wti_pct": (oil_q.get("pct") if oil_q else None),
+    }
+
+    # Sector leadership proxy (ETF day-moves; NOT breadth).
+    sector_moves = []
+    for sym, label in SECTOR_ETFS.items():
+        q = _fresh_quote(sym, label)
+        if q and q.get("pct") is not None:
+            sector_moves.append({"sector": label, "symbol": sym, "pct": q["pct"]})
+    sector_moves.sort(key=lambda s: s["pct"], reverse=True)
+    leaders = sector_moves[:3]
+    laggards = sorted(sector_moves[-3:], key=lambda s: s["pct"]) if sector_moves else []
+
+    return {
+        "rates": rates,
+        "oil": oil,
+        "sector_leadership": {
+            # PROXY: sector-ETF day moves, not constituent breadth.
+            "leaders": leaders,
+            "laggards": laggards,
+            "is_proxy": True,
+        },
+        # Explicit contract for Agent C: breadth cannot be sourced here.
+        "breadth": None,
+        "breadth_available": False,
+    }
 
 
 def serialize_tape_snapshot(tape: dict | None, as_of: str | None = None) -> dict | None:
@@ -305,9 +477,14 @@ def serialize_tape_snapshot(tape: dict | None, as_of: str | None = None) -> dict
 
     def _idx(sym: str) -> dict:
         q = quotes.get(sym) or {}
+        # `pct` here is the SINGLE SOURCE OF TRUTH for this index's daily move:
+        # computed once in parse_yahoo_daily from baseline-correct daily bars,
+        # stored verbatim, never recomputed downstream. Strip and panel must both
+        # read this field so they cannot disagree (see PR body: today the frontend
+        # re-derives pct live from two different instruments/vendors instead).
         return {"pct": q.get("pct"), "level": q.get("price")}
 
-    return {
+    snapshot = {
         "as_of": as_of,
         "regime": tape.get("regime"),
         "vix_level": tape.get("vix_level"),
@@ -320,7 +497,16 @@ def serialize_tape_snapshot(tape: dict | None, as_of: str | None = None) -> dict
             "dow": _idx("^DJI"),
             "russell": _idx("^RUT"),
         },
+        # Loud staleness carried to the read side: symbols the freshness assert
+        # dropped this run. Empty list == all quotes were current-session fresh.
+        "stale": list(tape.get("stale") or []),
     }
+    # Additive enrichment (Agent C). Present only when fetch_tape ran with
+    # enrich=True; absent-key is fine for older readers (read-side stable).
+    enrichment = tape.get("enrichment")
+    if isinstance(enrichment, dict):
+        snapshot["enrichment"] = enrichment
+    return snapshot
 
 
 # ── Overview-subject materiality gate (D2+D3) ───────────────────────────────
