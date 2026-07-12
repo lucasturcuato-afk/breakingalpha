@@ -63,3 +63,51 @@ jobs:
           GRADER_SKIP_IRRELEVANT: ${{ vars.GRADER_SKIP_IRRELEVANT }}
           MARKET_PULSE_V2: ${{ vars.MARKET_PULSE_V2 }}
         run: python run.py ${{ steps.mode.outputs.mode }}
+
+      # Alerting only (does NOT gate generation - the brief is already shipped by
+      # the step above). Trigger (b): a run that exits CLEAN but ships a stub. This
+      # reads the ACTUAL shipped brief from the DB, so it catches a stub regardless
+      # of whether synthesize flagged it (the 2026-07-08 quota outage exited 0 while
+      # shipping "Market Intelligence Unavailable" and stayed invisible for weeks).
+      - name: Verify brief shipped (not a stub)
+        if: success()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          MODE: ${{ steps.mode.outputs.mode }}
+        run: |
+          set -euo pipefail
+          since=$(date -u -d '3 hours ago' +%Y-%m-%dT%H:%M:%S)
+          headline=$(curl -sS --get "${SUPABASE_URL}/rest/v1/briefings" \
+            --data-urlencode "briefing_type=eq.${MODE}" \
+            --data-urlencode "created_at=gte.${since}" \
+            --data-urlencode "order=created_at.desc" \
+            --data-urlencode "limit=1" \
+            --data-urlencode "select=headline,created_at" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" | jq -r '.[0].headline // ""')
+          echo "Latest fresh ${MODE} brief headline: '${headline}'"
+          if [ -z "${headline}" ] || [ "${headline}" = "Market Intelligence Unavailable" ]; then
+            echo "::error::No fresh ${MODE} brief in the last 3h, or it is a STUB. Likely a Gemini quota or synthesis failure; the site keeps serving the prior brief. Failing the job to alert."
+            exit 1
+          fi
+          echo "Fresh ${MODE} brief shipped OK."
+
+      # Trigger (a) + (b): fires on ANY failure - the pipeline step throwing / exiting
+      # non-zero (including run.py's existing stub -> exit 1), OR the stub check above.
+      # Opens a GitHub issue (same mechanism as grading.yml / outcome_evaluator.yml);
+      # no new paid service, no billing or auto-reload change.
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const mode = '${{ steps.mode.outputs.mode }}' || 'unknown';
+            const day = new Date().toISOString().slice(0, 10);
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Brief pipeline failed (${mode}) - ${day}`,
+              body: `The ${mode} brief pipeline failed or shipped a stub.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n\nA stub means the brief did not generate (e.g. Gemini quota exhausted); the site keeps serving the prior brief. This is an automatic notification.`,
+              labels: ['brief-failure', 'automated']
+            })
