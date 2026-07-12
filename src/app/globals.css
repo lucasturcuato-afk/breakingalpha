@@ -115,32 +115,36 @@
     background: var(--parchment);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
     color: var(--text-primary);
-    font-family: var(--font-sans), sans-serif;
+    /* Reference the emitted next/font variables directly. The @theme
+       inline tokens (--font-sans etc.) are inlined into Tailwind
+       utilities and are NOT available as runtime custom properties, so
+       hand-written rules must use the real font variables. */
+    font-family: var(--font-space-grotesk), sans-serif;
     font-size: 14px;
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
   }
   /* Serif voice: headings and the lead story (an h3). */
   h1, h2, h3 {
-    font-family: var(--font-serif), serif;
+    font-family: var(--font-fraunces), serif;
   }
   h4, h5, h6 {
-    font-family: var(--font-sans), sans-serif;
+    font-family: var(--font-space-grotesk), sans-serif;
   }
 }
 
 /* ── Font utility classes ── */
 
 .font-display {
-  font-family: var(--font-serif), serif;
+  font-family: var(--font-fraunces), serif;
 }
 
 .font-body {
-  font-family: var(--font-sans), sans-serif;
+  font-family: var(--font-space-grotesk), sans-serif;
 }
 
 .font-data {
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-plex-mono), monospace;
   font-variant-numeric: tabular-nums;
 }
 
