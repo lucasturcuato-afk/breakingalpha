@@ -6,3 +6,4 @@ requests
 beautifulsoup4
 python-dotenv
 numpy>=1.26,<3
+lingua-language-detector>=2.0,<3
