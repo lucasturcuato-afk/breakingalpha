@@ -27,6 +27,7 @@ from backend.market_tape import (
     enforce_tape_consistency,
     indices_frozen_suspect,
     last_trading_session_open,
+    normalize_teny_yield,
     overview_subject_gate,
     parse_yahoo_daily,
     quote_is_fresh,
@@ -677,6 +678,57 @@ class SerializeStaleAndEnrichmentTests(unittest.TestCase):
         snap = serialize_tape_snapshot(tape)
         self.assertEqual(snap["unverified"], ["^IXIC"])
         self.assertEqual(snap["frozen_suspect"], ["^GSPC"])
+
+
+class TenYYieldScalingTests(unittest.TestCase):
+    """^TNX scaling is robust to Yahoo's two historical conventions (percent ~4.6
+    vs *10 ~46.0). Both must resolve to the yield in percent (~4.6). Pins the fix
+    for the 0.46%-instead-of-4.6% bug (raw 4.569 was being divided by 10)."""
+
+    def test_percent_convention_passes_through(self):
+        # Raw already in percent (the live 2026-07-11 shape): 4.6 -> 4.6, not 0.46.
+        self.assertEqual(normalize_teny_yield(4.6), 4.6)
+        self.assertEqual(normalize_teny_yield(4.569), 4.57)
+
+    def test_times_ten_convention_is_divided(self):
+        # Raw in the *10 form: 46.0 -> 4.6, 42.1 -> 4.21.
+        self.assertEqual(normalize_teny_yield(46.0), 4.6)
+        self.assertEqual(normalize_teny_yield(42.1), 4.21)
+
+    def test_both_conventions_agree(self):
+        # The whole point: the two conventions for the SAME yield resolve equal.
+        self.assertEqual(normalize_teny_yield(4.6), normalize_teny_yield(46.0))
+
+    def test_boundary_and_garbage(self):
+        # At/below the threshold is treated as percent; above it as *10.
+        self.assertEqual(normalize_teny_yield(20.0), 20.0)   # exactly threshold: percent
+        self.assertEqual(normalize_teny_yield(20.01), 2.0)   # just above: *10
+        self.assertIsNone(normalize_teny_yield(None))
+        self.assertIsNone(normalize_teny_yield("x"))
+
+    def test_fetch_enrichment_uses_normalized_level_and_bps(self):
+        # End-to-end through fetch_enrichment with a stubbed fresh ^TNX quote in
+        # the PERCENT convention. teny_level must be ~4.6 (not 0.46), and bps is
+        # derived from the percent difference (1 pp == 100 bps).
+        import backend.market_tape as mt
+
+        now = datetime(2026, 7, 8, 20, 0, 0, tzinfo=timezone.utc)  # Wed post-open
+        fresh_ts = int(now.timestamp())
+
+        def _stub(sym, timeout=8):
+            if sym == "^TNX":
+                return {"price": 4.6, "prev": 4.5, "pct": 0.0, "change": 0.0, "ts": fresh_ts}
+            return None  # oil + sector ETFs miss; enrichment stays well-formed
+
+        orig = mt.fetch_quote
+        try:
+            mt.fetch_quote = _stub
+            enr = mt.fetch_enrichment(now_utc=now)
+        finally:
+            mt.fetch_quote = orig
+        self.assertEqual(enr["rates"]["teny_level"], 4.6)
+        # 4.6 vs 4.5 percent == 0.10 pp == 10.0 bps.
+        self.assertEqual(enr["rates"]["teny_bps_change"], 10.0)
 
 
 class FetchTapeModeSplitTests(unittest.TestCase):

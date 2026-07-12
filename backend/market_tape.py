@@ -463,6 +463,29 @@ ENRICH_SYMBOLS = {
     "CL=F": "WTI Crude",
 }
 
+# ^TNX convention is historically INCONSISTENT on Yahoo: the per-symbol chart
+# endpoint has returned the 10Y yield both in PERCENT (~4.6) and in the *10 form
+# (~46.0). A hardcoded "/10" ships 0.46% when the endpoint is already in percent
+# (observed live 2026-07-11: raw 4.569 -> 0.46 instead of 4.57). Guard on
+# magnitude instead: a real 10Y yield is well under 20% in any plausible regime,
+# so a raw value above this threshold is the *10 form and gets divided down; a
+# value at/below it is already in percent and passes through. Both conventions
+# resolve to ~4.6.
+_TNX_SCALE_THRESHOLD = 20.0
+
+
+def normalize_teny_yield(raw) -> float | None:
+    """Convert a raw ^TNX price to the 10Y yield in PERCENT (~4.6), robust to
+    Yahoo's two conventions (percent ~4.6 vs *10 ~46.0). raw > 20 -> /10; else
+    pass through. None on unusable input. Pure, never raises."""
+    if raw is None:
+        return None
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return round(v / 10.0 if v > _TNX_SCALE_THRESHOLD else v, 2)
+
 # Sector-leadership proxy: the 11 SPDR Select Sector ETFs. Their per-ETF daily
 # move is a coarse leadership read (which sectors led / lagged), NOT breadth.
 SECTOR_ETFS = {
@@ -618,15 +641,19 @@ def fetch_enrichment(*, now_utc: datetime | None = None) -> dict:
             return None
         return q
 
-    # Rates: ^TNX quotes the 10Y yield * 10 (42.1 == 4.21%). Level is that / 10;
-    # bps change is (price - prev) in ^TNX points * 10 (each ^TNX point == 10bps).
+    # Rates: ^TNX is the 10Y yield, but Yahoo's convention (percent ~4.6 vs *10
+    # ~46.0) is inconsistent, so normalize BOTH the level and the prior close to
+    # percent via the magnitude guard, then derive bps from the percent difference
+    # (1 percentage point == 100 bps). This is convention-agnostic: normalizing
+    # first means the bps math never depends on which form the raw quote used.
     tnx = _fresh_quote("^TNX", "10Y Treasury Yield")
     rates = {"teny_level": None, "teny_bps_change": None}
     if tnx and tnx.get("price") is not None:
-        rates["teny_level"] = round(float(tnx["price"]) / 10.0, 2)
-        prev = tnx.get("prev")
-        if prev:
-            rates["teny_bps_change"] = round((float(tnx["price"]) - float(prev)) * 10.0, 1)
+        level = normalize_teny_yield(tnx.get("price"))
+        rates["teny_level"] = level
+        prev = normalize_teny_yield(tnx.get("prev"))
+        if level is not None and prev:
+            rates["teny_bps_change"] = round((level - prev) * 100.0, 1)
 
     oil_q = _fresh_quote("CL=F", "WTI Crude")
     oil = {
