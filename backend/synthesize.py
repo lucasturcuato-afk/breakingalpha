@@ -2083,6 +2083,139 @@ def _tape_facts_block(tape):
     return f"TAPE FACTS (ground truth): {facts}. Regime: {regime or 'UNKNOWN'}."
 
 
+# Additive tape fields the dedicated pulse consumes when Agent A exposes them
+# (rates / oil / sector leaders + laggards / breadth). These are OPTIONAL: they
+# may be absent from the tape entirely (parallel work not landed, or a thin
+# session). Every accessor degrades SILENTLY to nothing when its field is
+# missing. NOTHING here is invented: a field renders ONLY when a real value is
+# present. Read-side stable: unknown key shapes are tolerated (dict-or-scalar).
+def _tape_has_breadth_field(tape):
+    """True ONLY when the tape carries a REAL breadth field (advancers/decliners,
+    advance-decline, or an explicit breadth value). Used by the deterministic
+    breadth-claim guard: a narrative may assert breadth ONLY when this is True.
+    Absent field -> False -> any breadth assertion is a violation. Pure."""
+    if not isinstance(tape, dict):
+        return False
+    for k in ("breadth", "advancers", "decliners", "advance_decline",
+              "adv_dec", "advance_decline_ratio"):
+        v = tape.get(k)
+        if v is None:
+            continue
+        # A dict breadth blob counts only if it holds at least one non-null value.
+        if isinstance(v, dict):
+            if any(sv is not None for sv in v.values()):
+                return True
+        else:
+            return True
+    return False
+
+
+def _fmt_signed_pct(pct):
+    try:
+        return f"{float(pct):+.2f}%"
+    except (TypeError, ValueError):
+        return None
+
+
+def _pulse_extra_tape_block(tape):
+    """MARKET_PULSE_V2: render the ADDITIVE tape fields the pulse should spend space
+    on when they exist: 10Y level + bps move, oil, sector leaders/laggards, and a
+    REAL breadth field. Returns '' when none are present (the pulse then simply
+    omits them; it must never invent a field). Every value is passed through only
+    when actually present. Pure; tolerant of dict-or-scalar field shapes."""
+    if not isinstance(tape, dict):
+        return ""
+    lines = []
+
+    # Rates: 10Y level + bps move. Accept a few shapes A might expose.
+    rates = tape.get("rates") if isinstance(tape.get("rates"), dict) else tape
+    ten_level = None
+    for k in ("us10y_level", "ten_year_level", "10y_level", "tnx_level", "us10y", "ten_year"):
+        v = rates.get(k) if isinstance(rates, dict) else None
+        if v is not None:
+            ten_level = v
+            break
+    ten_bps = None
+    for k in ("us10y_bps", "ten_year_bps", "10y_bps", "tnx_bps", "us10y_change_bps"):
+        v = rates.get(k) if isinstance(rates, dict) else None
+        if v is not None:
+            ten_bps = v
+            break
+    if ten_level is not None:
+        try:
+            bit = f"10Y Treasury {float(ten_level):.2f}%"
+            if ten_bps is not None:
+                bit += f" ({float(ten_bps):+.0f} bps on the session)"
+            lines.append(bit)
+        except (TypeError, ValueError):
+            pass
+
+    # Oil: WTI or Brent, level and optional pct.
+    for okey, olabel in (("wti", "WTI crude"), ("oil", "crude"), ("brent", "Brent crude")):
+        ov = tape.get(okey)
+        if ov is None:
+            continue
+        try:
+            if isinstance(ov, dict):
+                lvl = ov.get("level") if ov.get("level") is not None else ov.get("price")
+                pct = _fmt_signed_pct(ov.get("pct"))
+                if lvl is None and pct is None:
+                    continue
+                bit = f"{olabel}"
+                if lvl is not None:
+                    bit += f" ${float(lvl):.2f}"
+                if pct is not None:
+                    bit += f" ({pct})"
+                lines.append(bit)
+            else:
+                lines.append(f"{olabel} ${float(ov):.2f}")
+            break
+        except (TypeError, ValueError):
+            continue
+
+    # Sector leadership: leaders + laggards. Accept list-of-dict or list-of-str.
+    def _sector_bits(val):
+        out = []
+        for s in (val or [])[:3]:
+            if isinstance(s, dict):
+                name = (s.get("name") or s.get("sector") or s.get("label") or "").strip()
+                pct = _fmt_signed_pct(s.get("pct"))
+                if name:
+                    out.append(f"{name} {pct}" if pct else name)
+            else:
+                nm = str(s or "").strip()
+                if nm:
+                    out.append(nm)
+        return out
+
+    leaders = _sector_bits(tape.get("sector_leaders") or tape.get("leaders"))
+    laggards = _sector_bits(tape.get("sector_laggards") or tape.get("laggards"))
+    if leaders:
+        lines.append("Sector leaders: " + ", ".join(leaders))
+    if laggards:
+        lines.append("Sector laggards: " + ", ".join(laggards))
+
+    # Breadth: only when a REAL field is present (guarded above).
+    if _tape_has_breadth_field(tape):
+        b = tape.get("breadth")
+        if isinstance(b, dict):
+            adv = b.get("advancers")
+            dec = b.get("decliners")
+            if adv is not None and dec is not None:
+                lines.append(f"Breadth: {adv} advancers vs {dec} decliners")
+            elif b.get("summary"):
+                lines.append(f"Breadth: {str(b.get('summary')).strip()}")
+        elif isinstance(b, str) and b.strip():
+            lines.append(f"Breadth: {b.strip()}")
+        else:
+            adv = tape.get("advancers")
+            dec = tape.get("decliners")
+            if adv is not None and dec is not None:
+                lines.append(f"Breadth: {adv} advancers vs {dec} decliners")
+
+    return "\n".join(lines)
+
+
 def _rewrite_market_wide_grounded(data, tape, corpus_companies, relegated_title,
                                   corpus_text, extra_correction="", lead_is_dominant=False):
     """T1/T2: ONE bounded grounded re-ask that rewrites market_pulse.narrative as
@@ -2295,6 +2428,8 @@ def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None,
     The model call is wired here; it is NOT exercised by the offline harness (which
     tests only the pure post-check). Gemini is never called at import time."""
     facts = _tape_facts_block(tape)
+    extra_tape = _pulse_extra_tape_block(tape)
+    has_breadth = _tape_has_breadth_field(tape)
     regime = (tape or {}).get("regime") if isinstance(tape, dict) else None
     vocab = market_tape.REGIME_VOCAB.get((regime or "").strip().lower(), ())
     if brief_type == "evening":
@@ -2332,12 +2467,37 @@ def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None,
         )
     else:
         macro_framing = (
-            "MACRO FRAMING: NO major release dropped today. Lead paragraph 1 with the "
-            "TAPE action, not macro. Every print in the strip is standing BACKDROP (see "
-            "its recency tag) - frame it as prior context ('last week's jobs report "
-            "still colors the tape'), and NEVER say investors are digesting, reacting "
-            "to, or awaiting it today or this morning. Do NOT present a dated print as "
-            "fresh news."
+            "MACRO FRAMING (NO release today, be COMPACT): NO major economic release "
+            "dropped today. State that plainly as a CLAUSE in sentence one (the honest "
+            "why: 'with no fresh catalyst on the tape'), then MOVE ON. Do NOT recite the "
+            "standing macro figures: the backdrop earns at most a single short clause "
+            "('last week's soft-landing jobs read still underpins sentiment'), NEVER a "
+            "roll-call of prints (payrolls, unemployment, CPI, PCE). Those figures moved "
+            "nobody today; naming four of them buries the real story. Never say investors "
+            "are digesting, reacting to, or awaiting a dated print today. On a no-catalyst "
+            "day the SECTOR read and rates/oil ARE the story - spend the space there."
+        )
+    extra_block = (
+        f"ADDITIONAL TAPE (rates / oil / sector leadership / breadth - fetched facts, "
+        f"do not invent):\n{extra_tape}\n\n"
+    ) if extra_tape.strip() else ""
+    if has_breadth:
+        breadth_rule = (
+            "- BREADTH: a REAL breadth field is present in ADDITIONAL TAPE above. You "
+            "MAY describe breadth, but ONLY as the field states it (advancers vs "
+            "decliners / the given breadth read). Do not overstate it.\n"
+        )
+    else:
+        breadth_rule = (
+            "- BREADTH IS FORBIDDEN: NO breadth field is present in the inputs. You have "
+            "NO advance/decline data. Therefore you must NEVER assert market breadth in "
+            "any form - not 'resilient breadth', not 'broad participation', not "
+            "'broad-based', not 'narrow breadth'. If the index spread is informative, "
+            "describe ONLY what is observable: large-cap gains vs small-cap lag, and call "
+            "a megacap-led, small-cap-lagging tape NARROW LEADERSHIP (never 'resilient'). "
+            "NEVER resolve an ambiguous spread toward reassurance. A red Russell against "
+            "green megacaps is narrow leadership and small-cap underperformance, full "
+            "stop - it is NOT evidence of resilient breadth.\n"
         )
 
     system = (
@@ -2359,6 +2519,7 @@ def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None,
         f"{facts}\n\n"
         f"MACRO BACKDROP (fetched facts, do not invent; each print tagged with its "
         f"release recency):\n{macro_block}\n\n"
+        f"{extra_block}"
         f"{macro_framing}\n\n"
         f"RANKED STORIES (COLOR ONLY - examples woven in AFTER the market read, never "
         f"the subject):\n{stories_block}\n\n"
@@ -2386,14 +2547,37 @@ def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None,
         "investors assess ...', 'underscores the broader trend', 'highlights how ...', "
         "'reflecting a ... mood', 'suggesting continued ...', 'amid ongoing ...'. If a "
         "sentence names no concrete force or fact, delete it.\n"
-        "- LEVER 3 - READ THE INTERNALS: when the index spread is informative, "
-        "interpret it in ONE clause grounded in the tape numbers above: small-caps "
-        "(Russell) out front = broad participation; megacaps (Nasdaq) carrying a flat "
-        "Russell = narrow leadership; Dow lagging = cyclicals/value soft. Say what the "
-        "spread MEANS; do not just list three numbers.\n"
+        "- LEVER 3 - READ THE INTERNALS (from the index spread, NOT breadth): when the "
+        "index spread is informative, interpret it in ONE clause grounded in the tape "
+        "numbers above: small-caps (Russell) out front = small-caps leading; megacaps "
+        "(Nasdaq/S&P) green with a RED or flat Russell = NARROW leadership carried by "
+        "large caps while small-caps lag; Dow lagging = cyclicals/value soft. Say what "
+        "the spread MEANS; do not just list three numbers. The index spread is NOT a "
+        "breadth reading - do not translate it into any breadth claim.\n"
+        + breadth_rule +
+        "- LEVER 3b - SECTOR LEADERSHIP IS THE STORY ON A QUIET DAY: when ADDITIONAL "
+        "TAPE gives sector leaders/laggards, make the sector read a real beat, not an "
+        "afterthought: name who led and who lagged and, in one clause, what that "
+        "rotation means. On a no-catalyst day this sector read carries the pulse. When "
+        "rates (10Y level + bps) or oil are present, work them in as concrete forces "
+        "(duration, energy). Omit any of these silently if its field is absent - never "
+        "invent a level or a mover.\n"
         "- LEVER 4 - VOICE: plain, short, one analyst. No jargon for sport, no throat-"
-        "clearing, no AI hedging. Shape: 3-4 short paragraphs - (1) tape + why, (2) "
-        "internals + macro, (3-4) the day's stories as one-line color. Tight; do not pad.\n"
+        "clearing, no AI hedging. Shape: 3-4 short paragraphs - (1) tape + why (with the "
+        "no-catalyst clause when there is none), (2) internals + rates/oil + SECTOR "
+        "leadership, (3) the day's corporate stories RANKED (see LEVER 5), (4) a brief "
+        "FORWARD LOOK. Tight; do not pad.\n"
+        "- LEVER 5 - RANK THE CORPORATE STORIES, DO NOT LIST THEM: the stories paragraph "
+        "is EDITED, not a laundry list. Rank by materiality: a first-of-its-kind or "
+        "largest-ever move (e.g. a record foreign US listing) outranks a micro-cap "
+        "raise; a multi-billion transaction outranks an $875M one. Give the TOP one or "
+        "two a real beat AND a 'so what' (why an investor should care), then compress "
+        "the tail to a clause or drop it. Do NOT give equal weight to a landmark deal "
+        "and a micro-cap disclosure.\n"
+        "- LEVER 6 - CLOSE WITH A FORWARD LOOK: end with one short sentence on what is on "
+        "deck next session (an earnings print, a scheduled release, a pending decision) "
+        "drawn ONLY from the stories/macro above. If nothing concrete is on deck, say so "
+        "in one honest clause; do not fabricate a catalyst.\n"
         "- A sector trend MAY be mentioned, but the pulse must NEVER read as a single-"
         "sector overview. Any story named is at most a one-line EXAMPLE after the "
         "market read.\n"
@@ -2423,6 +2607,119 @@ def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None,
             return parsed["narrative"].strip()
     except Exception as e:
         print(f"  ⚠ MARKET_PULSE_V2 dedicated call failed (non-fatal): {e}")
+    return None
+
+
+# Deterministic breadth-claim guard (pure). A recent render asserted "resilient
+# breadth" while the only proxy (Russell) was red and the model had NO breadth
+# input. The pulse may assert breadth ONLY when the tape carries a real breadth
+# field. These phrases assert market breadth as a characterization; matched
+# case-insensitively on word boundaries. "narrow leadership" / "small-cap lag"
+# are NOT breadth claims (they describe the observable index spread) and are not
+# listed here.
+_BREADTH_ASSERTION_RE = re.compile(
+    r"\b("
+    r"resilient breadth|healthy breadth|strong breadth|broad breadth|narrow breadth|"
+    r"weak breadth|deteriorating breadth|improving breadth|"
+    r"broad(?:-|\s)based (?:gains|rally|advance|participation|strength|buying)|"
+    r"broad participation|broad-based|broadly participating|"
+    r"advance[/-]decline|advancers|decliners|"
+    r"most (?:stocks|names|sectors) (?:rose|advanced|gained|fell|declined)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _narrative_breadth_claims(narrative):
+    """Return the breadth-asserting phrases found in the narrative (deduped,
+    lowercased). Empty when the narrative makes no breadth characterization.
+    Pure; offline-testable via the raw regex on a string."""
+    if not isinstance(narrative, str) or not narrative.strip():
+        return []
+    seen, out = set(), []
+    for m in _BREADTH_ASSERTION_RE.finditer(narrative):
+        raw = m.group(0).strip().lower()
+        if raw not in seen:
+            seen.add(raw)
+            out.append(raw)
+    return out
+
+
+def _pulse_breadth_violation(narrative, tape):
+    """A breadth claim is a violation ONLY when the tape carries NO real breadth
+    field. Returns the offending phrases (empty = clean). This is the deterministic
+    backstop behind the prompt's breadth rule. Pure."""
+    if _tape_has_breadth_field(tape):
+        return []
+    return _narrative_breadth_claims(narrative)
+
+
+# Headline figure guard (gap 5). The V2 pulse figure guard covers the narrative
+# but NOT the monolith's Today's Lead HEADLINE, where an unsourced "$3 Billion"
+# has shipped. Every figure in a generated headline must trace to an input: the
+# article corpus text or the tape. Reuses overview_grounding's figure helpers by
+# import (no edit to overview_grounding). Pure; offline-testable.
+def _headline_sourced_figures(article_text, tape):
+    """The figure set a headline is allowed to state: every figure appearing in
+    the corpus text, plus the tape's own numbers (index pcts, levels, VIX). Reuses
+    overview_grounding._pulse_figures / ._sourced_figure_set. Pure."""
+    figs = list(overview_grounding._pulse_figures(article_text or ""))
+    # Tape numbers (index pcts + levels + VIX) via the shared sourced-set builder,
+    # passing no macro strip / stories (headline sourcing is corpus + tape only).
+    try:
+        figs.extend(overview_grounding._sourced_figure_set(tape, "", []))
+    except Exception:
+        pass
+    return figs
+
+
+def _headline_unsourced_figures(headline, article_text, tape):
+    """Figures in the headline not supported by the corpus text or the tape.
+    A fabricated magnitude (a $3B no input states) is flagged; a headline with no
+    figure is never flagged. Trivial rounding/unit forms allowed (same tolerance
+    as the pulse figure guard). Pure."""
+    if not isinstance(headline, str) or not headline.strip():
+        return []
+    sourced = _headline_sourced_figures(article_text, tape)
+    seen, bad = set(), []
+    for (kind, mag, raw) in overview_grounding._pulse_figures(headline):
+        if not overview_grounding._figure_sourced(kind, mag, sourced) and raw.lower() not in seen:
+            seen.add(raw.lower())
+            bad.append(raw)
+    return bad
+
+
+def _reask_headline_drop_unsourced(headline, unsourced, article_text, tape):
+    """ONE bounded re-ask that rewrites the headline to DROP or fix the unsourced
+    figures, keeping it a valid 10-15 word primary-story headline. Returns the new
+    string or None. Runs only on a violation (not exercised by the offline harness).
+    Uses the corpus text as the sourcing ground truth."""
+    facts = _tape_facts_block(tape)
+    system = (
+        "You rewrite ONE field of a finished market brief: the lead headline. Return "
+        'JSON only: {"headline": "<rewritten headline>"}. No other keys, no prose '
+        "outside the JSON. Keep it a single 10-15 word headline naming ONE primary "
+        "story. Zero em-dashes; use hyphens, colons, parens."
+    )
+    user = (
+        "The current headline states figure(s) NOT supported by any input: "
+        + ", ".join(unsourced) + ".\n"
+        "Rewrite the headline so EVERY figure it states appears verbatim in the SOURCE "
+        "TEXT or the TAPE below. If a figure is not sourced, DROP it and state the "
+        "development qualitatively (a qualitative headline is never wrong; a fabricated "
+        "figure is). Change nothing else about which story it names.\n\n"
+        f"{facts}\n\n"
+        "CURRENT HEADLINE:\n" + headline + "\n\n"
+        "SOURCE TEXT (the only figures you may cite, besides the tape):\n"
+        + (article_text or "")[:6000]
+    )
+    try:
+        raw = gemini_generate(system=system, user_content=user, temperature=0.2, max_tokens=256)
+        parsed = _parse_brief_json(raw)
+        if parsed and isinstance(parsed.get("headline"), str) and parsed["headline"].strip():
+            return parsed["headline"].strip()
+    except Exception as e:
+        print(f"  ⚠ headline figure guard: re-ask failed (non-fatal): {e}")
     return None
 
 
@@ -3192,7 +3489,14 @@ def run(brief_type="morning"):
                     _vres = overview_grounding.validate_pulse_grounding(
                         _candidate, tape_obj, _pulse_macro, _pulse_stories
                     )
-                    if not _vres["ok"]:
+                    # Deterministic breadth guard: a breadth assertion with NO breadth
+                    # field in the tape is an unsupported claim (the "resilient breadth
+                    # despite the small-cap underperformance" bug). Fold it into the
+                    # grounding gate so the same re-ask + fallback path handles it.
+                    _bviol = _pulse_breadth_violation(_candidate, tape_obj)
+                    if _bviol:
+                        print(f"  ⚠ pulse breadth violation (V2): unsupported breadth claim(s): {', '.join(_bviol)}")
+                    if not _vres["ok"] or _bviol:
                         for _r in _vres["reasons"]:
                             print(f"  ⚠ pulse grounding violation (V2): {_r}")
                         _v2re = generate_market_pulse(
@@ -3205,6 +3509,7 @@ def run(brief_type="morning"):
                                 _v2re, _final_corpus_companies, brief_type)["ok"]
                             and overview_grounding.validate_pulse_grounding(
                                 _v2re, tape_obj, _pulse_macro, _pulse_stories)["ok"]
+                            and not _pulse_breadth_violation(_v2re, tape_obj)
                         )
                         if _reok:
                             _candidate = _v2re
@@ -3364,6 +3669,30 @@ def run(brief_type="morning"):
                         print(f"  [temporal guard] normalized {_fld} relative time")
         except Exception as e:
             print(f"  ⚠ temporal guard error (non-fatal): {e}")
+
+    # Headline figure guard (non-fatal). The V2 pulse figure guard covers the
+    # narrative but NOT the lead HEADLINE, where an unsourced "$3 Billion" has
+    # shipped. Every figure in the generated headline must trace to the corpus
+    # text or the tape. On a violation, ONE bounded re-ask drops/fixes the
+    # unsourced figure; if the re-ask still carries an unsourced figure (or
+    # fails), keep the original headline and log (never ship a garbled headline).
+    if not brief_is_stub:
+        try:
+            _hl = data.get("headline")
+            if isinstance(_hl, str) and _hl.strip():
+                _hbad = _headline_unsourced_figures(_hl, article_text, tape_obj)
+                if _hbad:
+                    print(f"  ⚠ headline figure guard: unsourced figure(s): {', '.join(_hbad)}")
+                    _new_hl = _reask_headline_drop_unsourced(_hl, _hbad, article_text, tape_obj)
+                    if _new_hl and not _headline_unsourced_figures(_new_hl, article_text, tape_obj):
+                        data["headline"] = _new_hl
+                        print("  [headline figure guard] re-ask dropped the unsourced figure")
+                    elif _new_hl:
+                        print("  ⚠ headline figure guard: re-ask still unsourced; keeping original headline")
+                    else:
+                        print("  ⚠ headline figure guard: re-ask failed; keeping original headline")
+        except Exception as e:
+            print(f"  ⚠ headline figure guard error (non-fatal): {e}")
 
     # Lead-thesis opener guard (morning + evening, non-fatal). The narrative's
     # opening sentence is the most visible line in the product and reliably

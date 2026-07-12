@@ -1117,5 +1117,93 @@ class NumericFigureGuardTests(unittest.TestCase):
         self.assertTrue(r["ok"], r["reasons"])
 
 
+class HeadlineFigureGuardTests(unittest.TestCase):
+    """Gap 5: every figure in a generated LEAD HEADLINE must trace to an input
+    (the corpus text or the tape). The real synthesize.py helpers are exec-loaded
+    in isolation (synthesize is not offline-importable: it builds Supabase/Gemini
+    clients at import), with overview_grounding bound so the guard reuses the SAME
+    figure primitives it uses in production. This tests the shipped code, not a
+    copy."""
+
+    @classmethod
+    def setUpClass(cls):
+        import ast
+        src = (_BACKEND / "synthesize.py").read_text()
+        tree = ast.parse(src)
+        wanted = {
+            "_headline_sourced_figures",
+            "_headline_unsourced_figures",
+            "_tape_facts_block",
+            "_tape_has_breadth_field",
+            "_narrative_breadth_claims",
+            "_pulse_breadth_violation",
+        }
+        # Also need the module-level _BREADTH_ASSERTION_RE constant.
+        nodes = [n for n in tree.body
+                 if (isinstance(n, ast.FunctionDef) and n.name in wanted)
+                 or (isinstance(n, ast.Assign)
+                     and any(getattr(t, "id", "") == "_BREADTH_ASSERTION_RE" for t in n.targets))]
+        ns = {"re": __import__("re"), "overview_grounding": og}
+        mod = ast.Module(body=nodes, type_ignores=[])
+        exec(compile(mod, "<synthesize-helpers>", "exec"), ns)  # noqa: S102
+        cls.ns = ns
+
+    # ── figure guard ────────────────────────────────────────────────────────
+    TAPE = {"regime": "risk-on", "quotes": {"^GSPC": {"pct": 0.85, "price": 7533.9},
+            "^IXIC": {"pct": 1.25}}, "vix_level": 16.05}
+    CORPUS = ("[Technology] SK Hynix prices largest-ever foreign US listing\n"
+              "SK Hynix set terms for a $12 billion US share sale, the biggest foreign listing on record.\n\n"
+              "[Industrials] Ondas raises capital\nOndas announced an $875 million raise.")
+
+    def test_unsourced_headline_figure_flagged(self):
+        hl = "Micron Commits $3 Billion to US Memory Buildout as Chip Demand Surges"
+        bad = self.ns["_headline_unsourced_figures"](hl, self.CORPUS, self.TAPE)
+        self.assertIn("$3 Billion", bad)
+
+    def test_sourced_headline_figure_passes(self):
+        hl = "SK Hynix Prices $12 Billion US Listing, Largest-Ever Foreign Offering"
+        self.assertEqual([], self.ns["_headline_unsourced_figures"](hl, self.CORPUS, self.TAPE))
+
+    def test_tape_percent_in_headline_is_sourced(self):
+        hl = "S&P 500 Rises 0.85% as Megacaps Lead a Narrow Tape"
+        self.assertEqual([], self.ns["_headline_unsourced_figures"](hl, self.CORPUS, self.TAPE))
+
+    def test_qualitative_headline_never_flagged(self):
+        hl = "SK Hynix Prices Largest-Ever Foreign US Listing, Reshaping Chip-Sector Access"
+        self.assertEqual([], self.ns["_headline_unsourced_figures"](hl, self.CORPUS, self.TAPE))
+
+    def test_empty_headline_is_clean(self):
+        self.assertEqual([], self.ns["_headline_unsourced_figures"]("", self.CORPUS, self.TAPE))
+
+    # ── breadth guard (gap 1) ────────────────────────────────────────────────
+    def test_breadth_claim_without_field_is_violation(self):
+        # Red Russell, green megacaps, NO breadth field: "resilient breadth" is a bug.
+        tape = {"regime": "risk-on", "quotes": {"^GSPC": {"pct": 0.4},
+                "^IXIC": {"pct": 1.1}, "^RUT": {"pct": -0.9}}, "vix_level": 15.0}
+        n = ("US stocks rose as megacaps led, the Nasdaq up 1.1% and the S&P 500 up 0.4%. "
+             "The tape showed resilient breadth despite the small-cap underperformance.")
+        self.assertTrue(self.ns["_pulse_breadth_violation"](n, tape))
+        self.assertFalse(self.ns["_tape_has_breadth_field"](tape))
+
+    def test_narrow_leadership_is_not_a_breadth_claim(self):
+        tape = {"regime": "risk-on", "quotes": {"^GSPC": {"pct": 0.4},
+                "^IXIC": {"pct": 1.1}, "^RUT": {"pct": -0.9}}, "vix_level": 15.0}
+        n = ("US stocks rose on megacap strength, the Nasdaq up 1.1% while the Russell 2000 fell 0.9%: "
+             "narrow leadership carried by large caps as small-caps lagged.")
+        self.assertEqual([], self.ns["_pulse_breadth_violation"](n, tape))
+
+    def test_breadth_claim_allowed_when_field_present(self):
+        tape = {"regime": "risk-on", "quotes": {"^GSPC": {"pct": 0.4}}, "vix_level": 15.0,
+                "breadth": {"advancers": 320, "decliners": 180}}
+        n = "US stocks rose with broad participation as advancers led decliners."
+        self.assertTrue(self.ns["_tape_has_breadth_field"](tape))
+        self.assertEqual([], self.ns["_pulse_breadth_violation"](n, tape))
+
+    def test_empty_breadth_dict_is_not_a_field(self):
+        tape = {"regime": "neutral", "quotes": {"^GSPC": {"pct": 0.1}}, "vix_level": 15.0,
+                "breadth": {"advancers": None, "decliners": None}}
+        self.assertFalse(self.ns["_tape_has_breadth_field"](tape))
+
+
 if __name__ == "__main__":
     unittest.main()
