@@ -1418,7 +1418,12 @@ def _maybe_inject_tape_directive(brief_type, system, tape=None):
     """
     if tape is None:
         try:
-            tape = market_tape.fetch_tape()
+            # enrich=True so rates / oil / sector-ETF facts reach BOTH the pulse
+            # prose and the persisted snapshot on the fallback path (this fetch
+            # runs only when MATERIALITY_RANK_MODE=off; the shadow/active path
+            # hoists an enrich=True fetch upstream). Merged #463 prose is dead
+            # without an enriched tape reaching this caller.
+            tape = market_tape.fetch_tape(enrich=True)
         except Exception as e:
             print(f"  ⚠ tape fetch failed (non-fatal): {e}")
     if not tape:
@@ -2117,6 +2122,45 @@ def _fmt_signed_pct(pct):
         return None
 
 
+def _enrichment_view(tape):
+    """KEY ALIGNMENT (#461 <-> #463): market_tape.fetch_enrichment emits the
+    additive fields NESTED under tape['enrichment'] with its OWN key names
+    (rates.teny_level / teny_bps_change, oil.wti_level / wti_pct,
+    sector_leadership.leaders / laggards, breadth / breadth_available). The
+    tolerant accessors below were written against a flat, differently-named shape
+    that #461 never emitted, so without this shim the enrichment silently never
+    renders. This flattens #461's actual emitted keys into the flat aliases the
+    accessors expect, WITHOUT dropping the tolerant fallbacks. Pure; a tape with
+    no 'enrichment' block passes through unchanged (older/flat shapes still work).
+    """
+    if not isinstance(tape, dict):
+        return tape
+    enr = tape.get("enrichment")
+    if not isinstance(enr, dict):
+        return tape
+    view = dict(tape)
+    rates = enr.get("rates") if isinstance(enr.get("rates"), dict) else {}
+    # Flat aliases the rates accessor already scans for.
+    if rates.get("teny_level") is not None:
+        view["us10y_level"] = rates.get("teny_level")
+    if rates.get("teny_bps_change") is not None:
+        view["us10y_bps"] = rates.get("teny_bps_change")
+    oil = enr.get("oil") if isinstance(enr.get("oil"), dict) else {}
+    if oil.get("wti_level") is not None or oil.get("wti_pct") is not None:
+        # The oil accessor reads a {level, pct} dict under key 'wti' / 'oil'.
+        view["wti"] = {"level": oil.get("wti_level"), "pct": oil.get("wti_pct")}
+    sl = enr.get("sector_leadership") if isinstance(enr.get("sector_leadership"), dict) else {}
+    if sl.get("leaders"):
+        view["sector_leaders"] = sl.get("leaders")
+    if sl.get("laggards"):
+        view["sector_laggards"] = sl.get("laggards")
+    # Breadth: #461 emits breadth=None / breadth_available=False (never sourced),
+    # so the flat 'breadth' key stays falsy and the breadth guard remains correct.
+    if enr.get("breadth") is not None:
+        view["breadth"] = enr.get("breadth")
+    return view
+
+
 def _pulse_extra_tape_block(tape):
     """MARKET_PULSE_V2: render the ADDITIVE tape fields the pulse should spend space
     on when they exist: 10Y level + bps move, oil, sector leaders/laggards, and a
@@ -2125,6 +2169,7 @@ def _pulse_extra_tape_block(tape):
     when actually present. Pure; tolerant of dict-or-scalar field shapes."""
     if not isinstance(tape, dict):
         return ""
+    tape = _enrichment_view(tape)
     lines = []
 
     # Rates: 10Y level + bps move. Accept a few shapes A might expose.
@@ -2190,10 +2235,14 @@ def _pulse_extra_tape_block(tape):
 
     leaders = _sector_bits(tape.get("sector_leaders") or tape.get("leaders"))
     laggards = _sector_bits(tape.get("sector_laggards") or tape.get("laggards"))
+    # ATTRIBUTION (#461): these are sector-ETF DAY MOVES (a leadership PROXY), NOT
+    # constituent breadth. An XLK gain can ride ONE megacap. The label makes the
+    # source explicit so the prose attributes to the ETF ('tech ETFs led') and
+    # never asserts sector-wide breadth. The prompt rule + guard enforce this.
     if leaders:
-        lines.append("Sector leaders: " + ", ".join(leaders))
+        lines.append("Sector-ETF leaders (ETF day move, a leadership proxy NOT breadth): " + ", ".join(leaders))
     if laggards:
-        lines.append("Sector laggards: " + ", ".join(laggards))
+        lines.append("Sector-ETF laggards (ETF day move, a leadership proxy NOT breadth): " + ", ".join(laggards))
 
     # Breadth: only when a REAL field is present (guarded above).
     if _tape_has_breadth_field(tape):
@@ -2562,6 +2611,16 @@ def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None,
         "rates (10Y level + bps) or oil are present, work them in as concrete forces "
         "(duration, energy). Omit any of these silently if its field is absent - never "
         "invent a level or a mover.\n"
+        "- LEVER 3c - SECTOR IS AN ETF-MOVE PROXY, NEVER SECTOR-WIDE BREADTH: the "
+        "sector figures are SECTOR-ETF DAY MOVES, a leadership PROXY. An ETF gain can "
+        "ride one megacap, so you have NO evidence the whole sector participated. "
+        "Therefore EVERY sector mention MUST be ATTRIBUTED to the ETF move: write 'tech "
+        "ETFs led', 'energy ETFs lagged', 'the technology ETF (XLK) outperformed', or "
+        "'sector ETFs point to tech leadership'. FORBIDDEN: asserting the sector itself "
+        "moved as a group - never 'technology led', 'energy lagged', 'the tech sector "
+        "rallied', 'financials were strong', 'broad tech strength', 'tech names broadly "
+        "rose'. A bare sector name as the SUBJECT of a move verb is a breadth claim you "
+        "cannot support. Keep the ETF as the subject of any sector sentence.\n"
         "- LEVER 4 - VOICE: plain, short, one analyst. No jargon for sport, no throat-"
         "clearing, no AI hedging. Shape: 3-4 short paragraphs - (1) tape + why (with the "
         "no-catalyst clause when there is none), (2) internals + rates/oil + SECTOR "
@@ -2652,6 +2711,197 @@ def _pulse_breadth_violation(narrative, tape):
     if _tape_has_breadth_field(tape):
         return []
     return _narrative_breadth_claims(narrative)
+
+
+# ── Sector-attribution guard (#461 proxy honesty) ────────────────────────────
+# The sector figures the pulse consumes are sector-ETF DAY MOVES (a leadership
+# PROXY), not constituent breadth: XLK can be up on ONE megacap. Consuming them
+# as "technology led / energy lagged" asserts sector-wide breadth we cannot
+# support - wrong in the SAME reassuring direction the breadth guard exists to
+# kill. This guard flags a sector name used as the SUBJECT of a group-move verb
+# WITHOUT ETF attribution ('ETF' / 'ETFs' / an XL* ticker) nearby. Attributed
+# forms ('tech ETFs led', 'the technology ETF (XLK) outperformed') are clean.
+# The sector-name vocabulary derives from market_tape.SECTOR_ETFS labels plus
+# common short forms. Pure; offline-testable on a raw string.
+_SECTOR_NAME_TERMS = [
+    "technology", "tech", "financials", "financial", "energy", "health care",
+    "healthcare", "consumer discretionary", "consumer staples", "staples",
+    "industrials", "materials", "utilities", "real estate", "communication services",
+    "communications",
+]
+# Group-move verbs/adjectives that, applied to a bare sector name, assert the
+# whole sector participated (a breadth claim). "ETF(s)" / an XL* ticker within
+# the same clause is the attribution that makes it honest.
+_SECTOR_MOVE_TERMS = (
+    r"led|leading|lagged|lagging|rose|fell|rallied|rally|gained|gaining|climbed|"
+    r"dropped|slid|sank|jumped|surged|tumbled|outperformed|underperformed|"
+    r"advanced|declined|strong|strength|weak|weakness|soft|softness"
+)
+# Attribution tokens: 'ETF' / 'ETFs' (any case) or an SPDR sector ticker (XLK,
+# XLF, ... XLRE). Presence within the match window makes the claim attributed.
+_SECTOR_ATTR_RE = re.compile(r"\bETFs?\b|\bXL[A-Z]{1,2}\b", re.IGNORECASE)
+_SECTOR_CLAIM_RES = [
+    re.compile(
+        r"\b" + re.escape(term) + r"\b[^.;]{0,40}?\b(?:" + _SECTOR_MOVE_TERMS + r")\b",
+        re.IGNORECASE,
+    )
+    for term in _SECTOR_NAME_TERMS
+]
+
+
+def _tape_has_sector_field(tape):
+    """True when the tape carries the sector-ETF leadership proxy (leaders or
+    laggards populated), under either #461's nested shape or a flat alias. Pure."""
+    if not isinstance(tape, dict):
+        return False
+    view = _enrichment_view(tape)
+    for k in ("sector_leaders", "sector_laggards", "leaders", "laggards"):
+        v = view.get(k)
+        if isinstance(v, (list, tuple)) and len(v) > 0:
+            return True
+    return False
+
+
+def _narrative_unattributed_sector_claims(narrative):
+    """Sector-as-group move claims in the narrative that carry NO ETF attribution
+    within the matched clause. Returns the offending spans (deduped, lowercased).
+    Empty when every sector mention is either absent or ETF-attributed. Pure."""
+    if not isinstance(narrative, str) or not narrative.strip():
+        return []
+    seen, out = set(), []
+    for rx in _SECTOR_CLAIM_RES:
+        for m in rx.finditer(narrative):
+            span = m.group(0)
+            # Widen the attribution window a little past the match so 'tech led,
+            # per the sector ETFs' style trailing attribution still counts.
+            start = max(0, m.start() - 12)
+            end = min(len(narrative), m.end() + 24)
+            window = narrative[start:end]
+            if _SECTOR_ATTR_RE.search(window):
+                continue  # attributed to the ETF move - honest
+            key = " ".join(span.split()).strip().lower()
+            if key not in seen:
+                seen.add(key)
+                out.append(key)
+    return out
+
+
+def _pulse_sector_attribution_violation(narrative, tape):
+    """A sector claim is a violation ONLY when the tape is feeding the sector-ETF
+    proxy AND the narrative asserts a sector as a group-move subject without ETF
+    attribution. Gated on the proxy being present so we never false-flag prose on
+    a tape with no sector field. Deterministic backstop behind LEVER 3c. Returns
+    the offending spans (empty = clean). Pure."""
+    if not _tape_has_sector_field(tape):
+        return []
+    return _narrative_unattributed_sector_claims(narrative)
+
+
+# ── Enrichment-aware grounding (dead-path fix) ───────────────────────────────
+# overview_grounding.validate_pulse_grounding builds its sourced set from
+# tape['quotes'] + VIX + macro + stories ONLY. It has NO knowledge of #461's
+# enrichment block (rates level, oil level/pct, sector-ETF pcts, sector labels).
+# So the instant the V2 pulse SPENDS space on the enrichment (#463's whole point),
+# the validator flags those figures/entities as unsourced and forces the minimal
+# fallback -> the enrichment prose can NEVER ship. That is the real dead path: the
+# enrich flag was off (fixed) AND the grounding gate rejects enrichment prose. We
+# fix it in OUR file (no edit to overview_grounding): compute the enrichment
+# figures + entity labels as legitimately-sourced, and drop them from the
+# validator's violation lists. Reuses overview_grounding helpers by import.
+def _enrichment_sourced_figures(tape):
+    """The figure set the enrichment legitimately sources: 10Y level + bps,
+    oil level + pct, and each sector-ETF pct. Same (kind, mag, raw) shape as
+    overview_grounding._pulse_figures. Empty when no enrichment. Pure."""
+    figs = []
+    if not isinstance(tape, dict):
+        return figs
+    view = _enrichment_view(tape)
+    # Rates level + bps (flat aliases populated by _enrichment_view).
+    for k, kind in (("us10y_level", "pct"), ("us10y_bps", "count")):
+        v = view.get(k)
+        if v is not None:
+            try:
+                figs.append((kind, float(v), "enrichment"))
+            except (TypeError, ValueError):
+                pass
+    # Oil: level (a count magnitude) + pct.
+    wti = view.get("wti")
+    if isinstance(wti, dict):
+        for k, kind in (("level", "count"), ("pct", "pct")):
+            v = wti.get(k)
+            if v is not None:
+                try:
+                    figs.append((kind, float(v), "enrichment"))
+                except (TypeError, ValueError):
+                    pass
+    # Sector-ETF pcts (leaders + laggards).
+    for key in ("sector_leaders", "sector_laggards"):
+        for s in (view.get(key) or []):
+            if isinstance(s, dict) and s.get("pct") is not None:
+                try:
+                    figs.append(("pct", float(s["pct"]), "enrichment"))
+                except (TypeError, ValueError):
+                    pass
+    return figs
+
+
+def _enrichment_sourced_entities(tape):
+    """Lowercased sector labels the enrichment legitimately sources (so a sector
+    name in the pulse is not flagged as a hallucinated org). Pure."""
+    out = set()
+    if not isinstance(tape, dict):
+        return out
+    view = _enrichment_view(tape)
+    for key in ("sector_leaders", "sector_laggards"):
+        for s in (view.get(key) or []):
+            if isinstance(s, dict):
+                nm = (s.get("sector") or s.get("name") or s.get("label") or "").strip().lower()
+                if nm:
+                    out.add(nm)
+    return out
+
+
+def _validate_pulse_grounding_enriched(narrative, tape, macro_strip, top_stories):
+    """Wrap overview_grounding.validate_pulse_grounding, then FORGIVE the figures
+    and entities the #461 enrichment legitimately sources (rates / oil / sector-ETF
+    moves + sector labels). Without this, any pulse that uses the enrichment prose
+    is force-failed into the minimal fallback and the enrichment never ships. Reuses
+    overview_grounding._pulse_figures / ._figure_sourced by import. Returns the same
+    dict shape as validate_pulse_grounding. Pure."""
+    res = overview_grounding.validate_pulse_grounding(narrative, tape, macro_strip, top_stories)
+    enr_figs = _enrichment_sourced_figures(tape)
+    enr_ents = _enrichment_sourced_entities(tape)
+    if not enr_figs and not enr_ents:
+        return res
+    # Re-filter unsourced figures: drop any now covered by the enrichment set.
+    kept_figs = []
+    for raw in res.get("unsourced_figures") or []:
+        parsed = overview_grounding._pulse_figures(raw)
+        forgiven = any(
+            overview_grounding._figure_sourced(kind, mag, enr_figs)
+            for (kind, mag, _r) in parsed
+        )
+        if not forgiven:
+            kept_figs.append(raw)
+    # Re-filter unsupported entities: drop sector labels the enrichment sources.
+    kept_ents = [
+        e for e in (res.get("unsupported_entities") or [])
+        if e.strip().lower() not in enr_ents
+    ]
+    tapes = res.get("tape_violations") or []
+    reasons = []
+    if kept_ents:
+        reasons.append("unsupported entities: " + ", ".join(kept_ents))
+    reasons.extend(tapes)
+    if kept_figs:
+        reasons.append("unsourced figures: " + ", ".join(kept_figs))
+    return {
+        "ok": not kept_ents and not tapes and not kept_figs,
+        "unsupported_entities": kept_ents,
+        "tape_violations": tapes,
+        "unsourced_figures": kept_figs,
+        "reasons": reasons,
+    }
 
 
 # Headline figure guard (gap 5). The V2 pulse figure guard covers the narrative
@@ -2840,7 +3090,13 @@ def run(brief_type="morning"):
             try:
                 import impact_ranking as _ir
                 try:
-                    _materiality_tape = market_tape.fetch_tape()
+                    # enrich=True: this hoisted fetch is threaded (via
+                    # _materiality_tape -> tape_obj) into BOTH the pulse prose
+                    # (generate_market_pulse) AND the persisted snapshot
+                    # (serialize_tape_snapshot). Without enrich the rates / oil /
+                    # sector-ETF prose from #463 silently degrades (dead path) and
+                    # the snapshot omits enrichment. +13 bounded Yahoo GETs, no LLM.
+                    _materiality_tape = market_tape.fetch_tape(enrich=True)
                 except Exception as _te:
                     print(f"  ⚠ materiality tape fetch failed (non-fatal): {_te}")
                     _materiality_tape = None
@@ -3486,7 +3742,10 @@ def run(brief_type="morning"):
                     # article corpus, so legitimate macro/geography/gov vocabulary is
                     # not false-flagged. ONE bounded re-ask, then the minimal fallback.
                     _candidate = _mp["narrative"]
-                    _vres = overview_grounding.validate_pulse_grounding(
+                    # Enrichment-aware: forgives rates/oil/sector-ETF figures +
+                    # sector labels the #461 enrichment sources, so enrichment
+                    # prose is not force-failed into the minimal fallback.
+                    _vres = _validate_pulse_grounding_enriched(
                         _candidate, tape_obj, _pulse_macro, _pulse_stories
                     )
                     # Deterministic breadth guard: a breadth assertion with NO breadth
@@ -3496,7 +3755,15 @@ def run(brief_type="morning"):
                     _bviol = _pulse_breadth_violation(_candidate, tape_obj)
                     if _bviol:
                         print(f"  ⚠ pulse breadth violation (V2): unsupported breadth claim(s): {', '.join(_bviol)}")
-                    if not _vres["ok"] or _bviol:
+                    # Deterministic sector-attribution guard (#461 proxy honesty): a
+                    # sector asserted as a group-move subject with NO ETF attribution
+                    # ('technology led') overstates the ETF-move proxy as sector-wide
+                    # breadth. Same reassuring-direction failure as the breadth bug.
+                    # Fold into the same re-ask + fallback path.
+                    _sviol = _pulse_sector_attribution_violation(_candidate, tape_obj)
+                    if _sviol:
+                        print(f"  ⚠ pulse sector-attribution violation (V2): unattributed sector-breadth claim(s): {', '.join(_sviol)}")
+                    if not _vres["ok"] or _bviol or _sviol:
                         for _r in _vres["reasons"]:
                             print(f"  ⚠ pulse grounding violation (V2): {_r}")
                         _v2re = generate_market_pulse(
@@ -3507,9 +3774,10 @@ def run(brief_type="morning"):
                             _v2re
                             and overview_grounding.validate_pulse_opening(
                                 _v2re, _final_corpus_companies, brief_type)["ok"]
-                            and overview_grounding.validate_pulse_grounding(
+                            and _validate_pulse_grounding_enriched(
                                 _v2re, tape_obj, _pulse_macro, _pulse_stories)["ok"]
                             and not _pulse_breadth_violation(_v2re, tape_obj)
+                            and not _pulse_sector_attribution_violation(_v2re, tape_obj)
                         )
                         if _reok:
                             _candidate = _v2re
