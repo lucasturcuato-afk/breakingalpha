@@ -300,10 +300,12 @@ export async function GET(request: NextRequest) {
       // Explicit column list: exactly the briefings-row columns the frontend
       // consumes (morning-brief + evening-wrap readers) plus id/created_at used
       // by the route itself for output_ids, freshness/age, and ordering. This
-      // replaces select("*") so internal-only columns (e.g. market_tape) stop
-      // being serialized to the client. The response shape for every consumed
-      // field is unchanged; only unread internal columns are dropped.
-      .select("id, created_at, briefing_type, headline, summary, lead_paragraph, supporting_context, what_to_watch, market_tone, sections, sector_breakdown, top_deals, market_pulse, macro_panel")
+      // replaces select("*") so internal-only columns stop being serialized to
+      // the client. market_tape is INCLUDED on purpose: it is the persisted
+      // per-session index/regime snapshot the evening-wrap panel and Close pill
+      // render from, so a historical wrap shows its OWN session close and not a
+      // live view-time re-fetch (archive integrity). See evening-wrap/page.tsx.
+      .select("id, created_at, briefing_type, headline, summary, lead_paragraph, supporting_context, what_to_watch, market_tone, sections, sector_breakdown, top_deals, market_pulse, macro_panel, market_tape")
       .eq("briefing_type", type)
       .neq("headline", "Market Intelligence Unavailable")
       .order("created_at", { ascending: false })

@@ -111,7 +111,39 @@ interface BriefingData {
   } | null;
   morning_review?: MorningReviewShape | null;
   macro_panel?: { catalysts?: CatalystItem[] } | null;
+  market_tape?: MarketTape | null;
 }
+
+// Persisted per-session index/regime snapshot written by the pipeline
+// (backend/market_tape.py) onto the briefings row. This is the ARCHIVE of what
+// the tape looked like at that session's close. The evening-wrap index panel
+// and Close pill render from THIS, not a view-time live re-fetch, so a
+// historical wrap shows its own session close forever. Shape mirrors the
+// persisted jsonb: as_of ISO, regime, per-index {pct, level}, plus vix.
+interface TapeIndex { pct: number; level: number }
+interface MarketTape {
+  as_of?: string;
+  regime?: string;
+  indices?: {
+    sp500?: TapeIndex;
+    nasdaq?: TapeIndex;
+    dow?: TapeIndex;
+    russell?: TapeIndex;
+  };
+  vix_pct?: number;
+  vix_level?: number;
+}
+
+// Maps the scorecard's Yahoo-style symbol to the persisted tape's index key.
+// Only the four equity indices are persisted; 10Y yield and WTI are not on the
+// tape, so on a historical wrap those two cells have no snapshot and render an
+// honest dash rather than a live substitution.
+const SYM_TO_TAPE_KEY: Record<string, keyof NonNullable<MarketTape["indices"]>> = {
+  "^GSPC": "sp500",
+  "^IXIC": "nasdaq",
+  "^DJI": "dow",
+  "^RUT": "russell",
+};
 
 function storyToContent(story: StoryData): ContentDescriptor {
   return {
@@ -261,6 +293,12 @@ export default function EveningWrapPage() {
             market_pulse: marketPulse,
             morning_review: morningReview,
             macro_panel: macroPanel,
+            market_tape: (() => {
+              const t = b.market_tape;
+              if (!t) return null;
+              if (typeof t === "string") { try { return JSON.parse(t) as MarketTape; } catch { return null; } }
+              return t as MarketTape;
+            })(),
           });
           setIsStale(data.is_stale === true);
           if (data.last_attempt_status) setLastRunStatus(data.last_attempt_status);
@@ -485,22 +523,81 @@ export default function EveningWrapPage() {
   const dateStr = formatDatePretty(now);
   const timeStr = formatTimePretty(now);
 
+  // ── ARCHIVE INTEGRITY: index panel + Close pill render from the PERSISTED
+  // per-session snapshot, not a view-time live re-fetch. ─────────────────────
+  // The `scorecard` state above is a LIVE /api/watchlist-quotes pull, so an old
+  // wrap opened today used to show TODAY's numbers (a Jul 9 wrap opened Jul 10
+  // rendered Jul 10 index levels and Jul 10's close word). The pipeline persists
+  // the tape it saw at THIS brief's close on briefing.market_tape; that is the
+  // source of truth for what this session looked like and must be shown forever.
+  //
+  // Live re-fetch is allowed ONLY when the brief's session IS the current
+  // session: a wrap viewed on its own trading day may show live intraday drift.
+  // A historical wrap must NOT. We compare the persisted tape's as_of ET
+  // calendar day to the current ET calendar day; equal => current session.
+  // NOTE: this is a BRIEF-ARTIFACT gate only. The global mood ticker
+  // (useLiveMood, site chrome) stays live and is deliberately untouched here.
+  const tape = briefing?.market_tape ?? null;
+  const etDay = (d: Date | null) =>
+    d && !isNaN(d.getTime())
+      ? d.toLocaleDateString("en-CA", { timeZone: "America/New_York" })
+      : null;
+  const tapeAsOf = tape?.as_of ? new Date(tape.as_of) : null;
+  const isCurrentSession =
+    tapeAsOf !== null && etDay(tapeAsOf) === etDay(new Date());
+
+  // Resolve a scorecard cell for a symbol: prefer the PERSISTED tape (archive),
+  // fall back to LIVE only when this brief IS the current session. Symbols not
+  // on the persisted tape (10Y yield, WTI) return null on a historical wrap so
+  // they render an honest dash rather than a live substitution.
+  const snapshotCell = (
+    sym: string,
+  ): { price: string; pct: number } | null => {
+    const key = SYM_TO_TAPE_KEY[sym];
+    const idx = key ? tape?.indices?.[key] : undefined;
+    if (idx && typeof idx.level === "number" && typeof idx.pct === "number") {
+      return {
+        price: idx.level.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }),
+        pct: idx.pct,
+      };
+    }
+    // No persisted value for this symbol. Live is honest only for the current
+    // session; a historical wrap gets null (renders a dash), never live.
+    return isCurrentSession ? scorecard[sym] ?? null : null;
+  };
+
+  // True legacy brief: no persisted tape at all. The panel then renders an
+  // honest "snapshot unavailable" state instead of a live substitution, EXCEPT
+  // when the brief is the current session (live intraday is honest there).
+  const snapshotUnavailable = tape === null && !isCurrentSession;
+
+  // Feed the Close pill from the SAME resolved snapshot as the panel, so the
+  // pill above the grid can never derive from a different (live) tape than the
+  // numbers beneath it. On a historical wrap this is the persisted S&P/Russell;
+  // on the current session it is live; on a legacy no-tape wrap both spx and
+  // russell are null and reconcileCloseWord degrades to no verdict.
+  const pillSpx = snapshotCell("^GSPC")?.pct;
+  const pillRussell = snapshotCell("^RUT")?.pct;
+
   // Close verdict comes from the tape-grounded sentiment_word, then passes a
   // presentation-layer truth gate. The backend word is minted from a VIX/SPX
   // regime ladder that never looks at breadth (backend/market_tape.py), so a
   // narrow up-drift (S&P green, Russell red) could still render "buoyant"
   // directly above prose saying small-caps lagged. reconcileCloseWord() keeps
-  // the grounded word when it is consistent with the ACTUAL scorecard tape
-  // (S&P magnitude + Russell breadth, both already fetched below), and
-  // substitutes an honest word only when the backend word overclaims. When the
-  // backend could not ground the word AND we have no live tape, it ships null
-  // and the hero renders without a verdict rather than asserting a fabricated
-  // tone. Never default to "mixed" or to the LLM market_tone here.
+  // the grounded word when it is consistent with the ACTUAL persisted tape
+  // (S&P magnitude + Russell breadth), and substitutes an honest word only when
+  // the backend word overclaims. When the backend could not ground the word AND
+  // we have no tape, it ships null and the hero renders without a verdict rather
+  // than asserting a fabricated tone. Never default to "mixed" or to the LLM
+  // market_tone here.
   const closeWord = reconcileCloseWord(
     briefing?.market_pulse?.sentiment_word || null,
     {
-      spxPct: scorecard["^GSPC"]?.pct,
-      russellPct: scorecard["^RUT"]?.pct,
+      spxPct: pillSpx,
+      russellPct: pillRussell,
     },
   );
   const closeBody =
@@ -851,7 +948,28 @@ export default function EveningWrapPage() {
                 </p>
 
                 {/* Scorecard grid — sits inside the dark hero, so all
-                    values are literal. */}
+                    values are literal. Renders from the PERSISTED session tape
+                    (archive integrity); a legacy wrap with no persisted tape
+                    shows an honest "snapshot unavailable" state, never a live
+                    view-time substitution. */}
+                {snapshotUnavailable ? (
+                  <div
+                    className="font-sans"
+                    style={{
+                      background: "rgba(255,253,249,0.05)",
+                      border: "1px solid rgba(212,168,75,0.2)",
+                      borderRadius: 10,
+                      padding: "18px 16px",
+                      textAlign: "center",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: "rgba(255,253,249,0.55)",
+                      position: "relative",
+                    }}
+                  >
+                    Index snapshot unavailable for this session.
+                  </div>
+                ) : (
                 <div
                   style={{
                     display: "grid",
@@ -865,7 +983,10 @@ export default function EveningWrapPage() {
                   }}
                 >
                   {SCORECARD_SYMBOLS.map((s, i) => {
-                    const q = scorecard[s.sym];
+                    // Persisted-snapshot first (archive integrity); live only on
+                    // the current session; null (dash) on a historical wrap for
+                    // symbols the tape did not persist (10Y, WTI).
+                    const q = snapshotCell(s.sym);
                     const pct = q?.pct ?? 0;
                     const isLast = i === SCORECARD_SYMBOLS.length - 1;
                     // Direction and sentiment are separate axes. The glyph
@@ -928,6 +1049,7 @@ export default function EveningWrapPage() {
                     );
                   })}
                 </div>
+                )}
               </div>
             </section>
 
