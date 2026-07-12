@@ -11,14 +11,13 @@ Run from repo root: python3 -m unittest backend.tests.test_market_tape
 """
 import json
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from backend.market_tape import (
     DRIVER_MIN_ABS_PCT,
     DRIVER_TOP_K,
     MATERIALITY_MIN_DISTINCT_SOURCES,
-    QUOTE_MAX_AGE_HOURS,
     REGIME_DEFAULT_WORD,
     REGIME_VOCAB,
     build_overview_subject_directive,
@@ -26,9 +25,12 @@ from backend.market_tape import (
     build_tape_driver_names,
     compute_regime,
     enforce_tape_consistency,
+    indices_frozen_suspect,
+    last_trading_session_open,
     overview_subject_gate,
     parse_yahoo_daily,
     quote_is_fresh,
+    quote_staleness,
     serialize_tape_snapshot,
     tape_has_material_move,
 )
@@ -467,9 +469,9 @@ class SerializeTapeSnapshotTests(unittest.TestCase):
 
 
 class QuoteFreshnessTests(unittest.TestCase):
-    """FRESHNESS ASSERT: a quote timestamp must belong to the current session.
-    This is the P0 defense against an index panel frozen to a prior-session
-    close while VIX / oil / names move."""
+    """FRESHNESS ASSERT, POST-#461-BLAST-RADIUS-FIX. The two failure modes are
+    split: a PROVABLY-STALE quote (present ts older than the last trading session)
+    is dropped; a MISSING ts is UNVERIFIABLE and must NOT be treated as stale."""
 
     # A fixed Wednesday 2026-07-08 20:00 UTC (16:00 ET, a normal weekday close).
     WED = datetime(2026, 7, 8, 20, 0, 0, tzinfo=timezone.utc)
@@ -479,32 +481,141 @@ class QuoteFreshnessTests(unittest.TestCase):
     def test_current_session_is_fresh(self):
         ts = int(self.WED.timestamp())  # stamped now
         self.assertTrue(quote_is_fresh(ts, now_utc=self.WED))
+        self.assertEqual(quote_staleness(ts, now_utc=self.WED), "fresh")
 
     def test_within_overnight_gap_is_fresh(self):
-        # 20h old on a weekday: within QUOTE_MAX_AGE_HOURS.
-        ts = int(self.WED.timestamp()) - 20 * 3600
+        # Stamped at today's open (13:30 UTC), read at 20:00 UTC: same session.
+        ts = int(self.WED.replace(hour=13, minute=30).timestamp())
         self.assertTrue(quote_is_fresh(ts, now_utc=self.WED))
+        self.assertEqual(quote_staleness(ts, now_utc=self.WED), "fresh")
 
-    def test_prior_session_echo_is_stale_on_weekday(self):
-        # ~44h old: a two-session-old echo. This is the frozen-panel bug shape.
-        ts = int(self.WED.timestamp()) - 44 * 3600
+    def test_prior_session_quote_is_fresh_for_morning_brief(self):
+        # The immediately-prior session is FRESH: a morning brief generates pre/at
+        # open and legitimately carries the last close (Tue close read Wed). Not an
+        # echo. Only a TWO-session-old stamp is provably stale (below).
+        prior = self.WED - timedelta(days=1)  # Tue
+        ts = int(prior.timestamp())
+        self.assertTrue(quote_is_fresh(ts, now_utc=self.WED))
+        self.assertEqual(quote_staleness(ts, now_utc=self.WED), "fresh")
+
+    def test_old_stamp_is_provably_stale_on_weekday(self):
+        # Stamped well before the fresh floor (a week back): provably stale. The
+        # floor tolerates the reference session, the prior session, and one holiday
+        # of slack; a stamp older than that is a real ancient echo. The to-the-penny
+        # frozen_suspect detector is the independent catch for a same-value echo.
+        old = self.WED - timedelta(days=7)
+        ts = int(old.timestamp())
         self.assertFalse(quote_is_fresh(ts, now_utc=self.WED))
-        # Sanity: just over the trading-day limit is stale.
-        ts_edge = int(self.WED.timestamp()) - (QUOTE_MAX_AGE_HOURS + 1) * 3600
-        self.assertFalse(quote_is_fresh(ts_edge, now_utc=self.WED))
+        self.assertEqual(quote_staleness(ts, now_utc=self.WED), "stale")
 
-    def test_missing_timestamp_is_not_fresh(self):
-        # No timestamp == cannot prove current session == fail loud.
-        self.assertFalse(quote_is_fresh(None, now_utc=self.WED))
+    def test_prior_two_sessions_are_fresh_holiday_slack(self):
+        # Both the immediately-prior session AND the one before it (holiday slack)
+        # are fresh, so a post-holiday legitimate quote is never false-flagged.
+        one_back = int((self.WED - timedelta(days=1)).timestamp())  # Tue
+        two_back = int((self.WED - timedelta(days=2)).timestamp())  # Mon
+        self.assertTrue(quote_is_fresh(one_back, now_utc=self.WED))
+        self.assertTrue(quote_is_fresh(two_back, now_utc=self.WED))
+
+    def test_missing_timestamp_is_unverifiable_not_stale(self):
+        # THE #461 BLAST-RADIUS FIX: a missing timestamp is UNVERIFIABLE, not
+        # stale. It must NOT be dropped (quote_is_fresh True keeps it in the loop);
+        # the fetch path marks it unverified instead of nuking the tape.
+        self.assertEqual(quote_staleness(None, now_utc=self.WED), "unverifiable")
+        self.assertTrue(quote_is_fresh(None, now_utc=self.WED))
 
     def test_weekend_allows_friday_close(self):
-        # Sat noon, quote stamped Fri 16:00 ET (~44h back) is legitimately fresh.
-        friday_close = int((self.SAT.timestamp())) - 44 * 3600
+        # Sat noon, quote stamped Fri (last trading session) is legitimately fresh.
+        friday = self.SAT - timedelta(days=1)
+        friday_close = int(friday.replace(hour=20, minute=0).timestamp())
         self.assertTrue(quote_is_fresh(friday_close, now_utc=self.SAT))
+        self.assertEqual(quote_staleness(friday_close, now_utc=self.SAT), "fresh")
 
-    def test_future_timestamp_is_not_fresh(self):
-        ts = int(self.WED.timestamp()) + 3600
+    def test_future_timestamp_is_stale(self):
+        ts = int(self.WED.timestamp()) + 3 * 3600
         self.assertFalse(quote_is_fresh(ts, now_utc=self.WED))
+        self.assertEqual(quote_staleness(ts, now_utc=self.WED), "stale")
+
+
+class LastTradingSessionHolidayTests(unittest.TestCase):
+    """The last-trading-session reference must be holiday-safe: a Monday market
+    holiday cannot false-flag a legitimate Friday-stamped quote as stale."""
+
+    def test_monday_holiday_does_not_flag_friday_quote(self):
+        # Tuesday 2026-07-07 after a Monday July-6-observed holiday. The true last
+        # session was Friday 2026-07-03 (Monday was closed). A Friday-stamped quote
+        # read on Tuesday must be FRESH: the fresh floor accepts the reference
+        # session AND the one before it, and a holiday only widens the window, so a
+        # Monday market close never false-flags a legitimate Friday quote.
+        tue = datetime(2026, 7, 7, 20, 0, 0, tzinfo=timezone.utc)
+        friday = datetime(2026, 7, 3, 20, 0, 0, tzinfo=timezone.utc)
+        self.assertEqual(last_trading_session_open(tue).weekday(), 1)  # Tuesday
+        self.assertTrue(
+            quote_is_fresh(int(friday.timestamp()), now_utc=tue),
+            "Monday holiday must NOT flag a legitimate Friday quote as stale",
+        )
+        self.assertEqual(quote_staleness(int(friday.timestamp()), now_utc=tue), "fresh")
+        # A genuine Friday quote read on the weekend (the holiday-adjacent case)
+        # is fresh too.
+        sat = datetime(2026, 7, 4, 12, 0, 0, tzinfo=timezone.utc)
+        self.assertTrue(quote_is_fresh(int(friday.timestamp()), now_utc=sat))
+
+    def test_reference_is_prior_weekday_before_open(self):
+        # Monday 2026-07-06 08:00 UTC, before the 13:30 UTC open: the reference
+        # session is the PRIOR weekday (Friday 2026-07-03), not Monday.
+        mon_preopen = datetime(2026, 7, 6, 8, 0, 0, tzinfo=timezone.utc)
+        ref = last_trading_session_open(mon_preopen)
+        self.assertEqual(ref.weekday(), 4)  # Friday
+        self.assertEqual(ref.date(), datetime(2026, 7, 3).date())
+
+    def test_weekend_reference_is_friday(self):
+        sun = datetime(2026, 7, 12, 10, 0, 0, tzinfo=timezone.utc)  # Sunday
+        ref = last_trading_session_open(sun)
+        self.assertEqual(ref.weekday(), 4)  # Friday
+        self.assertEqual(ref.date(), datetime(2026, 7, 10).date())
+
+
+class FrozenSuspectDetectorTests(unittest.TestCase):
+    """DIRECT FREEZE DETECTOR: the actually-observed #461 signature. An index
+    level identical TO THE PENNY across two different sessions is the freeze,
+    caught WITHOUT any dependency on timestamp metadata."""
+
+    PRIOR = {
+        "indices": {
+            "sp500": {"level": 7543.64, "pct": 0.81},
+            "nasdaq": {"level": 26206.89, "pct": 0.79},
+            "dow": {"level": 44100.0, "pct": 0.4},
+            "russell": {"level": 2300.0, "pct": -0.1},
+        }
+    }
+
+    def test_identical_to_penny_is_flagged(self):
+        # S&P echoes the prior session's exact level -> frozen suspect.
+        cur = {"^GSPC": {"price": 7543.64}, "^IXIC": {"price": 26400.0}}
+        self.assertEqual(indices_frozen_suspect(cur, self.PRIOR), ["^GSPC"])
+
+    def test_moved_index_not_flagged(self):
+        # A real move (even by a penny) is not a freeze.
+        cur = {"^GSPC": {"price": 7543.65}, "^IXIC": {"price": 26300.0}}
+        self.assertEqual(indices_frozen_suspect(cur, self.PRIOR), [])
+
+    def test_multiple_frozen_indices_all_listed(self):
+        cur = {"^GSPC": {"price": 7543.64}, "^IXIC": {"price": 26206.89}}
+        self.assertEqual(
+            set(indices_frozen_suspect(cur, self.PRIOR)), {"^GSPC", "^IXIC"}
+        )
+
+    def test_missing_prior_or_current_is_safe(self):
+        self.assertEqual(indices_frozen_suspect(None, self.PRIOR), [])
+        self.assertEqual(indices_frozen_suspect({"^GSPC": {"price": 1.0}}, None), [])
+        self.assertEqual(indices_frozen_suspect({}, {}), [])
+        # A garbage prior shape does not raise.
+        self.assertEqual(indices_frozen_suspect({"^GSPC": {"price": 1.0}}, {"indices": "x"}), [])
+
+    def test_vix_is_not_a_freeze_signature(self):
+        # VIX excluded: a round identical VIX level is not the frozen-panel bug.
+        prior = {"indices": {}, "vix_level": 15.03}
+        cur = {"^VIX": {"price": 15.03}}
+        self.assertEqual(indices_frozen_suspect(cur, prior), [])
 
 
 class SerializeStaleAndEnrichmentTests(unittest.TestCase):
@@ -555,6 +666,105 @@ class SerializeStaleAndEnrichmentTests(unittest.TestCase):
         snap = serialize_tape_snapshot(self.BASE)
         self.assertEqual(snap["indices"]["sp500"]["pct"], 1.33)
         self.assertEqual(snap["indices"]["sp500"]["level"], 7600.0)
+
+    def test_unverified_and_frozen_carried_and_empty_by_default(self):
+        snap = serialize_tape_snapshot(self.BASE)
+        self.assertEqual(snap["unverified"], [])
+        self.assertEqual(snap["frozen_suspect"], [])
+
+    def test_unverified_and_frozen_symbols_carried(self):
+        tape = {**self.BASE, "unverified": ["^IXIC"], "frozen_suspect": ["^GSPC"]}
+        snap = serialize_tape_snapshot(tape)
+        self.assertEqual(snap["unverified"], ["^IXIC"])
+        self.assertEqual(snap["frozen_suspect"], ["^GSPC"])
+
+
+class FetchTapeModeSplitTests(unittest.TestCase):
+    """fetch_tape splits the two failure modes: a PROVABLY-STALE quote is dropped
+    loud; a MISSING-timestamp quote is KEPT + marked unverified (never nukes the
+    tape). fetch_quote is monkeypatched so no network is touched."""
+
+    NOW = datetime(2026, 7, 8, 20, 0, 0, tzinfo=timezone.utc)  # Wed, post-open
+
+    def _q(self, price, ts):
+        return {"price": price, "prev": price - 1, "pct": 0.5, "change": 1.0, "ts": ts}
+
+    def _run_with(self, quote_map, prior=None):
+        import backend.market_tape as mt
+
+        fresh_ts = int(self.NOW.timestamp())
+        orig_fetch_quote = mt.fetch_quote
+        orig_now = mt.datetime
+        try:
+            mt.fetch_quote = lambda sym, timeout=8: quote_map.get(sym)
+
+            class _FrozenNow(datetime):
+                @classmethod
+                def now(cls, tz=None):
+                    return self.NOW
+            mt.datetime = _FrozenNow
+            return mt.fetch_tape(prior_session_tape=prior), fresh_ts
+        finally:
+            mt.fetch_quote = orig_fetch_quote
+            mt.datetime = orig_now
+
+    def test_missing_ts_kept_and_marked_unverified(self):
+        # ^IXIC has NO timestamp on both the first fetch and the retry -> KEPT.
+        fresh = int(self.NOW.timestamp())
+        qmap = {
+            "^GSPC": self._q(7600.0, fresh),
+            "^IXIC": self._q(26000.0, None),
+            "^DJI": self._q(44000.0, fresh),
+            "^RUT": self._q(2300.0, fresh),
+            "^VIX": self._q(15.0, fresh),
+        }
+        tape, _ = self._run_with(qmap)
+        self.assertIsNotNone(tape, "missing-ts must NOT nuke the tape")
+        self.assertIn("^IXIC", tape["quotes"], "unverifiable quote must be KEPT")
+        self.assertIn("^IXIC", tape["unverified"])
+        self.assertEqual(tape["stale"], [])
+
+    def test_provably_stale_ts_dropped_loud(self):
+        # ^IXIC stamped a week back -> well before the fresh floor -> provably
+        # stale -> dropped. (The prior 1-2 sessions are legitimate reads.)
+        fresh = int(self.NOW.timestamp())
+        stale = int((self.NOW - timedelta(days=7)).timestamp())
+        qmap = {
+            "^GSPC": self._q(7600.0, fresh),
+            "^IXIC": self._q(26000.0, stale),
+            "^DJI": self._q(44000.0, fresh),
+            "^RUT": self._q(2300.0, fresh),
+            "^VIX": self._q(15.0, fresh),
+        }
+        tape, _ = self._run_with(qmap)
+        self.assertIsNotNone(tape)
+        self.assertNotIn("^IXIC", tape["quotes"], "provably-stale quote must be DROPPED")
+        self.assertIn("^IXIC", tape["stale"])
+        self.assertEqual(tape["unverified"], [])
+
+    def test_missing_ts_on_vix_does_not_kill_tape(self):
+        # The regression #461 introduced: a missing ts on ^VIX/^GSPC used to nuke
+        # the whole tape. Now it is kept + unverified, tape stays usable.
+        fresh = int(self.NOW.timestamp())
+        qmap = {
+            "^GSPC": self._q(7600.0, None),
+            "^VIX": self._q(15.0, None),
+        }
+        tape, _ = self._run_with(qmap)
+        self.assertIsNotNone(tape, "missing ts on VIX/GSPC must not nuke the tape")
+        self.assertEqual(set(tape["unverified"]), {"^GSPC", "^VIX"})
+
+    def test_frozen_suspect_flagged_against_prior_session(self):
+        # ^GSPC prints the prior session's exact level -> frozen_suspect.
+        fresh = int(self.NOW.timestamp())
+        prior = {"indices": {"sp500": {"level": 7600.0}}}
+        qmap = {
+            "^GSPC": self._q(7600.0, fresh),
+            "^VIX": self._q(15.0, fresh),
+        }
+        tape, _ = self._run_with(qmap, prior=prior)
+        self.assertIsNotNone(tape)
+        self.assertEqual(tape["frozen_suspect"], ["^GSPC"])
 
 
 if __name__ == "__main__":

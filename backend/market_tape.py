@@ -21,7 +21,7 @@ the unit tests can exercise the pure pieces directly.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -162,18 +162,39 @@ _YAHOO_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; Signalera/1.0)"}
 _DAY_SECONDS = 86400
 
 # ── Freshness guard (P0: stale-index defense) ───────────────────────────────
-# A quote timestamp (regularMarketTime, unix seconds) must belong to the CURRENT
-# session to be trusted. On a weekend / holiday, or after a silently-stale fetch,
-# Yahoo can echo a prior session's close indefinitely; that is exactly how an
-# index panel freezes to the penny across two sessions while VIX/oil/names move.
-# We treat a quote as stale when its timestamp is older than this many hours at
-# fetch time. 30h covers a normal overnight gap (Fri close -> Mon open is handled
-# by the weekend allowance below) without tolerating a two-session-old echo.
-QUOTE_MAX_AGE_HOURS = 30
-# On weekends the last real session is Friday, so a quote can legitimately be up
-# to ~72h old. We do NOT hard-fail then; we only flag it. The current-session
-# assert is meaningful on trading days.
-_WEEKEND_MAX_AGE_HOURS = 80
+# A quote timestamp (regularMarketTime, unix seconds) must belong to the most
+# recent ACTUAL trading session to be trusted. On a weekend / holiday, or after a
+# silently-stale fetch, Yahoo can echo a PRIOR session's close indefinitely; that
+# is exactly how an index panel freezes to the penny across two sessions while
+# VIX/oil/names move.
+#
+# THE TWO FAILURE MODES ARE DIFFERENT AND MUST NOT BE CONFLATED (PR #461 blast
+# radius fix):
+#   1. PROVABLY STALE: the timestamp is PRESENT and belongs to a session strictly
+#      BEFORE the most recent trading session. This is a real prior-session echo.
+#      Drop it loud. (quote_is_fresh -> False)
+#   2. UNVERIFIABLE: the timestamp is MISSING. We cannot prove staleness OR
+#      freshness. #461 itself proved this path was never actually stale (stored
+#      Jul 9 != Jul 10). Absent metadata must NEVER kill a brief: keep the quote,
+#      log loud, mark it unverified. quote_is_fresh returns True for a missing ts
+#      so the fetch path does not drop it; the caller separates the two modes via
+#      quote_staleness (below).
+#
+# Freshness uses a LAST-TRADING-SESSION reference, not a fixed hour window, so a
+# Monday market holiday cannot false-positive a legitimate Friday-stamped quote.
+# The most recent trading session is the last weekday on or before `now` (a coarse
+# but holiday-safe reference: it counts Mon-Fri as sessions, so the reference is
+# always the last plausible session open, and a genuine holiday only widens the
+# allowance, it never tightens it). A quote is fresh when its timestamp is at or
+# after that session's open, allowing for the overnight gap to `now`.
+
+# A trading session's quote can legitimately be as old as the gap from the most
+# recent session open to `now`. We add a small safety pad for clock skew and the
+# after-hours stamp drift Yahoo shows post-close.
+_SESSION_SKEW_HOURS = 6.0
+# US regular open is 09:30 ET == 13:30 UTC (14:30 UTC in winter; the extra hour
+# is absorbed by _SESSION_SKEW_HOURS). Reference the session by its UTC open.
+_SESSION_OPEN_UTC_HOUR = 13.5
 
 
 def _quote_age_hours(ts: int | None, *, now_utc: datetime | None = None) -> float | None:
@@ -187,18 +208,149 @@ def _quote_age_hours(ts: int | None, *, now_utc: datetime | None = None) -> floa
         return None
 
 
-def quote_is_fresh(ts: int | None, *, now_utc: datetime | None = None) -> bool:
-    """FRESHNESS ASSERT: True when a quote timestamp belongs to the current
-    session (age within QUOTE_MAX_AGE_HOURS, or the weekend allowance on Sat/Sun).
-    A missing timestamp is NOT fresh: we cannot prove the current session, so we
-    fail loud rather than trust an unstamped price. Pure, never raises."""
-    age = _quote_age_hours(ts, now_utc=now_utc)
-    if age is None:
-        return False
+def _weekday_open_on_or_before(dt: datetime) -> datetime:
+    """The 09:30-ET session open (in UTC) of the last weekday on or before dt's
+    calendar day, anchored to dt's date at the session-open hour. Pure."""
+    ref = dt.replace(
+        hour=int(_SESSION_OPEN_UTC_HOUR),
+        minute=int((_SESSION_OPEN_UTC_HOUR % 1) * 60),
+        second=0,
+        microsecond=0,
+    )
+    while ref.weekday() >= 5:  # Mon=0 .. Fri=4; skip Sat/Sun
+        ref = ref - timedelta(days=1)
+    return ref
+
+
+def last_trading_session_open(now_utc: datetime | None = None) -> datetime:
+    """Return the UTC datetime of the most recent trading session's open at or
+    before `now_utc`. The most recent session is the last weekday (Mon-Fri) on or
+    before today; if today is a weekday but `now` is before that day's open, the
+    reference is the PRIOR weekday's open. Holiday-safe by construction: a market
+    holiday is not a distinct case, it only means the true last session was
+    earlier, which widens the freshness allowance (never tightens it). Pure."""
     now = now_utc or datetime.now(timezone.utc)
-    # Python weekday(): Mon=0 .. Sun=6. Sat/Sun get the wider allowance.
-    limit = _WEEKEND_MAX_AGE_HOURS if now.weekday() >= 5 else QUOTE_MAX_AGE_HOURS
-    return 0 <= age <= limit
+    open_today = now.replace(
+        hour=int(_SESSION_OPEN_UTC_HOUR),
+        minute=int((_SESSION_OPEN_UTC_HOUR % 1) * 60),
+        second=0,
+        microsecond=0,
+    )
+    # Start from today if a weekday and we are at/after its open; else step back.
+    anchor = now if now >= open_today else (now - timedelta(days=1))
+    return _weekday_open_on_or_before(anchor)
+
+
+# How many weekday sessions before the reference session are still tolerated as
+# fresh. WHY 2 (not 1): the morning brief generates pre/at-open and legitimately
+# carries the PRIOR close (ref-1). One more session of slack (ref-2) absorbs a
+# single market HOLIDAY without a holiday calendar: on a post-holiday Tuesday the
+# true last session is Friday, which is the 2nd weekday back (Mon was closed), so
+# a legitimate Friday quote stays fresh. A THREE-session-old stamp is still
+# provably stale, and the frozen_suspect detector catches the real to-the-penny
+# echo independently of any timestamp. Tunable.
+_FRESH_SESSIONS_BACK = 2
+
+
+def _fresh_floor(now_utc: datetime) -> datetime:
+    """The oldest timestamp still considered current-session-fresh: the open of
+    the session _FRESH_SESSIONS_BACK weekday sessions before the reference session
+    (minus a skew pad). This keeps a legitimate prior-close read fresh (morning
+    brief) AND absorbs one market holiday without a holiday calendar, while a stamp
+    older than that is flagged provably stale. The frozen_suspect detector is the
+    timestamp-independent catch for the actual echo bug. Pure."""
+    ref = last_trading_session_open(now_utc)
+    floor_open = ref
+    for _ in range(_FRESH_SESSIONS_BACK):
+        floor_open = _weekday_open_on_or_before(floor_open - timedelta(days=1))
+    return floor_open - timedelta(hours=_SESSION_SKEW_HOURS)
+
+
+def quote_is_fresh(ts: int | None, *, now_utc: datetime | None = None) -> bool:
+    """FRESHNESS ASSERT (last-trading-session reference). Returns True when the
+    quote may be served:
+      - MISSING ts -> True (UNVERIFIABLE, not provably stale; the caller marks it
+        unverified rather than dropping it). Missing metadata must never kill a
+        brief.
+      - PRESENT ts at or after the most recent trading session's open (minus a
+        skew pad) -> True (belongs to the current/last session).
+      - PRESENT ts before that -> False (PROVABLY STALE prior-session echo).
+    Holiday-safe: the reference is the last actual weekday session, so a Monday
+    holiday cannot false-flag a legitimate Friday quote. Pure, never raises."""
+    return quote_staleness(ts, now_utc=now_utc) != "stale"
+
+
+def quote_staleness(ts: int | None, *, now_utc: datetime | None = None) -> str:
+    """Classify a quote timestamp into exactly ONE of the two failure modes plus
+    the healthy case. This is the SSOT for the split #461 conflated:
+      - "fresh"       : ts present and at/after the last session open (serve it).
+      - "stale"       : ts present but BEFORE the last session open (drop loud).
+      - "unverifiable": ts missing (keep + mark unverified; retry upstream). Pure.
+    """
+    if ts is None:
+        return "unverifiable"
+    now = now_utc or datetime.now(timezone.utc)
+    try:
+        ts_dt = datetime.fromtimestamp(float(ts), tz=timezone.utc)
+    except (TypeError, ValueError, OSError, OverflowError):
+        return "unverifiable"
+    # A future timestamp is not a valid current-session stamp.
+    if ts_dt > now + timedelta(hours=1):
+        return "stale"
+    return "fresh" if ts_dt >= _fresh_floor(now) else "stale"
+
+
+# ── Direct freeze detector (the actually-observed #461 signature) ────────────
+# The freeze bug does NOT depend on timestamp metadata: an index panel echoes a
+# PRIOR session's close to the penny while VIX/oil/names move. The most reliable
+# tell is a cross-session identity check: if a freshly fetched index level equals
+# the PRIOR persisted session's level EXACTLY (to the penny), across two DIFFERENT
+# sessions, that is the freeze. This catches the real bug even when the timestamp
+# is missing or itself echoed.
+_FREEZE_INDEX_KEYS = {
+    # fetched-quote symbol -> persisted-snapshot indices key
+    "^GSPC": "sp500",
+    "^IXIC": "nasdaq",
+    "^DJI": "dow",
+    "^RUT": "russell",
+}
+
+
+def indices_frozen_suspect(current_quotes: dict | None, prior_session_tape: dict | None) -> list[str]:
+    """PURE freeze detector. Compare freshly fetched index levels against the
+    PRIOR persisted session's serialized tape snapshot. Return the list of index
+    symbols whose current level is IDENTICAL TO THE PENNY to the prior session's
+    level. An empty list means no freeze suspected (or nothing to compare).
+
+    `current_quotes` is fetch_tape's quotes dict ({symbol: {"price": ...}}).
+    `prior_session_tape` is a serialize_tape_snapshot() dict from the LAST
+    briefing (market_tape column): {"indices": {"sp500": {"level": ...}, ...}}.
+
+    Two different sessions printing the same index level to the penny is
+    vanishingly unlikely for a real market; when it happens it is the frozen-echo
+    bug. Pure, never raises, never fetches, never reads the DB (the caller wires
+    the prior tape in). VIX is intentionally excluded: VIX legitimately can print
+    an identical round level and is not the frozen-panel signature."""
+    if not isinstance(current_quotes, dict) or not isinstance(prior_session_tape, dict):
+        return []
+    prior_indices = prior_session_tape.get("indices")
+    if not isinstance(prior_indices, dict):
+        return []
+    frozen: list[str] = []
+    for sym, key in _FREEZE_INDEX_KEYS.items():
+        q = current_quotes.get(sym)
+        cur_level = q.get("price") if isinstance(q, dict) else None
+        prior = prior_indices.get(key)
+        prior_level = prior.get("level") if isinstance(prior, dict) else None
+        if cur_level is None or prior_level is None:
+            continue
+        try:
+            # Identical to the penny: two decimal places is the panel's precision.
+            if round(float(cur_level), 2) == round(float(prior_level), 2):
+                frozen.append(sym)
+        except (TypeError, ValueError):
+            continue
+    return frozen
 
 
 def parse_yahoo_daily(chart_json: dict) -> dict | None:
@@ -328,22 +480,34 @@ SECTOR_ETFS = {
 }
 
 
-def fetch_tape(*, enrich: bool = False) -> dict | None:
+def fetch_tape(*, enrich: bool = False, prior_session_tape: dict | None = None) -> dict | None:
     """
     Fetch the close-of-day tape and compute the regime.
 
     Returns {"quotes": {symbol: quote}, "regime": str, "vix_level": float,
-    "enrichment": {...}, "stale": [symbols]} or None when the tape is unusable.
-    Regime needs ^VIX (level + pct) and ^GSPC (pct); ^IXIC / ^RUT are included
-    when available but a miss on either does not sink the tape (partial tape
-    still grounds the prompt).
+    "enrichment": {...}, "stale": [symbols], "unverified": [symbols],
+    "frozen_suspect": [symbols]} or None when the tape is unusable. Regime needs
+    ^VIX (level + pct) and ^GSPC (pct); ^IXIC / ^RUT are included when available
+    but a miss on either does not sink the tape (partial tape still grounds the
+    prompt).
 
-    FRESHNESS (P0): every index/VIX quote must belong to the current session.
-    A quote whose timestamp is stale (older than QUOTE_MAX_AGE_HOURS on a trading
-    day) is DROPPED LOUD, not silently served: we log a hard warning and remove
-    it from the tape. A visibly missing index panel beats a confidently-wrong one
-    frozen to the penny across two sessions. If the freshness drop kills ^VIX or
-    ^GSPC the whole tape is declared unusable rather than grounding on stale data.
+    FRESHNESS (P0) - TWO FAILURE MODES, SPLIT (PR #461 blast-radius fix):
+      1. PROVABLY STALE (timestamp PRESENT, older than the last trading session's
+         open): a real prior-session echo. DROPPED LOUD, listed under tape["stale"].
+         If the drop kills ^VIX or ^GSPC the tape is declared unusable rather than
+         grounding on a prior-session snapshot. This is the #461 behavior, kept.
+      2. UNVERIFIABLE (timestamp MISSING): we cannot prove staleness. #461 itself
+         proved this path was never actually stale. We RETRY the fetch once; if the
+         timestamp is still missing we KEEP the quote, log loud, and list it under
+         tape["unverified"]. Missing metadata NEVER nukes the tape.
+
+    DIRECT FREEZE DETECTOR (timestamp-independent): when `prior_session_tape` (the
+    last briefing's serialized market_tape) is supplied, any fetched index whose
+    level is IDENTICAL TO THE PENNY to the prior session's level is flagged under
+    tape["frozen_suspect"]. This catches the actually-observed frozen-panel echo
+    without depending on any timestamp metadata. The reading of the prior tape from
+    the DB is wired by the caller (synthesize.py); this function stays pure w.r.t.
+    the DB and only compares what it is handed.
 
     `enrich`: OFF by default so no existing caller's behavior or network cost
     changes. Agent C opts in with fetch_tape(enrich=True) at the persistence
@@ -352,21 +516,41 @@ def fetch_tape(*, enrich: bool = False) -> dict | None:
     now_utc = datetime.now(timezone.utc)
     quotes = {}
     stale = []
+    unverified = []
     for sym in TAPE_SYMBOLS:
         q = fetch_quote(sym)
         if not q:
             continue
-        ts = q.get("ts")
-        if not quote_is_fresh(ts, now_utc=now_utc):
-            age = _quote_age_hours(ts, now_utc=now_utc)
+        state = quote_staleness(q.get("ts"), now_utc=now_utc)
+        if state == "unverifiable":
+            # Mode 2: missing timestamp. Retry ONCE before deciding - a transient
+            # meta gap can clear on a second fetch.
+            q_retry = fetch_quote(sym)
+            if q_retry:
+                if quote_staleness(q_retry.get("ts"), now_utc=now_utc) != "unverifiable":
+                    q = q_retry
+                    state = quote_staleness(q.get("ts"), now_utc=now_utc)
+        if state == "stale":
+            # Mode 1: provably stale prior-session echo. Drop loud.
+            age = _quote_age_hours(q.get("ts"), now_utc=now_utc)
             age_str = f"{age:.1f}h" if age is not None else "no-timestamp"
             logger.warning(
-                "market_tape: STALE index quote DROPPED %s (label=%s ts=%s age=%s) - "
-                "refusing to serve a prior-session snapshot as today's tape",
-                sym, TAPE_SYMBOLS[sym], ts, age_str,
+                "market_tape: PROVABLY-STALE index quote DROPPED %s (label=%s ts=%s age=%s) - "
+                "timestamp predates the last trading session; refusing to serve a "
+                "prior-session snapshot as today's tape",
+                sym, TAPE_SYMBOLS[sym], q.get("ts"), age_str,
             )
             stale.append(sym)
             continue
+        if state == "unverifiable":
+            # Still no timestamp after the retry. KEEP it (missing metadata must
+            # not kill a brief) but flag it loud so the read side knows.
+            logger.warning(
+                "market_tape: UNVERIFIABLE index quote KEPT %s (label=%s) - no timestamp "
+                "after retry; cannot prove staleness, serving with tape['unverified'] flag",
+                sym, TAPE_SYMBOLS[sym],
+            )
+            unverified.append(sym)
         quotes[sym] = q
 
     vix = quotes.get("^VIX")
@@ -384,11 +568,24 @@ def fetch_tape(*, enrich: bool = False) -> dict | None:
         vix_pct_change=vix["pct"],
         spx_pct_change=spx["pct"],
     )
+    # DIRECT FREEZE DETECTOR: compare fetched index levels against the prior
+    # persisted session (timestamp-independent). Empty list when no prior tape or
+    # no penny-identical match.
+    frozen_suspect = indices_frozen_suspect(quotes, prior_session_tape)
+    if frozen_suspect:
+        logger.warning(
+            "market_tape: FROZEN-SUSPECT indices %s - fetched level is identical to "
+            "the prior session's persisted level to the penny; the panel may be echoing "
+            "a stale close. Flagged under tape['frozen_suspect'] for the read side",
+            frozen_suspect,
+        )
     tape = {
         "quotes": quotes,
         "regime": regime,
         "vix_level": vix["price"],
         "stale": stale,
+        "unverified": unverified,
+        "frozen_suspect": frozen_suspect,
     }
     if enrich:
         tape["enrichment"] = fetch_enrichment(now_utc=now_utc)
@@ -500,6 +697,13 @@ def serialize_tape_snapshot(tape: dict | None, as_of: str | None = None) -> dict
         # Loud staleness carried to the read side: symbols the freshness assert
         # dropped this run. Empty list == all quotes were current-session fresh.
         "stale": list(tape.get("stale") or []),
+        # Symbols KEPT despite a missing timestamp (mode 2). Present-but-empty by
+        # default; a non-empty list means the read side should treat those index
+        # values as unverified (not proven stale, not proven fresh).
+        "unverified": list(tape.get("unverified") or []),
+        # Symbols whose fetched level was identical TO THE PENNY to the prior
+        # persisted session (direct freeze detector). Non-empty == likely echo.
+        "frozen_suspect": list(tape.get("frozen_suspect") or []),
     }
     # Additive enrichment (Agent C). Present only when fetch_tape ran with
     # enrich=True; absent-key is fine for older readers (read-side stable).
