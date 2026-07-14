@@ -2936,18 +2936,38 @@ def _enrichment_sourced_figures(tape):
 
 
 def _enrichment_sourced_entities(tape):
-    """Lowercased sector labels the enrichment legitimately sources (so a sector
-    name in the pulse is not flagged as a hallucinated org). Pure."""
+    """The lowercased vocabulary the #461 enrichment legitimately sources, DERIVED
+    FROM THE ENRICHMENT BLOCK (never hardcoded): every sector-ETF symbol (XLE, XLK,
+    XLU, ...) and its sector name AND the "<Sector> ETFs" phrasing the prompt tells
+    the model to use, plus the oil symbol/name (WTI, CL=F, crude) whenever oil is
+    present. The rates name (10-year Treasury) is already covered by overview_
+    grounding._NON_ORG_TERMS. Returned as a set of lowercased strings; the enriched
+    validator matches candidates against a bag built from these via org_supported,
+    so a single ticker (WTI/XLE) matches verbatim and a two-word phrase
+    ("Energy ETFs") matches through its non-generic head. Empty when no enrichment.
+    Pure. A term NOT emitted by the tape is NOT added, so a genuine hallucination
+    still fails."""
     out = set()
     if not isinstance(tape, dict):
         return out
     view = _enrichment_view(tape)
     for key in ("sector_leaders", "sector_laggards"):
         for s in (view.get(key) or []):
-            if isinstance(s, dict):
-                nm = (s.get("sector") or s.get("name") or s.get("label") or "").strip().lower()
-                if nm:
-                    out.add(nm)
+            if not isinstance(s, dict):
+                continue
+            nm = (s.get("sector") or s.get("name") or s.get("label") or "").strip().lower()
+            if nm:
+                out.add(nm)
+                # The prompt instructs the model to attribute as "<Sector> ETFs".
+                out.add(f"{nm} etfs")
+                out.add(f"{nm} etf")
+            sym = str(s.get("symbol") or "").strip().lower()
+            if sym:
+                out.add(sym)
+    # Oil symbol + name, only when the enrichment actually carries oil.
+    wti = view.get("wti")
+    if isinstance(wti, dict) and (wti.get("level") is not None or wti.get("pct") is not None):
+        out.update({"wti", "cl=f", "crude", "wti crude"})
     return out
 
 
@@ -2973,10 +2993,16 @@ def _validate_pulse_grounding_enriched(narrative, tape, macro_strip, top_stories
         )
         if not forgiven:
             kept_figs.append(raw)
-    # Re-filter unsupported entities: drop sector labels the enrichment sources.
+    # Re-filter unsupported entities: drop any candidate the enrichment sources.
+    # Build a lowercased bag from the enrichment vocabulary and forgive via the
+    # SAME support logic the base check uses (org_supported), so a single ticker
+    # (WTI / XLE / XLK) matches verbatim and a two-word phrase ("Energy ETFs")
+    # matches through its non-generic head. An entity absent from the enrichment
+    # bag stays flagged, so a genuine hallucination still fails.
+    enr_bag = " ".join(sorted(enr_ents))
     kept_ents = [
         e for e in (res.get("unsupported_entities") or [])
-        if e.strip().lower() not in enr_ents
+        if not overview_grounding.org_supported(e.strip().lower(), enr_bag, set())
     ]
     tapes = res.get("tape_violations") or []
     reasons = []
