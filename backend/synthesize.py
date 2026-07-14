@@ -4099,13 +4099,46 @@ def run(brief_type="morning"):
     # regresses to a mood / index recap. Detect it and do ONE targeted re-ask
     # that rewrites the narrative only, leading with a named driver; keep the
     # original and log if the re-ask still recaps or fails. See helper block.
+    #
+    # V2 GATE (mirrors the rewrite gate at "if MARKET_PULSE_V2 and _pulse_v2_ok"
+    # above): when the dedicated V2 pulse PRODUCED and VALIDATED a tape-first
+    # narrative, its opening is intentionally the index-level market read, which
+    # _is_opener_recap flags as a "market-subject" recap and _regenerate_opener
+    # would then re-ask to lead with a NAMED DRIVER - the exact inverse of the V2
+    # tape-first contract, clobbering the hero (observed on the 2026-07-13 evening
+    # brief: rates/oil/sector dropped, a penny stock led). Same clobber class as
+    # the market-wide rewrite, which is already V2-gated. Skip the opener guard on
+    # the V2-OK path; it still does its job on the NON-V2 (monolith) path.
+    _pulse_v2_shipped = bool(MARKET_PULSE_V2 and locals().get("_pulse_v2_ok"))
+    # Per-run observability: whether V2 was ON and whether it validated (_pulse_v2_ok).
+    # Recorded into lead_preselect._LAST_DECISION_LOG (additive key), which run.py
+    # snapshots into pipeline_runs.preselect_decision on the OBSERVE step - no edit
+    # to that write path required. The 07-13 recon could not confirm from the DB
+    # whether the flag was even on; this closes that blind spot.
+    print(
+        f"  [opener guard] MARKET_PULSE_V2={'on' if MARKET_PULSE_V2 else 'off'} "
+        f"_pulse_v2_ok={'yes' if locals().get('_pulse_v2_ok') else 'no'} "
+        f"(opener guard {'SKIPPED (V2 tape-first hero preserved)' if _pulse_v2_shipped else 'active'})"
+    )
+    try:
+        import lead_preselect as _lp_v2flag
+        _lp_v2flag._LAST_DECISION_LOG.update({
+            "market_pulse_v2_on": bool(MARKET_PULSE_V2),
+            "pulse_v2_ok": bool(locals().get("_pulse_v2_ok")),
+            "opener_guard_skipped_v2": _pulse_v2_shipped,
+        })
+    except Exception as _ve:
+        print(f"  ⚠ opener guard: V2-flag decision-log capture skipped (non-fatal): {_ve}")
     if not brief_is_stub:
         try:
             mp = data.get("market_pulse")
             if isinstance(mp, dict) and isinstance(mp.get("narrative"), str) and mp["narrative"].strip():
                 fs = _opener_first_sentence(mp["narrative"])
                 recap, why = _is_opener_recap(fs)
-                if recap:
+                # V2 GATE: the opener-recap re-ask is the confirmed clobber. Skip it
+                # (only it) when the V2 tape-first pulse shipped; the V2 opening IS
+                # the intended index-level market read, not a banned recap.
+                if recap and not _pulse_v2_shipped:
                     new_narr = _regenerate_opener(data, tape_regime, brief_type)
                     if new_narr and not _is_opener_recap(_opener_first_sentence(new_narr))[0]:
                         mp["narrative"] = new_narr
