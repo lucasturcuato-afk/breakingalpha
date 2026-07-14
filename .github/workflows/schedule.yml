@@ -62,6 +62,14 @@ jobs:
           FILTER_PROMPT_CACHE: ${{ vars.FILTER_PROMPT_CACHE }}
           GRADER_SKIP_IRRELEVANT: ${{ vars.GRADER_SKIP_IRRELEVANT }}
           MARKET_PULSE_V2: ${{ vars.MARKET_PULSE_V2 }}
+          # Tape-aware materiality re-rank, read at backend/synthesize.py:54.
+          # Repo VARIABLE, not a secret (non-sensitive enum: off | shadow | active).
+          # Off-safe: when the variable is UNSET this renders an empty string; the
+          # synthesize.py guard coerces any non-{off,shadow,active} value to "off",
+          # and both "off" and "shadow" leave the SERVED lead untouched (only
+          # "active" replaces preselected before the hoist). So merging this changes
+          # nothing until vars.MATERIALITY_RANK_MODE is set to active by a human.
+          MATERIALITY_RANK_MODE: ${{ vars.MATERIALITY_RANK_MODE }}
         run: python run.py ${{ steps.mode.outputs.mode }}
 
       # Alerting only (does NOT gate generation - the brief is already shipped by
