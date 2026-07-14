@@ -3263,6 +3263,13 @@ def run(brief_type="morning"):
                             "materiality_delta": _mat.get("materiality_delta"),
                             "materiality_continuity_delta": _mat.get("continuity_delta"),
                             "materiality_reasons": _mat.get("materiality_reasons"),
+                            # Full ordered per-story ranking snapshot (capped in
+                            # impact_ranking) so a rare material tape can be
+                            # audited after the fact: where did each competing
+                            # cluster rank, with BOTH impact + materiality scores
+                            # and the reason strings. Winner-only scalars above
+                            # lose the ordering; this preserves it.
+                            "materiality_top_clusters": _mat.get("top_clusters"),
                             "materiality_prior_lead": _prior_lead,
                             "materiality_name_move_count": _name_move_calls,
                             # materiality_diverged_from_shipped + shipped_lead are

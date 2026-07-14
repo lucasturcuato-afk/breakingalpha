@@ -144,6 +144,10 @@ RECENCY_HALFWINDOW_H = 48.0
 # carry their own boosts and are intentionally exempt).
 EVENT_STALE_AGE_H = 24.0
 STALE_EVENT_PENALTY = 3.0
+# How many top clusters to snapshot into the post-hoc ranker-audit payload
+# (compute_materiality_lead -> preselect_decision.materiality_top_clusters).
+# Capped to keep the persisted jsonb small on the rare material tape.
+_TOP_CLUSTERS_AUDIT_CAP = 10
 
 
 def _text(a: dict) -> str:
@@ -768,6 +772,37 @@ def compute_materiality_lead(
         top = adjusted[0]
         _bucket = top["cluster_key"].split(":", 1)[1] if top["cluster_key"].startswith("macro:") else None
         lead = _best_article_in_cluster(top["_articles"], now, bucket=_bucket)
+
+        # Per-story ordered ranking snapshot for post-hoc audit. This is the
+        # ordered list the pulse was handed: for each competing cluster we keep
+        # the representative title + BOTH the impact (base) and materiality
+        # (adjusted) scores + the delta breakdown + the reason strings, so the
+        # full ordering can be reconstructed after the fact. Capped at
+        # _TOP_CLUSTERS_AUDIT_CAP to keep the persisted jsonb small.
+        def _rep_title(rec: dict) -> Optional[str]:
+            arts = rec.get("_articles") or []
+            if not arts:
+                return None
+            b = rec["cluster_key"].split(":", 1)[1] if rec["cluster_key"].startswith("macro:") else None
+            a = _best_article_in_cluster(arts, now, bucket=b)
+            t = (a.get("title") or "").strip()
+            return t[:200] or None
+
+        top_clusters_audit = [
+            {
+                "cluster_key": c["cluster_key"],
+                "title": _rep_title(c),
+                "impact_score": c["base_score"],
+                "materiality_score": c["adjusted_score"],
+                "materiality_delta": c["materiality_delta"],
+                "continuity_delta": c["continuity_delta"],
+                "distinct_sources": c["distinct_sources"],
+                "article_count": c["article_count"],
+                "materiality_reasons": list(c["materiality_reasons"]),
+                "reason": c["reason"],
+            }
+            for c in adjusted[:_TOP_CLUSTERS_AUDIT_CAP]
+        ]
         return {
             "article": lead,
             "cluster_key": top["cluster_key"],
@@ -782,12 +817,7 @@ def compute_materiality_lead(
             "recent_events": sorted(recent),
             "base_cluster_key": base_top_key,
             "diverged_from_base": top["cluster_key"] != base_top_key,
-            "top_clusters": [
-                {k: c[k] for k in ("cluster_key", "adjusted_score", "base_score",
-                                   "materiality_delta", "continuity_delta",
-                                   "distinct_sources", "article_count")}
-                for c in adjusted[:5]
-            ],
+            "top_clusters": top_clusters_audit,
         }
     except Exception as e:
         logger.warning("impact_ranking: compute_materiality_lead failed: %s", e)
