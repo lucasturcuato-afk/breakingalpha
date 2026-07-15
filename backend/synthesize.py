@@ -2450,9 +2450,23 @@ def _macro_period_month(period):
 
 
 def _macro_release_recency(key, period, today):
-    """Estimate a release's publication date from its data period + the standard
-    schedule, then age it against the brief date. ESTIMATE (no source pub date).
-    Returns (est_date, days_old) or None."""
+    """Age a release against the brief date using the AUTHORITATIVE published
+    release date from the event_calendar BLS/BEA schedule tables (single source of
+    truth), NOT the old 12th-of-month estimator. When the key has an authoritative
+    table entry, the returned date is EXACT (is_estimate False), so release-day
+    detection is precise: a print whose authoritative date == today tags RELEASED
+    TODAY. When no authoritative date exists (PPI, GDP, or a reference month not yet
+    in the table) we fall back to the schedule estimator so the strip still shows a
+    dated/backdrop tag, but flagged is_estimate True and NEVER treated as today's
+    catalyst. Returns (release_date, days_old, is_estimate) or None."""
+    try:
+        import event_calendar
+        auth = event_calendar.authoritative_release_date(key, period)
+    except Exception:
+        auth = None
+    if auth is not None:
+        return auth, (today - auth).days, False
+    # Fallback: schedule estimator (dated/backdrop only, never release-day).
     parsed = _macro_period_month(period)
     if not parsed:
         return None
@@ -2465,7 +2479,7 @@ def _macro_release_recency(key, period, today):
             d += timedelta(days=1)
     else:
         d = date(ry, rm, int(rule))
-    return d, (today - d).days
+    return d, (today - d).days, True
 
 
 def _pulse_macro_strip():
@@ -2473,10 +2487,12 @@ def _pulse_macro_strip():
     call. Reuses the SAME data-layer fetchers the morning macro_panel uses
     (macro_calendar + bea_calendar) and renders only the numbers actually present.
     Each line is TAGGED with its release recency (RELEASED TODAY / recent backdrop /
-    dated), estimated from the data period + standard release schedule, so the pulse
-    can frame catalyst-vs-backdrop by age. The sources carry NO publication date, so
-    the tag date is an estimate. Returns (strip_text, is_release_day). Soft-fail to
-    ('', False). Not exercised by the offline harness (it hits the data layers)."""
+    dated), sourced from the AUTHORITATIVE event_calendar BLS/BEA release dates (not
+    a 12th-of-month estimate), so the pulse can frame catalyst-vs-backdrop precisely.
+    When a print's authoritative release date is today, a leading TODAY'S CATALYST
+    callout naming its value is prepended so the number is unmissable in the prompt.
+    Returns (strip_text, is_release_day). Soft-fail to ('', False). Not exercised by
+    the offline harness (it hits the data layers)."""
     try:
         releases = macro_calendar.fetch_macro_releases() + bea_calendar.fetch_bea_releases()
     except Exception as e:
@@ -2484,6 +2500,7 @@ def _pulse_macro_strip():
         return "", False
     today = datetime.now(timezone.utc).date()
     lines = []
+    catalyst_lines = []
     release_today = False
     for r in releases or []:
         try:
@@ -2506,21 +2523,124 @@ def _pulse_macro_strip():
                 continue
             rec = _macro_release_recency(key, period, today)
             if rec is not None:
-                est, age = rec
-                if 0 <= age <= 1:
-                    tag = f"RELEASED TODAY (~{est.isoformat()}), the day's catalyst"
+                rel_date, age, is_est = rec
+                # Release-day is TRUE only on an AUTHORITATIVE date == today. The
+                # estimator (is_est) can be a day or two off, so it never triggers
+                # today's-catalyst framing; it only dates the backdrop.
+                approx = "~" if is_est else ""
+                if age == 0 and not is_est:
+                    tag = f"RELEASED TODAY ({rel_date.isoformat()}), the day's catalyst"
                     release_today = True
+                    catalyst_lines.append(
+                        f"TODAY'S CATALYST - {name} ({period}) RELEASED TODAY "
+                        f"({rel_date.isoformat()}): " + "; ".join(figs)
+                    )
                 elif age < 0 or age <= 10:
-                    when = f"{age} days ago" if age > 0 else "just now (est)"
-                    tag = f"released ~{est.isoformat()}, {when}: recent BACKDROP, NOT today's news"
+                    when = f"{age} days ago" if age > 0 else "just released"
+                    tag = f"released {approx}{rel_date.isoformat()}, {when}: recent BACKDROP, NOT today's news"
                 else:
-                    tag = f"released ~{est.isoformat()}, {age} days ago: DATED, context only"
+                    tag = f"released {approx}{rel_date.isoformat()}, {age} days ago: DATED, context only"
             else:
                 tag = "release date unknown: treat as backdrop"
             lines.append(f"{name} ({period}; {tag}): " + "; ".join(figs))
         except Exception:
             continue
-    return "\n".join(lines), release_today
+    # Lead the strip with any release-day catalyst callout so the day's print (and
+    # its VALUE) is the first thing the model sees, not buried mid-list.
+    return "\n".join(catalyst_lines + lines), release_today
+
+
+def _macro_figure_yoy_mom(figures):
+    """Pull the headline y/y and m/m figure VALUES (with units) out of a release's
+    figure list by label. Returns (y_o_y, m_o_m) as {'value','unit','prior'} dicts
+    or None each. Pure; tolerant of missing figures."""
+    y_o_y = None
+    m_o_m = None
+    for f in figures or []:
+        label = (getattr(f, "label", "") or "").lower()
+        val = getattr(f, "value", None)
+        if val is None:
+            continue
+        entry = {
+            "value": val,
+            "unit": getattr(f, "unit", "") or "",
+            "prior": getattr(f, "prior", None),
+        }
+        if "y/y" in label and y_o_y is None:
+            y_o_y = entry
+        elif "m/m" in label and m_o_m is None:
+            m_o_m = entry
+    return y_o_y, m_o_m
+
+
+def released_macro_context():
+    """Canonical released-macro accessor for synthesis (pulse + lead + fallback).
+    Returns {"releases": [ {name, period, value, unit, prior, release_date (ISO),
+             is_release_day (bool), y_o_y, m_o_m} ... ],
+             "today_catalyst": <the release-day print dict or None>,
+             "strip": "<human strip text with recency tags>"}.
+    is_release_day is TRUE only when release_date == today's ET date, sourced from
+    the AUTHORITATIVE event_calendar dates, not the hardcoded 12th-of-month
+    estimator. Fetched FACTS only; empty/None when nothing released. Never raises."""
+    empty = {"releases": [], "today_catalyst": None, "strip": ""}
+    try:
+        strip, _ = _pulse_macro_strip()
+    except Exception:
+        strip = ""
+    try:
+        import event_calendar
+        releases = macro_calendar.fetch_macro_releases() + bea_calendar.fetch_bea_releases()
+    except Exception as e:
+        print(f"  ⚠ released_macro_context fetch failed (non-fatal): {e}")
+        return {"releases": [], "today_catalyst": None, "strip": strip}
+    today = datetime.now(timezone.utc).date()
+    out = []
+    today_catalyst = None
+    for r in releases or []:
+        try:
+            name = getattr(r, "name", "") or ""
+            period = getattr(r, "period", "") or ""
+            key = getattr(r, "key", "") or ""
+            figures = getattr(r, "figures", None) or []
+            if not name:
+                continue
+            y_o_y, m_o_m = _macro_figure_yoy_mom(figures)
+            # Headline value: prefer y/y (the framed number), else the first figure.
+            headline = y_o_y or m_o_m
+            if headline is None:
+                for f in figures:
+                    if getattr(f, "value", None) is not None:
+                        headline = {
+                            "value": getattr(f, "value", None),
+                            "unit": getattr(f, "unit", "") or "",
+                            "prior": getattr(f, "prior", None),
+                        }
+                        break
+            if headline is None:
+                continue
+            auth = event_calendar.authoritative_release_date(key, period)
+            release_date = auth.isoformat() if auth is not None else None
+            is_release_day = bool(auth is not None and auth == today)
+            entry = {
+                "name": name,
+                "period": period,
+                "key": key,
+                "value": headline.get("value"),
+                "unit": headline.get("unit"),
+                "prior": headline.get("prior"),
+                "release_date": release_date,
+                "is_release_day": is_release_day,
+                "y_o_y": y_o_y,
+                "m_o_m": m_o_m,
+            }
+            out.append(entry)
+            if is_release_day and today_catalyst is None:
+                today_catalyst = entry
+        except Exception:
+            continue
+    if not out:
+        return {"releases": [], "today_catalyst": None, "strip": strip}
+    return {"releases": out, "today_catalyst": today_catalyst, "strip": strip}
 
 
 def _pulse_top_stories(spine, floor, companies_of_fn, limit=5):

@@ -105,6 +105,77 @@ _TYPE_NAME = {
     "nfp": "Nonfarm payrolls",
 }
 
+# ── Authoritative release-date lookup (for synthesis recency, no estimator) ───
+# macro_calendar / bea_calendar release keys map to the static release tables
+# above. Payrolls and unemployment ship on the SAME Employment Situation report
+# (NFP table); headline and core CPI ship on the SAME CPI report; headline and
+# core PCE ship on the SAME Personal Income and Outlays report. PPI and GDP have
+# no authoritative table encoded here (they stay estimator-free: awaiting/unknown).
+_RELEASE_KEY_TO_TABLE: dict[str, tuple[tuple[str, str], ...]] = {
+    "cpi": CPI_RELEASES,
+    "core_cpi": CPI_RELEASES,
+    "nonfarm_payrolls": NFP_RELEASES,
+    "unemployment": NFP_RELEASES,
+    "pce": PCE_RELEASES,
+    "core_pce": PCE_RELEASES,
+}
+
+_MONTH_TO_NUM = {
+    m.lower(): i
+    for i, m in enumerate(
+        ["", "january", "february", "march", "april", "may", "june", "july",
+         "august", "september", "october", "november", "december"]
+    )
+} | {
+    m.lower(): i
+    for i, m in enumerate(
+        ["", "jan", "feb", "mar", "apr", "may", "jun", "jul",
+         "aug", "sep", "oct", "nov", "dec"]
+    )
+}
+
+
+def _period_to_ym(label: Optional[str]) -> Optional[tuple[int, int]]:
+    """Normalize a reference-period label ('Jun 2026', 'June 2026', 'Q2 2026')
+    to (year, month). Quarterly maps to the quarter-end month. None if unparseable."""
+    toks = (label or "").strip().split()
+    if len(toks) < 2:
+        return None
+    try:
+        year = int(toks[-1])
+    except ValueError:
+        return None
+    head = toks[0].lower()
+    if head.startswith("q") and len(head) >= 2 and head[1].isdigit():
+        q = int(head[1])
+        return (year, q * 3) if 1 <= q <= 4 else None
+    mo = _MONTH_TO_NUM.get(head)
+    return (year, mo) if mo else None
+
+
+def authoritative_release_date(
+    release_key: str, ref_period: Optional[str]
+) -> Optional[datetime.date]:
+    """The AUTHORITATIVE published release date for a macro release, looked up from
+    the static BLS/BEA schedule tables by (key, reference-period month). This is the
+    single source of truth for release-day / recency detection in synthesis; it
+    replaces the hardcoded 12th-of-month estimator. Returns None when the key has no
+    encoded table (PPI, GDP) or the reference month is not in the table (the caller
+    then treats recency as unknown, never fabricated). Never raises."""
+    try:
+        table = _RELEASE_KEY_TO_TABLE.get((release_key or "").strip().lower())
+        if not table:
+            return None
+        want = _period_to_ym(ref_period)
+        if not want:
+            return None
+        for iso, ref in table:
+            if _period_to_ym(ref) == want:
+                return _parse(iso)
+    except Exception as e:
+        logger.warning("event_calendar: authoritative_release_date failed: %s", e)
+    return None
+
 
 @dataclass
 class Catalyst:
