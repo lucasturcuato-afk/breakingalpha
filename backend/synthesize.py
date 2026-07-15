@@ -2355,6 +2355,43 @@ def _pulse_extra_tape_block(tape):
     return "\n".join(lines)
 
 
+def _narrative_carries_enrichment(narrative, tape, today_catalyst=None):
+    """Observability (decision-log `enrichment_in_shipped`): True when the SHIPPED
+    narrative actually surfaces the tape's #461 enrichment (rates 10Y / oil-WTI /
+    a named sector-ETF mover) or the day's released macro catalyst. Deterministic,
+    text-level, and pure: it inspects the shipped STRING, not the intent, so a
+    rising fallback rate that silently drops enrichment stays visible on the DB.
+    Conservative: it looks for concrete markers the enrichment renderers emit
+    (a bps/yield/WTI/crude token, a 10Y level, or a sector-ETF leader/laggard name
+    present on the tape). Returns False on a bare index-only recap."""
+    if not isinstance(narrative, str) or not narrative.strip():
+        return False
+    low = narrative.lower()
+    # Rates markers.
+    if any(m in low for m in ("10-year", "10y", "treasury yield", " bps", "basis point")):
+        return True
+    # Oil markers.
+    if any(m in low for m in ("wti", "crude", "brent")):
+        return True
+    # Sector-ETF leader/laggard names actually present on the tape.
+    t = _enrichment_view(tape) if isinstance(tape, dict) else {}
+    for key in ("sector_leaders", "sector_laggards", "leaders", "laggards"):
+        for s in (t.get(key) or []):
+            nm = ""
+            if isinstance(s, dict):
+                nm = (s.get("sector") or s.get("name") or s.get("label") or "").strip()
+            else:
+                nm = str(s or "").strip()
+            if nm and nm.lower() in low:
+                return True
+    # Released macro catalyst by name.
+    if isinstance(today_catalyst, dict):
+        nm = (today_catalyst.get("name") or "").strip()
+        if nm and nm.lower() in low:
+            return True
+    return False
+
+
 def _rewrite_market_wide_grounded(data, tape, corpus_companies, relegated_title,
                                   corpus_text, extra_correction="", lead_is_dominant=False):
     """T1/T2: ONE bounded grounded re-ask that rewrites market_pulse.narrative as
@@ -3824,6 +3861,26 @@ def run(brief_type="morning"):
             # True only when a validate_pulse_opening-PASSING V2 narrative is wired in;
             # gates skipping the lead-anchoring rewrite downstream.
             _pulse_v2_ok = False
+            # Shipped-path observability (see the decision-log write below): the
+            # ACTUAL path the shipped hero took, and whether enrichment reached it.
+            # Defaults describe the non-V2 / V2-off case; overwritten as the V2
+            # block resolves. GREEN (pulse_v2_ok) is NOT the same as "rich hero
+            # shipped": the old flags reported success even on a minimal ship.
+            _pulse_shipped_path = "v2_off"
+            _enrichment_in_shipped = False
+            # Agent 1's canonical macro accessor (merge order 1 -> 2 -> 3 guarantees
+            # released_macro_context exists after Agent 1 merges). Consumed by name
+            # so the fallback can carry the day's macro catalyst. Soft-fail to None
+            # until Agent 1 lands (or when the data layer is unreachable offline).
+            _today_catalyst = None
+            try:
+                _today_catalyst = (released_macro_context() or {}).get("today_catalyst")
+            except NameError:
+                # Agent 1 not merged yet (pre-merge-order-1 window); no catalyst.
+                _today_catalyst = None
+            except Exception as _rmc_e:
+                print(f"  ⚠ released_macro_context read skipped (non-fatal): {_rmc_e}")
+                _today_catalyst = None
             if MARKET_PULSE_V2 and isinstance(_mp, dict):
                 try:
                     _pulse_stories = _pulse_top_stories(spine, floor, _companies_of)
@@ -3861,9 +3918,15 @@ def run(brief_type="morning"):
                                 print("  [MARKET_PULSE_V2] re-ask resolved opening violation")
                             else:
                                 _v2 = overview_grounding.build_minimal_overview(
-                                    tape_obj, (_lead_title or data.get("headline") or "")
+                                    tape_obj, (_lead_title or data.get("headline") or ""),
+                                    today_catalyst=_today_catalyst,
                                 )
                                 _pulse_v2_ok = False
+                                _pulse_shipped_path = "minimal_template"
+                                _enrichment_in_shipped = bool(
+                                    overview_grounding._minimal_enrichment_bits(tape_obj)
+                                    or _today_catalyst
+                                )
                                 print("  [MARKET_PULSE_V2] re-ask still violating; using minimal grounded template")
                         _mp["narrative"] = _v2
                         print("  ✨ MARKET_PULSE_V2: dedicated tape-first pulse narrative wired in")
@@ -3920,13 +3983,26 @@ def run(brief_type="morning"):
                         )
                         if _reok:
                             _candidate = _v2re
+                            _pulse_shipped_path = "passing_reask"
+                            _enrichment_in_shipped = _narrative_carries_enrichment(
+                                _candidate, tape_obj, _today_catalyst
+                            )
                             print("  [pulse grounding] re-ask resolved violations")
                         else:
                             _candidate = overview_grounding.build_minimal_overview(
-                                tape_obj, _best_title
+                                tape_obj, _best_title, today_catalyst=_today_catalyst
                             )
-                            print("  [pulse grounding] re-ask still violating; using minimal grounded template")
+                            _pulse_shipped_path = "minimal_template"
+                            _enrichment_in_shipped = bool(
+                                overview_grounding._minimal_enrichment_bits(tape_obj)
+                                or _today_catalyst
+                            )
+                            print("  [pulse grounding] re-ask still violating; using minimal grounded template (enrichment- and macro-aware)")
                     else:
+                        _pulse_shipped_path = "v2_primary"
+                        _enrichment_in_shipped = _narrative_carries_enrichment(
+                            _candidate, tape_obj, _today_catalyst
+                        )
                         print("  [final-lead gate] V2 tape-first pulse kept (rewrite skipped)")
                 else:
                     _new = _rewrite_market_wide_grounded(
@@ -3953,18 +4029,36 @@ def run(brief_type="morning"):
                             )
                             if _rcheck["ok"]:
                                 _candidate = _reasked
+                                _pulse_shipped_path = "passing_reask"
+                                _enrichment_in_shipped = _narrative_carries_enrichment(
+                                    _candidate, tape_obj, _today_catalyst
+                                )
                                 print("  [grounding post-check] re-ask resolved all violations")
                             else:
                                 _candidate = overview_grounding.build_minimal_overview(
-                                    tape_obj, _best_title
+                                    tape_obj, _best_title, today_catalyst=_today_catalyst
                                 )
-                                print("  [grounding post-check] re-ask still violating; using minimal grounded template")
+                                _pulse_shipped_path = "minimal_template"
+                                _enrichment_in_shipped = bool(
+                                    overview_grounding._minimal_enrichment_bits(tape_obj)
+                                    or _today_catalyst
+                                )
+                                print("  [grounding post-check] re-ask still violating; using minimal grounded template (enrichment- and macro-aware)")
                         else:
                             _candidate = overview_grounding.build_minimal_overview(
-                                tape_obj, _best_title
+                                tape_obj, _best_title, today_catalyst=_today_catalyst
                             )
-                            print("  [grounding post-check] re-ask failed; using minimal grounded template")
+                            _pulse_shipped_path = "minimal_template"
+                            _enrichment_in_shipped = bool(
+                                overview_grounding._minimal_enrichment_bits(tape_obj)
+                                or _today_catalyst
+                            )
+                            print("  [grounding post-check] re-ask failed; using minimal grounded template (enrichment- and macro-aware)")
                     elif _new:
+                        _pulse_shipped_path = "monolith_rewrite"
+                        _enrichment_in_shipped = _narrative_carries_enrichment(
+                            _candidate, tape_obj, _today_catalyst
+                        )
                         print(f"  [final-lead gate] grounded market-wide hero "
                               f"(lead {'centers' if _lead_is_dominant else 'as example'})")
                 _mp["narrative"] = _candidate
@@ -4149,6 +4243,10 @@ def run(brief_type="morning"):
                     new_narr = _regenerate_opener(data, tape_regime, brief_type)
                     if new_narr and not _is_opener_recap(_opener_first_sentence(new_narr))[0]:
                         mp["narrative"] = new_narr
+                        _pulse_shipped_path = "opener_regenerated"
+                        _enrichment_in_shipped = _narrative_carries_enrichment(
+                            new_narr, tape_obj, locals().get("_today_catalyst")
+                        )
                         print("  [opener guard] re-ask replaced a recap opener with a named-driver lead")
                     elif new_narr:
                         print(f"  ⚠ opener guard: re-ask still recap ({why}); keeping original opener")
@@ -4173,6 +4271,33 @@ def run(brief_type="morning"):
                             print("  ⚠ redundancy guard: re-ask failed; keeping original narrative")
         except Exception as e:
             print(f"  ⚠ opener guard error (non-fatal): {e}")
+
+    # ── Shipped-path observability (placed AFTER the opener/redundancy guards so
+    # it captures a late opener_regenerated swap) ────────────────────────────────
+    # The 07-14 blind spot: pulse_v2_ok/opener_guard_skipped_v2 BOTH reported
+    # success while the STRIPPED minimal_template shipped (the enriched V2 hero was
+    # grounding-rejected on a bad entity, the re-ask failed, and the fallback
+    # nuked rates/oil/sector). pulse_v2_ok reflects the OPENING check, not the
+    # narrative that actually shipped, so the DB could not tell a rich hero from a
+    # bare template. These two fields record the ACTUAL shipped path and whether
+    # enrichment reached the shipped string. IMPORTANT (say it out loud): the
+    # deterministic fallback is now enrichment-complete, but it is NOT a license to
+    # stop shipping the real V2 primary. A rising `pulse_shipped_path=minimal_template`
+    # rate is a REGRESSION signal; this flag exists so that stays visible on the DB.
+    _shipped_path = locals().get("_pulse_shipped_path", "v2_off")
+    _enrich_shipped = bool(locals().get("_enrichment_in_shipped"))
+    print(
+        f"  [shipped-path] pulse_shipped_path={_shipped_path} "
+        f"enrichment_in_shipped={'yes' if _enrich_shipped else 'no'}"
+    )
+    try:
+        import lead_preselect as _lp_shipped
+        _lp_shipped._LAST_DECISION_LOG.update({
+            "pulse_shipped_path": _shipped_path,
+            "enrichment_in_shipped": _enrich_shipped,
+        })
+    except Exception as _se:
+        print(f"  ⚠ shipped-path decision-log capture skipped (non-fatal): {_se}")
 
     # Voice compliance guard (morning + evening, non-fatal). Port of the Company
     # Intel guard (PR #389): market_pulse.narrative is the highest-distribution

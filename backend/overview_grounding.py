@@ -617,14 +617,186 @@ def validate_pulse_opening(
     return {"ok": not reasons, "reasons": reasons}
 
 
-def build_minimal_overview(tape: dict | None, best_story_title: str | None = None) -> str:
-    """Last-resort grounded template built ONLY from the fetched tape numbers
-    plus, optionally, the single best-supported corpus story as a mention. Short
-    by design (brevity is correct when material is thin). Never invents a
-    direction or a name. When there is no tape at all, returns a minimal, honest
+# ── Enrichment renderers for the minimal fallback (pure, honest) ─────────────
+# When the enriched V2 hero is grounding-rejected and the re-ask still fails, the
+# fallback must NOT strip the rates/oil/sector-ETF facts the tape carries: a bad
+# ENTITY in the enriched prose is not evidence the ENRICHMENT NUMBERS are wrong.
+# These render the SAME #461 enrichment fields the V2 prompt spends space on,
+# with the SAME ETF-attribution honesty (sector = ETF day-move proxy, NOT
+# breadth) and NO fabricated figures. Mirrors synthesize._pulse_extra_tape_block
+# / _enrichment_view but ported here to keep this module standalone (no
+# synthesize import). Every field renders ONLY when a real value is present.
+
+
+def _enrichment_flat(tape: dict) -> dict:
+    """#461 emits enrichment NESTED under tape['enrichment'] with its own key
+    names (rates.teny_level/teny_bps_change, oil.wti_level/wti_pct,
+    sector_leadership.leaders/laggards). Flatten those into the flat aliases the
+    renderers below read. A tape with no 'enrichment' block passes through
+    unchanged. Pure."""
+    if not isinstance(tape, dict):
+        return {}
+    enr = tape.get("enrichment")
+    if not isinstance(enr, dict):
+        return dict(tape)
+    view = dict(tape)
+    rates = enr.get("rates") if isinstance(enr.get("rates"), dict) else {}
+    if rates.get("teny_level") is not None:
+        view["us10y_level"] = rates.get("teny_level")
+    if rates.get("teny_bps_change") is not None:
+        view["us10y_bps"] = rates.get("teny_bps_change")
+    oil = enr.get("oil") if isinstance(enr.get("oil"), dict) else {}
+    if oil.get("wti_level") is not None or oil.get("wti_pct") is not None:
+        view["wti"] = {"level": oil.get("wti_level"), "pct": oil.get("wti_pct")}
+    sl = enr.get("sector_leadership") if isinstance(enr.get("sector_leadership"), dict) else {}
+    if sl.get("leaders"):
+        view["sector_leaders"] = sl.get("leaders")
+    if sl.get("laggards"):
+        view["sector_laggards"] = sl.get("laggards")
+    return view
+
+
+def _minimal_sector_phrase(val, verb: str) -> str | None:
+    """Render up to two sector-ETF movers as ATTRIBUTED prose ('Energy ETFs led
+    (+3.01%)'). ETF-attributed by construction so the fallback never asserts
+    sector-wide breadth from an ETF proxy. Pure; returns None when empty."""
+    names = []
+    for s in (val or [])[:2]:
+        if isinstance(s, dict):
+            nm = (s.get("sector") or s.get("name") or s.get("label") or "").strip()
+            pct = _fmt_pct(s.get("pct"))
+            if nm:
+                names.append(f"{nm} ({pct})" if pct else nm)
+        else:
+            nm = str(s or "").strip()
+            if nm:
+                names.append(nm)
+    if not names:
+        return None
+    joined = names[0] if len(names) == 1 else f"{names[0]} and {names[1]}"
+    return f"{joined} ETFs {verb}"
+
+
+def _minimal_enrichment_bits(tape: dict) -> list[str]:
+    """Return honest enrichment clauses (10Y level + bps, WTI, ETF-attributed
+    sector leaders/laggards) present on the tape. Empty list when none. No
+    breadth claim (the #461 proxy is not breadth; breadth_available is false).
+    Pure."""
+    if not isinstance(tape, dict):
+        return []
+    t = _enrichment_flat(tape)
+    bits: list[str] = []
+
+    # Rates: 10Y level + optional bps move.
+    rates = t.get("rates") if isinstance(t.get("rates"), dict) else t
+    ten_level = None
+    for k in ("us10y_level", "ten_year_level", "10y_level", "tnx_level", "us10y", "ten_year"):
+        v = rates.get(k) if isinstance(rates, dict) else None
+        if v is not None:
+            ten_level = v
+            break
+    ten_bps = None
+    for k in ("us10y_bps", "ten_year_bps", "10y_bps", "tnx_bps", "us10y_change_bps"):
+        v = rates.get(k) if isinstance(rates, dict) else None
+        if v is not None:
+            ten_bps = v
+            break
+    if ten_level is not None:
+        try:
+            bit = f"the 10-year Treasury yield at {float(ten_level):.2f}%"
+            if ten_bps is not None:
+                bit += f" ({float(ten_bps):+.0f} bps on the session)"
+            bits.append(bit)
+        except (TypeError, ValueError):
+            pass
+
+    # Oil: WTI / crude / Brent, level and optional pct.
+    for okey, olabel in (("wti", "WTI crude"), ("oil", "crude"), ("brent", "Brent crude")):
+        ov = t.get(okey)
+        if ov is None:
+            continue
+        try:
+            if isinstance(ov, dict):
+                lvl = ov.get("level") if ov.get("level") is not None else ov.get("price")
+                pct = _fmt_pct(ov.get("pct"))
+                if lvl is None and pct is None:
+                    continue
+                bit = olabel
+                if lvl is not None:
+                    bit += f" at ${float(lvl):.2f}"
+                if pct is not None:
+                    bit += f" ({pct})"
+                bits.append(bit)
+            else:
+                bits.append(f"{olabel} at ${float(ov):.2f}")
+            break
+        except (TypeError, ValueError):
+            continue
+
+    # Sector leadership: ETF-attributed leaders + laggards (proxy, NOT breadth).
+    leaders = _minimal_sector_phrase(t.get("sector_leaders") or t.get("leaders"), "led")
+    laggards = _minimal_sector_phrase(t.get("sector_laggards") or t.get("laggards"), "lagged")
+    if leaders and laggards:
+        bits.append(f"{leaders} while {laggards}")
+    elif leaders:
+        bits.append(leaders)
+    elif laggards:
+        bits.append(laggards)
+
+    return bits
+
+
+def _minimal_catalyst_clause(today_catalyst: dict | None) -> str | None:
+    """Render the day's released macro catalyst (Agent 1's
+    released_macro_context()['today_catalyst']) as an honest clause. Renders only
+    values actually present; never invents a figure. Pure; None when absent."""
+    if not isinstance(today_catalyst, dict):
+        return None
+    name = (today_catalyst.get("name") or "").strip()
+    if not name:
+        return None
+    figs = []
+    for f in (today_catalyst.get("figures") or [])[:2]:
+        if not isinstance(f, dict):
+            continue
+        val = f.get("value")
+        if val is None:
+            continue
+        unit = (f.get("unit") or "").strip()
+        label = (f.get("label") or "").strip()
+        bit = (f"{label} {val}{unit}").strip()
+        prior = f.get("prior")
+        if prior is not None:
+            bit += f" (prior {prior}{unit})"
+        figs.append(bit)
+    if figs:
+        return f"today's {name} print ({'; '.join(figs)})"
+    return f"today's {name} print"
+
+
+def build_minimal_overview(
+    tape: dict | None,
+    best_story_title: str | None = None,
+    today_catalyst: dict | None = None,
+) -> str:
+    """Degraded-but-COMPLETE grounded hero built from the fetched tape numbers,
+    the tape's #461 ENRICHMENT (rates / oil / ETF-attributed sector leaders +
+    laggards), the day's released macro catalyst (Agent 1's
+    released_macro_context()['today_catalyst']), plus, optionally, the single
+    best-supported corpus story as a mention.
+
+    A grounding rejection of the enriched V2 hero is a rejection of its PROSE (a
+    bad entity), not of the tape's NUMBERS: this fallback therefore no longer
+    strips enrichment or the day's macro print. It never invents a direction or a
+    name, makes NO breadth claim (the sector figures are an ETF-move proxy, not
+    breadth; breadth_available is false), and attributes sector moves to ETFs
+    ('Energy ETFs led'). When there is no tape at all, returns a minimal, honest
     'no live tape' line. Pure."""
     if not tape:
         base = "Market data is unavailable for this session; no live tape to characterize."
+        cat = _minimal_catalyst_clause(today_catalyst)
+        if cat:
+            base += f" The day's macro catalyst is {cat}."
         title = (best_story_title or "").strip()
         if title:
             base += f" One story in focus: {title}."
@@ -646,6 +818,10 @@ def build_minimal_overview(tape: dict | None, best_story_title: str | None = Non
     if vix_txt:
         bits.append(vix_txt)
 
+    # Enrichment clauses (rates / oil / ETF-attributed sector leaders + laggards).
+    # These carry the day's macro texture that the old template dropped.
+    enrich_bits = _minimal_enrichment_bits(tape)
+
     # The regime word must match the numbers. The self-select fallback relegates
     # to market-wide on ANY tape (decision b), so this template can fire on a
     # material-move day; a hardcoded "quiet" then contradicts the figures
@@ -663,6 +839,16 @@ def build_minimal_overview(tape: dict | None, best_story_title: str | None = Non
         body = prefix + ", ".join(bits) + "."
     else:
         body = "The tape is quiet with no single driver owning the read."
+
+    # Under the index line, spend the enrichment: rates, oil, sector rotation.
+    # This is the degraded-but-COMPLETE part; the old template stripped all of it.
+    if enrich_bits:
+        body += " Under the surface, " + ", ".join(enrich_bits) + "."
+
+    # The day's released macro catalyst, if any (Agent 1's today_catalyst).
+    cat = _minimal_catalyst_clause(today_catalyst)
+    if cat:
+        body += f" The day's macro catalyst is {cat}."
 
     title = (best_story_title or "").strip()
     if title:
