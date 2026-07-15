@@ -64,6 +64,18 @@ if MATERIALITY_RANK_MODE not in ("off", "shadow", "active"):
 # is byte-identical to today.
 MARKET_PULSE_V2 = os.environ.get("MARKET_PULSE_V2", "").strip().lower() in ("1", "true", "yes", "on")
 
+# LEAD_V2: when true, the Today's Lead block (lead_paragraph + supporting_context,
+# and the headline when its figure guard leaves it in scope) is produced by a
+# dedicated focused Gemini call (generate_lead_v2) that OVERWRITES the monolith's
+# lead fields AFTER parse, mirroring the MARKET_PULSE_V2 generate-then-overwrite
+# pattern. The dedicated call carries the pulse's proven rules: REAL WHY (the
+# driver is an external force, never the move restating itself), MACRO RECENCY
+# (a release that dropped TODAY IS the catalyst, stated with its value, never
+# "await"), FIGURE FIDELITY (figures only if in the inputs), and observational /
+# compliant framing (no advice). DEFAULT OFF: when off, generate_lead_v2 is never
+# invoked and behavior is byte-identical to today.
+LEAD_V2 = os.environ.get("LEAD_V2", "").strip().lower() in ("1", "true", "yes", "on")
+
 MORNING_SYSTEM = """You are a senior investment banking analyst preparing the daily morning briefing for a capital markets team.
 
 HOUSE VOICE (highest priority, applies to every field; overrides any phrasing primed elsewhere in this prompt): write like a sharp analyst with a view, not a wire feed. (1) Never narrate who is watching, monitoring, observing, gauging, awaiting, or focusing on something, and never substitute 'analysts will focus on X' for an actual view: state the consequence or what is at stake directly. (2) Open market_pulse.narrative with an analytical through-line claim, never with 'the market is / closed [mood word]' and never with an index recap (the index moves may appear later in the body, just not as the opening line). The sentiment_word still carries the mood and still matches the prior-close regime; the opening line of the narrative carries the argument.
@@ -2916,6 +2928,223 @@ def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None,
     return None
 
 
+# Deterministic anti-tautology guard for the LEAD_V2 lead (pure, offline-testable).
+# The monolith's lead routinely restates the move as its own cause ("The mixed
+# futures performance reflects investor caution ahead of ...", "on mixed
+# sentiment"). A REAL WHY names an external force; a tautology names the move
+# itself. We flag a tight set of self-referential cause constructions so the
+# dedicated call's output can be re-asked when it regresses. Conservative: only
+# clear move-restating-itself phrasings are flagged, never legitimate drivers.
+_LEAD_TAUTOLOGY_PATTERNS = (
+    r"reflect(?:s|ing|ed)?\s+(?:investor|market)\s+caution\s+ahead\s+of",
+    r"reflect(?:s|ing|ed)?\s+(?:investor|market)\s+(?:optimism|pessimism|"
+    r"uncertainty|nervousness|sentiment|mood|appetite|confidence)\b",
+    r"\bon\s+mixed\s+sentiment\b",
+    r"\bamid\s+(?:investor|market)\s+(?:caution|optimism|uncertainty|nervousness)\b",
+    r"\bas\s+risk-?on\s+sentiment\s+(?:drove|fueled|lifted)",
+    r"\bon\s+positive\s+momentum\b",
+    r"\bamid\s+(?:ongoing|continued)\s+(?:optimism|caution|uncertainty)\b",
+    r"\bas\s+(?:buyers|sellers)\s+stepped\s+in\b",
+    r"\bdriven\s+by\s+(?:risk-?on|risk-?off|bullish|bearish)\s+sentiment\b",
+)
+
+
+def _lead_tautology_violation(text):
+    """Return the list of self-referential 'the move is its own cause' phrases
+    found in the lead text, or [] when clean. Pure; no network. Used to gate the
+    LEAD_V2 output with ONE bounded re-ask when the real-why regresses."""
+    if not isinstance(text, str) or not text.strip():
+        return []
+    hits = []
+    low = text.lower()
+    for pat in _LEAD_TAUTOLOGY_PATTERNS:
+        m = re.search(pat, low)
+        if m:
+            hits.append(m.group(0))
+    return hits
+
+
+def generate_lead_v2(brief_type, tape, macro_ctx, top_stories, prior_ctx=None):
+    """LEAD_V2: ONE bounded, focused Gemini call that produces the Today's Lead
+    block (headline + lead_paragraph + supporting_context) with a REAL WHY, no
+    tautology, and MACRO RECENCY. Mirrors generate_market_pulse: it is wired to
+    OVERWRITE the monolith's parsed lead fields when the LEAD_V2 flag is on.
+    Returns a dict {"headline", "lead_paragraph", "supporting_context"} (any subset
+    of non-empty strings), or None on failure (caller keeps the monolith lead).
+
+    Inputs:
+      brief_type  : "morning" | "evening" (drives claim-scope framing).
+      tape        : fetch_tape() dict (indices + VIX + regime).
+      macro_ctx   : Agent 1's released_macro_context() dict
+                    {"releases":[...], "today_catalyst": <dict|None>, "strip": str}.
+                    today_catalyst present => that release IS today's catalyst and
+                    the lead leads with it and its VALUE (never "await"). Tolerant
+                    of a bare string or None (degrades to no fresh catalyst).
+      top_stories : [{title, sector, one_liner, companies}] ranked, the corporate
+                    stories the lead may draw its primary story from.
+      prior_ctx   : optional prior-session context string (prior brief lead).
+
+    Contract (also enforced by the deterministic _lead_tautology_violation
+    post-check + the existing _headline_unsourced_figures guard): the lead's
+    driver is an EXTERNAL force, never the move restating itself; a release that
+    dropped TODAY leads the lead with its value; figures appear only if present in
+    the inputs; the framing is observational, never prescriptive/advice.
+
+    The model call is wired here; it is NOT exercised by the offline harness
+    (which tests only _lead_tautology_violation). Gemini is never called at import
+    time."""
+    facts = _tape_facts_block(tape)
+    # Normalize macro_ctx to the shared contract, tolerating a bare string / None.
+    today_catalyst = None
+    macro_strip = ""
+    if isinstance(macro_ctx, dict):
+        today_catalyst = macro_ctx.get("today_catalyst")
+        macro_strip = (macro_ctx.get("strip") or "").strip()
+    elif isinstance(macro_ctx, str):
+        macro_strip = macro_ctx.strip()
+    macro_block = macro_strip if macro_strip else "(no fresh macro prints)"
+
+    if brief_type == "evening":
+        claim_scope = (
+            "CLAIM SCOPE (EVENING, absolute): the session has CLOSED. The lead may "
+            "render the settled full-session verdict; closing verbs are correct "
+            "('closed up', 'ended the day', 'finished the session')."
+        )
+    else:
+        claim_scope = (
+            "CLAIM SCOPE (MORNING, absolute): the session is IN PROGRESS. Describe "
+            "the market as it OPENED / is TRADING in the EARLY SESSION, using "
+            "opening/early-session verbs ONLY ('opened higher', 'is trading up', "
+            "'early gains'). FORBIDDEN: any settled whole-day or closing verdict "
+            "('closed', 'ended the day', 'finished', 'on the day')."
+        )
+
+    # MACRO RECENCY framing. today_catalyst may be a dict (name/value figures) or,
+    # defensively, a string. Render it as the catalyst the lead MUST lead with.
+    if today_catalyst:
+        if isinstance(today_catalyst, dict):
+            _cn = (today_catalyst.get("name") or "").strip()
+            _cv_bits = []
+            for _f in (today_catalyst.get("figures") or [])[:3]:
+                if isinstance(_f, dict):
+                    _lab = (_f.get("label") or "").strip()
+                    _val = _f.get("value")
+                    _unit = (_f.get("unit") or "").strip()
+                    if _val is not None:
+                        _cv_bits.append(f"{_lab} {_val}{_unit}".strip())
+                elif isinstance(_f, str) and _f.strip():
+                    _cv_bits.append(_f.strip())
+            _cat_line = _cn + (": " + "; ".join(_cv_bits) if _cv_bits else "")
+            _cat_line = _cat_line.strip() or "(today's release)"
+        else:
+            _cat_line = str(today_catalyst).strip() or "(today's release)"
+        macro_framing = (
+            "MACRO RECENCY (a release DROPPED TODAY - it IS the day's catalyst): "
+            f"today's catalyst is {_cat_line}. The lead's driver IS this release "
+            "STATED WITH ITS VALUE (model: 'June CPI came in at 3.5%, hotter than "
+            "expected, ...'). FORBIDDEN on a release day: framing the market as "
+            "'awaiting' / 'ahead of' / 'looking to' this print - it has ALREADY "
+            "landed. Lead the lead_paragraph with the print and the market's "
+            "reaction to it."
+        )
+    else:
+        macro_framing = (
+            "MACRO RECENCY (NO release dropped today): do NOT invent a macro "
+            "catalyst and do NOT frame the market as awaiting a dated print as if "
+            "it were today's news. If a corporate story is the real driver, lead "
+            "with it; if the tape is quiet with no dominant catalyst, say so "
+            "honestly. The standing macro backdrop earns at most a single short "
+            "clause, never a roll-call of prints."
+        )
+
+    story_lines = []
+    for s in (top_stories or [])[:5]:
+        t = (s.get("title") or "").strip()
+        if not t:
+            continue
+        sec = (s.get("sector") or "").strip()
+        ol = (s.get("one_liner") or "").strip()
+        story_lines.append(f"- [{sec}] {t}" + (f" - {ol}" if ol else ""))
+    stories_block = "\n".join(story_lines) if story_lines else "(no ranked stories)"
+    prior_block = (prior_ctx or "").strip()
+
+    system = (
+        "You write the Today's Lead block of a daily market brief: the single most "
+        "important development and why it matters. Return JSON only: "
+        '{"headline": "<10-15 word headline naming the ONE primary story>", '
+        '"lead_paragraph": "<2-3 sentences on that story: who, what, the figure/'
+        'value, the market reaction>", "supporting_context": "<2-3 sentences of '
+        "real context: why it matters now, the backdrop, comparable moves>\"}. No "
+        "other keys, no prose outside the JSON. Zero em-dashes; use hyphens, "
+        "colons, parens.\n\n"
+        "You are ONE sharp markets analyst explaining the day's single biggest "
+        "driver to a smart person who is NOT in the market every day. Write like a "
+        "wire lead (AP / Bloomberg), not an AI summary: plain words, short "
+        "sentences, concrete named forces. Observational only: state what happened "
+        "and why; NEVER give advice, a recommendation, or a call to action."
+    )
+    user = (
+        "Write the Today's Lead block. Pick the SINGLE most material development as "
+        "the primary story and commit the whole block to it (never stack two "
+        "stories with 'and', commas, 'while', 'as', or 'amid').\n\n"
+        f"{claim_scope}\n\n"
+        f"{facts}\n\n"
+        f"MACRO BACKDROP (fetched facts, do not invent; each print tagged with its "
+        f"release recency):\n{macro_block}\n\n"
+        f"{macro_framing}\n\n"
+        f"RANKED STORIES (the corporate candidates for the primary story):\n"
+        f"{stories_block}\n\n"
+        + (f"PRIOR SESSION CONTEXT: {prior_block}\n\n" if prior_block else "")
+        + "RULES (absolute):\n"
+        "- REAL WHY, NOT TAUTOLOGY: the driver must be an EXTERNAL force - a named "
+        "catalyst (a macro print, a deal, an earnings result), a sector move, a "
+        "rates / oil / credit force - NEVER the price action restating itself. "
+        "BANNED because they merely restate the move: 'reflects investor caution "
+        "ahead of ...', 'on mixed sentiment', 'amid investor optimism', 'as "
+        "risk-on sentiment drove participation', 'on positive momentum', 'as "
+        "buyers stepped in'. If NO real external driver exists, say so honestly "
+        "('drifted in quiet trading with no dominant catalyst'); an honest "
+        "no-catalyst line beats a fake why. Do NOT manufacture a driver.\n"
+        "- MACRO RECENCY: obey the MACRO RECENCY framing above exactly. On a "
+        "release day the catalyst IS today's release stated WITH ITS VALUE; never "
+        "frame the market as 'awaiting' or 'ahead of' a print that already "
+        "landed.\n"
+        "- FIGURE FIDELITY: state a specific figure (dollar amount, percent, "
+        "count, date, magnitude) ONLY if that exact figure appears in the RANKED "
+        "STORIES, the MACRO BACKDROP, or the TAPE FACTS above. Index moves, VIX, "
+        "and macro values from the tape/strip are sourced and fine. When unsure of "
+        "a number, DROP it: a qualitative claim is never wrong; a fabricated "
+        "figure is.\n"
+        "- ENTITY FIDELITY: name every company EXACTLY as written in the RANKED "
+        "STORIES (correct name and capitalization). Name ONLY organizations that "
+        "appear in the stories, macro, or tape above.\n"
+        "- HEADLINE: 10-15 words, names the ONE primary story (company / "
+        "institution / index / data point) and what happened. No generic labels "
+        "('Markets Face Uncertainty'), no comma-stacking two stories, no 'and' "
+        "joining two different transactions or themes.\n"
+        "- OBSERVATIONAL + COMPLIANT: no prescriptive or advice language, no "
+        "recommendation, no 'investors should', no reader-directed call to "
+        "action. State the read and what it turns on; never narrate who is "
+        "'watching' or 'awaiting'.\n"
+        "- VOICE: plain, short, one analyst. Every sentence carries a fact or a "
+        "named force; if a sentence does neither, cut it."
+    )
+    try:
+        raw = gemini_generate(system=system, user_content=user, temperature=0.3, max_tokens=1024)
+        parsed = _parse_brief_json(raw)
+        if parsed and isinstance(parsed, dict):
+            out = {}
+            for k in ("headline", "lead_paragraph", "supporting_context"):
+                v = parsed.get(k)
+                if isinstance(v, str) and v.strip():
+                    out[k] = v.strip()
+            if out.get("lead_paragraph") or out.get("supporting_context"):
+                return out
+    except Exception as e:
+        print(f"  ⚠ LEAD_V2 dedicated call failed (non-fatal): {e}")
+    return None
+
+
 # Deterministic breadth-claim guard (pure). A recent render asserted "resilient
 # breadth" while the only proxy (Russell) was red and the model had NO breadth
 # input. The pulse may assert breadth ONLY when the tape carries a real breadth
@@ -4290,6 +4519,65 @@ def run(brief_type="morning"):
                         print(f"  [temporal guard] normalized {_fld} relative time")
         except Exception as e:
             print(f"  ⚠ temporal guard error (non-fatal): {e}")
+
+    # LEAD_V2 (default OFF): produce the Today's Lead block (lead_paragraph +
+    # supporting_context, and the headline) from a dedicated focused call
+    # (generate_lead_v2) and OVERWRITE the monolith's parsed lead fields HERE,
+    # BEFORE the headline figure guard below, so the V2 headline is ALSO run
+    # through that guard. Mirrors the MARKET_PULSE_V2 generate-then-overwrite
+    # pattern. It CONSUMES Agent 1's released_macro_context() for macro recency +
+    # the ranked stories for the primary story. When the flag is OFF this block is
+    # skipped entirely and behavior is byte-identical to today (generate_lead_v2 is
+    # never invoked). Soft-fail: on a miss the monolith lead is kept and the
+    # existing chain (headline figure guard, temporal + prose guards) runs on it.
+    # A deterministic anti-tautology post-check ('reflects investor caution ahead
+    # of ...') gets ONE bounded re-ask before the overwrite commits.
+    if LEAD_V2 and not brief_is_stub and isinstance(data, dict):
+        try:
+            _lead_stories = _pulse_top_stories(spine, floor, _companies_of)
+            _macro_ctx = released_macro_context()
+            _lead_prior = _fetch_prior_brief_lead()
+            _lv2 = generate_lead_v2(
+                brief_type, tape_obj, _macro_ctx, _lead_stories, prior_ctx=_lead_prior
+            )
+            if _lv2:
+                _lp = _lv2.get("lead_paragraph")
+                _sc = _lv2.get("supporting_context")
+                # Anti-tautology guard on the whole lead body: ONE bounded re-ask
+                # if the move restates itself as its own cause. Keep V2 output if
+                # the re-ask still tautologizes or fails (it is still real-why-ruled
+                # and macro-recent); the monolith lead is the last resort.
+                _lead_body = " ".join(x for x in (_lp, _sc) if isinstance(x, str))
+                _taut = _lead_tautology_violation(_lead_body)
+                if _taut:
+                    print(f"  ⚠ LEAD_V2 tautology: move restates itself as cause: {', '.join(_taut)}")
+                    _lv2r = generate_lead_v2(
+                        brief_type, tape_obj, _macro_ctx, _lead_stories, prior_ctx=_lead_prior
+                    )
+                    if _lv2r:
+                        _rbody = " ".join(
+                            x for x in (_lv2r.get("lead_paragraph"), _lv2r.get("supporting_context"))
+                            if isinstance(x, str)
+                        )
+                        if not _lead_tautology_violation(_rbody):
+                            _lv2 = _lv2r
+                            _lp = _lv2.get("lead_paragraph")
+                            _sc = _lv2.get("supporting_context")
+                            print("  [LEAD_V2] re-ask resolved the tautology")
+                        else:
+                            print("  ⚠ LEAD_V2: re-ask still tautologizes; keeping first V2 lead")
+                    else:
+                        print("  ⚠ LEAD_V2: re-ask failed; keeping first V2 lead")
+                if isinstance(_lp, str) and _lp.strip():
+                    data["lead_paragraph"] = _lp.strip()
+                if isinstance(_sc, str) and _sc.strip():
+                    data["supporting_context"] = _sc.strip()
+                _hl2 = _lv2.get("headline")
+                if isinstance(_hl2, str) and _hl2.strip():
+                    data["headline"] = _hl2.strip()
+                print("  ✨ LEAD_V2: dedicated real-why + macro-recency lead wired in")
+        except Exception as e:
+            print(f"  ⚠ LEAD_V2 wire-in skipped (non-fatal): {e}")
 
     # Headline figure guard (non-fatal). The V2 pulse figure guard covers the
     # narrative but NOT the lead HEADLINE, where an unsourced "$3 Billion" has
