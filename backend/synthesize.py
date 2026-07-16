@@ -2631,17 +2631,18 @@ def released_macro_context():
     is_release_day is TRUE only when release_date == today's ET date, sourced from
     the AUTHORITATIVE event_calendar dates, not the hardcoded 12th-of-month
     estimator. Fetched FACTS only; empty/None when nothing released. Never raises."""
-    empty = {"releases": [], "today_catalyst": None, "strip": ""}
+    empty = {"releases": [], "today_catalyst": None, "strip": "", "is_release_day": False}
     try:
-        strip, _ = _pulse_macro_strip()
+        strip, _strip_release_today = _pulse_macro_strip()
     except Exception:
         strip = ""
+        _strip_release_today = False
     try:
         import event_calendar
         releases = macro_calendar.fetch_macro_releases() + bea_calendar.fetch_bea_releases()
     except Exception as e:
         print(f"  ⚠ released_macro_context fetch failed (non-fatal): {e}")
-        return {"releases": [], "today_catalyst": None, "strip": strip}
+        return {"releases": [], "today_catalyst": None, "strip": strip, "is_release_day": False}
     today = datetime.now(timezone.utc).date()
     out = []
     today_catalyst = None
@@ -2687,9 +2688,29 @@ def released_macro_context():
                 today_catalyst = entry
         except Exception:
             continue
+    # ONE authoritative release-day flag for the WHOLE brief. Both consumers (the
+    # market pulse and the LEAD_V2 lead) read THIS single scalar, so they cannot
+    # disagree on whether a macro print is fresh-today vs backdrop. It is TRUE only
+    # when a release with an authoritative date == today's ET date exists
+    # (today_catalyst set). The strip's own release-day derivation (_pulse_macro_strip)
+    # is folded in with OR only as a defensive belt-and-braces; if the two ever
+    # diverge we log it so the transit-drop is visible, then trust the strict
+    # authoritative catalyst (an estimate-only strip tag must NEVER promote to fresh).
+    is_release_day_flag = today_catalyst is not None
+    if bool(_strip_release_today) != is_release_day_flag:
+        print(
+            "  ⚠ release-day flag divergence: strip="
+            f"{bool(_strip_release_today)} vs catalyst={is_release_day_flag}; "
+            "using authoritative catalyst flag"
+        )
     if not out:
-        return {"releases": [], "today_catalyst": None, "strip": strip}
-    return {"releases": out, "today_catalyst": today_catalyst, "strip": strip}
+        return {"releases": [], "today_catalyst": None, "strip": strip, "is_release_day": False}
+    return {
+        "releases": out,
+        "today_catalyst": today_catalyst,
+        "strip": strip,
+        "is_release_day": is_release_day_flag,
+    }
 
 
 def _pulse_top_stories(spine, floor, companies_of_fn, limit=5):
@@ -2995,13 +3016,21 @@ def generate_lead_v2(brief_type, tape, macro_ctx, top_stories, prior_ctx=None):
     time."""
     facts = _tape_facts_block(tape)
     # Normalize macro_ctx to the shared contract, tolerating a bare string / None.
+    # is_release_day is the ONE authoritative flag the market pulse also reads, so
+    # both consumers agree on whether a macro print is fresh-today vs backdrop.
     today_catalyst = None
     macro_strip = ""
+    is_release_day = False
     if isinstance(macro_ctx, dict):
         today_catalyst = macro_ctx.get("today_catalyst")
         macro_strip = (macro_ctx.get("strip") or "").strip()
+        is_release_day = bool(macro_ctx.get("is_release_day"))
     elif isinstance(macro_ctx, str):
         macro_strip = macro_ctx.strip()
+    # The catalyst branch is keyed on the SHARED release-day flag, never on the
+    # presence of a macro number in the strip. A backdrop print in the strip must
+    # NOT trip the "release dropped today" framing.
+    today_catalyst = today_catalyst if is_release_day else None
     macro_block = macro_strip if macro_strip else "(no fresh macro prints)"
 
     if brief_type == "evening":
@@ -3049,12 +3078,20 @@ def generate_lead_v2(brief_type, tape, macro_ctx, top_stories, prior_ctx=None):
         )
     else:
         macro_framing = (
-            "MACRO RECENCY (NO release dropped today): do NOT invent a macro "
-            "catalyst and do NOT frame the market as awaiting a dated print as if "
-            "it were today's news. If a corporate story is the real driver, lead "
-            "with it; if the tape is quiet with no dominant catalyst, say so "
-            "honestly. The standing macro backdrop earns at most a single short "
-            "clause, never a roll-call of prints."
+            "MACRO RECENCY (NO release dropped today - the shared release-day flag "
+            "is FALSE, every macro print in the backdrop is a PRIOR-SESSION or older "
+            "print, NOT today's news): ABSOLUTE PROHIBITION - the lead must NOT lead "
+            "with, headline, or center any macro print (CPI, PPI, PCE, jobs, GDP, "
+            "etc.). Do NOT open the lead_paragraph or the headline with a macro "
+            "figure or its month-over-month / year-over-year value, and do NOT frame "
+            "a dated print as 'today's', 'this morning's', 'the latest', or a fresh "
+            "'reprieve' / 'surprise' / 'report'. Those prints are BACKDROP only: they "
+            "earn AT MOST a single short trailing clause of context, never the "
+            "subject of the lead. Lead instead with the real corporate/market driver "
+            "from the RANKED STORIES; if the tape is quiet with no dominant catalyst, "
+            "say so honestly ('opened higher in quiet trading with no fresh catalyst "
+            "on the tape'). An honest no-catalyst line is REQUIRED over dressing a "
+            "day-old print up as fresh news."
         )
 
     story_lines = []
@@ -4221,19 +4258,33 @@ def run(brief_type="morning"):
             # released_macro_context exists after Agent 1 merges). Consumed by name
             # so the fallback can carry the day's macro catalyst. Soft-fail to None
             # until Agent 1 lands (or when the data layer is unreachable offline).
+            # ONE shared macro object for the whole brief: the pulse AND the LEAD_V2
+            # lead read the SAME today_catalyst and the SAME is_release_day flag out
+            # of this single dict, so they cannot disagree on whether a macro print
+            # is fresh-today or backdrop (the CPI-fresh-lead-over-no-fresh-catalyst-
+            # pulse divergence). Built ONCE here; reused by both consumers below.
             _today_catalyst = None
+            _shared_macro_ctx = None
+            _macro_release_today = False
             try:
-                _today_catalyst = (released_macro_context() or {}).get("today_catalyst")
+                _shared_macro_ctx = released_macro_context() or {}
+                _today_catalyst = _shared_macro_ctx.get("today_catalyst")
+                _macro_release_today = bool(_shared_macro_ctx.get("is_release_day"))
             except NameError:
                 # Agent 1 not merged yet (pre-merge-order-1 window); no catalyst.
                 _today_catalyst = None
+                _macro_release_today = False
             except Exception as _rmc_e:
                 print(f"  ⚠ released_macro_context read skipped (non-fatal): {_rmc_e}")
                 _today_catalyst = None
+                _macro_release_today = False
             if MARKET_PULSE_V2 and isinstance(_mp, dict):
                 try:
                     _pulse_stories = _pulse_top_stories(spine, floor, _companies_of)
-                    _pulse_macro, _macro_release_today = _pulse_macro_strip()
+                    # Strip TEXT still comes from _pulse_macro_strip (formatting only);
+                    # the release-day FLAG is the shared authoritative one above, NOT a
+                    # second independent derivation.
+                    _pulse_macro, _ = _pulse_macro_strip()
                     _prior_ctx = _fetch_prior_brief_lead()
                     _v2 = generate_market_pulse(
                         brief_type, tape_obj, _pulse_macro, _pulse_stories, prior_ctx=_prior_ctx,
@@ -4535,7 +4586,15 @@ def run(brief_type="morning"):
     if LEAD_V2 and not brief_is_stub and isinstance(data, dict):
         try:
             _lead_stories = _pulse_top_stories(spine, floor, _companies_of)
-            _macro_ctx = released_macro_context()
+            # Reuse the ONE shared macro object the pulse consumed (same
+            # today_catalyst, same authoritative is_release_day flag) so pulse and
+            # lead CANNOT disagree on CPI freshness. Fall back to a fresh fetch only
+            # if the final-lead gate was skipped (var never set); the accessor is
+            # deterministic for the day, so the flag is identical either way.
+            try:
+                _macro_ctx = _shared_macro_ctx if _shared_macro_ctx else released_macro_context()
+            except NameError:
+                _macro_ctx = released_macro_context()
             _lead_prior = _fetch_prior_brief_lead()
             _lv2 = generate_lead_v2(
                 brief_type, tape_obj, _macro_ctx, _lead_stories, prior_ctx=_lead_prior
