@@ -355,7 +355,39 @@ def fetch_macro_releases(timeout: int = 10) -> list[MacroRelease]:
         return []
 
 
-# ── Standalone harness: python -m backend.macro_calendar ─────────────────────
+# ── Shared labeled-figure formatting (basis IS a required display field) ──────
+# Every macro percentage MUST carry its basis (m/m vs y/y vs q/q) wherever it is
+# rendered for a reader: the strip, the pulse, the lead. An unlabeled macro
+# percentage is a DEFECT (a -0.4% m/m headline reads as contradicting a +3.5%
+# y/y strip when neither states its basis). These helpers are the SINGLE place
+# the basis token is derived and appended, so the strip, the pulse block, the
+# lead catalyst callout, and Agent J's catalyst object all render the SAME
+# unambiguous string. They accept a MacroFigure dataclass OR a plain dict (the
+# persisted macro_panel.releases figures), so J's object can call them directly.
+
+# Raw figure label -> compact reader-facing basis token. The data-layer labels
+# carry SA/NSA parentheticals ("m/m (SA)", "y/y (NSA)") which are correct but
+# noisy in prose; the basis (m/m / y/y / q/q ann.) is what reconciles the number.
+def basis_token(label: Optional[str]) -> str:
+    """Compact basis suffix for a figure label. '' when the figure is a level or
+    rate (no over-prior basis to state, e.g. 'rate (SA)', 'level (SA)')."""
+    lab = (label or "").strip().lower()
+    if "y/y" in lab:
+        return "y/y"
+    if "m/m" in lab:
+        return "m/m"
+    if "q/q" in lab:
+        return "q/q ann." if "ann" in lab else "q/q"
+    return ""  # rate / level / change-vs-prior carry no m/m|y/y basis
+
+
+def _fig_get(fig, attr: str):
+    """Read a field from a MacroFigure dataclass OR a persisted figure dict."""
+    if isinstance(fig, dict):
+        return fig.get(attr)
+    return getattr(fig, attr, None)
+
+
 def _fmt(value: Optional[float], unit: str) -> str:
     if value is None:
         return "n/a"
@@ -364,6 +396,60 @@ def _fmt(value: Optional[float], unit: str) -> str:
     if unit == "pp":
         return f"{value:+.1f}pp"
     return f"{value:.1f}%"
+
+
+def format_figure(fig, *, signed_pct: bool = True) -> Optional[str]:
+    """One figure as an unambiguous BASIS-labeled string, e.g. '-0.4% m/m',
+    '+3.5% y/y', '+57K m/m', '4.2% rate'. Returns None when the value is absent.
+    Percentages are signed by default so a decline vs a gain is unmistakable."""
+    value = _fig_get(fig, "value")
+    if value is None:
+        return None
+    unit = (_fig_get(fig, "unit") or "").strip()
+    label = _fig_get(fig, "label") or ""
+    basis = basis_token(label)
+    # A basis figure (m/m|y/y|q/q) is a DELTA: sign it so a decline vs a gain is
+    # unmistakable. A rate/level is an absolute value: never sign it.
+    signed = signed_pct and bool(basis)
+    if unit == "%":
+        num = f"{value:+.1f}%" if signed else f"{value:.1f}%"
+    else:
+        num = _fmt(value, unit)
+    if basis:
+        return f"{num} {basis}"
+    # No m/m|y/y basis: fall back to a short descriptor from the raw label so the
+    # figure is still self-describing (e.g. 'rate', 'level', 'change').
+    lab = (label or "").strip().lower()
+    if "rate" in lab:
+        return f"{num} rate"
+    if "level" in lab:
+        return f"{num} level"
+    if "change" in lab:
+        return f"{num} vs prior"
+    return num
+
+
+def format_release_line(release, *, max_figs: int = 2) -> Optional[str]:
+    """A whole release as one reconciling, basis-labeled line, e.g.
+    'June CPI: -0.4% m/m, +3.5% y/y'. Accepts a MacroRelease dataclass OR a
+    persisted release dict. Returns None when no figure has a value."""
+    name = (_fig_get(release, "name") or "").strip()
+    period = (_fig_get(release, "period") or "").strip()
+    figs = _fig_get(release, "figures") or []
+    parts = []
+    for f in figs[:max_figs]:
+        s = format_figure(f)
+        if s:
+            parts.append(s)
+    if not parts:
+        return None
+    # Prefix the period's month/quarter so "June CPI" reads as a dated print.
+    month = period.split()[0] if period else ""
+    head = f"{month} {name}".strip() if month else name
+    return f"{head}: " + ", ".join(parts)
+
+
+# ── Standalone harness: python -m backend.macro_calendar ─────────────────────
 
 
 def _print_panel(releases: list[MacroRelease]) -> None:
