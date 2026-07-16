@@ -57,6 +57,19 @@ if MATERIALITY_RANK_MODE not in ("off", "shadow", "active"):
           "falling back to 'off' (prod-neutral default)")
     MATERIALITY_RANK_MODE = "off"
 
+# UNIFIED_LEAD: when on, the lead is ONE deterministic argmax over the unified
+# candidate set (macro / impact clusters AND the qualified Filter A/A2 deal, which
+# is already a scored cluster) on the named-weight rubric in impact_ranking
+# (compute_unified_lead: materiality / session_fit / confirmation / breadth). When
+# off (DEFAULT), the lead path is BYTE-IDENTICAL to today's `impact_pick or deal_pick`
+# precedence. This is orthogonal to MATERIALITY_RANK_MODE and does NOT flip it.
+# Read exactly like MATERIALITY_RANK_MODE so the surfaces stay symmetric.
+UNIFIED_LEAD = os.environ.get("UNIFIED_LEAD", "off").strip().lower()
+if UNIFIED_LEAD not in ("off", "on"):
+    print(f"  [unified-lead] unknown UNIFIED_LEAD={UNIFIED_LEAD!r}, "
+          "falling back to 'off' (prod-neutral default)")
+    UNIFIED_LEAD = "off"
+
 # MARKET_PULSE_V2: when true, market_pulse.narrative is produced by a dedicated
 # tape-first Gemini call (generate_market_pulse) that overwrites the monolith's
 # narrative BEFORE the existing grounding post-check + D13 temporal normalization
@@ -3581,6 +3594,69 @@ def run(brief_type="morning"):
 
         preselected = impact_pick or deal_pick
         lead_source = "impact" if impact_pick else ("deal_preselect" if deal_pick else "gemini")
+
+        # UNIFIED_LEAD: ONE deterministic argmax over the unified candidate set
+        # (macro / impact clusters AND the qualified deal, which is already a scored
+        # cluster in the pool) on the named-weight rubric in impact_ranking
+        # (compute_unified_lead: materiality / session_fit / confirmation / breadth).
+        # OFF (default) leaves `preselected` = `impact_pick or deal_pick` untouched:
+        # byte-identical to today. ON replaces it with argmax(unified_score) and logs
+        # every candidate's component scores + winner + top losers to preselect_decision.
+        # Orthogonal to MATERIALITY_RANK_MODE (does NOT flip it). Fails closed: any
+        # error keeps the precedence pick. Selection-only.
+        if UNIFIED_LEAD == "on" and brief_type in ("morning", "evening") and _pool:
+            try:
+                import impact_ranking as _uir
+                # Reuse the SAME tape + per-name moves the materiality block uses so
+                # the whole brief still makes ONE fetch_tape() call. When the
+                # materiality block runs after us we set _materiality_tape here and it
+                # reuses it; when MATERIALITY_RANK_MODE=off we fetch here (unified only).
+                if _materiality_tape is None:
+                    try:
+                        _prior_tape_u = _fetch_prior_session_tape(_et_session_date(_now))
+                        _materiality_tape = market_tape.fetch_tape(
+                            enrich=True, prior_session_tape=_prior_tape_u
+                        )
+                    except Exception as _ute:
+                        print(f"  ⚠ [unified] tape fetch failed (non-fatal): {_ute}")
+                        _materiality_tape = None
+                _u_name_moves, _u_name_calls = _pool_name_session_moves(_pool)
+                _uni = _uir.compute_unified_lead(
+                    _pool, _now, brief_type=brief_type,
+                    tape=_materiality_tape,
+                    name_session_pct=_u_name_moves,
+                    mega_deal_urls=_uir._mega_deal_urls(supabase, _now),
+                )
+                if _uni and _uni.get("article"):
+                    _prev_title = str((preselected or {}).get("title") or "")[:200]
+                    preselected = dict(_uni["article"])
+                    preselected["_preselect_reason"] = f"unified:{_uni['cluster_key']}"
+                    preselected["_impact_score"] = _uni.get("score")
+                    preselected["_impact_breadth"] = _uni.get("breadth")
+                    preselected["_impact_cluster"] = _uni["cluster_key"]
+                    lead_source = "unified"
+                    _u = _uni.get("unified") or {}
+                    print(f"  ✅ [unified:on] lead -> {_uni['cluster_key']}: "
+                          f"{str(_uni['article'].get('title') or '')[:60]} "
+                          f"(score={_uni.get('score')}; was: {_prev_title[:50]})")
+                    try:
+                        import lead_preselect as _lp_u
+                        _lp_u._LAST_DECISION_LOG.update({
+                            "unified_lead": "on",
+                            "unified_lead_title": str(_uni["article"].get("title") or "")[:200],
+                            "unified_cluster": _uni["cluster_key"],
+                            "unified_score": _uni.get("score"),
+                            "unified_weights": _u.get("weights"),
+                            "unified_winner": _uni.get("unified_winner"),
+                            "unified_losers": _uni.get("unified_losers"),
+                            # Full per-candidate component table (capped) for audit.
+                            "unified_candidates": _uni.get("unified_candidates"),
+                            "unified_name_move_count": _u_name_calls,
+                        })
+                    except Exception:
+                        pass
+            except Exception as _uerr:
+                print(f"  ⚠ unified lead contest skipped (non-fatal, keeping precedence pick): {_uerr}")
 
         # PR1: tape-aware materiality re-rank (shadow-first, behind MATERIALITY_RANK_MODE).
         # It shares the ONE tape fetch with the grounding path below (threaded via

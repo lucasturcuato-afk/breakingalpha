@@ -824,6 +824,326 @@ def compute_materiality_lead(
         return None
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# UNIFIED SCORED LEAD CONTEST (behind UNIFIED_LEAD - see synthesize.py)
+# ══════════════════════════════════════════════════════════════════════════════
+# WHY: today the lead is a PRECEDENCE choice - impact_pick OR deal_pick - so a
+# fresh confirmed blockbuster deal and a market-wide macro event never compete on
+# a common yardstick; whichever path fires first wins. compute_unified_lead makes
+# ONE deterministic argmax over the SAME candidate set score_clusters already
+# produces (macro / impact clusters AND the qualified Filter A/A2 deal, which is
+# itself a scored cluster in that pool - recon-confirmed). Every candidate is
+# scored on ONE named-weight rubric; argmax(score) is the single lead decision.
+#
+# RUBRIC (all deterministic, all logged, each component normalized to [0,1]):
+#   (1) materiality  - is the story consistent with where the TAPE actually moved?
+#                      REUSES tape_is_material + materiality_delta (same signal the
+#                      #PR1 re-rank uses) mapped into [0,1]. Weighted HIGHEST.
+#   (2) session_fit  - freshness / right-for-this-session. DELEGATED to Agent S's
+#                      session_fit.session_fit_score(candidate, brief_type, now).
+#                      Weighted HIGHEST (tied with materiality).
+#   (3) confirmation - confirmed + a real valuation ("$4B agreed") beats
+#                      "seeks"/"in talks"/"announced". REUSES the mega-deal
+#                      confirmation gate (is_mega_deal, from confirmed_mega_deal_urls
+#                      at :861) and the lead_preselect unconfirmed-keyword blocklist.
+#   (4) breadth      - market-wide / broadly-covered gets an EARNED edge, NOT an
+#                      automatic win. LOWEST weight: an edge / tiebreaker, never a
+#                      trump. A sleepy macro print must not out-score a confirmed
+#                      blockbuster deal on breadth alone.
+#
+# The named weights below are the ONE place Noah tunes the contest. materiality and
+# session_fit are the two HIGHEST; breadth is deliberately the smallest so breadth
+# is an edge, not a trump. NO buried magic numbers - every scalar the score touches
+# is a named constant here.
+
+# ── Unified-contest weights (the ONE tuning surface; Noah ratifies) ──────────
+W_MATERIALITY = 4.0     # highest: consistency with the real tape move
+W_SESSION_FIT = 4.0     # highest (tied): fresh + right for this session
+W_CONFIRMATION = 3.0    # confirmed + priced beats "seeks" / "in talks"
+W_BREADTH = 1.5         # EARNED edge / tiebreaker, deliberately the smallest
+
+# Component-normalization anchors (keep the buried constants named + here).
+# Materiality: materiality_delta spans roughly [-(deal+irrelevant), +(wide+driver)];
+# map linearly through this half-range into [0,1], 0.5 == neutral (no signal).
+_UNIFIED_MAT_HALF_RANGE = (
+    MAT_DEAL_NOT_DRIVER_PENALTY + MAT_US_IRRELEVANT_PENALTY
+)  # ~16.0; the largest single-direction delta magnitude we normalize against
+# Breadth: distinct-source count at/above this reads as "fully broad" (component 1.0).
+_UNIFIED_BREADTH_SAT_SOURCES = 12.0
+# Confirmation component levels (deterministic ladder, all named). Order matters:
+# a confirmed $1B+ deal is the strongest concrete fact; a HARD macro print (an actual
+# CPI/Fed/jobs release) is a real, concrete event and ranks ABOVE a generic priced
+# deal; a real valuation-bearing deal_type is priced; everything else is neutral;
+# speculative ("seeks"/"in talks") is demoted hard.
+_CONF_CONFIRMED_MEGA = 1.0    # confirmed $1B+ deal url (mega-deal gate)
+_CONF_MACRO_HARD = 0.85      # a hard macro print (tier-1 / recent event) is a real event
+_CONF_PRICED = 0.8           # a real valuation-bearing deal_type (M&A / funding / etc.)
+_CONF_NEUTRAL = 0.5          # ordinary confirmed-enough story (incl. single-name drift)
+_CONF_SPECULATIVE = 0.15     # "seeks" / "in talks" / "rumored" single-name
+
+# ── Unified materiality-component shaping (named; the market-wide edge + noise demote) ──
+# On a QUIET tape materiality_delta is ~0 for everyone, so the raw delta cannot tell a
+# market-wide macro read apart from single-name noise. These layer a deterministic edge
+# on the [0,1] materiality component so the HIGHEST-weighted dimension actually does its
+# job: a market-wide / macro cluster earns an edge that SCALES WITH the tape magnitude
+# (a genuinely moving tape lifts the broad read a lot; a dead-flat tape lifts it only a
+# little - an EARNED edge, not an automatic win), and a single-name pure-deal cluster
+# that is NOT a confirmed tape driver is demoted (the tape did not move on its account).
+_MAT_WIDE_EDGE_MAX = 0.30     # max market-wide/macro lift added to the 0.5 neutral base
+_MAT_WIDE_MAG_SAT_PCT = 1.5   # |S&P move %| at which the wide edge saturates to the max
+_MAT_SINGLE_NAME_NOISE_DEMOTE = 0.20  # demote a non-driver single-name pure-deal cluster
+
+
+def _unified_session_fit(candidate: dict, brief_type: str,
+                         now: datetime.datetime) -> tuple[float, bool]:
+    """Session-fit component in [0,1]. DELEGATED to Agent S's detector by name;
+    returns (score, used_detector). If session_fit is not importable (S not yet
+    merged) OR raises, fall back to a pure freshness proxy so the contest still
+    runs. The proxy is intentionally simple (recency_factor) so the real detector
+    is the source of truth once merged; the fallback never out-ranks a genuinely
+    fresh story."""
+    try:
+        import session_fit as _sf
+        v = float(_sf.session_fit_score(candidate, brief_type, now))
+        return max(0.0, min(1.0, v)), True
+    except Exception:
+        # Fallback proxy: freshness of the candidate's lead article.
+        age = _age_hours(candidate, now)
+        return _recency_factor(age), False
+
+
+def _has_priced_deal_type(arts: list[dict]) -> bool:
+    """True when the cluster carries a REAL valuation-bearing deal_type on the deal
+    side (M&A / funding / offering / etc.), not merely a keyword-matched 'ipo' theme
+    on a stock-drift story. This is the concreteness signal for the priced-deal rung:
+    an IPO-aftermarket 'stock closes $1 above IPO price' article is NOT a priced deal."""
+    for a in arts:
+        if (str(a.get("deal_type") or "").strip().lower()) in _PURE_DEAL_TYPES:
+            return True
+    return False
+
+
+def _unified_confirmation(scored_cluster: dict) -> tuple[float, str]:
+    """Confirmation / concreteness component in [0,1]. Deterministic ladder (highest
+    first):
+      - a confirmed $1B+ deal (is_mega_deal, the mega-deal gate)          -> 1.00
+      - a HARD macro print (tier-1 / recent event: an actual CPI/Fed/jobs) -> 0.85
+      - a real valuation-bearing deal_type (M&A/funding/offering/etc.)     -> 0.80
+      - ordinary confirmed story (incl. single-name stock drift)          -> 0.50
+      - speculative ("seeks"/"in talks"/"rumored") single-name            -> 0.15
+    A hard macro print ranks ABOVE a generic priced deal because a real macro release
+    is a concrete, confirmed event, not a might-happen transaction. A single-name
+    stock-drift story that merely matched a deal THEME (e.g. an IPO-aftermarket close)
+    is NOT priced - it lands at neutral. Pure; reuses lead_preselect's
+    unconfirmed-keyword blocklist so speculation is demoted the same way the deal
+    pre-selector demotes it."""
+    arts = _cluster_arts(scored_cluster)
+    text = _cluster_text(arts)
+    if scored_cluster.get("is_mega_deal"):
+        return _CONF_CONFIRMED_MEGA, "confirmed $1B+ deal (mega-deal gate)"
+    # Speculative single-name deal copy is demoted hard.
+    try:
+        import lead_preselect as _lp
+        if (_lp._has_unconfirmed_keyword(text)
+                or _lp._has_unconfirmed_keyword_non_ma(text)):
+            return _CONF_SPECULATIVE, "speculative (seeks / in talks / rumored)"
+    except Exception:
+        pass
+    # A hard macro print (an actual release) is a concrete, confirmed event.
+    if scored_cluster.get("is_tier1") or scored_cluster.get("is_recent"):
+        return _CONF_MACRO_HARD, "hard macro print (tier-1 / recent event)"
+    # A REAL priced deal (valuation-bearing deal_type), not a keyword-matched theme.
+    if _has_priced_deal_type(arts):
+        return _CONF_PRICED, "priced deal (real valuation-bearing deal_type)"
+    return _CONF_NEUTRAL, "ordinary confirmed story"
+
+
+def _unified_breadth(scored_cluster: dict) -> float:
+    """Breadth component in [0,1]: distinct-source coverage, saturating at
+    _UNIFIED_BREADTH_SAT_SOURCES. Market-wide / macro clusters get a small floor
+    so a genuinely market-wide event carries an EARNED breadth edge - but the LOW
+    W_BREADTH weight keeps this a tiebreaker, never a trump."""
+    n = float(scored_cluster.get("distinct_sources") or 0)
+    frac = min(1.0, n / _UNIFIED_BREADTH_SAT_SOURCES)
+    key = scored_cluster["cluster_key"]
+    text = _cluster_text(_cluster_arts(scored_cluster))
+    if _is_market_wide_cluster(key, text):
+        frac = max(frac, 0.5)  # market-wide floor: an earned edge, not a win
+    return frac
+
+
+def _unified_materiality(scored_cluster: dict, *, tape: Optional[dict],
+                         driver_names: set[str],
+                         name_session_pct: Optional[dict]) -> tuple[float, list[str]]:
+    """Materiality component in [0,1], the HIGHEST-weighted dimension. Built on
+    materiality_delta (the #PR1 signal) PLUS a deterministic market-wide edge and a
+    single-name-noise demote, so the component discriminates macro-vs-single-name
+    even on a QUIET tape (where the raw delta is ~0 for everyone and cannot).
+
+    Layers (all named constants):
+      base 0.5  (neutral)
+      + materiality_delta mapped through the half-range   (the #PR1 tape-consistency)
+      + market-wide/macro EARNED edge, scaled by |S&P move %| up to _MAT_WIDE_MAG_SAT_PCT
+        (a genuinely moving tape lifts the broad read a lot; a dead-flat tape barely)
+      - single-name pure-deal NON-driver demote (the tape did not move on its account)
+    Clamped to [0,1]. Pure."""
+    md = materiality_delta(scored_cluster, tape=tape, driver_names=driver_names,
+                           name_session_pct=name_session_pct)
+    reasons = list(md["reasons"])
+    hr = _UNIFIED_MAT_HALF_RANGE or 1.0
+    comp = 0.5 + (md["delta"] / (2.0 * hr))
+
+    key = scored_cluster["cluster_key"]
+    arts = _cluster_arts(scored_cluster)
+    text = _cluster_text(arts)
+    companies = _cluster_companies(arts)
+
+    # Market-wide / macro EARNED edge, scaled by the tape magnitude. Uses |S&P move %|
+    # as the magnitude proxy; on a flat tape the edge is small, on a big move it hits
+    # the cap. This is the "market-wide gets an EARNED edge, NOT an automatic win" rule.
+    if tape and _is_market_wide_cluster(key, text):
+        p = tape_pcts(tape)
+        mag = abs(p["spx"]) if p["spx"] is not None else 0.0
+        frac = min(1.0, mag / (_MAT_WIDE_MAG_SAT_PCT or 1.0))
+        edge = _MAT_WIDE_EDGE_MAX * frac
+        if edge > 0:
+            comp += edge
+            reasons.append(f"market-wide earned edge (+{round(edge, 3)}, |spx|={mag:.2f}%)")
+
+    # Single-name pure-deal that is NOT a confirmed tape driver: the tape did not move
+    # on its account, so its materiality is low. (Confirmed drivers / mega deals keep
+    # their materiality; those are handled by materiality_delta bonuses + confirmation.)
+    is_driver = bool(companies & driver_names)
+    if (_is_pure_deal_cluster(key, arts) and _is_single_name_cluster(key, companies)
+            and not is_driver and not scored_cluster.get("is_mega_deal")):
+        comp -= _MAT_SINGLE_NAME_NOISE_DEMOTE
+        reasons.append(f"single-name non-driver noise (-{_MAT_SINGLE_NAME_NOISE_DEMOTE})")
+
+    return max(0.0, min(1.0, comp)), reasons
+
+
+def compute_unified_lead(
+    pool: list[dict],
+    now: datetime.datetime,
+    *,
+    brief_type: str = "morning",
+    tape: Optional[dict] = None,
+    name_session_pct: Optional[dict] = None,
+    mega_deal_urls: Optional[set[str]] = None,
+    asof_date: Optional[datetime.date] = None,
+) -> Optional[dict]:
+    """UNIFIED scored lead contest. ONE deterministic argmax over the SAME candidate
+    set score_clusters produces (macro / impact clusters AND the qualified deal,
+    which is already a scored cluster in the pool). Every candidate is scored on the
+    named-weight rubric (materiality / session_fit / confirmation / breadth); the
+    argmax is the lead. PURE: tape + per-name moves are passed in; session-fit is
+    delegated to session_fit.session_fit_score. Never raises; returns None on empty.
+
+    Result mirrors compute_materiality_lead's shape PLUS 'unified' (the winner's
+    component breakdown) and 'unified_candidates' (per-cluster component tables for
+    the audit log)."""
+    try:
+        if not pool:
+            return None
+        asof_date = asof_date or now.date()
+        recent = recent_tier1_events(asof_date)
+        scored = score_clusters(pool, now, recent_events=recent,
+                                mega_deal_urls=mega_deal_urls)
+        if not scored:
+            return None
+        driver_names = _driver_names_from_moves(name_session_pct)
+
+        ranked = []
+        for c in scored:
+            _bkt = (c["cluster_key"].split(":", 1)[1]
+                    if c["cluster_key"].startswith("macro:") else None)
+            rep = _best_article_in_cluster(_cluster_arts(c), now, bucket=_bkt)
+            mat_comp, mat_reasons = _unified_materiality(
+                c, tape=tape, driver_names=driver_names,
+                name_session_pct=name_session_pct)
+            sf_comp, sf_used = _unified_session_fit(rep, brief_type, now)
+            conf_comp, conf_reason = _unified_confirmation(c)
+            breadth_comp = _unified_breadth(c)
+            unified_score = round(
+                W_MATERIALITY * mat_comp
+                + W_SESSION_FIT * sf_comp
+                + W_CONFIRMATION * conf_comp
+                + W_BREADTH * breadth_comp,
+                4,
+            )
+            rec = dict(c)
+            rec["_rep_article"] = rep
+            rec["c_materiality"] = round(mat_comp, 4)
+            rec["c_session_fit"] = round(sf_comp, 4)
+            rec["c_confirmation"] = round(conf_comp, 4)
+            rec["c_breadth"] = round(breadth_comp, 4)
+            rec["session_fit_from_detector"] = sf_used
+            rec["confirmation_reason"] = conf_reason
+            rec["unified_materiality_reasons"] = mat_reasons
+            rec["unified_score"] = unified_score
+            ranked.append(rec)
+
+        ranked.sort(key=lambda c: -c["unified_score"])
+        top = ranked[0]
+        lead = top["_rep_article"]
+
+        def _rep_title(rec: dict) -> Optional[str]:
+            a = rec.get("_rep_article") or {}
+            t = (a.get("title") or "").strip()
+            return t[:200] or None
+
+        candidates_audit = [
+            {
+                "cluster_key": c["cluster_key"],
+                "title": _rep_title(c),
+                "unified_score": c["unified_score"],
+                "c_materiality": c["c_materiality"],
+                "c_session_fit": c["c_session_fit"],
+                "c_confirmation": c["c_confirmation"],
+                "c_breadth": c["c_breadth"],
+                "session_fit_from_detector": c["session_fit_from_detector"],
+                "confirmation_reason": c["confirmation_reason"],
+                "distinct_sources": c["distinct_sources"],
+                "article_count": c["article_count"],
+                "is_mega_deal": c.get("is_mega_deal", False),
+                "is_tier1": c.get("is_tier1", False),
+            }
+            for c in ranked[:_TOP_CLUSTERS_AUDIT_CAP]
+        ]
+        losers = candidates_audit[1:3]
+        return {
+            "article": lead,
+            "cluster_key": top["cluster_key"],
+            "score": top["unified_score"],
+            "reason": top["reason"],
+            "breadth": {"distinct_sources": top["distinct_sources"],
+                        "article_count": top["article_count"]},
+            "recent_events": sorted(recent),
+            "unified": {
+                "score": top["unified_score"],
+                "c_materiality": top["c_materiality"],
+                "c_session_fit": top["c_session_fit"],
+                "c_confirmation": top["c_confirmation"],
+                "c_breadth": top["c_breadth"],
+                "weights": {
+                    "W_MATERIALITY": W_MATERIALITY,
+                    "W_SESSION_FIT": W_SESSION_FIT,
+                    "W_CONFIRMATION": W_CONFIRMATION,
+                    "W_BREADTH": W_BREADTH,
+                },
+                "session_fit_from_detector": top["session_fit_from_detector"],
+                "confirmation_reason": top["confirmation_reason"],
+                "materiality_reasons": top["unified_materiality_reasons"],
+            },
+            "unified_winner": candidates_audit[0] if candidates_audit else None,
+            "unified_losers": losers,
+            "unified_candidates": candidates_audit,
+        }
+    except Exception as e:
+        logger.warning("impact_ranking: compute_unified_lead failed: %s", e)
+        return None
+
+
 # ── Coverage-pool + deal helpers (used by the live lead path and telemetry) ──
 _POOL_COLS = ("title, summary, url, source, sector, industry_verticals, companies, "
               "deal_type, relevance_score, published_at, ingested_at")
