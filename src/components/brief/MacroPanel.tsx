@@ -54,7 +54,7 @@ const STRIP_ITEMS: Array<{ releaseKey: string; figureLabel: string; display: str
   { releaseKey: "core_pce", figureLabel: "y/y", display: "Core PCE y/y" },
   { releaseKey: "unemployment", figureLabel: "rate (SA)", display: "Unemployment" },
   { releaseKey: "nonfarm_payrolls", figureLabel: "m/m change (SA)", display: "Payrolls m/m" },
-  { releaseKey: "gdp", figureLabel: "q/q annualized", display: "Real GDP" },
+  { releaseKey: "gdp", figureLabel: "q/q annualized", display: "Real GDP q/q ann." },
 ];
 
 // Full-panel grouping, by release key in display order. Keys not present in the

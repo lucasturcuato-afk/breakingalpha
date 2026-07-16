@@ -2571,15 +2571,16 @@ def _pulse_macro_strip():
             key = getattr(r, "key", "") or ""
             figs = []
             for f in (getattr(r, "figures", None) or [])[:2]:
-                val = getattr(f, "value", None)
-                if val is None:
+                # Shared basis-labeled formatter: every macro percentage carries
+                # its m/m|y/y|q/q basis so the strip never reads as an unlabeled
+                # number that contradicts the lead. "-0.4% m/m", "+3.5% y/y".
+                bit = macro_calendar.format_figure(f)
+                if not bit:
                     continue
-                unit = getattr(f, "unit", "") or ""
-                label = getattr(f, "label", "") or ""
                 prior = getattr(f, "prior", None)
-                bit = f"{label} {val}{unit}".strip()
+                unit = getattr(f, "unit", "") or ""
                 if prior is not None:
-                    bit += f" (prior {prior}{unit})"
+                    bit += f" (prior {macro_calendar._fmt(prior, unit)})"
                 figs.append(bit)
             if not (name and figs):
                 continue
@@ -2862,6 +2863,12 @@ def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None,
         "participation', 'on positive momentum', 'amid investor optimism', 'as buyers "
         "stepped in'. Do NOT manufacture a driver; an honest no-catalyst line beats a "
         "fake why.\n"
+        "- MACRO BASIS IS MANDATORY: any macro percentage you cite (CPI, PPI, PCE, "
+        "GDP) MUST state its BASIS - m/m (month-over-month) or y/y (year-over-year). "
+        "The strip labels every figure; carry that label through. A bare 'CPI 3.5%' or "
+        "'inflation fell 0.4%' is FORBIDDEN - it is ambiguous and can read as "
+        "contradicting the other basis. Cite the figure exactly as the strip states "
+        "it: '-0.4% m/m', '+3.5% y/y'.\n"
         "- LEVER 2 - NAME THE FORCE, KILL THE HEDGE: name the concrete force doing the "
         "work (the catalyst, the macro print, yields, breadth, the sector leading or "
         "lagging). BANNED filler, never write these: 'could signal a shift in how "
@@ -2977,6 +2984,59 @@ def _lead_tautology_violation(text):
     return hits
 
 
+def _catalyst_figures(catalyst):
+    """Best-effort figure list for a today_catalyst entry, so the shared
+    labeled-figure formatter can render it. Prefers an explicit `figures` list;
+    otherwise reconstructs one from the released_macro_context `m_o_m` / `y_o_y`
+    sub-dicts (which carry value/unit/prior but no label) by re-attaching the
+    basis label. Returns a list of figure dicts the formatter understands."""
+    if not isinstance(catalyst, dict):
+        return []
+    figs = catalyst.get("figures")
+    if isinstance(figs, list) and figs:
+        return figs
+    out = []
+    for basis_label, sub in (("m/m", catalyst.get("m_o_m")), ("y/y", catalyst.get("y_o_y"))):
+        if isinstance(sub, dict) and sub.get("value") is not None:
+            out.append({
+                "label": basis_label,
+                "value": sub.get("value"),
+                "unit": sub.get("unit") or "%",
+                "prior": sub.get("prior"),
+            })
+    if out:
+        return out
+    # Last resort: a single flat headline value (unit only, basis unknown).
+    if catalyst.get("value") is not None:
+        return [{
+            "label": "",
+            "value": catalyst.get("value"),
+            "unit": catalyst.get("unit") or "%",
+            "prior": catalyst.get("prior"),
+        }]
+    return []
+
+
+def _format_catalyst_line(catalyst):
+    """A today's-catalyst entry as one BASIS-labeled prose line for the lead
+    prompt, e.g. 'June CPI: -0.4% m/m, +3.5% y/y'. Tolerates a bare string or a
+    value-less entry. Never raises."""
+    if isinstance(catalyst, str):
+        return catalyst.strip() or "(today's release)"
+    if not isinstance(catalyst, dict):
+        return "(today's release)"
+    figs = _catalyst_figures(catalyst)
+    line = macro_calendar.format_release_line(
+        {
+            "name": catalyst.get("name") or "",
+            "period": catalyst.get("period") or "",
+            "figures": figs,
+        },
+        max_figs=3,
+    )
+    return line or ((catalyst.get("name") or "").strip() or "(today's release)")
+
+
 def generate_lead_v2(brief_type, tape, macro_ctx, top_stories, prior_ctx=None):
     """LEAD_V2: ONE bounded, focused Gemini call that produces the Today's Lead
     block (headline + lead_paragraph + supporting_context) with a REAL WHY, no
@@ -3032,33 +3092,26 @@ def generate_lead_v2(brief_type, tape, macro_ctx, top_stories, prior_ctx=None):
             "('closed', 'ended the day', 'finished', 'on the day')."
         )
 
-    # MACRO RECENCY framing. today_catalyst may be a dict (name/value figures) or,
-    # defensively, a string. Render it as the catalyst the lead MUST lead with.
+    # MACRO RECENCY framing. today_catalyst may be a released_macro_context entry
+    # (name + y_o_y/m_o_m/figures) or, defensively, a string. Render it BASIS-
+    # LABELED via the shared formatter so the catalyst line the lead is told to
+    # lead with is unambiguous ("June CPI: -0.4% m/m, +3.5% y/y"), never a bare
+    # number the reader cannot reconcile against the strip.
     if today_catalyst:
-        if isinstance(today_catalyst, dict):
-            _cn = (today_catalyst.get("name") or "").strip()
-            _cv_bits = []
-            for _f in (today_catalyst.get("figures") or [])[:3]:
-                if isinstance(_f, dict):
-                    _lab = (_f.get("label") or "").strip()
-                    _val = _f.get("value")
-                    _unit = (_f.get("unit") or "").strip()
-                    if _val is not None:
-                        _cv_bits.append(f"{_lab} {_val}{_unit}".strip())
-                elif isinstance(_f, str) and _f.strip():
-                    _cv_bits.append(_f.strip())
-            _cat_line = _cn + (": " + "; ".join(_cv_bits) if _cv_bits else "")
-            _cat_line = _cat_line.strip() or "(today's release)"
-        else:
-            _cat_line = str(today_catalyst).strip() or "(today's release)"
+        _cat_line = _format_catalyst_line(today_catalyst)
         macro_framing = (
             "MACRO RECENCY (a release DROPPED TODAY - it IS the day's catalyst): "
             f"today's catalyst is {_cat_line}. The lead's driver IS this release "
-            "STATED WITH ITS VALUE (model: 'June CPI came in at 3.5%, hotter than "
-            "expected, ...'). FORBIDDEN on a release day: framing the market as "
-            "'awaiting' / 'ahead of' / 'looking to' this print - it has ALREADY "
-            "landed. Lead the lead_paragraph with the print and the market's "
-            "reaction to it."
+            "STATED WITH ITS BASIS-LABELED VALUE (model: 'June CPI fell 0.4% m/m, "
+            "though it is still up 3.5% y/y, ...'). MANDATORY: whenever you cite a "
+            "macro percentage (CPI, PPI, PCE, GDP), you MUST state its BASIS - m/m "
+            "(month-over-month) or y/y (year-over-year). A CPI figure without m/m "
+            "or y/y is FORBIDDEN: '-0.4%' alone is ambiguous and reads as "
+            "contradicting the y/y number. If you cite the m/m move, also name the "
+            "y/y so the two reconcile. FORBIDDEN on a release day: framing the "
+            "market as 'awaiting' / 'ahead of' / 'looking to' this print - it has "
+            "ALREADY landed. Lead the lead_paragraph with the print and the "
+            "market's reaction to it."
         )
     else:
         macro_framing = (
