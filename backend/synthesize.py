@@ -908,16 +908,54 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
 """
 
 
+def _lead_match_index(claim_texts: list[str], shipped_lead: str) -> int | None:
+    """Contract C2 join: pick the ONE claim that corresponds to the SHIPPED lead so
+    the brief's lead is joinable to its later grade. Deterministic token-overlap:
+    the claim whose text shares the most content words with the shipped lead
+    headline wins, gated by a minimum overlap so a weak match marks nothing. Pure;
+    returns the winning index or None. At most one claim is ever flagged."""
+    if not shipped_lead or not claim_texts:
+        return None
+    _stop = {
+        "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "as", "at",
+        "by", "is", "are", "will", "with", "from", "its", "it", "be", "amid",
+        "after", "over", "into", "this", "that", "day", "today", "us", "vs",
+    }
+
+    def _toks(s: str) -> set:
+        return {w for w in re.findall(r"[a-z0-9$]+", (s or "").lower())
+                if w not in _stop and len(w) > 1}
+
+    lead_tok = _toks(shipped_lead)
+    if not lead_tok:
+        return None
+    best_i, best_overlap = None, 0
+    for i, ct in enumerate(claim_texts):
+        ov = len(_toks(ct) & lead_tok)
+        if ov > best_overlap:
+            best_i, best_overlap = i, ov
+    # Require at least 2 shared content words so an incidental single-word overlap
+    # (e.g. "market") does not falsely tag a non-lead claim.
+    return best_i if best_overlap >= 2 else None
+
+
 def extract_and_persist_claims(
     brief_id: str,
     brief_headline: str,
     brief_summary: str,
     brief_sections: dict,
+    shipped_lead_title: str | None = None,
 ) -> int:
     """
     Extract gradeable market calls from a morning brief and persist them to
     `morning_brief_calls`. Idempotent: deletes any existing rows for this
     brief_id before inserting so re-runs produce a clean set.
+
+    Contract C2: when `shipped_lead_title` is given, the ONE claim that matches the
+    SHIPPED lead (deterministic token overlap, see `_lead_match_index`) is written
+    with is_lead=true; every other claim is is_lead=false. This makes a brief's lead
+    joinable to its later grade. Defaults to the brief headline when no explicit lead
+    title is supplied.
 
     Returns the number of claims persisted. Fails soft: any error yields 0
     and a logged warning so the caller can safely wrap in a try/except.
@@ -1012,11 +1050,24 @@ def extract_and_persist_claims(
             "target_symbol": target_symbol,
             "expected_direction": direction,
             "confidence": confidence,
+            "is_lead": False,
         })
 
     if not rows:
         print("  ⚠ claims extraction: no valid claims after normalization")
         return 0
+
+    # Contract C2: mark the ONE claim that matches the shipped lead as is_lead=true.
+    # Join against the shipped lead title (falls back to the brief headline). At most
+    # one row is flagged; a weak overlap flags nothing (see _lead_match_index).
+    _lead_ref = (shipped_lead_title or brief_headline or "").strip()
+    _lead_idx = _lead_match_index([r["claim_text"] for r in rows], _lead_ref)
+    if _lead_idx is not None:
+        rows[_lead_idx]["is_lead"] = True
+        print(f"  🎯 claims extraction: is_lead=true on claim "
+              f"{_lead_idx + 1}/{len(rows)}: {rows[_lead_idx]['claim_text'][:70]!r}")
+    else:
+        print("  ℹ claims extraction: no claim matched the shipped lead (is_lead all false)")
 
     # Idempotency: clear any prior rows for this brief_id before inserting.
     try:
@@ -1024,11 +1075,20 @@ def extract_and_persist_claims(
     except Exception as e:
         print(f"  ⚠ claims extraction: idempotent delete failed (continuing): {e}")
 
+    # Insert with is_lead first; the column ships behind migration 0013 and may not
+    # exist yet on an un-migrated DB, so fall back to the is_lead-free row (never
+    # lose the claims) rather than failing the whole insert.
     try:
         supabase_admin.table("morning_brief_calls").insert(rows).execute()
     except Exception as e:
-        print(f"  ⚠ claims extraction: insert failed: {e}")
-        return 0
+        print(f"  ⚠ claims extraction: insert with is_lead failed ({e}); "
+              f"retrying without is_lead (migration 0013 may be unapplied)")
+        try:
+            _rows_no_lead = [{k: v for k, v in r.items() if k != "is_lead"} for r in rows]
+            supabase_admin.table("morning_brief_calls").insert(_rows_no_lead).execute()
+        except Exception as e2:
+            print(f"  ⚠ claims extraction: insert failed: {e2}")
+            return 0
 
     print(f"  ✅ claims extraction: persisted {len(rows)} claim(s) for brief {brief_id}")
     return len(rows)
@@ -3689,12 +3749,19 @@ def run(brief_type="morning"):
         # (macro / impact clusters AND the qualified deal, which is already a scored
         # cluster in the pool) on the named-weight rubric in impact_ranking
         # (compute_unified_lead: materiality / session_fit / confirmation / breadth).
-        # OFF (default) leaves `preselected` = `impact_pick or deal_pick` untouched:
-        # byte-identical to today. ON replaces it with argmax(unified_score) and logs
-        # every candidate's component scores + winner + top losers to preselect_decision.
-        # Orthogonal to MATERIALITY_RANK_MODE (does NOT flip it). Fails closed: any
-        # error keeps the precedence pick. Selection-only.
-        if UNIFIED_LEAD == "on" and brief_type in ("morning", "evening") and _pool:
+        #
+        # SHADOW CLOCK (contract C1): compute_unified_lead is COMPUTED and its full
+        # per-candidate result LOGGED to preselect_decision.unified on EVERY run,
+        # flag on or off. Only the SERVE (replacing the shipped precedence pick with
+        # argmax(unified_score)) stays gated on UNIFIED_LEAD == "on". When the flag
+        # is OFF the shipped brief is byte-identical to prod: `preselected` =
+        # `impact_pick or deal_pick` is untouched; only the added telemetry differs.
+        # The RAW per-candidate components (materiality/session_fit/confirmation/
+        # breadth) + weighted_score + is_shipped_lead are load-bearing: the
+        # calibrator re-fits weights from them and joins the grade to the right
+        # candidate. Orthogonal to MATERIALITY_RANK_MODE (does NOT flip it). Fails
+        # closed: any error keeps the precedence pick and logs nothing. Selection-only.
+        if brief_type in ("morning", "evening") and _pool:
             try:
                 import impact_ranking as _uir
                 # Reuse the SAME tape + per-name moves the materiality block uses so
@@ -3718,33 +3785,145 @@ def run(brief_type="morning"):
                     mega_deal_urls=_uir._mega_deal_urls(supabase, _now),
                 )
                 if _uni and _uni.get("article"):
-                    _prev_title = str((preselected or {}).get("title") or "")[:200]
-                    preselected = dict(_uni["article"])
-                    preselected["_preselect_reason"] = f"unified:{_uni['cluster_key']}"
-                    preselected["_impact_score"] = _uni.get("score")
-                    preselected["_impact_breadth"] = _uni.get("breadth")
-                    preselected["_impact_cluster"] = _uni["cluster_key"]
-                    lead_source = "unified"
-                    _u = _uni.get("unified") or {}
-                    print(f"  ✅ [unified:on] lead -> {_uni['cluster_key']}: "
-                          f"{str(_uni['article'].get('title') or '')[:60]} "
-                          f"(score={_uni.get('score')}; was: {_prev_title[:50]})")
+                    # ── Identify the SHIPPED lead among the candidates. With the flag
+                    # OFF the shipped lead is the precedence pick (impact_pick or
+                    # deal_pick), which is `preselected` right now (serve has not run).
+                    # Match by cluster_key first (the precedence pick carries
+                    # _impact_cluster), then fall back to a title match. ──
+                    _shipped_cluster = str((preselected or {}).get("_impact_cluster") or "")
+                    _shipped_title = str((preselected or {}).get("title") or "")[:200].strip().lower()
+
+                    def _is_shipped(_cand: dict) -> bool:
+                        _ck = str(_cand.get("cluster_key") or "")
+                        if _shipped_cluster and _ck and _ck == _shipped_cluster:
+                            return True
+                        _ct = str(_cand.get("title") or "")[:200].strip().lower()
+                        return bool(_shipped_title and _ct and _ct == _shipped_title)
+
+                    # ── Active weights + provenance. Prefer the accessor Agent APP is
+                    # wiring into impact_ranking (active_weights_meta -> {values, source,
+                    # version}); fall back defensively to the hardcoded 4/4/3/1.5 so this
+                    # is verifiable standalone before APP merges. ──
+                    _wa = getattr(_uir, "active_weights_meta", None)
+                    if callable(_wa):
+                        try:
+                            _wmeta = _wa() or {}
+                        except Exception:
+                            _wmeta = {}
+                    else:
+                        _wmeta = {}
+                    _wvals = _wmeta.get("values") if isinstance(_wmeta, dict) else None
+                    if isinstance(_wvals, dict) and _wvals:
+                        _weights_used = {
+                            "materiality": _wvals.get("materiality", getattr(_uir, "W_MATERIALITY", 4.0)),
+                            "session_fit": _wvals.get("session_fit", getattr(_uir, "W_SESSION_FIT", 4.0)),
+                            "confirmation": _wvals.get("confirmation", getattr(_uir, "W_CONFIRMATION", 3.0)),
+                            "breadth": _wvals.get("breadth", getattr(_uir, "W_BREADTH", 1.5)),
+                            "source": (
+                                f"{_wmeta.get('source', 'default')}"
+                                + (f"_v{_wmeta['version']}" if _wmeta.get("version") is not None else "")
+                            ),
+                        }
+                    else:
+                        _weights_used = {
+                            "materiality": getattr(_uir, "W_MATERIALITY", 4.0),
+                            "session_fit": getattr(_uir, "W_SESSION_FIT", 4.0),
+                            "confirmation": getattr(_uir, "W_CONFIRMATION", 3.0),
+                            "breadth": getattr(_uir, "W_BREADTH", 1.5),
+                            "source": "default",
+                        }
+
+                    def _cand_c1(_a: dict) -> dict:
+                        # Map an impact_ranking audit row -> the C1 per-candidate shape:
+                        # raw pre-weight components + final weighted score + is_shipped_lead.
+                        return {
+                            "title": _a.get("title"),
+                            "cluster": _a.get("cluster_key"),
+                            "source": (_a.get("source")
+                                       or ("macro" if str(_a.get("cluster_key") or "").startswith("macro:")
+                                           else "impact")),
+                            "is_shipped_lead": _is_shipped(_a),
+                            "components": {
+                                "materiality": _a.get("c_materiality"),
+                                "session_fit": _a.get("c_session_fit"),
+                                "confirmation": _a.get("c_confirmation"),
+                                "breadth": _a.get("c_breadth"),
+                            },
+                            "weighted_score": _a.get("unified_score"),
+                        }
+
+                    _audit = _uni.get("unified_candidates") or []
+                    _c1_candidates = [_cand_c1(a) for a in _audit]
+                    _win = _uni.get("unified_winner") or {}
+                    _c1_winner = {
+                        "title": _win.get("title") or _uni.get("article", {}).get("title"),
+                        "cluster": _win.get("cluster_key") or _uni.get("cluster_key"),
+                        "source": (_win.get("source")
+                                   or ("macro" if str(_uni.get("cluster_key") or "").startswith("macro:")
+                                       else "impact")),
+                        "score": _win.get("unified_score", _uni.get("score")),
+                    }
+                    # Top 2 by weighted_score excluding the winner (audit is already
+                    # sorted desc; winner is index 0).
+                    _c1_losers = [_cand_c1(a) for a in _audit[1:3]]
+
+                    # ── Join integrity for the calibrator. compute_unified_lead's
+                    # audit is capped (impact_ranking._TOP_CLUSTERS_AUDIT_CAP), so the
+                    # shipped precedence cluster can rank BELOW the cap and thus be
+                    # absent from `candidates` (observed Jul 15: shipped macro:cpi
+                    # ranked outside the top-10). When that happens is_shipped_lead is
+                    # false on every audited row and the calibrator cannot join the
+                    # grade to its vector. Record the shipped cluster/title + whether
+                    # it made the audit explicitly so a miss is detectable rather than
+                    # silent. Widening the audit itself is impact_ranking's call (Agent
+                    # APP owns the cap); this makes the gap observable meanwhile. ──
+                    _shipped_in_audit = any(c["is_shipped_lead"] for c in _c1_candidates)
+
+                    _c1_unified = {
+                        "computed": True,
+                        "flag_state": UNIFIED_LEAD,
+                        "winner": _c1_winner,
+                        "candidates": _c1_candidates,
+                        "losers": _c1_losers,
+                        "weights_used": _weights_used,
+                        "shipped_cluster": _shipped_cluster or None,
+                        "shipped_title": (str((preselected or {}).get("title") or "")[:200] or None),
+                        "shipped_in_audit": _shipped_in_audit,
+                    }
                     try:
                         import lead_preselect as _lp_u
+                        _lp_u._LAST_DECISION_LOG["unified"] = _c1_unified
+                        # Keep the legacy flat keys for continuity with existing readers.
+                        _u = _uni.get("unified") or {}
                         _lp_u._LAST_DECISION_LOG.update({
-                            "unified_lead": "on",
+                            "unified_lead": UNIFIED_LEAD,
                             "unified_lead_title": str(_uni["article"].get("title") or "")[:200],
                             "unified_cluster": _uni["cluster_key"],
                             "unified_score": _uni.get("score"),
                             "unified_weights": _u.get("weights"),
                             "unified_winner": _uni.get("unified_winner"),
                             "unified_losers": _uni.get("unified_losers"),
-                            # Full per-candidate component table (capped) for audit.
                             "unified_candidates": _uni.get("unified_candidates"),
                             "unified_name_move_count": _u_name_calls,
                         })
                     except Exception:
                         pass
+                    print(f"  🧭 [unified:{UNIFIED_LEAD}] argmax -> {_uni['cluster_key']}: "
+                          f"{str(_uni['article'].get('title') or '')[:60]} "
+                          f"(score={_uni.get('score')}; logged {len(_c1_candidates)} candidates)")
+
+                    # ── SERVE: only when the flag is ON do we replace the shipped
+                    # precedence pick with the unified argmax. OFF is shadow-only. ──
+                    if UNIFIED_LEAD == "on":
+                        _prev_title = str((preselected or {}).get("title") or "")[:200]
+                        preselected = dict(_uni["article"])
+                        preselected["_preselect_reason"] = f"unified:{_uni['cluster_key']}"
+                        preselected["_impact_score"] = _uni.get("score")
+                        preselected["_impact_breadth"] = _uni.get("breadth")
+                        preselected["_impact_cluster"] = _uni["cluster_key"]
+                        lead_source = "unified"
+                        print(f"  ✅ [unified:on] SERVED lead -> {_uni['cluster_key']} "
+                              f"(was: {_prev_title[:50]})")
             except Exception as _uerr:
                 print(f"  ⚠ unified lead contest skipped (non-fatal, keeping precedence pick): {_uerr}")
 
@@ -5269,6 +5448,8 @@ def run(brief_type="morning"):
                     brief_headline=data.get("headline", ""),
                     brief_summary=data.get("summary", ""),
                     brief_sections=data.get("sections", {}) or {},
+                    # Contract C2: the SHIPPED lead is the final served headline.
+                    shipped_lead_title=data.get("headline", ""),
                 )
             else:
                 print("  ⚠ claims extraction skipped: briefings insert did not return an id")
