@@ -1167,6 +1167,7 @@ def compute_unified_lead(
     name_session_pct: Optional[dict] = None,
     mega_deal_urls: Optional[set[str]] = None,
     asof_date: Optional[datetime.date] = None,
+    always_include_clusters: Optional[set[str]] = None,
 ) -> Optional[dict]:
     """UNIFIED scored lead contest. ONE deterministic argmax over the SAME candidate
     set score_clusters produces (macro / impact clusters AND the qualified deal,
@@ -1174,6 +1175,16 @@ def compute_unified_lead(
     named-weight rubric (materiality / session_fit / confirmation / breadth); the
     argmax is the lead. PURE: tape + per-name moves are passed in; session-fit is
     delegated to session_fit.session_fit_score. Never raises; returns None on empty.
+
+    always_include_clusters: cluster_key set (e.g. the SHIPPED lead's cluster) whose
+    full component vector MUST appear in the returned 'unified_candidates' audit even
+    when it ranks below _TOP_CLUSTERS_AUDIT_CAP. Without this, on disagreement days
+    the shipped lead's feature vector is dropped from the log (it ranked below the
+    top-10 of hundreds of clusters), so the calibrator cannot join that day's grade to
+    the shipped lead and the run is unusable for training. Forced-in rows carry
+    below_cap=true; every audited row carries its cluster_key so is_shipped_lead
+    resolves. No re-score: the component vector is already computed; this just does not
+    drop it. Deduped against the top-cap slice.
 
     Result mirrors compute_materiality_lead's shape PLUS 'unified' (the winner's
     component breakdown) and 'unified_candidates' (per-cluster component tables for
@@ -1238,8 +1249,8 @@ def compute_unified_lead(
             t = (a.get("title") or "").strip()
             return t[:200] or None
 
-        candidates_audit = [
-            {
+        def _audit_row(c: dict, *, below_cap: bool = False) -> dict:
+            return {
                 "cluster_key": c["cluster_key"],
                 "title": _rep_title(c),
                 "unified_score": c["unified_score"],
@@ -1253,10 +1264,21 @@ def compute_unified_lead(
                 "article_count": c["article_count"],
                 "is_mega_deal": c.get("is_mega_deal", False),
                 "is_tier1": c.get("is_tier1", False),
+                "below_cap": below_cap,
             }
-            for c in ranked[:_TOP_CLUSTERS_AUDIT_CAP]
-        ]
-        losers = candidates_audit[1:3]
+
+        top_slice = ranked[:_TOP_CLUSTERS_AUDIT_CAP]
+        candidates_audit = [_audit_row(c) for c in top_slice]
+        # Force any always_include cluster that ranked below the cap into the audit so
+        # its component vector is never dropped (deduped against the top-cap slice).
+        force = set(always_include_clusters or ())
+        if force:
+            _in_audit = {c["cluster_key"] for c in top_slice}
+            for c in ranked[_TOP_CLUSTERS_AUDIT_CAP:]:
+                if c["cluster_key"] in force and c["cluster_key"] not in _in_audit:
+                    candidates_audit.append(_audit_row(c, below_cap=True))
+                    _in_audit.add(c["cluster_key"])
+        losers = [r for r in candidates_audit[1:] if not r.get("below_cap")][:2]
         return {
             "article": lead,
             "cluster_key": top["cluster_key"],
