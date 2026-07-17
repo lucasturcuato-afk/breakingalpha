@@ -3778,20 +3778,41 @@ def run(brief_type="morning"):
                         print(f"  ⚠ [unified] tape fetch failed (non-fatal): {_ute}")
                         _materiality_tape = None
                 _u_name_moves, _u_name_calls = _pool_name_session_moves(_pool)
-                _uni = _uir.compute_unified_lead(
-                    _pool, _now, brief_type=brief_type,
+
+                # ── Identify the SHIPPED lead BEFORE the contest so we can force its
+                # cluster into the audit. With the flag OFF the shipped lead is the
+                # precedence pick (impact_pick or deal_pick) = `preselected` right now
+                # (serve has not run). The unified audit is capped
+                # (_TOP_CLUSTERS_AUDIT_CAP) and the shipped cluster can rank below it
+                # (observed Jul 15: macro:cpi outside the top-10), which would leave
+                # is_shipped_lead false everywhere and break the calibrator join. APP
+                # added always_include_clusters: any cluster in that set is appended to
+                # unified_candidates with its full vector + below_cap=True even when it
+                # ranks below the cap. Pass the shipped cluster so its vector is
+                # guaranteed present. ──
+                _shipped_cluster = str((preselected or {}).get("_impact_cluster") or "")
+                _shipped_title = str((preselected or {}).get("title") or "")[:200].strip().lower()
+                _always_include = {_shipped_cluster} if _shipped_cluster else set()
+
+                # Defensive: the merged APP signature accepts always_include_clusters;
+                # a pre-merge local impact_ranking does not. Try the new kwarg, fall
+                # back to the old call so this verifies standalone before integration.
+                _uni_kwargs = dict(
+                    brief_type=brief_type,
                     tape=_materiality_tape,
                     name_session_pct=_u_name_moves,
                     mega_deal_urls=_uir._mega_deal_urls(supabase, _now),
                 )
+                try:
+                    _uni = _uir.compute_unified_lead(
+                        _pool, _now, always_include_clusters=_always_include, **_uni_kwargs
+                    )
+                except TypeError:
+                    print("  ⚠ [unified] impact_ranking pre-merge (no always_include_clusters); "
+                          "using legacy call (shipped cluster may be below the audit cap)")
+                    _uni = _uir.compute_unified_lead(_pool, _now, **_uni_kwargs)
+
                 if _uni and _uni.get("article"):
-                    # ── Identify the SHIPPED lead among the candidates. With the flag
-                    # OFF the shipped lead is the precedence pick (impact_pick or
-                    # deal_pick), which is `preselected` right now (serve has not run).
-                    # Match by cluster_key first (the precedence pick carries
-                    # _impact_cluster), then fall back to a title match. ──
-                    _shipped_cluster = str((preselected or {}).get("_impact_cluster") or "")
-                    _shipped_title = str((preselected or {}).get("title") or "")[:200].strip().lower()
 
                     def _is_shipped(_cand: dict) -> bool:
                         _ck = str(_cand.get("cluster_key") or "")
@@ -3835,7 +3856,9 @@ def run(brief_type="morning"):
 
                     def _cand_c1(_a: dict) -> dict:
                         # Map an impact_ranking audit row -> the C1 per-candidate shape:
-                        # raw pre-weight components + final weighted score + is_shipped_lead.
+                        # raw pre-weight components + final weighted score +
+                        # is_shipped_lead + below_cap (true for a cluster APP appended
+                        # via always_include_clusters because it ranked below the cap).
                         return {
                             "title": _a.get("title"),
                             "cluster": _a.get("cluster_key"),
@@ -3850,6 +3873,7 @@ def run(brief_type="morning"):
                                 "breadth": _a.get("c_breadth"),
                             },
                             "weighted_score": _a.get("unified_score"),
+                            "below_cap": bool(_a.get("below_cap", False)),
                         }
 
                     _audit = _uni.get("unified_candidates") or []
@@ -3867,16 +3891,16 @@ def run(brief_type="morning"):
                     # sorted desc; winner is index 0).
                     _c1_losers = [_cand_c1(a) for a in _audit[1:3]]
 
-                    # ── Join integrity for the calibrator. compute_unified_lead's
-                    # audit is capped (impact_ranking._TOP_CLUSTERS_AUDIT_CAP), so the
-                    # shipped precedence cluster can rank BELOW the cap and thus be
-                    # absent from `candidates` (observed Jul 15: shipped macro:cpi
-                    # ranked outside the top-10). When that happens is_shipped_lead is
-                    # false on every audited row and the calibrator cannot join the
-                    # grade to its vector. Record the shipped cluster/title + whether
-                    # it made the audit explicitly so a miss is detectable rather than
-                    # silent. Widening the audit itself is impact_ranking's call (Agent
-                    # APP owns the cap); this makes the gap observable meanwhile. ──
+                    # ── Join integrity for the calibrator. The unified audit is capped
+                    # (impact_ranking._TOP_CLUSTERS_AUDIT_CAP), so the shipped precedence
+                    # cluster can rank BELOW the cap (observed Jul 15: macro:cpi outside
+                    # the top-10). We now force it in via always_include_clusters (APP),
+                    # so is_shipped_lead should resolve true even for a below-cap shipped
+                    # pick (its candidate carries below_cap=True). shipped_in_audit stays
+                    # as an explicit invariant check: on the merged path it is true; if
+                    # it is ever false the join silently failed (pre-merge legacy call,
+                    # or the shipped cluster was not scored at all) and the calibrator
+                    # must skip the run rather than mis-join. ──
                     _shipped_in_audit = any(c["is_shipped_lead"] for c in _c1_candidates)
 
                     _c1_unified = {
