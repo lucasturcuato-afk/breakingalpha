@@ -354,25 +354,39 @@ def _iso_date(ts: Optional[str]) -> Optional[str]:
     return str(ts)[:10]
 
 
-def _parse_candidates(pd_unified_candidates: list, shipped_title: Optional[str]) -> list[Candidate]:
-    """Map C1 unified_candidates rows to Candidate objects. The live audit rows
-    carry c_materiality / c_session_fit / c_confirmation / c_breadth (the [0,1]
-    components) and title. is_shipped_lead is set by matching title against the
-    run's shipped_lead (title, prefix-tolerant like the synth side does)."""
+def _parse_candidates(candidates: list) -> list[Candidate]:
+    """Map C1 `preselect_decision.unified.candidates[]` rows to Candidate objects.
+
+    CANONICAL C1 SHAPE (persisted by Agent S1, confirmed against synthesize.py's
+    _cand_c1 builder). Each row is:
+        { title, cluster, source, is_shipped_lead: bool, below_cap: bool,
+          components: { materiality, session_fit, confirmation, breadth },
+          weighted_score: float }
+    The RAW pre-weight components live NESTED under `components.*` (not flat
+    c_* keys), the shipped pick is the `is_shipped_lead` BOOLEAN that S1 already
+    resolved (we do NOT title-match), and the score key is `weighted_score`. The
+    shipped cluster is guaranteed present via below_cap even when it ranked
+    outside the top-10 audit, so is_shipped_lead resolves on the merged path."""
     out: list[Candidate] = []
-    st = (shipped_title or "").strip().lower()[:80]
-    for row in (pd_unified_candidates or []):
+    for row in (candidates or []):
         if not isinstance(row, dict):
+            continue
+        # The nested `components` dict is the canonical C1 signature. A row
+        # lacking it is a malformed / legacy-shape row (e.g. the old flat c_*
+        # audit); SKIP it rather than admit an all-zero candidate that would
+        # silently distort the argmax.
+        comp = row.get("components")
+        if not isinstance(comp, dict) or not comp:
             continue
         title = str(row.get("title") or "").strip()
         try:
             c = Candidate(
                 title=title,
-                materiality=float(row.get("c_materiality") or 0.0),
-                session_fit=float(row.get("c_session_fit") or 0.0),
-                confirmation=float(row.get("c_confirmation") or 0.0),
-                breadth=float(row.get("c_breadth") or 0.0),
-                is_shipped_lead=bool(st and title.lower()[:80] == st),
+                materiality=float(comp.get("materiality") or 0.0),
+                session_fit=float(comp.get("session_fit") or 0.0),
+                confirmation=float(comp.get("confirmation") or 0.0),
+                breadth=float(comp.get("breadth") or 0.0),
+                is_shipped_lead=bool(row.get("is_shipped_lead")),
             )
         except (TypeError, ValueError):
             continue
@@ -381,24 +395,32 @@ def _parse_candidates(pd_unified_candidates: list, shipped_title: Optional[str])
 
 
 def load_graded_days(sb) -> tuple[list[GradedDay], dict]:
-    """Read C1 (pipeline_runs.preselect_decision.unified_candidates) and C3
+    """Read C1 (pipeline_runs.preselect_decision.unified.candidates) and C3
     (lead_outcome_grades), join by (brief_date, lead_title), and return the
     lead-attributable graded days plus a diagnostics dict. SELECT-only.
 
+    C1 lead_title for the grade join is the run's `unified.shipped_title` (the
+    served headline S1 records), NOT a candidate title - GRADER keys its grades
+    off the shipped brief's lead_title. is_shipped_lead is S1's resolved boolean.
+    A run is SKIPPED (join integrity) if shipped_in_audit is false: the shipped
+    cluster was not present in the logged candidate set, so any join would be a
+    mis-join (pre-merge legacy call, or the shipped cluster was never scored).
+
     Forward-only reality: until S1's unified logging and GRADER's grades exist in
-    prod, this returns [] and the diagnostics explain WHY (no C1 rows / no C3
-    table). Never raises - a data-starved read is a valid, expected state."""
+    prod, this returns [] and the diagnostics explain WHY. Never raises - a
+    data-starved read is a valid, expected state."""
     diag = {
         "runs_scanned": 0,
         "runs_with_c1": 0,
+        "c1_skipped_no_shipped_in_audit": 0,
         "c3_rows": 0,
         "c3_table_present": False,
         "joined_days": 0,
         "reason": "",
     }
 
-    # --- C1: runs with a logged unified candidate set ---
-    c1_runs: dict[str, dict] = {}  # (date|lead_title) -> {date, shipped, candidates}
+    # --- C1: runs with a logged unified candidate set (canonical shape) ---
+    c1_runs: dict[str, dict] = {}  # (date|shipped_title) -> {date, lead_title, candidates}
     try:
         resp = (sb.table("pipeline_runs")
                 .select("id,created_at,brief_type,preselect_decision")
@@ -411,23 +433,31 @@ def load_graded_days(sb) -> tuple[list[GradedDay], dict]:
             pd = r.get("preselect_decision") or {}
             if not isinstance(pd, dict):
                 continue
-            cands_raw = pd.get("unified_candidates")
+            uni = pd.get("unified")
+            if not isinstance(uni, dict):
+                continue
+            cands_raw = uni.get("candidates")
             if not cands_raw:
                 continue
-            shipped = (pd.get("shipped_lead")
-                       or (pd.get("unified") or {}).get("shipped_lead")
-                       or pd.get("unified_lead_title"))
-            bd = _iso_date(r.get("created_at"))
-            cands = _parse_candidates(cands_raw, shipped)
-            # The lead title we grade against: the shipped lead if known, else
-            # the logged unified winner title.
-            lead_title = (shipped
-                          or pd.get("unified_lead_title")
-                          or (cands[0].title if cands else None))
-            if not (bd and lead_title and cands):
+            cands = _parse_candidates(cands_raw)
+            # Join integrity: the shipped cluster MUST be present in the logged
+            # candidate set (S1 forces it in via below_cap). If S1 recorded
+            # shipped_in_audit false, or no candidate is flagged is_shipped_lead,
+            # the join would mis-attribute - skip the run.
+            has_shipped = any(c.is_shipped_lead for c in cands)
+            if uni.get("shipped_in_audit") is False or not has_shipped:
+                diag["c1_skipped_no_shipped_in_audit"] += 1
                 continue
-            key = f"{bd}|{lead_title.strip().lower()[:80]}"
-            c1_runs[key] = {"brief_date": bd, "lead_title": lead_title,
+            # GRADER keys grades on the SERVED lead_title. Prefer S1's recorded
+            # shipped_title; fall back to the is_shipped_lead candidate's title.
+            shipped_title = uni.get("shipped_title")
+            if not shipped_title:
+                shipped_title = next((c.title for c in cands if c.is_shipped_lead), None)
+            bd = _iso_date(r.get("created_at"))
+            if not (bd and shipped_title and cands):
+                continue
+            key = f"{bd}|{shipped_title.strip().lower()[:80]}"
+            c1_runs[key] = {"brief_date": bd, "lead_title": shipped_title,
                             "candidates": cands}
         diag["runs_with_c1"] = len(c1_runs)
     except Exception as e:  # pragma: no cover - defensive; SELECT should not raise
@@ -474,8 +504,9 @@ def load_graded_days(sb) -> tuple[list[GradedDay], dict]:
     if not days and not diag["reason"]:
         if diag["runs_with_c1"] == 0:
             diag["reason"] = ("no C1 rows: no pipeline_runs carry "
-                              "preselect_decision.unified_candidates yet "
-                              "(UNIFIED_LEAD logging is forward-only).")
+                              "preselect_decision.unified.candidates with a "
+                              "resolved shipped lead yet (shadow-clock logging "
+                              "is forward-only).")
         elif not diag["c3_table_present"]:
             diag["reason"] = "lead_outcome_grades (C3) does not exist yet (GRADER forward-only)."
         else:
@@ -767,11 +798,12 @@ def run_real(sb) -> CalibrationResult:
     print("-" * 78)
     print("REAL HISTORY (C1 x C3 join)")
     print("-" * 78)
-    print(f"  pipeline_runs scanned:        {diag.get('runs_scanned')}")
-    print(f"  runs WITH unified_candidates: {diag.get('runs_with_c1')}  (C1)")
-    print(f"  lead_outcome_grades rows:     {diag.get('c3_rows')}  (C3)")
-    print(f"  lead-attributable graded days:{diag.get('joined_days')}")
-    print(f"  reason:                       {diag.get('reason')}")
+    print(f"  pipeline_runs scanned:            {diag.get('runs_scanned')}")
+    print(f"  runs WITH unified.candidates:     {diag.get('runs_with_c1')}  (C1, shipped resolved)")
+    print(f"  runs SKIPPED (no shipped_in_audit):{diag.get('c1_skipped_no_shipped_in_audit')}")
+    print(f"  lead_outcome_grades rows:         {diag.get('c3_rows')}  (C3)")
+    print(f"  lead-attributable graded days:    {diag.get('joined_days')}")
+    print(f"  reason:                           {diag.get('reason')}")
     print()
     result = calibrate(days, prior)
     _print_result(result, version, "REAL-HISTORY CALIBRATION DECISION")

@@ -1,7 +1,9 @@
 -- Lead-weight calibrator store (contract C4).
 -- Created: 2026-07-16 (feat/lead-weight-calibrator)
 --
--- DO NOT AUTO-APPLY. Written for human review; apply manually AFTER 0012.
+-- DO NOT AUTO-APPLY. Written for human review; apply manually AFTER 0014.
+-- (Renumbered 0013 -> 0015: 0013 is S1's is_lead migration and 0014 is the
+--  grader's lead_outcome_grades; all three land distinct.)
 --
 -- Additive and non-destructive: one new table. No existing table, column, or
 -- constraint is touched. Idempotent: safe to re-run.
