@@ -856,11 +856,147 @@ def compute_materiality_lead(
 # is an edge, not a trump. NO buried magic numbers - every scalar the score touches
 # is a named constant here.
 
-# ── Unified-contest weights (the ONE tuning surface; Noah ratifies) ──────────
+# ── Unified-contest weights (SAFE DEFAULT / FALLBACK) ────────────────────────
+# These four hand-tuned scalars are the SAFE DEFAULT. The ACTIVE weights the
+# contest uses are loaded ONCE per process from the `lead_weights` store (contract
+# C4, owned by the offline calibrator) via _load_active_weights() below, falling
+# back to exactly these values whenever the store is empty, missing, the table does
+# not exist (the normal state today - migration written but not applied), or the row
+# is stale/invalid. Only the SOURCE of the weights moves here; the default VALUES and
+# the scoring math are unchanged. Noah still ratifies by tuning these defaults or by
+# ratifying a calibrated row.
 W_MATERIALITY = 4.0     # highest: consistency with the real tape move
 W_SESSION_FIT = 4.0     # highest (tied): fresh + right for this session
 W_CONFIRMATION = 3.0    # confirmed + priced beats "seeks" / "in talks"
 W_BREADTH = 1.5         # EARNED edge / tiebreaker, deliberately the smallest
+
+# The hardcoded defaults, frozen as the fallback the loader returns when the store
+# yields nothing usable. Keyed by the rubric-component names the contest scores on.
+_DEFAULT_LEAD_WEIGHTS: dict[str, float] = {
+    "materiality": W_MATERIALITY,
+    "session_fit": W_SESSION_FIT,
+    "confirmation": W_CONFIRMATION,
+    "breadth": W_BREADTH,
+}
+
+
+def _supabase_for_weights():
+    """Build a READ-ONLY supabase client for the lead_weights store from env, or
+    None when creds / library are absent. Never raises. Selection has NO hard
+    dependency on the store: any failure here falls through to the hand defaults."""
+    try:
+        import os
+        from supabase import create_client
+        url = os.environ.get("SUPABASE_URL")
+        key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+               or os.environ.get("SUPABASE_ANON_KEY"))
+        if not url or not key:
+            return None
+        return create_client(url, key)
+    except Exception:
+        return None
+
+
+def _read_active_weights_row() -> Optional[dict]:
+    """STORE-READ SEAM (contract C4). Return the latest calibrated `lead_weights`
+    row (is_default=false AND jul13_invariant_passed=true), or None when there is no
+    such row / no store / no table. Isolated so verification can monkeypatch THIS one
+    function to inject a fake row WITHOUT writing prod. Never raises; a missing table
+    is the NORMAL state today (migration is written but not yet applied)."""
+    sb = _supabase_for_weights()
+    if sb is None:
+        return None
+    try:
+        resp = (sb.table("lead_weights")
+                .select("version, fit_ts, w_materiality, w_session_fit, "
+                        "w_confirmation, w_breadth, n_train, is_default, "
+                        "jul13_invariant_passed")
+                .eq("is_default", False)
+                .eq("jul13_invariant_passed", True)
+                .order("version", desc=True)
+                .limit(1)
+                .execute())
+        rows = resp.data or []
+        return rows[0] if rows else None
+    except Exception:
+        # Missing table / permission / transport: fall through to defaults. Normal.
+        return None
+
+
+def _coerce_active_weights(row: Optional[dict]) -> dict:
+    """Validate a raw lead_weights row into the active-weights meta shape, or return
+    the hand defaults when the row is None / invalid. A row is VALID only when all
+    four weights are present and are finite positive numbers and version is a usable
+    int; anything else is treated as stale/invalid and falls back to defaults."""
+    default_meta = {
+        "values": dict(_DEFAULT_LEAD_WEIGHTS),
+        "source": "default",
+        "version": None,
+    }
+    if not row:
+        return default_meta
+    try:
+        vals = {
+            "materiality": float(row["w_materiality"]),
+            "session_fit": float(row["w_session_fit"]),
+            "confirmation": float(row["w_confirmation"]),
+            "breadth": float(row["w_breadth"]),
+        }
+        for v in vals.values():
+            if not math.isfinite(v) or v <= 0:
+                return default_meta
+        version = int(row["version"])
+        return {
+            "values": vals,
+            "source": f"calibrated_v{version}",
+            "version": version,
+        }
+    except (KeyError, TypeError, ValueError):
+        return default_meta
+
+
+# Per-process cache of the resolved active weights meta. The store is read ONCE
+# (first contest of the process); every later call is pure/cheap. None == not yet
+# loaded.
+_ACTIVE_WEIGHTS_META: Optional[dict] = None
+
+
+def _load_active_weights() -> dict:
+    """THE SINGLE load point. Resolve + cache the active weights meta for this
+    process: the latest valid calibrated row, else the hand defaults. Never raises."""
+    global _ACTIVE_WEIGHTS_META
+    if _ACTIVE_WEIGHTS_META is None:
+        try:
+            _ACTIVE_WEIGHTS_META = _coerce_active_weights(_read_active_weights_row())
+        except Exception:
+            _ACTIVE_WEIGHTS_META = {
+                "values": dict(_DEFAULT_LEAD_WEIGHTS),
+                "source": "default",
+                "version": None,
+            }
+        if _ACTIVE_WEIGHTS_META["source"] == "default":
+            logger.info("impact_ranking: lead weights = hand defaults %s",
+                        _ACTIVE_WEIGHTS_META["values"])
+        else:
+            logger.info("impact_ranking: lead weights = %s v%s %s",
+                        _ACTIVE_WEIGHTS_META["source"],
+                        _ACTIVE_WEIGHTS_META["version"],
+                        _ACTIVE_WEIGHTS_META["values"])
+    return _ACTIVE_WEIGHTS_META
+
+
+def active_weights_meta() -> dict:
+    """Public accessor. Return a COPY of the active weights meta:
+    {values: {materiality, session_fit, confirmation, breadth},
+     source: "default" | "calibrated_vN", version: int | None}.
+    Agent S1 logs this into preselect_decision (weights_used). Cheap + pure after
+    the first load; never raises."""
+    meta = _load_active_weights()
+    return {
+        "values": dict(meta["values"]),
+        "source": meta["source"],
+        "version": meta["version"],
+    }
 
 # Component-normalization anchors (keep the buried constants named + here).
 # Materiality: materiality_delta spans roughly [-(deal+irrelevant), +(wide+driver)];
@@ -1053,6 +1189,16 @@ def compute_unified_lead(
             return None
         driver_names = _driver_names_from_moves(name_session_pct)
 
+        # SINGLE weight-load point: active weights come from the calibrated store,
+        # falling back to the hand defaults. Only the SOURCE differs from before; the
+        # math and the default values are unchanged.
+        _wmeta = active_weights_meta()
+        _w = _wmeta["values"]
+        w_materiality = _w["materiality"]
+        w_session_fit = _w["session_fit"]
+        w_confirmation = _w["confirmation"]
+        w_breadth = _w["breadth"]
+
         ranked = []
         for c in scored:
             _bkt = (c["cluster_key"].split(":", 1)[1]
@@ -1065,10 +1211,10 @@ def compute_unified_lead(
             conf_comp, conf_reason = _unified_confirmation(c)
             breadth_comp = _unified_breadth(c)
             unified_score = round(
-                W_MATERIALITY * mat_comp
-                + W_SESSION_FIT * sf_comp
-                + W_CONFIRMATION * conf_comp
-                + W_BREADTH * breadth_comp,
+                w_materiality * mat_comp
+                + w_session_fit * sf_comp
+                + w_confirmation * conf_comp
+                + w_breadth * breadth_comp,
                 4,
             )
             rec = dict(c)
@@ -1126,11 +1272,13 @@ def compute_unified_lead(
                 "c_confirmation": top["c_confirmation"],
                 "c_breadth": top["c_breadth"],
                 "weights": {
-                    "W_MATERIALITY": W_MATERIALITY,
-                    "W_SESSION_FIT": W_SESSION_FIT,
-                    "W_CONFIRMATION": W_CONFIRMATION,
-                    "W_BREADTH": W_BREADTH,
+                    "W_MATERIALITY": w_materiality,
+                    "W_SESSION_FIT": w_session_fit,
+                    "W_CONFIRMATION": w_confirmation,
+                    "W_BREADTH": w_breadth,
                 },
+                "weights_source": _wmeta["source"],
+                "weights_version": _wmeta["version"],
                 "session_fit_from_detector": top["session_fit_from_detector"],
                 "confirmation_reason": top["confirmation_reason"],
                 "materiality_reasons": top["unified_materiality_reasons"],
