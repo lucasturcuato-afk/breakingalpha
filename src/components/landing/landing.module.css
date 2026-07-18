@@ -590,7 +590,11 @@
   max-width: 1200px; margin: 0 auto; padding: 52px 32px; display: flex; align-items: center; justify-content: space-between;
   gap: 32px; flex-wrap: wrap;
 }
-.waitlistTitle { font-family: var(--ff-display); font-size: 28px; font-weight: 500; letter-spacing: -0.02em; margin-bottom: 6px; color: #191711; }
+/* Canvas line 644 hardcodes color:#191711 on this one heading, a one-off slip:
+   every other Fraunces heading uses var(--ink). #191711 only reads in light and
+   is near-black-on-near-black in dark. Use var(--ink) to match the canvas's own
+   convention (#191711-equivalent in light, #F5E6D3 in dark). Only value changed. */
+.waitlistTitle { font-family: var(--ff-display); font-size: 28px; font-weight: 500; letter-spacing: -0.02em; margin-bottom: 6px; color: var(--ink); }
 .waitlistMeta { font-family: var(--ff-mono); font-size: 10.5px; color: var(--dim); }
 .waitlistMetaLink { color: var(--brass); text-decoration: none; }
 .waitlistForm { display: flex; gap: 10px; flex-wrap: wrap; }
