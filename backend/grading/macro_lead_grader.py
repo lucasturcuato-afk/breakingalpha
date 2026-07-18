@@ -1,5 +1,5 @@
 """
-macro_lead_grader.py — deterministic macro lead-outcome grader (NO LLM).
+macro_lead_grader.py: deterministic macro lead-outcome grader (NO LLM).
 
 The single-name price/attribution grader (price_attribution.py) marks macro
 days `ungradable`: there is no named entity to price. This grader fills that
@@ -21,25 +21,45 @@ was a channel the lead ignored (e.g. an oil shock the lead never mentioned).
 The window (per channel)
 ------------------------
     prior_close  close of the prior session
-    open_proxy   the morning run's ~10am ET level (session-open stand-in)
+    anchor       the session-open reference. PREFER the true 09:30 open when it
+                 is persisted on the tape (anchor_source=true_open); otherwise
+                 fall back to the morning run's recorded snapshot level
+                 (anchor_source=run_snapshot).
     same_close   close of the same session
     t1           follow-through close (next session)
 
-market_tape has NO `open` and NO `prev`. We derive:
+We NEVER assume a clock time for the anchor. The anchor timestamp is read from
+the tape itself (market_tape.as_of) and recorded on every grade, alongside
+anchor_source, so a mixed-basis training set is detectable later. A nominal
+clock time (e.g. an assumed 10am ET open) is the exact anti-pattern that rotted
+_macro_release_recency; it is banned here.
+
+We derive:
   - prior_close from the SAME morning row: level / (1 + pct/100). This is
     exact and self-contained. (Cross-checked against the D+1 evening row's
     own derived prior; they agree to <0.01%.)
-  - open_proxy = the morning row's `level` (as_of ~14:xx UTC, ~10am ET,
-    post-open). The true 09:30 open is not persisted; every grade is tagged
-    is_open_proxy=true and confidence carries an open-proxy penalty.
+  - anchor: the tape's true `open` (index sub-field) when present
+    (anchor_source=true_open, is_open_proxy=false). When absent (all historical
+    rows, until FIX 2 accrues forward), the anchor is the morning row's `level`
+    (its recorded as_of timestamp, NOT an assumed clock)
+    (anchor_source=run_snapshot, is_open_proxy=true) and confidence carries an
+    open-proxy penalty.
   - same_close = the D+1 evening row's `level` (evening rows are created
     ~02:xx UTC = ~10pm ET of the PRIOR calendar day, i.e. they hold the
     close of the session that the D-labeled morning row opened).
   - t1 = the D+2 evening row's `level`.
 
-The prior_close -> open_proxy GAP measures whether the market repriced on the
-event (materiality). open_proxy -> same_close measures whether it SUSTAINED.
+The prior_close -> anchor GAP measures whether the market repriced on the
+event (materiality). anchor -> same_close measures whether it SUSTAINED.
 t1 is secondary follow-through.
+
+Determinism (FIX 3)
+-------------------
+The anchor basis is DERIVED from the input tape, never passed in by a caller.
+is_open_proxy is a pure function of "does this tape carry a true open?", so the
+same input rows always produce byte-identical output. There is exactly one
+grader implementation and one confidence path. A caller cannot toggle the
+open-proxy penalty; that toggle was the source of the 0.65-vs-0.75 drift.
 
 Confidence (the grader knows when it does not know)
 ---------------------------------------------------
@@ -50,7 +70,7 @@ pre-FOMC deferral windows (market waiting), and open-proxy uncertainty.
 Confidence is HIGH when a single clear driver produced a clean early-session
 repricing that sustained.
 
-Output (contract C3 -> table lead_outcome_grades, see sql/0013_*.sql). This
+Output (contract C3 -> table lead_outcome_grades, see sql/0014_*.sql). This
 module returns a LeadGrade dataclass; a thin writer (out of scope here) maps
 it 1:1 onto a row. No rows are written by importing this module.
 """
@@ -58,7 +78,6 @@ it 1:1 onto a row. No rows are written by importing this module.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
-from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
 
@@ -136,22 +155,24 @@ QUIET_INDEX_PP = 0.20
 
 @dataclass
 class ChannelWindow:
-    """The reconstructed price window for one channel."""
+    """The reconstructed price window for one channel. `anchor` is the
+    session-open reference: the true 09:30 open when available, else the run
+    snapshot level (anchor_source records which)."""
     prior_close: Optional[float] = None
-    open_proxy: Optional[float] = None
+    anchor: Optional[float] = None
     same_close: Optional[float] = None
     t1: Optional[float] = None
 
     def gap_pct(self) -> Optional[float]:
-        # prior_close -> open_proxy, in percent points.
-        if self.prior_close and self.open_proxy and self.prior_close != 0:
-            return (self.open_proxy - self.prior_close) / self.prior_close * 100.0
+        # prior_close -> anchor, in percent points.
+        if self.prior_close and self.anchor and self.prior_close != 0:
+            return (self.anchor - self.prior_close) / self.prior_close * 100.0
         return None
 
     def sustain_pct(self) -> Optional[float]:
-        # open_proxy -> same_close, in percent points.
-        if self.open_proxy and self.same_close and self.open_proxy != 0:
-            return (self.same_close - self.open_proxy) / self.open_proxy * 100.0
+        # anchor -> same_close, in percent points.
+        if self.anchor and self.same_close and self.anchor != 0:
+            return (self.same_close - self.anchor) / self.anchor * 100.0
         return None
 
     def session_pct(self) -> Optional[float]:
@@ -181,6 +202,12 @@ class LeadGrade:
     attribution: dict = field(default_factory=dict)
     window: dict = field(default_factory=dict)
     is_open_proxy: bool = True
+    # The ACTUAL recorded timestamp of the tape used as the anchor (never an
+    # assumed clock time). Read from market_tape.as_of on the lead row.
+    anchor_ts: Optional[str] = None
+    # {true_open, run_snapshot}: which basis the anchor came from, so a
+    # mixed-basis training set is detectable later.
+    anchor_source: str = "run_snapshot"
     notes: str = ""
 
     def to_row(self) -> dict:
@@ -200,6 +227,40 @@ def _idx_pct(tape: dict, key: str = BROAD_INDEX_KEY) -> Optional[float]:
         return float(tape["indices"][key]["pct"])
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def _idx_open(tape: dict, key: str = BROAD_INDEX_KEY) -> Optional[float]:
+    """The true 09:30 regular-session open, when the tape carries it (FIX 2).
+    None on historical rows and any gap. Never an assumed clock level."""
+    try:
+        v = tape["indices"][key]["open"]
+        return None if v is None else float(v)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _anchor_ts(tape: dict) -> Optional[str]:
+    """The ACTUAL recorded timestamp of this tape snapshot. Read, never guessed.
+    Real morning run times vary (observed 14:10, 14:16, 14:25 UTC); we record
+    whatever the row actually holds so the anchor basis is auditable."""
+    v = tape.get("as_of") if isinstance(tape, dict) else None
+    return str(v) if v is not None else None
+
+
+def _resolve_anchor(tape: dict) -> tuple[Optional[float], str, bool]:
+    """Derive the anchor level and its basis PURELY from the input tape. This is
+    the single source of truth for the open basis: no caller may override it, so
+    identical input rows always yield identical (anchor, source, is_open_proxy)
+    and therefore identical confidence (FIX 3).
+
+    Returns (anchor_level, anchor_source, is_open_proxy):
+      - true open present -> (open, "true_open", False)
+      - true open absent  -> (run-snapshot level, "run_snapshot", True)
+    """
+    true_open = _idx_open(tape)
+    if true_open is not None:
+        return true_open, "true_open", False
+    return _idx_level(tape), "run_snapshot", True
 
 
 def _derive_prior_close(tape: dict, key: str = BROAD_INDEX_KEY) -> Optional[float]:
@@ -249,13 +310,14 @@ def build_window(
     """Reconstruct the per-channel window from persisted tapes.
 
     lead_tape        the morning (or evening) run's market_tape row that
-                     carried the lead. open_proxy comes from here.
+                     carried the lead. The anchor comes from here.
     same_close_tape  the D+1 evening row's tape (close of the lead session).
     t1_tape          the D+2 evening row's tape (follow-through).
     """
+    anchor, _src, _proxy = _resolve_anchor(lead_tape)
     idx = ChannelWindow(
         prior_close=_derive_prior_close(lead_tape),
-        open_proxy=_idx_level(lead_tape),
+        anchor=anchor,
         same_close=_idx_level(same_close_tape) if same_close_tape else None,
         t1=_idx_level(t1_tape) if t1_tape else None,
     )
@@ -284,14 +346,15 @@ def attribute_session(
     when the same-session close is available, else the in-row session pct.
     """
     # Index full-session move.
+    anchor, _src, _proxy = _resolve_anchor(lead_tape)
     idx_win = ChannelWindow(
         prior_close=_derive_prior_close(lead_tape),
-        open_proxy=_idx_level(lead_tape),
+        anchor=anchor,
         same_close=_idx_level(same_close_tape) if same_close_tape else None,
     )
     idx_session = idx_win.session_pct()
     if idx_session is None:
-        # Fall back to the lead row's own pct (prior_close -> open_proxy).
+        # Fall back to the lead row's own pct (prior_close -> anchor).
         idx_session = _idx_pct(lead_tape)
 
     moves = {
@@ -370,10 +433,12 @@ def compute_confidence(
         conf -= 0.20
         reasons.append("pre_event_deferral(quiet, waiting)")
 
-    # Open-proxy uncertainty (always present for these grades).
+    # Open-proxy uncertainty. Present ONLY when the true 09:30 open was not on
+    # the tape and the anchor fell back to the run snapshot. When a true open is
+    # anchored (anchor_source=true_open) there is no penalty.
     if is_open_proxy:
         conf -= 0.10
-        reasons.append("open_proxy(09:30 open not persisted)")
+        reasons.append("open_proxy(anchor=run_snapshot, true 09:30 open absent)")
 
     conf = max(0.0, min(1.0, conf))
     return round(conf, 3), reasons
@@ -397,9 +462,14 @@ def grade_lead(
     # Which channels actually repriced.
     repriced = {ch for ch in CHANNELS if attrib[ch]["repriced"]}
 
+    # Anchor basis is DERIVED from the lead tape (single source of truth). No
+    # caller flag feeds confidence; identical input -> identical output.
+    anchor, anchor_source, is_open_proxy = _resolve_anchor(lead_tape)
+    anchor_ts = _anchor_ts(lead_tape)
+
     idx_win = ChannelWindow(
         prior_close=_derive_prior_close(lead_tape),
-        open_proxy=_idx_level(lead_tape),
+        anchor=anchor,
         same_close=_idx_level(same_close_tape) if same_close_tape else None,
         t1=_idx_level(t1_tape) if t1_tape else None,
     )
@@ -436,7 +506,7 @@ def grade_lead(
 
     pre_fomc = _pre_fomc_deferral(lead_tape, attrib)
     confidence, conf_reasons = compute_confidence(
-        attrib, gap_pct, is_open_proxy=True, pre_fomc=pre_fomc
+        attrib, gap_pct, is_open_proxy=is_open_proxy, pre_fomc=pre_fomc
     )
 
     # Assemble the window jsonb: index as a full 4-point series; rates/oil/vix
@@ -444,7 +514,8 @@ def grade_lead(
     window = {
         CH_INDEX: {
             "prior_close": _round(idx_win.prior_close),
-            "open_proxy": _round(idx_win.open_proxy),
+            "anchor": _round(idx_win.anchor),
+            "anchor_source": anchor_source,
             "same_close": _round(idx_win.same_close),
             "t1": _round(idx_win.t1),
             "gap_pct": _round(gap_pct),
@@ -459,6 +530,7 @@ def grade_lead(
 
     notes = (
         f"{id_note}. claimed={sorted(claimed)}; repriced={sorted(repriced)}; "
+        f"anchor_source={anchor_source}; anchor_ts={anchor_ts}; "
         f"regime={_regime(lead_tape)}; confidence_drivers={conf_reasons}"
     )
 
@@ -472,7 +544,9 @@ def grade_lead(
         confidence=confidence,
         attribution=attrib,
         window=window,
-        is_open_proxy=True,
+        is_open_proxy=is_open_proxy,
+        anchor_ts=anchor_ts,
+        anchor_source=anchor_source,
         notes=notes,
     )
 

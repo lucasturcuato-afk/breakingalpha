@@ -409,6 +409,32 @@ if __name__ == "__main__":
             _mark_degraded("[POST] BRIEF IMPROVEMENT ADDENDUM", e)
             logger.warning("brief addendum build skipped: %s", e)
 
+    # --- Macro lead-outcome grading (contract C3), soft-fail ---------------
+    # Deterministic, no LLM. Grades whether a PRIOR macro-led session led with
+    # the right mover, reconstructing its window from persisted market_tape.
+    # NON-BLOCKING and NON-GATING: any exception here must never fail, gate, or
+    # alter a brief. It runs post-session and only touches lead_outcome_grades.
+    print("\n[POST] MACRO LEAD GRADING")
+    _t = time.time()
+    try:
+        from grading.macro_lead_writer import grade_recent_session
+        graded = grade_recent_session()
+        if graded:
+            print(
+                f"  [POST] MACRO LEAD GRADING done in {time.time() - _t:.2f}s "
+                f"(graded {graded.get('brief_date')} {graded.get('brief_type')}: "
+                f"score={graded.get('grade_score')} conf={graded.get('confidence')} "
+                f"anchor_source={graded.get('anchor_source')})"
+            )
+        else:
+            print(f"  [POST] MACRO LEAD GRADING done in {time.time() - _t:.2f}s (nothing gradable)")
+    except Exception as e:
+        # Loud log, fully isolated. This step grades a STALE prior session, so a
+        # failure here must not even mark TODAY'S run degraded (no _mark_degraded):
+        # it can never fail, gate, or alter a brief. Logged loudly for triage.
+        logger.exception("[POST] MACRO LEAD GRADING failed (run unaffected): %s", e)
+        print(f"  [POST] MACRO LEAD GRADING FAILED in {time.time() - _t:.2f}s (run unaffected, not gated): {e}")
+
     print("\n" + "=" * 50)
     print(f"Pipeline complete in {time.time() - pipeline_t0:.2f}s ({(time.time() - pipeline_t0) / 60:.1f} min)")
     print("=" * 50)
@@ -441,5 +467,5 @@ if __name__ == "__main__":
 # 14:   embedding_job        (RAG content embeddings for Intelligence chat)
 # 15:   user_synthesis       (Lucas personalization sprint — per-user addendum)
 # 16:   thesis_generator     (morning only — system theses, semantic dedup)
-# [POST] brief scoring, brief improvement addendum
+# [POST] brief scoring, brief improvement addendum, macro lead grading (C3)
 # ---------------------------------------------------------------------------
