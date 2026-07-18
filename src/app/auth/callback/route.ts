@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { checkFixedWindow, clientKeyFromHeaders } from '@/lib/rate-limit'
+import { sendWaitlistConfirmationEmail } from '@/lib/waitlist-email'
 
 // Coarse per-IP throttle on the OAuth callback (the one server-side auth entry
 // point). Caps code-exchange attempts to slow credential-stuffing / replay
@@ -99,7 +100,18 @@ export async function GET(request: NextRequest) {
 
     if (waitlistError && !waitlistError.message.includes('duplicate')) {
       console.error('Waitlist insert error:', waitlistError.message)
-      // Continue anyway — don't block the redirect
+      // Continue anyway. Don't block the redirect.
+    }
+
+    // Fire the transactional confirmation email. Idempotent (guarded on
+    // notified_at) and fully non-blocking: any failure is swallowed inside the
+    // util, and this extra try/catch guarantees the signup and the /waitlist
+    // redirect survive even an unexpected throw. If RESEND_API_KEY is unset the
+    // util skips the send and logs it.
+    try {
+      await sendWaitlistConfirmationEmail(userEmail)
+    } catch (e) {
+      console.error('Waitlist confirmation email failed (non-blocking):', e)
     }
 
     await supabase.auth.signOut()
