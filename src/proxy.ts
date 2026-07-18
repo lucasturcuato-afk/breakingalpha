@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { isAllowlisted } from '@/lib/allowlist'
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -52,6 +53,31 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
+  }
+
+  // Beta allowlist gate — enforce BEYOND the OAuth callback.
+  // A provisioned-but-non-approved session (e.g. one minted by direct password
+  // sign-in, which never hit the callback) must not reach any gated route.
+  // Fails closed: isAllowlisted returns false on any query error. The proxy runs
+  // with the authenticated user's client, and RLS policy allowlist_read_self
+  // lets a user read their OWN beta_allowlist row, so this needs no service role.
+  if (user && !isAuthPage && !isPublicPath) {
+    const allowed = await isAllowlisted(supabase, user.email)
+    if (!allowed) {
+      // Best-effort clear the session so it stops presenting as logged-in.
+      // signOut mutates supabaseResponse cookies via the setAll adapter above;
+      // we carry those onto the redirect. Even if signOut fails, redirecting to
+      // the public /waitlist page already fails closed (gated routes stay out of
+      // reach), mirroring the callback's non-approved handling.
+      await supabase.auth.signOut()
+      const url = request.nextUrl.clone()
+      url.pathname = '/waitlist'
+      const redirect = NextResponse.redirect(url)
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        redirect.cookies.set(cookie)
+      })
+      return redirect
+    }
   }
 
   // Onboarding gate — first-time users land on /onboarding.

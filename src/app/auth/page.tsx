@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import { isAllowlisted } from "@/lib/allowlist";
 import { cn } from "@/lib/utils";
 import { Mail, Lock, Eye, EyeOff, Check } from "lucide-react";
 import Link from "next/link";
@@ -39,7 +40,20 @@ export default function AuthPage() {
         setError(signInError.message);
         setLoading(false);
       } else {
-        window.location.href = "/dashboard";
+        // Enforce the beta allowlist on the direct password sign-in path too.
+        // signInWithPassword mints a session without ever touching the OAuth
+        // callback gate, so a provisioned-but-non-approved account would
+        // otherwise walk straight into /dashboard. Mirror the callback: if not
+        // approved, sign out and route to /waitlist. Fails closed (isAllowlisted
+        // returns false on any query error). RLS allowlist_read_self lets this
+        // authenticated browser client read its own row.
+        const approved = await isAllowlisted(supabase, email);
+        if (!approved) {
+          await supabase.auth.signOut();
+          window.location.href = "/waitlist";
+        } else {
+          window.location.href = "/dashboard";
+        }
       }
     } else {
       const { error: signUpError } =
