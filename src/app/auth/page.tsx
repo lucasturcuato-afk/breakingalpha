@@ -154,7 +154,7 @@ export default function AuthPage() {
 
       {/* ── Right panel: Auth card (45%) ── */}
       <div className="relative flex-1 flex items-center justify-center px-6 py-12 lg:w-[45%] bg-parchment">
-        <BackToPreviewLink />
+        <BackToHomeLink />
         <div className="w-full max-w-[420px]">
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center justify-center gap-2 mb-10">
@@ -355,13 +355,13 @@ export default function AuthPage() {
   );
 }
 
-function BackToPreviewLink() {
+function BackToHomeLink() {
   return (
     <Link
-      href="/preview"
+      href="/"
       className="absolute top-4 left-5 flex items-center gap-1 font-sans text-[12px] text-text-muted no-underline transition-colors hover:text-espresso"
     >
-      ← Back to preview
+      ← Back to home
     </Link>
   );
 }
