@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import Link from "next/link";
@@ -31,10 +32,15 @@ type Status = "supported" | "challenged" | "awaiting" | "developing" | "reviewin
 // ---- Signal wall (intro gate background) ----------------------------------
 type WallCard = { tag: string; score: string; text: string };
 
-const WALL_COLUMNS: { pt: number; dur: string; cards: WallCard[] }[] = [
+// Each column scrolls on the compositor at its own speed and direction so the
+// wall reads as ambient depth, not a synchronized marquee. Durations sit in the
+// 40-90s band (slow, ambient); adjacent columns differ in both speed and
+// direction so nothing moves in lockstep.
+const WALL_COLUMNS: { pt: number; dur: string; down: boolean; cards: WallCard[] }[] = [
   {
     pt: 0,
-    dur: "44s",
+    dur: "58s",
+    down: false,
     cards: [
       { tag: "TECHNOLOGY · M&A", score: "8.4", text: "Activist stake disclosed in mid-cap security vendor" },
       { tag: "MACRO & RATES", score: "9.1", text: "Front-end repricing after soft services print" },
@@ -47,7 +53,8 @@ const WALL_COLUMNS: { pt: number; dur: string; cards: WallCard[] }[] = [
   },
   {
     pt: 70,
-    dur: "32s",
+    dur: "74s",
+    down: true,
     cards: [
       { tag: "SEMIS", score: "9.2", text: "HBM capacity adds pull semicap orders forward" },
       { tag: "FINANCIALS", score: "7.6", text: "Regional bank NII guides drift higher" },
@@ -60,7 +67,8 @@ const WALL_COLUMNS: { pt: number; dur: string; cards: WallCard[] }[] = [
   },
   {
     pt: 30,
-    dur: "52s",
+    dur: "46s",
+    down: false,
     cards: [
       { tag: "PRIVATE EQUITY", score: "7.9", text: "Take-private chatter around building products distributor" },
       { tag: "INDUSTRIALS", score: "8.1", text: "Transformer lead times extend past 30 months" },
@@ -73,7 +81,8 @@ const WALL_COLUMNS: { pt: number; dur: string; cards: WallCard[] }[] = [
   },
   {
     pt: 100,
-    dur: "38s",
+    dur: "86s",
+    down: true,
     cards: [
       { tag: "M&A", score: "8.7", text: "Second request extends mega-merger timeline" },
       { tag: "SEMIS", score: "7.8", text: "Toolmaker orders +31% q/q at the two largest" },
@@ -344,8 +353,16 @@ function IntroGate({ reduced, onEnter }: { reduced: boolean; onEnter: () => void
         {WALL_COLUMNS.map((col, ci) => (
           <div key={ci} className={styles.wallCol} style={{ paddingTop: col.pt }}>
             <div
-              className={styles.wallColInner}
-              style={reduced ? undefined : { animation: `wallScroll ${col.dur} linear infinite` }}
+              className={
+                reduced
+                  ? styles.wallColInner
+                  : `${styles.wallColInner} ${col.down ? styles.wallAnimDown : styles.wallAnimUp}`
+              }
+              style={
+                reduced
+                  ? undefined
+                  : ({ "--wall-dur": col.dur } as CSSProperties)
+              }
             >
               {[...col.cards, ...col.cards].map((c, i) => (
                 <div key={i} className={styles.wallCard}>

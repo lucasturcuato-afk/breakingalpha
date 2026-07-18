@@ -74,7 +74,8 @@
 @keyframes ambient { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.75; } }
 @keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
 @keyframes feedIn { from { transform: translateY(-10px); } to { transform: translateY(0); } }
-@keyframes wallScroll { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+@keyframes wallScroll { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(0, -50%, 0); } }
+@keyframes wallScrollDown { from { transform: translate3d(0, -50%, 0); } to { transform: translate3d(0, 0, 0); } }
 @keyframes statFlash { 0% { color: var(--brass-hover); } 100% { } }
 /* enhancement-only reveal (content is visible by default; this only replays on view) */
 @keyframes revealUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
@@ -110,6 +111,17 @@
 }
 .wallCol { overflow: hidden; }
 .wallColInner { display: flex; flex-direction: column; gap: 14px; }
+/*
+  The intro wall scroll. The @keyframes names above are scoped by the CSS module
+  (hashed), so they only resolve when referenced from inside this module. The
+  original port set `animation: wallScroll ...` from an inline style string in
+  the TSX, which never matched the hashed name, so the wall sat still. These
+  classes reference the keyframes from within the module (name gets rewritten to
+  match) and take per-column speed from the --wall-dur custom property, which is
+  not scoped and can be set inline. Compositor-only transform; no JS scroll.
+*/
+.wallAnimUp { animation: wallScroll var(--wall-dur, 60s) linear infinite; will-change: transform; }
+.wallAnimDown { animation: wallScrollDown var(--wall-dur, 60s) linear infinite; will-change: transform; }
 .wallCard {
   background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px;
 }
