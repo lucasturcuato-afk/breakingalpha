@@ -6,7 +6,7 @@ An OFFLINE JOB (not a live-path call) that fits the four UNIFIED_LEAD contest
 weights - w = (materiality, session_fit, confirmation, breadth) - against
 Signalera's graded record, so the weights become DATA-DRIVEN instead of
 hand-tuned. It runs offline, writes a NEW versioned row to `lead_weights`
-(migration sql/0013), and the LIVE scorer (impact_ranking.compute_unified_lead)
+(migration sql/0015), and the LIVE scorer (impact_ranking.compute_unified_lead)
 just READS the active row. This module NEVER touches the live path and contains
 NO LLM anywhere - it is pure arithmetic over the graded history.
 
@@ -70,7 +70,7 @@ from typing import Optional
 DIMS = ("materiality", "session_fit", "confirmation", "breadth")
 
 # Safe hand-tuned defaults - MUST match impact_ranking.W_* and the seed row in
-# sql/0013_lead_weights.sql. The reversion target when the calibrator refuses.
+# sql/0015_lead_weights.sql. The reversion target when the calibrator refuses.
 DEFAULT_WEIGHTS: dict[str, float] = {
     "materiality": 4.0,
     "session_fit": 4.0,
