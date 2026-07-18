@@ -46,7 +46,7 @@ function renderHtml(): string {
   <body style="margin:0;padding:24px;background:#f5efe4;font-family:Arial,Helvetica,sans-serif;color:#1a1712;">
     <div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #e3dac6;border-radius:12px;padding:32px;">
       <div style="font-size:22px;font-weight:700;margin-bottom:20px;">
-        Signal<span style="color:#ae843a;">era</span>
+        Signal<span style="color:#ae843a;">era.</span>
       </div>
       <p style="font-size:15px;line-height:1.6;margin:0 0 24px;">${BODY}</p>
       <hr style="border:none;border-top:1px solid #e3dac6;margin:24px 0;" />

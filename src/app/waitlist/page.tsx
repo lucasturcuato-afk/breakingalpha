@@ -1,15 +1,23 @@
 "use client"
 
 import Link from "next/link"
+import { Wordmark } from "@/components/ui/wordmark"
 
 export default function WaitlistPage() {
   return (
     <div className="min-h-screen bg-parchment flex items-center justify-center px-4 py-12">
       <div className="max-w-lg w-full">
-        <div className="bg-white rounded-2xl border border-border-base shadow-sm p-8 sm:p-12 text-center">
-          <div className="mb-6">
-            <span className="font-serif text-4xl sm:text-5xl font-bold text-espresso">
-              Signalera
+        <div className="bg-elevated rounded-2xl border border-border-base shadow-sm p-8 sm:p-12 text-center">
+          <div className="mb-6 flex justify-center">
+            {/* Same wordmark as the landing and modal: Signal in ink, era in
+                brass, followed by a period. Reuses the shared Wordmark and adds
+                the trailing period in the same gold. */}
+            <span
+              className="inline-flex items-baseline font-display font-bold"
+              style={{ fontSize: "26px", lineHeight: 1 }}
+            >
+              <Wordmark size="lg" />
+              <span className="text-gold">.</span>
             </span>
           </div>
 
