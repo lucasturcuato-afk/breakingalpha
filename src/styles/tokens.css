@@ -243,20 +243,6 @@
      --purple binds to web-fallback citation markers (e.g. [w1]) per
      PR-E2 spec; gold tokens stay reserved for article-grounded [n] cites. */
   --purple: #8b5cf6;
-
-  /* ── Always-dark terminal panel set (PR #489 landing) ──
-     APPEND-ONLY. These are defined ONCE here and are intentionally NOT
-     overridden inside html.dark, so they stay near-black in BOTH light and
-     dark themes. The signed-out landing renders three terminal surfaces (the
-     loop demo, the live signal stream, and the morning/evening market read)
-     that must read as dark terminals regardless of the active theme. Mirrors
-     the canvas --pd-* tokens. Do not add these to html.dark. */
-  --panel-terminal-bg: #080808;
-  --panel-terminal-border: #2c2c2c;
-  --panel-terminal-line: #201e1c;
-  --panel-terminal-text: #f5e6d3;
-  --panel-terminal-muted: #9a9a94;
-  --panel-terminal-dim: #6a6a64;
 }
 
 /* ── Dark mode overrides ── */

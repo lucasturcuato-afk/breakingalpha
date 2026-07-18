@@ -1,86 +1,112 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import { WaitlistModal } from "./waitlist-modal";
 import { useTheme } from "@/components/providers/theme-provider";
+import styles from "./landing.module.css";
 
 // ---------------------------------------------------------------------------
-// Signalera signed-out landing. Themed + token-driven rebuild of the reference
-// scrollytelling page. Styled light by default with `dark:` overrides so it
-// tracks the class-based theme provider. Every color is a design token from
-// src/styles/tokens.css (no raw hex, no rgba literals). Animations are gated
-// behind prefers-reduced-motion.
+// Signalera signed-out landing. Near-verbatim port of the design canvas into a
+// scoped CSS module (landing.module.css). The module is a SANCTIONED scoped
+// exception to the repo token rule: it carries the canvas colors directly.
+// Layout, spacing, and structure mirror the canvas section-by-section. Fonts
+// are the only remap (module vars point at the app font vars). Animations are
+// enhancement-only and gated behind prefers-reduced-motion; content is visible
+// by default and never gated on an observer that might not fire.
 // ---------------------------------------------------------------------------
+
+function cx(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(" ");
+}
 
 type Status = "supported" | "challenged" | "awaiting" | "developing" | "reviewing";
 
-type WallSignal = { tag: string; score: string; text: string };
+// ---- Signal wall (intro gate background) ----------------------------------
+type WallCard = { tag: string; score: string; text: string };
 
-const WALL: WallSignal[] = [
-  { tag: "TECHNOLOGY · M&A", score: "8.4", text: "Activist stake disclosed in mid-cap security vendor" },
-  { tag: "MACRO & RATES", score: "9.1", text: "Front-end repricing after soft services print" },
-  { tag: "SHIPPING", score: "8.8", text: "Transpacific GRIs stick; spot +18% in three weeks" },
-  { tag: "CONSUMER", score: "6.9", text: "Luxury mainland comps print negative again" },
-  { tag: "CREDIT", score: "7.0", text: "HY issuance window reopens after a quiet June" },
-  { tag: "UTILITIES", score: "8.6", text: "Grid capex supercycle guides raised again" },
-  { tag: "HEALTHCARE", score: "7.2", text: "Obesity franchise supply constraints easing" },
-  { tag: "SEMIS", score: "9.2", text: "HBM capacity adds pull semicap orders forward" },
-  { tag: "FINANCIALS", score: "7.6", text: "Regional bank NII guides drift higher" },
-  { tag: "GEOPOLITICS", score: "8.9", text: "Export-control update hits tooling names" },
-  { tag: "REAL ESTATE", score: "6.4", text: "CMBS spreads tighten on office refi wave" },
-  { tag: "ENERGY", score: "6.8", text: "Refinery cracks widen into driving season" },
-  { tag: "M&A", score: "9.0", text: "Mega-merger spread widens on second request" },
-  { tag: "RATES", score: "7.4", text: "10y auction tails; dealers absorb the print" },
-  { tag: "PRIVATE EQUITY", score: "7.9", text: "Take-private chatter around building products distributor" },
-  { tag: "INDUSTRIALS", score: "8.1", text: "Transformer lead times extend past 30 months" },
-  { tag: "TECHNOLOGY", score: "8.2", text: "Hyperscaler capex guides move higher in aggregate" },
-  { tag: "SHIPPING", score: "7.1", text: "Carriers file August GRIs across the lane" },
-  { tag: "MACRO", score: "8.3", text: "Breadth 3:1 into the open, vix 13.8" },
-  { tag: "SEMIS", score: "7.8", text: "Toolmaker orders +31% q/q at the two largest" },
+const WALL_COLUMNS: { pt: number; dur: string; cards: WallCard[] }[] = [
+  {
+    pt: 0,
+    dur: "44s",
+    cards: [
+      { tag: "TECHNOLOGY · M&A", score: "8.4", text: "Activist stake disclosed in mid-cap security vendor" },
+      { tag: "MACRO & RATES", score: "9.1", text: "Front-end repricing after soft services print" },
+      { tag: "SHIPPING", score: "8.8", text: "Transpacific GRIs stick; spot +18% in three weeks" },
+      { tag: "CONSUMER", score: "6.9", text: "Luxury mainland comps print negative again" },
+      { tag: "CREDIT", score: "7.0", text: "HY issuance window reopens after a quiet June" },
+      { tag: "UTILITIES", score: "8.6", text: "Grid capex supercycle guides raised again" },
+      { tag: "HEALTHCARE", score: "7.2", text: "Obesity franchise supply constraints easing" },
+    ],
+  },
+  {
+    pt: 70,
+    dur: "32s",
+    cards: [
+      { tag: "SEMIS", score: "9.2", text: "HBM capacity adds pull semicap orders forward" },
+      { tag: "FINANCIALS", score: "7.6", text: "Regional bank NII guides drift higher" },
+      { tag: "GEOPOLITICS", score: "8.9", text: "Export-control update hits tooling names" },
+      { tag: "REAL ESTATE", score: "6.4", text: "CMBS spreads tighten on office refi wave" },
+      { tag: "ENERGY", score: "6.8", text: "Refinery cracks widen into driving season" },
+      { tag: "M&A", score: "9.0", text: "Mega-merger spread widens on second request" },
+      { tag: "RATES", score: "7.4", text: "10y auction tails; dealers absorb the print" },
+    ],
+  },
+  {
+    pt: 30,
+    dur: "52s",
+    cards: [
+      { tag: "PRIVATE EQUITY", score: "7.9", text: "Take-private chatter around building products distributor" },
+      { tag: "INDUSTRIALS", score: "8.1", text: "Transformer lead times extend past 30 months" },
+      { tag: "TECHNOLOGY", score: "8.2", text: "Hyperscaler capex guides move higher in aggregate" },
+      { tag: "FINANCIALS", score: "6.6", text: "Deposit betas stabilize across regionals" },
+      { tag: "SHIPPING", score: "7.1", text: "Carriers file August GRIs across the lane" },
+      { tag: "MACRO", score: "8.3", text: "Breadth 3:1 into the open, vix 13.8" },
+      { tag: "CONSUMER", score: "6.2", text: "Holiday quarter bookings mixed at the high end" },
+    ],
+  },
+  {
+    pt: 100,
+    dur: "38s",
+    cards: [
+      { tag: "M&A", score: "8.7", text: "Second request extends mega-merger timeline" },
+      { tag: "SEMIS", score: "7.8", text: "Toolmaker orders +31% q/q at the two largest" },
+      { tag: "ENERGY", score: "7.3", text: "EIA draw prints larger than consensus" },
+      { tag: "PRIVATE EQUITY", score: "8.0", text: "Sponsor exits reopen via strip sales" },
+      { tag: "RATES", score: "6.7", text: "Auction tails 1.2bp; desks fade the move" },
+      { tag: "INDUSTRIALS", score: "7.5", text: "Backlog stretch cited by a third transformer maker" },
+      { tag: "GEOPOLITICS", score: "8.5", text: "Tariff review lands mid-quarter; supply chains reroute" },
+    ],
+  },
 ];
 
-const WALL_COLUMNS: WallSignal[][] = [
-  [WALL[0], WALL[4], WALL[8], WALL[12], WALL[16]],
-  [WALL[1], WALL[5], WALL[9], WALL[13], WALL[17]],
-  [WALL[2], WALL[6], WALL[10], WALL[14], WALL[18]],
-  [WALL[3], WALL[7], WALL[11], WALL[15], WALL[19]],
-];
-const WALL_ANIM = ["wallScrollA", "wallScrollB", "wallScrollC", "wallScrollD"];
-const WALL_DUR = ["34s", "27s", "40s", "31s"];
-
-type DemoScene = {
-  who: string;
-  claim: string;
-  result: Status;
-  attrLead: string;
-  attrRest: string;
-};
+// ---- Loop demo scenes ------------------------------------------------------
+type DemoScene = { who: string; claim: string; result: Status; attrLead: string; attrRest: string };
 
 const DEMO: DemoScene[] = [
-  {
-    who: "YOU",
-    claim: "AI infrastructure keeps drawing capital toward the names you follow.",
-    result: "supported",
-    attrLead: "Three of four followed names drew fresh capital this week.",
-    attrRest: "The read is clean.",
-  },
-  {
-    who: "YOU",
-    claim: "Commercial real estate stress eases as refinancing picks up.",
-    result: "challenged",
-    attrLead: "Vacancy printed new highs and refinancing slowed.",
-    attrRest: "The evidence runs the other way. Kept on the record.",
-  },
-  {
-    who: "SIGNALERA",
-    claim: "Chip supply tightens toward the suppliers you track.",
-    result: "developing",
-    attrLead: "Two confirming developments so far.",
-    attrRest: "Below the bar to call it. Awaiting the next data point.",
-  },
+  { who: "YOU", claim: "AI infrastructure keeps drawing capital toward the names you follow.", result: "supported", attrLead: "Three of four followed names drew fresh capital this week.", attrRest: "The read is clean." },
+  { who: "YOU", claim: "Commercial real estate stress eases as refinancing picks up.", result: "challenged", attrLead: "Vacancy printed new highs and refinancing slowed.", attrRest: "The evidence runs the other way. Kept on the record." },
+  { who: "SIGNALERA", claim: "Chip supply tightens toward the suppliers you track.", result: "developing", attrLead: "Two confirming developments so far.", attrRest: "Below the bar to call it. Awaiting the next data point." },
 ];
 
+const DEMO_LABELS = ["CALLED", "REVIEW DATE", "EVIDENCE", "VERDICT", "SHARPER BRIEF"];
+
+type ChipKey = "awaiting" | "developing" | "supported" | "challenged";
+
+const DEMO_CHIP: Record<ChipKey, { label: string; color: string; bg: string; bd: string }> = {
+  awaiting: { label: "AWAITING", color: "var(--pdc-awt)", bg: "var(--pdc-awt-bg)", bd: "var(--pdc-awt-bd)" },
+  developing: { label: "DEVELOPING", color: "var(--pdc-awt)", bg: "var(--pdc-awt-bg)", bd: "var(--pdc-awt-bd)" },
+  supported: { label: "SUPPORTED", color: "var(--pdc-sup)", bg: "var(--pdc-sup-bg)", bd: "var(--pdc-sup-bd)" },
+  challenged: { label: "CHALLENGED", color: "var(--pdc-chal)", bg: "var(--pdc-chal-bg)", bd: "var(--pdc-chal-bd)" },
+};
+
+// ---- Live feed pool --------------------------------------------------------
 type FeedTemplate = { text: string; status: Status; evidence: string };
 
 const FEED_POOL: FeedTemplate[] = [
@@ -94,6 +120,14 @@ const FEED_POOL: FeedTemplate[] = [
   { text: "Refinery crack spreads widen into driving season", status: "awaiting", evidence: "reviews on weekly EIA inventory draws" },
 ];
 
+const FEED_PILL: Record<Status, { label: string; color: string; bg: string; bd: string }> = {
+  supported: { label: "SUPPORTED", color: "var(--pdc-sup)", bg: "var(--pdc-sup-bg)", bd: "var(--pdc-sup-bd)" },
+  challenged: { label: "CHALLENGED", color: "var(--pdc-chal)", bg: "var(--pdc-chal-bg)", bd: "var(--pdc-chal-bd)" },
+  awaiting: { label: "AWAITING", color: "var(--pdc-awt)", bg: "var(--pdc-awt-bg)", bd: "var(--pdc-awt-bd)" },
+  reviewing: { label: "REVIEWING…", color: "var(--pdc-awt)", bg: "transparent", bd: "var(--pdc-awt-bd)" },
+  developing: { label: "DEVELOPING", color: "var(--pdc-awt)", bg: "var(--pdc-awt-bg)", bd: "var(--pdc-awt-bd)" },
+};
+
 const SURFACES: { name: string; blurb: string }[] = [
   { name: "MORNING BRIEF", blurb: "The day's read before the open, built around the names you follow." },
   { name: "EVENING WRAP", blurb: "What moved at the close, and what resolved on the record." },
@@ -106,70 +140,10 @@ const SURFACES: { name: string; blurb: string }[] = [
   { name: "INTELLIGENCE", blurb: "Ask the system what the record shows." },
 ];
 
-const TIMELINE: {
-  step: string;
-  date: string;
-  head: string;
-  body: string;
-}[] = [
-  {
-    step: "01",
-    date: "TUE JUN 3 · 07:02 ET",
-    head: "You read. One line earns a tap.",
-    body: "Every claim in the brief is trackable. Tap one and Signalera restates it as a falsifiable thesis with a review date and the evidence that would settle it. Or write your own. Calls you type into Radar are logged and graded exactly the same way as ours.",
-  },
-  {
-    step: "02",
-    date: "WED JUN 4 · 06:55 ET",
-    head: "Tomorrow's brief already knows.",
-    body: "You did not configure anything. Tracking is the configuration. The ripple reaches every surface overnight.",
-  },
-  {
-    step: "03",
-    date: "THU JUN 19 · 08:40 ET",
-    head: "The evidence arrives. It cuts against the thesis.",
-    body: "Signalera marks the thesis challenged, in plain sight. The misses stay on the record, because a record with no misses is marketing.",
-  },
-  {
-    step: "04",
-    date: "FRI JUN 20 · 06:55 ET",
-    head: "The record updates. Permanently.",
-    body: "Every resolved call lands in a ledger you can audit. The scoreboard moves, both ways.",
-  },
-  {
-    step: "05",
-    date: "TUE JUL 1 · 06:55 ET · WEEK FOUR",
-    head: "The brief is sharper because a call it tracked did not hold.",
-    body: "Week four beats week one because it has accumulated how you think, not what you clicked. That is the thing a free summary cannot do.",
-  },
-];
+// Risk-on regime (canvas default marketRegime).
+const MARKET_LINE = "markets advancing · vix 13.8 · 10y 4.21% · s&p +1.18% · breadth 3:1";
 
-// Status token map. Colors resolve to CSS-var design tokens (no literals).
-function statusClasses(status: Status): string {
-  switch (status) {
-    case "supported":
-      return "text-signal-up border-signal-up/30 bg-signal-up/10";
-    case "challenged":
-      return "text-signal-dn border-signal-dn/30 bg-signal-dn/10";
-    default:
-      return "text-signal-warn border-signal-warn/30 bg-signal-warn/10";
-  }
-}
-function statusLabel(status: Status): string {
-  switch (status) {
-    case "supported":
-      return "SUPPORTED";
-    case "challenged":
-      return "CHALLENGED";
-    case "developing":
-      return "DEVELOPING";
-    case "reviewing":
-      return "REVIEWING…";
-    default:
-      return "AWAITING";
-  }
-}
-
+// ---- hooks -----------------------------------------------------------------
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
   useEffect(() => {
@@ -182,10 +156,40 @@ function useReducedMotion(): boolean {
   return reduced;
 }
 
-// Small labelled eyebrow used across sections.
-function Eyebrow({ children }: { children: React.ReactNode }) {
+// Progressive-enhancement reveal. Content is visible by default (styles.reveal);
+// the fade-up only replays once the element enters view. If the observer never
+// fires, the content simply stays visible.
+function Reveal({
+  reduced,
+  className,
+  children,
+}: {
+  reduced: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [animate, setAnimate] = useState(false);
+  useEffect(() => {
+    if (reduced) return;
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            setAnimate(true);
+            io.disconnect();
+          }
+        });
+      },
+      { threshold: 0.12 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [reduced]);
   return (
-    <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.24em] text-gold">
+    <div ref={ref} className={cx(className, styles.reveal, !reduced && animate && styles.revealAnim)}>
       {children}
     </div>
   );
@@ -198,24 +202,20 @@ export function OpeningScreen() {
   const [modalOpen, setModalOpen] = useState(false);
   const forcedDarkRef = useRef(false);
 
-  // Landing defaults to dark per the design. ThemeProvider seeds light and only
-  // reads localStorage on mount; once mounted, if the visitor has no saved
-  // preference we flip to dark exactly once so state, the .dark class, and
-  // localStorage all agree. A saved preference (either value) is respected.
+  // Landing defaults to dark. ThemeProvider seeds light and reads localStorage
+  // on mount; once mounted, if the visitor has no saved preference we flip to
+  // dark exactly once so state, the .dark class, and storage agree.
   useEffect(() => {
     if (!mounted || forcedDarkRef.current) return;
     const saved =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem("signalera_theme")
-        : null;
+      typeof window !== "undefined" ? window.localStorage.getItem("signalera_theme") : null;
     if (!saved && theme === "light") {
       forcedDarkRef.current = true;
       toggleTheme();
     }
   }, [mounted, theme, toggleTheme]);
 
-  // Intro gate locks scroll until the visitor enters. Effect-only so SSR/CSR
-  // markup stays identical (no hydration mismatch).
+  // Intro gate locks scroll until the visitor enters.
   useEffect(() => {
     if (entered) return;
     const prev = document.body.style.overflow;
@@ -228,7 +228,6 @@ export function OpeningScreen() {
 
   const enter = useCallback(() => {
     setEntered(true);
-    // release the lock on the next frame, then let content settle at top
     requestAnimationFrame(() => {
       document.body.style.overflow = "";
       window.scrollTo({ top: 0 });
@@ -239,103 +238,68 @@ export function OpeningScreen() {
     (id: string) => () => {
       const el = document.getElementById(id);
       if (!el) return;
-      const top = el.getBoundingClientRect().top + window.scrollY - 40;
+      const top = el.getBoundingClientRect().top + window.scrollY - 60;
       window.scrollTo({ top, behavior: reduced ? "auto" : "smooth" });
     },
     [reduced],
   );
 
   const openModal = useCallback(() => setModalOpen(true), []);
+  const themeLabel = mounted ? `◐ THEME · ${theme.toUpperCase()}` : "◐ THEME";
 
   return (
-    <div className="relative min-h-[100dvh] bg-parchment text-text-primary">
-      <LandingStyles />
-
-      {/* Scroll progress bar */}
+    <div className={styles.root}>
       <ScrollProgress />
 
-      {/* Intro gate */}
-      {!entered && (
-        <IntroGate onEnter={enter} reduced={reduced} onWaitlist={openModal} />
-      )}
+      {!entered && <IntroGate reduced={reduced} onEnter={enter} />}
 
-      {/* Top nav */}
-      <header className="sticky top-0 z-40 border-b border-border-subtle bg-parchment/80 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-5">
-          <button
-            type="button"
-            onClick={scrollTo("hero")}
-            className="font-display text-[19px] font-bold tracking-tight cursor-pointer"
-          >
-            <span className="text-espresso">Signal</span>
-            <span className="text-gold">era</span>
+      <div>
+        {/* market strip */}
+        <div className={styles.marketStrip}>
+          <span className={styles.marketStripDot} />
+          <span className={styles.marketLine}>{MARKET_LINE}</span>
+          <span className={styles.marketSpacer} />
+          <span className={styles.regimeChip}>
+            <span className={styles.regimeChipDot} style={{ background: "#5FA97A" }} />
+            RISK-ON
+          </span>
+        </div>
+
+        {/* nav */}
+        <nav className={styles.nav}>
+          <button type="button" onClick={scrollTo("hero")} className={styles.navWordmark}>
+            Signal<span className={styles.brassSpan}>era.</span>
           </button>
-          <nav className="flex items-center gap-2 sm:gap-4">
-            <button
-              type="button"
-              onClick={toggleTheme}
-              aria-label="Toggle color theme"
-              className="rounded border border-border-base px-3 py-2 font-mono text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-secondary hover:border-gold hover:text-gold transition-colors cursor-pointer"
-            >
-              {mounted ? (theme === "dark" ? "◐ Theme · Dark" : "◐ Theme · Light") : "◐ Theme"}
+          <div className={styles.navRight}>
+            <button type="button" onClick={toggleTheme} aria-label="Toggle color theme" className={styles.themeToggle}>
+              {themeLabel}
             </button>
-            <Link
-              href="/auth"
-              className="font-sans text-[13px] font-medium text-text-secondary hover:text-text-primary transition-colors"
-            >
+            <Link href="/auth" className={styles.signInLink}>
               Sign in
             </Link>
-            <button
-              type="button"
-              onClick={openModal}
-              className="h-9 rounded-lg bg-gold px-4 font-sans text-[13px] font-semibold text-cream hover:bg-gold-light active:bg-gold-dark transition-all cursor-pointer"
-            >
+            <button type="button" onClick={openModal} className={styles.joinNav}>
               Join the waitlist
             </button>
-          </nav>
-        </div>
-      </header>
+          </div>
+        </nav>
 
-      <main>
-        <Hero
-          reduced={reduced}
-          onWaitlist={openModal}
-          onSeeHow={scrollTo("loop")}
-        />
+        <Hero reduced={reduced} onWaitlist={openModal} onSeeHow={scrollTo("demo")} />
         <LoopSection reduced={reduced} />
         <TimelineSection reduced={reduced} />
         <ProofSection reduced={reduced} />
         <MarketReadSection reduced={reduced} />
         <SurfacesSection />
         <UniversitySection />
-        <WaitlistSection onWaitlist={openModal} />
-      </main>
-
-      <SiteFooter />
+        <WaitlistSection />
+        <SiteFooter />
+      </div>
 
       <WaitlistModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </div>
   );
 }
 
-// --- Scoped keyframes (colors here are transforms/opacity only) --------------
-function LandingStyles() {
-  return (
-    <style>{`
-      @keyframes wallScrollA { from { transform: translateY(0); } to { transform: translateY(-50%); } }
-      @keyframes wallScrollB { from { transform: translateY(0); } to { transform: translateY(-50%); } }
-      @keyframes wallScrollC { from { transform: translateY(0); } to { transform: translateY(-50%); } }
-      @keyframes wallScrollD { from { transform: translateY(0); } to { transform: translateY(-50%); } }
-      @keyframes landingPulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.35; transform:scale(1.8); } }
-      @keyframes landingBlink { 0%,49% { opacity:1; } 50%,100% { opacity:0; } }
-      @keyframes landingReveal { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:none; } }
-      @media (prefers-reduced-motion: reduce) {
-        .landing-anim { animation: none !important; }
-      }
-    `}</style>
-  );
-}
-
+// --- scroll progress --------------------------------------------------------
 function ScrollProgress() {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -354,109 +318,53 @@ function ScrollProgress() {
       window.removeEventListener("resize", onScroll);
     };
   }, []);
-  return (
-    <div className="fixed inset-x-0 top-0 z-50 h-0.5 bg-transparent">
-      <div ref={ref} className="h-full w-0 bg-gold" />
-    </div>
-  );
+  return <div ref={ref} className={styles.scrollProgress} />;
 }
 
-// --- Signal wall background --------------------------------------------------
-function SignalWall({ reduced }: { reduced: boolean }) {
+// --- intro gate -------------------------------------------------------------
+function IntroGate({ reduced, onEnter }: { reduced: boolean; onEnter: () => void }) {
   return (
-    <div
-      aria-hidden="true"
-      className="pointer-events-none absolute inset-0 flex gap-3 overflow-hidden px-2 opacity-40 dark:opacity-30"
-      style={{
-        maskImage:
-          "linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%)",
-        WebkitMaskImage:
-          "linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%)",
-      }}
-    >
-      {WALL_COLUMNS.map((col, ci) => (
-        <div key={ci} className="flex min-w-0 flex-1 flex-col gap-3">
-          <div
-            className={reduced ? "flex flex-col gap-3" : "landing-anim flex flex-col gap-3"}
-            style={
-              reduced
-                ? undefined
-                : {
-                    animation: `${WALL_ANIM[ci]} ${WALL_DUR[ci]} linear infinite`,
-                  }
-            }
-          >
-            {[...col, ...col].map((s, i) => (
-              <div
-                key={i}
-                className="flex-shrink-0 rounded-lg border border-gold-border bg-gold-muted px-3 py-2.5"
-              >
-                <div className="mb-1 font-mono text-[8px] font-bold uppercase tracking-[0.14em] text-gold">
-                  {s.tag}
+    <div className={styles.introGate}>
+      <div className={styles.wallGrid} aria-hidden="true">
+        {WALL_COLUMNS.map((col, ci) => (
+          <div key={ci} className={styles.wallCol} style={{ paddingTop: col.pt }}>
+            <div
+              className={styles.wallColInner}
+              style={reduced ? undefined : { animation: `wallScroll ${col.dur} linear infinite` }}
+            >
+              {[...col.cards, ...col.cards].map((c, i) => (
+                <div key={i} className={styles.wallCard}>
+                  <div className={styles.wallCardHead}>
+                    <span className={styles.wallTag}>{c.tag}</span>
+                    <span className={styles.wallScore}>SIGNAL {c.score}</span>
+                  </div>
+                  <div className={styles.wallText}>{c.text}</div>
                 </div>
-                <div className="font-sans text-[10px] leading-snug text-text-muted">
-                  {s.text}
-                </div>
-                <div className="mt-1.5 font-mono text-[9px] text-gold-dark">
-                  SIGNAL {s.score}
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+        ))}
+      </div>
 
-// --- Intro gate --------------------------------------------------------------
-function IntroGate({
-  onEnter,
-  reduced,
-  onWaitlist,
-}: {
-  onEnter: () => void;
-  reduced: boolean;
-  onWaitlist: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-hidden bg-parchment">
-      <SignalWall reduced={reduced} />
-      {/* Vignette using tokened surface, not a literal */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-parchment/40 via-transparent to-parchment/80" />
-      <div className="relative z-10 flex w-full flex-col items-center px-6 text-center">
-        <div className="mb-6 flex items-center gap-2">
-          <span className="h-1.5 w-1.5 rounded-full bg-gold landing-anim" style={reduced ? undefined : { animation: "landingPulse 2.2s ease-in-out infinite" }} />
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.3em] text-gold">
-            Signalera · Raw Signal Flow
-          </span>
-        </div>
-        <h1 className="font-display text-[clamp(40px,9vw,84px)] font-bold leading-none tracking-tight text-espresso">
-          Signalera.
-        </h1>
-        <p className="mt-8 max-w-xl font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-text-secondary">
-          By 06:55 ET the market has already produced a day of noise
-        </p>
-        <p className="mt-4 max-w-md font-sans text-[15px] leading-relaxed text-text-muted">
-          Most of it will not matter to you. The question is which calls hold up.
-        </p>
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-          <button
-            type="button"
-            onClick={onEnter}
-            className="h-12 rounded-xl bg-gold px-8 font-sans text-[13px] font-bold uppercase tracking-wider text-cream hover:bg-gold-light active:bg-gold-dark transition-all cursor-pointer"
-          >
-            Enter ↓
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              onEnter();
-              onWaitlist();
-            }}
-            className="h-12 rounded-xl border border-gold-border bg-transparent px-6 font-sans text-[13px] font-medium text-text-secondary hover:border-gold hover:text-text-primary transition-all cursor-pointer"
-          >
-            Join the waitlist
+      <div className={styles.introTopBar}>
+        <span>SIGNALERA · RAW SIGNAL FLOW</span>
+        <span className={styles.introLive}>
+          <span className={styles.introLiveDot} />
+          LIVE
+        </span>
+      </div>
+
+      <div className={styles.introVeil}>
+        <div className={styles.introCard}>
+          <div className={styles.introWordmark}>
+            Signal<span className={styles.brassSpan}>era.</span>
+          </div>
+          <div className={styles.introKicker}>BY 06:55 ET THE MARKET HAS ALREADY PRODUCED A DAY OF NOISE</div>
+          <p className={styles.introLede}>
+            Most of it will not matter to you. The question is which calls hold up.
+          </p>
+          <button type="button" onClick={onEnter} className={styles.introEnterBtn}>
+            ENTER {"↓"}
           </button>
         </div>
       </div>
@@ -464,7 +372,7 @@ function IntroGate({
   );
 }
 
-// --- Hero --------------------------------------------------------------------
+// --- hero -------------------------------------------------------------------
 function Hero({
   reduced,
   onWaitlist,
@@ -485,666 +393,822 @@ function Hero({
       return;
     }
     let n = 0;
+    let iv: ReturnType<typeof setInterval>;
     const start = setTimeout(() => {
-      const iv = setInterval(() => {
+      iv = setInterval(() => {
         n += 1;
         setTyped(target.slice(0, n));
         if (n >= target.length) {
           clearInterval(iv);
-          setTimeout(() => setCursorOn(false), 2200);
+          setTimeout(() => setCursorOn(false), 2400);
         }
       }, 42);
-    }, 500);
-    return () => clearTimeout(start);
-     
+    }, 700);
+    return () => {
+      clearTimeout(start);
+      clearInterval(iv);
+    };
   }, [reduced]);
 
   return (
-    <section
-      id="hero"
-      className="relative flex min-h-[88vh] items-center overflow-hidden border-b border-border-subtle"
-    >
-      <SignalWall reduced={reduced} />
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-parchment/50 via-parchment/30 to-parchment/85" />
-      <div className="relative z-10 mx-auto w-full max-w-3xl px-6 py-24 text-center">
-        <Eyebrow>AI-Native Market Intelligence</Eyebrow>
-        {/* Setup line: the SMALLER line above, italic display serif ~20px/400. */}
-        <p className="mx-auto mt-6 font-display text-[20px] font-normal italic leading-snug tracking-[-0.005em] text-text-secondary">
-          Anyone can summarize the market.
-        </p>
-        {/* Headline: the largest text on the page. Display serif ~58px/500,
-            typewriter-typed with a blinking gold cursor. Under reduced motion
-            it renders statically with no cursor (handled in the effect). */}
-        <h1 className="mx-auto mt-3 min-h-[1.1em] max-w-[760px] font-display text-[clamp(38px,7vw,58px)] font-medium leading-[1.06] tracking-[-0.02em] text-espresso">
-          {typed}
-          <span
-            aria-hidden="true"
-            className={`ml-1.5 inline-block h-[0.82em] w-[0.5em] translate-y-[0.04em] bg-gold align-baseline ${cursorOn ? "landing-anim" : "opacity-0"}`}
-            style={cursorOn && !reduced ? { animation: "landingBlink 1s step-end infinite" } : undefined}
-          />
+    <header id="hero" className={styles.hero}>
+      <Reveal reduced={reduced}>
+        <div className={styles.heroEyebrow}>AI-NATIVE MARKET INTELLIGENCE</div>
+        <h1 className={styles.heroH1}>
+          <span className={styles.heroSetup}>Anyone can summarize the market.</span>
+          <span className={styles.heroHeadline}>
+            {typed}
+            {cursorOn && <span aria-hidden="true" className={styles.heroCursor} />}
+          </span>
         </h1>
-        <p className="mx-auto mt-6 max-w-xl font-sans text-[15px] leading-relaxed text-text-muted">
-          A generic market summary is a commodity. An honest, graded record is
-          not. Signalera grades every call against the evidence, including the
-          calls that did not hold, and gets sharper the longer you use it.
+        <p className={styles.heroPara}>
+          A generic market summary is a commodity. An honest, graded record is not. Signalera grades every call
+          against the evidence, including the calls that did not hold, and gets sharper the longer you use it.
         </p>
-        <p className="mt-3 font-sans text-[12px] uppercase tracking-wider text-text-faint">
-          Informational only. Never advice.
-        </p>
-        <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-          <button
-            type="button"
-            onClick={onWaitlist}
-            className="h-12 rounded-xl bg-gold px-8 font-sans text-[14px] font-bold text-cream hover:bg-gold-light active:bg-gold-dark transition-all cursor-pointer"
-          >
+        <p className={styles.heroDisclaimer}>Informational only. Never advice.</p>
+        <div className={styles.heroCtas}>
+          <button type="button" onClick={onWaitlist} className={styles.btnPrimary}>
             Join the waitlist
           </button>
-          <button
-            type="button"
-            onClick={onSeeHow}
-            className="h-12 rounded-xl border border-border-base bg-transparent px-6 font-sans text-[14px] font-medium text-text-secondary hover:border-gold-border hover:text-text-primary transition-all cursor-pointer"
-          >
-            See how it works ↓
+          <button type="button" onClick={onSeeHow} className={styles.btnGhost}>
+            See how it works {"↓"}
           </button>
+          <span className={styles.heroBadge}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            free trial · invite-only during early access
+          </span>
         </div>
-        <p className="mt-6 font-sans text-[12px] text-text-faint">
-          free trial · invite-only during early access
-        </p>
-      </div>
-    </section>
+      </Reveal>
+    </header>
   );
 }
 
-// --- The Loop (interactive resolve demo) -------------------------------------
+// --- loop demo --------------------------------------------------------------
 function LoopSection({ reduced }: { reduced: boolean }) {
   const [scene, setScene] = useState(0);
-  const [lit, setLit] = useState(reduced ? 4 : 0);
-  const [revealed, setRevealed] = useState(reduced);
+  const [lit, setLit] = useState(0);
+  const [chip, setChip] = useState<ChipKey>("awaiting");
+  const [stage, setStage] = useState("waiting for evidence");
+  const [attrShown, setAttrShown] = useState(false);
+  const [nextShown, setNextShown] = useState(false);
   const [paused, setPaused] = useState(false);
   const s = DEMO[scene];
 
   useEffect(() => {
-    if (reduced || paused) {
+    if (reduced) {
       setLit(4);
-      setRevealed(true);
+      setChip(s.result as ChipKey);
+      setStage("verdict on the record");
+      setAttrShown(true);
+      setNextShown(true);
       return;
     }
+    if (paused) return;
     setLit(0);
-    setRevealed(false);
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    timers.push(setTimeout(() => setLit(1), 800));
-    timers.push(setTimeout(() => setLit(2), 1700));
-    timers.push(setTimeout(() => {
-      setLit(3);
-      setRevealed(true);
-    }, 3300));
-    timers.push(setTimeout(() => setLit(4), 4100));
-    timers.push(setTimeout(() => setScene((p) => (p + 1) % DEMO.length), 6300));
-    return () => timers.forEach(clearTimeout);
-  }, [scene, reduced, paused]);
+    setChip("awaiting");
+    setStage("waiting for evidence");
+    setAttrShown(false);
+    setNextShown(false);
+    const t: ReturnType<typeof setTimeout>[] = [];
+    t.push(setTimeout(() => { setLit(1); setStage("review date set"); }, 800));
+    t.push(setTimeout(() => { setLit(2); setChip("developing"); setStage("weighing the evidence"); }, 1700));
+    t.push(setTimeout(() => { setLit(3); setChip(s.result as ChipKey); setStage("verdict on the record"); setAttrShown(true); }, 3300));
+    t.push(setTimeout(() => { setLit(4); setStage("fed into tomorrow's brief"); setNextShown(true); }, 4100));
+    t.push(setTimeout(() => setScene((p) => (p + 1) % DEMO.length), 6300));
+    return () => t.forEach(clearTimeout);
+  }, [scene, reduced, paused, s.result]);
 
-  const stageText = ["waiting for evidence", "review date set", "weighing the evidence", "verdict on the record", "fed into tomorrow's brief"][lit];
-  const nodeLabels = ["CALLED", "REVIEW DATE", "EVIDENCE", "VERDICT", "SHARPER BRIEF"];
+  const chipStyle = DEMO_CHIP[chip];
 
   return (
-    <section id="loop" className="border-b border-border-subtle bg-surface px-6 py-24">
-      <div className="mx-auto max-w-3xl text-center">
-        <Eyebrow>The Loop</Eyebrow>
-        <h2 className="mt-4 font-display text-[clamp(28px,5vw,44px)] font-bold tracking-tight text-espresso">
-          Make a call. Watch it resolve.
-        </h2>
-      </div>
+    <section id="demo" className={styles.demoSection}>
+      <div className={styles.demoInner}>
+        <Reveal reduced={reduced}>
+          <div className={styles.sectionHead}>
+            <span className={styles.sectionKicker}>THE LOOP</span>
+            <span className={styles.sectionRule} />
+          </div>
+        </Reveal>
+        <Reveal reduced={reduced}>
+          <div className={styles.demoTitle}>Make a call. Watch it resolve.</div>
+        </Reveal>
 
-      <div className="mx-auto mt-12 max-w-2xl rounded-2xl border p-6 sm:p-8 shadow-lg bg-[color:var(--panel-terminal-bg)] border-[color:var(--panel-terminal-border)]">
-        <div className="flex items-center justify-between">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--panel-terminal-dim)]">
-            A call, in review
-          </span>
-          <div className="flex items-center gap-3">
-            <span
-              className={`rounded-full border px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-wider ${statusClasses(revealed ? s.result : "awaiting")}`}
-            >
-              {statusLabel(revealed ? s.result : "awaiting")}
-            </span>
-            {!reduced && (
-              <button
-                type="button"
-                onClick={() => setPaused((p) => !p)}
-                className="font-mono text-[9px] font-bold uppercase tracking-wider text-[color:var(--panel-terminal-dim)] hover:text-gold cursor-pointer transition-colors"
+        <Reveal reduced={reduced}>
+          <div className={styles.panel}>
+            <div className={styles.demoTopRow}>
+              <span className={styles.demoLiveLabel}>
+                <span className={styles.demoLiveTag}>
+                  <span className={styles.demoLiveDot} />
+                  LIVE
+                </span>
+                A CALL, IN REVIEW
+              </span>
+              {!reduced && (
+                <button type="button" onClick={() => setPaused((p) => !p)} className={styles.demoCtlBtn}>
+                  {paused ? "PLAY" : "PAUSE"}
+                </button>
+              )}
+            </div>
+
+            <div className={styles.demoRail} aria-hidden="true">
+              <span className={styles.demoRailTrack} />
+              <span className={styles.demoRailFill} style={{ width: `${lit * 20}%` }} />
+              <div className={styles.demoNodes}>
+                {DEMO_LABELS.map((label, k) => {
+                  const isLit = k <= lit;
+                  const isActive = k === lit;
+                  return (
+                    <div key={label} className={styles.demoNode}>
+                      <span
+                        className={cx(styles.demoNodeDot, isLit && styles.demoNodeDotLit, isActive && styles.demoNodeDotActive)}
+                      >
+                        <span className={cx(styles.demoNodeInner, isLit && styles.demoNodeInnerLit)} />
+                      </span>
+                      <span className={cx(styles.demoNodeLabel, isLit && styles.demoNodeLabelLit)}>{label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className={styles.demoClaimWrap}>
+              <span className={styles.demoWho}>{s.who}</span>
+              <div className={styles.demoClaim}>{s.claim}</div>
+            </div>
+            <div className={styles.demoChipRow}>
+              <span
+                className={styles.demoChip}
+                style={{ color: chipStyle.color, background: chipStyle.bg, border: `1px solid ${chipStyle.bd}` }}
               >
-                {paused ? "Play" : "Pause"}
-              </button>
-            )}
+                {chipStyle.label}
+              </span>
+              <span className={styles.demoStage}>{stage}</span>
+            </div>
+            <div className={styles.demoAttr} style={{ opacity: attrShown ? 1 : 0 }}>
+              {attrShown && (
+                <>
+                  <span className={styles.demoAttrLead}>{s.attrLead}</span> {s.attrRest}
+                </>
+              )}
+            </div>
+            <div className={cx(styles.demoNext, nextShown && styles.demoNextShown)}>
+              <span className={styles.demoNextCheck}>{"✓"}</span> Tomorrow&apos;s brief accumulates how you
+              think, not what you clicked.
+            </div>
           </div>
-        </div>
-
-        <div className="mt-5 flex items-baseline gap-3">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-gold">
-            {s.who}
-          </span>
-        </div>
-        <p className="mt-2 font-mono text-[19px] leading-snug text-[color:var(--panel-terminal-text)]">
-          {s.claim}
-        </p>
-
-        {/* 5-node rail */}
-        <div className="mt-7">
-          <div className="relative mb-4 h-0.5 w-full rounded bg-[color:var(--panel-terminal-line)]">
-            <div
-              className="h-full rounded bg-gold transition-[width] duration-500 ease-out"
-              style={{ width: `${lit * 25}%` }}
-            />
-          </div>
-          <div className="flex justify-between">
-            {nodeLabels.map((label, k) => {
-              const on = k <= lit;
-              return (
-                <div key={label} className="flex flex-1 flex-col items-center gap-2 text-center">
-                  <span
-                    className={`h-2.5 w-2.5 rounded-full border transition-colors duration-300 ${on ? "border-gold bg-gold" : "border-[color:var(--panel-terminal-border)] bg-transparent"}`}
-                  />
-                  <span
-                    className={`font-mono text-[8px] font-semibold uppercase tracking-wider transition-colors ${on ? "text-[color:var(--panel-terminal-muted)]" : "text-[color:var(--panel-terminal-dim)]"}`}
-                  >
-                    {label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="mt-6 rounded-lg border px-4 py-3 border-[color:var(--panel-terminal-border)] bg-[color:var(--panel-terminal-line)]">
-          <div className="font-mono text-[10px] uppercase tracking-wider text-[color:var(--panel-terminal-dim)]">
-            {stageText}
-          </div>
-          <p
-            className={`mt-2 font-sans text-[13.5px] leading-relaxed text-[color:var(--panel-terminal-muted)] transition-opacity duration-500 ${revealed ? "opacity-100" : "opacity-0"}`}
-          >
-            <span className="text-[color:var(--panel-terminal-text)]">{s.attrLead}</span> {s.attrRest}
-          </p>
-        </div>
-      </div>
-
-      <div className="mx-auto mt-8 max-w-2xl space-y-2 text-center">
-        <p className="font-sans text-[14px] text-text-secondary">
-          <span className="text-gold">✓</span> Tomorrow&apos;s brief accumulates
-          how you think, not what you clicked.
-        </p>
-        <p className="font-sans text-[13px] text-text-muted">
-          When a move cannot be credited to the reasoning, we say so.
-        </p>
+        </Reveal>
+        <Reveal reduced={reduced}>
+          <p className={styles.demoFootnote}>When a move cannot be credited to the reasoning, we say so.</p>
+        </Reveal>
       </div>
     </section>
   );
 }
 
-// --- Timeline ----------------------------------------------------------------
+// --- timeline ---------------------------------------------------------------
 function TimelineSection({ reduced }: { reduced: boolean }) {
   return (
-    <section className="border-b border-border-subtle px-6 py-24">
-      <div className="mx-auto max-w-3xl text-center">
-        <Eyebrow>The Life of One Thesis on Signalera</Eyebrow>
-        <h2 className="mt-4 font-display text-[clamp(26px,4.5vw,40px)] font-bold tracking-tight text-espresso">
-          Four weeks · five moments · one ripple
-        </h2>
-      </div>
+    <section id="loop" className={styles.timelineSection}>
+      <div className={styles.timelineInner}>
+        <Reveal reduced={reduced} className={styles.timelineHead}>
+          <span className={styles.sectionKicker}>THE LIFE OF ONE THESIS ON SIGNALERA</span>
+          <span className={styles.timelineHeadSub}>four weeks · five moments · one ripple</span>
+          <span className={styles.timelineRuleCenter} />
+        </Reveal>
 
-      <div className="mx-auto mt-14 max-w-2xl">
-        <div className="relative border-l border-border-base pl-8">
-          {TIMELINE.map((t, i) => (
-            <Reveal
-              key={t.step}
-              reduced={reduced}
-              className="relative mb-12 last:mb-0"
-            >
-              <span className="absolute -left-[41px] top-1 flex h-4 w-4 items-center justify-center rounded-full border border-gold-border bg-parchment">
-                <span className="h-2 w-2 rounded-full bg-gold" />
-              </span>
-              <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-gold">
-                {`${t.step} // ${t.date}`}
-              </div>
-              <h3 className="mt-2 font-display text-[22px] font-semibold leading-snug text-espresso">
-                {t.head}
-              </h3>
-              <p className="mt-2 font-sans text-[14px] leading-relaxed text-text-muted">
-                {t.body}
+        <div className={styles.timelineBody}>
+          {/* moment 01 */}
+          <Reveal reduced={reduced} className={styles.beat}>
+            <div className={styles.beatLeft}>
+              <div className={styles.beatDate}>01 // TUE JUN 3 · 07:02 ET</div>
+              <div className={styles.beatHead}>You read. One line earns a tap.</div>
+              <p className={styles.beatPara}>
+                Every claim in the brief is trackable. Tap one and Signalera restates it as a falsifiable thesis
+                with a review date and the evidence that would settle it.
               </p>
-              {i === 3 && <RecordTicker reduced={reduced} />}
-            </Reveal>
-          ))}
+              <p className={cx(styles.beatPara, styles.beatParaGap)}>
+                Or write your own. Calls you type into Radar are logged and graded exactly the same way as ours.
+              </p>
+            </div>
+            <div className={styles.beatSpine}>
+              <span className={cx(styles.beatDot, styles.beatDotTopGap)} style={{ background: "var(--brass)" }} />
+              <span className={styles.beatSpineLine} />
+              <span className={styles.beatRail} style={{ top: 16, background: "var(--brass-bd)", transform: "scaleY(1)" }} />
+            </div>
+            <div className={styles.beatRight}>
+              <div className={styles.card}>
+                <div className={styles.briefHeadRow}>
+                  <span>MORNING BRIEF · TUE JUN 3</span>
+                  <span>06:55 ET</span>
+                </div>
+                <div className={styles.briefLine}>
+                  Carriers keep announcing capacity into a soft market. Transpacific spot has drifted lower for five
+                  straight weeks.
+                </div>
+                <div className={styles.briefLineHi}>
+                  <span className={styles.briefLineHiText}>
+                    Freight rates stay soft through peak shipping season.
+                  </span>
+                  <button type="button" className={styles.trackedBtn}>{"✓"} TRACKED</button>
+                </div>
+                <div className={cx(styles.briefLine, styles.briefLineLast)}>
+                  Rate desks see the GRI announcements as posturing. Watch the July 1 implementation.
+                </div>
+              </div>
+              <div className={styles.thesisCard}>
+                <div>
+                  <div className={styles.thesisKicker}>THESIS TH-0412 · CREATED FROM YOUR TAP</div>
+                  <div className={styles.thesisTitle}>Freight rates stay soft through peak shipping season</div>
+                  <div className={styles.thesisMeta}>fails if transpacific spot +10% before sep 1 · review jun 20</div>
+                </div>
+                <span className={styles.pillAwt}>AWAITING</span>
+              </div>
+              <div className={styles.orDivider}>
+                <span className={styles.orDividerRule} />
+                <span className={styles.orDividerText}>OR WRITE YOUR OWN</span>
+                <span className={styles.orDividerRule} />
+              </div>
+              <div className={styles.radarCard}>
+                <div className={styles.radarHead}>
+                  <span className={styles.radarHeadLabel}>RADAR · CALLS</span>
+                  <span className={styles.radarFollow}>
+                    <span className={styles.radarFollowLabel}>FOLLOWING</span>
+                    <span className={styles.radarTag}>GLP-1 drugs</span>
+                    <span className={styles.radarTag}>AI agents</span>
+                    <span className={styles.radarTag}>SaaS market</span>
+                    <span className={styles.radarTagAdd}>+ follow</span>
+                  </span>
+                </div>
+                <div className={styles.radarRow}>
+                  <span className={styles.radarRowText}>
+                    SaaS pricing consolidates around agent seats by Q4
+                    <span className={styles.radarCursor} />
+                  </span>
+                  <button type="button" className={styles.trackedBtn}>TRACK IT</button>
+                </div>
+                <div className={styles.radarFoot}>
+                  logged as CALL-0413 · review sep 30 · graded the same as every call on the record
+                </div>
+              </div>
+            </div>
+          </Reveal>
+
+          {/* moment 02 */}
+          <Reveal reduced={reduced} className={styles.beat}>
+            <div className={styles.beatLeft}>
+              <div className={styles.beatDate}>02 // WED JUN 4 · 06:55 ET</div>
+              <div className={styles.beatHead}>Tomorrow&apos;s brief already knows.</div>
+              <p className={styles.beatPara}>
+                You did not configure anything. Tracking is the configuration. The ripple reaches every surface
+                overnight.
+              </p>
+            </div>
+            <div className={styles.beatSpine}>
+              <span className={styles.beatSpineStub} />
+              <span className={styles.beatDot} style={{ background: "var(--brass)" }} />
+              <span className={styles.beatSpineLine} />
+              <span className={styles.beatRail} style={{ top: 22, background: "var(--brass-bd)", transform: "scaleY(1)" }} />
+            </div>
+            <div className={styles.beatRight}>
+              <div className={styles.card}>
+                <div className={styles.briefHeadRow}>
+                  <span>MORNING BRIEF · WED JUN 4</span>
+                  <span>06:55 ET</span>
+                </div>
+                <div className={styles.briefFlexRow}>
+                  <span className={styles.yourThesisTag}>YOUR THESIS</span>
+                  <span className={styles.briefFlexText}>
+                    On your freight thesis: two carriers filed July GRIs overnight, and transpacific spot prints
+                    Thursday. The print is the first evidence check.
+                  </span>
+                </div>
+              </div>
+            </div>
+          </Reveal>
+
+          {/* moment 03 */}
+          <Reveal reduced={reduced} className={styles.beat}>
+            <div className={styles.beatLeft}>
+              <div className={styles.beatDate}>03 // THU JUN 19 · 08:40 ET</div>
+              <div className={styles.beatHead}>The evidence arrives. It cuts against the thesis.</div>
+              <p className={styles.beatPara}>
+                Signalera marks the thesis challenged, in plain sight. The misses stay on the record, because a
+                record with no misses is marketing.
+              </p>
+            </div>
+            <div className={styles.beatSpine}>
+              <span className={styles.beatSpineStub} />
+              <span className={styles.beatDot} style={{ background: "var(--chal)" }} />
+              <span className={styles.beatSpineLine} />
+              <span className={styles.beatRail} style={{ top: 22, background: "var(--chal)", transform: "scaleY(1)" }} />
+            </div>
+            <div className={styles.beatRight}>
+              <div className={styles.card}>
+                <div className={styles.briefHeadRow}>
+                  <span>EVIDENCE CHECK · TH-0412</span>
+                  <span>THU JUN 19</span>
+                </div>
+                <div className={styles.evidenceBody}>
+                  <div className={styles.evidenceText}>
+                    drewry WCI transpacific: +18% over three weeks. GRIs stuck. Threshold breached.
+                  </div>
+                  <div className={styles.evidenceRow}>
+                    <span className={styles.pillAwt}>AWAITING</span>
+                    <svg width="26" height="10" viewBox="0 0 26 10" fill="none">
+                      <path d="M0 5h20M17 1l4 4-4 4" stroke="var(--dim)" strokeWidth="1.5" />
+                    </svg>
+                    <span className={styles.evChip}>CHALLENGED</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Reveal>
+
+          {/* moment 04 */}
+          <Reveal reduced={reduced} className={styles.beat}>
+            <div className={styles.beatLeft}>
+              <div className={styles.beatDate}>04 // FRI JUN 20 · 06:55 ET</div>
+              <div className={styles.beatHead}>The record updates. Permanently.</div>
+              <p className={styles.beatPara}>
+                Every resolved call lands in a ledger you can audit. The scoreboard moves, both ways.
+              </p>
+            </div>
+            <div className={styles.beatSpine}>
+              <span className={styles.beatSpineStub} />
+              <span className={styles.beatDot} style={{ background: "var(--brass)" }} />
+              <span className={styles.beatSpineLine} />
+              <span className={styles.beatRail} style={{ top: 22, background: "var(--brass-bd)", transform: "scaleY(1)" }} />
+            </div>
+            <div className={styles.beatRight}>
+              <div className={styles.card}>
+                <div className={styles.ledgerHeadRow}>
+                  <span className={styles.ledgerTitle}>Freight rates stay soft through peak shipping season</span>
+                  <span className={styles.pillChalCenter}>CHALLENGED</span>
+                </div>
+                <div className={styles.ledgerStats}>
+                  <span>theses tracked 1,283 &rarr; <span className={styles.cntBrass}>1,284</span></span>
+                  <span>evidence supported 71.6% &rarr; <span className={styles.cntChal}>71.4%</span></span>
+                  <span>open theses 8 &rarr; <span className={styles.cntBrass}>7</span></span>
+                </div>
+              </div>
+            </div>
+          </Reveal>
+
+          {/* moment 05 */}
+          <Reveal reduced={reduced} className={styles.beat}>
+            <div className={cx(styles.beatLeft, styles.beatLeftLast)}>
+              <div className={styles.beatDate}>05 // TUE JUL 1 · 06:55 ET · WEEK FOUR</div>
+              <div className={styles.beatHead}>The brief is sharper because a call it tracked did not hold.</div>
+              <p className={styles.beatPara}>
+                Week four beats week one because it has accumulated how you think, not what you clicked. That is the
+                thing a free summary cannot do.
+              </p>
+            </div>
+            <div className={styles.beatSpine}>
+              <span className={styles.beatSpineStub} />
+              <span className={styles.beatDot} style={{ background: "var(--sup)" }} />
+            </div>
+            <div className={cx(styles.beatRight, styles.beatRightLast)}>
+              <div className={styles.card}>
+                <div className={styles.briefHeadRow}>
+                  <span>MORNING BRIEF · TUE JUL 1</span>
+                  <span>06:55 ET</span>
+                </div>
+                <div className={styles.briefLine}>
+                  Freight: the trough call came early. The GRIs stuck, and capacity discipline into August is now the
+                  question the challenged thesis raises.
+                </div>
+                <div className={cx(styles.briefLine, styles.briefLineLast)}>
+                  Two of the names you follow report next week, and consensus moved on both. The semicap thesis sits
+                  at 4 of 5 supported checks going in.
+                </div>
+              </div>
+            </div>
+          </Reveal>
         </div>
       </div>
     </section>
   );
 }
 
-function RecordTicker({ reduced }: { reduced: boolean }) {
-  const rows = [
-    { label: "theses tracked", from: "1,283", to: "1,284" },
-    { label: "evidence supported", from: "71.6%", to: "71.4%" },
-    { label: "open theses", from: "8", to: "7" },
-  ];
-  const [flip, setFlip] = useState(reduced);
-  useEffect(() => {
-    if (reduced) return;
-    const t = setTimeout(() => setFlip(true), 600);
-    return () => clearTimeout(t);
-  }, [reduced]);
-  return (
-    <div className="mt-4 rounded-lg border border-border-subtle bg-surface p-4">
-      <div className="mb-3 rounded border border-signal-dn/30 bg-signal-dn/10 px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-signal-dn">
-        Freight rates stay soft through peak shipping season · Challenged
-      </div>
-      <div className="space-y-1.5">
-        {rows.map((r) => (
-          <div key={r.label} className="flex items-center justify-between font-mono text-[12px]">
-            <span className="text-text-muted">{r.label}</span>
-            <span className="text-text-primary">
-              <span className="text-text-faint">{r.from}</span> →{" "}
-              <span className="text-gold">{flip ? r.to : r.from}</span>
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// --- Proof (week one vs week four) -------------------------------------------
+// --- proof (week one vs week four) ------------------------------------------
 function ProofSection({ reduced }: { reduced: boolean }) {
   const [week, setWeek] = useState<1 | 4>(4);
+  const w4 = week === 4;
   return (
-    <section id="proof" className="border-b border-border-subtle bg-surface px-6 py-24">
-      <div className="mx-auto max-w-3xl text-center">
-        <Eyebrow>The Proof // Twenty-Three Days Apart</Eyebrow>
-        <h2 className="mt-4 font-display text-[clamp(26px,4.5vw,40px)] font-bold tracking-tight text-espresso">
-          The same brief, week one and week four.
-        </h2>
-        <div className="mt-6 inline-flex rounded-lg border border-border-base bg-cream-hi p-0.5">
-          {([1, 4] as const).map((w) => (
-            <button
-              key={w}
-              type="button"
-              onClick={() => setWeek(w)}
-              className={`rounded-md px-4 py-2 font-mono text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${week === w ? "bg-gold text-cream" : "text-text-muted hover:text-text-primary"}`}
-            >
-              {w === 1 ? "Week One · Jun 8" : "Week Four · Jul 2"}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div
-        className={`mx-auto mt-10 max-w-2xl rounded-2xl border border-border-base bg-cream-hi p-6 sm:p-8 shadow-sm transition-opacity ${reduced ? "" : "duration-300"}`}
-      >
-        <div className="flex items-center justify-between border-b border-border-subtle pb-3">
-          <span className="font-display text-[15px] font-bold text-espresso">
-            Morning Brief
+    <section id="proof" className={styles.proofSection}>
+      <div className={styles.proofInner}>
+        <Reveal reduced={reduced} className={styles.sectionHead}>
+          <span className={styles.sectionKicker}>THE PROOF // TWENTY-THREE DAYS APART</span>
+          <span className={styles.sectionRule} />
+        </Reveal>
+        <Reveal reduced={reduced} className={styles.proofSubHead}>
+          <div className={styles.proofTitle}>The same brief, week one and week four.</div>
+          <span className={styles.proofCaption}>
+            {w4 ? "day 24 · it knows you now" : "day 1 · accurate and anonymous"}
           </span>
-          <span className="font-mono text-[10px] uppercase tracking-wider text-text-faint">
-            {week === 1 ? "Mon Jun 8 · 06:55 ET · day 1" : "Thu Jul 2 · 06:55 ET · day 24"}
-          </span>
-        </div>
+        </Reveal>
 
-        {week === 1 ? (
-          <div className="mt-4 space-y-3 font-sans text-[13.5px] leading-relaxed text-text-muted">
-            <p>Markets advancing into the open. Futures firm, breadth 3:1, vix at 13.8.</p>
-            <p>Fed minutes land at 14:00 ET. Rates desks positioned for no surprise.</p>
-            <p>Hyperscaler capex chatter continues ahead of the earnings cycle.</p>
-            <p className="font-mono text-[11px] uppercase tracking-wider text-text-faint">
-              8 stories worth your attention this morning.
-            </p>
-          </div>
-        ) : (
-          <div className="mt-4 space-y-4">
-            <div>
-              <div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-gold">
-                Since you last looked · 2 changes
+        <Reveal reduced={reduced} className={styles.proofTabs}>
+          <button type="button" onClick={() => setWeek(1)} className={cx(styles.tab, !w4 && styles.tabActive)}>
+            WEEK ONE · JUN 8
+          </button>
+          <button type="button" onClick={() => setWeek(4)} className={cx(styles.tab, w4 && styles.tabActive)}>
+            WEEK FOUR · JUL 2
+          </button>
+        </Reveal>
+
+        <Reveal reduced={reduced} className={styles.proofGrid}>
+          <div className={styles.briefDoc}>
+            {!w4 ? (
+              <div>
+                <div className={styles.docHeadRow}>
+                  <span className={styles.docHeadTitle}>MORNING BRIEF</span>
+                  <span className={styles.docHeadDate}>MON JUN 8 · 06:55 ET · day 1</span>
+                </div>
+                <div className={styles.docLine}>Markets advancing into the open. Futures firm, breadth 3:1, vix at 13.8.</div>
+                <div className={styles.docLine}>Fed minutes land at 14:00 ET. Rates desks positioned for no surprise.</div>
+                <div className={styles.docLine}>Hyperscaler capex chatter continues ahead of the earnings cycle.</div>
+                <div className={styles.docLine}>8 stories worth your attention this morning.</div>
+                <div className={styles.docFoot}>
+                  personalization: none yet · open theses: 0 · accurate, but it could be anyone&apos;s brief
+                </div>
               </div>
-              <ul className="mt-2 space-y-1.5 font-sans text-[13.5px] leading-relaxed text-text-muted">
-                <li>The freight thesis you track moved to challenged. Transpacific spot +18% over three weeks.</li>
-                <li>Semicap evidence moved from 2 of 5 to 4 of 5 supported checks.</li>
-              </ul>
-            </div>
-            <div className="space-y-2">
-              <BriefRow ticker="NVDA" status="reviewing" note="Supplier commentary overnight cuts against the shortage thesis you are tracking. Review flagged for today." pill="REVIEW" />
-              <BriefRow ticker="JPM" status="supported" note="Second confirming NII datapoint this month for the rate-sensitivity thesis you follow. Marked supported at the review." pill="SUPPORTED" />
-              <BriefRow ticker="UNP" status="awaiting" note="Intermodal volumes print Thursday. The volume thesis you track resolves on the print." pill="AWAITING" />
-            </div>
-            <p className="font-mono text-[11px] uppercase tracking-wider text-text-faint">
-              built on 23 days of your reasoning · 7 open theses · 5 resolved
-            </p>
+            ) : (
+              <div>
+                <div className={styles.docHeadRow}>
+                  <span className={styles.docHeadTitle}>MORNING BRIEF</span>
+                  <span className={styles.docHeadDate}>THU JUL 2 · 06:55 ET · day 24</span>
+                </div>
+                <div className={styles.docChangeBlock}>
+                  <span className={styles.docBadge}>1</span>
+                  <div className={styles.docChangeKicker}>SINCE YOU LAST LOOKED · 2 CHANGES</div>
+                  <div className={styles.docChangeText}>
+                    The freight thesis you track moved to <span className={styles.tChal}>challenged</span>.
+                    Transpacific spot +18% over three weeks.
+                  </div>
+                  <div className={styles.docChangeTextLast}>
+                    Semicap evidence moved from 2 of 5 to <span className={styles.tSup}>4 of 5</span> supported checks.
+                  </div>
+                </div>
+                <div className={styles.docRow}>
+                  <span className={cx(styles.docBadge, styles.docBadgeZ)}>3</span>
+                  <span className={styles.docRowTicker}>NVDA</span>
+                  <span className={styles.docRowText}>
+                    Supplier commentary overnight cuts against the shortage thesis you are tracking. Review flagged
+                    for today.
+                  </span>
+                  <span className={styles.docPillAwt}>REVIEW</span>
+                </div>
+                <div className={styles.docRow}>
+                  <span className={cx(styles.docBadge, styles.docBadgeZ)}>2</span>
+                  <span className={styles.docRowTicker}>JPM</span>
+                  <span className={styles.docRowText}>
+                    Second confirming NII datapoint this month for the rate-sensitivity thesis you follow. Marked
+                    supported at the review.
+                  </span>
+                  <span className={styles.docPillSup}>SUPPORTED</span>
+                </div>
+                <div className={styles.docRow}>
+                  <span className={styles.docRowTicker}>UNP</span>
+                  <span className={styles.docRowText}>
+                    Intermodal volumes print Thursday. The volume thesis you track resolves on the print.
+                  </span>
+                  <span className={styles.docPillAwt}>AWAITING</span>
+                </div>
+                <div className={styles.docFoot}>built on 23 days of your reasoning · 7 open theses · 5 resolved</div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      <div className="mx-auto mt-8 max-w-2xl space-y-1.5 text-center font-sans text-[13px] text-text-muted">
-        <p>It opens with what changed since you last looked. Continuity, not a feed.</p>
-        <p>Calls resolve as supported or challenged. The misses stay on the record.</p>
-        <p>Every line exists because of a name you follow or a thesis you track.</p>
-        <p className="text-text-faint">For working analysts, IB and PE recruits, and finance students. Broad by design.</p>
+          <div className={styles.proofLegend}>
+            <div className={styles.legendRow}>
+              <span className={styles.legendNum}>1</span>
+              <p className={styles.legendText}>it opens with what changed since you last looked. continuity, not a feed.</p>
+            </div>
+            <div className={styles.legendRow}>
+              <span className={styles.legendNum}>2</span>
+              <p className={styles.legendText}>calls resolve as supported or challenged. the misses stay on the record.</p>
+            </div>
+            <div className={styles.legendRow}>
+              <span className={styles.legendNum}>3</span>
+              <p className={styles.legendText}>every line exists because of a name you follow or a thesis you track.</p>
+            </div>
+            <div className={styles.legendFoot}>
+              for working analysts, IB and PE recruits, and finance students. broad by design.
+            </div>
+          </div>
+        </Reveal>
       </div>
     </section>
   );
 }
 
-function BriefRow({
-  ticker,
-  status,
-  note,
-  pill,
-}: {
-  ticker: string;
-  status: Status;
-  note: string;
-  pill: string;
-}) {
-  return (
-    <div className="rounded-lg border border-border-subtle bg-surface p-3">
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-[12px] font-bold text-espresso">{ticker}</span>
-        <span className={`rounded-full border px-2 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider ${statusClasses(status)}`}>
-          {pill}
-        </span>
-      </div>
-      <p className="mt-1.5 font-sans text-[13px] leading-relaxed text-text-muted">{note}</p>
-    </div>
-  );
+// --- market read + live signal ----------------------------------------------
+type FeedItem = { id: number; time: string; text: string; status: Status; evidence: string };
+
+function nowStr(): string {
+  return new Date().toTimeString().slice(0, 8);
 }
 
-// --- Market read + live signal ----------------------------------------------
 function MarketReadSection({ reduced }: { reduced: boolean }) {
   const [edition, setEdition] = useState<"morning" | "evening">("morning");
-  const [feed, setFeed] = useState<{ id: number; text: string; status: Status; evidence: string }[]>([]);
+  const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [tracked, setTracked] = useState(1284);
+  const [pct, setPct] = useState("71.4");
+  const [reviewed, setReviewed] = useState(23);
+  const listRef = useRef<HTMLDivElement>(null);
   const idRef = useRef(0);
   const poolRef = useRef(0);
+  const tRef = useRef(1265);
+  const sRef = useRef(903);
+  const trackedRef = useRef(1284);
 
   useEffect(() => {
-    // Seed deterministic set, then rotate (client-only to keep SSR stable).
     const seed = [FEED_POOL[4], FEED_POOL[1], FEED_POOL[0]].map((p) => {
       idRef.current += 1;
-      return { id: idRef.current, text: p.text, status: p.status, evidence: p.evidence };
+      return { id: idRef.current, time: nowStr(), text: p.text, status: p.status, evidence: p.evidence };
     });
     setFeed(seed);
     poolRef.current = 3;
     if (reduced) return;
-    const iv = setInterval(() => {
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const push = () => {
       const p = FEED_POOL[poolRef.current % FEED_POOL.length];
       poolRef.current += 1;
       idRef.current += 1;
-      const item = { id: idRef.current, text: p.text, status: "reviewing" as Status, evidence: "" };
-      setFeed((prev) => [item, ...prev].slice(0, 5));
-      setTimeout(() => {
-        setFeed((prev) => prev.map((f) => (f.id === item.id ? { ...f, status: p.status, evidence: p.evidence } : f)));
-      }, 1400);
-    }, 3200);
-    return () => clearInterval(iv);
+      const id = idRef.current;
+      const item: FeedItem = { id, time: nowStr(), text: p.text, status: "reviewing", evidence: "" };
+      setFeed((prev) => [item, ...prev].slice(0, 6));
+      // fluid entry: offset the list up by one row, then slide back down
+      requestAnimationFrame(() => {
+        const l = listRef.current;
+        if (!l) return;
+        l.style.transition = "none";
+        l.style.transform = "translateY(-112px)";
+        void l.getBoundingClientRect();
+        l.style.transition = "transform 0.5s cubic-bezier(0.16,1,0.3,1)";
+        l.style.transform = "translateY(0)";
+      });
+      timers.push(
+        setTimeout(() => {
+          setFeed((prev) => prev.map((f) => (f.id === id ? { ...f, status: p.status, evidence: p.evidence } : f)));
+          trackedRef.current += 1;
+          if (p.status !== "awaiting") {
+            tRef.current += 1;
+            if (p.status === "supported") sRef.current += 1;
+          }
+          setTracked(trackedRef.current);
+          setPct(((sRef.current / tRef.current) * 100).toFixed(1));
+          setReviewed((r) => r + 1);
+        }, 1500),
+      );
+    };
+    const iv = setInterval(push, 3000);
+    push();
+    return () => {
+      clearInterval(iv);
+      timers.forEach(clearTimeout);
+    };
   }, [reduced]);
 
   const isMorning = edition === "morning";
 
   return (
-    <section className="border-b border-border-subtle px-6 py-24">
-      <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-2">
-        {/* Human read */}
-        <div className="rounded-2xl border p-6 sm:p-8 shadow-lg bg-[color:var(--panel-terminal-bg)] border-[color:var(--panel-terminal-border)]">
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--panel-terminal-dim)]">
-              The human read
+    <section className={styles.pairSection}>
+      <div className={styles.pairInner}>
+        {/* market-read card */}
+        <Reveal reduced={reduced} className={styles.readPanel}>
+          <div className={styles.readHead}>
+            <div className={styles.readTabs}>
+              <button type="button" onClick={() => setEdition("morning")} className={cx(styles.readTab, isMorning && styles.readTabActive)}>
+                MORNING BRIEF
+              </button>
+              <button type="button" onClick={() => setEdition("evening")} className={cx(styles.readTab, !isMorning && styles.readTabActive)}>
+                EVENING WRAP
+              </button>
+            </div>
+            <span className={styles.readHeadNote}>the human read</span>
+          </div>
+          <div className={styles.readBody}>
+            <div className={styles.readLabel}>
+              {isMorning ? "MARKET PULSE · THU JUL 3 · MARKETS OPEN" : "MARKET WRAP · THU JUL 3 · MARKETS CLOSED"}
+            </div>
+            <div className={styles.readLead}>
+              {isMorning ? "Today the market is" : "The market closed"}{" "}
+              <span className={styles.readMood}>{isMorning ? "buoyant" : "firm"}</span>.
+            </div>
+            <p className={styles.readPara}>
+              {isMorning
+                ? "Breadth is 3:1 into the open with vix at 13.8, and the front end is repricing after the soft services print."
+                : "The S&P finished +1.18% with breadth holding 3:1 into the bell. Semis carried the tape for a third straight session."}
+            </p>
+            <p className={styles.readParaLast}>
+              {isMorning
+                ? "Semis carry the tape. The datacenter capex theme keeps collecting confirming evidence, with two guides raised overnight."
+                : "The freight read weakened again as spot rates extended their move. The semicap thesis stays developing into tomorrow's orders print."}
+            </p>
+            <div className={styles.readSpacer} />
+            <div className={styles.readFoot}>synthesized from 214 sources · informational only, never advice</div>
+          </div>
+        </Reveal>
+
+        {/* live signal terminal */}
+        <Reveal reduced={reduced} className={styles.feedPanel}>
+          <span className={styles.feedAmbient} />
+          <div className={styles.feedHead}>
+            <span className={styles.feedHeadLabel}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#CBA24C" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+              </svg>
+              SIGNALERA AI · LIVE SIGNAL
+              <span className={styles.feedHeadDot} />
             </span>
-            <div className="inline-flex rounded-lg border p-0.5 border-[color:var(--panel-terminal-border)] bg-[color:var(--panel-terminal-line)]">
-              {(["morning", "evening"] as const).map((e) => (
-                <button
-                  key={e}
-                  type="button"
-                  onClick={() => setEdition(e)}
-                  className={`rounded-md px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${edition === e ? "bg-gold text-cream" : "text-[color:var(--panel-terminal-dim)] hover:text-[color:var(--panel-terminal-text)]"}`}
-                >
-                  {e === "morning" ? "Morning Brief" : "Evening Wrap"}
-                </button>
-              ))}
+            <span className={styles.readHeadNote}>thesis review stream</span>
+          </div>
+          <div className={styles.feedViewport}>
+            <div ref={listRef}>
+              {feed.map((f) => {
+                const pill = FEED_PILL[f.status];
+                return (
+                  <div key={f.id} className={styles.feedItem}>
+                    <div className={styles.feedItemHead}>
+                      <span className={styles.feedTime}>{f.time} ET</span>
+                      <span
+                        className={styles.feedPill}
+                        style={{ color: pill.color, background: pill.bg, border: `1px solid ${pill.bd}` }}
+                      >
+                        {pill.label}
+                      </span>
+                    </div>
+                    <div className={styles.feedText}>{f.text}</div>
+                    {f.evidence && <div className={styles.feedEvidence}>{"→"} {f.evidence}</div>}
+                  </div>
+                );
+              })}
             </div>
           </div>
-          <div className="mt-4 font-mono text-[10px] uppercase tracking-wider text-gold">
-            {isMorning ? "Market Pulse · Thu Jul 3 · Markets Open" : "Market Wrap · Thu Jul 3 · Markets Closed"}
+          <div className={styles.feedStats}>
+            <div className={styles.feedStat}>
+              <div className={styles.feedStatLabel}>THESES TRACKED</div>
+              <div className={styles.feedStatNum}>{tracked.toLocaleString("en-US")}</div>
+            </div>
+            <div className={styles.feedStat}>
+              <div className={styles.feedStatLabel}>EVIDENCE SUPPORTED</div>
+              <div className={cx(styles.feedStatNum, styles.feedStatNumSup)}>{pct}%</div>
+            </div>
+            <div className={styles.feedStatLast}>
+              <div className={styles.feedStatLabel}>REVIEWED TODAY</div>
+              <div className={cx(styles.feedStatNum, styles.feedStatNumAwt)}>{reviewed}</div>
+            </div>
           </div>
-          <p className="mt-3 font-mono text-[20px] leading-snug text-[color:var(--panel-terminal-text)]">
-            {isMorning ? "Today the market is buoyant." : "The market closed firm."}
-          </p>
-          <p className="mt-3 font-sans text-[13.5px] leading-relaxed text-[color:var(--panel-terminal-muted)]">
-            {isMorning
-              ? "Breadth is 3:1 into the open with vix at 13.8, and the front end is repricing after the soft services print."
-              : "The S&P finished +1.18% with breadth holding 3:1 into the bell. Semis carried the tape for a third straight session."}
-          </p>
-          <p className="mt-3 font-sans text-[13.5px] leading-relaxed text-[color:var(--panel-terminal-muted)]">
-            {isMorning
-              ? "Semis carry the tape. The datacenter capex theme keeps collecting confirming evidence, with two guides raised overnight."
-              : "The freight read weakened again as spot rates extended their move. The semicap thesis stays developing into tomorrow's orders print."}
-          </p>
-          <p className="mt-5 border-t pt-3 font-sans text-[11px] border-[color:var(--panel-terminal-line)] text-[color:var(--panel-terminal-dim)]">
-            synthesized from 214 sources · informational only, never advice
-          </p>
-        </div>
-
-        {/* Live signal */}
-        <div className="rounded-2xl border p-6 sm:p-8 shadow-lg bg-[color:var(--panel-terminal-bg)] border-[color:var(--panel-terminal-border)]">
-          <div className="flex items-center gap-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-gold landing-anim" style={reduced ? undefined : { animation: "landingPulse 2.2s ease-in-out infinite" }} />
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-gold">
-              Signalera AI · Live Signal
-            </span>
+          <div className={styles.feedFoot}>
+            forecast accuracy on falsifiable claims, not investment performance, and not advice
           </div>
-          <div className="mt-1 font-mono text-[10px] uppercase tracking-wider text-[color:var(--panel-terminal-dim)]">
-            thesis review stream
-          </div>
-          <div className="mt-4 space-y-2">
-            {feed.map((f) => (
-              <div key={f.id} className="rounded-lg border p-3 border-[color:var(--panel-terminal-border)] bg-[color:var(--panel-terminal-line)]">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="font-sans text-[12.5px] leading-snug text-[color:var(--panel-terminal-text)]">
-                    {f.text}
-                  </p>
-                  <span className={`shrink-0 rounded-full border px-2 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider ${statusClasses(f.status)}`}>
-                    {statusLabel(f.status)}
-                  </span>
-                </div>
-                {f.evidence && (
-                  <p className="mt-1.5 font-sans text-[11.5px] text-[color:var(--panel-terminal-muted)]">
-                    → {f.evidence}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="mt-5 grid grid-cols-3 gap-2 border-t pt-4 border-[color:var(--panel-terminal-line)]">
-            {[
-              { num: "1,284", label: "Theses tracked" },
-              { num: "71.4%", label: "Evidence supported" },
-              { num: "23", label: "Reviewed today" },
-            ].map((s) => (
-              <div key={s.label} className="text-center">
-                <div className="font-mono text-[17px] font-bold text-gold">{s.num}</div>
-                <div className="mt-1 font-mono text-[8px] uppercase tracking-wider text-[color:var(--panel-terminal-dim)]">
-                  {s.label}
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="mt-3 font-sans text-[10px] leading-relaxed text-[color:var(--panel-terminal-dim)]">
-            forecast accuracy on falsifiable claims, not investment performance,
-            and not advice
-          </p>
-        </div>
+        </Reveal>
       </div>
     </section>
   );
 }
 
-// --- Nine surfaces -----------------------------------------------------------
+// --- nine surfaces ----------------------------------------------------------
 function SurfacesSection() {
   return (
-    <section className="border-b border-border-subtle bg-surface px-6 py-24">
-      <div className="mx-auto max-w-3xl text-center">
-        <h2 className="font-display text-[clamp(28px,5vw,46px)] font-bold leading-tight tracking-tight text-espresso">
-          Nine surfaces, <span className="text-gold">one system</span>
-        </h2>
-        <p className="mt-4 font-sans text-[15px] leading-relaxed text-text-muted">
-          Not nine tools. One connected system that already knows what you
-          follow.
-        </p>
-      </div>
-      <div className="mx-auto mt-12 grid max-w-5xl gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {SURFACES.map((s) => (
-          <div
-            key={s.name}
-            className="rounded-xl border border-border-base bg-cream-hi p-5 transition-colors hover:border-gold-border"
-          >
-            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-gold">
-              {s.name}
-            </div>
-            <p className="mt-2 font-sans text-[13.5px] leading-relaxed text-text-muted">
-              {s.blurb}
-            </p>
+    <section className={styles.surfacesSection}>
+      <div className={styles.surfacesInner}>
+        <div className={styles.surfacesLabel}>
+          NINE<br />SURFACES,<br />ONE SYSTEM
+        </div>
+        <div>
+          <p className={styles.surfacesIntro}>
+            Not nine tools. One connected system that already knows what you follow.
+          </p>
+          <div className={styles.surfacesGrid}>
+            {SURFACES.map((s) => (
+              <div key={s.name} className={styles.surfaceItem}>
+                <div className={styles.surfaceName}>{s.name}</div>
+                <p className={styles.surfaceBlurb}>{s.blurb}</p>
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
       </div>
     </section>
   );
 }
 
-// --- University partners -----------------------------------------------------
+// --- university partners ----------------------------------------------------
 function UniversitySection() {
   return (
-    <section className="border-b border-border-subtle px-6 py-20">
-      <div className="mx-auto max-w-3xl rounded-2xl border border-gold-border bg-gold-muted p-8 text-center sm:p-12">
-        <Eyebrow>University Partners</Eyebrow>
-        <h2 className="mt-4 font-display text-[clamp(24px,4vw,34px)] font-bold tracking-tight text-espresso">
-          Run a finance org or club?
-        </h2>
-        <p className="mt-3 font-sans text-[15px] leading-relaxed text-text-muted">
-          Bring Signalera to your members as an early partner.
-        </p>
-        <a
-          href="mailto:admin@signalera.ai"
-          className="mt-6 inline-flex h-11 items-center rounded-xl border border-gold-border bg-transparent px-6 font-sans text-[13px] font-semibold text-gold-dark hover:bg-gold hover:text-cream transition-all"
-        >
-          Contact us
-        </a>
-      </div>
-    </section>
-  );
-}
-
-// --- Final waitlist CTA ------------------------------------------------------
-function WaitlistSection({ onWaitlist }: { onWaitlist: () => void }) {
-  return (
-    <section id="waitlist" className="px-6 py-28">
-      <div className="mx-auto max-w-2xl text-center">
-        <h2 className="font-display text-[clamp(30px,5.5vw,52px)] font-bold leading-[1.05] tracking-tight text-espresso">
-          You already make the calls.
-          <br />
-          Start keeping the record.
-        </h2>
-        <p className="mx-auto mt-6 max-w-lg font-sans text-[14px] leading-relaxed text-text-muted">
-          For working analysts, IB and PE recruits, and finance students ·
-          onboarding in small cohorts · prefer to talk first?{" "}
-          <a href="mailto:admin@signalera.ai" className="text-gold hover:text-gold-dark hover:underline">
-            contact us
-          </a>
-        </p>
-        <div className="mt-9">
-          <button
-            type="button"
-            onClick={onWaitlist}
-            className="rounded-xl bg-gold px-10 py-4 font-sans text-[15px] font-bold text-cream hover:bg-gold-light active:bg-gold-dark transition-all cursor-pointer"
+    <section className={styles.universitySection}>
+      <div className={styles.universityInner}>
+        <div className={styles.universityCard}>
+          <div>
+            <div className={styles.universityKicker}>UNIVERSITY PARTNERS</div>
+            <div className={styles.universityTitle}>Run a finance org or club?</div>
+            <div className={styles.universitySub}>Bring Signalera to your members as an early partner.</div>
+          </div>
+          <a
+            href="mailto:admin@signalera.ai?subject=Signalera%20university%20partnership"
+            className={styles.universityBtn}
           >
-            Join the waitlist
-          </button>
+            Contact us
+          </a>
         </div>
       </div>
     </section>
   );
 }
 
-// --- Footer ------------------------------------------------------------------
+// --- final waitlist (inline form) -------------------------------------------
+function WaitlistSection() {
+  const [email, setEmail] = useState("");
+  const [joined, setJoined] = useState(false);
+  const [emailErr, setEmailErr] = useState(false);
+
+  const onJoin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (/\S+@\S+\.\S+/.test(email)) {
+      setJoined(true);
+      setEmailErr(false);
+    } else {
+      setEmailErr(true);
+    }
+  };
+
+  return (
+    <section id="waitlist" className={styles.waitlistSection}>
+      <div className={styles.waitlistInner}>
+        <div>
+          <div className={styles.waitlistTitle}>You already make the calls. Start keeping the record.</div>
+          <div className={styles.waitlistMeta}>
+            for working analysts, IB and PE recruits, and finance students · onboarding in small cohorts ·{" "}
+            <a href="mailto:admin@signalera.ai" className={styles.waitlistMetaLink}>
+              prefer to talk first? contact us
+            </a>
+          </div>
+        </div>
+        <div>
+          {!joined ? (
+            <>
+              <form onSubmit={onJoin} className={styles.waitlistForm}>
+                <input
+                  type="email"
+                  placeholder="you@email.com"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (emailErr) setEmailErr(false);
+                  }}
+                  className={styles.waitlistInput}
+                />
+                <button type="submit" className={styles.btnPrimary}>
+                  Join the waitlist
+                </button>
+              </form>
+              {emailErr && <div className={styles.waitlistErr}>enter a valid email address</div>}
+            </>
+          ) : (
+            <div className={styles.waitlistJoined}>{"✓"} you&apos;re on the list. we&apos;ll be in touch before the open.</div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// --- footer -----------------------------------------------------------------
 function SiteFooter() {
   return (
-    <footer className="border-t border-border-subtle bg-surface px-6 py-12">
-      <div className="mx-auto flex max-w-5xl flex-col items-center gap-4 text-center sm:flex-row sm:justify-between sm:text-left">
-        <div>
-          <span className="font-display text-[18px] font-bold tracking-tight">
-            <span className="text-espresso">Signal</span>
-            <span className="text-gold">era</span>
+    <footer className={styles.footer}>
+      <div className={styles.footerInner}>
+        <div className={styles.footerLeft}>
+          <span className={styles.footerWordmark}>
+            Signal<span className={styles.brassSpan}>era.</span>
           </span>
-          <p className="mt-1 font-sans text-[11px] text-text-faint">
+          <span className={styles.footerDisclaimer}>
             Informational only. Not investment advice. Verify before acting.
-          </p>
+          </span>
         </div>
-        <nav className="flex flex-wrap items-center justify-center gap-4 font-sans text-[12px] text-text-muted">
-          <Link href="/legal/terms" className="hover:text-text-primary transition-colors">
+        <span className={styles.footerLinks}>
+          <Link href="/legal/terms" className={styles.footerLink}>
             Terms of Service
           </Link>
-          <Link href="/legal/privacy" className="hover:text-text-primary transition-colors">
+          <Link href="/legal/privacy" className={styles.footerLink}>
             Privacy Policy
           </Link>
-          <a href="mailto:admin@signalera.ai" className="hover:text-text-primary transition-colors">
+          <a href="mailto:admin@signalera.ai" className={styles.footerLink}>
             Support
           </a>
-          <a href="mailto:admin@signalera.ai" className="text-gold hover:text-gold-dark transition-colors">
+          <a href="mailto:admin@signalera.ai" className={styles.footerLinkBrass}>
             admin@signalera.ai
           </a>
-        </nav>
+        </span>
       </div>
     </footer>
-  );
-}
-
-// --- Scroll reveal helper ----------------------------------------------------
-function Reveal({
-  children,
-  reduced,
-  className,
-}: {
-  children: React.ReactNode;
-  reduced: boolean;
-  className?: string;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  // Progressive enhancement: content is ALWAYS visible (opacity 1). The
-  // scroll-in fade-up is a one-shot enhancement layered on top, so if the
-  // IntersectionObserver never fires (below the fold at capture time, no IO
-  // support, reduced motion) the content is never hidden.
-  const [animate, setAnimate] = useState(false);
-  useEffect(() => {
-    if (reduced) return;
-    const el = ref.current;
-    if (!el) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((e) => {
-          if (e.isIntersecting) {
-            setAnimate(true);
-            io.disconnect();
-          }
-        });
-      },
-      { threshold: 0.15 },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [reduced]);
-  return (
-    <div
-      ref={ref}
-      className={className}
-      style={
-        !reduced && animate
-          ? { animation: "landingReveal 0.7s cubic-bezier(0.16,1,0.3,1) both" }
-          : undefined
-      }
-    >
-      {children}
-    </div>
   );
 }
