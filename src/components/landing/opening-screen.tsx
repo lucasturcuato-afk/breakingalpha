@@ -986,6 +986,11 @@ function MarketReadSection({ reduced }: { reduced: boolean }) {
   const [tracked, setTracked] = useState(1284);
   const [pct, setPct] = useState("71.4");
   const [reviewed, setReviewed] = useState(23);
+  // Flash a tile when its number updates. Boolean per tile; onAnimationEnd drops
+  // it to re-arm for the next update. Gated on not-reduced-motion below.
+  const [flashTracked, setFlashTracked] = useState(false);
+  const [flashPct, setFlashPct] = useState(false);
+  const [flashReviewed, setFlashReviewed] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const idRef = useRef(0);
   const poolRef = useRef(0);
@@ -1024,13 +1029,22 @@ function MarketReadSection({ reduced }: { reduced: boolean }) {
         setTimeout(() => {
           setFeed((prev) => prev.map((f) => (f.id === id ? { ...f, status: p.status, evidence: p.evidence } : f)));
           trackedRef.current += 1;
-          if (p.status !== "awaiting") {
+          const pctMoved = p.status !== "awaiting";
+          if (pctMoved) {
             tRef.current += 1;
             if (p.status === "supported") sRef.current += 1;
           }
           setTracked(trackedRef.current);
           setPct(((sRef.current / tRef.current) * 100).toFixed(1));
           setReviewed((r) => r + 1);
+          // Flash each tile whose number just moved. Tracked and reviewed always
+          // move; the supported percent only moves on a non-awaiting verdict.
+          // Gated on not-reduced-motion so tiles change silently under it.
+          if (!reduced) {
+            setFlashTracked(true);
+            setFlashReviewed(true);
+            if (pctMoved) setFlashPct(true);
+          }
         }, 1500),
       );
     };
@@ -1121,15 +1135,30 @@ function MarketReadSection({ reduced }: { reduced: boolean }) {
           <div className={styles.feedStats}>
             <div className={styles.feedStat}>
               <div className={styles.feedStatLabel}>THESES TRACKED</div>
-              <div className={styles.feedStatNum}>{tracked.toLocaleString("en-US")}</div>
+              <div
+                className={cx(styles.feedStatNum, !reduced && flashTracked && styles.statFlash)}
+                onAnimationEnd={() => setFlashTracked(false)}
+              >
+                {tracked.toLocaleString("en-US")}
+              </div>
             </div>
             <div className={styles.feedStat}>
               <div className={styles.feedStatLabel}>EVIDENCE SUPPORTED</div>
-              <div className={cx(styles.feedStatNum, styles.feedStatNumSup)}>{pct}%</div>
+              <div
+                className={cx(styles.feedStatNum, styles.feedStatNumSup, !reduced && flashPct && styles.statFlash)}
+                onAnimationEnd={() => setFlashPct(false)}
+              >
+                {pct}%
+              </div>
             </div>
             <div className={styles.feedStatLast}>
               <div className={styles.feedStatLabel}>REVIEWED TODAY</div>
-              <div className={cx(styles.feedStatNum, styles.feedStatNumAwt)}>{reviewed}</div>
+              <div
+                className={cx(styles.feedStatNum, styles.feedStatNumAwt, !reduced && flashReviewed && styles.statFlash)}
+                onAnimationEnd={() => setFlashReviewed(false)}
+              >
+                {reviewed}
+              </div>
             </div>
           </div>
           <div className={styles.feedFoot}>

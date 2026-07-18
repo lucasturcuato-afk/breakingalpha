@@ -598,6 +598,16 @@
 .feedStatNum { font-family: var(--ff-mono); font-size: 22px; color: var(--pd-text); font-variant-numeric: tabular-nums; }
 .feedStatNumSup { color: var(--pdc-sup); }
 .feedStatNumAwt { color: var(--pdc-awt); }
+/*
+  Stat-tile flash on number update. The @keyframes statFlash above is
+  module-scoped (hashed), so it only resolves when referenced from a class inside
+  this module. The canvas set `el.style.animation = 'statFlash ...'` from JS,
+  which points at the unhashed name and never runs here (the same trap that froze
+  the noise wall). React toggles THIS class on a tile when its number changes and
+  drops it on animationend so it can re-fire. The global reduced-motion block
+  above zeroes the animation, and the TSX also gates the class on not-reduced.
+*/
+.statFlash { animation: statFlash 0.6s cubic-bezier(0.16,1,0.3,1); }
 .feedFoot { padding: 10px 18px 12px; border-top: 1px solid var(--pd-line2); font-family: var(--ff-mono); font-size: 9.5px; color: var(--pd-dim); }
 
 /* ==================== NINE SURFACES ==================== */
