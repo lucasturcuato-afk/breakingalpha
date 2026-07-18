@@ -200,6 +200,7 @@ export function OpeningScreen() {
   const { theme, toggleTheme, mounted } = useTheme();
   const [entered, setEntered] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<"signin" | "signup">("signup");
   const forcedDarkRef = useRef(false);
 
   // Landing defaults to dark. ThemeProvider seeds light and reads localStorage
@@ -244,7 +245,17 @@ export function OpeningScreen() {
     [reduced],
   );
 
-  const openModal = useCallback(() => setModalOpen(true), []);
+  // Sign in opens the modal on the Sign In tab; Join the waitlist opens it on
+  // the Create Account tab. Nothing on the landing routes to /auth; the modal
+  // reuses the same auth primitives and /auth/callback still enforces the gate.
+  const openSignin = useCallback(() => {
+    setModalMode("signin");
+    setModalOpen(true);
+  }, []);
+  const openWaitlist = useCallback(() => {
+    setModalMode("signup");
+    setModalOpen(true);
+  }, []);
   const themeLabel = mounted ? `◐ THEME · ${theme.toUpperCase()}` : "◐ THEME";
 
   return (
@@ -274,16 +285,16 @@ export function OpeningScreen() {
             <button type="button" onClick={toggleTheme} aria-label="Toggle color theme" className={styles.themeToggle}>
               {themeLabel}
             </button>
-            <Link href="/auth" className={styles.signInLink}>
+            <button type="button" onClick={openSignin} className={styles.signInLink}>
               Sign in
-            </Link>
-            <button type="button" onClick={openModal} className={styles.joinNav}>
+            </button>
+            <button type="button" onClick={openWaitlist} className={styles.joinNav}>
               Join the waitlist
             </button>
           </div>
         </nav>
 
-        <Hero reduced={reduced} onWaitlist={openModal} onSeeHow={scrollTo("demo")} />
+        <Hero reduced={reduced} onWaitlist={openWaitlist} onSeeHow={scrollTo("demo")} />
         <LoopSection reduced={reduced} />
         <TimelineSection reduced={reduced} />
         <ProofSection reduced={reduced} />
@@ -294,7 +305,11 @@ export function OpeningScreen() {
         <SiteFooter />
       </div>
 
-      <WaitlistModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <WaitlistModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        initialMode={modalMode}
+      />
     </div>
   );
 }

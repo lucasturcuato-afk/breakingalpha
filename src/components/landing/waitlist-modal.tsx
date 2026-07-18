@@ -1,17 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { cn } from "@/lib/utils";
 import { Mail, Lock, Eye, EyeOff, Check, X } from "lucide-react";
+import styles from "./landing.module.css";
 
 // Auth modal for the signed-out landing. It reuses the same Supabase client
 // calls as /auth (Google OAuth + email/password), but does NOT implement any
 // allowlist logic itself. The beta gate is enforced downstream in
 // /auth/callback (OAuth + email-confirmation redirect). This component only
 // builds the UI and fires the existing auth primitives.
+//
+// It is styled entirely from landing.module.css so it reads as part of this
+// landing: opaque panel on the landing card surface, a solid low-opacity scrim
+// with no blur, serif heading, and the landing brass primary button. Motion is
+// one orchestrated idea on a single ease-out curve; prefers-reduced-motion
+// collapses to the final state via the module's global reduce block.
 
 type AuthMode = "signin" | "signup";
+type FieldErrors = { email?: string; password?: string };
 
 function getSupabase() {
   return createBrowserClient(
@@ -20,279 +34,398 @@ function getSupabase() {
   );
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Route a Supabase auth error to the most relevant field so it renders inline
+// under that field rather than in a browser alert.
+function routeError(message: string): FieldErrors {
+  return /password/i.test(message)
+    ? { password: message }
+    : { email: message };
+}
+
 export function WaitlistModal({
   open,
   onClose,
+  initialMode = "signup",
 }: {
   open: boolean;
   onClose: () => void;
+  initialMode?: AuthMode;
 }) {
-  const [mode, setMode] = useState<AuthMode>("signup");
+  const [mounted, setMounted] = useState(false);
+  const [shown, setShown] = useState(false);
+  const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<FieldErrors>({});
   const [signupSuccess, setSignupSuccess] = useState(false);
 
-  // Close on Escape and lock body scroll while open.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const firstFieldRef = useRef<HTMLInputElement>(null);
+  const onCloseRef = useRef(onClose);
+  const reducedRef = useRef(false);
+
+  // Keep the latest onClose in a ref so the focus/scroll effect below does not
+  // re-run (and thrash focus) when the parent passes a new inline callback.
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    reducedRef.current = mq.matches;
+    const on = () => {
+      reducedRef.current = mq.matches;
+    };
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+
+  // Reset to a clean form whenever the modal is (re)opened, honoring the
+  // requested tab.
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [open, onClose]);
+    setMode(initialMode);
+    setEmail("");
+    setPassword("");
+    setShowPassword(false);
+    setLoading(false);
+    setErrors({});
+    setSignupSuccess(false);
+  }, [open, initialMode]);
 
-  if (!open) return null;
+  // Mount immediately on open; keep mounted through the exit transition.
+  useEffect(() => {
+    if (open) setMounted(true);
+  }, [open]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    const supabase = getSupabase();
-
-    if (mode === "signin") {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (signInError) {
-        setError(signInError.message);
-        setLoading(false);
-      } else {
-        window.location.href = "/dashboard";
-      }
-    } else {
-      const { error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-      if (signUpError) {
-        setError(signUpError.message);
-        setLoading(false);
-      } else {
-        setSignupSuccess(true);
-        setLoading(false);
-      }
+  // Drive the entrance/exit. Entrance flips to the shown state on the next
+  // frame so the transition runs. Exit clears shown, then unmounts after the
+  // (slightly faster) exit duration.
+  useEffect(() => {
+    if (!mounted) return;
+    if (open) {
+      const raf = requestAnimationFrame(() => setShown(true));
+      return () => cancelAnimationFrame(raf);
     }
-  }
+    setShown(false);
+    const ms = reducedRef.current ? 0 : 200;
+    const t = setTimeout(() => setMounted(false), ms);
+    return () => clearTimeout(t);
+  }, [open, mounted]);
 
-  async function handleGoogle() {
+  // While mounted: lock body scroll, trap focus, move focus to the first
+  // field, handle Escape, and restore focus to the trigger on close.
+  useEffect(() => {
+    if (!mounted) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const trigger = document.activeElement as HTMLElement | null;
+
+    const raf = requestAnimationFrame(() => firstFieldRef.current?.focus());
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusables = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => !el.hasAttribute("disabled") && el.offsetParent !== null);
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey) {
+        if (active === first || !panel.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (active === last || !panel.contains(active)) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener("keydown", onKey);
+      cancelAnimationFrame(raf);
+      trigger?.focus?.();
+    };
+  }, [mounted]);
+
+  const handleSubmit = useCallback(
+    async (e: FormEvent) => {
+      e.preventDefault();
+      const next: FieldErrors = {};
+      if (!EMAIL_RE.test(email.trim())) next.email = "Enter a valid email address.";
+      if (!password) next.password = "Enter your password.";
+      if (next.email || next.password) {
+        setErrors(next);
+        return;
+      }
+
+      setErrors({});
+      setLoading(true);
+      const supabase = getSupabase();
+
+      if (mode === "signin") {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) {
+          setErrors(routeError(error.message));
+          setLoading(false);
+        } else {
+          window.location.href = "/dashboard";
+        }
+      } else {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+          },
+        });
+        if (error) {
+          setErrors(routeError(error.message));
+          setLoading(false);
+        } else {
+          setSignupSuccess(true);
+          setLoading(false);
+        }
+      }
+    },
+    [email, password, mode],
+  );
+
+  const handleGoogle = useCallback(async () => {
     const supabase = getSupabase();
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
-        queryParams: {
-          access_type: "offline",
-          prompt: "select_account",
-        },
+        queryParams: { access_type: "offline", prompt: "select_account" },
       },
     });
-    if (oauthError) setError(oauthError.message);
-  }
+    if (error) setErrors(routeError(error.message));
+  }, []);
+
+  if (!mounted) return null;
+
+  const isSignin = mode === "signin";
+  const heading = isSignin ? "Welcome back." : "Join the waitlist.";
+  const subline = isSignin
+    ? "Access is invite-only during early access. If you are already in the beta, sign in below."
+    : "We open access in small waves. Create an account and we will reach out when yours is ready.";
+  const submitLabel = loading
+    ? isSignin
+      ? "Signing in..."
+      : "Joining..."
+    : isSignin
+      ? "Sign in"
+      : "Join the waitlist";
+
+  const switchMode = (next: AuthMode) => {
+    setMode(next);
+    setErrors({});
+  };
 
   return (
     <div
-      className="fixed inset-0 z-[9000] flex items-center justify-center px-4 py-8"
+      className={cn(styles.modalRoot, !open && styles.modalRootClosing)}
       role="dialog"
       aria-modal="true"
-      aria-label="Join the waitlist"
+      aria-label={isSignin ? "Sign in" : "Join the waitlist"}
     >
-      {/* Backdrop */}
       <button
         type="button"
         aria-label="Close"
-        onClick={onClose}
-        className="absolute inset-0 bg-espresso/70 backdrop-blur-sm cursor-default"
+        tabIndex={-1}
+        onClick={() => onCloseRef.current()}
+        className={cn(styles.modalScrim, shown && styles.modalScrimIn)}
       />
 
-      {/* Card */}
-      <div className="relative w-full max-w-[420px] rounded-2xl border border-gold-border bg-cream-hi shadow-2xl p-8 sm:p-10">
+      <div
+        ref={panelRef}
+        className={cn(styles.modalPanel, shown && styles.modalPanelIn)}
+      >
         <button
           type="button"
-          onClick={onClose}
+          onClick={() => onCloseRef.current()}
           aria-label="Close"
-          className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full text-text-muted hover:text-text-primary hover:bg-gold-muted transition-colors cursor-pointer"
+          className={styles.modalClose}
         >
           <X size={16} />
         </button>
 
-        {/* Wordmark */}
-        <div className="mb-6 text-center">
-          <span className="font-display text-[26px] font-bold leading-none tracking-tight">
-            <span className="text-espresso">Signal</span>
-            <span className="text-gold">era</span>
-          </span>
+        <div className={styles.modalWordmark}>
+          Signal<span className={styles.brassSpan}>era.</span>
         </div>
 
         {signupSuccess ? (
-          <div className="text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gold-muted">
-              <Check size={22} className="text-gold" />
+          <div className={styles.modalSuccess}>
+            <div className={styles.modalSuccessBadge}>
+              <Check size={22} />
             </div>
-            <p className="font-display text-[20px] text-text-primary">
-              Check your email
-            </p>
-            <p className="mt-3 font-sans text-[13.5px] text-text-muted leading-relaxed">
-              Confirm your email to finish. Access opens in small waves during
-              private beta.
+            <p className={styles.modalSuccessTitle}>Check your email.</p>
+            <p className={styles.modalSuccessText}>
+              Confirm your email to finish. We open access in small waves during
+              early access.
             </p>
             <button
               type="button"
               onClick={() => {
                 setSignupSuccess(false);
-                setMode("signin");
+                switchMode("signin");
               }}
-              className="mt-5 font-sans text-[13px] text-gold hover:text-gold-dark cursor-pointer transition-colors"
+              className={styles.modalSuccessBack}
             >
               Back to sign in
             </button>
           </div>
         ) : (
           <>
-            {/* Mode toggle */}
-            <div className="mb-6 flex items-center gap-1 rounded-lg border border-border-base bg-surface p-0.5">
+            <div className={styles.modalTabs}>
               <button
                 type="button"
-                onClick={() => {
-                  setMode("signup");
-                  setError(null);
-                }}
-                className={cn(
-                  "flex-1 rounded-md py-2.5 font-sans text-[13px] font-semibold transition-all cursor-pointer",
-                  mode === "signup"
-                    ? "bg-gold text-cream"
-                    : "bg-transparent text-text-muted hover:text-text-primary",
-                )}
+                onClick={() => switchMode("signin")}
+                className={cn(styles.modalTab, isSignin && styles.modalTabActive)}
               >
-                Join waitlist
+                Sign In
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setMode("signin");
-                  setError(null);
-                }}
-                className={cn(
-                  "flex-1 rounded-md py-2.5 font-sans text-[13px] font-semibold transition-all cursor-pointer",
-                  mode === "signin"
-                    ? "bg-gold text-cream"
-                    : "bg-transparent text-text-muted hover:text-text-primary",
-                )}
+                onClick={() => switchMode("signup")}
+                className={cn(styles.modalTab, !isSignin && styles.modalTabActive)}
               >
-                Sign in
+                Create Account
               </button>
             </div>
 
-            {/* Google */}
-            <button
-              type="button"
-              onClick={handleGoogle}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-border-base bg-surface font-sans text-[13px] font-medium text-text-primary hover:border-gold-border hover:bg-gold-muted transition-all cursor-pointer"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
-                  fill="#4285F4"
-                />
-                <path
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  fill="#34A853"
-                />
-                <path
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                  fill="#FBBC05"
-                />
-                <path
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                  fill="#EA4335"
-                />
-              </svg>
-              Continue with Google
-            </button>
+            {/* keyed on mode so the fields crossfade on tab switch */}
+            <div key={mode} className={styles.modalContent}>
+              <h2 className={styles.modalHeading}>{heading}</h2>
+              <p className={styles.modalSubline}>{subline}</p>
 
-            {/* Divider */}
-            <div className="my-5 flex items-center gap-3">
-              <div className="h-px flex-1 bg-border-base" />
-              <span className="font-sans text-[10px] uppercase tracking-widest text-text-faint">
-                or
-              </span>
-              <div className="h-px flex-1 bg-border-base" />
-            </div>
+              <button
+                type="button"
+                onClick={handleGoogle}
+                className={styles.modalGoogleBtn}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
+                    fill="#4285F4"
+                  />
+                  <path
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    fill="#34A853"
+                  />
+                  <path
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                    fill="#FBBC05"
+                  />
+                  <path
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                    fill="#EA4335"
+                  />
+                </svg>
+                Continue with Google
+              </button>
 
-            {error && (
-              <div className="mb-4 rounded-lg border border-signal-dn/30 bg-signal-dn/10 px-3 py-2.5">
-                <p className="font-sans text-[12px] text-signal-dn">{error}</p>
+              <div className={styles.modalDivider}>
+                <span className={styles.modalDividerRule} />
+                <span className={styles.modalDividerText}>OR</span>
+                <span className={styles.modalDividerRule} />
               </div>
-            )}
 
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <div className="relative">
-                <Mail
-                  size={15}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint"
-                />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email address"
-                  required
-                  className="h-11 w-full rounded-lg border border-border-base bg-surface pl-10 pr-3 font-sans text-[13px] text-text-primary placeholder:text-text-faint focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold-border"
-                />
-              </div>
-              <div className="relative">
-                <Lock
-                  size={15}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint"
-                />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password"
-                  required
-                  className="h-11 w-full rounded-lg border border-border-base bg-surface pl-10 pr-10 font-sans text-[13px] text-text-primary placeholder:text-text-faint focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold-border"
-                />
+              <form onSubmit={handleSubmit} className={styles.modalForm} noValidate>
+                <div className={styles.modalField}>
+                  <label className={styles.modalLabel} htmlFor="modal-email">
+                    EMAIL
+                  </label>
+                  <div className={styles.modalInputWrap}>
+                    <Mail size={15} className={styles.modalInputIcon} aria-hidden="true" />
+                    <input
+                      id="modal-email"
+                      ref={firstFieldRef}
+                      type="email"
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        if (errors.email) setErrors((p) => ({ ...p, email: undefined }));
+                      }}
+                      placeholder="you@email.com"
+                      autoComplete="email"
+                      aria-invalid={errors.email ? true : undefined}
+                      className={cn(styles.modalInput, errors.email && styles.modalInputErr)}
+                    />
+                  </div>
+                  {errors.email && (
+                    <span className={styles.modalFieldErr}>{errors.email}</span>
+                  )}
+                </div>
+
+                <div className={styles.modalField}>
+                  <label className={styles.modalLabel} htmlFor="modal-password">
+                    PASSWORD
+                  </label>
+                  <div className={styles.modalInputWrap}>
+                    <Lock size={15} className={styles.modalInputIcon} aria-hidden="true" />
+                    <input
+                      id="modal-password"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        if (errors.password) setErrors((p) => ({ ...p, password: undefined }));
+                      }}
+                      placeholder="Password"
+                      autoComplete={isSignin ? "current-password" : "new-password"}
+                      aria-invalid={errors.password ? true : undefined}
+                      className={cn(styles.modalInput, errors.password && styles.modalInputErr)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      className={styles.modalReveal}
+                    >
+                      {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                  {errors.password && (
+                    <span className={styles.modalFieldErr}>{errors.password}</span>
+                  )}
+                </div>
+
                 <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-faint hover:text-text-muted cursor-pointer transition-colors"
+                  type="submit"
+                  disabled={loading}
+                  className={styles.modalPrimaryBtn}
                 >
-                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  {submitLabel}
                 </button>
-              </div>
+              </form>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="h-11 w-full rounded-lg bg-gold font-sans text-[13px] font-semibold text-cream hover:bg-gold-light active:bg-gold-dark transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {loading
-                  ? "Please wait..."
-                  : mode === "signup"
-                    ? "Join the waitlist"
-                    : "Sign in"}
-              </button>
-            </form>
-
-            <p className="mt-5 text-center font-sans text-[11px] leading-relaxed text-text-faint">
-              Private beta. Access opens in small waves. Informational only,
-              never advice.
-            </p>
+              <p className={styles.modalFinePrint}>
+                Private beta. Access opens in small waves. Informational only,
+                never advice.
+              </p>
+            </div>
           </>
         )}
       </div>

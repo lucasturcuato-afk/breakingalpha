@@ -188,6 +188,7 @@
 .themeToggle:hover { border-color: var(--brass); color: var(--brass); }
 .signInLink {
   font-family: var(--ff-sans); font-size: 13.5px; font-weight: 500; color: var(--mut); text-decoration: none;
+  background: none; border: none; padding: 0; cursor: pointer;
   transition: color 150ms cubic-bezier(0.16,1,0.3,1);
 }
 .signInLink:hover { color: var(--ink); }
@@ -619,3 +620,173 @@
 .footerLink { color: var(--mut); text-decoration: none; }
 .footerLink:hover { color: var(--brass); }
 .footerLinkBrass { color: var(--brass); text-decoration: none; }
+
+/* ==================== AUTH MODAL ====================
+   Sign in / create account modal over the landing. Styled entirely from the
+   scoped landing tokens above so it reads as part of this landing, not a
+   generic dialog. Rules held to deliberately:
+   - OPAQUE panel on the landing card surface. opacity stays 1; no
+     backdrop-filter; no frosted glass anywhere.
+   - Scrim is a plain SOLID color at low opacity. No blur behind the page.
+   - One orchestrated motion idea on a single ease-out curve
+     cubic-bezier(0.16,1,0.3,1). No spring, no bounce, no overshoot.
+   - prefers-reduced-motion collapses to the final state (the global reduce
+     block near the top of this file already forces transition/animation off
+     for everything under .root, so the panel simply appears in place). */
+@keyframes modalContentIn { from { opacity: 0; } to { opacity: 1; } }
+
+.modalRoot {
+  position: fixed; inset: 0; z-index: 9000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.modalScrim {
+  position: absolute; inset: 0; border: none; padding: 0; margin: 0;
+  /* SOLID low-opacity scrim. No blur, no backdrop-filter. */
+  background: rgba(8, 8, 8, 0.46);
+  cursor: default; opacity: 0;
+  transition: opacity 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.modalScrimIn { opacity: 1; }
+
+.modalPanel {
+  position: relative; width: 100%; max-width: 420px;
+  /* OPAQUE surface. opacity stays 1. */
+  background: var(--elev); opacity: 1;
+  border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 24px 60px var(--shadow);
+  padding: 30px 30px 26px;
+  /* entrance: fade + small upward drift + gentle scale from 0.98 */
+  transform: translateY(8px) scale(0.98);
+  transition: opacity 240ms cubic-bezier(0.16, 1, 0.3, 1),
+              transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.modalPanelIn { opacity: 1; transform: none; }
+/* exit reverses the entrance, slightly faster */
+.modalRootClosing .modalScrim { transition-duration: 170ms; }
+.modalRootClosing .modalPanel { transition-duration: 180ms; }
+
+.modalClose {
+  position: absolute; top: 14px; right: 14px;
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 6px;
+  background: transparent; border: 1px solid transparent; color: var(--dim);
+  cursor: pointer;
+  transition: color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.modalClose:hover { color: var(--ink); border-color: var(--line); }
+
+.modalWordmark {
+  font-family: var(--ff-display); font-size: 22px; font-weight: 500;
+  letter-spacing: -0.01em; color: var(--ink); text-align: center; margin-bottom: 18px;
+}
+
+.modalTabs {
+  display: flex; gap: 6px; margin-bottom: 22px;
+}
+.modalTab {
+  flex: 1; font-family: var(--ff-mono); font-size: 10px; letter-spacing: 0.1em;
+  padding: 9px 10px; border-radius: 4px; border: 1px solid var(--line);
+  background: transparent; color: var(--mut); cursor: pointer;
+  transition: border-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+              color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+              background 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.modalTab:hover { border-color: var(--brass); color: var(--brass); }
+.modalTabActive { border-color: var(--ink); background: var(--ink); color: var(--bg); }
+.modalTabActive:hover { border-color: var(--ink); color: var(--bg); }
+
+/* content that crossfades when the tab switches (keyed on mode) */
+.modalContent { animation: modalContentIn 200ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.modalHeading {
+  font-family: var(--ff-display); font-size: 24px; font-weight: 500;
+  letter-spacing: -0.01em; line-height: 1.2; color: var(--ink); margin: 0 0 8px;
+}
+.modalSubline {
+  font-family: var(--ff-sans); font-size: 13px; line-height: 1.55; color: var(--mut);
+  margin: 0 0 20px;
+}
+
+.modalGoogleBtn {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  width: 100%; height: 44px; border-radius: 6px;
+  font-family: var(--ff-sans); font-size: 13.5px; font-weight: 500;
+  background: var(--surf); color: var(--ink); border: 1px solid var(--line);
+  cursor: pointer;
+  transition: border-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+              background 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.modalGoogleBtn:hover { border-color: var(--brass); background: var(--card); }
+
+.modalDivider { display: flex; align-items: center; gap: 12px; margin: 18px 0; }
+.modalDividerRule { flex: 1; height: 1px; background: var(--line); }
+.modalDividerText { font-family: var(--ff-mono); font-size: 9px; letter-spacing: 0.16em; color: var(--dim); }
+
+.modalForm { display: flex; flex-direction: column; gap: 14px; }
+.modalField { display: flex; flex-direction: column; gap: 6px; }
+.modalLabel { font-family: var(--ff-mono); font-size: 9px; letter-spacing: 0.12em; color: var(--dim); }
+.modalInputWrap { position: relative; }
+.modalInputIcon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--dim); pointer-events: none; }
+.modalInput {
+  width: 100%; height: 44px; padding: 0 40px 0 36px; border-radius: 6px;
+  font-family: var(--ff-sans); font-size: 13.5px; color: var(--ink);
+  background: var(--surf); border: 1px solid var(--line); outline: none;
+  transition: border-color 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.modalInput:focus { border-color: var(--brass); }
+.modalInputErr { border-color: var(--chal); }
+.modalReveal {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 5px;
+  background: transparent; border: none; color: var(--dim); cursor: pointer;
+  transition: color 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.modalReveal:hover { color: var(--mut); }
+/* inline field error in the challenged color */
+.modalFieldErr { font-family: var(--ff-mono); font-size: 10.5px; line-height: 1.4; color: var(--chal); }
+
+.modalPrimaryBtn {
+  width: 100%; height: 44px; margin-top: 2px; border-radius: 6px;
+  font-family: var(--ff-sans); font-size: 14px; font-weight: 500;
+  background: var(--brass); color: var(--btn-ink); border: none; cursor: pointer;
+  transition: background 150ms cubic-bezier(0.16, 1, 0.3, 1),
+              transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.modalPrimaryBtn:hover { background: var(--brass-hover); }
+.modalPrimaryBtn:active { transform: scale(0.99); }
+.modalPrimaryBtn:disabled { opacity: 0.6; cursor: default; }
+
+.modalFinePrint {
+  font-family: var(--ff-mono); font-size: 10px; line-height: 1.5; color: var(--dim);
+  text-align: center; margin: 18px 0 0;
+}
+
+/* success state after create-account */
+.modalSuccess { text-align: center; padding: 6px 0 2px; }
+.modalSuccessBadge {
+  width: 46px; height: 46px; border-radius: 50%; margin: 0 auto 16px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid var(--sup-bd); color: var(--sup);
+}
+.modalSuccessTitle { font-family: var(--ff-display); font-size: 21px; font-weight: 500; color: var(--ink); margin: 0 0 8px; }
+.modalSuccessText { font-family: var(--ff-sans); font-size: 13px; line-height: 1.55; color: var(--mut); margin: 0 auto; max-width: 320px; }
+.modalSuccessBack {
+  margin-top: 18px; font-family: var(--ff-sans); font-size: 13px; color: var(--brass);
+  background: none; border: none; cursor: pointer;
+  transition: color 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.modalSuccessBack:hover { color: var(--brass-hover); }
+
+/* mobile: behave like a proper bottom sheet, not a squeezed dialog */
+@media (max-width: 560px) {
+  .modalRoot { align-items: flex-end; padding: 0; }
+  .modalPanel {
+    max-width: 100%; border-radius: 16px 16px 0 0; border-bottom: none;
+    padding: 26px 22px calc(24px + env(safe-area-inset-bottom, 0px));
+    /* slide up from the bottom edge */
+    transform: translateY(100%);
+  }
+  .modalPanelIn { transform: none; }
+}
