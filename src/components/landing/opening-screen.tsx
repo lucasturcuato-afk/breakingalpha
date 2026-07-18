@@ -208,9 +208,11 @@ export function OpeningScreen() {
   const reduced = useReducedMotion();
   const { theme, toggleTheme, mounted } = useTheme();
   const [entered, setEntered] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"signin" | "signup">("signup");
   const forcedDarkRef = useRef(false);
+  const landingRef = useRef<HTMLDivElement>(null);
 
   // Landing defaults to dark. ThemeProvider seeds light and reads localStorage
   // on mount; once mounted, if the visitor has no saved preference we flip to
@@ -236,13 +238,30 @@ export function OpeningScreen() {
     };
   }, [entered]);
 
-  const enter = useCallback(() => {
+  // ENTER handoff. Reduced motion swaps instantly (gate unmounted, no movement).
+  // Otherwise we hold the gate mounted for one transition: it plays its recede
+  // (see .introGateClosing) while the landing plays .landingArrive underneath,
+  // then we unmount the gate. Focus moves into the landing immediately so the
+  // gate cannot be tabbed while it fades, and lands there for good after.
+  const finishEnter = useCallback(() => {
     setEntered(true);
+    setClosing(false);
     requestAnimationFrame(() => {
       document.body.style.overflow = "";
       window.scrollTo({ top: 0 });
+      landingRef.current?.focus({ preventScroll: true });
     });
   }, []);
+
+  const enter = useCallback(() => {
+    if (reduced) {
+      finishEnter();
+      return;
+    }
+    setClosing(true);
+    requestAnimationFrame(() => landingRef.current?.focus({ preventScroll: true }));
+    window.setTimeout(finishEnter, 620);
+  }, [reduced, finishEnter]);
 
   const scrollTo = useCallback(
     (id: string) => () => {
@@ -271,9 +290,13 @@ export function OpeningScreen() {
     <div className={styles.root}>
       <ScrollProgress />
 
-      {!entered && <IntroGate reduced={reduced} onEnter={enter} />}
+      {!entered && <IntroGate reduced={reduced} closing={closing} onEnter={enter} />}
 
-      <div>
+      <div
+        ref={landingRef}
+        tabIndex={-1}
+        className={cx(styles.landingRoot, closing && !reduced && styles.landingArrive)}
+      >
         {/* market strip */}
         <div className={styles.marketStrip}>
           <span className={styles.marketStripDot} />
@@ -346,9 +369,20 @@ function ScrollProgress() {
 }
 
 // --- intro gate -------------------------------------------------------------
-function IntroGate({ reduced, onEnter }: { reduced: boolean; onEnter: () => void }) {
+function IntroGate({
+  reduced,
+  closing,
+  onEnter,
+}: {
+  reduced: boolean;
+  closing: boolean;
+  onEnter: () => void;
+}) {
   return (
-    <div className={styles.introGate}>
+    <div
+      className={cx(styles.introGate, closing && styles.introGateClosing)}
+      inert={closing || undefined}
+    >
       <div className={styles.wallGrid} aria-hidden="true">
         {WALL_COLUMNS.map((col, ci) => (
           <div key={ci} className={styles.wallCol} style={{ paddingTop: col.pt }}>
