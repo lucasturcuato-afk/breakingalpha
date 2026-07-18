@@ -14,15 +14,15 @@ export default function WaitlistPage() {
           </div>
 
           <h1 className="font-serif text-2xl sm:text-3xl font-bold text-espresso mb-4">
-            You&apos;re on the waitlist
+            You&apos;re on the list
           </h1>
 
           <p className="text-text-muted text-base sm:text-lg leading-relaxed mb-6">
-            Signalera is currently in private beta with a small group of users at USC. We&apos;ve added you to the waitlist and will reach out when we open up access.
+            Signalera is in private beta, opening access in small waves. You are on the list, and we will reach out when your access is ready.
           </p>
 
           <p className="text-text-muted text-sm mb-8">
-            If you believe you should already have access, please email{" "}
+            If you believe you should already have access, email{" "}
             <a
               href="mailto:admin@signalera.ai"
               className="text-gold hover:underline font-medium"
