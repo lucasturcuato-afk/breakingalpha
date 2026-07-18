@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { WaitlistModal } from "./waitlist-modal";
+import { useTheme } from "@/components/providers/theme-provider";
 
 // ---------------------------------------------------------------------------
 // Signalera signed-out landing. Themed + token-driven rebuild of the reference
@@ -192,8 +193,26 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 
 export function OpeningScreen() {
   const reduced = useReducedMotion();
+  const { theme, toggleTheme, mounted } = useTheme();
   const [entered, setEntered] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const forcedDarkRef = useRef(false);
+
+  // Landing defaults to dark per the design. ThemeProvider seeds light and only
+  // reads localStorage on mount; once mounted, if the visitor has no saved
+  // preference we flip to dark exactly once so state, the .dark class, and
+  // localStorage all agree. A saved preference (either value) is respected.
+  useEffect(() => {
+    if (!mounted || forcedDarkRef.current) return;
+    const saved =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("signalera_theme")
+        : null;
+    if (!saved && theme === "light") {
+      forcedDarkRef.current = true;
+      toggleTheme();
+    }
+  }, [mounted, theme, toggleTheme]);
 
   // Intro gate locks scroll until the visitor enters. Effect-only so SSR/CSR
   // markup stays identical (no hydration mismatch).
@@ -252,6 +271,14 @@ export function OpeningScreen() {
             <span className="text-gold">era</span>
           </button>
           <nav className="flex items-center gap-2 sm:gap-4">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label="Toggle color theme"
+              className="rounded border border-border-base px-3 py-2 font-mono text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-secondary hover:border-gold hover:text-gold transition-colors cursor-pointer"
+            >
+              {mounted ? (theme === "dark" ? "◐ Theme · Dark" : "◐ Theme · Light") : "◐ Theme"}
+            </button>
             <Link
               href="/auth"
               className="font-sans text-[13px] font-medium text-text-secondary hover:text-text-primary transition-colors"
@@ -481,17 +508,20 @@ function Hero({
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-parchment/50 via-parchment/30 to-parchment/85" />
       <div className="relative z-10 mx-auto w-full max-w-3xl px-6 py-24 text-center">
         <Eyebrow>AI-Native Market Intelligence</Eyebrow>
-        <div className="mt-6 font-mono text-[13px] text-gold-dark">
+        {/* Setup line: the SMALLER line above, italic display serif ~20px/400. */}
+        <p className="mx-auto mt-6 font-display text-[20px] font-normal italic leading-snug tracking-[-0.005em] text-text-secondary">
+          Anyone can summarize the market.
+        </p>
+        {/* Headline: the largest text on the page. Display serif ~58px/500,
+            typewriter-typed with a blinking gold cursor. Under reduced motion
+            it renders statically with no cursor (handled in the effect). */}
+        <h1 className="mx-auto mt-3 min-h-[1.1em] max-w-[760px] font-display text-[clamp(38px,7vw,58px)] font-medium leading-[1.06] tracking-[-0.02em] text-espresso">
           {typed}
           <span
-            className={cursorOn ? "landing-anim" : "opacity-0"}
+            aria-hidden="true"
+            className={`ml-1.5 inline-block h-[0.82em] w-[0.5em] translate-y-[0.04em] bg-gold align-baseline ${cursorOn ? "landing-anim" : "opacity-0"}`}
             style={cursorOn && !reduced ? { animation: "landingBlink 1s step-end infinite" } : undefined}
-          >
-            _
-          </span>
-        </div>
-        <h1 className="mt-5 font-display text-[clamp(34px,6vw,60px)] font-bold leading-[1.05] tracking-tight text-espresso">
-          Anyone can summarize the market.
+          />
         </h1>
         <p className="mx-auto mt-6 max-w-xl font-sans text-[15px] leading-relaxed text-text-muted">
           A generic market summary is a commodity. An honest, graded record is
@@ -565,9 +595,9 @@ function LoopSection({ reduced }: { reduced: boolean }) {
         </h2>
       </div>
 
-      <div className="mx-auto mt-12 max-w-2xl rounded-2xl border border-border-base bg-cream-hi p-6 sm:p-8 shadow-sm">
+      <div className="mx-auto mt-12 max-w-2xl rounded-2xl border p-6 sm:p-8 shadow-lg bg-[color:var(--panel-terminal-bg)] border-[color:var(--panel-terminal-border)]">
         <div className="flex items-center justify-between">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-text-faint">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--panel-terminal-dim)]">
             A call, in review
           </span>
           <div className="flex items-center gap-3">
@@ -580,7 +610,7 @@ function LoopSection({ reduced }: { reduced: boolean }) {
               <button
                 type="button"
                 onClick={() => setPaused((p) => !p)}
-                className="font-mono text-[9px] font-bold uppercase tracking-wider text-text-faint hover:text-gold cursor-pointer transition-colors"
+                className="font-mono text-[9px] font-bold uppercase tracking-wider text-[color:var(--panel-terminal-dim)] hover:text-gold cursor-pointer transition-colors"
               >
                 {paused ? "Play" : "Pause"}
               </button>
@@ -593,13 +623,13 @@ function LoopSection({ reduced }: { reduced: boolean }) {
             {s.who}
           </span>
         </div>
-        <p className="mt-2 font-display text-[19px] leading-snug text-espresso">
+        <p className="mt-2 font-mono text-[19px] leading-snug text-[color:var(--panel-terminal-text)]">
           {s.claim}
         </p>
 
         {/* 5-node rail */}
         <div className="mt-7">
-          <div className="relative mb-4 h-0.5 w-full rounded bg-border-base">
+          <div className="relative mb-4 h-0.5 w-full rounded bg-[color:var(--panel-terminal-line)]">
             <div
               className="h-full rounded bg-gold transition-[width] duration-500 ease-out"
               style={{ width: `${lit * 25}%` }}
@@ -611,10 +641,10 @@ function LoopSection({ reduced }: { reduced: boolean }) {
               return (
                 <div key={label} className="flex flex-1 flex-col items-center gap-2 text-center">
                   <span
-                    className={`h-2.5 w-2.5 rounded-full border transition-colors duration-300 ${on ? "border-gold bg-gold" : "border-border-hi bg-transparent"}`}
+                    className={`h-2.5 w-2.5 rounded-full border transition-colors duration-300 ${on ? "border-gold bg-gold" : "border-[color:var(--panel-terminal-border)] bg-transparent"}`}
                   />
                   <span
-                    className={`font-mono text-[8px] font-semibold uppercase tracking-wider transition-colors ${on ? "text-text-secondary" : "text-text-faint"}`}
+                    className={`font-mono text-[8px] font-semibold uppercase tracking-wider transition-colors ${on ? "text-[color:var(--panel-terminal-muted)]" : "text-[color:var(--panel-terminal-dim)]"}`}
                   >
                     {label}
                   </span>
@@ -624,14 +654,14 @@ function LoopSection({ reduced }: { reduced: boolean }) {
           </div>
         </div>
 
-        <div className="mt-6 rounded-lg border border-border-subtle bg-surface px-4 py-3">
-          <div className="font-mono text-[10px] uppercase tracking-wider text-text-faint">
+        <div className="mt-6 rounded-lg border px-4 py-3 border-[color:var(--panel-terminal-border)] bg-[color:var(--panel-terminal-line)]">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-[color:var(--panel-terminal-dim)]">
             {stageText}
           </div>
           <p
-            className={`mt-2 font-sans text-[13.5px] leading-relaxed text-text-muted transition-opacity duration-500 ${revealed ? "opacity-100" : "opacity-0"}`}
+            className={`mt-2 font-sans text-[13.5px] leading-relaxed text-[color:var(--panel-terminal-muted)] transition-opacity duration-500 ${revealed ? "opacity-100" : "opacity-0"}`}
           >
-            <span className="text-text-primary">{s.attrLead}</span> {s.attrRest}
+            <span className="text-[color:var(--panel-terminal-text)]">{s.attrLead}</span> {s.attrRest}
           </p>
         </div>
       </div>
@@ -858,18 +888,18 @@ function MarketReadSection({ reduced }: { reduced: boolean }) {
     <section className="border-b border-border-subtle px-6 py-24">
       <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-2">
         {/* Human read */}
-        <div className="rounded-2xl border border-border-base bg-cream-hi p-6 sm:p-8 shadow-sm">
+        <div className="rounded-2xl border p-6 sm:p-8 shadow-lg bg-[color:var(--panel-terminal-bg)] border-[color:var(--panel-terminal-border)]">
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-text-faint">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--panel-terminal-dim)]">
               The human read
             </span>
-            <div className="inline-flex rounded-lg border border-border-base bg-surface p-0.5">
+            <div className="inline-flex rounded-lg border p-0.5 border-[color:var(--panel-terminal-border)] bg-[color:var(--panel-terminal-line)]">
               {(["morning", "evening"] as const).map((e) => (
                 <button
                   key={e}
                   type="button"
                   onClick={() => setEdition(e)}
-                  className={`rounded-md px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${edition === e ? "bg-gold text-cream" : "text-text-muted hover:text-text-primary"}`}
+                  className={`rounded-md px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${edition === e ? "bg-gold text-cream" : "text-[color:var(--panel-terminal-dim)] hover:text-[color:var(--panel-terminal-text)]"}`}
                 >
                   {e === "morning" ? "Morning Brief" : "Evening Wrap"}
                 </button>
@@ -879,40 +909,40 @@ function MarketReadSection({ reduced }: { reduced: boolean }) {
           <div className="mt-4 font-mono text-[10px] uppercase tracking-wider text-gold">
             {isMorning ? "Market Pulse · Thu Jul 3 · Markets Open" : "Market Wrap · Thu Jul 3 · Markets Closed"}
           </div>
-          <p className="mt-3 font-display text-[20px] leading-snug text-espresso">
+          <p className="mt-3 font-mono text-[20px] leading-snug text-[color:var(--panel-terminal-text)]">
             {isMorning ? "Today the market is buoyant." : "The market closed firm."}
           </p>
-          <p className="mt-3 font-sans text-[13.5px] leading-relaxed text-text-muted">
+          <p className="mt-3 font-sans text-[13.5px] leading-relaxed text-[color:var(--panel-terminal-muted)]">
             {isMorning
               ? "Breadth is 3:1 into the open with vix at 13.8, and the front end is repricing after the soft services print."
               : "The S&P finished +1.18% with breadth holding 3:1 into the bell. Semis carried the tape for a third straight session."}
           </p>
-          <p className="mt-3 font-sans text-[13.5px] leading-relaxed text-text-muted">
+          <p className="mt-3 font-sans text-[13.5px] leading-relaxed text-[color:var(--panel-terminal-muted)]">
             {isMorning
               ? "Semis carry the tape. The datacenter capex theme keeps collecting confirming evidence, with two guides raised overnight."
               : "The freight read weakened again as spot rates extended their move. The semicap thesis stays developing into tomorrow's orders print."}
           </p>
-          <p className="mt-5 border-t border-border-subtle pt-3 font-sans text-[11px] text-text-faint">
+          <p className="mt-5 border-t pt-3 font-sans text-[11px] border-[color:var(--panel-terminal-line)] text-[color:var(--panel-terminal-dim)]">
             synthesized from 214 sources · informational only, never advice
           </p>
         </div>
 
         {/* Live signal */}
-        <div className="rounded-2xl border border-gold-border bg-cream-hi p-6 sm:p-8 shadow-sm">
+        <div className="rounded-2xl border p-6 sm:p-8 shadow-lg bg-[color:var(--panel-terminal-bg)] border-[color:var(--panel-terminal-border)]">
           <div className="flex items-center gap-2">
             <span className="h-1.5 w-1.5 rounded-full bg-gold landing-anim" style={reduced ? undefined : { animation: "landingPulse 2.2s ease-in-out infinite" }} />
             <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-gold">
               Signalera AI · Live Signal
             </span>
           </div>
-          <div className="mt-1 font-mono text-[10px] uppercase tracking-wider text-text-faint">
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-wider text-[color:var(--panel-terminal-dim)]">
             thesis review stream
           </div>
           <div className="mt-4 space-y-2">
             {feed.map((f) => (
-              <div key={f.id} className="rounded-lg border border-border-subtle bg-surface p-3">
+              <div key={f.id} className="rounded-lg border p-3 border-[color:var(--panel-terminal-border)] bg-[color:var(--panel-terminal-line)]">
                 <div className="flex items-start justify-between gap-3">
-                  <p className="font-sans text-[12.5px] leading-snug text-text-primary">
+                  <p className="font-sans text-[12.5px] leading-snug text-[color:var(--panel-terminal-text)]">
                     {f.text}
                   </p>
                   <span className={`shrink-0 rounded-full border px-2 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider ${statusClasses(f.status)}`}>
@@ -920,14 +950,14 @@ function MarketReadSection({ reduced }: { reduced: boolean }) {
                   </span>
                 </div>
                 {f.evidence && (
-                  <p className="mt-1.5 font-sans text-[11.5px] text-text-muted">
+                  <p className="mt-1.5 font-sans text-[11.5px] text-[color:var(--panel-terminal-muted)]">
                     → {f.evidence}
                   </p>
                 )}
               </div>
             ))}
           </div>
-          <div className="mt-5 grid grid-cols-3 gap-2 border-t border-border-subtle pt-4">
+          <div className="mt-5 grid grid-cols-3 gap-2 border-t pt-4 border-[color:var(--panel-terminal-line)]">
             {[
               { num: "1,284", label: "Theses tracked" },
               { num: "71.4%", label: "Evidence supported" },
@@ -935,13 +965,13 @@ function MarketReadSection({ reduced }: { reduced: boolean }) {
             ].map((s) => (
               <div key={s.label} className="text-center">
                 <div className="font-mono text-[17px] font-bold text-gold">{s.num}</div>
-                <div className="mt-1 font-mono text-[8px] uppercase tracking-wider text-text-faint">
+                <div className="mt-1 font-mono text-[8px] uppercase tracking-wider text-[color:var(--panel-terminal-dim)]">
                   {s.label}
                 </div>
               </div>
             ))}
           </div>
-          <p className="mt-3 font-sans text-[10px] leading-relaxed text-text-faint">
+          <p className="mt-3 font-sans text-[10px] leading-relaxed text-[color:var(--panel-terminal-dim)]">
             forecast accuracy on falsifiable claims, not investment performance,
             and not advice
           </p>
