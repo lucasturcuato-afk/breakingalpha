@@ -45,10 +45,12 @@ GUARDRAILS (hard)
 (b) BOUND weight movement per recalibration: each weight may move at most
     MAX_WEIGHT_DELTA_FRAC of the prior weight per recalibration. No wild swings
     on a thin new sample.
-(c) JUL 13 INVARIANT as a hard PRE-WRITE check: any weight set the calibrator
-    would emit MUST still make the Jul 13 case pass (the material macro story
-    leads, the penny stock does NOT). Reuses the Jul 13 candidate set. Never
-    writes weights that fail it.
+(c) REGRESSION-SET INVARIANT as a hard PRE-WRITE check: any weight set the
+    calibrator would emit MUST make ALL 6 hand-built regression cases pass (each
+    case's material / macro / geo / commodity story leads; the single-name /
+    routine / speculative / opinion competitor does NOT). Case 1 is the original
+    Jul 13 case; cases 2-6 generalize the same rule to other archetypes. Never
+    writes weights that fail any case. See regression_set().
 
 Run:  python3.11 backend/lead_weight_calibrator.py            (real history)
       python3.11 backend/lead_weight_calibrator.py --synthetic (fit demo)
@@ -320,9 +322,12 @@ def jul13_candidate_set() -> GradedDay:
 
 
 def jul13_invariant_passes(w: dict[str, float]) -> tuple[bool, str]:
-    """True iff, under weights w, the Jul 13 argmax is the material macro story
-    AND the penny stock is NOT the pick. Returns (passed, explanation)."""
-    day = jul13_candidate_set()
+    """Back-compat thin wrapper. The Jul 13 case is case 1 of the regression set
+    (see regression_set / regression_invariant_passes). Kept so existing callers
+    and tests that ask specifically about Jul 13 still work. True iff, under
+    weights w, the Jul 13 argmax is the material macro story (case 1 winner) AND
+    the penny stock is NOT the pick. Returns (passed, explanation)."""
+    day = regression_set()[0]  # case 1 == jul13_candidate_set()
     scores = sorted(
         ((c.score(w), c.title) for c in day.candidates),
         key=lambda t: (-t[0], t[1]),
@@ -334,6 +339,204 @@ def jul13_invariant_passes(w: dict[str, float]) -> tuple[bool, str]:
     detail = "; ".join(f"{t[:40]}={s:.3f}" for s, t in scores)
     verdict = "PASS" if passed else "FAIL"
     return passed, f"[{verdict}] winner={winner_title[:40]!r} | scores: {detail}"
+
+
+# ── Regression-invariant set (generalizes the single Jul 13 invariant) ────────
+#
+# WHY A SET, NOT ONE CASE
+# -----------------------
+# The Jul 13 invariant proved exactly ONE failure mode never recurs: a penny
+# stock clobbering a material macro story. But the calibrator can drift a weight
+# set that still passes Jul 13 yet breaks a DIFFERENT, equally wrong ranking
+# (routine ETF launch over an active war, a sell-side note over a payrolls
+# print, an opinion column over a confirmed oil move). The regression set is 6
+# hand-built ARCHETYPES - each seeded by a real day where the wrong candidate
+# could plausibly have led - so ANY emitted weight set must rank the material /
+# macro / geo / commodity story over the single-name / routine / speculative /
+# opinion noise in EVERY case, not just Jul 13.
+#
+# ARCHETYPES, NOT LITERAL TITLE MATCHES
+# -------------------------------------
+# The winner is identified by GradedDay.lead_title (the candidate that SHOULD
+# win), and every case is built from the same [0,1] component shape the live
+# scorer emits (impact_ranking). The cases generalize because they encode the
+# STRUCTURE of each archetype (low materiality + low breadth for single-name /
+# routine / opinion noise; high materiality + high breadth + confirmed for the
+# macro / geo / commodity driver), not any specific headline string.
+#
+# CORRECTNESS GATE (proven in the module's VERIFY output)
+# -------------------------------------------------------
+# Under DEFAULT_WEIGHTS (4/4/3/1.5) the asserted winner IS the argmax for all 6
+# cases. A case the defaults could not satisfy would make the calibrator refuse
+# to emit FOREVER, so every case is tuned to be both realistic AND
+# defaults-passing.
+
+def _two(brief_date: str, winner: Candidate, loser: Candidate) -> GradedDay:
+    """A two-candidate regression case. `winner` is flagged the shipped lead and
+    is the asserted argmax; `loser` is the archetype that must NOT win."""
+    winner.is_shipped_lead = True
+    return GradedDay(
+        brief_date=brief_date,
+        lead_title=winner.title,
+        grade_score=1.0,
+        confidence=1.0,
+        candidates=[winner, loser],
+    )
+
+
+def regression_set() -> list[GradedDay]:
+    """The 6 regression-invariant cases. Element 0 IS jul13_candidate_set() (kept
+    verbatim as case 1); elements 1-5 are the additional archetypes. Every case's
+    lead_title is the candidate that must be the argmax under any emitted weights.
+
+    Component numbers are justified inline per case with the same rigor as the
+    Jul 13 set: the noise archetype (penny / routine launch / foreign micro-cap /
+    sell-side note / opinion column) always gets LOW materiality (it is not a
+    market-wide driver) and LOW breadth (thin, single-outlet or single-name
+    coverage), while the driver (macro print / active geo escalation / confirmed
+    commodity move) gets HIGH materiality (tape-moving, market-wide) + HIGH
+    breadth (broadly, independently covered) + real confirmation."""
+    days: list[GradedDay] = [jul13_candidate_set()]  # case 1 (EXISTING, verbatim)
+
+    # ── Case 2 - 2026-07-14: penny AI-services deal vs Hormuz shipping shock ──
+    # Archetype: a single-name penny popped on an AI-services contract vs a
+    # market-wide geopolitical oil/shipping shock. Macro/geo MUST win.
+    geo2 = Candidate(
+        title="Hormuz shipping fees spike as tankers reroute; oil and freight jump (market-wide)",
+        materiality=0.90,   # a chokepoint shock reprices oil + freight + insurers - market-wide
+        session_fit=0.80,   # fresh, right for the session
+        confirmation=0.85,  # confirmed reroutes / published fee move (real event)
+        breadth=0.92,       # covered everywhere across energy, shipping, macro desks
+    )
+    penny2 = Candidate(
+        title="Micro-cap software firm pops 30% on small AI-services reseller deal",
+        materiality=0.22,   # one tiny name, not a tape driver - low materiality
+        session_fit=0.80,   # can be just as fresh; freshness must not save it
+        confirmation=0.45,  # a signed-but-minor deal: real-ish but thin, med confirmation
+        breadth=0.18,       # a single press release, thin single-name coverage - low breadth
+    )
+    days.append(_two("2026-07-14", geo2, penny2))
+
+    # ── Case 3 - 2026-07-09: routine ETF launch vs active US/Iran escalation ──
+    # Archetype: a scheduled product/ETF launch (a fact, but not market-moving)
+    # vs an active military escalation. Geo MUST win.
+    geo3 = Candidate(
+        title="US and Iran forces exchange fire; regional escalation confirmed (market-wide)",
+        materiality=0.92,   # active kinetic escalation - the dominant tape driver
+        session_fit=0.82,   # breaking, exactly the session's story
+        confirmation=0.88,  # confirmed by multiple officials / on-record - high confirmation
+        breadth=0.90,       # wall-to-wall coverage across every desk - high breadth
+    )
+    etf3 = Candidate(
+        title="Asset manager launches new thematic ETF (routine product listing)",
+        materiality=0.25,   # a routine listing moves no market - low materiality
+        session_fit=0.65,   # scheduled, mildly timely
+        confirmation=0.90,  # it is a confirmed FACT (the launch happened) - high confirmation
+        breadth=0.20,       # one press release + trade press, thin - low breadth
+    )
+    # NOTE: the ETF has HIGH confirmation (the launch is a fact) yet must still
+    # LOSE - this case guards the exact failure where confirmation alone crowns a
+    # non-material, thin-coverage routine item over a market-wide driver.
+    days.append(_two("2026-07-09", geo3, etf3))
+
+    # ── Case 4 - 2026-07-01: foreign micro-cap stake sale vs ADP payrolls ──
+    # Archetype: a foreign small-cap stake divestiture (a confirmed fact, but a
+    # single tiny name) vs a US macro payrolls print. Macro MUST win.
+    macro4 = Candidate(
+        title="US ADP payrolls come in well above forecast; rate-cut odds fall (market-wide)",
+        materiality=0.88,   # a macro labor print reprices the whole curve - market-wide
+        session_fit=0.80,   # the session's scheduled marquee print
+        confirmation=0.85,  # a hard released number - high confirmation
+        breadth=0.88,       # every macro / rates / equity desk covers it - high breadth
+    )
+    micro4 = Candidate(
+        title="Foreign small-cap holder sells minority stake in obscure industrial (single-name)",
+        materiality=0.20,   # one foreign micro-cap, zero tape impact - low materiality
+        session_fit=0.60,   # timely but marginal
+        confirmation=0.75,  # a filed / confirmed sale (real fact) yet still irrelevant
+        breadth=0.15,       # a single regional filing, essentially uncovered - low breadth
+    )
+    days.append(_two("2026-07-01", macro4, micro4))
+
+    # ── Case 5 - 2026-07-09: sell-side price-target reiteration vs macro ──
+    # Archetype: a sell-side PT reit (a note, not market-moving) vs a genuine
+    # macro candidate. Macro MUST win, and by a wide margin.
+    macro5 = Candidate(
+        title="Core inflation cools more than expected; broad risk-on across assets (market-wide)",
+        materiality=0.85,   # a soft inflation print moves the whole tape - market-wide
+        session_fit=0.78,   # the session's macro read
+        confirmation=0.82,  # a released print - high confirmation
+        breadth=0.85,       # broadly, independently covered - high breadth
+    )
+    pt5 = Candidate(
+        title="Broker reiterates Buy and price target on large-cap (analyst note)",
+        materiality=0.15,   # a reit changes nothing - among the lowest materiality there is
+        session_fit=0.55,   # a note dropped intraday, marginal fit
+        confirmation=0.35,  # an opinion / estimate, not a confirmed event - low confirmation
+        breadth=0.20,       # one desk's note, picked up by a wire at most - low breadth
+    )
+    days.append(_two("2026-07-09b", macro5, pt5))
+
+    # ── Case 6 - 2026-06-24: opinion / analysis column vs confirmed oil move ──
+    # Archetype: an opinion / analysis column (someone's take, unconfirmed as an
+    # event) vs a confirmed commodity/oil price move. Commodity MUST win.
+    oil6 = Candidate(
+        title="Crude jumps 4% on confirmed OPEC+ supply cut; energy complex rallies (commodity)",
+        materiality=0.85,   # a confirmed supply cut reprices the energy complex - high materiality
+        session_fit=0.80,   # the session's commodity story
+        confirmation=0.90,  # the cut and the price move are both confirmed - high confirmation
+        breadth=0.80,       # covered across commodity, energy and macro desks - high breadth
+    )
+    op6 = Candidate(
+        title="Columnist argues the oil rally is overdone (opinion / analysis)",
+        materiality=0.25,   # an opinion moves no market on its own - low materiality
+        session_fit=0.60,   # topical but a take, not an event
+        confirmation=0.30,  # a viewpoint, nothing confirmed - low confirmation
+        breadth=0.30,       # one column, limited pickup - low breadth
+    )
+    days.append(_two("2026-06-24", oil6, op6))
+
+    return days
+
+
+def regression_invariant_passes(w: dict[str, float]) -> tuple[bool, list[dict]]:
+    """True iff, under weights w, the argmax of EVERY regression case equals that
+    case's asserted winner (GradedDay.lead_title). Returns (all_passed, detail)
+    where detail is a per-case list of dicts:
+        {case, brief_date, expected, argmax, passed, scores}
+    so a refusal can name exactly which case(s) failed."""
+    detail: list[dict] = []
+    all_passed = True
+    for idx, day in enumerate(regression_set(), start=1):
+        ranked = sorted(
+            ((c.score(w), c.title) for c in day.candidates),
+            key=lambda t: (-t[0], t[1]),
+        )
+        winner = ranked[0][1]
+        passed = winner == day.lead_title
+        all_passed = all_passed and passed
+        detail.append({
+            "case": idx,
+            "brief_date": day.brief_date,
+            "expected": day.lead_title,
+            "argmax": winner,
+            "passed": passed,
+            "scores": [(round(s, 3), t) for s, t in ranked],
+        })
+    return all_passed, detail
+
+
+def _fmt_regression_failures(detail: list[dict]) -> str:
+    """Compact string naming the failing case(s) for refusal logs."""
+    fails = [d for d in detail if not d["passed"]]
+    if not fails:
+        return "all cases pass"
+    parts = []
+    for d in fails:
+        parts.append(
+            f"case {d['case']} ({d['brief_date']}): expected {d['expected'][:36]!r} "
+            f"but argmax was {d['argmax'][:36]!r}")
+    return "FAILED " + str(len(fails)) + " case(s): " + " | ".join(parts)
 
 
 # ── Effective-N (guardrail a) ────────────────────────────────────────────────
@@ -642,15 +845,19 @@ def calibrate(days: list[GradedDay], prior: dict[str, float]) -> CalibrationResu
     trace = fit_weights(days, prior)
     fitted = trace.fitted
 
-    # Guardrail (c): HARD pre-write Jul 13 invariant check on the emitted set.
-    passed, jdetail = jul13_invariant_passes(fitted)
+    # Guardrail (c): HARD pre-write REGRESSION-SET check on the emitted set. Every
+    # one of the 6 hand-built cases must argmax onto its asserted winner. Jul 13
+    # is case 1; the other 5 archetypes generalize the same never-emit-this rule.
+    passed, rdetail = regression_invariant_passes(fitted)
     if not passed:
-        note = (f"REJECTED fitted weights {_fmt_w(fitted)}: Jul 13 invariant "
-                f"FAILED before write. {jdetail}. Holding safe defaults "
+        fail_str = _fmt_regression_failures(rdetail)
+        note = (f"REJECTED fitted weights {_fmt_w(fitted)}: regression invariant "
+                f"FAILED before write. {fail_str}. Holding safe defaults "
                 f"{_fmt_w(DEFAULT_WEIGHTS)} instead. This is guardrail (c): never "
-                f"emit weights where the penny stock beats the material macro story.")
-        dpass, ddetail = jul13_invariant_passes(DEFAULT_WEIGHTS)
-        note += f" | defaults still pass: {ddetail}"
+                f"emit weights where a single-name / routine / speculative / "
+                f"opinion item beats the material macro / geo / commodity story.")
+        dpass, ddetail = regression_invariant_passes(DEFAULT_WEIGHTS)
+        note += f" | defaults still pass all cases: {_fmt_regression_failures(ddetail)}"
         return CalibrationResult(
             emitted=False, is_default=True, weights=dict(DEFAULT_WEIGHTS),
             n_train=n, obj_before=trace.obj_before, obj_after=trace.obj_before,
@@ -665,7 +872,8 @@ def calibrate(days: list[GradedDay], prior: dict[str, float]) -> CalibrationResu
             f"objective {trace.obj_before:.4f} -> {trace.obj_after:.4f}. "
             f"prior {_fmt_w(prior)} -> fitted {_fmt_w(fitted)}. "
             f"movement cap {int(MAX_WEIGHT_DELTA_FRAC*100)}% per weight. "
-            f"WHY: {move_lines}. CAP: {cap_lines}. Jul13 {jdetail}")
+            f"WHY: {move_lines}. CAP: {cap_lines}. "
+            f"regression set (6 cases): {_fmt_regression_failures(rdetail)}")
     return CalibrationResult(
         emitted=True, is_default=False, weights=dict(fitted),
         n_train=n, obj_before=trace.obj_before, obj_after=trace.obj_after,
@@ -749,7 +957,9 @@ def _print_result(result: CalibrationResult, version: int, header: str) -> None:
     print(f"  chosen weights:     {_fmt_w(result.weights)}")
     print(f"  objective before:   {result.obj_before:.4f}")
     print(f"  objective after:    {result.obj_after:.4f}")
-    print(f"  jul13 invariant:    {'PASS' if result.jul13_passed else 'FAIL'}")
+    reg_pass, reg_detail = regression_invariant_passes(result.weights)
+    print(f"  regression set (6): {'PASS' if reg_pass else 'FAIL'}  "
+          f"({_fmt_regression_failures(reg_detail)})")
     if result.trace and result.trace.movements:
         print("  per-weight movement rationale:")
         for m in result.trace.movements:
@@ -823,13 +1033,33 @@ def run_synthetic() -> CalibrationResult:
     return result
 
 
+def demo_regression_defaults() -> None:
+    """Prove the CORRECTNESS GATE: under DEFAULT_WEIGHTS every one of the 6
+    regression cases argmaxes onto its asserted winner. Prints per case."""
+    print("+" * 78)
+    print("+ REGRESSION SET: DEFAULT_WEIGHTS (4/4/3/1.5) must pass all 6 cases")
+    print("+" * 78)
+    passed, detail = regression_invariant_passes(DEFAULT_WEIGHTS)
+    for d in detail:
+        top_score, top_title = d["scores"][0]
+        print(f"  case {d['case']} ({d['brief_date']}): "
+              f"{'PASS' if d['passed'] else 'FAIL'}")
+        print(f"    expected winner: {d['expected'][:60]!r}")
+        print(f"    argmax winner:   {d['argmax'][:60]!r}  score={top_score:.3f}")
+        for s, t in d["scores"]:
+            print(f"      {s:7.3f}  {t[:62]}")
+    print(f"  -> ALL 6 PASS UNDER DEFAULTS: {passed}")
+    print()
+
+
 def demo_jul13_rejection() -> None:
-    """Show a candidate weight set that FAILS the Jul 13 invariant getting
+    """Show a candidate weight set that FAILS the regression invariant getting
     REJECTED before write. We hand-craft weights that would crown the penny stock
-    (crank breadth+session_fit, mute materiality+confirmation) and confirm the
-    calibrator refuses to emit them."""
+    (crank session_fit, mute materiality+confirmation+breadth) and confirm the
+    calibrator refuses to emit them. The full per-case regression detail names
+    which case(s) the bad set breaks."""
     print("~" * 78)
-    print("~ Jul 13 INVARIANT: a bad weight set is REJECTED before write")
+    print("~ REGRESSION INVARIANT: a bad weight set is REJECTED before write")
     print("~" * 78)
     # Genuinely invariant-FAILING weights: session_fit so dominant that the penny
     # (highest session_fit in the set) wins, materiality/confirmation/breadth
@@ -839,10 +1069,14 @@ def demo_jul13_rejection() -> None:
     # fails when the OTHER three are muted enough for session_fit to decide.)
     bad = {"materiality": 0.1, "session_fit": 10.0,
            "confirmation": 0.1, "breadth": 0.1}
-    passed, detail = jul13_invariant_passes(bad)
+    passed, detail = regression_invariant_passes(bad)
     print(f"  hand-crafted BAD weights {_fmt_w(bad)}")
-    print(f"  invariant check: {detail}")
-    print(f"  -> invariant PASSES: {passed}  (must be False for a bad set)")
+    print(f"  regression check: {_fmt_regression_failures(detail)}")
+    for d in detail:
+        print(f"    case {d['case']} ({d['brief_date']}): "
+              f"{'PASS' if d['passed'] else 'FAIL'}  "
+              f"argmax={d['argmax'][:40]!r} expected={d['expected'][:40]!r}")
+    print(f"  -> regression PASSES: {passed}  (must be False for a bad set)")
     print(f"  -> a fit that produced these would be REJECTED before write: {not passed}")
 
     # Prove the pre-write rejection path in calibrate() end to end: feed it the
@@ -876,18 +1110,25 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Lead-weight calibrator (offline, deterministic).")
     ap.add_argument("--synthetic", action="store_true",
                     help="Run the synthetic >=20-day fixture (fit RUNS).")
+    ap.add_argument("--regression", action="store_true",
+                    help="Print the 6-case regression set under DEFAULT_WEIGHTS.")
     ap.add_argument("--all", action="store_true",
-                    help="Run real history AND synthetic AND the Jul13 rejection demo.")
+                    help="Run real history AND synthetic AND the regression proofs.")
     args = ap.parse_args()
 
     sb = _connect()
 
+    if args.regression:
+        demo_regression_defaults()
+        demo_jul13_rejection()
+        return
     if args.synthetic:
         run_synthetic()
         return
     if args.all:
         run_real(sb)
         run_synthetic()
+        demo_regression_defaults()
         demo_jul13_rejection()
         return
     # default: real history only (the production-safe path)
