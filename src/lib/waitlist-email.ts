@@ -20,10 +20,24 @@
 import { Resend } from "resend";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const SUBJECT = "You are on the Signalera list";
-const BODY =
-  "Signalera is in private beta, opening access in small waves. You are on the list, and we will reach out when your access is ready. If you believe you should already have access, reply to this note or email admin@signalera.ai.";
+const SUBJECT = "You're early";
+const HEADING = "You're on the list.";
+const P1 = "Every model can summarize the market. None of them keep score.";
+const P2 =
+  "That is the part we are building. Signalera makes falsifiable calls, reviews them against real evidence, and leaves the ones that did not hold on the record. The calls you make get reviewed exactly the same way ours are.";
+const P3 =
+  "And it all lives in one place. Not another tab beside twelve others, three newsletters, and a feed that forgets you every morning. The morning read, the deal flow, the company work, the record. One place that already knows what you follow.";
+const P4 =
+  "Access opens in small waves so we can onboard people properly. We will reach out when yours is ready.";
+const P5 =
+  "Most tools are the same on day one hundred as they were on day one. This one is not. Every call you track teaches it what matters to you.";
+const SIGNOFF = "The Signalera Team";
+const CLOSING = "Reply to this email if you believe you should already have access.";
 const FOOTER = "Informational only. Not investment advice.";
+
+const TEXT_BODY = [HEADING, P1, P2, P3, P4, P5, SIGNOFF, CLOSING, FOOTER].join(
+  "\n\n",
+);
 
 /**
  * Service-role Supabase client for the waitlist read/update. public.waitlist is
@@ -44,13 +58,20 @@ function renderHtml(): string {
   return `<!doctype html>
 <html>
   <body style="margin:0;padding:24px;background:#f5efe4;font-family:Arial,Helvetica,sans-serif;color:#1a1712;">
-    <div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #e3dac6;border-radius:12px;padding:32px;">
-      <div style="font-size:22px;font-weight:700;margin-bottom:20px;">
+    <div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #e3dac6;border-radius:12px;padding:36px 32px;">
+      <div style="font-size:22px;font-weight:700;margin-bottom:26px;">
         Signal<span style="color:#ae843a;">era.</span>
       </div>
-      <p style="font-size:15px;line-height:1.6;margin:0 0 24px;">${BODY}</p>
-      <hr style="border:none;border-top:1px solid #e3dac6;margin:24px 0;" />
-      <p style="font-size:12px;line-height:1.5;color:#7a7060;margin:0;">${FOOTER}</p>
+      <h1 style="font-size:21px;font-weight:700;line-height:1.3;margin:0 0 22px;color:#1a1712;">${HEADING}</h1>
+      <p style="font-size:17px;font-weight:600;line-height:1.55;margin:0 0 20px;color:#1a1712;">${P1}</p>
+      <p style="font-size:15px;line-height:1.65;margin:0 0 16px;">${P2}</p>
+      <p style="font-size:15px;line-height:1.65;margin:0 0 16px;">${P3}</p>
+      <p style="font-size:15px;line-height:1.65;margin:0 0 16px;">${P4}</p>
+      <p style="font-size:15px;line-height:1.65;margin:0 0 16px;">${P5}</p>
+      <p style="font-size:15px;font-weight:600;line-height:1.6;margin:30px 0 0;color:#1a1712;">${SIGNOFF}</p>
+      <p style="font-size:15px;line-height:1.6;margin:18px 0 0;color:#7a7060;">${CLOSING}</p>
+      <hr style="border:none;border-top:1px solid #e3dac6;margin:26px 0 0;" />
+      <p style="font-size:12px;line-height:1.5;color:#7a7060;margin:20px 0 0;">${FOOTER}</p>
     </div>
   </body>
 </html>`;
@@ -107,7 +128,8 @@ export async function sendWaitlistConfirmationEmail(email: string): Promise<void
       return;
     }
 
-    const from = process.env.WAITLIST_FROM_EMAIL ?? "noreply@signalera.ai";
+    const from =
+      process.env.WAITLIST_FROM_EMAIL ?? "Signalera <noreply@signalera.ai>";
 
     let resend: Resend;
     try {
@@ -122,7 +144,7 @@ export async function sendWaitlistConfirmationEmail(email: string): Promise<void
       to: [normalized],
       replyTo: process.env.EMAIL_REPLY_TO ?? "admin@signalera.ai",
       subject: SUBJECT,
-      text: `${BODY}\n\n${FOOTER}`,
+      text: TEXT_BODY,
       html: renderHtml(),
     });
 

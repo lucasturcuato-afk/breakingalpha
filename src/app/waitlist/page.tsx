@@ -22,11 +22,15 @@ export default function WaitlistPage() {
           </div>
 
           <h1 className="font-serif text-2xl sm:text-3xl font-bold text-espresso mb-4">
-            You&apos;re on the list
+            You&apos;re on the list.
           </h1>
 
+          <p className="text-text-muted text-base sm:text-lg leading-relaxed mb-3">
+            Access opens in small waves. We will reach out when yours is ready.
+          </p>
+
           <p className="text-text-muted text-base sm:text-lg leading-relaxed mb-6">
-            Signalera is in private beta, opening access in small waves. You are on the list, and we will reach out when your access is ready.
+            Check your inbox, we just sent you a note.
           </p>
 
           <p className="text-text-muted text-sm mb-8">
