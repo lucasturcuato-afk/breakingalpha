@@ -1111,19 +1111,20 @@ function Reveal({
   className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [shown, setShown] = useState(reduced);
+  // Progressive enhancement: content is ALWAYS visible (opacity 1). The
+  // scroll-in fade-up is a one-shot enhancement layered on top, so if the
+  // IntersectionObserver never fires (below the fold at capture time, no IO
+  // support, reduced motion) the content is never hidden.
+  const [animate, setAnimate] = useState(false);
   useEffect(() => {
-    if (reduced) {
-      setShown(true);
-      return;
-    }
+    if (reduced) return;
     const el = ref.current;
     if (!el) return;
     const io = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => {
           if (e.isIntersecting) {
-            setShown(true);
+            setAnimate(true);
             io.disconnect();
           }
         });
@@ -1137,11 +1138,11 @@ function Reveal({
     <div
       ref={ref}
       className={className}
-      style={{
-        opacity: shown ? 1 : 0,
-        transform: shown ? "none" : "translateY(14px)",
-        transition: reduced ? undefined : "opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1)",
-      }}
+      style={
+        !reduced && animate
+          ? { animation: "landingReveal 0.7s cubic-bezier(0.16,1,0.3,1) both" }
+          : undefined
+      }
     >
       {children}
     </div>
