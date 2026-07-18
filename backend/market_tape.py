@@ -374,6 +374,7 @@ def parse_yahoo_daily(chart_json: dict) -> dict | None:
         timestamps = result.get("timestamp") or []
         quote = ((result.get("indicators") or {}).get("quote") or [{}])[0] or {}
         closes = quote.get("close") or []
+        opens = quote.get("open") or []
         bars = [
             (int(ts), float(c))
             for ts, c in zip(timestamps, closes)
@@ -411,9 +412,28 @@ def parse_yahoo_daily(chart_json: dict) -> dict | None:
             pct = 0.0
             change = 0.0
 
+        # True regular-session open (09:30 ET). The 1d/5d chart payload already
+        # carries meta.regularMarketOpen; the OHLC open array is the fallback
+        # for the current session's bar. This is a real 09:30 print, NOT the
+        # ~10am run-time level we persist as `level`. The grader prefers it as
+        # the anchor so grades share one true-open basis where available;
+        # absent, it stays None and the grader falls back to the run snapshot
+        # (honestly recorded via anchor_source). None on any gap; never raises.
+        raw_open = meta.get("regularMarketOpen")
+        if raw_open is None and market_ts is not None and timestamps and opens:
+            quote_day = (int(market_ts) + gmtoffset) // _DAY_SECONDS
+            for ts, o in zip(timestamps, opens):
+                if ts is None or o is None:
+                    continue
+                if (int(ts) + gmtoffset) // _DAY_SECONDS == quote_day:
+                    raw_open = o
+                    break
+        open_ = float(raw_open) if raw_open is not None else None
+
         return {
             "price": price,
             "prev": prev,
+            "open": open_,
             "pct": round(pct, 2),
             "change": change,
             "ts": int(market_ts) if market_ts is not None else None,
@@ -706,7 +726,10 @@ def serialize_tape_snapshot(tape: dict | None, as_of: str | None = None) -> dict
         # stored verbatim, never recomputed downstream. Strip and panel must both
         # read this field so they cannot disagree (see PR body: today the frontend
         # re-derives pct live from two different instruments/vendors instead).
-        return {"pct": q.get("pct"), "level": q.get("price")}
+        # `open` is the true 09:30 regular-session open (None until FIX 2 ships
+        # forward, and absent on historical rows). The grader prefers it as the
+        # anchor when present and records anchor_source accordingly.
+        return {"pct": q.get("pct"), "level": q.get("price"), "open": q.get("open")}
 
     snapshot = {
         "as_of": as_of,
