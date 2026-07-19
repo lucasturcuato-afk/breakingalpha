@@ -128,8 +128,11 @@ export async function sendWaitlistConfirmationEmail(email: string): Promise<void
       return;
     }
 
+    // Share one from-address variable with src/app/api/brief/send-email/route.ts.
+    // EMAIL_FROM_ADDRESS is the canonical var set in Vercel; keep a local-dev
+    // fallback default.
     const from =
-      process.env.WAITLIST_FROM_EMAIL ?? "Signalera <noreply@signalera.ai>";
+      process.env.EMAIL_FROM_ADDRESS ?? "Signalera <noreply@signalera.ai>";
 
     let resend: Resend;
     try {

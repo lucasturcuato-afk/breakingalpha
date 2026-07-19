@@ -3,7 +3,7 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { checkFixedWindow, clientKeyFromHeaders } from '@/lib/rate-limit'
-import { sendWaitlistConfirmationEmail } from '@/lib/waitlist-email'
+import { registerWaitlist } from '@/lib/waitlist-register'
 
 // Coarse per-IP throttle on the OAuth callback (the one server-side auth entry
 // point). Caps code-exchange attempts to slow credential-stuffing / replay
@@ -89,33 +89,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${origin}/dashboard`)
     }
 
-    // User is NOT allowlisted — add to waitlist, sign out, redirect
-    const { error: waitlistError } = await supabase
-      .from('waitlist')
-      .insert({
+    // User is NOT allowlisted. Delegate to the shared server-side register so
+    // the waitlist upsert + confirmation email are identical to every other
+    // path (no duplicated insert/email logic here). It returns whether this was
+    // a NEW row or an existing DUPLICATE; a duplicate routes to the
+    // already-on-the-list variant. registerWaitlist is fail-safe and never
+    // throws, but keep a guard so an unexpected error still lands the user on
+    // /waitlist rather than an error page.
+    let duplicate = false
+    try {
+      const reg = await registerWaitlist({
         email: userEmail,
         name: userName,
         source: 'oauth_callback',
       })
-
-    if (waitlistError && !waitlistError.message.includes('duplicate')) {
-      console.error('Waitlist insert error:', waitlistError.message)
-      // Continue anyway. Don't block the redirect.
-    }
-
-    // Fire the transactional confirmation email. Idempotent (guarded on
-    // notified_at) and fully non-blocking: any failure is swallowed inside the
-    // util, and this extra try/catch guarantees the signup and the /waitlist
-    // redirect survive even an unexpected throw. If RESEND_API_KEY is unset the
-    // util skips the send and logs it.
-    try {
-      await sendWaitlistConfirmationEmail(userEmail)
+      duplicate = reg.approved === false && reg.duplicate
     } catch (e) {
-      console.error('Waitlist confirmation email failed (non-blocking):', e)
+      console.error('Waitlist register failed (non-blocking):', e)
     }
 
     await supabase.auth.signOut()
-    return NextResponse.redirect(`${origin}/waitlist`)
+    return NextResponse.redirect(
+      `${origin}/waitlist${duplicate ? '?existing=1' : ''}`,
+    )
   }
 
   return NextResponse.redirect(`${origin}/auth?error=no_code`)

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { isAllowlisted } from "@/lib/allowlist";
+import { postWaitlistRegister } from "@/lib/waitlist-register-client";
 import { cn } from "@/lib/utils";
 import { Mail, Lock, Eye, EyeOff, Check } from "lucide-react";
 import Link from "next/link";
@@ -50,7 +51,13 @@ export default function AuthPage() {
         const approved = await isAllowlisted(supabase, email);
         if (!approved) {
           await supabase.auth.signOut();
-          window.location.href = "/waitlist";
+          // Additionally register so the non-approved sign-in produces a
+          // waitlist row + our email (idempotent, so no double email). A
+          // duplicate routes to the already-on-the-list variant.
+          const reg = await postWaitlistRegister(email, "auth_signin");
+          window.location.href = reg?.duplicate
+            ? "/waitlist?existing=1"
+            : "/waitlist";
         } else {
           window.location.href = "/dashboard";
         }
@@ -68,8 +75,19 @@ export default function AuthPage() {
         setError(signUpError.message);
         setLoading(false);
       } else {
-        setSignupSuccess(true);
-        setLoading(false);
+        // Register immediately so a non-approved signup gets a waitlist row +
+        // our email regardless of whether Supabase ever delivers its
+        // confirmation link. If approved, let the normal confirm flow proceed;
+        // if not, route straight to /waitlist.
+        const reg = await postWaitlistRegister(email, "auth_signup");
+        if (reg && !reg.approved) {
+          window.location.href = reg.duplicate
+            ? "/waitlist?existing=1"
+            : "/waitlist";
+        } else {
+          setSignupSuccess(true);
+          setLoading(false);
+        }
       }
     }
   }

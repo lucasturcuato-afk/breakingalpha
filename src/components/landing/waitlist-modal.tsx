@@ -9,14 +9,18 @@ import {
 } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { cn } from "@/lib/utils";
+import { isAllowlisted } from "@/lib/allowlist";
+import { postWaitlistRegister } from "@/lib/waitlist-register-client";
 import { Mail, Lock, Eye, EyeOff, Check, X } from "lucide-react";
 import styles from "./landing.module.css";
 
 // Auth modal for the signed-out landing. It reuses the same Supabase client
-// calls as /auth (Google OAuth + email/password), but does NOT implement any
-// allowlist logic itself. The beta gate is enforced downstream in
-// /auth/callback (OAuth + email-confirmation redirect). This component only
-// builds the UI and fires the existing auth primitives.
+// calls as /auth (Google OAuth + email/password). The beta gate is still
+// enforced downstream in /auth/callback (OAuth + email-confirmation redirect)
+// and in the proxy, but the email/password paths additionally call the shared
+// register endpoint so a non-approved user gets a waitlist row + our email
+// immediately, mirroring the /auth fallback page. It never admits anyone: the
+// isAllowlisted check here only decides the redirect, matching /auth.
 //
 // It is styled entirely from landing.module.css so it reads as part of this
 // landing: opaque panel on the landing card surface, a solid low-opacity scrim
@@ -189,7 +193,20 @@ export function WaitlistModal({
           setErrors(routeError(error.message));
           setLoading(false);
         } else {
-          window.location.href = "/dashboard";
+          // Password sign-in mints a session without ever hitting the OAuth
+          // callback gate. Mirror /auth: if not approved, sign out and route to
+          // /waitlist, and additionally register so the non-approved sign-in
+          // produces a waitlist row + our email (idempotent, no double email).
+          const approved = await isAllowlisted(supabase, email);
+          if (!approved) {
+            await supabase.auth.signOut();
+            const reg = await postWaitlistRegister(email, "landing_signin");
+            window.location.href = reg?.duplicate
+              ? "/waitlist?existing=1"
+              : "/waitlist";
+          } else {
+            window.location.href = "/dashboard";
+          }
         }
       } else {
         const { error } = await supabase.auth.signUp({
@@ -203,8 +220,19 @@ export function WaitlistModal({
           setErrors(routeError(error.message));
           setLoading(false);
         } else {
-          setSignupSuccess(true);
-          setLoading(false);
+          // Register immediately so a non-approved signup gets a waitlist row +
+          // our email regardless of whether Supabase ever delivers its
+          // confirmation link. If approved, let the normal confirm flow proceed
+          // (show "Check your email"); if not, route straight to /waitlist.
+          const reg = await postWaitlistRegister(email, "landing_signup");
+          if (reg && !reg.approved) {
+            window.location.href = reg.duplicate
+              ? "/waitlist?existing=1"
+              : "/waitlist";
+          } else {
+            setSignupSuccess(true);
+            setLoading(false);
+          }
         }
       }
     },
