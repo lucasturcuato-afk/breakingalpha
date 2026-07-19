@@ -77,3 +77,72 @@ export function checkRateLimit(
     resetAt: entry.timestamps[0] + WINDOW_MS,
   };
 }
+
+// ============================================================
+// Fixed-window limiter for unauthenticated entry points (auth).
+// ============================================================
+// The per-user sliding limiter above needs a userId. Auth entry points are
+// pre-session, so we throttle by a coarse client key (IP) over a short fixed
+// window instead. Same HONEST caveat applies: this Map is PER SERVERLESS
+// INSTANCE. On Vercel Fluid Compute each cold start gets a fresh Map and
+// concurrent instances do not share counters, so this raises the cost of a
+// naive single-connection flood but is NOT a durable, globally consistent
+// limiter. For real abuse protection wire a shared store (Vercel KV / Upstash
+// Redis) behind checkFixedWindow(), or configure Vercel WAF rate limiting at
+// the edge. Zero new dependencies on purpose.
+
+interface FixedWindow {
+  count: number;
+  resetAt: number;
+}
+
+const fixedStore = new Map<string, FixedWindow>();
+
+export interface FixedWindowResult {
+  allowed: boolean;
+  remaining: number;
+  limit: number;
+  resetAt: number;
+  retryAfterSeconds: number;
+}
+
+/**
+ * Check and consume one hit against a fixed-window limit.
+ * @param key       Client key (e.g. IP) namespaced by caller, e.g. "auth-cb:1.2.3.4"
+ * @param limit     Max hits allowed inside the window
+ * @param windowMs  Window length in milliseconds
+ */
+export function checkFixedWindow(
+  key: string,
+  limit: number,
+  windowMs: number,
+): FixedWindowResult {
+  const now = Date.now();
+  const existing = fixedStore.get(key);
+
+  if (!existing || now >= existing.resetAt) {
+    const resetAt = now + windowMs;
+    fixedStore.set(key, { count: 1, resetAt });
+    return { allowed: true, remaining: limit - 1, limit, resetAt, retryAfterSeconds: 0 };
+  }
+
+  existing.count += 1;
+  const allowed = existing.count <= limit;
+  return {
+    allowed,
+    remaining: Math.max(0, limit - existing.count),
+    limit,
+    resetAt: existing.resetAt,
+    retryAfterSeconds: allowed ? 0 : Math.ceil((existing.resetAt - now) / 1000),
+  };
+}
+
+/**
+ * Best-effort client key from request headers. Falls back to a shared constant
+ * so a missing IP still shares one bucket rather than bypassing the limiter.
+ */
+export function clientKeyFromHeaders(headers: Headers): string {
+  const fwd = headers.get('x-forwarded-for');
+  if (fwd) return fwd.split(',')[0]!.trim();
+  return headers.get('x-real-ip') ?? 'unknown-client';
+}

@@ -2,11 +2,31 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { checkFixedWindow, clientKeyFromHeaders } from '@/lib/rate-limit'
+
+// Coarse per-IP throttle on the OAuth callback (the one server-side auth entry
+// point). Caps code-exchange attempts to slow credential-stuffing / replay
+// floods. In-memory + per serverless instance (see rate-limit.ts); this is a
+// speed bump, not a durable guarantee. Password sign-in and signup run entirely
+// in the browser against Supabase Auth, so they cannot be throttled here and
+// rely on Supabase's own auth rate limits plus (recommended) Vercel WAF rules.
+const CALLBACK_RATE_LIMIT = 10
+const CALLBACK_RATE_WINDOW_MS = 60_000
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
   const error = searchParams.get('error')
+
+  const rl = checkFixedWindow(
+    `auth-callback:${clientKeyFromHeaders(request.headers)}`,
+    CALLBACK_RATE_LIMIT,
+    CALLBACK_RATE_WINDOW_MS,
+  )
+  if (!rl.allowed) {
+    console.warn('Auth callback rate limit hit')
+    return NextResponse.redirect(`${origin}/auth?error=too_many_requests`)
+  }
 
   if (error) {
     console.error('OAuth callback error:', error)

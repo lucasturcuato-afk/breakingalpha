@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import { isAllowlisted } from "@/lib/allowlist";
 import { cn } from "@/lib/utils";
 import { Mail, Lock, Eye, EyeOff, Check } from "lucide-react";
 import Link from "next/link";
@@ -39,7 +40,20 @@ export default function AuthPage() {
         setError(signInError.message);
         setLoading(false);
       } else {
-        window.location.href = "/dashboard";
+        // Enforce the beta allowlist on the direct password sign-in path too.
+        // signInWithPassword mints a session without ever touching the OAuth
+        // callback gate, so a provisioned-but-non-approved account would
+        // otherwise walk straight into /dashboard. Mirror the callback: if not
+        // approved, sign out and route to /waitlist. Fails closed (isAllowlisted
+        // returns false on any query error). RLS allowlist_read_self lets this
+        // authenticated browser client read its own row.
+        const approved = await isAllowlisted(supabase, email);
+        if (!approved) {
+          await supabase.auth.signOut();
+          window.location.href = "/waitlist";
+        } else {
+          window.location.href = "/dashboard";
+        }
       }
     } else {
       const { error: signUpError } =
@@ -86,9 +100,9 @@ export default function AuthPage() {
   ];
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex bg-parchment">
       {/* ── Left panel: Brand + Features (55%) ── */}
-      <div className="hidden lg:flex lg:w-[55%] relative flex-col justify-between p-12 bg-[#0d0d0d]">
+      <div className="hidden lg:flex lg:w-[55%] relative flex-col justify-between p-12 bg-sidebar-bg border-r border-border-base">
         {/* Logo */}
         <div className="relative z-10 flex items-center gap-3">
           <img
@@ -96,32 +110,33 @@ export default function AuthPage() {
             alt=""
             className="h-9 w-auto object-contain"
           />
-          <span
-            className="font-display text-[32px] font-bold leading-none tracking-[-0.02em]"
-          >
-            <span className="text-white">Signal</span>
+          <span className="font-display text-[32px] font-bold leading-none tracking-[-0.02em]">
+            <span className="text-espresso">Signal</span>
             <span className="text-gold">era</span>
           </span>
         </div>
 
         {/* Center content */}
         <div className="relative z-10 max-w-lg">
-          <h1 className="font-display text-[44px] text-white leading-[1.1] tracking-tight">
+          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-gold mb-5">
+            AI-Native Market Intelligence
+          </div>
+          <h1 className="font-display text-[44px] text-espresso leading-[1.1] tracking-tight">
             Institutional-grade
             <br />
             market intelligence.
           </h1>
-          <p className="mt-5 font-sans text-[16px] text-gray-400 leading-relaxed">
+          <p className="mt-5 font-sans text-[16px] text-text-muted leading-relaxed">
             Join analysts tracking signals that move markets.
           </p>
 
           <div className="mt-10 space-y-4">
             {features.map((text) => (
               <div key={text} className="flex items-center gap-3">
-                <div className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center bg-gold/15">
+                <div className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center bg-gold-muted">
                   <Check size={12} className="text-gold" />
                 </div>
-                <span className="font-sans text-[15px] text-gray-300">
+                <span className="font-sans text-[15px] text-text-secondary">
                   {text}
                 </span>
               </div>
@@ -131,14 +146,14 @@ export default function AuthPage() {
 
         {/* Bottom */}
         <div className="relative z-10">
-          <p className="text-[12px] text-gray-600">
+          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-faint">
             Trusted by analysts at top-tier firms
           </p>
         </div>
       </div>
 
       {/* ── Right panel: Auth card (45%) ── */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12 lg:w-[45%] bg-[#111111]" style={{ position: 'relative' }}>
+      <div className="relative flex-1 flex items-center justify-center px-6 py-12 lg:w-[45%] bg-parchment">
         <BackToPreviewLink />
         <div className="w-full max-w-[420px]">
           {/* Mobile logo */}
@@ -149,21 +164,21 @@ export default function AuthPage() {
               className="h-7 w-auto object-contain"
             />
             <span className="font-display text-[24px] font-bold leading-none">
-              <span className="text-white">Signal</span>
+              <span className="text-espresso">Signal</span>
               <span className="text-gold">era</span>
             </span>
           </div>
 
           {/* Signup success */}
           {signupSuccess ? (
-            <div className="rounded-2xl p-10 text-center bg-white/[0.04] border border-gold/20">
-              <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 bg-gold/15">
+            <div className="rounded-2xl p-10 text-center bg-elevated border border-border-base shadow-sm">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 bg-gold-muted">
                 <Check size={24} className="text-gold" />
               </div>
-              <p className="font-display text-[20px] text-white">
+              <p className="font-display text-[22px] text-espresso">
                 Check your email
               </p>
-              <p className="mt-3 font-sans text-[14px] text-gray-400 leading-relaxed">
+              <p className="mt-3 font-sans text-[14px] text-text-muted leading-relaxed">
                 Check your email to confirm your account.
               </p>
               <button
@@ -172,15 +187,15 @@ export default function AuthPage() {
                   setSignupSuccess(false);
                   setMode("signin");
                 }}
-                className="mt-5 font-sans text-[13px] text-gold cursor-pointer transition-colors"
+                className="mt-5 font-sans text-[13px] text-gold cursor-pointer transition-colors hover:text-gold-dark"
               >
                 Back to sign in
               </button>
             </div>
           ) : (
-            <div className="rounded-2xl p-10 bg-white/[0.04] border border-gold/20">
+            <div className="rounded-2xl p-10 bg-elevated border border-border-base shadow-sm">
               {/* Mode toggle */}
-              <div className="flex items-center gap-1 rounded-lg p-0.5 mb-7 bg-white/[0.04] border border-white/[0.08]">
+              <div className="flex items-center gap-1 rounded-lg p-0.5 mb-7 bg-surface border border-border-base">
                 <button
                   type="button"
                   onClick={() => {
@@ -190,8 +205,8 @@ export default function AuthPage() {
                   className={cn(
                     "flex-1 py-2.5 rounded-md font-sans text-[13px] font-semibold transition-all cursor-pointer",
                     mode === "signin"
-                      ? "bg-gold text-espresso"
-                      : "bg-transparent text-gray-500",
+                      ? "bg-gold text-cream"
+                      : "bg-transparent text-text-muted hover:text-espresso",
                   )}
                 >
                   Sign In
@@ -205,8 +220,8 @@ export default function AuthPage() {
                   className={cn(
                     "flex-1 py-2.5 rounded-md font-sans text-[13px] font-semibold transition-all cursor-pointer",
                     mode === "signup"
-                      ? "bg-gold text-espresso"
-                      : "bg-transparent text-gray-500",
+                      ? "bg-gold text-cream"
+                      : "bg-transparent text-text-muted hover:text-espresso",
                   )}
                 >
                   Create Account
@@ -217,7 +232,7 @@ export default function AuthPage() {
               <button
                 type="button"
                 onClick={handleGoogleSSO}
-                className="w-full flex items-center justify-center gap-2 h-11 rounded-lg font-sans text-[13px] font-medium text-gray-200 transition-all cursor-pointer border border-white/10 bg-white/[0.04]"
+                className="w-full flex items-center justify-center gap-2 h-11 rounded-lg font-sans text-[13px] font-medium text-espresso transition-all cursor-pointer border border-border-base bg-surface hover:border-gold-border"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24">
                   <path
@@ -242,11 +257,11 @@ export default function AuthPage() {
 
               {/* Divider */}
               <div className="flex items-center gap-3 my-6">
-                <div className="flex-1 h-px bg-white/[0.08]" />
-                <span className="font-sans text-[10px] text-gray-600 uppercase tracking-widest">
+                <div className="flex-1 h-px bg-border-base" />
+                <span className="font-mono text-[10px] text-text-faint uppercase tracking-widest">
                   or
                 </span>
-                <div className="flex-1 h-px bg-white/[0.08]" />
+                <div className="flex-1 h-px bg-border-base" />
               </div>
 
               {/* Error */}
@@ -261,7 +276,7 @@ export default function AuthPage() {
                 <div className="relative">
                   <Mail
                     size={15}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint"
                   />
                   <input
                     type="email"
@@ -269,13 +284,13 @@ export default function AuthPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Email address"
                     required
-                    className="w-full h-11 pl-10 pr-3 rounded-lg font-sans text-[13px] text-gray-100 bg-white/[0.04] border border-white/10 transition-colors focus:outline-none"
+                    className="w-full h-11 pl-10 pr-3 rounded-lg font-sans text-[13px] text-espresso bg-surface border border-border-base transition-colors focus:outline-none focus:border-gold placeholder:text-text-muted"
                   />
                 </div>
                 <div className="relative">
                   <Lock
                     size={15}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint"
                   />
                   <input
                     type={showPassword ? "text" : "password"}
@@ -283,12 +298,12 @@ export default function AuthPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Password"
                     required
-                    className="w-full h-11 pl-10 pr-10 rounded-lg font-sans text-[13px] text-gray-100 bg-white/[0.04] border border-white/10 transition-colors focus:outline-none"
+                    className="w-full h-11 pl-10 pr-10 rounded-lg font-sans text-[13px] text-espresso bg-surface border border-border-base transition-colors focus:outline-none focus:border-gold placeholder:text-text-muted"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 cursor-pointer transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-faint cursor-pointer transition-colors hover:text-espresso"
                   >
                     {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
@@ -302,7 +317,7 @@ export default function AuthPage() {
                         setForgotToast(true);
                         setTimeout(() => setForgotToast(false), 3000);
                       }}
-                      className="font-sans text-[12px] text-gold cursor-pointer transition-colors"
+                      className="font-sans text-[12px] text-gold cursor-pointer transition-colors hover:text-gold-dark"
                     >
                       Forgot password?
                     </button>
@@ -317,7 +332,7 @@ export default function AuthPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full h-11 rounded-lg font-sans text-[13px] font-semibold bg-gold text-espresso transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full h-11 rounded-lg font-sans text-[13px] font-semibold bg-gold text-cream transition-all cursor-pointer hover:bg-gold-dark disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading
                     ? "Please wait..."
@@ -330,7 +345,7 @@ export default function AuthPage() {
           )}
 
           {/* Footer */}
-          <p className="text-center mt-6 font-sans text-[11px] text-gray-600">
+          <p className="text-center mt-6 font-sans text-[11px] text-text-faint">
             By continuing, you agree to Signalera&apos;s Terms of Service and
             Privacy Policy.
           </p>
@@ -341,25 +356,10 @@ export default function AuthPage() {
 }
 
 function BackToPreviewLink() {
-  const [hovered, setHovered] = useState(false);
   return (
     <Link
       href="/preview"
-      style={{
-        position: 'absolute',
-        top: '16px',
-        left: '20px',
-        fontFamily: 'Inter, sans-serif',
-        fontSize: '12px',
-        color: hovered ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.5)',
-        textDecoration: 'none',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '4px',
-        transition: 'color 0.15s',
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className="absolute top-4 left-5 flex items-center gap-1 font-sans text-[12px] text-text-muted no-underline transition-colors hover:text-espresso"
     >
       ← Back to preview
     </Link>
