@@ -5,8 +5,12 @@ import { registerWaitlist } from "@/lib/waitlist-register";
 
 // Client-callable entry point for the shared waitlist register. The email/
 // password paths (landing modal + /auth fallback) POST here after signUp and on
-// a non-approved sign-in so a non-approved user gets a waitlist row + our email
+// a non-approved sign-in so a non-approved user gets a waitlist row captured
 // immediately, independent of Supabase's confirmation-link delivery.
+//
+// This endpoint sends NOTHING. registerWaitlist only captures the row; the
+// confirmation email is deferred to /auth/callback (proven email ownership), so
+// entering a third party's address at signup cannot cause us to email them.
 //
 // Safe to call from the client, and it does NOT leak allowlist membership: the
 // response body and status are a CONSTANT { ok: true } / 200 regardless of
@@ -17,10 +21,10 @@ import { registerWaitlist } from "@/lib/waitlist-register";
 // status to the caller.
 //
 // Timing is status-independent: registerWaitlist (allowlist read + the
-// non-approved upsert + the idempotent confirmation email) runs as post-response
-// work via after(), so the response returns immediately in both cases and
-// latency does not vary by allowlist status. after() keeps the function alive
-// until the write completes, so the waitlist row + email still reliably happen.
+// non-approved upsert) runs as post-response work via after(), so the response
+// returns immediately in both cases and latency does not vary by allowlist
+// status. after() keeps the function alive until the write completes, so the
+// waitlist row still reliably lands.
 //
 // A coarse per-IP fixed-window throttle stays in place as a general abuse guard.
 const REGISTER_RATE_LIMIT = 20;
@@ -53,11 +57,11 @@ export async function POST(request: NextRequest) {
   const name = typeof body.name === "string" ? body.name : null;
   const source = typeof body.source === "string" ? body.source : "waitlist_register";
 
-  // Run the full register (allowlist read + non-approved upsert + email) after
-  // the response so it never varies response timing by allowlist status. after()
-  // keeps the serverless function alive until this completes, so the write and
-  // email still reliably happen. Never surface the { approved, duplicate }
-  // result to the caller: the body is a constant regardless of status.
+  // Run the register (allowlist read + non-approved upsert, no email) after the
+  // response so it never varies response timing by allowlist status. after()
+  // keeps the serverless function alive until this completes, so the write still
+  // reliably happens. Never surface the { approved, duplicate } result to the
+  // caller: the body is a constant regardless of status.
   after(async () => {
     try {
       await registerWaitlist({ email, name, source });

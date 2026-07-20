@@ -1,17 +1,26 @@
 /**
  * Server-side waitlist confirmation email.
  *
- * When a non-approved email lands on the waitlist (see
- * src/app/auth/callback/route.ts), we send a single transactional confirmation
- * via Resend, then stamp notified_at on that row. Rules held to deliberately:
+ * When a non-approved email lands on the waitlist, we send a single
+ * transactional confirmation via Resend, then stamp notified_at on that row.
+ * This is called ONLY from /auth/callback (see src/app/auth/callback/route.ts),
+ * after the user has clicked the Supabase confirmation link and proven they own
+ * the address. The signup endpoint never sends. Rules held to deliberately:
  *
  * - Idempotent: we only send when the row exists and notified_at is null, and
- *   we only set notified_at AFTER a successful send. Duplicate signups (the
- *   callback skips the insert on a duplicate) therefore never double-email.
+ *   we only set notified_at AFTER a successful send. Repeat confirmations never
+ *   double-email.
+ * - Reports entry state: returns { alreadyNotified }. true means notified_at was
+ *   already set at entry and we skipped the send (the caller shows the
+ *   already-on-the-list variant). false means notified_at was null and we
+ *   attempted the send (the caller shows the standard variant). This is the
+ *   single source of the existing-vs-new routing, keyed on the notified_at
+ *   guard rather than on whether a row already existed.
  * - Non-blocking and fail-safe: this never throws to the caller. A send
  *   failure must not lose the signup or change the /waitlist redirect.
  * - If RESEND_API_KEY is missing, we skip the send silently and log it, so the
- *   flow works before the signalera.ai sending domain is verified.
+ *   flow works before the signalera.ai sending domain is verified. The
+ *   notified_at read still runs first, so alreadyNotified stays correct locally.
  *
  * Never call this from the client. The Resend init mirrors
  * src/app/api/brief/send-email/route.ts.
@@ -80,30 +89,33 @@ function renderHtml(): string {
 /**
  * Send the waitlist confirmation email for `email` if it has not been sent yet,
  * then stamp notified_at. Always resolves; never throws.
+ *
+ * Returns { alreadyNotified }: true when the row was already notified at entry
+ * (send skipped), false when notified_at was null and we attempted the send.
+ * The notified_at read runs BEFORE the RESEND_API_KEY guard so alreadyNotified
+ * reflects the true entry state even locally (where the key is absent and the
+ * dispatch itself is skipped). Any error/skip path returns alreadyNotified:false
+ * so the caller falls back to the standard (non-existing) redirect.
  */
-export async function sendWaitlistConfirmationEmail(email: string): Promise<void> {
+export async function sendWaitlistConfirmationEmail(
+  email: string,
+): Promise<{ alreadyNotified: boolean }> {
   try {
     const normalized = email.trim().toLowerCase();
-    if (!normalized) return;
-
-    if (!process.env.RESEND_API_KEY) {
-      console.warn(
-        `[waitlist-email] RESEND_API_KEY missing; skipping confirmation send for ${normalized}`,
-      );
-      return;
-    }
+    if (!normalized) return { alreadyNotified: false };
 
     const admin = makeServiceClient();
     if (!admin) {
       console.warn(
         "[waitlist-email] Supabase env missing; cannot verify notified_at, skipping send",
       );
-      return;
+      return { alreadyNotified: false };
     }
 
-    // Idempotency guard: only send when the row exists and has not been
-    // notified. This is belt-and-suspenders on top of the callback skipping the
-    // insert on a duplicate signup.
+    // Idempotency guard: read notified_at FIRST. This is the single source of
+    // the existing-vs-new routing and of the no-resend guarantee. Reading before
+    // the RESEND key check keeps alreadyNotified correct even when the key is
+    // absent (local) and the dispatch is skipped.
     const { data: row, error: readErr } = await admin
       .from("waitlist")
       .select("email, notified_at")
@@ -115,17 +127,25 @@ export async function sendWaitlistConfirmationEmail(email: string): Promise<void
         `[waitlist-email] could not read waitlist row for ${normalized}; skipping send:`,
         readErr.message,
       );
-      return;
+      return { alreadyNotified: false };
     }
     if (!row) {
       console.warn(
         `[waitlist-email] no waitlist row for ${normalized}; skipping send`,
       );
-      return;
+      return { alreadyNotified: false };
     }
     if (row.notified_at) {
-      // Already emailed. Do not double-send.
-      return;
+      // Already emailed. Do not double-send. Caller shows the existing variant.
+      return { alreadyNotified: true };
+    }
+
+    // notified_at is null: this is a first-time confirmer. Attempt the send.
+    if (!process.env.RESEND_API_KEY) {
+      console.warn(
+        `[waitlist-email] RESEND_API_KEY missing; skipping confirmation send for ${normalized}`,
+      );
+      return { alreadyNotified: false };
     }
 
     // Share one from-address variable with src/app/api/brief/send-email/route.ts.
@@ -139,7 +159,7 @@ export async function sendWaitlistConfirmationEmail(email: string): Promise<void
       resend = new Resend(process.env.RESEND_API_KEY);
     } catch (e) {
       console.error("[waitlist-email] resend init failed; skipping send:", e);
-      return;
+      return { alreadyNotified: false };
     }
 
     const result = await resend.emails.send({
@@ -153,7 +173,7 @@ export async function sendWaitlistConfirmationEmail(email: string): Promise<void
 
     if (result.error) {
       console.error("[waitlist-email] resend send error:", result.error);
-      return;
+      return { alreadyNotified: false };
     }
 
     // Only stamp notified_at after a confirmed successful send. The
@@ -170,11 +190,15 @@ export async function sendWaitlistConfirmationEmail(email: string): Promise<void
         updateErr.message,
       );
     }
+
+    // We attempted a send for a first-time confirmer (notified_at was null).
+    return { alreadyNotified: false };
   } catch (e) {
     // Fail-safe: the signup must survive any error here.
     console.error(
       "[waitlist-email] unexpected failure; waitlist signup preserved:",
       e,
     );
+    return { alreadyNotified: false };
   }
 }

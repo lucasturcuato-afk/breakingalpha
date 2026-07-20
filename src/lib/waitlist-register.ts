@@ -2,23 +2,25 @@
  * Shared, server-side waitlist registration.
  *
  * ONE place that every non-approved auth path delegates to so the allowlist
- * check, the waitlist upsert, and the confirmation email never get duplicated
- * or drift between the OAuth callback and the email/password paths.
+ * check and the waitlist upsert never get duplicated or drift between the OAuth
+ * callback and the email/password paths.
+ *
+ * This does NOT send the confirmation email. Sending is deliberately deferred to
+ * /auth/callback (proven email ownership) so that entering a third party's
+ * address at signup cannot cause us to email them. registerWaitlist only ever
+ * captures the row (allowlist check + non-approved upsert).
  *
  * Given an email (and optional name/source):
  *  - checks isAllowlisted against the beta_allowlist. If approved, returns
  *    { approved: true } and does nothing else (never touches the waitlist).
  *  - if NOT approved, upserts the row into public.waitlist tolerating the
  *    unique-email conflict, capturing whether this was a NEW insert or an
- *    existing DUPLICATE, then fires sendWaitlistConfirmationEmail (idempotent
- *    via the notified_at guard, fail-safe: a send failure never throws and
- *    never blocks the waitlist write), and returns
- *    { approved: false, duplicate: boolean }.
+ *    existing DUPLICATE, and returns { approved: false, duplicate: boolean }.
  *
  * Security: this only ever ADDS a non-approved email to the waitlist or reports
- * approved. It never admits anyone. Runs with the service role because
- * public.waitlist is RLS-locked to service_role. Never import this from the
- * client; call it via /api/waitlist/register instead.
+ * approved. It never admits anyone and never emails anyone. Runs with the
+ * service role because public.waitlist is RLS-locked to service_role. Never
+ * import this from the client; call it via /api/waitlist/register instead.
  *
  * Fails closed: if the service client is unavailable or the allowlist read
  * errors, the email is treated as NON-approved (isAllowlisted already fails
@@ -27,7 +29,6 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { isAllowlisted } from "@/lib/allowlist";
-import { sendWaitlistConfirmationEmail } from "@/lib/waitlist-email";
 
 export type WaitlistRegisterResult =
   | { approved: true }
@@ -88,8 +89,8 @@ export async function registerWaitlist(
     if (isUniqueViolation(insertError)) {
       duplicate = true;
     } else {
-      // Do not block on an unexpected insert error; still try the email so an
-      // existing row (if any) is not left un-notified.
+      // Do not block on an unexpected insert error; the row (if any) still
+      // stands and the caller decides the redirect. No email is sent here.
       console.error(
         "[waitlist-register] waitlist insert error:",
         insertError.message,
@@ -97,16 +98,6 @@ export async function registerWaitlist(
     }
   }
 
-  // Idempotent + fail-safe: only sends when a row exists with notified_at null,
-  // and never throws. On a duplicate this no-ops if already notified.
-  try {
-    await sendWaitlistConfirmationEmail(email);
-  } catch (e) {
-    console.error(
-      "[waitlist-register] confirmation email failed (non-blocking):",
-      e,
-    );
-  }
-
+  // No email here. Sending is deferred to /auth/callback (proven ownership).
   return { approved: false, duplicate };
 }
