@@ -29,7 +29,7 @@ import styles from "./landing.module.css";
 // collapses to the final state via the module's global reduce block.
 
 type AuthMode = "signin" | "signup";
-type FieldErrors = { email?: string; password?: string };
+type FieldErrors = { email?: string; password?: string; confirmPassword?: string };
 
 function getSupabase() {
   return createBrowserClient(
@@ -62,7 +62,9 @@ export function WaitlistModal({
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [signupSuccess, setSignupSuccess] = useState(false);
@@ -95,7 +97,9 @@ export function WaitlistModal({
     setMode(initialMode);
     setEmail("");
     setPassword("");
+    setConfirmPassword("");
     setShowPassword(false);
+    setShowConfirmPassword(false);
     setLoading(false);
     setErrors({});
     setSignupSuccess(false);
@@ -175,7 +179,12 @@ export function WaitlistModal({
       const next: FieldErrors = {};
       if (!EMAIL_RE.test(email.trim())) next.email = "Enter a valid email address.";
       if (!password) next.password = "Enter your password.";
-      if (next.email || next.password) {
+      // Confirm password only exists on Create Account. Block the submit (no auth
+      // call) when it does not match.
+      if (mode === "signup" && password && confirmPassword !== password) {
+        next.confirmPassword = "Passwords do not match.";
+      }
+      if (next.email || next.password || next.confirmPassword) {
         setErrors(next);
         return;
       }
@@ -231,7 +240,7 @@ export function WaitlistModal({
         }
       }
     },
-    [email, password, mode],
+    [email, password, confirmPassword, mode],
   );
 
   const handleGoogle = useCallback(async () => {
@@ -434,6 +443,52 @@ export function WaitlistModal({
                     <span className={styles.modalFieldErr}>{errors.password}</span>
                   )}
                 </div>
+
+                {/* Confirm password: Create Account only, never on Sign In. Own
+                    independent show/hide toggle. Renders between Password and the
+                    submit button so tab order is Password, Confirm, submit. */}
+                {!isSignin && (
+                  <div className={styles.modalField}>
+                    <label className={styles.modalLabel} htmlFor="modal-confirm-password">
+                      CONFIRM PASSWORD
+                    </label>
+                    <div className={styles.modalInputWrap}>
+                      <Lock size={15} className={styles.modalInputIcon} aria-hidden="true" />
+                      <input
+                        id="modal-confirm-password"
+                        type={showConfirmPassword ? "text" : "password"}
+                        value={confirmPassword}
+                        onChange={(e) => {
+                          setConfirmPassword(e.target.value);
+                          if (errors.confirmPassword)
+                            setErrors((p) => ({ ...p, confirmPassword: undefined }));
+                        }}
+                        placeholder="Confirm password"
+                        autoComplete="new-password"
+                        aria-invalid={errors.confirmPassword ? true : undefined}
+                        className={cn(
+                          styles.modalInput,
+                          errors.confirmPassword && styles.modalInputErr,
+                        )}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword((v) => !v)}
+                        aria-label={
+                          showConfirmPassword ? "Hide password" : "Show password"
+                        }
+                        className={styles.modalReveal}
+                      >
+                        {showConfirmPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    </div>
+                    {errors.confirmPassword && (
+                      <span className={styles.modalFieldErr}>
+                        {errors.confirmPassword}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 <button
                   type="submit"
