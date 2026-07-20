@@ -22,8 +22,8 @@
  *   flow works before the signalera.ai sending domain is verified. The
  *   notified_at read still runs first, so alreadyNotified stays correct locally.
  *
- * Never call this from the client. The Resend init mirrors
- * src/app/api/brief/send-email/route.ts.
+ * The from address is WAITLIST_FROM_EMAIL (account/access mail), NOT the briefs
+ * sender EMAIL_FROM_ADDRESS. Never call this from the client.
  */
 
 import { Resend } from "resend";
@@ -61,6 +61,20 @@ function makeServiceClient(): SupabaseClient | null {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return null;
   return createClient(url, key, { auth: { persistSession: false } });
+}
+
+/**
+ * Resolve the waitlist from-header. Reads WAITLIST_FROM_EMAIL so account/access
+ * mail is separable from the briefs sender (EMAIL_FROM_ADDRESS). Defaults to
+ * "Signalera <hello@signalera.ai>" when unset. A bare address is wrapped with
+ * the Signalera display name; a value that already carries a display name (has a
+ * "<") is used as-is.
+ */
+function resolveWaitlistFrom(): string {
+  const raw = process.env.WAITLIST_FROM_EMAIL?.trim();
+  if (!raw) return "Signalera <hello@signalera.ai>";
+  if (raw.includes("<")) return raw;
+  return `Signalera <${raw}>`;
 }
 
 function renderHtml(): string {
@@ -148,11 +162,9 @@ export async function sendWaitlistConfirmationEmail(
       return { alreadyNotified: false };
     }
 
-    // Share one from-address variable with src/app/api/brief/send-email/route.ts.
-    // EMAIL_FROM_ADDRESS is the canonical var set in Vercel; keep a local-dev
-    // fallback default.
-    const from =
-      process.env.EMAIL_FROM_ADDRESS ?? "Signalera <noreply@signalera.ai>";
+    // Account/access mail uses WAITLIST_FROM_EMAIL, separable from the briefs
+    // sender (EMAIL_FROM_ADDRESS). Defaults to hello@signalera.ai when unset.
+    const from = resolveWaitlistFrom();
 
     let resend: Resend;
     try {
