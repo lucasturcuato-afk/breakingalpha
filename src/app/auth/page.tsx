@@ -48,16 +48,15 @@ export default function AuthPage() {
         // approved, sign out and route to /waitlist. Fails closed (isAllowlisted
         // returns false on any query error). RLS allowlist_read_self lets this
         // authenticated browser client read its own row.
+        // The approval DECISION comes from the authenticated user's OWN read
+        // (RLS allowlist_read_self), NOT the register endpoint body. If not
+        // approved: register (ensure a waitlist row + our email, idempotent,
+        // body ignored), sign out, and route to /waitlist.
         const approved = await isAllowlisted(supabase, email);
         if (!approved) {
+          await postWaitlistRegister(email, "auth_signin");
           await supabase.auth.signOut();
-          // Additionally register so the non-approved sign-in produces a
-          // waitlist row + our email (idempotent, so no double email). A
-          // duplicate routes to the already-on-the-list variant.
-          const reg = await postWaitlistRegister(email, "auth_signin");
-          window.location.href = reg?.duplicate
-            ? "/waitlist?existing=1"
-            : "/waitlist";
+          window.location.href = "/waitlist";
         } else {
           window.location.href = "/dashboard";
         }
@@ -75,19 +74,14 @@ export default function AuthPage() {
         setError(signUpError.message);
         setLoading(false);
       } else {
-        // Register immediately so a non-approved signup gets a waitlist row +
-        // our email regardless of whether Supabase ever delivers its
-        // confirmation link. If approved, let the normal confirm flow proceed;
-        // if not, route straight to /waitlist.
-        const reg = await postWaitlistRegister(email, "auth_signup");
-        if (reg && !reg.approved) {
-          window.location.href = reg.duplicate
-            ? "/waitlist?existing=1"
-            : "/waitlist";
-        } else {
-          setSignupSuccess(true);
-          setLoading(false);
-        }
+        // Register so a non-approved signup gets a waitlist row + our email
+        // regardless of whether Supabase ever delivers its confirmation link.
+        // IGNORE the endpoint body (it never reveals approval) and ALWAYS show
+        // "check your email". A non-approved user is routed to /waitlist later,
+        // in /auth/callback, after they click the Supabase confirmation link.
+        await postWaitlistRegister(email, "auth_signup");
+        setSignupSuccess(true);
+        setLoading(false);
       }
     }
   }

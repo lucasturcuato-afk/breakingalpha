@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import type { NextRequest } from "next/server";
 import { checkFixedWindow, clientKeyFromHeaders } from "@/lib/rate-limit";
 import { registerWaitlist } from "@/lib/waitlist-register";
@@ -8,12 +8,21 @@ import { registerWaitlist } from "@/lib/waitlist-register";
 // a non-approved sign-in so a non-approved user gets a waitlist row + our email
 // immediately, independent of Supabase's confirmation-link delivery.
 //
-// Safe to call from the client: it only ever adds a NON-approved email to the
-// waitlist or reports approved. It never admits anyone. The allowlist gate and
-// service-role writes live entirely server-side in registerWaitlist.
+// Safe to call from the client, and it does NOT leak allowlist membership: the
+// response body and status are a CONSTANT { ok: true } / 200 regardless of
+// whether the email is approved, non-approved-new, or non-approved-duplicate.
+// An unauthenticated caller therefore cannot enumerate the private beta from
+// this endpoint. The allowlist gate and service-role writes live entirely
+// server-side in registerWaitlist; the endpoint simply stops forwarding the
+// status to the caller.
 //
-// A coarse per-IP fixed-window throttle limits enumeration of allowlist
-// membership from the { approved } response.
+// Timing is status-independent: registerWaitlist (allowlist read + the
+// non-approved upsert + the idempotent confirmation email) runs as post-response
+// work via after(), so the response returns immediately in both cases and
+// latency does not vary by allowlist status. after() keeps the function alive
+// until the write completes, so the waitlist row + email still reliably happen.
+//
+// A coarse per-IP fixed-window throttle stays in place as a general abuse guard.
 const REGISTER_RATE_LIMIT = 20;
 const REGISTER_RATE_WINDOW_MS = 60_000;
 
@@ -44,6 +53,18 @@ export async function POST(request: NextRequest) {
   const name = typeof body.name === "string" ? body.name : null;
   const source = typeof body.source === "string" ? body.source : "waitlist_register";
 
-  const result = await registerWaitlist({ email, name, source });
-  return NextResponse.json(result);
+  // Run the full register (allowlist read + non-approved upsert + email) after
+  // the response so it never varies response timing by allowlist status. after()
+  // keeps the serverless function alive until this completes, so the write and
+  // email still reliably happen. Never surface the { approved, duplicate }
+  // result to the caller: the body is a constant regardless of status.
+  after(async () => {
+    try {
+      await registerWaitlist({ email, name, source });
+    } catch (e) {
+      console.error("[waitlist-register] post-response register failed:", e);
+    }
+  });
+
+  return NextResponse.json({ ok: true });
 }

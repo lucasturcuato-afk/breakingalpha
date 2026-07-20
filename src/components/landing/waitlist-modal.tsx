@@ -194,16 +194,16 @@ export function WaitlistModal({
           setLoading(false);
         } else {
           // Password sign-in mints a session without ever hitting the OAuth
-          // callback gate. Mirror /auth: if not approved, sign out and route to
-          // /waitlist, and additionally register so the non-approved sign-in
-          // produces a waitlist row + our email (idempotent, no double email).
+          // callback gate. The approval DECISION comes from the authenticated
+          // user's OWN read (RLS allowlist_read_self lets this session read its
+          // own beta_allowlist row), NOT from the register endpoint body. If not
+          // approved: register (fire the endpoint to ensure a waitlist row + our
+          // email, idempotent, body ignored), sign out, and route to /waitlist.
           const approved = await isAllowlisted(supabase, email);
           if (!approved) {
+            await postWaitlistRegister(email, "landing_signin");
             await supabase.auth.signOut();
-            const reg = await postWaitlistRegister(email, "landing_signin");
-            window.location.href = reg?.duplicate
-              ? "/waitlist?existing=1"
-              : "/waitlist";
+            window.location.href = "/waitlist";
           } else {
             window.location.href = "/dashboard";
           }
@@ -220,19 +220,14 @@ export function WaitlistModal({
           setErrors(routeError(error.message));
           setLoading(false);
         } else {
-          // Register immediately so a non-approved signup gets a waitlist row +
-          // our email regardless of whether Supabase ever delivers its
-          // confirmation link. If approved, let the normal confirm flow proceed
-          // (show "Check your email"); if not, route straight to /waitlist.
-          const reg = await postWaitlistRegister(email, "landing_signup");
-          if (reg && !reg.approved) {
-            window.location.href = reg.duplicate
-              ? "/waitlist?existing=1"
-              : "/waitlist";
-          } else {
-            setSignupSuccess(true);
-            setLoading(false);
-          }
+          // Register so a non-approved signup gets a waitlist row + our email
+          // regardless of whether Supabase ever delivers its confirmation link.
+          // IGNORE the endpoint body (it never reveals approval) and ALWAYS show
+          // "check your email". A non-approved user is routed to /waitlist later,
+          // in /auth/callback, after they click the Supabase confirmation link.
+          await postWaitlistRegister(email, "landing_signup");
+          setSignupSuccess(true);
+          setLoading(false);
         }
       }
     },
