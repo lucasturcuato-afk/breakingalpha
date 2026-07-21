@@ -3500,10 +3500,12 @@ def _enrichment_sourced_entities(tape):
     if not isinstance(tape, dict):
         return out
     view = _enrichment_view(tape)
+    _has_sector_field = False
     for key in ("sector_leaders", "sector_laggards"):
         for s in (view.get(key) or []):
             if not isinstance(s, dict):
                 continue
+            _has_sector_field = True
             nm = (s.get("sector") or s.get("name") or s.get("label") or "").strip().lower()
             if nm:
                 out.add(nm)
@@ -3513,6 +3515,15 @@ def _enrichment_sourced_entities(tape):
             sym = str(s.get("symbol") or "").strip().lower()
             if sym:
                 out.add(sym)
+    # The GENERIC aggregate reference to the sector-ETF proxy ("Sector ETFs",
+    # "sector ETF") is sourced by the enrichment whenever it actually carries the
+    # sector-ETF field. It names the ETF proxy itself, not a company, so it is NOT
+    # a hallucinated entity. Added ONLY when a real sector field is present (still
+    # derived from inputs, never a blanket allow); on a tape with no sector proxy
+    # the phrase stays flagged. This kills the recurring "Sector ETFs" false
+    # positive that forced minimal_template on Jul 16 / 18 / 20.
+    if _has_sector_field:
+        out.update({"sector etfs", "sector etf"})
     # Oil symbol + name, only when the enrichment actually carries oil.
     wti = view.get("wti")
     if isinstance(wti, dict) and (wti.get("level") is not None or wti.get("pct") is not None):
@@ -3567,6 +3578,64 @@ def _validate_pulse_grounding_enriched(narrative, tape, macro_strip, top_stories
         "unsourced_figures": kept_figs,
         "reasons": reasons,
     }
+
+
+def _pulse_sentence_violation_kinds(sentence, tape, macro_strip, top_stories):
+    """The set of grounding-violation kinds a SINGLE pulse sentence carries, run
+    with the SAME four checks + the SAME enrichment-forgiveness the whole-hero gate
+    uses: enriched entities, unsourced figures, and unattributed sector-breadth.
+    The tape-DIRECTION check is deliberately EXCLUDED here: it is a NET, whole-
+    narrative claim (dominant direction), not a per-sentence one, so evaluating it
+    sentence-by-sentence would false-flag a lone opposite word. Direction stays a
+    whole-hero gate; the strip only targets sentence-local entity/figure/sector
+    faults. Returns a set of strings (empty = the sentence is clean). Pure."""
+    kinds = set()
+    _v = _validate_pulse_grounding_enriched(sentence, tape, macro_strip, top_stories)
+    if _v.get("unsupported_entities"):
+        kinds.add("entity")
+    if _v.get("unsourced_figures"):
+        kinds.add("figure")
+    if _pulse_sector_attribution_violation(sentence, tape):
+        kinds.add("sector")
+    if _pulse_breadth_violation(sentence, tape):
+        kinds.add("breadth")
+    return kinds
+
+
+def _repair_pulse_hero(narrative, tape, macro_strip, top_stories,
+                       final_corpus_companies, brief_type):
+    """STRIP-OR-REPAIR: remove ONLY the sentence(s) that carry an entity / figure /
+    sector-attribution / breadth violation, keep the rest of the V2 hero, and ship
+    the result ONLY if it re-passes the FULL grounding gate (opening + enriched
+    grounding + breadth + sector-attribution). The gate is NOT weakened: a genuine
+    hallucination in a strippable sentence is removed (not shipped), and a sentence
+    whose removal cannot clear the gate (or a violation in the lead sentence) yields
+    None so the caller falls to the minimal template. Returns (repaired_text, dropped
+    list) or (None, dropped). Pure aside from the deterministic checks it calls."""
+    dropped: list[str] = []
+
+    def _is_viol(sent):
+        kinds = _pulse_sentence_violation_kinds(sent, tape, macro_strip, top_stories)
+        if kinds:
+            dropped.append(sent.strip())
+        return bool(kinds)
+
+    repaired = overview_grounding.strip_pulse_violations(narrative, _is_viol)
+    if not repaired:
+        return None, dropped
+    # Re-validate the SURVIVING hero through the same full gate. Direction is a
+    # whole-narrative claim and IS re-checked here (it was excluded per-sentence).
+    ok = bool(
+        overview_grounding.validate_pulse_opening(
+            repaired, final_corpus_companies, brief_type)["ok"]
+        and _validate_pulse_grounding_enriched(
+            repaired, tape, macro_strip, top_stories)["ok"]
+        and not _pulse_breadth_violation(repaired, tape)
+        and not _pulse_sector_attribution_violation(repaired, tape)
+    )
+    if not ok:
+        return None, dropped
+    return repaired, dropped
 
 
 # Headline figure guard (gap 5). The V2 pulse figure guard covers the narrative
@@ -4721,15 +4790,39 @@ def run(brief_type="morning"):
                             )
                             print("  [pulse grounding] re-ask resolved violations")
                         else:
-                            _candidate = overview_grounding.build_minimal_overview(
-                                tape_obj, _best_title, today_catalyst=_today_catalyst
+                            # STRIP-OR-REPAIR before conceding to the minimal template:
+                            # the gate is BINARY, so one bad clause nuked the entire
+                            # enriched hero. Remove ONLY the offending sentence(s) from
+                            # the primary V2 narrative and keep the rest, but ONLY ship
+                            # it if the survivor re-passes the FULL gate. Fall to the
+                            # minimal template only when the hero is unsalvageable (lead
+                            # sentence is the violation, or the strip cannot clear the
+                            # gate). Grounding is NOT weakened: the offending clause is
+                            # dropped, never shipped.
+                            _repaired, _dropped = _repair_pulse_hero(
+                                _candidate, tape_obj, _pulse_macro, _pulse_stories,
+                                _final_corpus_companies, brief_type,
                             )
-                            _pulse_shipped_path = "minimal_template"
-                            _enrichment_in_shipped = bool(
-                                overview_grounding._minimal_enrichment_bits(tape_obj)
-                                or _today_catalyst
-                            )
-                            print("  [pulse grounding] re-ask still violating; using minimal grounded template (enrichment- and macro-aware)")
+                            if _repaired:
+                                if _dropped:
+                                    print("  [pulse grounding] strip-or-repair dropped clause(s): "
+                                          + " | ".join(_dropped))
+                                _candidate = _repaired
+                                _pulse_shipped_path = "v2_repaired"
+                                _enrichment_in_shipped = _narrative_carries_enrichment(
+                                    _candidate, tape_obj, _today_catalyst
+                                )
+                                print("  [pulse grounding] strip-or-repair salvaged the V2 hero (offending clause removed, rest kept)")
+                            else:
+                                _candidate = overview_grounding.build_minimal_overview(
+                                    tape_obj, _best_title, today_catalyst=_today_catalyst
+                                )
+                                _pulse_shipped_path = "minimal_template"
+                                _enrichment_in_shipped = bool(
+                                    overview_grounding._minimal_enrichment_bits(tape_obj)
+                                    or _today_catalyst
+                                )
+                                print("  [pulse grounding] hero unsalvageable (lead-sentence violation or strip still fails gate); using minimal grounded template (enrichment- and macro-aware)")
                     else:
                         _pulse_shipped_path = "v2_primary"
                         _enrichment_in_shipped = _narrative_carries_enrichment(
