@@ -461,6 +461,81 @@ def validate_pulse_grounding(narrative: str, tape: dict | None, macro_strip: str
     }
 
 
+# ── Strip-or-repair (salvage the enriched hero over one bad clause) ───────────
+# The grounding gate is BINARY: one ungrounded entity/figure/clause anywhere
+# forces the WHOLE enriched V2 hero down to build_minimal_overview, discarding
+# good causal prose over a single bad sentence. strip_pulse_violations lets the
+# caller REMOVE only the offending sentence(s) and keep the rest, falling back to
+# the minimal template ONLY when the hero is unsalvageable. This function is the
+# PURE text surgery: it takes a per-sentence "is this sentence a violation"
+# predicate (the caller owns it, since the four checks live across two modules)
+# and returns the repaired narrative or None. It never invents text; it only
+# deletes whole sentences. The gate is NOT weakened: the caller re-validates the
+# repaired text through the SAME full grounding gate before shipping it.
+
+# Sentence tokenizer that KEEPS the terminator + trailing space, so reassembly is
+# lossless. Splits on the SAME boundary as _SENT_SPLIT (a run of ./!/? FOLLOWED by
+# whitespace or end-of-string), so a decimal ("0.4%") or an abbreviation dot mid-
+# token is NOT a boundary. A capturing split keeps the delimiter attached to its
+# sentence. Pure.
+_SENT_BOUNDARY = re.compile(r"([.!?]+(?:\s+|$))")
+
+
+def _split_sentences_keep(paragraph: str) -> list[str]:
+    """Split ONE paragraph into sentences, each retaining its trailing terminator
+    and spacing, so ''.join(parts) reproduces the paragraph. A ./!/? not followed
+    by whitespace (a decimal point, a mid-token dot) is NOT a boundary. Pure."""
+    if not isinstance(paragraph, str) or not paragraph:
+        return []
+    pieces = _SENT_BOUNDARY.split(paragraph)
+    out: list[str] = []
+    # split() with one capture group yields [text, delim, text, delim, ..., tail].
+    for i in range(0, len(pieces), 2):
+        body = pieces[i]
+        delim = pieces[i + 1] if i + 1 < len(pieces) else ""
+        sent = body + delim
+        if sent:
+            out.append(sent)
+    return out
+
+
+def strip_pulse_violations(narrative: str, is_violation) -> str | None:
+    """Remove ONLY the sentences for which is_violation(sentence_text) is True,
+    keeping every clean sentence and the paragraph structure. Returns the repaired
+    narrative, or None when the hero is UNSALVAGEABLE, defined as:
+      - the very FIRST sentence of the FIRST paragraph is a violation (that is the
+        lead/causal market read; losing it guts the hero), or
+      - the repair leaves the narrative empty / with no first-paragraph content.
+    is_violation must be a pure callable str -> bool. This function performs NO
+    validation itself; the caller re-runs the full grounding gate on the result.
+    Pure, never raises on well-formed input."""
+    if not isinstance(narrative, str) or not narrative.strip():
+        return None
+    paras = narrative.strip().split("\n\n")
+    kept_paras: list[str] = []
+    for pi, para in enumerate(paras):
+        sents = _split_sentences_keep(para)
+        if not sents:
+            continue
+        kept_sents: list[str] = []
+        for si, sent in enumerate(sents):
+            core = sent.strip()
+            if not core:
+                continue
+            if is_violation(core):
+                # Lead sentence of the lead paragraph is unsalvageable.
+                if pi == 0 and si == 0:
+                    return None
+                continue
+            kept_sents.append(sent)
+        if kept_sents:
+            kept_paras.append("".join(kept_sents).strip())
+    if not kept_paras or not kept_paras[0].strip():
+        return None
+    repaired = "\n\n".join(p for p in kept_paras if p.strip()).strip()
+    return repaired or None
+
+
 # ── Minimal grounded fallback ────────────────────────────────────────────────
 
 def _fmt_pct(pct) -> str | None:
