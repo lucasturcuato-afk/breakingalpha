@@ -2974,13 +2974,21 @@ def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None,
         "- LEVER 3c - SECTOR IS AN ETF-MOVE PROXY, NEVER SECTOR-WIDE BREADTH: the "
         "sector figures are SECTOR-ETF DAY MOVES, a leadership PROXY. An ETF gain can "
         "ride one megacap, so you have NO evidence the whole sector participated. "
-        "Therefore EVERY sector mention MUST be ATTRIBUTED to the ETF move: write 'tech "
-        "ETFs led', 'energy ETFs lagged', 'the technology ETF (XLK) outperformed', or "
-        "'sector ETFs point to tech leadership'. FORBIDDEN: asserting the sector itself "
-        "moved as a group - never 'technology led', 'energy lagged', 'the tech sector "
-        "rallied', 'financials were strong', 'broad tech strength', 'tech names broadly "
-        "rose'. A bare sector name as the SUBJECT of a move verb is a breadth claim you "
-        "cannot support. Keep the ETF as the subject of any sector sentence.\n"
+        "ATTRIBUTE ONCE, THEN SPEAK NATURALLY: name the ETF proxy a SINGLE time to "
+        "carry the attribution, then read the rotation in plain words - do NOT tag "
+        "every sector with 'ETFs' (that reads like a data field narrated aloud). "
+        "PREFERRED shape: 'Energy ETFs led (+0.45%) while health care lagged (-1.14%)' "
+        "- one 'ETFs', the rest of the coordinated clause is honest because the ETF "
+        "attribution governs it. Also fine: 'the technology ETF (XLK) outperformed', "
+        "'sector ETFs point to tech leadership'. FORBIDDEN (a real breadth claim the "
+        "proxy cannot support, banned even alongside an 'ETFs' mention): any sentence "
+        "asserting the sector's CONSTITUENTS moved as a group - never 'energy stocks "
+        "broadly rallied', 'tech names broadly rose', 'broad tech strength', "
+        "'financials rallied across the board', 'sector-wide participation'. The tell "
+        "is a breadth word ('broadly', 'stocks', 'names', 'across the board', "
+        "'sector-wide', 'participation'): if it is present you have made a breadth "
+        "claim. Keep the read to the ETF's day move; never upgrade a proxy into "
+        "breadth.\n"
         "- LEVER 4 - VOICE: plain, short, one analyst. No jargon for sport, no throat-"
         "clearing, no AI hedging. Shape: 3-4 short paragraphs - (1) tape + why (with the "
         "no-catalyst clause when there is none), (2) internals + rates/oil + SECTOR "
@@ -3379,6 +3387,24 @@ _SECTOR_MOVE_TERMS = (
 # Attribution tokens: 'ETF' / 'ETFs' (any case) or an SPDR sector ticker (XLK,
 # XLF, ... XLRE). Presence within the match window makes the claim attributed.
 _SECTOR_ATTR_RE = re.compile(r"\bETFs?\b|\bXL[A-Z]{1,2}\b", re.IGNORECASE)
+# BREADTH MARKERS: words that assert the whole sector's CONSTITUENTS moved as a
+# group (real sector-wide breadth), NOT the ETF proxy. When any of these sits in
+# the SAME sentence as a sector-move span, the claim is a genuine breadth
+# assertion the ETF proxy cannot support - it VIOLATES even if an 'ETFs' token
+# also appears in the sentence ('tech ETFs led as technology stocks broadly
+# rallied' is still a breadth claim). This is the hard floor that keeps the
+# single-attribution relaxation below from ever accepting real breadth.
+# NOTE: intentionally NARROW. "names"/"shares" are idiomatic single-focus
+# references ("large-cap growth names", "the chip names") and would false-flag an
+# attributed, honest read; they are OMITTED. The markers kept are the ones that
+# ONLY read as a whole-sector-constituents claim. "broadly" alone still catches
+# the classic "tech names broadly rose" / "energy stocks broadly rallied".
+_SECTOR_BREADTH_MARKER_RE = re.compile(
+    r"\b(?:broadly|broad-based|broad based|across the board|sector-wide|"
+    r"sector wide|constituents|sector participation|broad participation|"
+    r"participated broadly|en masse|wholesale|whole sector|entire sector)\b",
+    re.IGNORECASE,
+)
 _SECTOR_CLAIM_RES = [
     re.compile(
         r"\b" + re.escape(term) + r"\b[^.;]{0,40}?\b(?:" + _SECTOR_MOVE_TERMS + r")\b",
@@ -3401,10 +3427,32 @@ def _tape_has_sector_field(tape):
     return False
 
 
+def _sentence_bounds(text, pos):
+    """[start, end) of the sentence in `text` that contains index `pos`. Splits on
+    ./!/? followed by whitespace, matching overview_grounding's boundary. Pure."""
+    start = 0
+    for m in re.finditer(r"[.!?]+(?:\s+|$)", text):
+        if m.end() <= pos:
+            start = m.end()
+        elif m.start() >= pos:
+            return start, m.end()
+    return start, len(text)
+
+
 def _narrative_unattributed_sector_claims(narrative):
-    """Sector-as-group move claims in the narrative that carry NO ETF attribution
-    within the matched clause. Returns the offending spans (deduped, lowercased).
-    Empty when every sector mention is either absent or ETF-attributed. Pure."""
+    """Sector-as-group move claims that assert the sector moved as a group WITHOUT
+    honest ETF attribution. Returns the offending spans (deduped, lowercased);
+    empty when every sector mention is attributed or absent.
+
+    ATTRIBUTE-ONCE (the #468 phrasing was clumsy: it forced 'ETFs' onto EVERY
+    sector, yielding 'Energy ETFs led while Health Care ETFs lagged'). A sector
+    move now reads as attributed when the ETF proxy is named EITHER in the local
+    window OR anywhere in the SAME sentence - so 'Energy ETFs led (+0.45%) while
+    health care lagged (-1.14%)' passes on the single leading 'ETFs'. The gate is
+    NOT loosened into accepting real breadth: a BREADTH MARKER ('broadly',
+    'stocks', 'names', 'across the board', ...) in the sentence is a HARD violation
+    regardless of any ETF token, so 'energy stocks broadly rallied' and 'tech ETFs
+    led as technology stocks broadly rose' both still VIOLATE. Pure."""
     if not isinstance(narrative, str) or not narrative.strip():
         return []
     seen, out = set(), []
@@ -3416,8 +3464,17 @@ def _narrative_unattributed_sector_claims(narrative):
             start = max(0, m.start() - 12)
             end = min(len(narrative), m.end() + 24)
             window = narrative[start:end]
-            if _SECTOR_ATTR_RE.search(window):
-                continue  # attributed to the ETF move - honest
+            s_start, s_end = _sentence_bounds(narrative, m.start())
+            sentence = narrative[s_start:s_end]
+            # HARD FLOOR: a breadth marker in the sentence is a genuine sector-wide
+            # breadth claim the ETF proxy cannot support - always a violation, even
+            # when an 'ETFs' token also appears (it does not launder the breadth).
+            breadth_asserted = bool(_SECTOR_BREADTH_MARKER_RE.search(sentence))
+            if not breadth_asserted and (
+                _SECTOR_ATTR_RE.search(window)
+                or _SECTOR_ATTR_RE.search(sentence)
+            ):
+                continue  # attributed to the ETF move (locally or once per sentence)
             key = " ".join(span.split()).strip().lower()
             if key not in seen:
                 seen.add(key)
@@ -4721,6 +4778,7 @@ def run(brief_type="morning"):
                                 _v2 = overview_grounding.build_minimal_overview(
                                     tape_obj, (_lead_title or data.get("headline") or ""),
                                     today_catalyst=_today_catalyst,
+                                    sentiment_word=(_mp or {}).get("sentiment_word"),
                                 )
                                 _pulse_v2_ok = False
                                 _pulse_shipped_path = "minimal_template"
@@ -4815,7 +4873,8 @@ def run(brief_type="morning"):
                                 print("  [pulse grounding] strip-or-repair salvaged the V2 hero (offending clause removed, rest kept)")
                             else:
                                 _candidate = overview_grounding.build_minimal_overview(
-                                    tape_obj, _best_title, today_catalyst=_today_catalyst
+                                    tape_obj, _best_title, today_catalyst=_today_catalyst,
+                                    sentiment_word=(_mp or {}).get("sentiment_word"),
                                 )
                                 _pulse_shipped_path = "minimal_template"
                                 _enrichment_in_shipped = bool(
@@ -4861,7 +4920,8 @@ def run(brief_type="morning"):
                                 print("  [grounding post-check] re-ask resolved all violations")
                             else:
                                 _candidate = overview_grounding.build_minimal_overview(
-                                    tape_obj, _best_title, today_catalyst=_today_catalyst
+                                    tape_obj, _best_title, today_catalyst=_today_catalyst,
+                                    sentiment_word=(_mp or {}).get("sentiment_word"),
                                 )
                                 _pulse_shipped_path = "minimal_template"
                                 _enrichment_in_shipped = bool(
@@ -4871,7 +4931,8 @@ def run(brief_type="morning"):
                                 print("  [grounding post-check] re-ask still violating; using minimal grounded template (enrichment- and macro-aware)")
                         else:
                             _candidate = overview_grounding.build_minimal_overview(
-                                tape_obj, _best_title, today_catalyst=_today_catalyst
+                                tape_obj, _best_title, today_catalyst=_today_catalyst,
+                                sentiment_word=(_mp or {}).get("sentiment_word"),
                             )
                             _pulse_shipped_path = "minimal_template"
                             _enrichment_in_shipped = bool(
