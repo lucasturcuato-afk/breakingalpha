@@ -211,6 +211,7 @@ export function OpeningScreen() {
   const [closing, setClosing] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"signin" | "signup">("signup");
+  const [modalEmail, setModalEmail] = useState("");
   const forcedDarkRef = useRef(false);
   const landingRef = useRef<HTMLDivElement>(null);
 
@@ -278,10 +279,20 @@ export function OpeningScreen() {
   // reuses the same auth primitives and /auth/callback still enforces the gate.
   const openSignin = useCallback(() => {
     setModalMode("signin");
+    setModalEmail("");
     setModalOpen(true);
   }, []);
   const openWaitlist = useCallback(() => {
     setModalMode("signup");
+    setModalEmail("");
+    setModalOpen(true);
+  }, []);
+  // The bottom inline waitlist form opens this SAME modal on the Create Account
+  // tab. If the visitor typed an email into that field first, we prefill it into
+  // the modal; if not, the modal opens with an empty email field.
+  const onJoinWaitlist = useCallback((email: string) => {
+    setModalMode("signup");
+    setModalEmail(email);
     setModalOpen(true);
   }, []);
   const themeLabel = mounted ? `◐ THEME · ${theme.toUpperCase()}` : "◐ THEME";
@@ -333,7 +344,7 @@ export function OpeningScreen() {
         <MarketReadSection reduced={reduced} />
         <SurfacesSection />
         <UniversitySection />
-        <WaitlistSection />
+        <WaitlistSection onJoinWaitlist={onJoinWaitlist} />
         <SiteFooter />
       </div>
 
@@ -341,6 +352,7 @@ export function OpeningScreen() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         initialMode={modalMode}
+        initialEmail={modalEmail}
       />
     </div>
   );
@@ -1220,19 +1232,16 @@ function UniversitySection() {
 }
 
 // --- final waitlist (inline form) -------------------------------------------
-function WaitlistSection() {
+// The field stays as an affordance, but this form no longer confirms anything on
+// its own. Submitting (button click or Enter) opens the SAME shared modal on the
+// Create Account tab, prefilled with whatever the visitor typed here. Validation
+// and the actual account/waitlist write now live in the modal, not here.
+function WaitlistSection({ onJoinWaitlist }: { onJoinWaitlist: (email: string) => void }) {
   const [email, setEmail] = useState("");
-  const [joined, setJoined] = useState(false);
-  const [emailErr, setEmailErr] = useState(false);
 
   const onJoin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (/\S+@\S+\.\S+/.test(email)) {
-      setJoined(true);
-      setEmailErr(false);
-    } else {
-      setEmailErr(true);
-    }
+    onJoinWaitlist(email);
   };
 
   return (
@@ -1248,28 +1257,18 @@ function WaitlistSection() {
           </div>
         </div>
         <div>
-          {!joined ? (
-            <>
-              <form onSubmit={onJoin} className={styles.waitlistForm}>
-                <input
-                  type="email"
-                  placeholder="you@email.com"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    if (emailErr) setEmailErr(false);
-                  }}
-                  className={styles.waitlistInput}
-                />
-                <button type="submit" className={styles.btnPrimary}>
-                  Join the waitlist
-                </button>
-              </form>
-              {emailErr && <div className={styles.waitlistErr}>enter a valid email address</div>}
-            </>
-          ) : (
-            <div className={styles.waitlistJoined}>{"✓"} you&apos;re on the list. we&apos;ll be in touch before the open.</div>
-          )}
+          <form onSubmit={onJoin} className={styles.waitlistForm}>
+            <input
+              type="email"
+              placeholder="you@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className={styles.waitlistInput}
+            />
+            <button type="submit" className={styles.btnPrimary}>
+              Join the waitlist
+            </button>
+          </form>
         </div>
       </div>
     </section>

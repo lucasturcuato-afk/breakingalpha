@@ -52,10 +52,12 @@ export function WaitlistModal({
   open,
   onClose,
   initialMode = "signup",
+  initialEmail = "",
 }: {
   open: boolean;
   onClose: () => void;
   initialMode?: AuthMode;
+  initialEmail?: string;
 }) {
   const [mounted, setMounted] = useState(false);
   const [shown, setShown] = useState(false);
@@ -72,12 +74,21 @@ export function WaitlistModal({
   const panelRef = useRef<HTMLDivElement>(null);
   const firstFieldRef = useRef<HTMLInputElement>(null);
   const onCloseRef = useRef(onClose);
+  const initialEmailRef = useRef(initialEmail);
   const reducedRef = useRef(false);
 
   // Keep the latest onClose in a ref so the focus/scroll effect below does not
   // re-run (and thrash focus) when the parent passes a new inline callback.
   useEffect(() => {
     onCloseRef.current = onClose;
+  });
+
+  // Keep the latest initialEmail in a ref so the on-open reset effect can read
+  // it fresh at the open transition WITHOUT taking it as a dependency. That way
+  // a parent re-render passing a new prop while the modal stays open does not
+  // clobber what the user has typed into the modal's own email field.
+  useEffect(() => {
+    initialEmailRef.current = initialEmail;
   });
 
   useEffect(() => {
@@ -95,7 +106,7 @@ export function WaitlistModal({
   useEffect(() => {
     if (!open) return;
     setMode(initialMode);
-    setEmail("");
+    setEmail(initialEmailRef.current ?? "");
     setPassword("");
     setConfirmPassword("");
     setShowPassword(false);
