@@ -196,5 +196,66 @@ class MegaDealRelaxTests(unittest.TestCase):
         self.assertIn(url, ir.confirmed_mega_deal_urls(deal_rows, arts))
 
 
+class TestAnalystRatingBar(unittest.TestCase):
+    """L1: analyst rating / price-target stories are barred from LEADING."""
+
+    ANALYST_TITLES = [
+        "UBS raises Micron stock price target on strong free cash flow outlook",
+        "UBS lowers Walt Disney stock price target on fiscal outlook",
+        "Jefferies raises Arm Holdings stock price target on AI chip demand",
+        "BMO downgrades Charles Schwab stock rating on valuation concerns",
+        "CLSA initiates Adobe stock coverage with outperform rating",
+        "Textron (NYSE:TXT) Upgraded by Wall Street Zen to Buy Rating",
+        "GPN Upgraded by Morgan Stanley -- Price Target Raised to $100",
+        "DDOG Maintained by Oppenheimer -- Price Target Raised to $300",
+        "Oppenheimer reiterates Veeva Systems stock rating at Outperform",
+        "Roblox Corporation (NYSE:RBLX) Given Average Rating of \"Moderate Buy\" by Analysts",
+    ]
+    # Company-own-guidance / non-analyst titles that must NOT be flagged.
+    NOT_ANALYST_TITLES = [
+        "IREN stock jumps 7% on $2.8bn AI contracts, raises ARR target",
+        "What Levi Strauss (LEVI)'s Upgraded Outlook and Higher Dividend Means For Shareholders",
+        "Strategy (MSTR) Maintains Bitcoin Holdings While Raising Cash Reserves",
+        "Taiwan Stocks Attempt to Recover from 2-Month Low",
+        "Micron (MU) Reaches $1 Trillion Value As Auto AI Deals Deepen",
+        "Micron Explores Strategic Deal to Stabilize Revenue",
+        "Planet Fitness (PLNT) Announces Acquisition of Bravo Fitness for $2B",
+        "UBS: Micron could repurchase more than 40% of shares by 2028",
+    ]
+
+    def test_detector_matches_analyst_pt(self):
+        for t in self.ANALYST_TITLES:
+            self.assertTrue(ir.is_analyst_rating_lead({"title": t}),
+                            f"should flag analyst-PT: {t}")
+
+    def test_detector_ignores_company_guidance(self):
+        for t in self.NOT_ANALYST_TITLES:
+            self.assertFalse(ir.is_analyst_rating_lead({"title": t}),
+                             f"should NOT flag: {t}")
+
+    def test_analyst_pt_barred_from_lead_but_stays_in_pool(self):
+        # A cluster whose top article is analyst-PT falls back to its best non-PT
+        # member; the served lead is never an analyst-PT story.
+        pt = art("UBS raises Micron stock price target on strong free cash flow outlook",
+                 "Google News (UBS)", rel=10, hours_ago=1, companies=["Micron"])
+        alt = art("Micron says memory chip supply will stay tight beyond 2027",
+                  "Yahoo", rel=7, hours_ago=2, companies=["Micron"])
+        macro = [art(f"Fed holds rates, signals hawkish path (v{i})", f"Src{i}",
+                     rel=9, hours_ago=3) for i in range(6)]
+        pool = [pt, alt] + macro
+        res = ir.compute_lead(pool, NOW, mega_deal_urls=set())
+        self.assertFalse(ir.is_analyst_rating_lead(res["article"]),
+                         "lead must not be an analyst-PT story")
+        # The barred story is still in the pool as an ordinary article.
+        self.assertTrue(any(a is pt for a in pool))
+
+    def test_cluster_of_only_analyst_pt_is_barred(self):
+        pt = art("UBS raises Snap stock price target to $20", "UBS", rel=9,
+                 hours_ago=1, companies=["Snap"])
+        c = {"cluster_key": "co:snap:rating", "_articles": [pt]}
+        self.assertTrue(ir._cluster_lead_barred(c, NOW))
+        self.assertIsNone(ir._lead_representative(c, NOW))
+
+
 if __name__ == "__main__":
     unittest.main()

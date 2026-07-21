@@ -1998,6 +1998,92 @@ def _regenerate_narrative_net_new(data, regime, brief_type):
     return None
 
 
+# ── L3: preselect-time lead ticker + anchor-name capture (TICKERSCOPE) ──────────
+# Additive telemetry persisted on preselect_decision. Deterministic, no external
+# API: HARD_TICKER_OVERRIDES first (pure), else a SINGLE exact case-insensitive
+# companies-table match with a non-null non-empty ticker, else None. Distinct from
+# _resolve_lead_ticker on purpose: that one network-falls-back to Finnhub, which we
+# must NOT do here. NULL-safe; any exception returns None so the brief still ships.
+
+def _resolve_preselect_ticker(company_name):
+    """Resolve a lead anchor name to a ticker for telemetry, WITHOUT any external
+    API. Rule: HARD_TICKER_OVERRIDES exact lowercased-name hit -> else a single
+    exact case-insensitive companies-table row with a non-null non-empty ticker ->
+    else None. Never raises."""
+    name = (company_name or "").strip()
+    if not name:
+        return None
+    # (1) Deterministic override table (pure, no network).
+    try:
+        from finnhub_helper import HARD_TICKER_OVERRIDES
+        ov = HARD_TICKER_OVERRIDES.get(name.lower())
+        if ov:
+            return ov
+    except Exception:
+        pass
+    # (2) Single exact case-insensitive companies-table match with a real ticker.
+    #     .ilike with no wildcard is an exact, case-insensitive equality. We require
+    #     EXACTLY one matching row so an ambiguous name resolves to None.
+    try:
+        resp = (supabase.table("companies")
+                .select("name, ticker")
+                .ilike("name", name)
+                .limit(2)
+                .execute())
+        rows = resp.data or []
+        if len(rows) == 1:
+            tk = (rows[0].get("ticker") or "").strip()
+            if tk:
+                return tk
+    except Exception:
+        pass
+    return None
+
+
+def _preselect_anchor_name(preselected):
+    """The anchor company name for the shipped lead, per deal type: acquirer for
+    M&A (fall back to the company when acquirer is null); the company for
+    offering/earnings; else parse from the co:<name> cluster key, else the lead
+    article's companies[0]. Returns None when nothing resolves. Never raises."""
+    if not preselected:
+        return None
+    try:
+        reason = str(preselected.get("_preselect_reason") or "")
+        deal_type = str(preselected.get("_preselect_deal_type") or "").strip().lower()
+        acquirer = (preselected.get("_preselect_acquirer") or "").strip()
+
+        # M&A: acquirer anchors the deal; fall back to the named company.
+        if "m&a" in deal_type or deal_type in ("lbo", "takeover", "merger"):
+            if acquirer:
+                return acquirer
+
+        # co:<name>:<sub> cluster fallback -> parse the company name from the key.
+        # _impact_cluster looks like "co:micron:stock" / "co:planet fitness:ma".
+        cluster = str(preselected.get("_impact_cluster") or "")
+        if cluster.startswith("co:"):
+            parts = cluster.split(":", 2)
+            if len(parts) >= 2 and parts[1].strip():
+                return parts[1].strip()
+
+        # Company from the lead article's companies list (offering / earnings / etc.).
+        cos = preselected.get("companies") or []
+        if isinstance(cos, str):
+            try:
+                cos = json.loads(cos)
+            except Exception:
+                cos = [cos]
+        cos = [str(c).strip() for c in (cos or []) if str(c).strip()]
+        if cos:
+            return cos[0]
+
+        # Last resort for a deal pick with only an acquirer.
+        if acquirer:
+            return acquirer
+    except Exception:
+        return None
+    return None
+
+
 def _resolve_lead_ticker(company_name):
     """Best-effort gen-time ticker for a lead company name, or None. Tries the
     deterministic HARD_TICKER_OVERRIDES first (no network), then finnhub search
@@ -4129,12 +4215,24 @@ def run(brief_type="morning"):
         # Telemetry: which path won + both candidates, into the run decision log.
         try:
             import lead_preselect as _lp
+            # L3 (TICKERSCOPE): capture the shipped lead's anchor company + ticker at
+            # preselect time. Additive jsonb, deterministic, no external API. NULL-safe:
+            # anchor/ticker resolve to None on anything and the brief is unaffected.
+            _anchor_name = None
+            _lead_ticker = None
+            try:
+                _anchor_name = _preselect_anchor_name(preselected)
+                _lead_ticker = _resolve_preselect_ticker(_anchor_name)
+            except Exception:
+                _anchor_name, _lead_ticker = None, None
             _lp._LAST_DECISION_LOG.update({
                 "lead_source": lead_source,
                 "impact_lead_title": (impact_pick.get("title") if impact_pick else None),
                 "impact_lead_cluster": (impact_pick.get("_impact_cluster") if impact_pick else None),
                 "impact_lead_score": (impact_pick.get("_impact_score") if impact_pick else None),
                 "deal_lead_title": (deal_pick.get("title") if deal_pick else None),
+                "impact_lead_anchor_name": _anchor_name,
+                "impact_lead_ticker": _lead_ticker,
             })
         except Exception:
             pass
