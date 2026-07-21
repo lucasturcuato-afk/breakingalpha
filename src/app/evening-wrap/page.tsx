@@ -132,12 +132,22 @@ interface MarketTape {
   };
   vix_pct?: number;
   vix_level?: number;
+  // 10Y + WTI persisted so the panel and the prose AGREE on the archive. The
+  // backend (backend/market_tape.py serialize_tape_snapshot) promotes these to
+  // a stable top level; the nested `enrichment` block is the fallback for rows
+  // persisted before the promotion shipped (they already carry enrichment).
+  rates?: { teny_level?: number | null; teny_bps_change?: number | null } | null;
+  oil?: { wti_level?: number | null; wti_pct?: number | null } | null;
+  enrichment?: {
+    rates?: { teny_level?: number | null; teny_bps_change?: number | null } | null;
+    oil?: { wti_level?: number | null; wti_pct?: number | null } | null;
+  } | null;
 }
 
 // Maps the scorecard's Yahoo-style symbol to the persisted tape's index key.
-// Only the four equity indices are persisted; 10Y yield and WTI are not on the
-// tape, so on a historical wrap those two cells have no snapshot and render an
-// honest dash rather than a live substitution.
+// The four equity indices persist under `indices`; 10Y yield and WTI persist as
+// their own top-level `rates` / `oil` fields (see snapshotCell), so all six
+// cells resolve from the archive on a historical wrap.
 const SYM_TO_TAPE_KEY: Record<string, keyof NonNullable<MarketTape["indices"]>> = {
   "^GSPC": "sp500",
   "^IXIC": "nasdaq",
@@ -547,9 +557,17 @@ export default function EveningWrapPage() {
     tapeAsOf !== null && etDay(tapeAsOf) === etDay(new Date());
 
   // Resolve a scorecard cell for a symbol: prefer the PERSISTED tape (archive),
-  // fall back to LIVE only when this brief IS the current session. Symbols not
-  // on the persisted tape (10Y yield, WTI) return null on a historical wrap so
-  // they render an honest dash rather than a live substitution.
+  // fall back to LIVE only when this brief IS the current session. All six
+  // symbols persist now (four indices + 10Y + WTI), so a historical wrap renders
+  // its own session's close from the snapshot instead of a dash or a live
+  // substitution. Only rows persisted before enrichment landed lack 10Y/WTI;
+  // those still degrade to an honest dash.
+  // The persisted 10Y (rates) and WTI (oil) live at the snapshot top level, with
+  // the nested `enrichment` block as a fallback for rows written before that
+  // promotion shipped (they already carry enrichment). Read either shape.
+  const tapeRates = tape?.rates ?? tape?.enrichment?.rates ?? null;
+  const tapeOil = tape?.oil ?? tape?.enrichment?.oil ?? null;
+
   const snapshotCell = (
     sym: string,
   ): { price: string; pct: number } | null => {
@@ -562,6 +580,28 @@ export default function EveningWrapPage() {
           maximumFractionDigits: 2,
         }),
         pct: idx.pct,
+      };
+    }
+    // 10Y yield: persisted as teny_level (percent, ~4.6) + teny_bps_change (bps).
+    // The cell's change axis is a percent move, so convert the bps move to the
+    // yield instrument's daily percent change (bps / level) to match how the
+    // live cell renders. Price passes through the ^TNX display path unchanged
+    // (a ~4.6 value < 20 renders as "4.60%").
+    if (sym === "^TNX" && tapeRates && typeof tapeRates.teny_level === "number") {
+      const level = tapeRates.teny_level;
+      const bps = typeof tapeRates.teny_bps_change === "number" ? tapeRates.teny_bps_change : 0;
+      const pct = level !== 0 ? bps / level : 0;
+      return {
+        price: level.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        pct,
+      };
+    }
+    // WTI: persisted as wti_level ($) + wti_pct (daily %). Direct match to the
+    // cell's price/pct contract.
+    if (sym === "CL=F" && tapeOil && typeof tapeOil.wti_level === "number") {
+      return {
+        price: tapeOil.wti_level.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        pct: typeof tapeOil.wti_pct === "number" ? tapeOil.wti_pct : 0,
       };
     }
     // No persisted value for this symbol. Live is honest only for the current
@@ -984,8 +1024,9 @@ export default function EveningWrapPage() {
                 >
                   {SCORECARD_SYMBOLS.map((s, i) => {
                     // Persisted-snapshot first (archive integrity); live only on
-                    // the current session; null (dash) on a historical wrap for
-                    // symbols the tape did not persist (10Y, WTI).
+                    // the current session. 10Y and WTI now persist too, so they
+                    // resolve from the snapshot on a historical wrap rather than
+                    // rendering a dash.
                     const q = snapshotCell(s.sym);
                     const pct = q?.pct ?? 0;
                     const isLast = i === SCORECARD_SYMBOLS.length - 1;

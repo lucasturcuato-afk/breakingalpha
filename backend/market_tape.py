@@ -760,6 +760,28 @@ def serialize_tape_snapshot(tape: dict | None, as_of: str | None = None) -> dict
     enrichment = tape.get("enrichment")
     if isinstance(enrichment, dict):
         snapshot["enrichment"] = enrichment
+        # PANEL PERSISTENCE (rates + oil): the evening-wrap 6-column panel reads
+        # 10Y and WTI from the snapshot so panel and prose AGREE on the archive.
+        # The enrichment IS computed and reaches the prose, but it was buried
+        # under enrichment alongside the sector-ETF proxy / breadth contract, so
+        # the panel (which reads flat per-symbol snapshot cells like indices)
+        # rendered 10Y and WTI as DASHES on any non-current view even though the
+        # prose directly above cited them. Promote just the two panel scalars to
+        # a stable TOP-LEVEL shape mirroring the enrichment naming (teny_level /
+        # teny_bps_change, wti_level / wti_pct). Read-side stable: a missing
+        # sub-field serializes to null rather than dropping the key.
+        rates = enrichment.get("rates")
+        if isinstance(rates, dict):
+            snapshot["rates"] = {
+                "teny_level": rates.get("teny_level"),
+                "teny_bps_change": rates.get("teny_bps_change"),
+            }
+        oil = enrichment.get("oil")
+        if isinstance(oil, dict):
+            snapshot["oil"] = {
+                "wti_level": oil.get("wti_level"),
+                "wti_pct": oil.get("wti_pct"),
+            }
     return snapshot
 
 
