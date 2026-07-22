@@ -216,7 +216,7 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
     "headlines": "Array of 3-5 short driver chips — each an object with `title` (6-12 word phrase naming one specific story, company, or theme from a DIFFERENT article than the lead where possible) and optional `href` (source URL if available). These are the chips that render at the bottom of the Market Pulse card. When the sentiment_word implies tension (mixed, divided, split, conflicted, choppy, uneasy), at least 3 chips MUST represent distinct stories or themes pulling in different directions — not variants of the same deal or sector. If you cannot produce 3 genuinely distinct drivers from the corpus, omit this field rather than pad with near-duplicates."
   },
   "sections": {
-    "deals_and_ma": "2-3 sentences on PATTERNS across multiple deals — consolidation pace, buyer archetypes, valuation compression, sector concentration. Do NOT re-narrate the primary_story here; cite it only as one data point among several. If the only transaction in the corpus is the primary_story, OMIT this section entirely rather than restate the lead.",
+    "deals_and_ma": "2-3 sentences on PATTERNS across multiple deals: consolidation pace, buyer archetypes, valuation compression, sector concentration. Do NOT re-narrate the primary_story here; cite it only as one data point among several. If the only transaction in the corpus is the primary_story, OMIT this section entirely rather than restate the lead.",
     "public_markets": "2-3 sentences on equity market moves, earnings beats/misses, and IPO pipeline. State the directional implication for deal valuations or risk appetite, not just the move. OMIT if no specific market moves or earnings in the articles.",
     "macro_and_rates": "2-3 sentences on rates, Fed signals, or FX moves. State the concrete effect on LBO spreads, deal multiples, or cost of capital — not just that rates moved. OMIT if no concrete rates or macro signal in the articles.",
     "geopolitics": "2-3 sentences naming the specific countries and sectors in the blast radius and the mechanism of impact on capital flows or deal activity. OMIT THIS KEY ENTIRELY if no geopolitical event materially affected markets today — do not write a placeholder, a 'no developments' statement, or a vague monitoring sentence.",
@@ -372,10 +372,10 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
     "headlines": "Array of 3-5 short driver chips — each an object with `title` (6-12 word phrase naming one specific story, company, or theme from a DIFFERENT article than the lead where possible) and optional `href` (source URL if available). These are the chips that render at the bottom of the Market Pulse card. When the sentiment_word implies tension (mixed, divided, split, conflicted, choppy, uneasy), at least 3 chips MUST represent distinct stories or themes pulling in different directions — not variants of the same deal or sector. If you cannot produce 3 genuinely distinct drivers from the corpus, omit this field rather than pad with near-duplicates."
   },
   "sections": {
-    "deals_and_ma": "2-3 sentences on PATTERNS across multiple deals — consolidation pace, buyer archetypes, valuation compression, sector concentration. Do NOT re-narrate the primary_story here; cite it only as one data point among several. If the only transaction in the corpus is the primary_story, OMIT this section entirely.",
+    "deals_and_ma": "2-3 sentences on PATTERNS across multiple deals: consolidation pace, buyer archetypes, valuation compression, sector concentration. Do NOT re-narrate the primary_story here; cite it only as one data point among several. If the only transaction in the corpus is the primary_story, OMIT this section entirely. ROUTING: any named acquisition, merger, stake purchase, LBO, or IPO belongs HERE (or in top_deals), even when the target sits in a foreign country; a cross-border M&A transaction is a DEAL, never geopolitics.",
     "public_markets": "2-3 sentences on how markets closed. Name the key movers and state what the tape is pricing in for tomorrow — not just that stocks went up or down. OMIT if no specific market close data or named movers in the articles.",
-    "macro_and_rates": "2-3 sentences on macro and rates. State the concrete implication for deal multiples, credit spreads, or risk appetite into tomorrow. OMIT if no concrete rates or macro signal in the articles.",
-    "geopolitics": "2-3 sentences naming the specific countries and sectors in the blast radius and the mechanism of impact on capital flows or deal activity. OMIT THIS KEY ENTIRELY if nothing geopolitical materially affected markets today — do not write a placeholder, a 'no developments' statement, or a vague monitoring sentence.",
+    "macro_and_rates": "2-3 sentences on macro and rates. State the concrete implication for deal multiples, credit spreads, or risk appetite into tomorrow. OMIT if no concrete rates or macro signal in the articles. ROUTING (strict): this section is ONLY for rates, Fed or central-bank action, inflation prints (CPI/PPI/PCE), jobs or payrolls, GDP, FX, and credit spreads. A court ruling, lawsuit, verdict, damages award, regulatory fine, or any single-company legal or corporate event is NOT macro; do NOT place it here. Route corporate legal or regulatory items to public_markets or deals_and_ma, or omit them.",
+    "geopolitics": "2-3 sentences naming the specific countries and sectors in the blast radius and the mechanism of impact on capital flows or deal activity. Geopolitics means cross-border CONFLICT, war, sanctions, trade or tariff policy, energy-supply disruption, or state-level action, NOT a company buying a foreign asset (that is deals_and_ma). OMIT THIS KEY ENTIRELY if nothing geopolitical materially affected markets today; do not write a placeholder, a 'no developments' statement, or a vague monitoring sentence.",
     "tomorrow_setup": "Write 3-4 sentences of continuous prose (no bullets, no numbered list). Each sentence must name a specific company, speaker, or data release, state the exact expected catalyst, and commit to what a beat or miss would signal for the broader market or sector. Write it as a paragraph a senior analyst would read aloud. BANNED phrases: 'investors should monitor', 'watch for', 'could be impacted', 'may be affected', 'bears watching', 'remain cautious'. Do NOT open a sentence with who is watching or focusing: no 'investors will be watching', 'will be a key focus', 'will likely focus on', 'will provide insight', 'could drive', 'will indicate [noun]'. Lead every sentence with the consequence or the stake (BAD: 'Investors will be watching X.' GOOD: 'A miss at X breaks the Y thesis and pressures Z.')."
   },
   "top_deals": [
@@ -716,6 +716,125 @@ def _validate_sector_breakdown(sb):
         print(f"  ↳ sector_breakdown: remapped {len(remapped)} compound key(s): {pairs}")
 
     return clean
+
+
+# ── Evening section routing / cross-section dedup (deterministic post-check) ──
+# Sections are LLM-assigned via the EVENING_SYSTEM schema; there is no other
+# router. Two failure modes were observed on the 2026-07-17 evening wrap and
+# nowhere else in the trailing 10 wraps, so this stays a minimal backstop, not a
+# re-architecture:
+#   1. A non-macro subject (a court ruling on mutual-fund damages) routed into
+#      macro_and_rates, which must be rates / Fed / inflation / jobs / FX only.
+#   2. The same story (ConocoPhillips buying 42% of BP's Kirkuk business, a
+#      corporate M&A stake) both HEADLINED geopolitics AND reappeared in
+#      public_markets, a cross-section duplicate, and a misroute (a foreign
+#      M&A transaction is a deal, not geopolitics).
+# Both are handled deterministically here so a prompt regression cannot re-ship
+# them. Pure: no network, no Gemini. Returns (cleaned_sections, notes).
+
+# Tokens that legitimately make a sentence "macro & rates". Word-boundary matched.
+_MACRO_TOKENS = (
+    "rate", "rates", "fed", "federal reserve", "fomc", "cpi", "ppi", "pce",
+    "inflation", "deflation", "yield", "yields", "treasury", "treasuries",
+    "basis point", "basis points", "bps", "jobs", "payroll", "payrolls",
+    "unemployment", "nonfarm", "fx", "currency", "dollar index", "spread",
+    "spreads", "monetary", "central bank", "ecb", "boj", "boe", "rate cut",
+    "rate hike", "gdp", "jobless", "wholesale", "wage", "wages",
+)
+
+# Subjects that are NEVER macro & rates on their own: a court ruling, a lawsuit,
+# a verdict, a damages award. If macro_and_rates is dominated by one of these and
+# carries no macro token, it is a misroute.
+_LEGAL_RULING_TOKENS = (
+    "court", "lawsuit", "verdict", "damages", "ruling", "litigation",
+    "tribunal", "plaintiff", "defendant", "class action", "jury", "judge",
+    "superior court", "appeal", "appeals",
+)
+
+
+def _has_token(text_lc: str, tokens) -> bool:
+    """True if any token appears on word boundaries in the lower-cased text."""
+    for t in tokens:
+        if re.search(r"\b" + re.escape(t) + r"\b", text_lc):
+            return True
+    return False
+
+
+def _dominant_anchor(text: str) -> str | None:
+    """Extract the dominant proper-noun anchor of a section blob: the first
+    multi-word Capitalized run (a company / institution name). Used to detect the
+    same story headlining two sections. Deliberately simple and conservative:
+    it only fires on a clear shared proper-noun anchor, never on common words."""
+    if not isinstance(text, str) or not text.strip():
+        return None
+    # Grab Capitalized-word runs of length >= 1, drop the leading sentence word
+    # only when it is a bare single common opener. We keep multi-token runs.
+    runs = re.findall(r"\b([A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+)*)", text)
+    for r in runs:
+        toks = r.split()
+        # A distinctive anchor is a multi-token proper name, or a single long
+        # non-generic proper noun (e.g. "ConocoPhillips").
+        if len(toks) >= 2:
+            return r
+        if len(toks) == 1 and len(r) > 6 and r not in ("Strategic", "Meanwhile", "Separately", "Growth"):
+            return r
+    return None
+
+
+def _evening_section_routing_fixup(sections):
+    """Deterministic evening section post-check. Returns (cleaned, notes).
+
+    Fix 1 (misroute): drop macro_and_rates when it is a legal / court ruling with
+    no macro token; that content is not macro and belongs nowhere in the rates
+    lane. Dropping is safe: an omitted section is the schema's own no-signal path.
+
+    Fix 2 (cross-section dedup + geopolitics misroute): if the SAME dominant
+    proper-noun anchor headlines geopolitics AND also appears in another section,
+    the story anchors the MORE SPECIFIC section and is removed from geopolitics.
+    Specificity order (most → least): deals_and_ma, public_markets, macro_and_rates,
+    geopolitics. A corporate M&A stake sitting in geopolitics is the classic
+    misroute; when its anchor also appears in public_markets/deals it is dropped
+    from geopolitics so it headlines exactly one section."""
+    if not isinstance(sections, dict):
+        return sections, []
+    cleaned = dict(sections)
+    notes = []
+
+    # Fix 1: macro_and_rates must be genuinely macro.
+    macro = cleaned.get("macro_and_rates")
+    if isinstance(macro, str) and macro.strip():
+        macro_lc = macro.lower()
+        if not _has_token(macro_lc, _MACRO_TOKENS) and _has_token(macro_lc, _LEGAL_RULING_TOKENS):
+            del cleaned["macro_and_rates"]
+            notes.append(
+                "dropped macro_and_rates (legal/court ruling with no macro token, misroute)"
+            )
+
+    # Fix 2: cross-section dedup, anchored on geopolitics (the observed misroute
+    # target). Specificity: a story that also lives in a more specific section is
+    # removed from geopolitics.
+    more_specific = ("deals_and_ma", "public_markets", "macro_and_rates")
+    geo = cleaned.get("geopolitics")
+    if isinstance(geo, str) and geo.strip():
+        anchor = _dominant_anchor(geo)
+        if anchor:
+            anchor_lc = anchor.lower()
+            for other in more_specific:
+                other_txt = cleaned.get(other)
+                if (
+                    isinstance(other_txt, str)
+                    and other_txt.strip()
+                    and other != "geopolitics"
+                    and re.search(r"\b" + re.escape(anchor_lc) + r"\b", other_txt.lower())
+                ):
+                    del cleaned["geopolitics"]
+                    notes.append(
+                        f"dropped geopolitics (anchor {anchor!r} already headlines "
+                        f"more-specific section {other!r}, cross-section duplicate/misroute)"
+                    )
+                    break
+
+    return cleaned, notes
 
 
 def gemini_generate(system, user_content, temperature=0.3, max_tokens=4096):
@@ -5323,6 +5442,21 @@ def run(brief_type="morning"):
                     print("  ⚠ entity guard: re-ask failed; keeping original sections (orgs logged)")
         except Exception as e:
             print(f"  ⚠ entity guard error (non-fatal): {e}")
+
+    # Evening section routing / cross-section dedup (deterministic, non-fatal).
+    # Sections are LLM-assigned with no other router; this backstops two observed
+    # misroute/duplicate modes (legal ruling in macro_and_rates; a corporate M&A
+    # story headlining geopolitics while also living in a more-specific section).
+    # Evening-only: the morning schema uses the same keys but was not implicated.
+    if brief_type == "evening" and isinstance(data.get("sections"), dict):
+        try:
+            _fixed_sections, _routing_notes = _evening_section_routing_fixup(data["sections"])
+            if _routing_notes:
+                data["sections"] = _fixed_sections
+                for _n in _routing_notes:
+                    print(f"  ↳ section routing: {_n}")
+        except Exception as e:
+            print(f"  ⚠ section routing fixup error (non-fatal): {e}")
 
     sector_breakdown = _validate_sector_breakdown(data.get("sector_breakdown", {}))
     print(f"  📊 sector_breakdown: {len(sector_breakdown)} sector(s) — {list(sector_breakdown.keys())}")
