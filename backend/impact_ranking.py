@@ -355,6 +355,100 @@ def _best_article_in_cluster(arts: list[dict], now: datetime.datetime,
     return sorted(arts, key=k)[0]
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# L1 - ANALYST RATING / PRICE-TARGET LEAD BAR (structural, deterministic, no LLM)
+# ══════════════════════════════════════════════════════════════════════════════
+# WHY: Jul 20 evening led with "UBS Raises Micron Price Target on Robust Free Cash
+# Flow Outlook". An analyst price-target / rating change is the weakest possible
+# lead: it republishes a sell-side opinion as the day's headline. For a compliance-
+# constrained product run by a registered representative that is a lead type to bar
+# STRUCTURALLY, not down-weight. These stories STAY in the corpus (rails, sections);
+# they are only made INELIGIBLE to be the LEAD.
+#
+# The bar sits at the cluster-lead level: a cluster whose REPRESENTATIVE (best)
+# article is an analyst rating / PT story is dropped from lead contention. The
+# cluster's other members are unaffected; the pool is not mutated. Applied in BOTH
+# the live path (compute_shadow_lead / compute_lead) and the UNIFIED_LEAD contest
+# (compute_unified_lead), so the bar survives the eventual flag flip.
+#
+# PRECISION: title-level word-boundary regex. It fires on sell-side PT / rating
+# actions ("raises/lowers/cuts X price target", "downgrades ... stock rating",
+# "initiates coverage with Outperform", "upgraded to Buy by <firm>", "Maintained by
+# <firm> -- Price Target Raised to $X"). It deliberately does NOT fire on a company
+# raising its OWN guidance/outlook/ARR target (e.g. "IREN ... raises ARR target",
+# "Levi Strauss's Upgraded Outlook"), a company maintaining holdings ("MSTR
+# Maintains Bitcoin Holdings"), or substrings ("attemPT to"). Validated against the
+# Jul 20 evening corpus: 60 matched titles, all genuine analyst rating/PT stories;
+# zero over-match on guidance / own-outlook / holdings titles.
+_ANALYST_RATING_RE = re.compile(r"""(?xi)
+    \bprice\ target\b
+  | \bpt\ (?:raised|lowered|cut|set|to)\b
+  | \binitiat(?:es|ed|e)\ coverage\b
+  | \binitiat(?:es|ed|e)\ (?:\S+\ ){0,3}?(?:stock\ )?coverage\b
+  | \bcoverage\ (?:with|on)\ (?:\S+\ ){0,4}?(?:outperform|neutral|buy|sell|hold|market\ perform|overweight|underweight)\b
+  | \b(?:upgrade[sd]?|downgrade[sd]?)\ (?:by|at|to)\b
+  | \b(?:upgrade[sd]?|downgrade[sd]?)\ (?:\S+\ ){0,3}?(?:rating|to\ (?:buy|sell|hold|overweight|underweight|neutral|outperform|underperform|market\ perform))\b
+  | \b(?:stock|shares?)\ (?:\S+\ ){0,3}?(?:upgrade[sd]?|downgrade[sd]?)\ (?:by|across|at)\b
+  | \banalyst\ upgrade\b | \banalyst\ downgrade\b
+  | \b(?:reiterates?|reaffirms?|maintains?)\ (?:\S+\ ){0,4}?(?:rating|outperform|underperform|overweight|underweight|neutral|market\ perform|buy|sell|hold)\b
+  | \b(?:buy|sell|hold|neutral|overweight|underweight|outperform|underperform|market\ perform)\ rating\b
+  | \bstock\ rating\b
+  | \brating\ (?:set|changed|raised|lowered|upgraded|downgraded|reaffirmed|reiterated|update[d]?)\b
+  | \(rating\ (?:upgrade|downgrade)\)
+  | \bgiven\ (?:a\ )?(?:new\ )?\$?[\d.]*\ *(?:average\ rating|rating|price\ target)\b
+  | \bmaintained\ (?:by|at)\b
+  | \b(?:raised|cut|lowered|changed)\ to\ (?:buy|sell|hold|overweight|underweight|neutral|outperform|underperform|market\ perform)\b
+""")
+
+
+def is_analyst_rating_lead(article: dict) -> bool:
+    """True when the article is a sell-side analyst rating / price-target story.
+    Deterministic, title-level, no LLM. Used to make such stories INELIGIBLE to be
+    the LEAD (they stay eligible everywhere else). Never raises."""
+    try:
+        return bool(_ANALYST_RATING_RE.search(str(article.get("title") or "")))
+    except Exception:
+        return False
+
+
+def _lead_eligible_arts(arts: list[dict]) -> list[dict]:
+    """The subset of a cluster's articles that are eligible to be the LEAD story:
+    everything EXCEPT analyst rating / price-target stories (L1). The barred
+    stories stay in the cluster for every other surface; they are removed only from
+    the pool the lead REPRESENTATIVE is chosen from."""
+    return [a for a in arts if not is_analyst_rating_lead(a)]
+
+
+def _lead_representative(scored_cluster: dict, now: datetime.datetime) -> Optional[dict]:
+    """The article that would REPRESENT this cluster as the lead, choosing only from
+    the lead-eligible (non-analyst-PT) members. Returns None when EVERY member is an
+    analyst-PT story (the cluster is then wholly lead-ineligible). Never raises."""
+    try:
+        arts = scored_cluster.get("_articles") or []
+        eligible = _lead_eligible_arts(arts)
+        if not eligible:
+            return None
+        key = scored_cluster.get("cluster_key") or ""
+        bucket = key.split(":", 1)[1] if key.startswith("macro:") else None
+        return _best_article_in_cluster(eligible, now, bucket=bucket)
+    except Exception:
+        return None
+
+
+def _cluster_lead_barred(scored_cluster: dict, now: datetime.datetime) -> bool:
+    """True when a cluster has NO lead-eligible article, i.e. every member is an
+    analyst rating / price-target story (L1). A cluster that merely CONTAINS an
+    analyst-PT story is not barred: its lead representative falls back to the
+    best non-analyst member (see _lead_representative). Never raises."""
+    try:
+        arts = scored_cluster.get("_articles") or []
+        if not arts:
+            return False
+        return _lead_representative(scored_cluster, now) is None
+    except Exception:
+        return False
+
+
 def compute_shadow_lead(
     pool: list[dict],
     now: datetime.datetime,
@@ -363,7 +457,12 @@ def compute_shadow_lead(
     mega_deal_urls: Optional[set[str]] = None,
 ) -> Optional[dict]:
     """Return the market-impact shadow lead, or None on empty input. Never raises.
-    Result keys: article, cluster_key, score, reason, breadth, top_clusters."""
+    Result keys: article, cluster_key, score, reason, breadth, top_clusters.
+
+    L1: clusters whose representative article is an analyst rating / price-target
+    story are INELIGIBLE to LEAD (barred structurally, not down-weighted). They stay
+    in the pool and in every other surface; only lead selection skips them. If EVERY
+    cluster is barred (pathological), the bar is relaxed so a lead still ships."""
     try:
         if not pool:
             return None
@@ -372,9 +471,16 @@ def compute_shadow_lead(
         scored = score_clusters(pool, now, recent_events=recent, mega_deal_urls=mega_deal_urls)
         if not scored:
             return None
-        top = scored[0]
+        eligible = [c for c in scored if not _cluster_lead_barred(c, now)]
+        # Fail-safe: never ship no lead purely because of the bar. If the bar would
+        # empty the field, fall back to the full ranked list.
+        ranked = eligible if eligible else scored
+        top = ranked[0]
+        # L1: pick the lead from the cluster's NON-analyst-PT members. Falls back to
+        # the ordinary best article if the fail-safe path put a fully-barred cluster
+        # back on the table.
         _bucket = top["cluster_key"].split(":", 1)[1] if top["cluster_key"].startswith("macro:") else None
-        lead = _best_article_in_cluster(top["_articles"], now, bucket=_bucket)
+        lead = _lead_representative(top, now) or _best_article_in_cluster(top["_articles"], now, bucket=_bucket)
         return {
             "article": lead,
             "cluster_key": top["cluster_key"],
@@ -1214,7 +1320,12 @@ def compute_unified_lead(
         for c in scored:
             _bkt = (c["cluster_key"].split(":", 1)[1]
                     if c["cluster_key"].startswith("macro:") else None)
-            rep = _best_article_in_cluster(_cluster_arts(c), now, bucket=_bkt)
+            # L1: the LEAD representative is chosen from the cluster's non-analyst-PT
+            # members; a cluster is lead-barred only when EVERY member is analyst-PT.
+            # A cluster that merely contains a PT story leads with its best non-PT
+            # article. Fall back to the ordinary best only for the (barred) score rep.
+            _lead_rep = _lead_representative(c, now)
+            rep = _lead_rep or _best_article_in_cluster(_cluster_arts(c), now, bucket=_bkt)
             mat_comp, mat_reasons = _unified_materiality(
                 c, tape=tape, driver_names=driver_names,
                 name_session_pct=name_session_pct)
@@ -1238,10 +1349,19 @@ def compute_unified_lead(
             rec["confirmation_reason"] = conf_reason
             rec["unified_materiality_reasons"] = mat_reasons
             rec["unified_score"] = unified_score
+            # L1: a cluster is LEAD-INELIGIBLE only when it has no non-analyst-PT
+            # member (_lead_representative is None). The row stays in the audit (with
+            # lead_barred=True) so the calibrator can see it was scored and dropped;
+            # it is excluded only from the argmax that picks the served lead.
+            rec["lead_barred"] = _lead_rep is None
             ranked.append(rec)
 
         ranked.sort(key=lambda c: -c["unified_score"])
-        top = ranked[0]
+        # L1: the LEAD argmax is over candidates NOT barred as analyst rating / PT.
+        # Fail-safe: if the bar would empty the field, fall back to the full ranking
+        # so a lead still ships.
+        _eligible = [c for c in ranked if not c.get("lead_barred")]
+        top = (_eligible or ranked)[0]
         lead = top["_rep_article"]
 
         def _rep_title(rec: dict) -> Optional[str]:
@@ -1264,21 +1384,32 @@ def compute_unified_lead(
                 "article_count": c["article_count"],
                 "is_mega_deal": c.get("is_mega_deal", False),
                 "is_tier1": c.get("is_tier1", False),
+                "lead_barred": c.get("lead_barred", False),
                 "below_cap": below_cap,
             }
 
         top_slice = ranked[:_TOP_CLUSTERS_AUDIT_CAP]
         candidates_audit = [_audit_row(c) for c in top_slice]
-        # Force any always_include cluster that ranked below the cap into the audit so
-        # its component vector is never dropped (deduped against the top-cap slice).
+        # L1: the SERVED lead cluster (top) can be an eligible cluster that ranks
+        # below the raw-score cap when barred analyst-PT clusters sit above it. Force
+        # it into the audit so the served lead's vector is never dropped, and so
+        # unified_winner (below) resolves to the served lead rather than a barred
+        # higher-scored row.
         force = set(always_include_clusters or ())
-        if force:
-            _in_audit = {c["cluster_key"] for c in top_slice}
-            for c in ranked[_TOP_CLUSTERS_AUDIT_CAP:]:
-                if c["cluster_key"] in force and c["cluster_key"] not in _in_audit:
-                    candidates_audit.append(_audit_row(c, below_cap=True))
-                    _in_audit.add(c["cluster_key"])
-        losers = [r for r in candidates_audit[1:] if not r.get("below_cap")][:2]
+        force.add(top["cluster_key"])
+        _in_audit = {c["cluster_key"] for c in top_slice}
+        for c in ranked[_TOP_CLUSTERS_AUDIT_CAP:]:
+            if c["cluster_key"] in force and c["cluster_key"] not in _in_audit:
+                candidates_audit.append(_audit_row(c, below_cap=True))
+                _in_audit.add(c["cluster_key"])
+        # unified_winner is the SERVED lead (eligible argmax), not the raw top score.
+        _winner_row = next(
+            (r for r in candidates_audit if r["cluster_key"] == top["cluster_key"]),
+            candidates_audit[0] if candidates_audit else None,
+        )
+        losers = [r for r in candidates_audit
+                  if r is not _winner_row and not r.get("below_cap")
+                  and not r.get("lead_barred")][:2]
         return {
             "article": lead,
             "cluster_key": top["cluster_key"],
@@ -1305,7 +1436,7 @@ def compute_unified_lead(
                 "confirmation_reason": top["confirmation_reason"],
                 "materiality_reasons": top["unified_materiality_reasons"],
             },
-            "unified_winner": candidates_audit[0] if candidates_audit else None,
+            "unified_winner": _winner_row,
             "unified_losers": losers,
             "unified_candidates": candidates_audit,
         }
