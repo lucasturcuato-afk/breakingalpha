@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { isAllowlisted } from "@/lib/allowlist";
+import { postWaitlistRegister } from "@/lib/waitlist-register-client";
 import { cn } from "@/lib/utils";
 import { Mail, Lock, Eye, EyeOff, Check } from "lucide-react";
 import Link from "next/link";
@@ -47,8 +48,13 @@ export default function AuthPage() {
         // approved, sign out and route to /waitlist. Fails closed (isAllowlisted
         // returns false on any query error). RLS allowlist_read_self lets this
         // authenticated browser client read its own row.
+        // The approval DECISION comes from the authenticated user's OWN read
+        // (RLS allowlist_read_self), NOT the register endpoint body. If not
+        // approved: register (ensure a waitlist row + our email, idempotent,
+        // body ignored), sign out, and route to /waitlist.
         const approved = await isAllowlisted(supabase, email);
         if (!approved) {
+          await postWaitlistRegister(email, "auth_signin");
           await supabase.auth.signOut();
           window.location.href = "/waitlist";
         } else {
@@ -68,6 +74,12 @@ export default function AuthPage() {
         setError(signUpError.message);
         setLoading(false);
       } else {
+        // Register so a non-approved signup gets a waitlist row + our email
+        // regardless of whether Supabase ever delivers its confirmation link.
+        // IGNORE the endpoint body (it never reveals approval) and ALWAYS show
+        // "check your email". A non-approved user is routed to /waitlist later,
+        // in /auth/callback, after they click the Supabase confirmation link.
+        await postWaitlistRegister(email, "auth_signup");
         setSignupSuccess(true);
         setLoading(false);
       }
@@ -154,7 +166,7 @@ export default function AuthPage() {
 
       {/* ── Right panel: Auth card (45%) ── */}
       <div className="relative flex-1 flex items-center justify-center px-6 py-12 lg:w-[45%] bg-parchment">
-        <BackToPreviewLink />
+        <BackToHomeLink />
         <div className="w-full max-w-[420px]">
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center justify-center gap-2 mb-10">
@@ -355,13 +367,13 @@ export default function AuthPage() {
   );
 }
 
-function BackToPreviewLink() {
+function BackToHomeLink() {
   return (
     <Link
-      href="/preview"
+      href="/"
       className="absolute top-4 left-5 flex items-center gap-1 font-sans text-[12px] text-text-muted no-underline transition-colors hover:text-espresso"
     >
-      ← Back to preview
+      ← Back to home
     </Link>
   );
 }
