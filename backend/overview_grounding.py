@@ -849,10 +849,34 @@ def _minimal_catalyst_clause(today_catalyst: dict | None) -> str | None:
     return f"today's {name} print"
 
 
+def _minimal_mood_word(tape: dict | None, sentiment_word: str | None) -> str | None:
+    """The mood adjective the fallback opener should use, derived so it can NEVER
+    contradict the mood PILL that renders directly above it. The pill IS
+    market_pulse.sentiment_word (a regime-narrowed adjective). Precedence:
+      1. the actual pill word, when the caller threads it (identical to the pill),
+      2. else the regime's default adjective (same classifier that narrows the
+         pill's vocabulary), via a lazy market_tape import,
+      3. else None (no tape/regime -> the opener uses no mood word at all).
+    NO hardcoded mood string: a hardcoded 'quiet' over a CONFLICTED / CHOPPY pill
+    is the exact rot this replaces. Pure apart from the lazy import."""
+    w = (sentiment_word or "").strip().lower()
+    if w:
+        return w
+    regime = ((tape or {}).get("regime") or "").strip().lower() if isinstance(tape, dict) else ""
+    if not regime:
+        return None
+    try:
+        from market_tape import REGIME_DEFAULT_WORD as _RDW
+        return _RDW.get(regime)
+    except Exception:
+        return None
+
+
 def build_minimal_overview(
     tape: dict | None,
     best_story_title: str | None = None,
     today_catalyst: dict | None = None,
+    sentiment_word: str | None = None,
 ) -> str:
     """Degraded-but-COMPLETE grounded hero built from the fetched tape numbers,
     the tape's #461 ENRICHMENT (rates / oil / ETF-attributed sector leaders +
@@ -866,7 +890,12 @@ def build_minimal_overview(
     name, makes NO breadth claim (the sector figures are an ETF-move proxy, not
     breadth; breadth_available is false), and attributes sector moves to ETFs
     ('Energy ETFs led'). When there is no tape at all, returns a minimal, honest
-    'no live tape' line. Pure."""
+    'no live tape' line.
+
+    sentiment_word: the mood PILL (market_pulse.sentiment_word). The opener's
+    characterization is derived from it (else the regime's default adjective) so
+    the fallback prose can NEVER contradict the pill above it. NO hardcoded mood
+    word. Pure apart from a lazy market_tape import for the regime default."""
     if not tape:
         base = "Market data is unavailable for this session; no live tape to characterize."
         cat = _minimal_catalyst_clause(today_catalyst)
@@ -897,23 +926,25 @@ def build_minimal_overview(
     # These carry the day's macro texture that the old template dropped.
     enrich_bits = _minimal_enrichment_bits(tape)
 
-    # The regime word must match the numbers. The self-select fallback relegates
-    # to market-wide on ANY tape (decision b), so this template can fire on a
-    # material-move day; a hardcoded "quiet" then contradicts the figures
-    # ("On a quiet tape, the S&P 500 is -1.40%"). Derive the framing from the SAME
-    # materiality signal the gate uses (market_tape.tape_has_material_move), so the
-    # prefix cannot contradict the tape. Lazy import keeps this module standalone.
-    try:
-        from market_tape import tape_has_material_move as _material
-        _is_material = bool(_material(tape))
-    except Exception:
-        _is_material = False
+    # The opener's characterization must match the mood PILL rendered directly
+    # above it. The pill is market_pulse.sentiment_word, a regime-narrowed
+    # adjective; a hardcoded "quiet" contradicted it head-on (a CONFLICTED /
+    # CHOPPY pill over "On a quiet tape" on Jul 20). Derive the SAME word the pill
+    # uses (the threaded sentiment_word, else the regime's default adjective), so
+    # the two can never disagree. NO hardcoded mood string. When no mood word is
+    # derivable (no tape/regime) the opener carries no mood adjective at all.
+    _mood = _minimal_mood_word(tape, sentiment_word)
 
     if bits:
-        prefix = "The tape is moving: " if _is_material else "On a quiet tape, "
+        if _mood:
+            prefix = f"On a {_mood} tape, "
+        else:
+            prefix = "On the tape, "
         body = prefix + ", ".join(bits) + "."
+    elif _mood:
+        body = f"The tape reads {_mood}, with no single driver owning the read."
     else:
-        body = "The tape is quiet with no single driver owning the read."
+        body = "The tape is inconclusive with no single driver owning the read."
 
     # Under the index line, spend the enrichment: rates, oil, sector rotation.
     # This is the degraded-but-COMPLETE part; the old template stripped all of it.

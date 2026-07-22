@@ -566,9 +566,13 @@ class Assertion10_SelfSelectBypassRepro(unittest.TestCase):
         minimal = og.build_minimal_overview(QUIET_TAPE, "Acme Robotics raises $400M")
         res = og.validate_overview(minimal, "acme robotics raises $400m", ["Acme Robotics"], QUIET_TAPE)
         self.assertTrue(res["ok"], f"minimal grounded overview should validate: {res['reasons']}")
-        # It leads with the tape, not the single name (market altitude).
-        self.assertTrue(minimal.lower().startswith("on a quiet tape"),
-                        "the grounded overview must lead with the tape, not the single name")
+        # It leads with the tape, not the single name (market altitude). The mood
+        # word is the regime's default ('mixed' for neutral), NOT a hardcoded
+        # 'quiet' - the opener must never contradict the mood pill above it.
+        self.assertTrue(minimal.lower().startswith("on a mixed tape"),
+                        "the grounded overview must lead with the tape (regime mood word), not the single name")
+        self.assertNotIn("quiet", minimal.lower(),
+                         "the fallback must not hardcode 'quiet' (it contradicted CONFLICTED/CHOPPY pills)")
 
 
 class Assertion11_PostCheckEntity(unittest.TestCase):
@@ -647,10 +651,12 @@ class Assertion13_Brevity(unittest.TestCase):
         self.assertTrue(res["ok"], f"the minimal overview must self-validate: {res['reasons']}")
 
 
-class Assertion15_FallbackRegimeWordMatchesTape(unittest.TestCase):
-    """The minimal template's regime word must match the numbers. The self-select
-    fallback relegates to market-wide on ANY tape, so the template can fire on a
-    material-move day; a hardcoded 'quiet' would then contradict the figures."""
+class Assertion15_FallbackMoodWordMatchesPill(unittest.TestCase):
+    """The minimal template's opener must be derived from the SAME classifier that
+    yields the mood PILL, so the two can never disagree. A hardcoded 'quiet' over a
+    CONFLICTED / CHOPPY pill (the Jul 20 rot) is banned: the opener carries the
+    threaded sentiment_word, else the regime's default adjective, and NEVER the
+    word 'quiet' (which is in no regime vocab)."""
 
     MATERIAL_TAPE = {
         "quotes": {"^GSPC": {"pct": -1.4}, "^IXIC": {"pct": -1.8}, "^VIX": {"pct": 15.0}},
@@ -662,12 +668,27 @@ class Assertion15_FallbackRegimeWordMatchesTape(unittest.TestCase):
         out = og.build_minimal_overview(self.MATERIAL_TAPE, "Federal Reserve Holds Rates")
         self.assertNotIn("quiet", out.lower(),
                          "a material-move tape must not be framed as 'quiet'")
+        # risk-off regime default word -> 'heavy'; opener leads with the tape.
+        self.assertTrue(out.lower().startswith("on a heavy tape"),
+                        "risk-off fallback opens on the regime mood word 'heavy'")
         self.assertIn("-1.40%", out, "the material overview must still cite the S&P figure")
 
-    def test_flat_tape_may_say_quiet(self):
+    def test_flat_tape_uses_regime_word_not_quiet(self):
+        # A neutral tape's regime default word is 'mixed'; the OLD code hardcoded
+        # 'quiet' here, which contradicted a CONFLICTED / CHOPPY pill. The fix uses
+        # the regime word and never 'quiet'.
         out = og.build_minimal_overview(QUIET_TAPE, "Acme Robotics raises $400M")
-        self.assertIn("quiet", out.lower(),
-                      "a flat tape is correctly framed as quiet")
+        self.assertTrue(out.lower().startswith("on a mixed tape"),
+                        "a neutral tape opens on the regime mood word 'mixed'")
+        self.assertNotIn("quiet", out.lower(),
+                         "the fallback must not hardcode 'quiet'")
+
+    def test_opener_matches_threaded_pill_word(self):
+        # When the caller threads the actual pill (sentiment_word), the opener uses
+        # THAT exact word - identical to the pill, so they can never disagree.
+        out = og.build_minimal_overview(QUIET_TAPE, None, sentiment_word="conflicted")
+        self.assertTrue(out.lower().startswith("on a conflicted tape"),
+                        "the opener must carry the threaded pill word verbatim")
 
 
 class Assertion14_FailSafeUnresolvableLead(unittest.TestCase):
@@ -686,8 +707,8 @@ class Assertion14_FailSafeUnresolvableLead(unittest.TestCase):
         # And the grounded overview built for that case is market-altitude, not a
         # single name: even with no story title it leads with the tape.
         out = og.build_minimal_overview(QUIET_TAPE, None)
-        self.assertTrue(out.lower().startswith("on a quiet tape"),
-                        "an unresolvable-lead overview must lead with the tape, not a name")
+        self.assertTrue(out.lower().startswith("on a mixed tape"),
+                        "an unresolvable-lead overview must lead with the tape (regime mood word), not a name")
         self.assertEqual(og.unsupported_entities(out, "", []), [],
                          "the fail-safe overview names no unsupported entity")
 
@@ -789,8 +810,9 @@ class Assertion16_SingleDealDayAlwaysMarketWide(unittest.TestCase):
         hero = og.build_minimal_overview(BROAD_RALLY_TAPE, self.LEAD_TITLE)
         # Market-altitude: it cites the broad tape, not just the deal.
         self.assertIn("+1.32%", hero, "the hero must cite the broad S&P move")
-        self.assertTrue(hero.lower().startswith("the tape is moving"),
-                        "a material rally hero must lead with the tape, not the deal name")
+        # risk-on regime default word -> 'buoyant'; the opener leads with the tape.
+        self.assertTrue(hero.lower().startswith("on a buoyant tape"),
+                        "a risk-on rally hero must lead with the tape (mood word), not the deal name")
         # The deal title appears only as the trailing example mention, never the
         # subject the read opens on.
         self.assertFalse(hero.lower().startswith(self.LEAD_NAME.lower()),
