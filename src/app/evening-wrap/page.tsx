@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { AppShell } from "@/components/shell";
 import { PanelWidget } from "@/components/shell/right-panel";
 import { TickerStrip } from "@/components/brief/ticker-strip";
@@ -261,14 +261,9 @@ export default function EveningWrapPage() {
         }
         const res = await fetch("/api/briefing?type=evening", { headers });
 
-        if (session?.user) {
-          void fetch("/api/user-events", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ event_type: "evening_wrap_opened" }),
-          }).catch(() => {});
-        }
+        // The wrap-open event is emitted downstream, once the rail order is
+        // known. See the emit-once effect below rankedStories.
+
         const data = await res.json();
         if (data.briefing) {
           const b = data.briefing;
@@ -535,6 +530,45 @@ export default function EveningWrapPage() {
       getPersonalizationMode(),
     );
   }, [stories, profile]);
+
+  // Wrap-open telemetry. Deliberately NOT fired alongside the /api/briefing
+  // request: at that point neither the briefing id nor the rail exists, which
+  // is why every one of the 593 historical evening_wrap_opened rows landed
+  // with an empty payload and the rail reorder was unmeasurable.
+  //
+  // Emits once per briefing id, after the rail order is settled, carrying the
+  // ids in served order plus the personalization mode that produced them. That
+  // is the pair needed to attribute downstream clicks back to a rail variant.
+  const briefOpenEmittedFor = useRef<string | null>(null);
+  useEffect(() => {
+    const briefingId = briefing?.id;
+    if (!user || !briefingId) return;
+    if (rankedStories.length === 0) return;
+    if (briefOpenEmittedFor.current === briefingId) return;
+    briefOpenEmittedFor.current = briefingId;
+
+    trackClientEvent(
+      "wrap.page.opened",
+      {
+        briefing_id: briefingId,
+        brief_date: briefing?.created_at ?? null,
+        brief_type: "evening",
+        story_count: rankedStories.length,
+        rail_order: rankedStories.map((s) => s.id),
+        personalization_mode: getPersonalizationMode(),
+        // Whether the rail could be personalized at all. With no profile the
+        // served order is the shared baseline regardless of mode.
+        rail_personalizable: !!profile,
+      },
+      { entity_type: "briefing", entity_id: briefingId },
+    );
+
+    // Legacy name kept in parallel so the five existing user_events consumers
+    // (user_signal_aggregator, profile/insights, collective-signals,
+    // updateInferredWeights, internal dashboard views) see no change. Drop this
+    // once those move to the dotted names.
+    trackClientEvent("evening_wrap_opened", { briefing_id: briefingId });
+  }, [user, briefing?.id, briefing?.created_at, rankedStories, profile]);
 
   const tone = normaliseTone(briefing?.market_tone);
   // Use a stable epoch fallback to avoid SSR/client hydration mismatch (#418).
