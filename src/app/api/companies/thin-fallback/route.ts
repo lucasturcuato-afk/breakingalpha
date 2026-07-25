@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
 
   const name = (body.name ?? body.query ?? "").trim();
   const companyId = typeof body.companyId === "string" ? body.companyId.trim() : null;
+  const ticker = typeof body.ticker === "string" ? body.ticker.trim() : null;
   if (name.length < 2 && !companyId) {
     return NextResponse.json(
       { error: "A company name or id is required" },
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
     const data = await buildThinFallback(supabase, {
       id: companyId,
       name: name || null,
+      ticker,
     });
     return NextResponse.json(data);
   } catch (err) {

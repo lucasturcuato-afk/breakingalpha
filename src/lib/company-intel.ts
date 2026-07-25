@@ -69,6 +69,13 @@ export interface RawArticleRow {
 // resolution for the detail route (openai→OpenAI, spacex→SpaceX, etc.).
 
 export const CANONICAL: Record<string, string> = {
+  // IBM: the legal name must canonicalize to the "IBM" filer row (sec_cik
+  // 51143). Without this it matched a null-CIK duplicate company row and the
+  // thin-fallback resolved to no financials.
+  ibm: "IBM",
+  "international business machines": "IBM",
+  "international business machines corp": "IBM",
+  "international business machines corporation": "IBM",
   // NVIDIA
   nvidia: "NVIDIA",
   "nvidia corporation": "NVIDIA",
