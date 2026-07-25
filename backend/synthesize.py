@@ -17,6 +17,10 @@ import temporal_grounding
 import macro_calendar
 import bea_calendar
 from brief_voice_guard import enforce_brief_voice, has_voice_violation
+try:
+    from call_horizons import resolve_on_for
+except Exception:  # pragma: no cover - path differs between runner and tests
+    from backend.call_horizons import resolve_on_for
 import prose_quality_guard
 import overview_grounding
 from dataclasses import asdict
@@ -1115,7 +1119,13 @@ For aggregate/broad-market claims, use SPY as target_symbol (or null). For index
 
 Return 3 to 7 claims. If the brief is genuinely non-directional, it is acceptable to return fewer (even zero).
 
-Respond ONLY with valid JSON in this exact schema — no preamble, no markdown fences:
+For every claim also classify HOW LONG the claim needs to play out. Judge the claim's own language, not your preference. Be honest: forcing a multi-week thesis into a single session grades it on noise, and calling a same-day move a multi-week view delays a verdict everyone already knows.
+- "session"   the claim is about today's trading. Reactions to an overnight headline, an earnings print, a data release, a Fed tone. Words like today, this session, at the open, on the print.
+- "week"      the claim needs a few sessions to resolve. A move that builds over the week, a trend continuing, positioning unwinding.
+- "multiweek" the claim is a thesis, not a trade. A re-rating, a cycle turning, a structural shift, guidance playing out over a quarter.
+When genuinely ambiguous, choose "session". Do not choose a longer horizon to make a claim look more serious.
+
+Respond ONLY with valid JSON in this exact schema, no preamble, no markdown fences:
 {
   "claims": [
     {
@@ -1123,6 +1133,7 @@ Respond ONLY with valid JSON in this exact schema — no preamble, no markdown f
       "claim_type": "aggregate" | "sector" | "index" | "ticker",
       "target_symbol": "<ticker or ETF symbol; null only for pure aggregate with no proxy>",
       "expected_direction": "bullish" | "bearish" | "neutral",
+      "horizon_type": "session" | "week" | "multiweek",
       "confidence": <float between 0.0 and 1.0>
     }
   ]
@@ -1241,6 +1252,9 @@ def extract_and_persist_claims(
     allowed_types = {"aggregate", "sector", "index", "ticker"}
     allowed_dirs = {"bullish", "bearish", "neutral"}
 
+    # Single anchor for both brief_date and resolve_on on every row in this run.
+    _claims_brief_date = date.today().isoformat()
+
     rows = []
     for c in claims:
         if not isinstance(c, dict):
@@ -1267,10 +1281,19 @@ def extract_and_persist_claims(
 
         rows.append({
             "brief_id": brief_id,
+            # brief_date is written explicitly rather than left to the column
+            # default (CURRENT_DATE) so it and resolve_on derive from the SAME
+            # anchor. A one-day drift between the DB clock and the runner clock
+            # would otherwise make a "session" call resolve the following day.
+            "brief_date": _claims_brief_date,
             "claim_text": claim_text,
             "claim_type": claim_type,
             "target_symbol": target_symbol,
             "expected_direction": direction,
+            # Fixed map (backend/call_horizons.py): session +0, week +7,
+            # multiweek +21 calendar days. Missing or unrecognized falls back
+            # to session, i.e. exactly today's behavior.
+            "resolve_on": resolve_on_for(_claims_brief_date, c.get("horizon_type")),
             "confidence": confidence,
             "is_lead": False,
         })
@@ -1297,17 +1320,22 @@ def extract_and_persist_claims(
     except Exception as e:
         print(f"  ⚠ claims extraction: idempotent delete failed (continuing): {e}")
 
-    # Insert with is_lead first; the column ships behind migration 0013 and may not
-    # exist yet on an un-migrated DB, so fall back to the is_lead-free row (never
-    # lose the claims) rather than failing the whole insert.
+    # Insert with the full row first. is_lead ships behind migration 0013 and
+    # resolve_on behind 0014; either may be unapplied on a given DB, so fall
+    # back to the columns that definitely exist (never lose the claims) rather
+    # than failing the whole insert. A call inserted without resolve_on simply
+    # stays out of the due-scan, which is the correct fail-closed behavior.
+    _OPTIONAL_COLS = ("is_lead", "resolve_on")
     try:
         supabase_admin.table("morning_brief_calls").insert(rows).execute()
     except Exception as e:
-        print(f"  ⚠ claims extraction: insert with is_lead failed ({e}); "
-              f"retrying without is_lead (migration 0013 may be unapplied)")
+        print(f"  ⚠ claims extraction: full insert failed ({e}); retrying without "
+              f"{'/'.join(_OPTIONAL_COLS)} (migration 0013/0014 may be unapplied)")
         try:
-            _rows_no_lead = [{k: v for k, v in r.items() if k != "is_lead"} for r in rows]
-            supabase_admin.table("morning_brief_calls").insert(_rows_no_lead).execute()
+            _rows_base = [
+                {k: v for k, v in r.items() if k not in _OPTIONAL_COLS} for r in rows
+            ]
+            supabase_admin.table("morning_brief_calls").insert(_rows_base).execute()
         except Exception as e2:
             print(f"  ⚠ claims extraction: insert failed: {e2}")
             return 0

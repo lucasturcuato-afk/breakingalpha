@@ -37,6 +37,13 @@ import type { Article as MapArticle } from "@/lib/clustering-utils";
 import { GroupJumpNav, useGroupScrollSpy } from "@/components/radar/GroupJumpNav";
 import { useMotionSettled } from "@/lib/use-motion-settled";
 import { useTopicClusters } from "@/lib/use-topic-clusters";
+import {
+  DEFAULT_ADOPT_HORIZON,
+  HORIZON_LABEL,
+  HORIZON_TYPES,
+  horizonFromDates,
+  type HorizonType,
+} from "@/lib/call-horizons";
 
 const SERIF = "var(--font-playfair-display), serif";
 
@@ -63,6 +70,8 @@ interface BriefCallRow {
   claim_type: string | null;
   target_symbol: string | null;
   brief_date: string | null;
+  /** Set at creation from the fixed horizon map. NULL on pre-migration-0014 calls. */
+  resolve_on: string | null;
   created_at: string | null;
   confidence: number | null;
 }
@@ -164,7 +173,40 @@ function resolutionSentence(c: UserClaim): string {
 }
 
 function briefResolutionSentence(c: BriefCallRow): string {
+  const h = horizonFromDates(c.brief_date, c.resolve_on);
+  // A horizon-bearing call states its real window. A pre-horizons call (NULL
+  // resolve_on) keeps the old sentence rather than implying a window it does
+  // not have.
+  if (h && h.days > 0) {
+    return `Resolves over ${c.brief_date} to ${c.resolve_on} with benchmark attribution: only a move beyond sector and market counts.`;
+  }
   return `Resolves against the ${c.brief_date ?? "session"} market close with benchmark attribution: only a move beyond sector and market counts.`;
+}
+
+/**
+ * Horizon chip. DERIVED from the call's stored dates, never hardcoded: the
+ * label is whatever brief_date -> resolve_on actually spans, so a change to the
+ * backend map or a user-chosen window renders correctly with no UI edit. Absent
+ * entirely when there is no resolve_on to derive from.
+ */
+function HorizonChip({
+  anchor,
+  resolveOn,
+}: {
+  anchor: string | null | undefined;
+  resolveOn: string | null | undefined;
+}) {
+  const h = horizonFromDates(anchor, resolveOn);
+  if (!h) return null;
+  return (
+    <span
+      data-testid="horizon-chip"
+      title={`Resolves ${resolveOn}`}
+      className="rounded-sm border border-border-subtle px-1.5 py-px font-mono text-[10px] leading-none text-text-muted"
+    >
+      {h.label}
+    </span>
+  );
 }
 
 function claimToCallInput(c: UserClaim): OpenCallInput {
@@ -190,7 +232,11 @@ export default function CallsPage() {
   const [topMode, setTopMode] = useState<TopMode>("record");
   const [pinned, setPinned] = useState<string[]>([]);
   const [adoptBusy, setAdoptBusy] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  /** Per-call horizon picked in the track control. Defaults per call, not globally. */
+  const [adoptHorizon, setAdoptHorizon] = useState<Record<string, HorizonType>>({});
+  /** Inline per-call failure text. Replaces the adopt toast, which adopt was
+   *  the only writer of; tracking state now resolves in place on the card. */
+  const [adoptError, setAdoptError] = useState<Record<string, string>>({});
   const [mapClaimId, setMapClaimId] = useState<string | null>(null);
   const [mapArticles, setMapArticles] = useState<MapArticle[] | null>(null);
   const [mapLoading, setMapLoading] = useState(false);
@@ -251,7 +297,7 @@ export default function CallsPage() {
       const since = new Date(Date.now() - 14 * 86400_000).toISOString().slice(0, 10);
       const { data: callRows } = await sb
         .from("morning_brief_calls")
-        .select("id, claim_text, claim_type, target_symbol, brief_date, created_at, confidence")
+        .select("id, claim_text, claim_type, target_symbol, brief_date, resolve_on, created_at, confidence")
         .gte("brief_date", since)
         .order("brief_date", { ascending: false })
         .limit(20);
@@ -309,26 +355,34 @@ export default function CallsPage() {
     void load();
   }, [load]);
 
-  const adopt = async (callId: string) => {
+  /**
+   * Track a brief call as a forward claim of the user's own, over `horizon`.
+   * Resolves inline: the card swaps to a tracked state in place. No toast, no
+   * modal, no navigation, so the user never loses their position in the list.
+   */
+  const adopt = async (callId: string, horizon: HorizonType) => {
     setAdoptBusy(callId);
+    setAdoptError((prev) => {
+      const next = { ...prev };
+      delete next[callId];
+      return next;
+    });
     try {
       const res = await fetch("/api/radar/claims/adopt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ call_id: callId }),
+        body: JSON.stringify({ call_id: callId, horizon }),
       });
       const json = await res.json();
-      setToast(
-        res.ok
-          ? json.alreadyAdopted
-            ? "Already in your calls."
-            : "Tracking this call."
-          : (json.error ?? "Could not adopt."),
-      );
-      if (res.ok) await load();
+      if (!res.ok) {
+        setAdoptError((prev) => ({ ...prev, [callId]: json.error ?? "Could not track." }));
+        return;
+      }
+      await load();
+    } catch {
+      setAdoptError((prev) => ({ ...prev, [callId]: "Could not track." }));
     } finally {
       setAdoptBusy(null);
-      setTimeout(() => setToast(null), 2500);
     }
   };
 
@@ -620,24 +674,58 @@ export default function CallsPage() {
                     const props = briefOutcomes
                       ? scoredCallProps(c, briefOutcomes.get(c.id) ?? null, today)
                       : scoredCallProps(c, null, c.brief_date ?? today);
-                    const alreadyAdopted = claims.some(
+                    const trackedClaim = claims.find(
                       (uc) => uc.adopted_from_call_id === c.id,
                     );
+                    const chosen = adoptHorizon[c.id] ?? DEFAULT_ADOPT_HORIZON;
                     return (
                       <div key={c.id} className="group">
-                        <div className="mb-1 flex items-baseline justify-between px-1 font-sans text-[11px] text-text-faint">
-                          <span>Signalera brief · {c.brief_date}</span>
-                          <button
-                            disabled={adoptBusy === c.id || alreadyAdopted || unavailable}
-                            onClick={() => void adopt(c.id)}
-                            className="hover:text-text-primary disabled:opacity-50"
-                          >
-                            {alreadyAdopted
-                              ? "Tracking"
-                              : adoptBusy === c.id
-                                ? "Adopting…"
-                                : "Track this call"}
-                          </button>
+                        <div className="mb-1 flex items-baseline justify-between gap-2 px-1 font-sans text-[11px] text-text-faint">
+                          <span className="flex items-baseline gap-1.5">
+                            Signalera brief · {c.brief_date}
+                            <HorizonChip anchor={c.brief_date} resolveOn={c.resolve_on} />
+                          </span>
+                          {/* Track control. Present on EVERY call including
+                              already-scored ones: tracking is a fresh forward
+                              claim from today over the user's own window, not a
+                              re-run of the brief's already-settled verdict. */}
+                          {trackedClaim ? (
+                            <span className="flex items-baseline gap-1.5 text-text-muted">
+                              Tracking
+                              <HorizonChip
+                                anchor={trackedClaim.resolution_window_start}
+                                resolveOn={trackedClaim.resolution_window_end}
+                              />
+                            </span>
+                          ) : (
+                            <span className="flex items-baseline gap-1.5">
+                              <select
+                                aria-label="Tracking horizon"
+                                value={chosen}
+                                disabled={adoptBusy === c.id || unavailable}
+                                onChange={(e) =>
+                                  setAdoptHorizon((prev) => ({
+                                    ...prev,
+                                    [c.id]: e.target.value as HorizonType,
+                                  }))
+                                }
+                                className="cursor-pointer rounded-sm border border-border-subtle bg-transparent px-1 py-px font-mono text-[10px] text-text-muted disabled:opacity-50"
+                              >
+                                {HORIZON_TYPES.map((h) => (
+                                  <option key={h} value={h}>
+                                    {HORIZON_LABEL[h]}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                disabled={adoptBusy === c.id || unavailable}
+                                onClick={() => void adopt(c.id, chosen)}
+                                className="hover:text-text-primary disabled:opacity-50"
+                              >
+                                {adoptBusy === c.id ? "Tracking…" : "Track this call"}
+                              </button>
+                            </span>
+                          )}
                         </div>
                         <div className="card-hover-lift">
                           <ScoredObject {...props} />
@@ -645,6 +733,11 @@ export default function CallsPage() {
                         <p className="motion-fade-reveal mt-1 px-1 font-sans text-[11px] leading-snug text-text-muted">
                           {briefResolutionSentence(c)}
                         </p>
+                        {adoptError[c.id] && (
+                          <p className="mt-1 px-1 font-sans text-[11px] text-text-muted">
+                            {adoptError[c.id]}
+                          </p>
+                        )}
                       </div>
                     );
                   })}
@@ -661,12 +754,6 @@ export default function CallsPage() {
                  Detail (evidence feed, why-this-thesis, notes, archive,
                  review timeline) expands in place; no separate page. ── */}
             <TrackedViews initialThesisId={deepLinkThesisId} initialOpen={openViews} />
-
-            {toast && (
-              <div className="fixed bottom-6 right-6 rounded-md bg-espresso px-4 py-2 font-sans text-[13px] text-cream shadow-lg dark:bg-overlay dark:text-foreground">
-                {toast}
-              </div>
-            )}
           </>
         )}
       </div>
