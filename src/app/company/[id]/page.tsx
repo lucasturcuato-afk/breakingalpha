@@ -155,6 +155,12 @@ export default async function CompanyDetailPage({
   // PrimerWebMemo and the route stay in place, dormant.
   const webMemoEnabled = process.env.NEXT_PUBLIC_WEB_FALLBACK_ENABLED === "true";
 
+  // Financials commentary affordance is OFF by default. Server-read flag (not
+  // NEXT_PUBLIC, so it stays out of the client bundle and the schedule); the
+  // route enforces the same gate. Absent the override the control never mounts
+  // and POST /api/financials-commentary is never called.
+  const financialsCommentaryEnabled = process.env.FINANCIALS_COMMENTARY_ENABLED === "true";
+
   const tabContent = {
     // Coverage Primer: replaces the brief tab in place. Snapshot + Business
     // overview + Financial snapshot, then the existing BriefTab embedded
@@ -203,7 +209,12 @@ export default async function CompanyDetailPage({
       />
     ),
     financials: (
-      <FinancialsTab financials={financialsResult} hasCik={financialsResult.cik != null} />
+      <FinancialsTab
+        financials={financialsResult}
+        hasCik={financialsResult.cik != null}
+        companyName={companyDetail.display}
+        commentaryEnabled={financialsCommentaryEnabled}
+      />
     ),
     insider: <ComingSoonTab tabId="insider" />,
     comps: <ComingSoonTab tabId="comps" />,

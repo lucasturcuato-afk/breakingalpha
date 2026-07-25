@@ -32,11 +32,16 @@ import type {
 } from "@/lib/financial-facts";
 import { formatValue, type Fmt } from "./financials-format";
 import { financialsEmptyCopy } from "./empty-state-copy";
+import { FinancialsCommentary } from "./FinancialsCommentary";
 
 export interface FinancialsTabProps {
   financials: CompanyFinancialsResult;
   /** True when the company resolved to a SEC CIK. */
   hasCik: boolean;
+  /** Canonical/display name; the commentary generator's sole input key. */
+  companyName?: string;
+  /** Server-read FINANCIALS_COMMENTARY_ENABLED. Default OFF hides the control. */
+  commentaryEnabled?: boolean;
 }
 
 interface RowDef {
@@ -87,7 +92,12 @@ function ValueCell({ cell, fmt }: { cell: FinancialCell | undefined; fmt: Fmt })
   );
 }
 
-export function FinancialsTab({ financials, hasCik }: FinancialsTabProps) {
+export function FinancialsTab({
+  financials,
+  hasCik,
+  companyName,
+  commentaryEnabled = false,
+}: FinancialsTabProps) {
   const [mode, setMode] = useState<"annual" | "quarterly">("annual");
   const view: FinancialView = mode === "annual" ? financials.annual : financials.quarterly;
   const { periods, grid } = view;
@@ -296,6 +306,9 @@ export function FinancialsTab({ financials, hasCik }: FinancialsTabProps) {
         columns (FY labels) carry the year-end balance sheet; income lines
         dash there because full-year figures live in the Annual view.
       </p>
+      {commentaryEnabled && companyName && (
+        <FinancialsCommentary companyName={companyName} enabled={commentaryEnabled} />
+      )}
     </div>
   );
 }
