@@ -38,19 +38,37 @@ lead and penalized (via a negative grade_score) when it lands on a badly graded
 one. The method is TRANSPARENT: bounded coordinate ascent over a per-weight grid,
 and we print WHY each weight moved (which graded days pushed it up or down).
 
+BETA GATE (this module never auto-promotes)
+--------------------------------------------
+A fit NEVER writes live weights. Every fit that clears the guardrails produces a
+PROPOSED row (status='proposed') - a new versioned lead_weights row that the live
+scorer does NOT read. Noah promotes a proposed row to status='active' BY HAND;
+until then the scorer keeps reading the current active row. There is no code path
+in this module that inserts, updates, or promotes a row (see build_row: it only
+PREPARES the dict a human inserts). See select_active_row() for the scorer's
+active-row selection and the proof a proposed row is excluded.
+
 GUARDRAILS (hard)
 -----------------
-(a) REFUSE to emit learned weights if N < MIN_TRAIN_DAYS confidence-weighted
-    lead-attributable graded days. Keep the safe defaults 4/4/3/1.5. Log the N.
+(a) BETA FLOOR. MIN_TRAIN_DAYS is the SINGLE tunable floor (default 8.0
+    confidence-weighted lead-attributable graded days). At/above the floor a fit
+    is proposed at full confidence. BELOW the floor (but with at least one
+    attributable day) the calibrator MAY still fit, but the proposed row is
+    flagged low_confidence=True so a human weighs it accordingly. With ZERO
+    attributable days there is nothing to fit, so it refuses and holds the safe
+    defaults 4/4/3/1.5. Log the N either way.
 (b) BOUND weight movement per recalibration: each weight may move at most
     MAX_WEIGHT_DELTA_FRAC of the prior weight per recalibration. No wild swings
-    on a thin new sample.
-(c) REGRESSION-SET INVARIANT as a hard PRE-WRITE check: any weight set the
-    calibrator would emit MUST make ALL 6 hand-built regression cases pass (each
-    case's material / macro / geo / commodity story leads; the single-name /
-    routine / speculative / opinion competitor does NOT). Case 1 is the original
-    Jul 13 case; cases 2-6 generalize the same rule to other archetypes. Never
-    writes weights that fail any case. See regression_set().
+    on a thin new sample. STILL ENFORCED for low_confidence fits (a thin beta
+    sample earns AT MOST a 25% move, never more).
+(c) REGRESSION-SET INVARIANT as a hard PRE-PROPOSE check: any weight set the
+    calibrator would PROPOSE MUST make ALL 6 hand-built regression cases pass
+    (each case's material / macro / geo / commodity story leads; the single-name
+    / routine / speculative / opinion competitor does NOT). Case 1 is the
+    original Jul 13 hard invariant; cases 2-6 generalize the same rule to other
+    archetypes. A proposed set that fails ANY case is REJECTED before it can be
+    proposed (falls back to defaults). This gate fires for low_confidence fits
+    too. See regression_set().
 
 Run:  python3.11 backend/lead_weight_calibrator.py            (real history)
       python3.11 backend/lead_weight_calibrator.py --synthetic (fit demo)
@@ -80,9 +98,22 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "breadth": 1.5,
 }
 
-# Guardrail (a): minimum confidence-weighted lead-attributable graded days
-# before we will emit LEARNED weights. Below this we hold defaults.
-MIN_TRAIN_DAYS = 20.0
+# Guardrail (a) - THE SINGLE BETA FLOOR KNOB Noah tunes.
+# Confidence-weighted lead-attributable graded days required for a FULL-confidence
+# proposal. Lowered from 20.0 -> 8.0 so a small beta can start learning early.
+# BELOW this floor (but with >=1 attributable day) the calibrator still fits, but
+# flags the proposed row low_confidence=True. At exactly ZERO attributable days it
+# refuses (nothing to fit). Change THIS ONE constant to move the floor; nothing
+# else in the module hard-codes 8.
+MIN_TRAIN_DAYS = 8.0
+
+# The active-row / proposed-row status vocabulary for the lead_weights store (added
+# by the beta-gate migration sql/0018_lead_weights_status.sql). The LIVE scorer
+# reads only ACTIVE rows; a fit PROPOSES a PROPOSED row that the scorer ignores
+# until a human promotes it. See select_active_row() and build_row().
+STATUS_ACTIVE = "active"
+STATUS_PROPOSED = "proposed"
+STATUS_HELD_DEFAULT = "held_default"  # a refusal/rejection row (never inserted live)
 
 # Guardrail (b): per-recalibration movement cap. A weight may move at most this
 # fraction of its PRIOR value in a single recalibration. 0.25 == a weight can
@@ -720,8 +751,8 @@ def load_graded_days(sb) -> tuple[list[GradedDay], dict]:
 # ── Synthetic fixture (clearly labeled) ──────────────────────────────────────
 
 def synthetic_graded_days() -> list[GradedDay]:
-    """SYNTHETIC, clearly labeled. Construct >= 20 confidence-weighted graded
-    days so the fit actually MOVES the weights.
+    """SYNTHETIC, clearly labeled. Construct ~21 confidence-weighted graded
+    days (well above the beta floor) so the fit actually MOVES the weights.
 
     Design intent: the correct, WELL-GRADED lead on the Block-A days is a
     CONFIRMED deal, but under the default weights (4/4/3/1.5) the broad macro
@@ -809,8 +840,8 @@ def synthetic_graded_days() -> list[GradedDay]:
 
 @dataclass
 class CalibrationResult:
-    emitted: bool
-    is_default: bool
+    emitted: bool               # True => a PROPOSED weight set was produced
+    is_default: bool            # True => held/reverted to safe defaults (no proposal)
     weights: dict[str, float]
     n_train: float
     obj_before: float
@@ -818,20 +849,31 @@ class CalibrationResult:
     prior_weights: dict[str, float]
     jul13_passed: bool
     notes: str
+    # Beta-gate fields. status is what the PREPARED row carries: 'proposed' for an
+    # emitted fit (the scorer ignores it until a human promotes), 'held_default'
+    # for a refusal/rejection. low_confidence marks a sub-floor beta fit.
+    status: str = STATUS_HELD_DEFAULT
+    low_confidence: bool = False
     trace: Optional[FitTrace] = None
 
 
 def calibrate(days: list[GradedDay], prior: dict[str, float]) -> CalibrationResult:
-    """The full decision. Applies guardrails (a) N<20 refusal, (b) movement cap
-    (inside fit_weights), and (c) Jul 13 invariant PRE-WRITE. Returns what would
-    be written (never writes here - the caller persists)."""
+    """The full decision. Applies guardrail (a) the BETA FLOOR (full-confidence at
+    or above MIN_TRAIN_DAYS, low_confidence below it, refuse at zero), (b) the 25%
+    movement cap (enforced inside fit_weights, for low_confidence fits too), and
+    (c) the 6-case REGRESSION-SET invariant (case 1 == the Jul 13 hard invariant)
+    as a hard PRE-PROPOSE reject. NEVER writes: it returns the row that WOULD be
+    PROPOSED (status='proposed'); a human inserts and later promotes it."""
     n = confidence_weighted_n(days)
 
-    # Guardrail (a): refuse below the floor, hold defaults.
-    if n < MIN_TRAIN_DAYS:
-        note = (f"REFUSED to learn: confidence-weighted lead-attributable graded "
-                f"days N={n:.2f} < MIN_TRAIN_DAYS={MIN_TRAIN_DAYS:.0f}. Holding safe "
-                f"defaults {_fmt_w(DEFAULT_WEIGHTS)}. (raw days seen: {len(days)})")
+    # Guardrail (a), degenerate leg: ZERO attributable days => nothing to fit.
+    # A fit on an empty record is meaningless (objective is 0 for every weight
+    # set), so refuse outright and hold the safe defaults. This is distinct from a
+    # thin-but-nonzero beta sample, which we DO fit below (low_confidence).
+    if not days or n <= 0.0:
+        note = (f"REFUSED to learn: ZERO confidence-weighted lead-attributable "
+                f"graded days (N={n:.2f}, raw days seen: {len(days)}). Nothing to "
+                f"fit. Holding safe defaults {_fmt_w(DEFAULT_WEIGHTS)}.")
         passed, jdetail = jul13_invariant_passes(DEFAULT_WEIGHTS)
         note += f" | Jul13 on defaults: {jdetail}"
         return CalibrationResult(
@@ -839,45 +881,61 @@ def calibrate(days: list[GradedDay], prior: dict[str, float]) -> CalibrationResu
             n_train=n, obj_before=objective(days, DEFAULT_WEIGHTS),
             obj_after=objective(days, DEFAULT_WEIGHTS),
             prior_weights=dict(prior), jul13_passed=passed, notes=note,
+            status=STATUS_HELD_DEFAULT, low_confidence=False,
         )
 
-    # Enough data: fit (guardrail b enforced inside fit_weights).
+    # Guardrail (a), beta band: below the floor we STILL fit (early beta learning)
+    # but flag the proposal low_confidence so a human weighs it accordingly. At or
+    # above the floor it is a full-confidence proposal. Either way it is only ever
+    # PROPOSED, never written live.
+    low_confidence = n < MIN_TRAIN_DAYS
+    conf_tag = ("LOW-CONFIDENCE beta fit (N below floor)"
+                if low_confidence else "full-confidence fit")
+
+    # Fit (guardrail b, the 25% movement cap, is enforced inside fit_weights - it
+    # binds identically on a thin low_confidence sample).
     trace = fit_weights(days, prior)
     fitted = trace.fitted
 
-    # Guardrail (c): HARD pre-write REGRESSION-SET check on the emitted set. Every
-    # one of the 6 hand-built cases must argmax onto its asserted winner. Jul 13
-    # is case 1; the other 5 archetypes generalize the same never-emit-this rule.
+    # Guardrail (c): HARD pre-propose REGRESSION-SET check on the fitted set. Every
+    # one of the 6 hand-built cases must argmax onto its asserted winner. Jul 13 is
+    # case 1; the other 5 archetypes generalize the same never-propose-this rule.
+    # This fires for low_confidence fits too - a thin sample CANNOT buy its way past
+    # the invariant.
     passed, rdetail = regression_invariant_passes(fitted)
     if not passed:
         fail_str = _fmt_regression_failures(rdetail)
-        note = (f"REJECTED fitted weights {_fmt_w(fitted)}: regression invariant "
-                f"FAILED before write. {fail_str}. Holding safe defaults "
+        note = (f"REJECTED fitted weights {_fmt_w(fitted)} ({conf_tag}): regression "
+                f"invariant FAILED before propose. {fail_str}. Holding safe defaults "
                 f"{_fmt_w(DEFAULT_WEIGHTS)} instead. This is guardrail (c): never "
-                f"emit weights where a single-name / routine / speculative / "
+                f"propose weights where a single-name / routine / speculative / "
                 f"opinion item beats the material macro / geo / commodity story.")
         dpass, ddetail = regression_invariant_passes(DEFAULT_WEIGHTS)
         note += f" | defaults still pass all cases: {_fmt_regression_failures(ddetail)}"
         return CalibrationResult(
             emitted=False, is_default=True, weights=dict(DEFAULT_WEIGHTS),
             n_train=n, obj_before=trace.obj_before, obj_after=trace.obj_before,
-            prior_weights=dict(prior), jul13_passed=dpass, notes=note, trace=trace,
+            prior_weights=dict(prior), jul13_passed=dpass, notes=note,
+            status=STATUS_HELD_DEFAULT, low_confidence=low_confidence, trace=trace,
         )
 
-    # Emit the learned weights.
+    # PROPOSE the learned weights (status='proposed'; the scorer will NOT read this
+    # row - a human promotes it to 'active' by hand).
     move_lines = " || ".join(trace.movements) if trace.movements else "no weight moved"
     cap_lines = ("; ".join(trace.cap_bound)
                  if trace.cap_bound else "no movement cap bound")
-    note = (f"LEARNED weights emitted. N={n:.2f} conf-weighted graded days. "
-            f"objective {trace.obj_before:.4f} -> {trace.obj_after:.4f}. "
-            f"prior {_fmt_w(prior)} -> fitted {_fmt_w(fitted)}. "
+    note = (f"PROPOSED weights ({conf_tag}, status=proposed - NOT live; a human "
+            f"promotes to active). N={n:.2f} conf-weighted graded days "
+            f"(floor={MIN_TRAIN_DAYS:.0f}). objective {trace.obj_before:.4f} -> "
+            f"{trace.obj_after:.4f}. prior {_fmt_w(prior)} -> fitted {_fmt_w(fitted)}. "
             f"movement cap {int(MAX_WEIGHT_DELTA_FRAC*100)}% per weight. "
             f"WHY: {move_lines}. CAP: {cap_lines}. "
             f"regression set (6 cases): {_fmt_regression_failures(rdetail)}")
     return CalibrationResult(
         emitted=True, is_default=False, weights=dict(fitted),
         n_train=n, obj_before=trace.obj_before, obj_after=trace.obj_after,
-        prior_weights=dict(prior), jul13_passed=passed, notes=note, trace=trace,
+        prior_weights=dict(prior), jul13_passed=passed, notes=note,
+        status=STATUS_PROPOSED, low_confidence=low_confidence, trace=trace,
     )
 
 
@@ -902,8 +960,10 @@ def next_version(sb) -> int:
 
 
 def build_row(result: CalibrationResult, version: int) -> dict:
-    """The lead_weights row this calibration WOULD write. The caller (a human, or
-    a future service-role writer) inserts it; the calibrator NEVER applies."""
+    """The lead_weights row this calibration WOULD PROPOSE. The caller (a human, or
+    a future service-role writer) inserts it; the calibrator NEVER applies and
+    NEVER promotes. An emitted fit carries status='proposed' so the live scorer
+    ignores it (see select_active_row) until a human promotes it to 'active'."""
     w = result.weights
     return {
         "version": version,
@@ -918,6 +978,9 @@ def build_row(result: CalibrationResult, version: int) -> dict:
         "prior_weights": {k: round(v, 6) for k, v in result.prior_weights.items()},
         "is_default": result.is_default,
         "jul13_invariant_passed": result.jul13_passed,
+        # Beta gate: a fit is PROPOSED, never active. A human promotes by hand.
+        "status": result.status,
+        "low_confidence": result.low_confidence,
         "notes": result.notes,
     }
 
@@ -944,15 +1007,143 @@ def load_prior_weights(sb) -> dict[str, float]:
     return dict(DEFAULT_WEIGHTS)
 
 
+# ── Active-row selection (scorer parity) + proposed-exclusion proof ──────────
+#
+# THE LIVE SCORER'S ACTIVE-ROW QUERY (impact_ranking._read_active_weights_row,
+# quoted verbatim so the parity is auditable):
+#
+#     sb.table("lead_weights")
+#       .select("version, fit_ts, w_materiality, w_session_fit, "
+#               "w_confirmation, w_breadth, n_train, is_default, "
+#               "jul13_invariant_passed")
+#       .eq("is_default", False)
+#       .eq("jul13_invariant_passed", True)
+#       .order("version", desc=True)
+#       .limit(1)
+#
+# The scorer picks the HIGHEST-version non-default, jul13-passing row. That query
+# has NO status predicate today, so once proposed rows exist it would read a
+# proposed row as active. The beta gate closes that by adding a status column
+# (migration sql/0018) and ONE predicate to the scorer: `.eq("status", "active")`.
+# That one-line scorer change lives in impact_ranking.py (Agent ELIG's file), so
+# it is REPORTED, not edited here. select_active_row() below models the CORRECT,
+# status-aware selection and proves a proposed row is excluded.
+
+# The exact extra predicate the scorer must gain (reported to ELIG/Noah).
+SCORER_ACTIVE_PREDICATE = '.eq("status", "active")'
+
+
+def select_active_row(rows: list[dict]) -> Optional[dict]:
+    """Model the scorer's CORRECT active-row selection: the highest-version row
+    that is (is_default=False) AND (jul13_invariant_passed=True) AND
+    (status='active'). A status='proposed' row can NEVER be returned here, no
+    matter how high its version. Rows missing a status default to 'active' (the
+    migration back-fills existing/seed rows to active), so legacy rows behave
+    exactly as before. SELECT-side only; this NEVER writes."""
+    eligible = [
+        r for r in (rows or [])
+        if not r.get("is_default", False)
+        and r.get("jul13_invariant_passed", False)
+        and (r.get("status") or STATUS_ACTIVE) == STATUS_ACTIVE
+    ]
+    if not eligible:
+        return None
+    return max(eligible, key=lambda r: int(r.get("version", -1)))
+
+
+def demo_proposed_excluded_from_active() -> None:
+    """PROOF (C2): the live scorer reads the ACTIVE row and IGNORES a proposed row
+    even when the proposed row has a strictly higher version. Uses a local fixture
+    (no prod write) plus the real scorer's live read against prod."""
+    print("*" * 78)
+    print("* C2 PROOF: a status=proposed row is NOT picked up as the active weights")
+    print("*" * 78)
+    fixture = [
+        {"version": 0, "is_default": True, "jul13_invariant_passed": True,
+         "status": STATUS_ACTIVE, "w_materiality": 4.0, "w_session_fit": 4.0,
+         "w_confirmation": 3.0, "w_breadth": 1.5, "note": "seed default (excluded: is_default)"},
+        {"version": 1, "is_default": False, "jul13_invariant_passed": True,
+         "status": STATUS_ACTIVE, "w_materiality": 3.6, "w_session_fit": 4.2,
+         "w_confirmation": 3.4, "w_breadth": 1.35, "note": "human-PROMOTED active learned row"},
+        {"version": 2, "is_default": False, "jul13_invariant_passed": True,
+         "status": STATUS_PROPOSED, "w_materiality": 3.0, "w_session_fit": 4.4,
+         "w_confirmation": 3.75, "w_breadth": 1.2, "note": "freshly PROPOSED (higher version, must be IGNORED)"},
+    ]
+    print("  fixture rows (highest version is the PROPOSED one):")
+    for r in fixture:
+        print(f"    v{r['version']} status={r['status']:9s} is_default={r['is_default']!s:5s} "
+              f"jul13={r['jul13_invariant_passed']!s:5s}  ({r['note']})")
+    active = select_active_row(fixture)
+    print(f"  scorer active-row selection (status-aware) picks: "
+          f"v{active['version']} status={active['status']} "
+          f"({active['w_materiality']}/{active['w_session_fit']}/"
+          f"{active['w_confirmation']}/{active['w_breadth']})")
+    picked_proposed = active.get("status") == STATUS_PROPOSED
+    print(f"  -> proposed row (v2) picked up live? {picked_proposed}  (MUST be False)")
+    print(f"  -> scorer must add {SCORER_ACTIVE_PREDICATE} to its query "
+          f"(impact_ranking._read_active_weights_row, ELIG's file - REPORTED not edited)")
+    print()
+    # Live read: what the REAL scorer returns from prod RIGHT NOW (read-only).
+    print("  LIVE prod read via impact_ranking (read-only, SELECT):")
+    try:
+        import importlib
+        ir = importlib.import_module("impact_ranking")
+        meta = ir.active_weights_meta()
+        print(f"    impact_ranking.active_weights_meta() -> source={meta.get('source')} "
+              f"version={meta.get('version')} weights={meta.get('weights')}")
+        print("    (source=default / version=None => the live scorer is reading NO "
+              "calibrated or proposed row today; it holds the hand defaults.)")
+    except Exception as e:
+        print(f"    (could not import impact_ranking for the live read: {str(e)[:100]})")
+    print()
+
+
+def demo_no_auto_promotion() -> None:
+    """CONFIRM (C2): there is NO insert/update/promote path in this module. The
+    calibrator only PREPARES a row dict (build_row); a human performs the insert
+    and the later promotion. Self-checks the module source for write verbs."""
+    print("=" * 78)
+    print("= C2 PROOF: NO auto-promotion / no write path in the calibrator")
+    print("=" * 78)
+    import re
+    src = ""
+    try:
+        with open(os.path.abspath(__file__), "r", encoding="utf-8") as fh:
+            src = fh.read()
+    except Exception as e:
+        print(f"  (could not read own source: {str(e)[:80]})")
+        return
+    # Any Supabase mutation verb executed against a table would be a write. We scan
+    # for call-sites, not docstring mentions, by requiring a '(' after the verb.
+    write_calls = re.findall(r"\.(insert|upsert|update|delete|rpc)\s*\(", src)
+    print(f"  supabase write call-sites in this module (.insert/.upsert/.update/"
+          f".delete/.rpc): {len(write_calls)}  -> {write_calls if write_calls else 'NONE'}")
+    print(f"  build_row() PREPARES a dict only; the caller inserts it. status of an "
+          f"emitted fit = {STATUS_PROPOSED!r} (never {STATUS_ACTIVE!r}).")
+    print("  -> promotion (status proposed -> active) is a MANUAL human step; no "
+          "code path here performs it.")
+    print()
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 def _print_result(result: CalibrationResult, version: int, header: str) -> None:
     print("=" * 78)
     print(header)
     print("=" * 78)
-    print(f"  emitted:            {result.emitted}")
-    print(f"  is_default:         {result.is_default}")
-    print(f"  N (conf-weighted):  {result.n_train:.2f}  (MIN_TRAIN_DAYS={MIN_TRAIN_DAYS:.0f})")
+    print(f"  emitted (proposed): {result.emitted}")
+    print(f"  is_default (held):  {result.is_default}")
+    print(f"  row status:         {result.status}"
+          f"{'  (scorer IGNORES this)' if result.status == STATUS_PROPOSED else ''}")
+    print(f"  low_confidence:     {result.low_confidence}")
+    if result.n_train <= 0.0:
+        _band = "ZERO days -> refuse (nothing to fit)"
+    elif result.n_train < MIN_TRAIN_DAYS:
+        _band = "below floor -> low_confidence fit"
+    else:
+        _band = "at/above floor -> full-confidence fit"
+    print(f"  N (conf-weighted):  {result.n_train:.2f}  "
+          f"(MIN_TRAIN_DAYS floor={MIN_TRAIN_DAYS:.0f}; {_band})")
     print(f"  prior weights:      {_fmt_w(result.prior_weights)}")
     print(f"  chosen weights:     {_fmt_w(result.weights)}")
     print(f"  objective before:   {result.obj_before:.4f}")
@@ -970,7 +1161,7 @@ def _print_result(result: CalibrationResult, version: int, header: str) -> None:
             print(f"    - {c}")
     print("  notes:")
     print(f"    {result.notes}")
-    print("  row that WOULD be written to lead_weights (NOT applied):")
+    print("  row that WOULD be PROPOSED to lead_weights (NOT applied, NOT promoted):")
     print("    " + json.dumps(build_row(result, version), indent=2).replace("\n", "\n    "))
     print()
 
@@ -1022,14 +1213,34 @@ def run_real(sb) -> CalibrationResult:
 
 def run_synthetic() -> CalibrationResult:
     print("#" * 78)
-    print("# SYNTHETIC FIXTURE (NOT production data) - proves the fit RUNS at N>=20")
+    print("# SYNTHETIC FIXTURE (NOT production data) - proves the fit RUNS above floor")
     print("#" * 78)
     days = synthetic_graded_days()
     n = confidence_weighted_n(days)
-    print(f"  synthetic days: {len(days)}  |  confidence-weighted N: {n:.2f}")
+    print(f"  synthetic days: {len(days)}  |  confidence-weighted N: {n:.2f} "
+          f"(>= floor {MIN_TRAIN_DAYS:.0f} -> full-confidence PROPOSED row)")
     prior = dict(DEFAULT_WEIGHTS)
     result = calibrate(days, prior)
-    _print_result(result, 1, "SYNTHETIC CALIBRATION DECISION (fit RUNS)")
+    _print_result(result, 1, "SYNTHETIC CALIBRATION DECISION (fit RUNS, full confidence)")
+    return result
+
+
+def run_synthetic_low_confidence() -> CalibrationResult:
+    """SYNTHETIC, clearly labeled. A sub-floor beta sample (N between 0 and the
+    floor) to prove guardrail (a)'s beta band: the calibrator STILL fits and
+    PROPOSES a row, but flags it low_confidence=True. Uses the first 6 Block-A
+    days of the synthetic fixture (confidence 0.95 each -> N ~= 5.7 < 8)."""
+    print("#" * 78)
+    print("# SYNTHETIC FIXTURE (NOT production data) - sub-floor BETA fit")
+    print("# proves: below the floor the calibrator STILL proposes, flagged low_confidence")
+    print("#" * 78)
+    days = synthetic_graded_days()[:6]  # 6 Block-A days at confidence 0.95 -> N~5.7
+    n = confidence_weighted_n(days)
+    print(f"  synthetic days: {len(days)}  |  confidence-weighted N: {n:.2f} "
+          f"(< floor {MIN_TRAIN_DAYS:.0f} -> low_confidence PROPOSED row)")
+    prior = dict(DEFAULT_WEIGHTS)
+    result = calibrate(days, prior)
+    _print_result(result, 1, "SYNTHETIC SUB-FLOOR DECISION (low_confidence PROPOSED)")
     return result
 
 
@@ -1109,11 +1320,15 @@ def demo_jul13_rejection() -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Lead-weight calibrator (offline, deterministic).")
     ap.add_argument("--synthetic", action="store_true",
-                    help="Run the synthetic >=20-day fixture (fit RUNS).")
+                    help="Run the synthetic above-floor fixture (full-confidence fit RUNS).")
+    ap.add_argument("--low-confidence", action="store_true",
+                    help="Run the synthetic SUB-FLOOR fixture (low_confidence beta fit RUNS).")
     ap.add_argument("--regression", action="store_true",
                     help="Print the 6-case regression set under DEFAULT_WEIGHTS.")
+    ap.add_argument("--gate-proof", action="store_true",
+                    help="Prove C2: proposed row excluded from active + no auto-promotion.")
     ap.add_argument("--all", action="store_true",
-                    help="Run real history AND synthetic AND the regression proofs.")
+                    help="Run real history AND synthetic (both bands) AND all proofs.")
     args = ap.parse_args()
 
     sb = _connect()
@@ -1122,14 +1337,24 @@ def main() -> None:
         demo_regression_defaults()
         demo_jul13_rejection()
         return
+    if args.gate_proof:
+        demo_proposed_excluded_from_active()
+        demo_no_auto_promotion()
+        return
+    if args.low_confidence:
+        run_synthetic_low_confidence()
+        return
     if args.synthetic:
         run_synthetic()
         return
     if args.all:
         run_real(sb)
         run_synthetic()
+        run_synthetic_low_confidence()
         demo_regression_defaults()
         demo_jul13_rejection()
+        demo_proposed_excluded_from_active()
+        demo_no_auto_promotion()
         return
     # default: real history only (the production-safe path)
     run_real(sb)

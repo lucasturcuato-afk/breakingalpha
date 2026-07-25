@@ -1,0 +1,42 @@
+name: Lead-Weight Calibrator (report-only)
+
+# Offline, SELECT-only, REPORT-ONLY. The calibrator has NO write path: it reads
+# the graded record and PRINTS the weight set it WOULD propose (status='proposed')
+# plus the beta-gate proofs. It NEVER inserts, updates, or promotes a lead_weights
+# row. Promotion of a proposed row to active is a manual human step. This job
+# exists so the calibrator "learns early in beta" in the open (its proposal shows
+# up in the run log for Noah) without ever touching the live weights the scorer
+# reads.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '30 11 * * 1'  # Mondays 03:30 PT / 11:30 UTC, after the nightly grader
+
+permissions:
+  contents: read
+
+jobs:
+  calibrate-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run calibrator (SELECT-only, report-only)
+        working-directory: backend
+        env:
+          # SELECT-only usage. The module issues no write calls; the service role
+          # is used solely to read pipeline_runs, lead_outcome_grades, lead_weights.
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PYTHONPATH: ${{ github.workspace }}
+        run: python lead_weight_calibrator.py --all
