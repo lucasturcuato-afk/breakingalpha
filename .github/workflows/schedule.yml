@@ -9,6 +9,19 @@ on:
         type: choice
         options: [morning, evening]
 
+# The alerting steps below open GitHub issues via actions/github-script. That
+# REQUIRES an explicit issues:write scope on the job token. Without it the
+# github.rest.issues.create call throws "Resource not accessible by integration"
+# and the alert silently no-ops. That is exactly what happened on 2026-07-23/24:
+# run.py exited non-zero on the credit-depleted stub, the "Notify on failure"
+# step RAN, but the create call failed for lack of this scope, so no issue was
+# ever opened and the outage stayed invisible for days (see run 30098137174,
+# step "Notify on failure": RequestError [HttpError]: Resource not accessible by
+# integration). contents:read keeps checkout working under the tighter scope.
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   pipeline:
     runs-on: ubuntu-latest
@@ -118,4 +131,62 @@ jobs:
               title: `Brief pipeline failed (${mode}) - ${day}`,
               body: `The ${mode} brief pipeline failed or shipped a stub.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n\nA stub means the brief did not generate (e.g. Gemini quota exhausted); the site keeps serving the prior brief. This is an automatic notification.`,
               labels: ['brief-failure', 'automated']
+            })
+
+      # Read the ACTUAL shipped-pulse path this run took from the DB
+      # (pipeline_runs.preselect_decision.pulse_shipped_path, written by
+      # synthesize.py) and expose it to the credit-degradation alert below.
+      # Mirrors #470's post-run DB read. Runs on always() so it captures the row
+      # even when the pipeline step failed (the credit-depleted case exits
+      # non-zero AND leaves pulse_shipped_path at its v2_off default). SELECT
+      # only; no writes.
+      - name: Read shipped pulse path
+        if: always()
+        id: pulsepath
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          MODE: ${{ steps.mode.outputs.mode }}
+        run: |
+          set -euo pipefail
+          since=$(date -u -d '3 hours ago' +%Y-%m-%dT%H:%M:%S)
+          row=$(curl -sS --get "${SUPABASE_URL}/rest/v1/pipeline_runs" \
+            --data-urlencode "brief_type=eq.${MODE}" \
+            --data-urlencode "started_at=gte.${since}" \
+            --data-urlencode "order=started_at.desc" \
+            --data-urlencode "limit=1" \
+            --data-urlencode "select=preselect_decision" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
+          path=$(echo "${row}" | jq -r '.[0].preselect_decision.pulse_shipped_path // ""')
+          v2on=$(echo "${row}" | jq -r '.[0].preselect_decision.market_pulse_v2_on // false')
+          echo "shipped_path='${path}' market_pulse_v2_on='${v2on}'"
+          echo "path=${path}" >> "$GITHUB_OUTPUT"
+          echo "v2on=${v2on}" >> "$GITHUB_OUTPUT"
+
+      # Gemini credit-degradation alert. DISTINCT from the total-stub failure
+      # above: pulse_shipped_path=v2_off means the dedicated V2 pulse call was
+      # SKIPPED / never overwrote its default - the fingerprint of the Gemini
+      # 429 RESOURCE_EXHAUSTED "prepayment credits are depleted" error killing
+      # the pulse call (the exact signature in run 30098137174 on 2026-07-24).
+      # This is the DEGRADATION signal that PRECEDES a full outage, and it is a
+      # distinct failure mode from a total stub, so it gets its own label.
+      # Balance is NOT programmatically readable (the google-genai SDK exposes no
+      # billing/credits surface and the Gemini Developer API has no balance
+      # endpoint - the 429 itself only points to the AI Studio console), so this
+      # inferential signal is the most reliable available proxy for "credits ran
+      # dry". Alerting only; it never gates or fails the run.
+      - name: Alert on pulse-off (Gemini credit degradation)
+        if: always() && steps.pulsepath.outputs.path == 'v2_off' && steps.pulsepath.outputs.v2on == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const mode = '${{ steps.mode.outputs.mode }}' || 'unknown';
+            const day = new Date().toISOString().slice(0, 10);
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Market Pulse OFF - likely Gemini credit depletion (${mode}) - ${day}`,
+              body: `The ${mode} brief shipped with pulse_shipped_path=v2_off while MARKET_PULSE_V2 is ON. That means the dedicated V2 market-pulse call was skipped or errored out before it could ship - the fingerprint of the Gemini 429 RESOURCE_EXHAUSTED "prepayment credits are depleted" error.\n\nThis is a DISTINCT, EARLIER signal than a total stub: it is the credit-degradation that precedes a full outage. Gemini prepay balance is NOT readable via API (console-only), so this is the most reliable inferential proxy for "credits are running dry". Run rate is ~$7.6/day; a depleted balance stops brief generation entirely within one run.\n\nACTION: check the Gemini/AI Studio billing console and load prepay credits. Auto-reload is intentionally OFF.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n\nThis is an automatic notification.`,
+              labels: ['pulse-off', 'gemini-credits', 'automated']
             })
