@@ -13,6 +13,12 @@
  * compliance-language-filter.ts as the POST-GENERATION BACKSTOP that actually
  * holds -- offending sentences are stripped before anything is returned.
  *
+ * Two-layer accuracy, on the same pattern and for a separate failure: multi-
+ * period arithmetic is computed in code (financials-derived-facts.ts) and given
+ * to the model as a closed list, then multi-period-claim-validator.ts strips any
+ * streak, extreme, or first the model asserted outside that list. A fabricated
+ * streak is compliant prose, so the compliance filter cannot catch it.
+ *
  * Default OFF: gated on FINANCIALS_COMMENTARY_ENABLED === "true" (server env,
  * not in the schedule, not exposed to the client bundle). Absent the override
  * this returns 503 and prod is unchanged on merge. No caching / no writes: the
@@ -34,6 +40,8 @@ import {
   COMMENTARY_DISCLAIMER,
 } from "@/lib/financials-commentary";
 import { filterComplianceLanguage } from "@/lib/compliance-language-filter";
+import { computeDerivedFacts } from "@/lib/financials-derived-facts";
+import { validateMultiPeriodClaims } from "@/lib/multi-period-claim-validator";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -96,12 +104,26 @@ export async function POST(request: NextRequest) {
   const sanitized = sanitizeCommentary(raw);
   const filtered = filterComplianceLanguage(sanitized);
 
+  // Then the accuracy backstop. Compliance and truth are different failures: a
+  // fabricated streak reads as clean descriptive prose, so it survives the
+  // filter above and has to be checked against arithmetic computed in code.
+  const derivedFacts = computeDerivedFacts(financials);
+  const verified = validateMultiPeriodClaims(filtered.clean, derivedFacts);
+  if (verified.blocked) {
+    console.warn(
+      "[financials-commentary] stripped unverified multi-period claim(s):",
+      verified.findings.map((f) => `${f.reason} :: ${f.sentence}`),
+    );
+  }
+
   return NextResponse.json({
-    commentary: filtered.clean,
+    commentary: verified.clean,
     disclaimer: COMMENTARY_DISCLAIMER,
     // Surfaced for observability; the UI does not need to render these.
     filtered: filtered.blocked,
     removedCount: filtered.findings.length,
-    empty: filtered.clean.length === 0,
+    unverifiedClaims: verified.blocked,
+    unverifiedCount: verified.findings.length,
+    empty: verified.clean.length === 0,
   });
 }
