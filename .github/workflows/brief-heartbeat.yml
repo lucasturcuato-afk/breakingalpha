@@ -1,0 +1,110 @@
+name: Brief Heartbeat (staleness check)
+
+# WHY THIS EXISTS
+# The brief pipeline (schedule.yml) is triggered EXTERNALLY by cron-job.org via
+# workflow_dispatch. A trigger that never fires produces NO GitHub Actions run,
+# so there is no failed job to notify on - the "no-run" gap that let the
+# 2026-07-08 outage (pipeline stopped entirely) go unnoticed for days. The
+# pulse-off and stub alerts in schedule.yml only fire when a run HAPPENS; they
+# cannot catch a run that never started.
+#
+# This workflow closes that gap from a DIFFERENT trigger: it runs on GitHub's
+# OWN schedule and checks the DB for a fresh, non-stub briefing. If the newest
+# briefing is stale (older than the staleness window) OR is a stub, it opens an
+# issue. Because it does not depend on the pipeline running, it fires even when
+# the pipeline never started.
+#
+# HONEST LIMITATION (read this before relying on it as the only safety net):
+# GitHub's cron scheduler is best-effort. Scheduled workflows are delayed under
+# platform load and CAN be skipped entirely during high-load windows, and are
+# auto-disabled after 60 days of repo inactivity. So this heartbeat REDUCES the
+# no-run blind spot but does not eliminate it. For a hard guarantee, add an
+# EXTERNAL uptime monitor (the same class of tool as cron-job.org: e.g. a
+# cron-job.org monitor, Better Uptime, or Healthchecks.io dead-man switch)
+# that pings a public read of the latest briefing timestamp on a schedule and
+# alerts when it goes stale. That external monitor is the belt; this workflow is
+# the suspenders. Tracked as a separate operational item for a human.
+
+on:
+  # Morning brief lands ~13:45 UTC, evening ~02:00 UTC. Check a few hours after
+  # each expected landing so a missed or stub run is caught the same day.
+  schedule:
+    - cron: '0 17 * * 1-5'   # ~3h after the morning brief window
+    - cron: '0 5 * * 2-6'    # ~3h after the evening brief window (next UTC day)
+  workflow_dispatch:
+    inputs:
+      staleness_hours:
+        description: 'Alert if the newest non-stub briefing is older than this many hours'
+        default: '18'
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for a fresh non-stub briefing
+        id: check
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          STALENESS_HOURS: ${{ github.event.inputs.staleness_hours || '18' }}
+        run: |
+          set -euo pipefail
+          # Newest briefing of ANY type. SELECT only; no writes.
+          row=$(curl -sS --get "${SUPABASE_URL}/rest/v1/briefings" \
+            --data-urlencode "order=created_at.desc" \
+            --data-urlencode "limit=1" \
+            --data-urlencode "select=headline,created_at,briefing_type" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
+          headline=$(echo "${row}" | jq -r '.[0].headline // ""')
+          created=$(echo "${row}" | jq -r '.[0].created_at // ""')
+          btype=$(echo "${row}" | jq -r '.[0].briefing_type // ""')
+          echo "Newest briefing: type='${btype}' created='${created}' headline='${headline}'"
+
+          stale="false"
+          reason=""
+          if [ -z "${created}" ]; then
+            stale="true"
+            reason="No briefing row exists at all."
+          else
+            now_s=$(date -u +%s)
+            created_s=$(date -u -d "${created}" +%s)
+            age_h=$(( (now_s - created_s) / 3600 ))
+            echo "Newest briefing age: ${age_h}h (threshold ${STALENESS_HOURS}h)"
+            if [ "${age_h}" -gt "${STALENESS_HOURS}" ]; then
+              stale="true"
+              reason="Newest briefing is ${age_h}h old (> ${STALENESS_HOURS}h). The pipeline likely did not run - no fresh brief was produced in the expected window."
+            elif [ "${headline}" = "Market Intelligence Unavailable" ]; then
+              stale="true"
+              reason="Newest briefing is a STUB (Market Intelligence Unavailable). The pipeline ran but did not generate a real brief."
+            fi
+          fi
+
+          {
+            echo "stale=${stale}"
+            echo "reason=${reason}"
+            echo "created=${created}"
+            echo "btype=${btype}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Alert on stale or missing brief
+        if: steps.check.outputs.stale == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const day = new Date().toISOString().slice(0, 10);
+            const reason = `${{ steps.check.outputs.reason }}` || 'Brief is stale or missing.';
+            const created = `${{ steps.check.outputs.created }}` || 'unknown';
+            const btype = `${{ steps.check.outputs.btype }}` || 'unknown';
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Brief heartbeat: stale or missing brief - ${day}`,
+              body: `The brief heartbeat check found no fresh brief.\n\n${reason}\n\nNewest briefing: type=${btype}, created=${created}.\n\nThis catches the NO-RUN case that schedule.yml cannot: a run triggered externally by cron-job.org that never fired leaves no failed Actions job. If this fires, first confirm the cron-job.org trigger is still active, then check the Gemini billing console for depleted prepay credits (~$7.6/day run rate). Auto-reload is intentionally OFF.\n\nNOTE: GitHub's own scheduler is best-effort and can itself be delayed or skipped, so an EXTERNAL uptime monitor is still recommended as the hard guarantee.\n\nHeartbeat run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n\nThis is an automatic notification.`,
+              labels: ['brief-failure', 'heartbeat', 'automated']
+            })
