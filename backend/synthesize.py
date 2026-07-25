@@ -2220,6 +2220,259 @@ def _regenerate_narrative_net_new(data, regime, brief_type):
     return None
 
 
+# ── D1 (lead-vs-pulse dedup) + D2 (negative-led) deterministic post-processors ──
+# These run on the FINAL shipped market_pulse.narrative in the assembly region,
+# AFTER the LLM opener/redundancy guards. They are PURE string transforms (no
+# network, offline-testable) and do NOT touch the grounding gate, the strip-or-
+# repair builder, or the tape enrichment - they only edit the assembled prose so
+# the day is not narrated twice and a NEGATIVE sector is never called a leader.
+
+# Corporate suffixes stripped when building a conservative lead-entity matcher so
+# "Micron" matches "Micron Technology" but a bare "Group"/"Inc" never matches on
+# its own.
+_LEAD_NAME_SUFFIX_STOP = {
+    "inc", "corp", "corporation", "co", "ltd", "llc", "plc", "lp", "group",
+    "holdings", "company", "technologies", "technology", "the", "and",
+}
+
+
+def _lead_name_matchers(names):
+    """Compile a conservative set of whole-word regexes for the lead entity /
+    anchor, so the dedup matches on the ENTITY, not a loose token. A single-word
+    name (Tesla, Micron, Netflix) matches that word; a multi-word name requires
+    its first TWO significant tokens in sequence (Principal Financial), never a
+    bare suffix (Group, Inc). Pure; returns [] when nothing usable."""
+    out = []
+    seen = set()
+    for raw in (names or []):
+        n = (raw or "").strip()
+        if not n:
+            continue
+        # Drop a trailing ticker in parens: "Tesla (TSLA)" -> "Tesla".
+        n = re.sub(r"\s*\([A-Z.]{1,6}\)\s*$", "", n).strip()
+        toks = [t for t in re.split(r"\s+", n) if t]
+        sig = [t for t in toks if t.strip(".,").lower() not in _LEAD_NAME_SUFFIX_STOP]
+        if not sig:
+            sig = toks
+        if not sig:
+            continue
+        if len(sig) == 1:
+            core = re.escape(sig[0].strip(".,"))
+        else:
+            core = r"\s+".join(re.escape(t.strip(".,")) for t in sig[:2])
+        pat = r"\b" + core + r"\b"
+        if pat in seen:
+            continue
+        seen.add(pat)
+        try:
+            out.append(re.compile(pat, re.IGNORECASE))
+        except re.error:
+            continue
+    return out
+
+
+def _split_sentences(text):
+    """Split a paragraph into trimmed sentences, keeping terminal punctuation.
+    A boundary is sentence-ending punctuation FOLLOWED BY whitespace and a capital
+    (or opening quote/paren). That whitespace test protects decimals and inline
+    figures ('+0.28%', '$4.06 billion', 'VIX at 18.2') because an in-number dot is
+    followed by a digit, never a space. Pure; tolerant of a trailing clause with
+    no period."""
+    if not isinstance(text, str) or not text.strip():
+        return []
+    marked = re.sub(r"([.!?]+)\s+(?=[A-Z\"'(])", "\\1\x00", text)
+    return [s.strip() for s in marked.split("\x00") if s.strip()]
+
+
+def _drop_lead_clause(sentence, matchers):
+    """Given a sentence that names the lead entity, remove ONLY the clause the
+    lead entity is the SUBJECT of (it appears in that clause's subject position),
+    keeping every other corporate item. Returns the rewritten sentence, or None
+    when the whole sentence is the lead (drop it entirely). Conservative: a clause
+    counts as the lead's only when the lead match sits at its start (subject
+    position), so a trailing incidental mention never deletes a co-item."""
+    def _hit_subject(clause):
+        for m in matchers:
+            mm = m.search(clause)
+            # Subject position: within the first ~30 chars (tolerates a short
+            # "In corporate news, " intro before the subject).
+            if mm and mm.start() <= 30:
+                return True
+        return False
+
+    tm = re.search(r"([.!?]+)\s*$", sentence)
+    term = tm.group(1) if tm else "."
+    core = sentence[: tm.start()] if tm else sentence
+    # Split on hard clause connectors only (never a bare comma, which sits inside
+    # a single item like "record earnings, raised guidance").
+    parts = re.split(r"(,\s+and\s+|,\s+while\s+|;\s+)", core)
+    clauses = parts[0::2]
+    nonempty = [c for c in clauses if c.strip()]
+    if len(nonempty) <= 1:
+        # Single clause naming the lead -> the whole sentence is the lead mention.
+        return None
+    keep = [c for c in clauses if c.strip() and not _hit_subject(c)]
+    if not keep:
+        return None
+    if len(keep) == len(nonempty):
+        # Lead only appeared incidentally (not as any clause's subject): leave the
+        # sentence untouched rather than risk deleting a co-item.
+        return sentence
+    joined = ", and ".join(c.strip() for c in keep)
+    if joined:
+        joined = joined[0].upper() + joined[1:]
+    return joined + term
+
+
+def _dedup_lead_from_pulse(narrative, lead_names):
+    """D1: drop or compress the pulse sentence(s)/clause(s) that repeat the lead
+    entity, so the day's single most important thing is stated ONCE. The lead is
+    already carried by the headline + lead_paragraph; any pulse mention of the
+    lead ANCHOR is the duplicate. Conservative: the first sentence (the thesis
+    opener) is never dropped, other corporate items are never removed, and if the
+    edit would empty the narrative it bails and returns the original. Pure."""
+    if not isinstance(narrative, str) or not narrative.strip():
+        return narrative
+    matchers = _lead_name_matchers(lead_names)
+    if not matchers:
+        return narrative
+
+    def _hit(s):
+        return any(m.search(s) for m in matchers)
+
+    changed = False
+    first_protected = False
+    out_paras = []
+    for para in narrative.split("\n\n"):
+        sents = _split_sentences(para)
+        kept = []
+        for s in sents:
+            if not first_protected:
+                first_protected = True
+                kept.append(s)
+                continue
+            if not _hit(s):
+                kept.append(s)
+                continue
+            # Shape 1: the minimal-template "Among the day's stories: <lead>"
+            # pointer only ever holds the single lead story -> drop it whole.
+            if re.search(r"among the day'?s stories\s*:", s, re.IGNORECASE):
+                changed = True
+                continue
+            new_s = _drop_lead_clause(s, matchers)
+            if new_s is None:
+                changed = True
+                continue
+            if new_s != s:
+                changed = True
+            kept.append(new_s)
+        if kept:
+            out_paras.append(" ".join(kept).strip())
+    if not changed:
+        return narrative
+    result = "\n\n".join(p for p in out_paras if p.strip())
+    # Never gut the pulse: if dedup emptied it, keep the original.
+    if not result.strip():
+        return narrative
+    return result
+
+
+# D2: a sector-ETF "leaders" phrase whose members are NEGATIVE must never be
+# called a leader that "led". Only a positive ETF day-move leads; a negative one
+# is at best the smallest decliner / best relative performer. This parses the
+# inline "<Sector> (<signed pct>) [and <Sector> (<pct>)] ETFs led" shape the
+# grounded fallback and the tape-primed model both emit, and relabels honestly.
+_SECTOR_LED_RE = re.compile(
+    r"(?P<list>(?:[A-Z][A-Za-z.&]*(?:\s+[A-Z][A-Za-z.&]*)*\s*"
+    r"\([-+]?\d+(?:\.\d+)?%\)(?:\s+and\s+)?)+)"
+    r"\s*ETFs\s+(?P<verb>led the market|led|are leading the market|are leading|"
+    r"were leading|is leading)",
+)
+_SECTOR_PAIR_RE = re.compile(
+    r"([A-Z][A-Za-z.&]*(?:\s+[A-Z][A-Za-z.&]*)*)\s*\(([-+]?\d+(?:\.\d+)?)%\)"
+)
+
+
+def _fix_negative_led(narrative):
+    """D2: rewrite any 'X (pct) [and Y (pct)] ETFs led' phrase so a NEGATIVE
+    sector is never described as having led. If ALL named leaders are negative,
+    the verb becomes 'held up best' (they are the smallest decliners, not
+    gainers). If some are positive and some negative, only the positive movers
+    keep the 'led' attribution and the negative ones are dropped from the leader
+    clause. Pure; leaves an all-positive leader phrase untouched."""
+    if not isinstance(narrative, str) or not narrative.strip():
+        return narrative
+
+    def _repl(m):
+        list_str = m.group("list")
+        verb = m.group("verb")
+        pairs = _SECTOR_PAIR_RE.findall(list_str)
+        if not pairs:
+            return m.group(0)
+        parsed = []
+        for name, raw in pairs:
+            try:
+                parsed.append((name.strip(), raw, float(raw)))
+            except ValueError:
+                return m.group(0)
+        positives = [(n, r) for (n, r, v) in parsed if v > 0]
+        if len(positives) == len(parsed):
+            return m.group(0)  # all genuine gainers: honest already
+        if not positives:
+            # No gainer at all: the whole group merely held up best.
+            names = " and ".join(f"{n} ({r}%)" for (n, r, _v) in parsed)
+            return f"{names} ETFs held up best"
+        # Mixed: keep only the positive movers under the 'led' attribution.
+        names = " and ".join(f"{n} ({r}%)" for (n, r) in positives)
+        led = "led the market" if "market" in verb else "led"
+        return f"{names} ETFs {led}"
+
+    return _SECTOR_LED_RE.sub(_repl, narrative)
+
+
+def _test_dedup_and_negative_led():
+    """Offline proof for D1/D2 (pure, no network). Mirrors the real Jul 18/20/21/
+    22 prod narratives. Run: python -c 'import synthesize as s; s._test_dedup_and_negative_led()'."""
+    # D2: mixed leaders (one negative) -> the negative one loses 'led'.
+    n18 = ("Energy (+1.16%) and Real Estate (-0.09%) ETFs led while "
+           "Communication Services (-1.78%) and Consumer Discretionary (-1.62%) ETFs lagged.")
+    f18 = _fix_negative_led(n18)
+    assert "Real Estate (-0.09%) ETFs led" not in f18 and "Real Estate" not in f18.split("led")[0], f18
+    assert "Energy (+1.16%) ETFs led" in f18, f18
+    assert "ETFs lagged" in f18, f18
+    # D2: all-negative leaders -> 'held up best', never 'led'.
+    nneg = "Real Estate (-0.09%) and Utilities (-0.20%) ETFs led while Financials (-1.40%) ETFs lagged."
+    fneg = _fix_negative_led(nneg)
+    assert "ETFs led" not in fneg and "held up best" in fneg, fneg
+    # D2: all-positive leaders -> untouched.
+    npos = "Technology (+0.68%) and Communication Services (+0.46%) ETFs led while Materials (-0.61%) ETFs lagged."
+    assert _fix_negative_led(npos) == npos
+    # D1: minimal-template trailing pointer repeats the lead -> dropped.
+    n20 = ("On a quiet tape, the S&P 500 is +0.28%. Among the day's stories: "
+           "Micron Explores Strategic Deal to Stabilize Revenue, Ending Boom-and-Bust Cycles.")
+    d20 = _dedup_lead_from_pulse(n20, ["Micron Technology", "Micron"])
+    assert "Among the day's stories" not in d20 and "Micron" not in d20, d20
+    assert "S&P 500 is +0.28%" in d20, d20
+    # D1: lead clause inside a compound sentence -> only the lead clause dropped.
+    n21 = ("In corporate news, MLI reported strong revenue growth. "
+           "Tesla is testing its Semi on Chicago routes, and Kayne Anderson and "
+           "Warburg Pincus agreed to a $4.06 billion exit from WildFire Energy.")
+    d21 = _dedup_lead_from_pulse(n21, ["Tesla (TSLA)", "Tesla"])
+    assert "Tesla" not in d21, d21
+    assert "WildFire Energy" in d21 and "MLI reported strong revenue growth" in d21, d21
+    # D1: lead as its own standalone sentence among others -> only it dropped.
+    n22 = ("In corporate news, Super Micro's stock soared. Tesla (TSLA) stock jumped "
+           "nearly 4% as the company integrates Starlink into its Cybercabs. "
+           "Blackstone Inc. is finalizing a $3 billion loan for AirTrunk.")
+    d22 = _dedup_lead_from_pulse(n22, ["Tesla"])
+    assert "Tesla" not in d22, d22
+    assert "Super Micro" in d22 and "Blackstone Inc." in d22, d22
+    # D1: first sentence (thesis opener) is never dropped even if it names the lead.
+    nfirst = "Tesla dominates the tape today. Other names moved too."
+    assert _dedup_lead_from_pulse(nfirst, ["Tesla"]).startswith("Tesla dominates"), "first-sentence protection"
+    print("  ✓ _test_dedup_and_negative_led passed")
+
+
 # ── L3: preselect-time lead ticker + anchor-name capture (TICKERSCOPE) ──────────
 # Additive telemetry persisted on preselect_decision. Deterministic, no external
 # API: HARD_TICKER_OVERRIDES first (pure), else a SINGLE exact case-insensitive
@@ -2716,14 +2969,40 @@ def _pulse_extra_tape_block(tape):
                     out.append(nm)
         return out
 
-    leaders = _sector_bits(tape.get("sector_leaders") or tape.get("leaders"))
+    _leaders_src = tape.get("sector_leaders") or tape.get("leaders")
+    leaders = _sector_bits(_leaders_src)
     laggards = _sector_bits(tape.get("sector_laggards") or tape.get("laggards"))
+
+    def _top_pct(val):
+        """The signed day-move of the strongest listed sector, or None. Lets the
+        label tell the truth when even the best sector was DOWN on the day."""
+        for s in (val or [])[:1]:
+            if isinstance(s, dict):
+                try:
+                    return float(s.get("pct"))
+                except (TypeError, ValueError):
+                    return None
+        return None
+
     # ATTRIBUTION (#461): these are sector-ETF DAY MOVES (a leadership PROXY), NOT
     # constituent breadth. An XLK gain can ride ONE megacap. The label makes the
     # source explicit so the prose attributes to the ETF ('tech ETFs led') and
     # never asserts sector-wide breadth. The prompt rule + guard enforce this.
+    # D2 (negative-led): when even the strongest sector is NEGATIVE, the group did
+    # NOT lead - it merely held up best. Label it honestly so the pulse never
+    # writes "X (-0.09%) ETFs led"; the deterministic _fix_negative_led guard is
+    # the belt-and-suspenders backstop on the shipped prose.
     if leaders:
-        lines.append("Sector-ETF leaders (ETF day move, a leadership proxy NOT breadth): " + ", ".join(leaders))
+        _tp = _top_pct(_leaders_src)
+        if _tp is not None and _tp <= 0:
+            lines.append(
+                "Sector-ETF best relative performers (ETF day move, a leadership "
+                "proxy NOT breadth; ALL NEGATIVE on the day, so these are the "
+                "SMALLEST DECLINERS, NOT gainers - do NOT say they 'led'): "
+                + ", ".join(leaders)
+            )
+        else:
+            lines.append("Sector-ETF leaders (ETF day move, a leadership proxy NOT breadth): " + ", ".join(leaders))
     if laggards:
         lines.append("Sector-ETF laggards (ETF day move, a leadership proxy NOT breadth): " + ", ".join(laggards))
 
@@ -5544,6 +5823,40 @@ def run(brief_type="morning"):
                             print("  ⚠ redundancy guard: re-ask failed; keeping original narrative")
         except Exception as e:
             print(f"  ⚠ opener guard error (non-fatal): {e}")
+
+    # ── D1 + D2 deterministic assembly pass (runs LAST on the shipped narrative,
+    # after every LLM guard, so it edits whatever actually shipped regardless of
+    # path: v2_primary, passing_reask, v2_repaired, opener_regenerated, OR the
+    # minimal_template fallback). Pure string transforms; they never touch the
+    # grounding gate, the strip-or-repair builder, or the tape enrichment. D1:
+    # drop/compress the pulse mention that repeats the lead entity so the day is
+    # stated ONCE. D2: never call a NEGATIVE sector a leader that "led". ─────────
+    if not brief_is_stub:
+        try:
+            mp = data.get("market_pulse")
+            if isinstance(mp, dict) and isinstance(mp.get("narrative"), str) and mp["narrative"].strip():
+                _narr0 = mp["narrative"]
+                # Candidate lead-entity names, most specific first. Any of these
+                # anchoring a pulse corporate mention is the duplicate to drop.
+                _dedup_names = []
+                for _nm in (locals().get("_lead_name"), locals().get("_anchor_name")):
+                    if isinstance(_nm, str) and _nm.strip():
+                        _dedup_names.append(_nm.strip())
+                _lc = locals().get("_lead_cos")
+                if isinstance(_lc, list):
+                    for _c in _lc:
+                        if isinstance(_c, str) and _c.strip():
+                            _dedup_names.append(_c.strip())
+                _narr1 = _dedup_lead_from_pulse(_narr0, _dedup_names)
+                _narr2 = _fix_negative_led(_narr1)
+                if _narr2 != _narr0:
+                    mp["narrative"] = _narr2
+                    if _narr1 != _narr0:
+                        print("  [dedup guard] compressed the lead entity out of the pulse (stated once)")
+                    if _narr2 != _narr1:
+                        print("  [negative-led guard] relabeled a negative sector (no NEGATIVE 'led')")
+        except Exception as e:
+            print(f"  ⚠ D1/D2 assembly pass error (non-fatal): {e}")
 
     # ── Shipped-path observability (placed AFTER the opener/redundancy guards so
     # it captures a late opener_regenerated swap) ────────────────────────────────
