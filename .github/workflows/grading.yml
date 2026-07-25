@@ -12,6 +12,10 @@ on:
   repository_dispatch:
     types: [grading-trigger]
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   grading:
     runs-on: ubuntu-latest
