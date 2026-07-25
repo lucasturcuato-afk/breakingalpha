@@ -14,12 +14,19 @@
  * compliance-language-filter.ts as the post-generation backstop. Prompt text
  * alone drifts under token pressure, so the filter is what actually holds.
  *
+ * ACCURACY is enforced the same way, and separately, because a sentence can be
+ * fully compliant and still false. Multi-period arithmetic is computed in code
+ * (financials-derived-facts.ts) and injected as a closed DERIVED FACTS list the
+ * model may only restate, and the route runs the output through
+ * multi-period-claim-validator.ts to strip any streak it invented anyway.
+ *
  * Pure and unit-testable: no network, no model, no DB. The route owns the model
  * call and the filter application; this module owns the XBRL serialization, the
  * prompt, and the sanitizer.
  */
 
 import type { CompanyFinancialsResult, FinancialView } from "@/lib/financial-facts";
+import { computeDerivedFacts, formatDerivedFactsBlock } from "./financials-derived-facts";
 
 /** Rendered under every generated commentary, on the surface. Non-negotiable. */
 export const COMMENTARY_DISCLAIMER =
@@ -78,8 +85,14 @@ function serializeView(view: FinancialView): string {
 
 /**
  * Assemble the ONLY input the generator receives: this company's structured
- * XBRL, annual and quarterly. Returns null when there is nothing to describe.
- * No web pool, no news, no peer data enters here by construction.
+ * XBRL, annual and quarterly, plus the DERIVED FACTS block computed from it.
+ * Returns null when there is nothing to describe. No web pool, no news, no peer
+ * data enters here by construction.
+ *
+ * The derived block exists because the model cannot be trusted to count. Handed
+ * only the raw table it fabricated streaks that the table contradicts, so every
+ * multi-period fact worth stating is computed in code (see
+ * financials-derived-facts.ts) and handed over as a closed list.
  */
 export function assembleXbrlInput(
   companyName: string,
@@ -93,6 +106,13 @@ export function assembleXbrlInput(
   blocks.push("Currency: USD unless a per-share (EPS) or share-count line.");
   if (annual) blocks.push(`ANNUAL (fiscal years):\n${annual}`);
   if (quarterly) blocks.push(`QUARTERLY (fiscal quarters; year-end columns carry the balance sheet, income lines dash there):\n${quarterly}`);
+
+  const derived = formatDerivedFactsBlock(computeDerivedFacts(financials));
+  blocks.push(
+    derived
+      ? `DERIVED FACTS (computed in code from the table above; the complete and only set of true multi-period statements about this data):\n${derived}`
+      : "DERIVED FACTS: none. This data supports NO multi-period claim. Do not state any streak, any run, any highest or lowest, or any first.",
+  );
   return blocks.join("\n\n");
 }
 
@@ -106,7 +126,8 @@ export function buildCommentaryPrompt(xbrlBlock: string): { system: string; user
     "You write a SHORT descriptive commentary on a company's own reported financials for an analyst reference sheet.",
     "Your ONLY source is the structured XBRL figures in the user message. Use nothing else. Never invent a number, a period, a segment, a customer, or a cause. If a figure is not in the input, do not mention it.",
     "OUTPUT: 3 to 5 plain sentences. No headings, no markdown, no bullet points, no lead-in, no sign-off.",
-    "ALLOWED, and all you should do: state reported figures and their changes (revenue, margins, EPS, YoY and QoQ deltas you can compute from the given periods); describe trends across the company's OWN history (e.g. 'operating margin expanded in each of the last four quarters'); note a factual first visible in the data (e.g. 'first positive operating income in the periods shown'); explain what a line item is.",
+    "ALLOWED, and all you should do: state reported figures and their changes (revenue, margins, EPS, YoY and QoQ deltas you can compute from the given periods); describe trends across the company's OWN history; note a factual first visible in the data; explain what a line item is.",
+    "MULTI-PERIOD CLAIMS ARE RESTRICTED. Any statement spanning more than two periods (consecutive, straight, in a row, Nth consecutive, each of the last N, every year since, highest or lowest in N, first positive or negative) may ONLY restate an item from the DERIVED FACTS block. That block was computed in code and is exhaustive. Never count runs yourself off the table, never extend a run past the length given, and never assert a streak that is absent from the block. If the block does not list it, it is false. A run listed as 2 is a second consecutive move, not a third.",
     "STRICTLY PROHIBITED. Do not write any of these: valuation language (cheap, expensive, undervalued, overvalued, attractive, fairly valued, discount, premium, multiple); any buy, sell, hold, accumulate, or avoid; any assessment of the security (compelling, well-positioned, strong investment, high conviction, de-risked); price targets or any forward projection not in the input; peer or competitor comparisons (you have no peer data, so any such claim is fabricated); qualitative verdicts on whether results are good, bad, healthy, weak, strong, impressive, or disappointing.",
     "The rule: DESCRIPTIVE and factual from THIS company's XBRL, never PRESCRIPTIVE or evaluative about the security. When in doubt, state the number and stop.",
     "Compute deltas only from periods present in the input. Label them (YoY, QoQ). Zero em-dashes; use periods and commas.",
