@@ -1,20 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import {
+  DEFAULT_ADOPT_HORIZON,
+  MAX_WINDOW_DAYS,
+  isPriceableClaimType,
+  normalizeAdoptHorizon,
+  resolveAdoptWindow,
+} from "@/lib/call-horizons";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Adopt-from-brief: one tap copies a brief call into the user's tracked
- * calls with adopted provenance. Adopted claims are NEVER re-graded;
- * their verdict is the original call's morning_brief_call_outcomes row,
- * joined at read time. The brief's claim text is preserved verbatim.
+ * Adopt-from-brief: one tap copies a brief call into the user's tracked calls
+ * with adopted provenance, AND gives it a real forward window of its own.
+ *
+ * An adopted claim used to be born with resolution_window_start ===
+ * resolution_window_end === the brief's date, and gradeable hardcoded false.
+ * That made it a bookmark: it could never resolve, and its verdict was always
+ * the original call's. A coherent feature, but not "track this thesis".
+ *
+ * It is now a FORWARD claim from today. The window runs today -> today +
+ * horizon (default one week, caller may override, capped at MAX_WINDOW_DAYS),
+ * and gradeable is decided by the SAME server-side rules the authoring route
+ * applies, never trusted from the client. adopted_from_call_id is still
+ * written, so provenance and the original brief verdict stay joinable.
  */
 
 export async function POST(request: NextRequest) {
   const { supabase, user } = await getSupabaseWithUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  let body: { call_id?: string };
+  let body: { call_id?: string; horizon?: string; window_days?: number };
   try {
     body = await request.json();
   } catch {
@@ -41,6 +57,27 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
   if (existing) return NextResponse.json({ id: existing.id, alreadyAdopted: true });
 
+  // Forward from TODAY, not from the brief's date. Adopting a call made last
+  // Tuesday means "I am taking this view now"; backdating the start would hand
+  // the user sessions that already happened.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const horizon = normalizeAdoptHorizon(body.horizon, DEFAULT_ADOPT_HORIZON);
+  const windowEnd = resolveAdoptWindow(todayIso, horizon, body.window_days);
+
+  // Server-side gradeability, mirroring src/app/api/radar/claims/author/route.ts.
+  const symbol = typeof call.target_symbol === "string" ? call.target_symbol.trim() : "";
+  const direction = call.expected_direction;
+  const endsAfterToday = windowEnd > todayIso;
+  const withinMax =
+    (new Date(windowEnd).getTime() - new Date(todayIso).getTime()) / 86_400_000 <=
+    MAX_WINDOW_DAYS;
+  const gradeable =
+    !!symbol &&
+    !!direction &&
+    endsAfterToday &&
+    withinMax &&
+    isPriceableClaimType(call.claim_type);
+
   const { data, error } = await supabase
     .from("user_claims")
     .insert({
@@ -53,21 +90,23 @@ export async function POST(request: NextRequest) {
         method: "price_attribution",
         version: 1,
         adopted: true,
-        graded_by: "original brief call",
+        adopted_horizon: horizon,
+        // The claim text came from the brief; the window and the verdict are
+        // the user's own from here.
+        graded_by: gradeable ? "own window" : "not graded",
       },
-      resolution_window_start: call.brief_date,
-      resolution_window_end: call.brief_date,
+      resolution_window_start: todayIso,
+      resolution_window_end: windowEnd,
       evidence_entities: call.target_symbol ? [call.target_symbol] : [],
-      // Not independently graded: the verdict joins through to the
-      // original brief outcome.
-      gradeable: false,
-      gradeability_note:
-        "Adopted from the brief; the verdict is the original call's grading.",
+      gradeable,
+      gradeability_note: gradeable
+        ? null
+        : "Tracked as context only: no priceable entity, direction, or bounded window.",
       status: "open",
       source: "adopted",
       adopted_from_call_id: callId,
     })
-    .select("id")
+    .select("id, resolution_window_start, resolution_window_end, gradeable")
     .single();
 
   if (error) {
@@ -80,5 +119,11 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ id: data.id });
+  return NextResponse.json({
+    id: data.id,
+    horizon,
+    resolution_window_start: data.resolution_window_start,
+    resolution_window_end: data.resolution_window_end,
+    gradeable: data.gradeable,
+  });
 }

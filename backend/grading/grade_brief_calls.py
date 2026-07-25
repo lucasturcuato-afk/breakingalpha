@@ -20,6 +20,21 @@ Live-forward only. There is deliberately NO backfill mode: grading old
 calls produces verdicts nobody stood behind at the time, and the legacy
 quote-based backfill graded them against today's prices, which is worse.
 
+Resolution horizons (HORIZON_GRADING_MODE, default off)
+-------------------------------------------------------
+off     selection is today's calls only, byte-identical to the behavior
+        before horizons existed.
+active  due-scan: calls whose ``resolve_on`` has passed, each graded over
+        the window it declared at creation, [brief_date, resolve_on].
+
+Still live-forward. A due-scan is not a backfill: it grades a call once,
+over the window that call itself declared, at the moment that window
+closes. This is exactly what grade_user_claims.py already does for
+authored claims. The distinction is enforced structurally: the scan
+requires ``resolve_on IS NOT NULL``, and every call written before
+migration 0014 has it NULL, so the historical backlog can never be swept
+into a run no matter how the flag is set.
+
 Run
 ---
     python -m backend.grading.grade_brief_calls    # grade today only
@@ -119,6 +134,84 @@ def ungradable_notes(outcome: Outcome) -> str:
     return f"{label} {detail}".strip()
 
 
+#: Three-state flag, mirroring the PERSONALIZATION_MODE / MATERIALITY_RANK_MODE
+#: idiom used elsewhere in the repo.
+#:   off    -> selection is byte-identical to the pre-horizons behavior
+#:             (today's calls only). This is the DEFAULT.
+#:   active -> due-scan: calls whose resolve_on has passed, graded over the
+#:             window [brief_date, resolve_on].
+#: Anything unrecognized resolves to off. A typo must never silently widen
+#: what gets graded.
+HORIZON_MODE_OFF = "off"
+HORIZON_MODE_ACTIVE = "active"
+
+
+def horizon_grading_mode(env: dict | None = None) -> str:
+    """Resolve HORIZON_GRADING_MODE. Unknown or unset -> off."""
+    source = env if env is not None else os.environ
+    raw = (source.get("HORIZON_GRADING_MODE") or "").strip().lower()
+    return HORIZON_MODE_ACTIVE if raw == HORIZON_MODE_ACTIVE else HORIZON_MODE_OFF
+
+
+def is_due(call: dict, today: str) -> bool:
+    """
+    Is this call's window closed?
+
+    A call is due ONLY when resolve_on is present and on or before today.
+
+    resolve_on IS NOT NULL is load-bearing and must not be relaxed to
+    COALESCE(resolve_on, brief_date). Every call written before migration 0014
+    has resolve_on NULL, and coalescing would make all of them due in a single
+    run, grading months of history against prices nobody stood behind at the
+    time. That is the mass-backfill this module already refuses on the CLI. NULL
+    rows are structurally excluded, permanently.
+    """
+    resolve_on = call.get("resolve_on")
+    if not resolve_on:
+        return False
+    return str(resolve_on)[:10] <= today
+
+
+def call_to_graded_input(call: dict, mode: str) -> dict:
+    """
+    Map a call row onto the dict the resolver grades.
+
+    Mirrors grade_user_claims.claim_to_call: price_attribution treats brief_date
+    as the window's CLOSING session and window_start as the opening one, so a
+    horizon-aware call grades over [brief_date, resolve_on]. It counts the real
+    sessions in that span itself and scales its thresholds by sqrt(sessions);
+    nothing in price_attribution.py changes.
+
+    In off mode, or for a call with no resolve_on, the row passes through
+    untouched and the window collapses to the single brief_date session.
+    """
+    if mode != HORIZON_MODE_ACTIVE:
+        return call
+    resolve_on = call.get("resolve_on")
+    if not resolve_on:
+        return call
+    return {
+        **call,
+        "brief_date": resolve_on,
+        "window_start": call.get("brief_date"),
+    }
+
+
+def fetch_due_calls(sb, today: str, mode: str) -> list[dict]:
+    """
+    The calls this run should grade, before the already-graded filter.
+
+    off    -> brief_date == today (unchanged).
+    active -> resolve_on IS NOT NULL AND resolve_on <= today.
+    """
+    q = sb.table("morning_brief_calls").select("*")
+    if mode == HORIZON_MODE_ACTIVE:
+        q = q.not_.is_("resolve_on", "null").lte("resolve_on", today)
+    else:
+        q = q.eq("brief_date", today)
+    return q.execute().data or []
+
+
 def outcome_row(call: dict, outcome: Outcome, notes: str) -> dict:
     return {
         "call_id": call["id"],
@@ -156,15 +249,16 @@ def main() -> None:
     supabase_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
     sb = create_client(supabase_url, supabase_key)
 
-    # Today's calls only (live-forward).
-    calls = (
-        sb.table("morning_brief_calls")
-        .select("*")
-        .eq("brief_date", date.today().isoformat())
-        .execute()
-        .data
-        or []
-    )
+    today = date.today().isoformat()
+    mode = horizon_grading_mode()
+
+    # off: today's calls only (live-forward, unchanged).
+    # active: due-scan over resolve_on. Still live-forward: a call is graded
+    # once, over the window IT declared, when that window closes. Calls with a
+    # NULL resolve_on (everything written before migration 0014) are never
+    # selected in either mode.
+    calls = fetch_due_calls(sb, today, mode)
+    print(f"[grade] horizon mode: {mode} ({len(calls)} candidate calls)")
 
     # Filter out already-graded calls (idempotent re-runs).
     if calls:
@@ -193,7 +287,7 @@ def main() -> None:
 
     graded = ungraded = failed = 0
     for call in calls:
-        outcome = resolver.resolve(call)
+        outcome = resolver.resolve(call_to_graded_input(call, mode))
         if outcome.is_gradable:
             notes = gemini_verdict_notes(
                 call["claim_text"], call["expected_direction"], outcome
