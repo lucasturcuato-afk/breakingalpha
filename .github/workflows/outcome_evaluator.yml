@@ -16,6 +16,10 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   evaluate:
     runs-on: ubuntu-latest
