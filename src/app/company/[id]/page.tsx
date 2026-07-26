@@ -17,6 +17,8 @@ import { PrimerTab } from "@/components/company/tabs/PrimerTab";
 import { ArticlesTab } from "@/components/company/tabs/ArticlesTab";
 import { TrendTab } from "@/components/company/tabs/TrendTab";
 import { FilingsTab } from "@/components/company/tabs/FilingsTab";
+import { InsiderTab } from "@/components/company/tabs/InsiderTab";
+import { getInsiderTransactions } from "@/lib/data-access/getInsiderTransactions";
 import { FinancialsTab } from "@/components/company/tabs/FinancialsTab";
 import { ComingSoonTab } from "@/components/company/tabs/ComingSoonTab";
 import { getCompanyDetail } from "@/lib/data-access/getCompanyDetail";
@@ -136,7 +138,19 @@ export default async function CompanyDetailPage({
   // SEC filings (read-only). Resolves by name to a CIK; private/pre-IPO names
   // resolve to a null CIK and an empty list, which FilingsTab renders as the
   // empty state. See src/lib/sec-filings.ts.
-  const filingsResult = await fetchCompanyFilings(supabase, { name: companyName }, 25);
+  //
+  // Limit raised from 25 to 100 because the tab now filters client-side. Form
+  // 3/4/5 shells are 735 of 2,069 stored filings and for some companies they are
+  // ALL of the newest 25, so a 25-row window could contain zero material filings
+  // and the default view would render empty while material filings sat just
+  // outside the window.
+  const filingsResult = await fetchCompanyFilings(supabase, { name: companyName }, 100);
+
+  // Form 4 insider transactions (read-only), same name -> CIK resolution as
+  // filings so all three tabs describe the same company row. Returns an empty
+  // list until sql/0019_insider_transactions_read_policy.sql is applied, since
+  // the table has RLS on with no SELECT policy.
+  const insiderResult = await getInsiderTransactions(supabase, { name: companyName });
 
   // Validated XBRL financials (read-only). Same name -> CIK resolution as
   // filings; companies without a CIK render the tab's empty state.
@@ -216,7 +230,12 @@ export default async function CompanyDetailPage({
         commentaryEnabled={financialsCommentaryEnabled}
       />
     ),
-    insider: <ComingSoonTab tabId="insider" />,
+    insider: (
+      <InsiderTab
+        transactions={insiderResult.transactions}
+        hasCik={insiderResult.cik != null}
+      />
+    ),
     comps: <ComingSoonTab tabId="comps" />,
   };
 

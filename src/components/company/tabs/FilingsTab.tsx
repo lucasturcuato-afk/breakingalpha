@@ -16,9 +16,16 @@
  * Styling mirrors ArticlesTable / the ArticlesTab empty card; no new tokens.
  */
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { edgarFilingsUrl, type CompanyFiling } from "@/lib/sec-filings";
+import {
+  applyFilter,
+  countByCategory,
+  FILTER_LABELS,
+  FILTER_ORDER,
+  type FilingFilter,
+} from "@/lib/filing-categories";
 import { filingsEmptyCopy } from "./empty-state-copy";
 
 export interface FilingsTabProps {
@@ -54,10 +61,15 @@ function ms(value: string | null): number {
 const TH = "px-3 py-2 text-[10px] font-semibold text-text-muted";
 
 export function FilingsTab({ filings, hasCik, cik }: FilingsTabProps) {
+  // null = the default view (material forms only). A chip click pins a category.
+  const [filter, setFilter] = useState<FilingFilter | null>(null);
+
   const sorted = useMemo(
     () => [...filings].sort((a, b) => ms(b.filingDate) - ms(a.filingDate)),
     [filings],
   );
+  const counts = useMemo(() => countByCategory(sorted), [sorted]);
+  const visible = useMemo(() => applyFilter(sorted, filter), [sorted, filter]);
 
   if (!hasCik || sorted.length === 0) {
     return (
@@ -87,6 +99,54 @@ export function FilingsTab({ filings, hasCik, cik }: FilingsTabProps) {
 
   return (
     <div data-testid="filings-tab">
+      {/* Chips expose every category with its count. The default view hides
+          insider forms because the Insider tab covers them, and Form 4 shells
+          otherwise crowd out every material filing. Nothing is unreachable. */}
+      <div data-testid="filings-filters" className="mb-3 flex flex-wrap gap-1.5">
+        {FILTER_ORDER.map((key) => {
+          const count = counts[key];
+          const active = filter === key || (filter === null && key === "all" && false);
+          return (
+            <button
+              key={key}
+              type="button"
+              data-testid={`filings-chip-${key}`}
+              data-active={active ? "true" : "false"}
+              aria-pressed={active}
+              disabled={count === 0}
+              onClick={() => setFilter(active ? null : key)}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
+                active
+                  ? "border-gold bg-gold/10 text-espresso"
+                  : "border-border-base bg-cream text-text-secondary hover:border-gold/60"
+              } ${count === 0 ? "cursor-not-allowed opacity-40" : ""}`}
+            >
+              {FILTER_LABELS[key]} {count}
+            </button>
+          );
+        })}
+      </div>
+
+      {filter === null && counts.insider > 0 && (
+        <p data-testid="filings-default-note" className="mb-2 text-[11px] text-text-muted">
+          Showing material filings. {counts.insider} insider form
+          {counts.insider === 1 ? "" : "s"} (3, 4, 5) set aside; see the Insider tab
+          or the Insider chip.
+        </p>
+      )}
+
+      {visible.length === 0 ? (
+        <div
+          data-testid="filings-filter-empty"
+          className="rounded-md border border-border-subtle bg-cream-hi p-6"
+        >
+          <p className="text-sm text-text-muted">
+            {filter === null
+              ? "No material filings recorded. Every stored filing for this company is an insider form; use the Insider chip or the Insider tab."
+              : "No filings in this category."}
+          </p>
+        </div>
+      ) : (
       <div className="overflow-x-auto rounded-md border border-border-subtle bg-cream-hi">
         <table
           data-testid="filings-table"
@@ -101,7 +161,7 @@ export function FilingsTab({ filings, hasCik, cik }: FilingsTabProps) {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((f) => {
+            {visible.map((f) => {
               const hasSummary = !!f.summary && f.summary.trim().length > 0;
               return (
                 <tr
@@ -149,6 +209,7 @@ export function FilingsTab({ filings, hasCik, cik }: FilingsTabProps) {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }
