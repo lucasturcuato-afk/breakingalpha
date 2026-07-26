@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * RadarTabs — the Radar surface's three sub-tabs (Following / Watchlist /
- * Calls). Rendered inside each /radar page's AppShell content, so every
+ * RadarTabs — the Radar surface's sub-tabs (Following / Watchlist / Calls /
+ * Desk record). Rendered inside each /radar page's AppShell content, so every
  * sub-tab keeps its own page (and its own data fetching) while sharing
  * one navigation spine. Inter for the functional tab row; the active tab
  * carries the gold hairline.
@@ -15,12 +15,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-export type RadarTab = "following" | "watchlist" | "calls";
+export type RadarTab = "following" | "watchlist" | "calls" | "desk-record";
 
 const TABS: { key: RadarTab; label: string; href: string }[] = [
   { key: "following", label: "Following", href: "/radar/following" },
   { key: "watchlist", label: "Watchlist", href: "/radar/watchlist" },
   { key: "calls", label: "Calls", href: "/radar/calls" },
+  // The desk's own graded record, distinct from the user's record on Calls.
+  { key: "desk-record", label: "Desk record", href: "/radar/desk-record" },
 ];
 
 /* Exit duration mirrors --duration-page-exit in tokens.css. Kept as a
