@@ -1049,7 +1049,7 @@ export default function MorningBriefPage() {
             {/* ── Today's Calls — scored objects (Open state; real morning_brief_calls,
                  grading not live yet). Additive: no existing per-call rendering replaced. ── */}
             <section style={{ marginBottom: 40 }}>
-              <BriefCallsSection briefId={briefing.id} heading="Today's Calls" />
+              <BriefCallsSection briefId={briefing.id} heading="Today's Calls" surface="brief" />
             </section>
 
             {/* ── Today's Lead ── */}

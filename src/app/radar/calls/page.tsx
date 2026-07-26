@@ -37,6 +37,7 @@ import type { Article as MapArticle } from "@/lib/clustering-utils";
 import { GroupJumpNav, useGroupScrollSpy } from "@/components/radar/GroupJumpNav";
 import { useMotionSettled } from "@/lib/use-motion-settled";
 import { useTopicClusters } from "@/lib/use-topic-clusters";
+import { HorizonChip } from "@/components/calls/HorizonChip";
 import {
   DEFAULT_ADOPT_HORIZON,
   HORIZON_LABEL,
@@ -183,31 +184,8 @@ function briefResolutionSentence(c: BriefCallRow): string {
   return `Resolves against the ${c.brief_date ?? "session"} market close with benchmark attribution: only a move beyond sector and market counts.`;
 }
 
-/**
- * Horizon chip. DERIVED from the call's stored dates, never hardcoded: the
- * label is whatever brief_date -> resolve_on actually spans, so a change to the
- * backend map or a user-chosen window renders correctly with no UI edit. Absent
- * entirely when there is no resolve_on to derive from.
- */
-function HorizonChip({
-  anchor,
-  resolveOn,
-}: {
-  anchor: string | null | undefined;
-  resolveOn: string | null | undefined;
-}) {
-  const h = horizonFromDates(anchor, resolveOn);
-  if (!h) return null;
-  return (
-    <span
-      data-testid="horizon-chip"
-      title={`Resolves ${resolveOn}`}
-      className="rounded-sm border border-border-subtle px-1.5 py-px font-mono text-[10px] leading-none text-text-muted"
-    >
-      {h.label}
-    </span>
-  );
-}
+// HorizonChip moved to @/components/calls/HorizonChip so BriefCallsSection
+// renders the identical chip instead of a second copy. Imported above.
 
 function claimToCallInput(c: UserClaim): OpenCallInput {
   return {
