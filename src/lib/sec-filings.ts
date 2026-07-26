@@ -12,6 +12,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { canonicalize } from "@/lib/company-intel";
+import { preferCik } from "@/lib/company-cik-preference";
 
 // EDGAR filing-index URL builder. Defined in a leaf module so it stays
 // importable under node:test (this module's "@/" import is not resolvable
@@ -76,10 +77,13 @@ function toResolution(row: CompanyRow): CikResolution {
  * row ("AMD", cik 2488) while full or legal name variants ("Advanced Micro
  * Devices Inc") exist as SEPARATE rows with a null sec_cik. A naive first-match
  * returns the null-CIK duplicate, so a CIK-bearing candidate must always win.
+ *
+ * The rule itself now lives in company-cik-preference.ts so the alias resolver
+ * (which used to rank on mention_count alone and disagreed with this function)
+ * shares one definition. This wrapper stays for the existing call sites.
  */
 export function pickPreferCik(rows: CompanyRow[]): CompanyRow | null {
-  if (rows.length === 0) return null;
-  return rows.find((r) => r.sec_cik != null) ?? rows[0];
+  return preferCik(rows);
 }
 
 const aliasKey = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, " ");

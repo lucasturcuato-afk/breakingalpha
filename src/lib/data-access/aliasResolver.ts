@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CANONICAL, canonicalize } from "@/lib/company-intel";
+import { compareCikFirst } from "@/lib/company-cik-preference";
 
 /**
  * Query-time alias canonical-rollup synthesizer (PR-B0, resolves Critical Finding C4).
@@ -29,6 +30,9 @@ export type ResolverRow = {
   key_themes: string[] | null;
   first_seen: string | null;
   last_updated: string | null;
+  /** Needed to rank: without it this resolver cannot see which row is the
+   * filer, which is how it drifted from resolveCompanyCik in the first place. */
+  sec_cik: number | null;
 };
 
 export type ResolverAliasMention = { name: string; n: number };
@@ -40,7 +44,7 @@ export type ResolveAliasResult = {
 };
 
 const RESOLVER_COLS =
-  "id, name, ticker, sector, mention_count, key_themes, first_seen, last_updated";
+  "id, name, ticker, sector, mention_count, key_themes, first_seen, last_updated, sec_cik";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TICKER_RE = /^[A-Z]{1,5}$/;
 
@@ -58,8 +62,26 @@ function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
-function rankCluster(rows: ResolverRow[]): ResolverRow[] {
+/**
+ * Order a ticker cluster, canonical first.
+ *
+ * A CIK-bearing row now outranks a CIK-less one regardless of mention count,
+ * matching resolveCompanyCik / pickPreferCik. Before this, ranking started at
+ * mention_count and never read sec_cik, so /company/TSM picked "TSMC" (439
+ * mentions, no CIK) over "Taiwan Semiconductor" (201 mentions, cik 1046179) and
+ * rendered the no-fundamentals empty state while the financials API answered
+ * off the filer row. Same split on PTON, RGTI, GEMI.
+ *
+ * When NO row in the cluster carries a CIK, compareCikFirst returns 0 for every
+ * pair and the original mention_count -> last_updated -> first_seen -> id
+ * hierarchy decides exactly as it did before. Foreign filers with no CIK
+ * anywhere (Samsung, four rows, all null) are unaffected.
+ */
+export function rankCluster(rows: ResolverRow[]): ResolverRow[] {
   return [...rows].sort((a, b) => {
+    const byCik = compareCikFirst(a, b);
+    if (byCik !== 0) return byCik;
+
     const am = a.mention_count ?? -1;
     const bm = b.mention_count ?? -1;
     if (bm !== am) return bm - am;
