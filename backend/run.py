@@ -435,6 +435,34 @@ if __name__ == "__main__":
         logger.exception("[POST] MACRO LEAD GRADING failed (run unaffected): %s", e)
         print(f"  [POST] MACRO LEAD GRADING FAILED in {time.time() - _t:.2f}s (run unaffected, not gated): {e}")
 
+    # --- Morning Brief email digest, soft-fail ------------------------------
+    # Runs LAST, after the brief row, its calls, the story rail and every
+    # [POST] step have persisted, so the email can only ever describe state
+    # that is already durable and already on the site.
+    #
+    # FAIL-OPEN and NON-GATING. maybe_send_brief_email() catches everything
+    # internally and returns a summary; this block adds a second belt so an
+    # import error cannot reach the pipeline either. No _mark_degraded: mail
+    # delivery is a channel on top of the product, and a Resend outage must
+    # never turn a good brief into a red run.
+    #
+    # Gated on EMAIL_DIGEST_MODE (off | active, default off, unknown to off).
+    # With the flag off this returns before touching the DB, the network or
+    # the renderer, so the pre-change pipeline path is unchanged.
+    print("\n[POST] BRIEF EMAIL DIGEST")
+    _t = time.time()
+    try:
+        from brief_email_send import maybe_send_brief_email
+        _mail = maybe_send_brief_email(brief_type)
+        print(
+            f"  [POST] BRIEF EMAIL DIGEST done in {time.time() - _t:.2f}s "
+            f"(status={_mail.get('status')} sent={_mail.get('sent')} "
+            f"skipped={_mail.get('skipped')} failed={_mail.get('failed')})"
+        )
+    except Exception as e:
+        logger.exception("[POST] BRIEF EMAIL DIGEST failed (run unaffected): %s", e)
+        print(f"  [POST] BRIEF EMAIL DIGEST FAILED in {time.time() - _t:.2f}s (run unaffected, not gated): {e}")
+
     print("\n" + "=" * 50)
     print(f"Pipeline complete in {time.time() - pipeline_t0:.2f}s ({(time.time() - pipeline_t0) / 60:.1f} min)")
     print("=" * 50)
@@ -467,5 +495,6 @@ if __name__ == "__main__":
 # 14:   embedding_job        (RAG content embeddings for Intelligence chat)
 # 15:   user_synthesis       (Lucas personalization sprint — per-user addendum)
 # 16:   thesis_generator     (morning only — system theses, semantic dedup)
-# [POST] brief scoring, brief improvement addendum, macro lead grading (C3)
+# [POST] brief scoring, brief improvement addendum, macro lead grading (C3),
+#        brief email digest (flag EMAIL_DIGEST_MODE, runs last, fail-open)
 # ---------------------------------------------------------------------------

@@ -1,0 +1,803 @@
+"""
+Offline tests for the Morning Brief email digest.
+
+No network, no Supabase, no Resend, no model call. Every dependency is injected
+as a fake, so this runs anywhere and proves the invariants the feature claims:
+
+  1. flag off        -> nothing is attempted, no client, no render, no send
+  2. unsubscribed    -> excluded from the recipient set
+  3. send failure    -> caught, logged, never raised into the pipeline
+  4. idempotence     -> the same (brief, user) never sends twice
+  5. resolution block-> correct + wrong + no-clean-read all render, unfiltered
+  6. nothing resolved-> the block is omitted, not padded
+  7. compliance      -> body carries the unsubscribe link and no banned term
+
+Run: python -m unittest backend.tests.test_brief_email -v
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import unittest
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_BACKEND = os.path.dirname(_HERE)
+_REPO = os.path.dirname(_BACKEND)
+for _p in (_BACKEND, _REPO):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from brief_email_render import (  # noqa: E402
+    BANNED_TERMS,
+    BriefEmailPayload,
+    ResolvedCall,
+    TodayCall,
+    find_banned_terms,
+    horizon_label_for_days,
+    render_email,
+    scrub_compliance,
+)
+import brief_email_send as send_mod  # noqa: E402
+from brief_email_send import (  # noqa: E402
+    digest_mode,
+    eligible_recipients,
+    make_unsubscribe_token,
+    maybe_send_brief_email,
+    parse_market_pulse,
+    select_last_session_resolutions,
+    track_url,
+)
+
+BRIEF_ID = "11111111-1111-1111-1111-111111111111"
+PRIOR_BRIEF_ID = "22222222-2222-2222-2222-222222222222"
+
+BASE_ENV = {
+    "EMAIL_DIGEST_MODE": "active",
+    "SUPABASE_JWT_SECRET": "test-secret-not-a-real-key",
+    "NEXT_PUBLIC_SITE_URL": "https://signalera.ai",
+    "RESEND_API_KEY": "unused-because-sender-is-injected",
+}
+
+
+# ---------------------------------------------------------------------------
+# Fakes
+# ---------------------------------------------------------------------------
+
+
+class _Res:
+    def __init__(self, data):
+        self.data = data
+
+
+class _Query:
+    """Chainable no-op query builder that returns a canned table payload."""
+
+    def __init__(self, rows, sink=None, table=None):
+        self._rows = rows
+        self._sink = sink
+        self._table = table
+
+    def select(self, *_a, **_k):
+        return self
+
+    def eq(self, col, val):
+        self._rows = [r for r in self._rows if str(r.get(col)) == str(val)]
+        return self
+
+    def neq(self, col, val):
+        self._rows = [r for r in self._rows if r.get(col) != val]
+        return self
+
+    def in_(self, col, vals):
+        wanted = {str(v) for v in vals}
+        self._rows = [r for r in self._rows if str(r.get(col)) in wanted]
+        return self
+
+    def order(self, *_a, **_k):
+        return self
+
+    def limit(self, *_a, **_k):
+        return self
+
+    def insert(self, row):
+        self._pending = row
+        return self
+
+    def execute(self):
+        pending = getattr(self, "_pending", None)
+        if pending is not None and self._sink is not None:
+            self._sink.setdefault(self._table, []).append(pending)
+            return _Res([pending])
+        return _Res(list(self._rows))
+
+
+class _AuthAdmin:
+    def __init__(self, users):
+        self._users = users
+
+    def list_users(self):
+        return list(self._users)
+
+
+class _Auth:
+    def __init__(self, users):
+        self.admin = _AuthAdmin(users)
+
+
+class FakeClient:
+    """Minimal stand-in for the supabase-py client, recording every write."""
+
+    def __init__(self, tables, users):
+        self.tables = {k: list(v) for k, v in tables.items()}
+        self.writes: dict[str, list] = {}
+        self.auth = _Auth(users)
+        self.table_calls: list[str] = []
+
+    def table(self, name):
+        self.table_calls.append(name)
+        rows = self.tables.get(name, [])
+        if name in self.writes:
+            rows = rows + self.writes[name]
+        return _Query(list(rows), sink=self.writes, table=name)
+
+
+def _brief_row():
+    return {
+        "id": BRIEF_ID,
+        "briefing_date": "2026-07-24",
+        "briefing_type": "morning",
+        "headline": "Principal Financial Group increases its stake in HP",
+        "summary": "",
+        "lead_paragraph": (
+            "Principal Financial Group has increased its stock holdings in HP, "
+            "a move that signals continued institutional interest."
+        ),
+        "market_pulse": (
+            '{"sentiment_word": "conflicted", "narrative": '
+            '"US stocks are trading mixed with no fresh catalyst on the tape."}'
+        ),
+        "story_rail_ids": ["a1", "a2", "a3"],
+        "issue_number": 42,
+        "created_at": "2026-07-24T13:05:00+00:00",
+    }
+
+
+def _today_call_rows():
+    return [
+        {
+            "id": "call-today-1",
+            "brief_id": BRIEF_ID,
+            "brief_date": "2026-07-24",
+            "resolve_on": "2026-07-24",
+            "claim_text": "Semiconductor demand stays firm into the print.",
+            "target_symbol": "SMH",
+            "is_lead": True,
+            "created_at": "2026-07-24T13:05:00+00:00",
+        },
+        {
+            "id": "call-today-2",
+            "brief_id": BRIEF_ID,
+            "brief_date": "2026-07-24",
+            "resolve_on": "2026-07-31",
+            "claim_text": "Energy stays bid on the Hormuz overhang.",
+            "target_symbol": "XLE",
+            "is_lead": False,
+            "created_at": "2026-07-24T13:05:01+00:00",
+        },
+    ]
+
+
+def _prior_call_rows():
+    return [
+        {
+            "id": "call-prior-1",
+            "brief_id": PRIOR_BRIEF_ID,
+            "brief_date": "2026-07-23",
+            "claim_text": (
+                "The Technology sector shows strong performance as demand holds up."
+            ),
+            "target_symbol": "XLK",
+            "is_lead": True,
+            "created_at": "2026-07-23T13:05:00+00:00",
+        },
+        {
+            "id": "call-prior-2",
+            "brief_id": PRIOR_BRIEF_ID,
+            "brief_date": "2026-07-23",
+            "claim_text": "Housing pressure weighs on discretionary names.",
+            "target_symbol": "XLY",
+            "is_lead": False,
+            "created_at": "2026-07-23T13:05:01+00:00",
+        },
+        {
+            "id": "call-prior-3",
+            "brief_id": PRIOR_BRIEF_ID,
+            "brief_date": "2026-07-23",
+            "claim_text": "A private issuer reprices its debt stack.",
+            "target_symbol": None,
+            "is_lead": False,
+            "created_at": "2026-07-23T13:05:02+00:00",
+        },
+    ]
+
+
+def _prior_outcome_rows():
+    return [
+        {
+            "call_id": "call-prior-1",
+            "verdict": "correct",
+            "attribution": "clean",
+            "actual_pct_change": 0.011843,
+            "graded_at": "2026-07-24T02:00:00+00:00",
+            "metadata": {
+                "entity_symbol": "XLK",
+                "entity_move_pct": 1.184,
+                "benchmarks": [{"role": "market", "symbol": "SPY", "move_pct": 0.106}],
+            },
+        },
+        {
+            "call_id": "call-prior-2",
+            "verdict": "wrong",
+            "attribution": "confounded",
+            "actual_pct_change": 0.0092,
+            "graded_at": "2026-07-24T02:00:01+00:00",
+            "metadata": {
+                "entity_symbol": "XLY",
+                "entity_move_pct": 0.92,
+                "benchmarks": [{"role": "market", "symbol": "SPY", "move_pct": 0.88}],
+            },
+        },
+        {
+            "call_id": "call-prior-3",
+            "verdict": "ungradable",
+            "attribution": None,
+            "actual_pct_change": None,
+            "graded_at": "2026-07-24T02:00:02+00:00",
+            "metadata": {"ungradable_reason": "unmapped_symbol"},
+        },
+    ]
+
+
+def _article_rows():
+    return [
+        {"id": "a1", "title": "Fed minutes land at 2pm"},
+        {"id": "a2", "title": "Chip orders beat across the supply chain"},
+        {"id": "a3", "title": "Energy majors extend the Hormuz premium"},
+    ]
+
+
+def _user_rows():
+    return [
+        {"id": "user-sub", "email": "subscribed@example.com"},
+        {"id": "user-unsub", "email": "unsubscribed@example.com"},
+        {"id": "user-noemail", "email": ""},
+    ]
+
+
+def _profile_rows():
+    return [
+        {"id": "user-sub", "brief_email_subscribed": True},
+        {"id": "user-unsub", "brief_email_subscribed": False},
+    ]
+
+
+def make_client(*, resolved=True, today_calls=True, ledger=None):
+    return FakeClient(
+        tables={
+            "briefings": [_brief_row()],
+            "morning_brief_calls": (
+                (_today_call_rows() if today_calls else [])
+                + (_prior_call_rows() if resolved else [])
+            ),
+            "morning_brief_call_outcomes": (
+                _prior_outcome_rows() if resolved else []
+            ),
+            "articles": _article_rows(),
+            "user_profiles": _profile_rows(),
+            "brief_email_sends": list(ledger or []),
+        },
+        users=_user_rows(),
+    )
+
+
+class RecordingSender:
+    def __init__(self, fail=False):
+        self.messages: list[dict] = []
+        self.fail = fail
+
+    def __call__(self, message):
+        self.messages.append(message)
+        if self.fail:
+            raise RuntimeError("resend returned 500: simulated upstream failure")
+
+
+# ---------------------------------------------------------------------------
+# 1. Flag off
+# ---------------------------------------------------------------------------
+
+
+class TestFlagOff(unittest.TestCase):
+    def test_unknown_and_missing_values_fold_to_off(self):
+        for raw in ("", "true", "TRUE", "on", "1", "Active ", "garbage", None):
+            env = {} if raw is None else {"EMAIL_DIGEST_MODE": raw}
+            expected = "active" if (raw or "").strip().lower() == "active" else "off"
+            self.assertEqual(digest_mode(env), expected, f"value={raw!r}")
+
+    def test_active_is_the_only_on_value(self):
+        self.assertEqual(digest_mode({"EMAIL_DIGEST_MODE": "active"}), "active")
+        self.assertEqual(digest_mode({"EMAIL_DIGEST_MODE": "ACTIVE"}), "active")
+
+    def test_flag_off_attempts_nothing_at_all(self):
+        client = make_client()
+        sender = RecordingSender()
+        result = maybe_send_brief_email(
+            "morning", client=client, sender=sender,
+            env={**BASE_ENV, "EMAIL_DIGEST_MODE": "off"},
+        )
+        self.assertEqual(result["status"], "off")
+        self.assertEqual(result["sent"], 0)
+        self.assertEqual(sender.messages, [], "no send may be attempted")
+        # Byte-identical pipeline path: the DB is never touched either.
+        self.assertEqual(client.table_calls, [], "no table read may occur")
+        self.assertEqual(client.writes, {}, "no write may occur")
+
+    def test_flag_absent_entirely_is_off(self):
+        client = make_client()
+        sender = RecordingSender()
+        result = maybe_send_brief_email(
+            "morning", client=client, sender=sender,
+            env={k: v for k, v in BASE_ENV.items() if k != "EMAIL_DIGEST_MODE"},
+        )
+        self.assertEqual(result["status"], "off")
+        self.assertEqual(client.table_calls, [])
+
+
+# ---------------------------------------------------------------------------
+# 2. Unsubscribed users excluded
+# ---------------------------------------------------------------------------
+
+
+class TestRecipients(unittest.TestCase):
+    def test_unsubscribed_excluded_missing_profile_included(self):
+        users = _user_rows() + [{"id": "user-noprofile", "email": "new@example.com"}]
+        got = eligible_recipients(users, {p["id"]: p for p in _profile_rows()})
+        ids = [r["id"] for r in got]
+        self.assertIn("user-sub", ids)
+        self.assertIn("user-noprofile", ids, "no profile row means subscribed default")
+        self.assertNotIn("user-unsub", ids, "explicit false must be excluded")
+        self.assertNotIn("user-noemail", ids, "a user with no email cannot be mailed")
+
+    def test_end_to_end_send_skips_the_unsubscribed_address(self):
+        client = make_client()
+        sender = RecordingSender()
+        result = maybe_send_brief_email(
+            "morning", client=client, sender=sender, env=BASE_ENV
+        )
+        self.assertEqual(result["status"], "sent")
+        recipients = [m["to"][0] for m in sender.messages]
+        self.assertEqual(recipients, ["subscribed@example.com"])
+        self.assertNotIn("unsubscribed@example.com", recipients)
+
+
+# ---------------------------------------------------------------------------
+# 3. Send failure never raises
+# ---------------------------------------------------------------------------
+
+
+class TestFailOpen(unittest.TestCase):
+    def test_send_failure_is_caught_and_logged(self):
+        client = make_client()
+        sender = RecordingSender(fail=True)
+        with self.assertLogs("brief_email_send", level="ERROR") as captured:
+            result = maybe_send_brief_email(
+                "morning", client=client, sender=sender, env=BASE_ENV
+            )
+        self.assertEqual(result["failed"], 1)
+        self.assertEqual(result["sent"], 0)
+        self.assertTrue(
+            any("send failed" in line for line in captured.output),
+            captured.output,
+        )
+        # A failed send must not be recorded as delivered.
+        self.assertEqual(client.writes.get("brief_email_sends", []), [])
+
+    def test_a_broken_client_never_raises(self):
+        class Exploding:
+            def table(self, *_a, **_k):
+                raise RuntimeError("supabase is down")
+
+            auth = None
+
+        with self.assertLogs("brief_email_send", level="ERROR"):
+            result = maybe_send_brief_email(
+                "morning", client=Exploding(), sender=RecordingSender(), env=BASE_ENV
+            )
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["sent"], 0)
+
+    def test_evening_run_is_not_mailed(self):
+        client = make_client()
+        sender = RecordingSender()
+        result = maybe_send_brief_email(
+            "evening", client=client, sender=sender, env=BASE_ENV
+        )
+        self.assertEqual(result["status"], "not_morning")
+        self.assertEqual(sender.messages, [])
+
+
+# ---------------------------------------------------------------------------
+# 4. Idempotence
+# ---------------------------------------------------------------------------
+
+
+class TestIdempotence(unittest.TestCase):
+    def test_same_brief_plus_user_never_sends_twice(self):
+        client = make_client()
+        sender = RecordingSender()
+
+        first = maybe_send_brief_email(
+            "morning", client=client, sender=sender, env=BASE_ENV
+        )
+        self.assertEqual(first["sent"], 1)
+        self.assertEqual(len(sender.messages), 1)
+        ledger = client.writes.get("brief_email_sends", [])
+        self.assertEqual(len(ledger), 1)
+        self.assertEqual(ledger[0]["brief_id"], BRIEF_ID)
+        self.assertEqual(ledger[0]["user_id"], "user-sub")
+
+        # Re-running the pipeline on the same brief must mail nobody again.
+        second = maybe_send_brief_email(
+            "morning", client=client, sender=sender, env=BASE_ENV
+        )
+        self.assertEqual(second["sent"], 0)
+        self.assertEqual(second["skipped"], 1)
+        self.assertEqual(
+            len(sender.messages), 1, "the second run must not dispatch anything"
+        )
+
+    def test_a_prepopulated_ledger_blocks_the_first_send(self):
+        client = make_client(
+            ledger=[{"brief_id": BRIEF_ID, "user_id": "user-sub"}]
+        )
+        sender = RecordingSender()
+        result = maybe_send_brief_email(
+            "morning", client=client, sender=sender, env=BASE_ENV
+        )
+        self.assertEqual(result["sent"], 0)
+        self.assertEqual(result["skipped"], 1)
+        self.assertEqual(sender.messages, [])
+
+
+# ---------------------------------------------------------------------------
+# 5. Resolution block renders every verdict
+# ---------------------------------------------------------------------------
+
+
+class TestResolutionBlock(unittest.TestCase):
+    def setUp(self):
+        self.resolved = select_last_session_resolutions(
+            _prior_call_rows(), _prior_outcome_rows(), exclude_brief_id=BRIEF_ID
+        )
+
+    def test_selection_keeps_correct_wrong_and_ungradable(self):
+        self.assertEqual(len(self.resolved), 3)
+        verdicts = {r.verdict for r in self.resolved}
+        self.assertEqual(verdicts, {"correct", "wrong", "ungradable"})
+
+    def test_todays_own_calls_are_never_treated_as_resolved(self):
+        mixed = _prior_call_rows() + _today_call_rows()
+        resolved = select_last_session_resolutions(
+            mixed, _prior_outcome_rows(), exclude_brief_id=BRIEF_ID
+        )
+        self.assertTrue(all(r.entity in {"XLK", "XLY", "Unmapped"} for r in resolved))
+
+    def test_all_three_verdicts_render_in_the_body(self):
+        payload = _payload(resolved=self.resolved)
+        out = render_email(payload)
+        for body in (out["text"], out["html"]):
+            self.assertIn("Correct", body)
+            self.assertIn("Wrong", body)
+            self.assertIn("No clean read", body)
+            self.assertIn("XLK", body)
+            self.assertIn("XLY", body)
+
+    def test_attribution_lines_are_honest_per_verdict(self):
+        text = render_email(_payload(resolved=self.resolved))["text"]
+        # Clean read: the numbers and the credit.
+        self.assertIn("XLK +1.18 vs SPY +0.11", text)
+        self.assertIn("Clean read: it moved beyond its benchmark.", text)
+        # Confounded: the thesis is explicitly NOT credited.
+        self.assertIn("XLY +0.92 vs SPY +0.88", text)
+        self.assertIn("moved with its benchmark, so the thesis cannot be credited", text)
+        # Ungradable: named refusal, no invented number.
+        self.assertIn("Not graded: no tradable symbol to grade against.", text)
+
+    def test_misses_are_never_filtered_out(self):
+        only_wrong = [r for r in self.resolved if r.verdict == "wrong"]
+        text = render_email(_payload(resolved=only_wrong))["text"]
+        self.assertIn("HOW THE LAST SESSION'S CALLS RESOLVED", text)
+        self.assertIn("Wrong", text)
+
+
+# ---------------------------------------------------------------------------
+# 6. Nothing resolved -> block omitted, not padded
+# ---------------------------------------------------------------------------
+
+
+class TestNothingResolved(unittest.TestCase):
+    def test_selection_returns_empty_when_nothing_graded(self):
+        self.assertEqual(
+            select_last_session_resolutions(_prior_call_rows(), [], BRIEF_ID), []
+        )
+
+    def test_block_is_absent_from_both_bodies(self):
+        out = render_email(_payload(resolved=[]))
+        for body in (out["text"], out["html"]):
+            self.assertNotIn("HOW THE LAST SESSION'S CALLS RESOLVED", body.upper())
+            self.assertNotIn("No clean read", body)
+            self.assertNotIn("cannot be credited", body)
+        # And the rest of the email is still complete.
+        self.assertIn("TODAY'S CALLS", out["text"])
+        self.assertIn("TODAY'S STORIES", out["text"])
+
+    def test_subject_does_not_claim_resolutions_when_there_are_none(self):
+        self.assertNotIn("resolved", render_email(_payload(resolved=[]))["subject"])
+        self.assertIn("resolved", render_email(_payload())["subject"])
+
+    def test_end_to_end_with_no_outcomes_still_sends_a_complete_email(self):
+        client = make_client(resolved=False)
+        sender = RecordingSender()
+        result = maybe_send_brief_email(
+            "morning", client=client, sender=sender, env=BASE_ENV
+        )
+        self.assertEqual(result["sent"], 1)
+        self.assertEqual(result["resolved_calls"], 0)
+        body = sender.messages[0]["text"]
+        self.assertNotIn("RESOLVED", body.upper().replace("RESOLVES", ""))
+        self.assertIn("THE LEAD", body)
+
+
+# ---------------------------------------------------------------------------
+# 7. Compliance and unsubscribe link
+# ---------------------------------------------------------------------------
+
+
+class TestCompliance(unittest.TestCase):
+    def test_scrubber_removes_every_banned_term(self):
+        dirty = (
+            "Investors should buy and hold the name, sell the laggard, allocate "
+            "10% and watch your portfolio, your returns, its performance and gains."
+        )
+        self.assertTrue(find_banned_terms(dirty), "fixture must start dirty")
+        self.assertEqual(find_banned_terms(scrub_compliance(dirty)), [])
+
+    def test_scrubber_leaves_innocent_substrings_alone(self):
+        clean = "Buyback holdings underperformance thresholds sellers bargains."
+        self.assertEqual(find_banned_terms(clean), [])
+        self.assertEqual(scrub_compliance(clean), clean)
+
+    def test_rendered_body_is_clean_and_carries_the_unsubscribe_link(self):
+        payload = _payload(
+            resolved=select_last_session_resolutions(
+                _prior_call_rows(), _prior_outcome_rows(), BRIEF_ID
+            )
+        )
+        out = render_email(payload)
+        for name in ("text", "html", "subject"):
+            with self.subTest(part=name):
+                hits = find_banned_terms(out[name])
+                self.assertEqual(hits, [], f"{name} carried banned term(s): {hits}")
+        self.assertIn(payload.unsubscribe_url, out["text"])
+        self.assertIn(payload.unsubscribe_url, out["html"])
+        self.assertIn("Unsubscribe", out["html"])
+
+    def test_model_authored_claim_text_is_scrubbed_in_place(self):
+        # The real fixture claim says "strong performance" and "holds up".
+        out = render_email(
+            _payload(
+                resolved=select_last_session_resolutions(
+                    _prior_call_rows(), _prior_outcome_rows(), BRIEF_ID
+                )
+            )
+        )
+        self.assertIn("strong results", out["text"])
+        self.assertEqual(find_banned_terms(out["text"]), [])
+
+    def test_dispatched_message_is_clean_end_to_end(self):
+        client = make_client()
+        sender = RecordingSender()
+        maybe_send_brief_email("morning", client=client, sender=sender, env=BASE_ENV)
+        msg = sender.messages[0]
+        for part in ("subject", "text", "html"):
+            self.assertEqual(find_banned_terms(msg[part]), [], part)
+        self.assertIn("/api/unsubscribe?token=", msg["text"])
+        self.assertIn("List-Unsubscribe", msg["headers"])
+        self.assertIn("List-Unsubscribe-Post", msg["headers"])
+
+    def test_banned_terms_list_is_the_documented_one(self):
+        self.assertEqual(
+            set(BANNED_TERMS),
+            {"buy", "sell", "hold", "allocate", "your portfolio",
+             "your returns", "performance", "gains"},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Section contract: order, pulse framing, horizons, deep links
+# ---------------------------------------------------------------------------
+
+
+class TestSectionContract(unittest.TestCase):
+    def test_sections_render_in_the_required_order(self):
+        text = render_email(
+            _payload(
+                resolved=select_last_session_resolutions(
+                    _prior_call_rows(), _prior_outcome_rows(), BRIEF_ID
+                )
+            )
+        )["text"]
+        markers = [
+            "MARKET PULSE",
+            "THE LEAD",
+            "HOW THE LAST SESSION'S CALLS RESOLVED",
+            "TODAY'S CALLS",
+            "TODAY'S STORIES",
+            "Unsubscribe:",
+        ]
+        positions = [text.index(m) for m in markers]
+        self.assertEqual(positions, sorted(positions), text[:400])
+
+    def test_pulse_is_verbatim_timestamped_and_never_implies_live_state(self):
+        payload = _payload()
+        text = render_email(payload)["text"]
+        self.assertIn(payload.market_pulse, text)
+        self.assertIn(payload.generated_at_display, text)
+        self.assertIn("Written before the open", text)
+
+    def test_horizon_labels_match_the_backend_buckets(self):
+        self.assertEqual(horizon_label_for_days(0), "Resolves same session")
+        self.assertEqual(horizon_label_for_days(7), "Resolves in 1 week")
+        self.assertEqual(horizon_label_for_days(21), "Resolves in 3 weeks")
+        self.assertEqual(horizon_label_for_days(None), "Horizon not set")
+
+    def test_every_today_call_carries_a_horizon_and_a_track_link(self):
+        text = render_email(_payload())["text"]
+        self.assertIn("Resolves same session", text)
+        self.assertIn("Resolves in 1 week", text)
+        self.assertEqual(text.count("Track this thesis:"), 2)
+        self.assertIn(
+            "https://signalera.ai/radar/calls?adopt=call-today-1#call-call-today-1",
+            text,
+        )
+
+    def test_track_url_shape(self):
+        self.assertEqual(
+            track_url("https://signalera.ai", "abc"),
+            "https://signalera.ai/radar/calls?adopt=abc#call-abc",
+        )
+
+    def test_stories_are_capped_at_five(self):
+        payload = _payload()
+        payload.stories = [f"Headline {i}" for i in range(9)]
+        text = render_email(payload)["text"]
+        self.assertIn("Headline 4", text)
+        self.assertNotIn("Headline 5", text)
+
+    def test_end_to_end_body_carries_the_real_story_rail(self):
+        client = make_client()
+        sender = RecordingSender()
+        maybe_send_brief_email("morning", client=client, sender=sender, env=BASE_ENV)
+        text = sender.messages[0]["text"]
+        self.assertIn("Fed minutes land at 2pm", text)
+        self.assertIn("Chip orders beat across the supply chain", text)
+
+
+class TestUnsubscribeToken(unittest.TestCase):
+    def test_token_is_deterministic_and_decodes_to_the_user_id(self):
+        import base64
+
+        token = make_unsubscribe_token("user-sub", "secret")
+        self.assertEqual(token, make_unsubscribe_token("user-sub", "secret"))
+        self.assertNotEqual(token, make_unsubscribe_token("user-sub", "other-secret"))
+        padded = token + "=" * (-len(token) % 4)
+        decoded = base64.urlsafe_b64decode(padded).decode()
+        user_id, mac = decoded.rsplit(".", 1)
+        self.assertEqual(user_id, "user-sub")
+        self.assertEqual(len(mac), 22, "TS verifier truncates the HMAC to 22 chars")
+
+    def test_missing_signing_secret_refuses_to_send(self):
+        client = make_client()
+        sender = RecordingSender()
+        env = {k: v for k, v in BASE_ENV.items() if k != "SUPABASE_JWT_SECRET"}
+        with self.assertLogs("brief_email_send", level="ERROR"):
+            result = maybe_send_brief_email(
+                "morning", client=client, sender=sender, env=env
+            )
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(sender.messages, [])
+
+
+class TestMarketPulseParsing(unittest.TestCase):
+    def test_json_prose_and_empty_shapes(self):
+        self.assertEqual(
+            parse_market_pulse('{"sentiment_word":"x","narrative":"Tape was quiet."}'),
+            "Tape was quiet.",
+        )
+        self.assertEqual(parse_market_pulse("Tape was quiet."), "Tape was quiet.")
+        self.assertEqual(parse_market_pulse(None), "")
+        self.assertEqual(parse_market_pulse("{not json"), "{not json")
+        self.assertEqual(parse_market_pulse({"narrative": "dict form"}), "dict form")
+
+
+class TestNoEmDashes(unittest.TestCase):
+    def test_shipped_modules_and_rendered_body_have_no_em_dashes(self):
+        # Built from a codepoint so this guard does not itself trip the
+        # repo-wide em-dash grep it exists to enforce.
+        em_dash = chr(0x2014)
+        for path in (
+            send_mod.__file__,
+            os.path.join(_BACKEND, "brief_email_render.py"),
+        ):
+            with open(path, encoding="utf-8") as fh:
+                self.assertNotIn(em_dash, fh.read(), path)
+        out = render_email(
+            _payload(
+                resolved=select_last_session_resolutions(
+                    _prior_call_rows(), _prior_outcome_rows(), BRIEF_ID
+                )
+            )
+        )
+        self.assertNotIn(em_dash, out["text"])
+        self.assertNotIn(em_dash, out["html"])
+
+
+# ---------------------------------------------------------------------------
+# Shared payload fixture
+# ---------------------------------------------------------------------------
+
+
+def _payload(resolved=None) -> BriefEmailPayload:
+    if resolved is None:
+        resolved = select_last_session_resolutions(
+            _prior_call_rows(), _prior_outcome_rows(), BRIEF_ID
+        )
+    brief = _brief_row()
+    return BriefEmailPayload(
+        brief_id=BRIEF_ID,
+        brief_date="2026-07-24",
+        generated_at_display="Jul 24, 2026 at 13:05 UTC",
+        market_pulse=parse_market_pulse(brief["market_pulse"]),
+        headline=brief["headline"],
+        lead_paragraph=brief["lead_paragraph"],
+        unsubscribe_url="https://signalera.ai/api/unsubscribe?token=abc123",
+        site_url="https://signalera.ai",
+        resolved=list(resolved),
+        today_calls=[
+            TodayCall(
+                call_id="call-today-1",
+                entity="SMH",
+                claim="Semiconductor demand stays firm into the print.",
+                horizon_label="Resolves same session",
+                track_url=track_url("https://signalera.ai", "call-today-1"),
+            ),
+            TodayCall(
+                call_id="call-today-2",
+                entity="XLE",
+                claim="Energy stays bid on the Hormuz overhang.",
+                horizon_label="Resolves in 1 week",
+                track_url=track_url("https://signalera.ai", "call-today-2"),
+            ),
+        ],
+        stories=[r["title"] for r in _article_rows()],
+        issue_number=42,
+    )
+
+
+# Keep the unused-import guard honest: ResolvedCall is part of the public
+# fixture surface even when a given test constructs it indirectly.
+assert ResolvedCall is not None
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
