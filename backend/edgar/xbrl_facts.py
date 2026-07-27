@@ -104,6 +104,60 @@ XBRL_CONCEPTS: list[tuple[str, str, list[str]]] = [
     ("cash_and_equivalents", "instant", ["CashAndCashEquivalentsAtCarryingValue"]),
 ]
 
+# ---------------------------------------------------------------------------
+# IFRS taxonomy layer (foreign private issuers).
+#
+# Companies like TSMC (CIK 1046179) and Novo Nordisk (CIK 353278) file 20-F
+# with companyfacts that contain NO us-gaap block at all: their facts live
+# under 'ifrs-full'. The us-gaap-only extractor returned zero facts for every
+# one of them. This map is the ifrs-full parallel of XBRL_CONCEPTS, targeting
+# the same normalized metric_key set so nothing downstream has to branch.
+#
+# Every tag below was read out of a real companyfacts payload; the mapping
+# ledger (verified where, per concept) is in the PR body. Tags NOT observed in
+# a real payload are deliberately absent: a guessed IFRS tag that happens to
+# exist as a COMPONENT (RevenueFromSaleOfGoods, ProfitLossBeforeTax) would
+# publish a wrong number rather than no number.
+#
+# Concept notes:
+#   * ProfitLossAttributableToOwnersOfParent is the true analogue of us-gaap
+#     NetIncomeLoss (parent-only). Plain ProfitLoss includes noncontrolling
+#     interests, so it is the FALLBACK for filers that never tag the parent
+#     split (Novo Nordisk tags only ProfitLoss).
+#   * Equity is IFRS total equity (parent + NCI), which satisfies
+#     Assets = Liabilities + Equity directly. EquityAttributableToOwnersOfParent
+#     is the parent-only fallback; NoncontrollingInterests is mapped so the
+#     validation gate's balance-sheet adder is available in that case.
+#   * shares_diluted maps to AdjustedWeightedAverageShares: in IFRS that is
+#     the diluted denominator (basic weighted average adjusted for dilutive
+#     potential ordinary shares), NOT a restatement adjustment.
+IFRS_CONCEPTS: list[tuple[str, str, list[str]]] = [
+    ("revenue", "duration", [
+        "Revenue",                            # TSMC, Novo Nordisk
+        "RevenueFromContractsWithCustomers",  # TSMC (ASC-606 analogue subtotal)
+    ]),
+    ("cost_of_revenue", "duration", ["CostOfSales"]),
+    ("gross_profit", "duration", ["GrossProfit"]),
+    ("operating_income", "duration", ["ProfitLossFromOperatingActivities"]),
+    ("net_income", "duration", [
+        "ProfitLossAttributableToOwnersOfParent",  # TSMC
+        "ProfitLoss",                              # Novo Nordisk (no NCI split)
+    ]),
+    ("eps_basic", "duration", ["BasicEarningsLossPerShare"]),
+    ("eps_diluted", "duration", ["DilutedEarningsLossPerShare"]),
+    ("shares_basic", "duration", ["WeightedAverageShares"]),
+    ("shares_diluted", "duration", ["AdjustedWeightedAverageShares"]),
+    ("operating_cash_flow", "duration", ["CashFlowsFromUsedInOperatingActivities"]),
+    ("total_assets", "instant", ["Assets"]),
+    ("total_liabilities", "instant", ["Liabilities"]),
+    ("stockholders_equity", "instant", [
+        "Equity",                             # TSMC, Novo Nordisk (total equity)
+        "EquityAttributableToOwnersOfParent",  # TSMC (parent-only fallback)
+    ]),
+    ("minority_interest", "instant", ["NoncontrollingInterests"]),
+    ("cash_and_equivalents", "instant", ["CashAndCashEquivalents"]),
+]
+
 # Discrete fiscal quarters are ~91 days; spans outside this band are not a
 # quarter (13/14-week retail calendars and 53-week years stay inside it).
 QUARTER_SPAN_MIN_DAYS = 60
@@ -154,10 +208,98 @@ def build_filing_url(cik: int, accession_number: str) -> str:
     return f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accn}/"
 
 
-def _raw_facts_for_tag(us_gaap: dict, tag: str, kind: str) -> list[dict]:
-    """Flatten one concept's units block into raw fact dicts, form-filtered."""
+# ---------------------------------------------------------------------------
+# Currency handling (IFRS path).
+#
+# us-gaap filers report in USD, full stop. IFRS filers do not: TSMC reports in
+# TWD, Novo Nordisk in DKK. Worse, TSMC ALSO tags a USD convenience
+# translation of the same periods in the same accession, at that filing's
+# closing rate. Emitting both would put two different currencies into one
+# metric series, and neither the validation gate (backend/edgar/
+# xbrl_validation.py keys _index/_current on metric+period, NOT unit) nor the
+# read path can tell them apart. So the IFRS path picks exactly ONE reporting
+# currency per company and drops every other currency's facts.
+#
+# The pick is the issuer's PRIMARY reporting currency (the currency with the
+# most in-scope facts), not the USD convenience translation: convenience
+# translations are restated at each filing's own FX rate, so a multi-year USD
+# series assembled from several 20-Fs mixes rates and fabricates growth.
+# ---------------------------------------------------------------------------
+
+# Units that carry no currency (share counts, ratios) survive any clamp.
+CURRENCYLESS_UNITS = {"shares", "pure"}
+
+
+def _currency_of(unit: str) -> Optional[str]:
+    """ISO currency code carried by a unit string, or None if it carries none.
+    'TWD' -> TWD, 'TWD/shares' -> TWD, 'shares' -> None, 'pure' -> None.
+    Non-ISO oddballs ('BillionsCubicFeet', 'USN') return None and are left
+    alone, exactly as the us-gaap path leaves them alone today."""
+    if not unit or unit in CURRENCYLESS_UNITS:
+        return None
+    head = unit.split("/", 1)[0]
+    if len(head) == 3 and head.isalpha() and head.isupper():
+        return head
+    return None
+
+
+def _primary_currency(taxonomy_facts: dict,
+                      concepts: list[tuple[str, str, list[str]]]) -> Optional[str]:
+    """The issuer's reporting currency: the currency backing the most in-scope
+    facts across the mapped concepts. Ties break alphabetically so the choice
+    is deterministic across runs."""
+    counts: dict[str, int] = {}
+    for _metric_key, _kind, candidates in concepts:
+        for tag in candidates:
+            units = taxonomy_facts.get(tag, {}).get("units", {})
+            for unit, facts in units.items():
+                cur = _currency_of(unit)
+                if cur is None:
+                    continue
+                counts[cur] = counts.get(cur, 0) + sum(
+                    1 for f in facts if f.get("form") in XBRL_FORMS)
+    counts = {c: n for c, n in counts.items() if n}
+    if not counts:
+        return None
+    return min(counts, key=lambda c: (-counts[c], c))
+
+
+def _drop_mixed_currency(facts: list[dict], cik: int,
+                         currency: Optional[str]) -> list[dict]:
+    """Armor behind the clamp: if any metric still carries two currencies,
+    keep the reporting currency's rows and drop the rest, loudly. Unreachable
+    when the clamp is applied; a regression here would otherwise reach the DB
+    silently."""
+    seen: dict[str, set] = {}
+    for f in facts:
+        cur = _currency_of(f["unit"])
+        if cur is not None:
+            seen.setdefault(f["metric_key"], set()).add(cur)
+    mixed = {m for m, cs in seen.items() if len(cs) > 1}
+    if not mixed:
+        return facts
+    logger.error(
+        "[xbrl] CIK %d: mixed currencies in %s; keeping %s only",
+        cik, sorted(mixed), currency,
+    )
+    return [f for f in facts
+            if f["metric_key"] not in mixed
+            or _currency_of(f["unit"]) in (None, currency)]
+
+
+def _raw_facts_for_tag(us_gaap: dict, tag: str, kind: str,
+                       allowed_currency: Optional[str] = None) -> list[dict]:
+    """Flatten one concept's units block into raw fact dicts, form-filtered.
+
+    allowed_currency is the IFRS path's single-currency clamp; it is None on
+    the us-gaap path, which leaves that path's output byte-identical.
+    """
     out = []
     for unit, facts in us_gaap.get(tag, {}).get("units", {}).items():
+        if allowed_currency is not None:
+            cur = _currency_of(unit)
+            if cur is not None and cur != allowed_currency:
+                continue
         for f in facts:
             if f.get("form") not in XBRL_FORMS:
                 continue
@@ -208,6 +350,17 @@ BREADTH_PRIORITY: dict[str, list[str]] = {
     ],
 }
 
+# IFRS breadth family. Kept SEPARATE from BREADTH_PRIORITY so the us-gaap
+# rank order is untouched: Revenue is the IFRS income-statement total,
+# RevenueFromContractsWithCustomers is the IFRS-15 contract subtotal (TSMC
+# tags both for the same periods).
+IFRS_BREADTH_PRIORITY: dict[str, list[str]] = {
+    "revenue": [
+        "Revenue",
+        "RevenueFromContractsWithCustomers",
+    ],
+}
+
 # Divergence tolerance for the dual-tag quarantine annotation (rounding-scale,
 # mirrors the gate's tie-out slack).
 DUAL_TAG_ABS_USD = 2_000_000
@@ -215,7 +368,9 @@ DUAL_TAG_REL = 0.005
 
 
 def _resolve_metric(us_gaap: dict, metric_key: str, kind: str,
-                    candidates: list[str]) -> list[dict]:
+                    candidates: list[str], *, taxonomy: str = "us-gaap",
+                    breadth_map: Optional[dict] = None,
+                    allowed_currency: Optional[str] = None) -> list[dict]:
     """
     Resolve one metric across its candidate tags.
 
@@ -236,13 +391,14 @@ def _resolve_metric(us_gaap: dict, metric_key: str, kind: str,
     """
     per_tag: dict[str, list[dict]] = {}
     for tag in candidates:
-        facts = _raw_facts_for_tag(us_gaap, tag, kind)
+        facts = _raw_facts_for_tag(us_gaap, tag, kind, allowed_currency)
         if facts:
             per_tag[tag] = facts
     if not per_tag:
         return []
 
-    breadth = BREADTH_PRIORITY.get(metric_key)
+    breadth = (BREADTH_PRIORITY if breadth_map is None
+               else breadth_map).get(metric_key)
     chosen: dict[tuple, str] = {}  # period key -> winning tag
     if breadth:
         rank = {t: i for i, t in enumerate(breadth)}
@@ -266,7 +422,7 @@ def _resolve_metric(us_gaap: dict, metric_key: str, kind: str,
     for tag, facts in per_tag.items():
         for f in facts:
             if chosen[_period_key(kind, f)] == tag:
-                row = _to_fact_row(metric_key, kind, f)
+                row = _to_fact_row(metric_key, kind, f, taxonomy)
                 if breadth:
                     conflict = _broader_divergence(
                         per_tag, breadth, tag, kind, f)
@@ -296,10 +452,11 @@ def _broader_divergence(per_tag: dict, breadth: list[str], chosen_tag: str,
     return None
 
 
-def _to_fact_row(metric_key: str, kind: str, f: dict) -> dict:
+def _to_fact_row(metric_key: str, kind: str, f: dict,
+                 taxonomy: str = "us-gaap") -> dict:
     return {
         "metric_key": metric_key,
-        "taxonomy": "us-gaap",
+        "taxonomy": taxonomy,
         "concept_tag": f["tag"],
         "value": f["val"],
         "unit": f["unit"],
@@ -664,14 +821,32 @@ def extract_financial_facts(cik: int, company_facts: dict) -> list[dict]:
     includes raw facts for every metric plus derived discrete-quarter OCF.
     fiscal_year/fiscal_period are period-derived labels (assign_fiscal_labels).
     """
-    us_gaap = (company_facts or {}).get("facts", {}).get("us-gaap", {})
-    if not us_gaap:
-        logger.warning("[xbrl] no us-gaap facts for CIK %d", cik)
-        return []
+    facts_block = (company_facts or {}).get("facts", {})
+    us_gaap = facts_block.get("us-gaap", {})
 
     all_facts: list[dict] = []
-    for metric_key, kind, candidates in XBRL_CONCEPTS:
-        all_facts.extend(_resolve_metric(us_gaap, metric_key, kind, candidates))
+    if us_gaap:
+        # us-gaap path: unchanged. When a us-gaap block exists it is
+        # authoritative and ifrs-full is not consulted, so no existing filer's
+        # output can move.
+        for metric_key, kind, candidates in XBRL_CONCEPTS:
+            all_facts.extend(_resolve_metric(us_gaap, metric_key, kind, candidates))
+    else:
+        ifrs = facts_block.get("ifrs-full", {})
+        if not ifrs:
+            logger.warning("[xbrl] no us-gaap or ifrs-full facts for CIK %d", cik)
+            return []
+        currency = _primary_currency(ifrs, IFRS_CONCEPTS)
+        logger.info("[xbrl] CIK %d: ifrs-full filer, reporting currency %s",
+                    cik, currency or "unknown")
+        for metric_key, kind, candidates in IFRS_CONCEPTS:
+            all_facts.extend(_resolve_metric(
+                ifrs, metric_key, kind, candidates,
+                taxonomy="ifrs-full",
+                breadth_map=IFRS_BREADTH_PRIORITY,
+                allowed_currency=currency,
+            ))
+        all_facts = _drop_mixed_currency(all_facts, cik, currency)
 
     ocf = [f for f in all_facts if f["metric_key"] == "operating_cash_flow"]
     all_facts.extend(derive_discrete_cash_flow(ocf))
