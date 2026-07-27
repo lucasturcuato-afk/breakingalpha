@@ -205,6 +205,63 @@ export function flushClientEvents(useBeacon = false): void {
 }
 
 // ---------------------------------------------------------------------------
+// Ambient payload enrichment
+// ---------------------------------------------------------------------------
+
+/**
+ * An enricher contributes ambient context to every event emitted while it is
+ * registered. It exists so provenance (which brief, which story was in view,
+ * how long the user had been reading) rides along on events emitted by
+ * components that know nothing about attention tracking, without every call
+ * site having to thread it through.
+ *
+ * Contract: pure read, never throws, returns a flat object. Caller-supplied
+ * payload keys always win, so an enricher can never overwrite a fact the call
+ * site actually measured.
+ */
+export type EventEnricher = (
+  eventType: string,
+) => Record<string, unknown> | null | undefined;
+
+const enrichers = new Set<EventEnricher>();
+
+/** Register an enricher. Returns the unregister function. Never throws. */
+export function registerEventEnricher(fn: EventEnricher): () => void {
+  try {
+    enrichers.add(fn);
+  } catch {
+    return () => {};
+  }
+  return () => {
+    try {
+      enrichers.delete(fn);
+    } catch {
+      // ignore
+    }
+  };
+}
+
+/** Merge every registered enricher's output beneath `payload`. Never throws. */
+function enrich(
+  eventType: string,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  if (enrichers.size === 0) return payload;
+  let base: Record<string, unknown> = {};
+  for (const fn of enrichers) {
+    try {
+      const extra = fn(eventType);
+      if (extra && typeof extra === "object" && !Array.isArray(extra)) {
+        base = { ...base, ...extra };
+      }
+    } catch {
+      // A broken enricher degrades provenance. It never drops the event.
+    }
+  }
+  return { ...base, ...payload };
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -224,9 +281,10 @@ export function trackClientEvent(
 
     bindLifecycleListeners();
 
+    const own = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
     const event: QueuedEvent = {
       event_type,
-      payload: payload && typeof payload === "object" ? payload : {},
+      payload: enrich(event_type, own),
       session_id: getSessionId(),
       client_ts: new Date().toISOString(),
     };
