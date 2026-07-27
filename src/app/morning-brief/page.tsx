@@ -32,6 +32,18 @@ import type { DealData } from "@/components/brief";
 import { createBrowserClient } from "@supabase/ssr";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import { trackClientEvent } from "@/lib/track-event";
+import {
+  closeAttentionContext,
+  getEntryPoint,
+  installAttentionEnricher,
+  openAttentionContext,
+} from "@/lib/attention-context";
+import { useExposure } from "@/hooks/useExposure";
+import { useChildExposure } from "@/hooks/useChildExposure";
+import { useSectionDwell } from "@/hooks/useSectionDwell";
+import { useScrollDepth } from "@/hooks/useScrollDepth";
+import { useCopySignal } from "@/hooks/useCopySignal";
+import { DEFAULT_ADOPT_HORIZON } from "@/lib/call-horizons";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { useLiveMood } from "@/hooks/useLiveMood";
 import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
@@ -577,6 +589,9 @@ export default function MorningBriefPage() {
         // Whether the rail could be personalized at all. With no profile the
         // served order is the shared baseline regardless of mode.
         rail_personalizable: !!profile,
+        // How the reader arrived. An email open and a direct visit are
+        // different intents and were previously indistinguishable.
+        entry_point: getEntryPoint(),
       },
       { entity_type: "briefing", entity_id: briefingId },
     );
@@ -587,6 +602,98 @@ export default function MorningBriefPage() {
     // once those move to the dotted names.
     trackClientEvent("morning_brief_opened", { briefing_id: briefingId });
   }, [user, briefing?.id, briefing?.created_at, rankedStories, profile]);
+
+  // ── Attention instrumentation ──────────────────────────────────────────
+  // brief.page.opened tells us the brief was opened and nothing else. It cannot
+  // separate a reader who saw a call and declined from one who never scrolled
+  // that far, and it cannot say whether a tracked claim followed ninety seconds
+  // of reading or a reflex tap. Everything below exists to answer those two.
+  const attnBriefId = briefing?.id ?? null;
+  const attnOn = !!attnBriefId && !loading;
+  const attnExtra = useMemo(
+    () => ({ brief_type: "morning" as const }),
+    [],
+  );
+
+  // The enricher folds provenance onto every event emitted while the context is
+  // open, including the adoption event emitted inside BriefCallsSection, which
+  // this branch does not touch.
+  useEffect(() => {
+    installAttentionEnricher();
+  }, []);
+  useEffect(() => {
+    if (!attnBriefId) return;
+    openAttentionContext({
+      surfaceId: attnBriefId,
+      surfaceType: "briefing",
+      // The horizon the control offers before the user touches it. Stored so
+      // accepted-as-offered vs edited is a recorded fact and not a later guess
+      // against a default constant that may have moved.
+      offeredHorizon: DEFAULT_ADOPT_HORIZON,
+    });
+    return () => closeAttentionContext();
+  }, [attnBriefId]);
+
+  const storyExposure = useExposure({
+    eventName: "brief.story.exposed",
+    enabled: attnOn,
+    extra: attnExtra,
+  });
+  const dealExposure = useExposure({
+    eventName: "brief.deal.exposed",
+    enabled: attnOn,
+    // Deals do not set the story slot used for action provenance.
+    updatesFocus: false,
+    extra: attnExtra,
+  });
+
+  const pulseDwellRef = useSectionDwell({ sectionKey: "market_pulse", eventName: "brief.section.dwelled", enabled: attnOn, extra: attnExtra });
+  const leadDwellRef = useSectionDwell({ sectionKey: "lead", eventName: "brief.section.dwelled", enabled: attnOn, extra: attnExtra });
+  const analystDwellRef = useSectionDwell({ sectionKey: "analyst_briefing", eventName: "brief.section.dwelled", enabled: attnOn, extra: attnExtra });
+  const sectorDwellRef = useSectionDwell<HTMLDivElement>({ sectionKey: "sector_signals", eventName: "brief.section.dwelled", enabled: attnOn, extra: attnExtra });
+  const storiesDwellRef = useSectionDwell({ sectionKey: "stories", eventName: "brief.section.dwelled", enabled: attnOn, extra: attnExtra });
+  const callsDwellRef = useSectionDwell({ sectionKey: "calls", eventName: "brief.section.dwelled", enabled: attnOn, extra: attnExtra });
+
+  // Call cards are rendered by BriefCallsSection, which is being edited in a
+  // parallel branch and is off limits here. So they are observed from the
+  // outside: position and list size come from the rendered order and are always
+  // right; identity is read back out of the DOM through the id that
+  // TrackCallControl already puts on its describedby target. When the card
+  // carries no such id (it is already tracked, so the control is gone), the row
+  // lands with a null entity_id rather than a guessed one. A one-line
+  // data-attn-id on the card retires this resolver; see the PR body.
+  useChildExposure(callsDwellRef, {
+    eventName: "brief.call.exposed",
+    enabled: attnOn,
+    entityType: "brief_call",
+    listKey: "calls",
+    childSelector: ":scope .grid > *",
+    resolveEntityId: (el) => {
+      const described = el.querySelector("[aria-describedby^='track-why-']");
+      const attr = described?.getAttribute("aria-describedby");
+      if (attr) return attr.slice("track-why-".length) || null;
+      const trust = el.querySelector("[id^='track-why-']");
+      const id = trust?.getAttribute("id");
+      return id ? id.slice("track-why-".length) || null : null;
+    },
+    extra: attnExtra,
+  });
+
+  useScrollDepth({
+    eventName: "brief.page.scrolled",
+    enabled: attnOn,
+    entityType: "briefing",
+    entityId: attnBriefId,
+    extra: attnExtra,
+  });
+
+  const copyRootRef = useCopySignal<HTMLDivElement>({
+    eventName: "brief.content.copied",
+    enabled: attnOn,
+    entityType: "briefing",
+    entityId: attnBriefId,
+    extra: attnExtra,
+  });
 
   const tone = normaliseTone(briefing?.market_tone);
   // Use a stable epoch fallback to avoid SSR/client hydration mismatch (#418).
@@ -830,7 +937,7 @@ export default function MorningBriefPage() {
         </span>
       </div>
 
-      <div className="p-8">
+      <div className="p-8" ref={copyRootRef}>
         {loading ? (
           <div className="space-y-6">
             <Skeleton className="h-10 w-3/4" />
@@ -873,7 +980,7 @@ export default function MorningBriefPage() {
                 no-verdict headline (never a fabricated word), body falls
                 back to briefing.summary, driver chips fall back to
                 top_deals when backend-supplied headlines are absent. ── */}
-            <section style={{ marginBottom: 36 }}>
+            <section ref={pulseDwellRef} style={{ marginBottom: 36 }}>
               <div
                 style={{
                   background: DC_ESPRESSO,
@@ -1048,12 +1155,12 @@ export default function MorningBriefPage() {
 
             {/* ── Today's Calls — scored objects (Open state; real morning_brief_calls,
                  grading not live yet). Additive: no existing per-call rendering replaced. ── */}
-            <section style={{ marginBottom: 40 }}>
+            <section ref={callsDwellRef} style={{ marginBottom: 40 }}>
               <BriefCallsSection briefId={briefing.id} heading="Today's Calls" surface="brief" />
             </section>
 
             {/* ── Today's Lead ── */}
-            <section style={{ marginBottom: 40 }}>
+            <section ref={leadDwellRef} style={{ marginBottom: 40 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
                 <span
                   className="font-sans"
@@ -1319,6 +1426,15 @@ export default function MorningBriefPage() {
                   {briefing.top_deals.map((deal, i) => (
                     <div
                       key={i}
+                      ref={dealExposure.observe({
+                        entityType: "deal",
+                        entityId: deal.company || `rank-${i}`,
+                        rank: i,
+                        listKey: "top_deals",
+                        listLength: briefing.top_deals?.length ?? null,
+                      })}
+                      data-attn-type="deal"
+                      data-attn-id={deal.company || `rank-${i}`}
                       style={{
                         background: "var(--elevated)",
                         border: "1px solid var(--border-base)",
@@ -1412,7 +1528,7 @@ export default function MorningBriefPage() {
                 USEFUL? thumbs for Lucas's feedback-loop signal
                 collection. Sector Signals is rendered separately below. ── */}
             {analystSections.length > 0 && (
-              <section style={{ marginBottom: 40 }}>
+              <section ref={analystDwellRef} style={{ marginBottom: 40 }}>
                 <h3
                   className="font-[family-name:var(--font-playfair-display)]"
                   style={{
@@ -1445,7 +1561,9 @@ export default function MorningBriefPage() {
 
             {/* ── Sector Signals — standalone section with pill filter. ── */}
             {briefing.sector_breakdown && Object.keys(briefing.sector_breakdown).length > 0 && (
-              <DCSectorSignals breakdown={briefing.sector_breakdown} />
+              <div ref={sectorDwellRef}>
+                <DCSectorSignals breakdown={briefing.sector_breakdown} />
+              </div>
             )}
 
             {/* Personalization nudge */}
@@ -1476,7 +1594,7 @@ export default function MorningBriefPage() {
                 actions. Row meta row shows signal score, source win rate,
                 and summary/headline-only pill. ── */}
             {rankedStories.length > 0 && (
-              <section>
+              <section ref={storiesDwellRef}>
                 <h3
                   className="font-[family-name:var(--font-playfair-display)]"
                   style={{ fontSize: 26, fontWeight: 800, color: "var(--espresso)", margin: "0 0 18px", letterSpacing: "-0.015em" }}
@@ -1485,14 +1603,31 @@ export default function MorningBriefPage() {
                   {" "}<InfoTooltip content="Articles ranked by relevance score — a composite of recency, source credibility, and topic importance." side="right" iconSize={12} />
                 </h3>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
-                  {(user === null ? rankedStories.slice(0, 3) : rankedStories).map((s, i) => (
-                    <DCStoryRow
-                      key={s.id}
-                      story={s}
-                      index={i}
-                      watching={(s.tags ?? []).some((t) => isOnWatchlist(t, profile))}
-                    />
-                  ))}
+                  {(() => {
+                    const shown = user === null ? rankedStories.slice(0, 3) : rankedStories;
+                    return shown.map((s, i) => (
+                      // The wrapper carries the exposure ref and the copy
+                      // attribution markers. DCStoryRow itself is untouched.
+                      <div
+                        key={s.id}
+                        ref={storyExposure.observe({
+                          entityType: "story",
+                          entityId: s.id,
+                          rank: i,
+                          listKey: "stories",
+                          listLength: shown.length,
+                        })}
+                        data-attn-type="story"
+                        data-attn-id={s.id}
+                      >
+                        <DCStoryRow
+                          story={s}
+                          index={i}
+                          watching={(s.tags ?? []).some((t) => isOnWatchlist(t, profile))}
+                        />
+                      </div>
+                    ));
+                  })()}
                 </div>
 
                 {user === null && rankedStories.length > 3 && (
