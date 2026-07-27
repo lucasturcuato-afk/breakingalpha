@@ -33,12 +33,12 @@ import {
   scoredCallProps,
   type CallOutcomeRow,
 } from "@/lib/scored-object-map";
+import { DEFAULT_ADOPT_HORIZON, type HorizonType } from "@/lib/call-horizons";
 import {
-  DEFAULT_ADOPT_HORIZON,
-  HORIZON_LABEL,
-  HORIZON_TYPES,
-  type HorizonType,
-} from "@/lib/call-horizons";
+  CallLedgerLine,
+  TrackCallControl,
+  TrackTrustLine,
+} from "@/components/calls/TrackCallControl";
 import { trackClientEvent } from "@/lib/track-event";
 
 interface BriefCall {
@@ -91,6 +91,10 @@ export default function BriefCallsSection({
   const [horizonFor, setHorizonFor] = useState<Record<string, HorizonType>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [trackError, setTrackError] = useState<Record<string, string>>({});
+  /** Calls committed in THIS session. Drives the one-time stamp only; it is
+   *  never what makes a card read tracked (that comes from server data), so a
+   *  reload renders the end state with no animation. */
+  const [stamped, setStamped] = useState<Set<string>>(new Set());
 
   /** Read the user's claims so already-tracked calls render as tracked.
    *  Fail-open: any failure leaves `tracked` null and simply hides the control. */
@@ -218,6 +222,11 @@ export default function BriefCallsSection({
         next.delete(call.id);
         return next;
       });
+      setStamped((prev) => {
+        const next = new Set(prev);
+        next.delete(call.id);
+        return next;
+      });
       setTrackError((prev) => ({ ...prev, [call.id]: message }));
     };
 
@@ -244,6 +253,7 @@ export default function BriefCallsSection({
         });
         return next;
       });
+      setStamped((prev) => new Set(prev).add(call.id));
       // Moat event: immediate flush, since a dropped track corrupts the
       // dataset rather than just adding noise.
       trackClientEvent(
@@ -293,65 +303,39 @@ export default function BriefCallsSection({
           {calls.map((c) => {
             const trackedClaim = tracked?.get(c.id) ?? null;
             const chosen = horizonFor[c.id] ?? DEFAULT_ADOPT_HORIZON;
+            // The stamp plays once, only for a call committed in THIS session.
+            // A claim loaded from the server on mount renders its end state
+            // with no animation: a persisted entry is a fact, not an event.
+            const justStamped = stamped.has(c.id);
             return (
-              <div key={c.id}>
+              <div key={c.id} className={trackedClaim ? "call-tracked-edge" : undefined}>
                 <div className="mb-1 flex items-baseline justify-between gap-2 px-1 font-sans text-[11px] text-text-faint">
                   {/* Derived from resolve_on. Absent when the call has none. */}
                   <HorizonChip anchor={c.brief_date} resolveOn={c.resolve_on} />
-                  {/* Track control. Present on EVERY call including already-scored
-                      ones: tracking is a fresh forward claim from today over your
-                      own window, not a re-run of the brief's settled verdict.
-                      Hidden entirely when `tracked` is null (signed out, or the
-                      claims read failed), since the POST could only 401. */}
-                  {tracked === null ? null : trackedClaim ? (
-                    <span className="flex items-baseline gap-1.5 text-text-muted">
-                      Tracking
-                      <HorizonChip
-                        anchor={trackedClaim.resolution_window_start}
-                        resolveOn={trackedClaim.resolution_window_end}
-                      />
-                      <a
-                        href="/radar/calls"
-                        className="underline underline-offset-2 hover:text-text-primary"
-                      >
-                        View in Radar
-                      </a>
-                    </span>
-                  ) : (
-                    <span className="flex items-baseline gap-1.5">
-                      <select
-                        aria-label="Tracking horizon"
-                        value={chosen}
-                        disabled={busy === c.id}
-                        onChange={(e) =>
-                          setHorizonFor((prev) => ({
-                            ...prev,
-                            [c.id]: e.target.value as HorizonType,
-                          }))
-                        }
-                        className="cursor-pointer rounded-sm border border-border-subtle bg-transparent px-1 py-px font-mono text-[10px] text-text-muted disabled:opacity-50"
-                      >
-                        {HORIZON_TYPES.map((h) => (
-                          <option key={h} value={h}>
-                            {HORIZON_LABEL[h]}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        disabled={busy === c.id}
-                        onClick={() => void track(c, chosen)}
-                        className="hover:text-text-primary disabled:opacity-50"
-                      >
-                        {busy === c.id ? "Tracking…" : "Track this call"}
-                      </button>
-                    </span>
-                  )}
+                  <TrackCallControl
+                    callId={c.id}
+                    tracked={trackedClaim}
+                    available={tracked !== null}
+                    busy={busy === c.id}
+                    horizon={chosen}
+                    onHorizonChange={(h) =>
+                      setHorizonFor((prev) => ({ ...prev, [c.id]: h }))
+                    }
+                    onTrack={() => void track(c, chosen)}
+                    justStamped={justStamped}
+                  />
                 </div>
                 <ScoredObject
                   {...(outcomes && todayPt
                     ? scoredCallProps(c, outcomes.get(c.id) ?? null, todayPt)
                     : openCallProps(c))}
                 />
+                {/* Committed: the ledger entry. Not committed: the reason to. */}
+                {trackedClaim ? (
+                  <CallLedgerLine claim={trackedClaim} justStamped={justStamped} />
+                ) : tracked !== null ? (
+                  <TrackTrustLine callId={c.id} />
+                ) : null}
                 {trackError[c.id] && (
                   <p className="mt-1 px-1 font-sans text-[11px] text-text-muted">
                     {trackError[c.id]}

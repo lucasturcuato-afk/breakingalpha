@@ -31,13 +31,8 @@ export function shortDate(iso: string | null | undefined): string | undefined {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-/** 0-1 confidence -> integer percent; undefined if not a real number. */
-function toPct(confidence: number | null | undefined): number | undefined {
-  if (confidence == null || Number.isNaN(confidence)) return undefined;
-  // Stored 0-1; guard against an already-percent value just in case.
-  const pct = confidence <= 1 ? confidence * 100 : confidence;
-  return Math.round(pct);
-}
+// toPct removed with the last confidencePct producer: no mapper renders a
+// confidence percentage any more, so the converter had no callers left.
 
 export interface OpenThesisInput {
   /** Already-neutralized title/claim (caller applies neutralizeThesisTitle). */
@@ -56,7 +51,10 @@ export function openThesisProps(t: OpenThesisInput): ScoredObjectProps {
     sector: (t.sector && t.sector.trim()) || "Thesis",
     claim: t.claim,
     calledDate: shortDate(t.generated_at),
-    confidencePct: toPct(t.confidence),
+    // confidencePct deliberately omitted, matching openCallProps. A percentage
+    // reads as a probability of being right; it is a model self-report, it is
+    // never a grading input, and this product does not show one. The value is
+    // still accepted on the input type so callers need no change.
     resolvesWhen: shortDate(t.check_after),
     resolvesSource: t.horizon ? `the ${t.horizon} signal check` : undefined,
   };
