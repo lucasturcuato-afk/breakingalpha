@@ -8,10 +8,24 @@ and attribution vocabulary; only the source and destination tables
 differ. The grader logic is not forked.
 
 Which claims are picked up (all conditions required):
-  - source = 'authored' (adopted claims are NEVER re-graded; the UI
-    joins through adopted_from_call_id to the original brief outcome)
+  - source in GRADEABLE_SOURCES ('authored', 'adopted')
   - gradeable = true and resolution_method.method = 'price_attribution'
   - status = 'open' and resolution_window_end <= today (window closed)
+
+Adopted claims used to be excluded here (source = 'authored' only), on the
+premise that they inherit the original brief call's verdict. That stopped
+being true once adopt started writing a REAL forward window and a
+validation-derived gradeable of its own: an adopted claim is a fresh claim
+from the day it was tracked, over a window the USER chose, which is
+generally not the brief call's window. Inheriting the brief's same-session
+verdict would answer a different question than the one the user asked, and
+excluding them meant a tracked call simply never resolved at all.
+
+Nothing about grading them is special-cased. An adopted claim carries its
+own resolution_window_start/_end, so claim_to_call maps it exactly like an
+authored one, the same resolver and thresholds apply, and it gets its own
+user_claim_outcomes row keyed on its own claim id. adopted_from_call_id is
+provenance only and is never read here.
 
 Multi-session windows use the sqrt(sessions)-scaled tier path added to
 price_attribution.py; single-session claims grade exactly like brief
@@ -39,6 +53,38 @@ from backend.grading.benchmarks import sectors_for_tickers
 from backend.grading.grade_brief_calls import gemini_verdict_notes, ungradable_notes
 from backend.grading.price_attribution import PriceAttributionGrader
 from backend.grading.resolver import Outcome, default_resolver
+
+
+#: Claim sources whose claims this job grades.
+#:
+#: Enumerated rather than dropped, deliberately. user_claims.source is CHECKed
+#: to ('authored','adopted') today, so this is currently every value, but a
+#: future source (an imported or shared claim, say) must be an explicit decision
+#: to grade rather than something a widened scan sweeps in silently.
+GRADEABLE_SOURCES = ("authored", "adopted")
+
+
+def fetch_due_claims(sb, today: str) -> list[dict]:
+    """
+    Claims whose window has closed and which are still open, before the
+    price-gradeability and already-graded filters.
+
+    Index-backed by idx_user_claims_due. That index carried a
+    source = 'authored' predicate matching the old scan; sql/0015 rebuilds it
+    without one, so this query stays index-backed rather than falling back to a
+    sequential scan.
+    """
+    return (
+        sb.table("user_claims")
+        .select("*")
+        .in_("source", list(GRADEABLE_SOURCES))
+        .eq("gradeable", True)
+        .eq("status", "open")
+        .lte("resolution_window_end", today)
+        .execute()
+        .data
+        or []
+    )
 
 
 def claim_to_call(claim: dict) -> dict:
@@ -82,17 +128,7 @@ def main() -> None:
 
     today = date.today().isoformat()
     try:
-        claims = (
-            sb.table("user_claims")
-            .select("*")
-            .eq("source", "authored")
-            .eq("gradeable", True)
-            .eq("status", "open")
-            .lte("resolution_window_end", today)
-            .execute()
-            .data
-            or []
-        )
+        claims = fetch_due_claims(sb, today)
     except Exception as e:
         # Table not applied yet (or transient): degrade gracefully, never
         # fail the shared grading workflow.
