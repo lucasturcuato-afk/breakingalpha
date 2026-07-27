@@ -83,6 +83,27 @@ jobs:
           # "active" replaces preselected before the hoist). So merging this changes
           # nothing until vars.MATERIALITY_RANK_MODE is set to active by a human.
           MATERIALITY_RANK_MODE: ${{ vars.MATERIALITY_RANK_MODE }}
+          # Morning Brief email digest, read at backend/brief_email_send.py.
+          # Repo VARIABLE, not a secret (non-sensitive enum: off | active).
+          # Off-safe: when the variable is UNSET this renders an empty string,
+          # digest_mode() folds anything that is not exactly "active" to "off",
+          # and the send path returns before touching the DB, the network or the
+          # renderer. Merging this mails nobody until a human sets
+          # vars.EMAIL_DIGEST_MODE to active AND the deliverability checks in the
+          # PR body have passed.
+          EMAIL_DIGEST_MODE: ${{ vars.EMAIL_DIGEST_MODE }}
+          # Transactional sender + link origin for that email. RESEND_API_KEY is
+          # the same key the Next.js app already uses. NEXT_PUBLIC_SITE_URL is
+          # needed here because the pipeline builds absolute unsubscribe and
+          # adopt links; it falls back to https://signalera.ai (parity with
+          # src/lib/email/site-url.ts) when unset.
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+          EMAIL_FROM_ADDRESS: ${{ vars.EMAIL_FROM_ADDRESS }}
+          EMAIL_REPLY_TO: ${{ vars.EMAIL_REPLY_TO }}
+          # Signs the unsubscribe token. MUST be the same value the Next.js
+          # /api/unsubscribe route verifies with, or every footer link 400s.
+          SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
         run: python run.py ${{ steps.mode.outputs.mode }}
 
       # Alerting only (does NOT gate generation - the brief is already shipped by

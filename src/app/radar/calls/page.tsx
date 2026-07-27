@@ -221,6 +221,11 @@ export default function CallsPage() {
   const [draftText, setDraftText] = useState<string | null>(null);
   const [deepLinkThesisId, setDeepLinkThesisId] = useState<string | null>(null);
   const [openViews, setOpenViews] = useState(false);
+  /** ?adopt=<call_id> from the Morning Brief email's "Track this thesis" link.
+   *  The email is complete as a read; this click exists only because taking a
+   *  commitment has to happen on the site. It scrolls the named call into view
+   *  and rings it so the track control is unmistakable on arrival. */
+  const [adoptCallId, setAdoptCallId] = useState<string | null>(null);
 
   useEffect(() => {
     // Prefill authoring from ?draft= (Track action on articles elsewhere).
@@ -232,6 +237,8 @@ export default function CallsPage() {
     const thesisId = params.get("thesis");
     if (thesisId) setDeepLinkThesisId(thesisId);
     if (params.get("views") === "open") setOpenViews(true);
+    const adoptId = params.get("adopt");
+    if (adoptId) setAdoptCallId(adoptId);
     const stored = window.localStorage.getItem(TOP_MODE_KEY);
     if (stored === "record" || stored === "pinned" || stored === "resolving") setTopMode(stored);
     try {
@@ -241,6 +248,14 @@ export default function CallsPage() {
       /* fresh start */
     }
   }, []);
+  // Deep-linked adopt target: scroll it into view once the calls are on screen.
+  // Keyed on briefCalls so it fires after the fetch, not before the node exists.
+  useEffect(() => {
+    if (!adoptCallId || briefCalls.length === 0) return;
+    const node = document.getElementById(`call-${adoptCallId}`);
+    if (node) node.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [adoptCallId, briefCalls]);
+
   const changeTop = (m: TopMode) => {
     setTopMode(m);
     window.localStorage.setItem(TOP_MODE_KEY, m);
@@ -657,7 +672,15 @@ export default function CallsPage() {
                     );
                     const chosen = adoptHorizon[c.id] ?? DEFAULT_ADOPT_HORIZON;
                     return (
-                      <div key={c.id} className="group">
+                      <div
+                        key={c.id}
+                        id={`call-${c.id}`}
+                        className={`group scroll-mt-24 ${
+                          adoptCallId === c.id
+                            ? "rounded-lg ring-2 ring-[var(--gold)]"
+                            : ""
+                        }`}
+                      >
                         <div className="mb-1 flex items-baseline justify-between gap-2 px-1 font-sans text-[11px] text-text-faint">
                           <span className="flex items-baseline gap-1.5">
                             Signalera brief · {c.brief_date}
