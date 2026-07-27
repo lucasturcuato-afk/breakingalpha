@@ -147,9 +147,10 @@ export default async function CompanyDetailPage({
   const filingsResult = await fetchCompanyFilings(supabase, { name: companyName }, 100);
 
   // Form 4 insider transactions (read-only), same name -> CIK resolution as
-  // filings so all three tabs describe the same company row. Returns an empty
-  // list until sql/0019_insider_transactions_read_policy.sql is applied, since
-  // the table has RLS on with no SELECT policy.
+  // filings so all three tabs describe the same company row. The SELECT policy
+  // from sql/0019_insider_transactions_read_policy.sql IS applied in prod
+  // (verified 2026-07-26: one policy, cmd SELECT, roles public, qual true), so
+  // an empty list here means no stored rows, not an RLS denial.
   const insiderResult = await getInsiderTransactions(supabase, { name: companyName });
 
   // Validated XBRL financials (read-only). Same name -> CIK resolution as

@@ -2,15 +2,18 @@
 
 /**
  * ComingSoonCard -- placeholder card for un-shipped tabs (F6-F9).
- * Subscribe button is NOT `disabled` so the Tooltip fires on hover;
- * `aria-disabled="true"` conveys the non-actionable semantic to AT.
+ *
+ * There used to be a "Subscribe to updates" button here. It was a pure no-op:
+ * onClick called preventDefault and nothing else, aria-disabled was true, and
+ * its own tooltip read "not wired yet". A control that cannot do anything is
+ * worse than no control, so it is gone. If interest tracking is ever built,
+ * bring the button back WITH the handler that persists the signup.
  */
 
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Tooltip } from "@/components/ui/tooltip";
 
 interface ComingSoonCardProps {
   slot: "f6" | "f7" | "f8" | "f9";
@@ -35,25 +38,7 @@ function ComingSoonCard({ slot, title, description, step, icon, className }: Com
         title={title}
         description={description}
         action={
-          <div className="flex flex-col items-center gap-2">
-            <Tooltip content="Tracking interest -- not wired yet." side="top">
-              <button
-                type="button"
-                aria-disabled="true"
-                onClick={(e) => e.preventDefault()}
-                className={cn(
-                  "inline-flex items-center px-3 py-1.5 rounded-md",
-                  "border border-border-base bg-cream",
-                  "font-sans text-[12px] font-medium text-text-secondary",
-                  "hover:bg-parchment-mid transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-1",
-                )}
-              >
-                Subscribe to updates
-              </button>
-            </Tooltip>
-            {step ? <span className="font-sans text-[10px] text-text-faint">{step}</span> : null}
-          </div>
+          step ? <span className="font-sans text-[10px] text-text-faint">{step}</span> : null
         }
       />
     </div>
