@@ -9,7 +9,12 @@
  *
  * UNIT PINNING: a handful of filers tag stray units (eps_* rows in "pure",
  * "shares", even "BillionsCubicFeet"; stockholders_equity in "USN"), so every
- * metric accepts exactly one unit and other rows are dropped.
+ * metric accepts exactly one unit and other rows are dropped. That accepted
+ * unit is now derived from the company's OWN reporting currency (see
+ * reporting-currency.ts) rather than pinned to USD, because pinning to USD
+ * dropped every fact from a foreign private issuer. Values are never converted;
+ * a single currency is chosen per company and the rest are dropped, so a metric
+ * series can never mix denominations.
  *
  * Period model (labels are period-derived by the backend, never the filing's
  * fiscal context): Annual = fiscal_period 'FY', latest 5. Quarterly = the
@@ -25,6 +30,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveCompanyCik, type CompanyRef } from "@/lib/sec-filings";
+import { filterToCurrency, selectReportingCurrency } from "@/lib/reporting-currency";
 
 export interface FinancialPeriod {
   /** Stable column key, e.g. "FY-2025" or "Q2-2026". */
@@ -56,6 +62,13 @@ export interface CompanyFinancialsResult {
   cik: number | null;
   annual: FinancialView;
   quarterly: FinancialView;
+  /**
+   * ISO code the filer actually reported in, read from the fact units rather
+   * than assumed. "USD" for domestic filers, "TWD" for Taiwan Semiconductor,
+   * "DKK" for Novo Nordisk. Null when the company has no monetary facts.
+   * Every value in the views is denominated in THIS currency and no other.
+   */
+  reportingCurrency: string | null;
 }
 
 const EMPTY_VIEW: FinancialView = { periods: [], grid: {} };
@@ -63,29 +76,10 @@ const EMPTY_VIEW: FinancialView = { periods: [], grid: {} };
 export const ANNUAL_PERIODS = 5;
 export const QUARTERLY_PERIODS = 8;
 
-// One accepted unit per metric; stray-unit rows are dropped.
-const UNIT_BY_METRIC: Record<string, string> = {
-  revenue: "USD",
-  cost_of_revenue: "USD",
-  gross_profit: "USD",
-  operating_income: "USD",
-  net_income: "USD",
-  ni_available_to_common_basic: "USD",
-  ni_available_to_common_diluted: "USD",
-  preferred_dividends: "USD",
-  eps_basic: "USD/shares",
-  eps_diluted: "USD/shares",
-  shares_basic: "shares",
-  shares_diluted: "shares",
-  operating_cash_flow: "USD",
-  total_assets: "USD",
-  total_liabilities: "USD",
-  stockholders_equity: "USD",
-  minority_interest: "USD",
-  redeemable_noncontrolling_interest: "USD",
-  temporary_equity: "USD",
-  cash_and_equivalents: "USD",
-};
+// Unit pinning now lives in reporting-currency.ts, where the accepted unit is
+// derived from the company's own reporting currency instead of a USD constant.
+// The old UNIT_BY_METRIC map hardcoded "USD" for every monetary metric, which
+// dropped 100% of a foreign private issuer's facts.
 
 const FACT_COLS =
   "metric_key, period_type, fiscal_year, fiscal_period, period_end, unit, value, filing_url, accession_number";
@@ -290,7 +284,7 @@ export async function fetchCompanyFinancials(
 ): Promise<CompanyFinancialsResult> {
   const res = await resolveCompanyCik(supabase, ref);
   if (res.cik == null) {
-    return { cik: null, annual: EMPTY_VIEW, quarterly: EMPTY_VIEW };
+    return { cik: null, annual: EMPTY_VIEW, quarterly: EMPTY_VIEW, reportingCurrency: null };
   }
   try {
     // Newest-first with an explicit cap: PostgREST returns at most 1000 rows
@@ -304,10 +298,19 @@ export async function fetchCompanyFinancials(
       .limit(1000);
     if (error) {
       console.error("[financial-facts] fetch failed:", error.message);
-      return { cik: res.cik, annual: EMPTY_VIEW, quarterly: EMPTY_VIEW };
+      return { cik: res.cik, annual: EMPTY_VIEW, quarterly: EMPTY_VIEW, reportingCurrency: null };
     }
-    const rows = ((data ?? []) as unknown as FactRow[])
-      .filter((r) => UNIT_BY_METRIC[r.metric_key] === r.unit)
+    // Currency is READ, not assumed. The old check was
+    // `UNIT_BY_METRIC[r.metric_key] === r.unit`, which hardcoded USD and
+    // therefore silently dropped every fact from a foreign private issuer:
+    // TSMC extracts 337 real facts, all TWD, and rendered an empty tab.
+    //
+    // selectReportingCurrency picks ONE currency for the company and
+    // filterToCurrency keeps only rows consistent with it, so a metric series
+    // can never mix denominations. Nothing is converted.
+    const allRows = (data ?? []) as unknown as FactRow[];
+    const reportingCurrency = selectReportingCurrency(allRows);
+    const rows = filterToCurrency(allRows, reportingCurrency)
       // Source links open the filing index page, not the raw directory.
       .map((r) => ({
         ...r,
@@ -340,9 +343,9 @@ export async function fetchCompanyFinancials(
     upgradeFilingUrls(annual, docByAccession);
     upgradeFilingUrls(quarterly, docByAccession);
 
-    return { cik: res.cik, annual, quarterly };
+    return { cik: res.cik, annual, quarterly, reportingCurrency };
   } catch (e) {
     console.error("[financial-facts] fetchCompanyFinancials exception:", e);
-    return { cik: res.cik, annual: EMPTY_VIEW, quarterly: EMPTY_VIEW };
+    return { cik: res.cik, annual: EMPTY_VIEW, quarterly: EMPTY_VIEW, reportingCurrency: null };
   }
 }
