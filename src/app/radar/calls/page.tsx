@@ -39,9 +39,12 @@ import { useMotionSettled } from "@/lib/use-motion-settled";
 import { useTopicClusters } from "@/lib/use-topic-clusters";
 import { HorizonChip } from "@/components/calls/HorizonChip";
 import {
+  CallLedgerLine,
+  TrackCallControl,
+  TrackTrustLine,
+} from "@/components/calls/TrackCallControl";
+import {
   DEFAULT_ADOPT_HORIZON,
-  HORIZON_LABEL,
-  HORIZON_TYPES,
   horizonFromDates,
   type HorizonType,
 } from "@/lib/call-horizons";
@@ -215,6 +218,10 @@ export default function CallsPage() {
   /** Inline per-call failure text. Replaces the adopt toast, which adopt was
    *  the only writer of; tracking state now resolves in place on the card. */
   const [adoptError, setAdoptError] = useState<Record<string, string>>({});
+  /** Calls committed in THIS session. Drives the one-time stamp only; tracked
+   *  state itself always comes from the server claims read, so a reload renders
+   *  the end state with no animation. */
+  const [stamped, setStamped] = useState<Set<string>>(new Set());
   const [mapClaimId, setMapClaimId] = useState<string | null>(null);
   const [mapArticles, setMapArticles] = useState<MapArticle[] | null>(null);
   const [mapLoading, setMapLoading] = useState(false);
@@ -368,11 +375,14 @@ export default function CallsPage() {
       });
       const json = await res.json();
       if (!res.ok) {
+        setStamped((prev) => { const n = new Set(prev); n.delete(callId); return n; });
         setAdoptError((prev) => ({ ...prev, [callId]: json.error ?? "Could not track." }));
         return;
       }
+      setStamped((prev) => new Set(prev).add(callId));
       await load();
     } catch {
+      setStamped((prev) => { const n = new Set(prev); n.delete(callId); return n; });
       setAdoptError((prev) => ({ ...prev, [callId]: "Could not track." }));
     } finally {
       setAdoptBusy(null);
@@ -676,6 +686,8 @@ export default function CallsPage() {
                         key={c.id}
                         id={`call-${c.id}`}
                         className={`group scroll-mt-24 ${
+                          trackedClaim ? "call-tracked-edge " : ""
+                        }${
                           adoptCallId === c.id
                             ? "rounded-lg ring-2 ring-[var(--gold)]"
                             : ""
@@ -686,51 +698,33 @@ export default function CallsPage() {
                             Signalera brief · {c.brief_date}
                             <HorizonChip anchor={c.brief_date} resolveOn={c.resolve_on} />
                           </span>
-                          {/* Track control. Present on EVERY call including
-                              already-scored ones: tracking is a fresh forward
-                              claim from today over the user's own window, not a
-                              re-run of the brief's already-settled verdict. */}
-                          {trackedClaim ? (
-                            <span className="flex items-baseline gap-1.5 text-text-muted">
-                              Tracking
-                              <HorizonChip
-                                anchor={trackedClaim.resolution_window_start}
-                                resolveOn={trackedClaim.resolution_window_end}
-                              />
-                            </span>
-                          ) : (
-                            <span className="flex items-baseline gap-1.5">
-                              <select
-                                aria-label="Tracking horizon"
-                                value={chosen}
-                                disabled={adoptBusy === c.id || unavailable}
-                                onChange={(e) =>
-                                  setAdoptHorizon((prev) => ({
-                                    ...prev,
-                                    [c.id]: e.target.value as HorizonType,
-                                  }))
-                                }
-                                className="cursor-pointer rounded-sm border border-border-subtle bg-transparent px-1 py-px font-mono text-[10px] text-text-muted disabled:opacity-50"
-                              >
-                                {HORIZON_TYPES.map((h) => (
-                                  <option key={h} value={h}>
-                                    {HORIZON_LABEL[h]}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                disabled={adoptBusy === c.id || unavailable}
-                                onClick={() => void adopt(c.id, chosen)}
-                                className="hover:text-text-primary disabled:opacity-50"
-                              >
-                                {adoptBusy === c.id ? "Tracking…" : "Track this call"}
-                              </button>
-                            </span>
-                          )}
+                          {/* Shared control (@/components/calls/TrackCallControl).
+                              Present on EVERY call including already-scored ones:
+                              tracking is a fresh forward claim from today over the
+                              user's own window, not a re-run of the brief's
+                              already-settled verdict. */}
+                          <TrackCallControl
+                            callId={c.id}
+                            tracked={trackedClaim ?? null}
+                            available={!unavailable}
+                            busy={adoptBusy === c.id}
+                            horizon={chosen}
+                            onHorizonChange={(h) =>
+                              setAdoptHorizon((prev) => ({ ...prev, [c.id]: h }))
+                            }
+                            onTrack={() => void adopt(c.id, chosen)}
+                            justStamped={stamped.has(c.id)}
+                          />
                         </div>
                         <div className="card-hover-lift">
                           <ScoredObject {...props} />
                         </div>
+                        {/* Committed: the ledger entry. Not committed: the reason to. */}
+                        {trackedClaim ? (
+                          <CallLedgerLine claim={trackedClaim} justStamped={stamped.has(c.id)} />
+                        ) : !unavailable ? (
+                          <TrackTrustLine callId={c.id} />
+                        ) : null}
                         <p className="motion-fade-reveal mt-1 px-1 font-sans text-[11px] leading-snug text-text-muted">
                           {briefResolutionSentence(c)}
                         </p>

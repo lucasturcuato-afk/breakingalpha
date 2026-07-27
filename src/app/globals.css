@@ -475,8 +475,42 @@ html.dark .skeleton-shimmer {
   opacity: 1;
 }
 
+/* ── Committing to a call: a stamp, not a bounce ──
+   The press should read as an entry being made, not a celebration. The button
+   collapses at --duration-fast (100ms), the ledger fades up at --duration-slow
+   (250ms), the card edge takes a quiet gold rule. No slide, no bounce, no
+   checkmark, nothing over 300ms. Existing tokens only. */
+.call-stamp-collapse {
+  animation: call-stamp-collapse var(--duration-fast) var(--ease-out) both;
+}
+@keyframes call-stamp-collapse {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+
+.call-stamp-in {
+  animation: call-stamp-in var(--duration-slow) var(--ease-out) both;
+}
+@keyframes call-stamp-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* The committed edge. Present whenever a call is tracked, including on a fresh
+   mount from server data, so persistence is visible and not just animated in. */
+.call-tracked-edge {
+  border-left: 2px solid var(--gold);
+  padding-left: 8px;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
 /* Consolidated reduced-motion fallbacks */
 @media (prefers-reduced-motion: reduce) {
+  /* End state, no transition: the ledger and the collapsed button are already
+     their final selves, and the committed edge stays. */
+  .call-stamp-collapse { animation: none; opacity: 1; }
+  .call-stamp-in { animation: none; opacity: 1; transform: none; }
+  .call-tracked-edge { transition: none; }
   .brand-mark-pulse { animation: none; opacity: 1; }
   .bar-sweep-in { animation: none; }
   .card-hover-lift { transition: none; }
