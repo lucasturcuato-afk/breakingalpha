@@ -449,6 +449,213 @@ def _cluster_lead_barred(scored_cluster: dict, now: datetime.datetime) -> bool:
         return False
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# L2 - RUMOR / PREVIEW LEAD BAR (conditional, deterministic, no LLM)
+# ══════════════════════════════════════════════════════════════════════════════
+# WHY: on 2026-07-20 the morning brief led with "Micron Explores Strategic Deal to
+# Stabilize Revenue" (a rumor) while a confirmed $1B+ transaction sat in the pool;
+# on 2026-07-21 it led with "Tesla (TSLA) Tests Semi On Chicago Routes" (a product
+# road test) over a confirmed GBP 3.1bn Mitie/OCS takeover and a $4B deal; on
+# 2026-07-24 it led with "Booz Allen (BAH) To Report Earnings Tomorrow: Here Is
+# What To Expect" (an earnings PREVIEW). A forward-looking / unconfirmed story is
+# the weakest lead type after an analyst note: it reports a might-happen, not a
+# did-happen. lead_preselect's Filter A/A2 (backend/lead_preselect.py: the
+# UNCONFIRMED_KEYWORDS / UNCONFIRMED_KEYWORDS_NON_MA blocklists in _qualifies_filter_a
+# and _qualifies_filter_a2) already rejects this framing for DEAL candidates; L2
+# extends the SAME standard to the impact-cluster path.
+#
+# CONDITIONAL (unlike L1's unconditional analyst bar): a rumor / preview may LEAD
+# only when no confirmed alternative exists that day. A confirmed alternative is a
+# lead-eligible confirmed $1B+ mega-deal cluster (the mega-deal gate, floor named
+# below) OR a tier-1 / recent-event macro release. When one exists the rumor/preview
+# is lead-INELIGIBLE; when none exists it may still lead (a slow day can lead with a
+# rumor rather than nothing). These stories STAY eligible in rails / sections; only
+# the LEAD slot excludes them. Applied in BOTH the live path (compute_shadow_lead /
+# compute_lead) AND the UNIFIED_LEAD contest (compute_unified_lead) via the shared
+# _lead_bar_reason helper, so the bar survives the eventual flag flip.
+
+# Rule 2 tunable (the ONE place Noah tunes the confirmed-alternative deal floor).
+# A confirmed DEAL counts as the alternative that bars a rumor/preview only at/above
+# this USD-billions floor. The mega-deal gate (confirmed_mega_deal_urls, which builds
+# `mega_deal_urls`) already screens confirmed transactions at $1B via
+# lead_preselect.MIN_DEAL_VALUE_USD_B, so this names that floor in one visible place
+# for Noah. Raising it makes the rumor bar fire LESS often (fewer deals qualify as
+# the confirming alternative), never more; it is fail-safe by construction.
+RUMOR_BAR_CONFIRMED_DEAL_MIN_USD_B = 1.0
+
+# PRECISION: title-level word-boundary regex. Fires on forward-looking / unconfirmed
+# framing: reported deal chatter ("reportedly", "explores", "in talks", "weighing",
+# "mulls", "eyes a bid", "could acquire", "potential takeover"), stated intent
+# ("plans to", "set to report"), and earnings / event PREVIEWS ("to report earnings",
+# "what to expect", "earnings preview", "ahead of earnings", "is expected to report"),
+# plus the product road-test framing ("road test", "test-drives") that led Jul 21.
+# It deliberately does NOT fire on a confirmed action ("agrees", "signs", "closes",
+# "priced", "acquired", "reports Q2 revenue of $X") or on a bare "expected" without a
+# report/announce object. Reuses lead_preselect's UNCONFIRMED_KEYWORDS standard and
+# extends it with the preview vocabulary that the deal blocklist does not carry.
+_RUMOR_PREVIEW_RE = re.compile(r"""(?xi)
+    \breportedly\b
+  | \brumor(?:ed|s)?\b
+  | \bin\ talks\b
+  | \bexplor(?:es|ing|e)\b
+  | \bmull(?:s|ing|ed)?\b
+  | \bweigh(?:s|ing|ed)?\ (?:\S+\ ){0,3}?(?:bid|deal|sale|offer|takeover|acquisition|options?)\b
+  | \b(?:is|are|reportedly)\ considering\b
+  | \bplan(?:s|ning)?\ to\ (?:acquire|buy|sell|merge|raise|report|launch|spin)\b
+  | \bset\ to\ report\b
+  | \bto\ report\ (?:\S+\ ){0,2}?earnings\b
+  | \bearnings\ (?:preview|due|tomorrow|next\ week)\b
+  | \bwhat\ to\ expect\b
+  | \bahead\ of\ (?:\S+\ ){0,3}?earnings\b
+  | \b(?:is|are)\ expected\ to\ (?:report|post|announce|acquire|raise|merge)\b
+  | \bexpected\ to\ (?:report|post|announce)\b
+  | \b(?:preview|previews)\b
+  | \bupcoming\ earnings\b
+  | \bwill\ .{0,40}?\ react\ to\b
+  | \bhow\ will\ .{0,40}?\ (?:react|fare|perform|do)\b
+  | \babout\ to\ (?:fall|rise|surge|plunge|jump|soar|crash|drop|pop|rally|tank|spike)\b
+  | \bwhat\ could\ move\b
+  | \bthat\ could\ (?:end|reshape|transform|save|fix|reset|change|unlock|trigger|spark|reignite|upend)\b
+  | \broad[-\ ]test(?:s|ing|ed)?\b
+  | \btest[-\ ]driv(?:e|es|ing)\b
+  | \btest(?:s|ing|ed)?\ (?:its\ |the\ )?(?:semi|truck|robotaxi|cybercab|fsd|autopilot|prototype|vehicle|drone|model)\b
+  | \beye(?:s|ing)\ (?:a\ |an\ |another\ )?(?:\$?\d|bid|deal|stake|acquisition|takeover|merger)\b
+  | \bcould\ (?:acquire|buy|raise|merge|sell|reach\ a\ deal)\b
+  | \bmay\ (?:acquire|buy|raise|merge|sell)\b
+  | \bpotential\ (?:bid|deal|acquisition|takeover|merger|buyout)\b
+  | \bstrategic\ (?:options|alternatives|review)\b
+""")
+
+# Rule 2 cluster-dominance floor. A rumor/preview LEAD BAR is a CLUSTER decision (like
+# the L1 analyst bar), not a single-headline decision: which member happens to be the
+# representative should not decide eligibility. A cluster is a rumor/preview cluster
+# when its representative reads as rumor/preview OR at least this fraction of its
+# lead-eligible members do (so a company cluster that is wholly "explores a deal" /
+# "upcoming earnings" / "could reshape" copy is barred regardless of which article is
+# picked). Tuning UP makes the bar fire less often (needs a more one-sided cluster).
+RUMOR_CLUSTER_DOMINANCE = 0.5
+
+# Article-side confirmed-mega-deal detector for the confirmed-ALTERNATIVE check. The
+# deal_flow-gated mega-deal set (confirmed_mega_deal_urls) misses a confirmed deal
+# whose deal_flow row was never captured (e.g. "Mitie agrees GBP 3.1bn takeover by
+# OCS", a real confirmed deal with no deal_flow join). This reads the confirmation off
+# the TITLE: a confirmed-action verb ("agrees"/"signs"/"to acquire"/"priced") plus an
+# explicit value at/above the floor, and NOT rumor/preview framing. Used ONLY to
+# recognize a confirming alternative; it never itself promotes a story to the lead.
+_CONFIRMED_DEAL_VERB_RE = re.compile(r"""(?xi)
+    \b(?:agrees?|agreed|signs?|signed|to\ acquire|acquires?|acquired
+       |buys?|bought|closes?|completed|completes?|priced|prices
+       |secures?|clinch(?:es|ed)?|seals?|sealed|wins?|won)\b
+""")
+_TEXT_DEAL_VALUE_RE = re.compile(
+    r"(?ix)(?:us\$|a\$|c\$|\$|€|£|gbp|eur|usd)\s?(\d+(?:\.\d+)?)\s*(bn|b|billion|tn|t|trillion)\b"
+)
+
+
+def _title_confirms_mega_deal(article: dict, min_usd_b: float) -> bool:
+    """True when the article TITLE states a CONFIRMED deal at/above min_usd_b (a
+    confirmed-action verb + an explicit value), and is not itself rumor/preview
+    framing. Recovers a confirmed alternative (e.g. a GBP 3.1bn 'agrees takeover')
+    that the deal_flow mega-deal gate missed. Never raises."""
+    try:
+        t = str(article.get("title") or "")
+        if not t or is_rumor_or_preview_lead(article):
+            return False
+        big = False
+        for m in _TEXT_DEAL_VALUE_RE.finditer(t):
+            v = float(m.group(1))
+            if m.group(2).lower().startswith(("t",)):
+                v *= 1000.0
+            if v >= min_usd_b:
+                big = True
+                break
+        if not big:
+            return False
+        return bool(_CONFIRMED_DEAL_VERB_RE.search(t))
+    except Exception:
+        return False
+
+
+def is_rumor_or_preview_lead(article: dict) -> bool:
+    """True when the article is a forward-looking / unconfirmed (rumor or preview)
+    story. Deterministic, title-level, no LLM. Used to make such stories INELIGIBLE
+    to be the LEAD when a confirmed alternative exists (L2); they stay eligible
+    everywhere else. Never raises."""
+    try:
+        return bool(_RUMOR_PREVIEW_RE.search(str(article.get("title") or "")))
+    except Exception:
+        return False
+
+
+def _cluster_is_rumor_preview(scored_cluster: dict, now: datetime.datetime) -> bool:
+    """True when the cluster is a rumor / preview CLUSTER (not just one headline).
+    Fires when the lead representative reads as rumor/preview OR at least
+    RUMOR_CLUSTER_DOMINANCE of the cluster's lead-eligible members do, so which
+    single member is the representative does not decide eligibility. A cluster with a
+    confirmed representative and only a minority of preview copy is NOT flagged.
+    Never raises."""
+    try:
+        arts = scored_cluster.get("_articles") or []
+        eligible = _lead_eligible_arts(arts)  # non-analyst-PT members
+        if not eligible:
+            return False
+        rep = _lead_representative(scored_cluster, now)
+        if rep is not None and is_rumor_or_preview_lead(rep):
+            return True
+        n_rumor = sum(1 for a in eligible if is_rumor_or_preview_lead(a))
+        return (n_rumor / len(eligible)) >= RUMOR_CLUSTER_DOMINANCE
+    except Exception:
+        return False
+
+
+def _confirmed_alternative_exists(scored: list[dict], now: datetime.datetime) -> bool:
+    """L2 gate: does a CONFIRMED alternative exist among today's scored clusters?
+    A confirmed alternative is a lead-eligible cluster that is any of:
+      - a confirmed $1B+ mega-deal (is_mega_deal, deal_flow-gated at
+        RUMOR_BAR_CONFIRMED_DEAL_MIN_USD_B), OR
+      - a tier-1 / recent-event macro release (is_tier1 / is_recent), OR
+      - an article-side confirmed $1B+ deal whose deal_flow row was never captured
+        (_title_confirms_mega_deal on the representative, e.g. a GBP 3.1bn 'agrees
+        takeover').
+    Analyst-PT-barred and rumor/preview clusters do NOT count as a confirming
+    alternative. When this is True, rumor/preview clusters are lead-ineligible.
+    Never raises."""
+    try:
+        for c in scored:
+            if _cluster_lead_barred(c, now):
+                continue
+            if _cluster_is_rumor_preview(c, now):
+                continue
+            if c.get("is_mega_deal") or c.get("is_tier1") or c.get("is_recent"):
+                return True
+            rep = _lead_representative(c, now)
+            if rep is not None and _title_confirms_mega_deal(
+                    rep, RUMOR_BAR_CONFIRMED_DEAL_MIN_USD_B):
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def _lead_bar_reason(scored_cluster: dict, now: datetime.datetime, *,
+                     rumor_bar_active: bool) -> Optional[str]:
+    """The SHARED lead-eligibility gate used by BOTH the live path
+    (compute_shadow_lead) and the unified contest (compute_unified_lead). Returns a
+    short reason string when the cluster is INELIGIBLE to be the lead, else None:
+      - "analyst_rating_pt"          : L1, unconditional (every member is analyst-PT).
+      - "rumor_preview_alt_exists"   : L2, only when rumor_bar_active (a confirmed
+                                       alternative exists that day).
+    Never raises."""
+    try:
+        if _cluster_lead_barred(scored_cluster, now):
+            return "analyst_rating_pt"
+        if rumor_bar_active and _cluster_is_rumor_preview(scored_cluster, now):
+            return "rumor_preview_alt_exists"
+        return None
+    except Exception:
+        return None
+
+
 def compute_shadow_lead(
     pool: list[dict],
     now: datetime.datetime,
@@ -460,9 +667,12 @@ def compute_shadow_lead(
     Result keys: article, cluster_key, score, reason, breadth, top_clusters.
 
     L1: clusters whose representative article is an analyst rating / price-target
-    story are INELIGIBLE to LEAD (barred structurally, not down-weighted). They stay
-    in the pool and in every other surface; only lead selection skips them. If EVERY
-    cluster is barred (pathological), the bar is relaxed so a lead still ships."""
+    story are INELIGIBLE to LEAD (barred structurally, not down-weighted). L2: a
+    rumor / preview cluster is INELIGIBLE only when a confirmed alternative exists
+    that day (_confirmed_alternative_exists). Both bars run through the shared
+    _lead_bar_reason gate. The barred stories stay in the pool and in every other
+    surface; only lead selection skips them. If EVERY cluster is barred
+    (pathological), the bar is relaxed so a lead still ships."""
     try:
         if not pool:
             return None
@@ -471,7 +681,12 @@ def compute_shadow_lead(
         scored = score_clusters(pool, now, recent_events=recent, mega_deal_urls=mega_deal_urls)
         if not scored:
             return None
-        eligible = [c for c in scored if not _cluster_lead_barred(c, now)]
+        # L2 gate is computed ONCE over the full scored field, then applied per
+        # cluster via the shared _lead_bar_reason helper (same helper the unified
+        # contest uses), so the live path and the unified path bar identically.
+        rumor_bar_active = _confirmed_alternative_exists(scored, now)
+        eligible = [c for c in scored
+                    if _lead_bar_reason(c, now, rumor_bar_active=rumor_bar_active) is None]
         # Fail-safe: never ship no lead purely because of the bar. If the bar would
         # empty the field, fall back to the full ranked list.
         ranked = eligible if eligible else scored
@@ -1316,6 +1531,11 @@ def compute_unified_lead(
         w_confirmation = _w["confirmation"]
         w_breadth = _w["breadth"]
 
+        # L2 gate, computed ONCE over the full scored field via the SAME helper the
+        # live path (compute_shadow_lead) uses, so the rumor/preview bar fires
+        # identically on both paths and survives the UNIFIED_LEAD flip.
+        rumor_bar_active = _confirmed_alternative_exists(scored, now)
+
         ranked = []
         for c in scored:
             _bkt = (c["cluster_key"].split(":", 1)[1]
@@ -1349,11 +1569,15 @@ def compute_unified_lead(
             rec["confirmation_reason"] = conf_reason
             rec["unified_materiality_reasons"] = mat_reasons
             rec["unified_score"] = unified_score
-            # L1: a cluster is LEAD-INELIGIBLE only when it has no non-analyst-PT
-            # member (_lead_representative is None). The row stays in the audit (with
-            # lead_barred=True) so the calibrator can see it was scored and dropped;
-            # it is excluded only from the argmax that picks the served lead.
-            rec["lead_barred"] = _lead_rep is None
+            # L1 + L2: a cluster is LEAD-INELIGIBLE when the shared _lead_bar_reason
+            # gate returns a reason: analyst rating / PT (L1, unconditional) OR
+            # rumor / preview with a confirmed alternative present (L2, conditional).
+            # The row stays in the audit (with lead_barred=True + lead_bar_reason) so
+            # the calibrator can see it was scored and dropped; it is excluded only
+            # from the argmax that picks the served lead.
+            _bar_reason = _lead_bar_reason(c, now, rumor_bar_active=rumor_bar_active)
+            rec["lead_barred"] = _bar_reason is not None
+            rec["lead_bar_reason"] = _bar_reason
             ranked.append(rec)
 
         ranked.sort(key=lambda c: -c["unified_score"])
@@ -1385,6 +1609,7 @@ def compute_unified_lead(
                 "is_mega_deal": c.get("is_mega_deal", False),
                 "is_tier1": c.get("is_tier1", False),
                 "lead_barred": c.get("lead_barred", False),
+                "lead_bar_reason": c.get("lead_bar_reason"),
                 "below_cap": below_cap,
             }
 
