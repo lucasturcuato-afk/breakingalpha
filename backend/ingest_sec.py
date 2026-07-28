@@ -19,7 +19,7 @@ from supabase import create_client
 
 from backend.edgar.cik_mapping import sync_cik_tickers
 from backend.edgar.submissions import (
-    get_watchlist_ciks,
+    get_poll_ciks,
     fetch_recent_filings,
     filter_new_filings,
     build_document_url,
@@ -72,7 +72,7 @@ def run(
         sync_result = sync_cik_tickers(sb)
         stats["cik_sync"] = sync_result
 
-    watchlist = get_watchlist_ciks(sb)
+    watchlist = get_poll_ciks(sb)
     if max_ciks:
         watchlist = watchlist[:max_ciks]
 
