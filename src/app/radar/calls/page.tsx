@@ -31,6 +31,7 @@ import {
   type OpenCallInput,
 } from "@/lib/scored-object-map";
 import { matchFollow, type FollowRow } from "@/lib/radar-following";
+import { resolveClaimOutcome } from "@/lib/claim-outcome";
 import { TrackedViews } from "@/components/thesis/TrackedViews";
 import { EvidenceMap } from "@/components/radar/EvidenceMap";
 import type { Article as MapArticle } from "@/lib/clustering-utils";
@@ -151,9 +152,6 @@ function todayPt(): string {
  *  resolves, derived from its resolution method. Informative, never
  *  decorative; context-only claims state their honest note. */
 function resolutionSentence(c: UserClaim): string {
-  if (c.source === "adopted") {
-    return `Resolves with the original brief call against the ${c.resolution_window_end ?? "session"} market close, with benchmark attribution.`;
-  }
   if (!c.gradeable) {
     return c.gradeability_note ?? "Tracked as context only; no price resolution.";
   }
@@ -205,7 +203,6 @@ export default function CallsPage() {
   const [claims, setClaims] = useState<UserClaim[]>([]);
   const [tickerSectors, setTickerSectors] = useState<Record<string, string>>({});
   const [claimOutcomes, setClaimOutcomes] = useState<Record<string, CallOutcomeRow>>({});
-  const [adoptedOutcomes, setAdoptedOutcomes] = useState<Record<string, CallOutcomeRow>>({});
   const [unavailable, setUnavailable] = useState(false);
   const [briefCalls, setBriefCalls] = useState<BriefCallRow[]>([]);
   const [briefOutcomes, setBriefOutcomes] = useState<Map<string, CallOutcomeRow> | null>(null);
@@ -284,7 +281,8 @@ export default function CallsPage() {
         const json = await res.json();
         setClaims(json.claims ?? []);
         setClaimOutcomes(json.outcomes ?? {});
-        setAdoptedOutcomes(json.adoptedOutcomes ?? {});
+        // json.adoptedOutcomes is provenance only and is deliberately not read
+        // here: a claim's verdict is its own outcome row. See lib/claim-outcome.
         setUnavailable(Boolean(json.unavailable));
       }
 
@@ -446,17 +444,13 @@ export default function CallsPage() {
   };
 
   // ── Derived: outcome per claim + record math from REAL outcomes only ──
+  // One rule for both sources: a claim's verdict is its OWN outcome row.
+  // resolveClaimOutcome takes no brief-call map, so the old inheritance through
+  // adopted_from_call_id is impossible by construction rather than by care.
   const outcomeForClaim = useCallback(
-    (c: UserClaim): CallOutcomeRow | null => {
-      if (c.source === "adopted") {
-        return c.adopted_from_call_id
-          ? ((adoptedOutcomes[c.adopted_from_call_id] as CallOutcomeRow | undefined) ?? null)
-          : null;
-      }
-      const o = claimOutcomes[c.id] as (CallOutcomeRow & { claim_id?: string }) | undefined;
-      return o ? { ...o, call_id: o.claim_id ?? c.id } : null;
-    },
-    [adoptedOutcomes, claimOutcomes],
+    (c: UserClaim): CallOutcomeRow | null =>
+      resolveClaimOutcome(c, claimOutcomes) as CallOutcomeRow | null,
+    [claimOutcomes],
   );
 
   const record = useMemo(() => {

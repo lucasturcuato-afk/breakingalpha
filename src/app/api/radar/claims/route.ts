@@ -7,11 +7,22 @@ export const dynamic = "force-dynamic";
  * User claims CRUD.
  *
  * GET returns the user's claims joined with their real outcomes:
- *  - authored claims -> user_claim_outcomes rows (attribution grader)
- *  - adopted claims  -> the ORIGINAL morning_brief_call_outcomes row via
- *    adopted_from_call_id (adopted calls are never re-graded)
+ *  - EVERY claim, authored or adopted -> its OWN user_claim_outcomes row,
+ *    keyed on the claim id and written by the attribution grader.
  * No outcome row means the claim renders open/not-graded; nothing is
- * fabricated.
+ * fabricated and no verdict is ever borrowed.
+ *
+ * Adopted claims previously read through adopted_from_call_id to the
+ * originating brief call's morning_brief_call_outcomes row. That was correct
+ * when adopting was a bookmark, but an adopted claim now carries its own
+ * forward window and is graded independently over it, so the brief's verdict
+ * answers a different question. In the live data it was strictly wrong: an
+ * adopted claim whose own window had not yet closed was rendering the brief
+ * call's same-session verdict from weeks earlier.
+ *
+ * `adoptedOutcomes` is still returned, but as PROVENANCE ONLY: what the desk's
+ * original call did, alongside (never instead of) the user's own result. See
+ * src/lib/claim-outcome.ts, whose resolver cannot read it by construction.
  *
  * POST persists a proposal the user confirmed in the authoring flow.
  * user_claim is stored VERBATIM. Server re-validates gradeability the
@@ -55,20 +66,26 @@ export async function GET() {
   const outcomes: Record<string, unknown> = {};
   const adoptedOutcomes: Record<string, unknown> = {};
 
-  const authoredIds = rows.filter((c) => c.source === "authored").map((c) => c.id);
-  if (authoredIds.length) {
+  // EVERY claim reads its own outcome. No source branch: an adopted claim is
+  // graded over its own window exactly as an authored one is.
+  const claimIds = rows.map((c) => c.id);
+  if (claimIds.length) {
     const { data } = await supabase
       .from("user_claim_outcomes")
       .select(
         "claim_id, verdict, attribution, actual_pct_change, actual_direction, verdict_notes, graded_at, metadata",
       )
-      .in("claim_id", authoredIds)
+      .in("claim_id", claimIds)
       .order("graded_at", { ascending: false });
+    // Latest row per claim (no unique constraint on claim_id).
     for (const o of data ?? []) {
       if (!(o.claim_id in outcomes)) outcomes[o.claim_id] = o;
     }
   }
 
+  // Provenance only: what the desk's original call did. NEVER the adopted
+  // claim's verdict. src/lib/claim-outcome.ts is the single resolver and it
+  // takes no parameter through which this map could reach a verdict.
   const adoptedCallIds = rows
     .map((c) => c.adopted_from_call_id)
     .filter((id): id is string => Boolean(id));
