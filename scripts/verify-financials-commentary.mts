@@ -78,6 +78,7 @@ async function sample(name: string, cik: number) {
     .order("period_end", { ascending: false }).limit(1000);
   const financials: CompanyFinancialsResult = {
     cik, annual: annualView((data ?? []) as Row[]), quarterly: { periods: [], grid: {} },
+    reportingCurrency: "USD",
   };
   const xbrl = assembleXbrlInput(name, financials);
   console.log(`\n${"=".repeat(72)}\n${name} (CIK ${cik})\n${"=".repeat(72)}`);

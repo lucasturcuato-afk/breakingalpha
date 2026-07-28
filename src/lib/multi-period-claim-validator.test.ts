@@ -33,7 +33,7 @@ function annualView(years: number[], rows: Record<string, number[]>): FinancialV
 }
 
 function company(annual: FinancialView): CompanyFinancialsResult {
-  return { cik: 1, annual, quarterly: { periods: [], grid: {} } };
+  return { cik: 1, annual, quarterly: { periods: [], grid: {} }, reportingCurrency: "USD" };
 }
 
 const CATERPILLAR = company(

@@ -103,7 +103,17 @@ export function assembleXbrlInput(
   if (!annual && !quarterly) return null;
 
   const blocks: string[] = [`Company: ${companyName}`];
-  blocks.push("Currency: USD unless a per-share (EPS) or share-count line.");
+  // The currency is READ from the facts, never asserted. This line previously
+  // hardcoded "Currency: USD", which was harmless only because the read path
+  // dropped every non-USD row before it got here. The moment that filter became
+  // currency-aware, that hardcoded line would have told the model to describe
+  // TWD figures as dollars.
+  const currency = financials.reportingCurrency ?? "USD";
+  blocks.push(
+    `Currency: all monetary figures are ${currency} as reported by the filer. ` +
+      `Per-share lines are ${currency} per share. Share counts are share counts. ` +
+      `Values are NOT converted to any other currency.`,
+  );
   if (annual) blocks.push(`ANNUAL (fiscal years):\n${annual}`);
   if (quarterly) blocks.push(`QUARTERLY (fiscal quarters; year-end columns carry the balance sheet, income lines dash there):\n${quarterly}`);
 
@@ -131,6 +141,7 @@ export function buildCommentaryPrompt(xbrlBlock: string): { system: string; user
     "STRICTLY PROHIBITED. Do not write any of these: valuation language (cheap, expensive, undervalued, overvalued, attractive, fairly valued, discount, premium, multiple); any buy, sell, hold, accumulate, or avoid; any assessment of the security (compelling, well-positioned, strong investment, high conviction, de-risked); price targets or any forward projection not in the input; peer or competitor comparisons (you have no peer data, so any such claim is fabricated); qualitative verdicts on whether results are good, bad, healthy, weak, strong, impressive, or disappointing.",
     "The rule: DESCRIPTIVE and factual from THIS company's XBRL, never PRESCRIPTIVE or evaluative about the security. When in doubt, state the number and stop.",
     "Compute deltas only from periods present in the input. Label them (YoY, QoQ). Zero em-dashes; use periods and commas.",
+    "CURRENCY. Use the currency named in the input and no other. If it is not USD, never write a dollar sign, and name the currency code the first time you state a figure (for example '2.89 trillion TWD'). Never convert a figure to another currency, and never imply a figure is in dollars when the filer did not report in dollars.",
   ].join("\n");
 
   const user = [

@@ -31,6 +31,7 @@ import type {
   FinancialView,
 } from "@/lib/financial-facts";
 import { formatValue, type Fmt } from "./financials-format";
+import { currencyNote, isNonUsd } from "@/lib/reporting-currency";
 import { financialsEmptyCopy } from "./empty-state-copy";
 import { FinancialsCommentary } from "./FinancialsCommentary";
 
@@ -81,13 +82,22 @@ const TH = "px-3 py-2 text-[10px] font-semibold text-text-muted";
 const SECTION_TH =
   "px-3 pt-3 pb-1 text-[10px] font-semibold text-text-muted";
 
-function ValueCell({ cell, fmt }: { cell: FinancialCell | undefined; fmt: Fmt }) {
+function ValueCell({
+  cell,
+  fmt,
+  currency,
+}: {
+  cell: FinancialCell | undefined;
+  fmt: Fmt;
+  /** Reporting currency of THIS company, never assumed to be USD. */
+  currency: string | null;
+}) {
   if (!cell || !Number.isFinite(cell.value)) {
     return <span className="text-text-muted">&mdash;</span>;
   }
   return (
     <span className={cell.value < 0 ? "text-negative" : undefined}>
-      {formatValue(cell.value, fmt)}
+      {formatValue(cell.value, fmt, currency)}
     </span>
   );
 }
@@ -221,7 +231,7 @@ export function FinancialsTab({
               row.strong ? "font-semibold text-text-primary" : "text-text-secondary",
             ].join(" ")}
           >
-            <ValueCell cell={cells?.[p.key]} fmt={row.fmt} />
+            <ValueCell cell={cells?.[p.key]} fmt={row.fmt} currency={financials.reportingCurrency} />
           </td>
         ))}
         <td className="px-3 py-2 text-right">
@@ -252,6 +262,17 @@ export function FinancialsTab({
 
   return (
     <div data-testid="financials-tab">
+      {/* Currency is stated whenever the filer does not report in USD. Silence
+          would let a reader assume dollars, which for a TWD filer is wrong by
+          the exchange rate. Nothing here is converted. */}
+      {isNonUsd(financials.reportingCurrency) && (
+        <p
+          data-testid="financials-currency-note"
+          className="mb-2 text-[11px] font-medium text-text-secondary"
+        >
+          {currencyNote(financials.reportingCurrency)} Not converted to USD.
+        </p>
+      )}
       <div className="mb-2 flex items-center justify-end gap-1">
         {(["annual", "quarterly"] as const).map((m) => {
           const isActive = mode === m;

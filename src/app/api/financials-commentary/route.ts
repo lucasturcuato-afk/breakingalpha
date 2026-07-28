@@ -42,6 +42,7 @@ import {
 import { filterComplianceLanguage } from "@/lib/compliance-language-filter";
 import { computeDerivedFacts } from "@/lib/financials-derived-facts";
 import { validateMultiPeriodClaims } from "@/lib/multi-period-claim-validator";
+import { guardCurrencyMislabel } from "@/lib/currency-mislabel-guard";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -80,6 +81,31 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  // EXPLICIT NON-USD GATE, default closed.
+  //
+  // Extraction now yields correctly denominated foreign facts (TSMC in TWD,
+  // Novo Nordisk in DKK) and the read path no longer drops them, so for the
+  // first time a non-USD grid can reach this generator. A model that writes
+  // "$2.89 trillion" over a TWD figure states a false number, and neither the
+  // compliance filter nor the derived-facts validator can see it: the language
+  // is clean and the arithmetic is right.
+  //
+  // The prompt is currency-explicit and there is a post-generation backstop
+  // below, but neither has been proven against real non-USD generations yet.
+  // Until they are, non-USD companies are excluded rather than risked. Flip
+  // FINANCIALS_COMMENTARY_ALLOW_NON_USD=true to open it once verified.
+  const reportingCurrency = financials.reportingCurrency;
+  const allowNonUsd = process.env.FINANCIALS_COMMENTARY_ALLOW_NON_USD === "true";
+  if (reportingCurrency != null && reportingCurrency !== "USD" && !allowNonUsd) {
+    return NextResponse.json({
+      commentary: "",
+      empty: true,
+      disclaimer: COMMENTARY_DISCLAIMER,
+      excluded: "non_usd_reporting_currency",
+      reportingCurrency,
+    });
+  }
+
   const { system, user: userPrompt } = buildCommentaryPrompt(xbrlBlock);
   let raw = "";
   try {
@@ -109,6 +135,17 @@ export async function POST(request: NextRequest) {
   // filter above and has to be checked against arithmetic computed in code.
   const derivedFacts = computeDerivedFacts(financials);
   const verified = validateMultiPeriodClaims(filtered.clean, derivedFacts);
+
+  // Denomination backstop. Only fires for a non-USD filer, which today means
+  // only when the gate above has been explicitly opened. A no-op for every USD
+  // company.
+  const denominated = guardCurrencyMislabel(verified.clean, reportingCurrency);
+  if (denominated.blocked) {
+    console.warn(
+      "[financials-commentary] stripped currency-mislabeled sentence(s):",
+      denominated.findings.map((f) => `${f.reason} :: ${f.sentence}`),
+    );
+  }
   if (verified.blocked) {
     console.warn(
       "[financials-commentary] stripped unverified multi-period claim(s):",
@@ -117,13 +154,16 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({
-    commentary: verified.clean,
+    commentary: denominated.clean,
     disclaimer: COMMENTARY_DISCLAIMER,
+    reportingCurrency,
     // Surfaced for observability; the UI does not need to render these.
     filtered: filtered.blocked,
     removedCount: filtered.findings.length,
     unverifiedClaims: verified.blocked,
     unverifiedCount: verified.findings.length,
-    empty: verified.clean.length === 0,
+    currencyMislabeled: denominated.blocked,
+    currencyMislabeledCount: denominated.findings.length,
+    empty: denominated.clean.length === 0,
   });
 }

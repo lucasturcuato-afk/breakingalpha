@@ -34,6 +34,7 @@ const SAMPLE: CompanyFinancialsResult = {
     },
   },
   quarterly: { periods: [], grid: {} },
+  reportingCurrency: "USD",
 };
 
 test("assembleXbrlInput serializes ONLY the company's own figures and periods", () => {
@@ -53,6 +54,7 @@ test("assembleXbrlInput returns null when there is nothing to describe", () => {
     cik: null,
     annual: { periods: [], grid: {} },
     quarterly: { periods: [], grid: {} },
+    reportingCurrency: null,
   };
   assert.equal(assembleXbrlInput("Nobody", empty), null);
 });
