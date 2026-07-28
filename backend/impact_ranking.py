@@ -545,7 +545,8 @@ RUMOR_CLUSTER_DOMINANCE = 0.5
 _CONFIRMED_DEAL_VERB_RE = re.compile(r"""(?xi)
     \b(?:agrees?|agreed|signs?|signed|to\ acquire|acquires?|acquired
        |buys?|bought|closes?|completed|completes?|priced|prices
-       |secures?|clinch(?:es|ed)?|seals?|sealed|wins?|won)\b
+       |secures?|clinch(?:es|ed)?|seals?|sealed|wins?|won
+       |sells?|sold|to\ sell|divests?|divested|exits?|exited|offloads?|offloaded)\b
 """)
 _TEXT_DEAL_VALUE_RE = re.compile(
     r"(?ix)(?:us\$|a\$|c\$|\$|€|£|gbp|eur|usd)\s?(\d+(?:\.\d+)?)\s*(bn|b|billion|tn|t|trillion)\b"
@@ -1338,6 +1339,65 @@ _CONF_PRICED = 0.8           # a real valuation-bearing deal_type (M&A / funding
 _CONF_NEUTRAL = 0.5          # ordinary confirmed-enough story (incl. single-name drift)
 _CONF_SPECULATIVE = 0.15     # "seeks" / "in talks" / "rumored" single-name
 
+# ── Deal-VALUE size sensitivity (named, tunable) ─────────────────────────────
+# Root cause the value terms fix: confirmation was value-BLIND. Every priced deal
+# got a flat _CONF_PRICED (0.8) and every mega-deal a flat 1.0, so a $545M share
+# sale tied a $1.45B acquisition and a GBP 3.1bn takeover tied a $1M raise. Deal
+# VALUE now scales confirmation with a SATURATING log of USD-billions, in TWO bands
+# so a large confirmed deal beats a small confirmed one:
+#   - MEGA band  [CONF_MEGA_FLOOR, CONF_MEGA_CEIL]  : a deal_flow-confirmed $1B+ deal
+#     (is_mega_deal). Value floored at $1B, so a mega is always >= the macro rung.
+#   - PRICED band [CONF_PRICED_FLOOR, CONF_PRICED_CEIL] : a valuation-bearing deal_type
+#     that did NOT clear the mega gate (currency / stale deal_flow stage). Ceiling
+#     sits just under the mega floor so it never leapfrogs a confirmed mega.
+# This lives ENTIRELY inside the weight-3 confirmation dimension. Materiality
+# (weight 4) is untouched, so a market-moving macro event still outscores a large
+# deal (demonstrated in the PR). A confirmed deal with NO parseable value is NEUTRAL
+# (keeps _CONF_PRICED = 0.8), never scored as tiny. Log-scaled, not linear, so
+# $14.8B beats $1.45B but not by 10x and no single refinancing dominates forever.
+CONF_MEGA_FLOOR = 0.90        # a confirmed $1B mega-deal (value floored at $1B)
+CONF_MEGA_CEIL = 1.00         # a confirmed mega-deal at/above the saturation point
+CONF_PRICED_FLOOR = 0.55      # a confirmed but tiny (sub-$100M) priced deal
+CONF_PRICED_CEIL = 0.85       # a large priced deal that missed the mega gate
+CONF_VALUE_SAT_USD_B = 20.0   # USD-billions at which the value bump saturates
+
+# Rough FX to USD for value ORDERING only (not accounting): a GBP 3.1bn takeover
+# must be recognized as large. Approximate on purpose; the score only needs the
+# magnitude order, and the mega gate uses lead_preselect's precise parse upstream.
+_FX_TO_USD = {"£": 1.27, "gbp": 1.27, "€": 1.08, "eur": 1.08}
+_UNIT_TO_B = {"trillion": 1000.0, "tn": 1000.0, "t": 1000.0,
+              "billion": 1.0, "bn": 1.0, "b": 1.0,
+              "million": 0.001, "mn": 0.001, "m": 0.001}
+_CONF_VALUE_RE = re.compile(
+    r"(?ix)(us\$|a\$|c\$|\$|€|£|gbp|eur|usd)\s?(\d+(?:\.\d+)?)\s*"
+    r"(trillion|tn|t|billion|bn|b|million|mn|m)\b")
+
+
+def _deal_value_usd_b(text: str) -> Optional[float]:
+    """Largest monetary value in the text, in USD billions (FX-approximate, for
+    ordering only). Returns None when no parseable value is present, so the caller
+    can treat a value-less confirmed deal as NEUTRAL rather than tiny. Never raises."""
+    try:
+        best: Optional[float] = None
+        for m in _CONF_VALUE_RE.finditer(text or ""):
+            cur, num, unit = m.group(1).lower(), float(m.group(2)), m.group(3).lower()
+            usd_b = num * _UNIT_TO_B[unit] * _FX_TO_USD.get(cur, 1.0)
+            if best is None or usd_b > best:
+                best = usd_b
+        return best
+    except Exception:
+        return None
+
+
+def _value_scaled_conf(value_b: Optional[float], floor: float, ceil: float) -> Optional[float]:
+    """Saturating-log map of a USD-billions value into [floor, ceil]. None -> None
+    (caller keeps the neutral baseline). Pure."""
+    if value_b is None:
+        return None
+    frac = math.log1p(max(0.0, value_b)) / math.log1p(CONF_VALUE_SAT_USD_B)
+    frac = min(1.0, max(0.0, frac))
+    return floor + (ceil - floor) * frac
+
 # ── Unified materiality-component shaping (named; the market-wide edge + noise demote) ──
 # On a QUIET tape materiality_delta is ~0 for everyone, so the raw delta cannot tell a
 # market-wide macro read apart from single-name noise. These layer a deterministic edge
@@ -1396,8 +1456,14 @@ def _unified_confirmation(scored_cluster: dict) -> tuple[float, str]:
     pre-selector demotes it."""
     arts = _cluster_arts(scored_cluster)
     text = _cluster_text(arts)
+    value_b = _deal_value_usd_b(text)
     if scored_cluster.get("is_mega_deal"):
-        return _CONF_CONFIRMED_MEGA, "confirmed $1B+ deal (mega-deal gate)"
+        # MEGA band: a deal_flow-confirmed $1B+ deal, value-scaled in [0.90, 1.00].
+        # Value floored at $1B (the gate's own floor) so a mega is never below the
+        # macro rung even if the title omits the figure (value_b None -> $1B anchor).
+        v = max(value_b if value_b is not None else 1.0, 1.0)
+        conf = _value_scaled_conf(v, CONF_MEGA_FLOOR, CONF_MEGA_CEIL)
+        return conf, f"confirmed $1B+ deal (mega-deal gate, value-scaled ~${v:.1f}B)"
     # Speculative single-name deal copy is demoted hard.
     try:
         import lead_preselect as _lp
@@ -1410,8 +1476,15 @@ def _unified_confirmation(scored_cluster: dict) -> tuple[float, str]:
     if scored_cluster.get("is_tier1") or scored_cluster.get("is_recent"):
         return _CONF_MACRO_HARD, "hard macro print (tier-1 / recent event)"
     # A REAL priced deal (valuation-bearing deal_type), not a keyword-matched theme.
+    # PRICED band [0.55, 0.85] value-scaled: a large priced deal that missed the mega
+    # gate (currency / stale deal_flow stage) beats a small one, but its ceiling stays
+    # under the mega floor. A priced deal with NO parseable value is NEUTRAL-confirmed
+    # (keeps _CONF_PRICED = 0.8), never scored as tiny.
     if _has_priced_deal_type(arts):
-        return _CONF_PRICED, "priced deal (real valuation-bearing deal_type)"
+        conf = _value_scaled_conf(value_b, CONF_PRICED_FLOOR, CONF_PRICED_CEIL)
+        if conf is None:
+            return _CONF_PRICED, "priced deal (valuation-bearing deal_type, value n/a)"
+        return conf, f"priced deal (value-scaled ${value_b:.2f}B)"
     return _CONF_NEUTRAL, "ordinary confirmed story"
 
 
