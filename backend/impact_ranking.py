@@ -261,6 +261,84 @@ def _recency_factor(age_h: float) -> float:
     return max(0.0, 1.0 - age_h / RECENCY_HALFWINDOW_H)
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# O2 / O3 - GUARANTEED MEGA-DEAL CANDIDATE LANES (Agent CONSTRAIN)
+# ══════════════════════════════════════════════════════════════════════════════
+# ROOT verdict (Phase 1): confirmed >= $1B deals never reach the unified candidate
+# pool AS mega because the ONLY is_mega signal was confirmed_mega_deal_urls - a
+# deal_flow gate that fails three ways in prod:
+#   (a) historically ZERO signed/closed rows cleared the gate;
+#   (b) NULL valuations (the Uber/Delivery Hero row had a Minority-Stake sibling with
+#       valuation=NULL that parsed to None);
+#   (c) source_url is a Google-News RSS redirect that never string-equals the
+#       article.url in the coverage pool, so even a correct `closed $14.8B` row does
+#       not JOIN to any article.
+# A confirmed deal therefore entered as an ordinary single-name cluster, took the
+# single-name-noise materiality demote, and lost to broadly-covered 13F/holdings
+# clusters. TWO additive, GUARANTEED lanes recover it - both independent of the
+# fragile exact-url join, neither able to over-fire on 13F noise (both require an
+# explicit >= $1B value, which a "discloses 9.8% stake" 13G/A headline never has):
+#
+#   O2 ARTICLE-SIDE LANE: a cluster whose lead-eligible representative TITLE states a
+#      confirmed-action verb + an explicit >= $1B value (_title_confirms_mega_deal,
+#      the SAME recognizer the L2 confirmed-alternative check already trusts) is
+#      marked is_mega_deal with NO deal_flow row required. Recovers Arlington $1.45B
+#      (no deal_flow row at all) and the "Uber Just Bought Delivery Hero for 14.8
+#      Billion" variant (verb+value in the title).
+#
+#   O3 COMPANY-JOIN LANE: a confirmed >= $1B deal_flow row (stage in CONFIRMED_STAGES,
+#      parseable value) is joined to the pool by NORMALIZED COMPANY / ACQUIRER name
+#      when the exact source_url does not match - recovering the "Uber to Acquire
+#      Delivery Hero" variant (title omits the $14.8B figure but the deal_flow row is
+#      closed $14.8B). Tightly guarded: the matched article must not be rumor/preview
+#      and must itself carry a confirmed-action verb or a real priced deal_type, so a
+#      same-company but unrelated story is never promoted. Lives in
+#      confirmed_mega_deal_urls (below).
+#
+# Both lanes are named-constant gated with a fail-safe kill switch (False == exact
+# prod behavior). CANDIDATE_GEN_REGIME (G2) marks every C1 row emitted under this
+# regime so the calibrator can separate pre/post candidate-generation eras.
+ARTICLE_SIDE_MEGA_MIN_USD_B = 1.0
+ARTICLE_SIDE_MEGA_LANE = True   # O2 kill switch (fail-safe: False restores prod)
+COMPANY_JOIN_MEGA_LANE = True   # O3 kill switch (fail-safe: False restores prod)
+CANDIDATE_GEN_REGIME = "constrain-v1-articleside+companyjoin"
+
+# Entity-name normalization for the O3 company join: drop legal-form / generic
+# suffixes so "Uber Technologies" and "Uber" and "Delivery Hero SE" collapse to a
+# comparable head. Same spirit as _STOPWORDS but tuned for corporate names.
+_ENTITY_SUFFIXES = frozenset((
+    "inc", "corp", "ltd", "plc", "co", "sa", "se", "ag", "nv", "llc", "lp",
+    "holdings", "holding", "group", "technologies", "technology", "company",
+    "limited", "incorporated", "the", "se", "spa", "as", "oyj", "ab", "pte",
+))
+
+
+def _norm_entity(name) -> str:
+    """Normalized entity head for cross-source name joins. Lower-cased, legal-form
+    and generic suffixes stripped, whitespace-collapsed. Pure; never raises."""
+    try:
+        toks = re.findall(r"[a-z0-9]+", str(name or "").lower())
+        toks = [t for t in toks if t and t not in _ENTITY_SUFFIXES]
+        return " ".join(toks)
+    except Exception:
+        return ""
+
+
+def _cluster_has_article_side_mega(arts: list[dict], min_usd_b: float) -> bool:
+    """O2: True when any LEAD-ELIGIBLE article in the cluster states a confirmed
+    >= min_usd_b deal in its title (confirmed-action verb + explicit value, not
+    rumor/preview framing). Reuses _title_confirms_mega_deal. Pure; never raises."""
+    if not ARTICLE_SIDE_MEGA_LANE:
+        return False
+    try:
+        for a in _lead_eligible_arts(arts):
+            if _title_confirms_mega_deal(a, min_usd_b):
+                return True
+        return False
+    except Exception:
+        return False
+
+
 def score_clusters(
     pool: list[dict],
     now: datetime.datetime,
@@ -270,7 +348,10 @@ def score_clusters(
 ) -> list[dict]:
     """Cluster the pool and score each cluster. Returns clusters sorted by score
     desc. Pure: no network. `mega_deal_urls` is the set of article urls that map
-    to a confirmed $1B+ deal_flow row (preserves the mega-deal lead path)."""
+    to a confirmed $1B+ deal_flow row (preserves the mega-deal lead path). O2: a
+    cluster is ALSO mega when its lead-eligible representative title confirms a
+    >= $1B deal (_cluster_has_article_side_mega), so a confirmed deal with no
+    deal_flow row / a failed url join still enters as a mega candidate."""
     recent_events = recent_events or set()
     mega_deal_urls = mega_deal_urls or set()
     from collections import defaultdict
@@ -288,7 +369,10 @@ def score_clusters(
         bucket = key.split(":", 1)[1] if key.startswith("macro:") else None
         is_tier1 = bucket in TIER1_BUCKETS
         is_recent = bucket in recent_events
-        is_mega = any((x.get("url") or "").strip() in mega_deal_urls for x in arts)
+        is_mega_url = any((x.get("url") or "").strip() in mega_deal_urls for x in arts)
+        # O2 article-side lane: mega even without a deal_flow url join.
+        is_mega_article = _cluster_has_article_side_mega(arts, ARTICLE_SIDE_MEGA_MIN_USD_B)
+        is_mega = is_mega_url or is_mega_article
 
         # D4: stale non-macro clusters take a flat penalty so accumulated breadth
         # on an old event cannot out-rank a fresh one. Tier-1 / recent-event macro
@@ -1737,9 +1821,195 @@ def compute_unified_lead(
             "unified_winner": _winner_row,
             "unified_losers": losers,
             "unified_candidates": candidates_audit,
+            # G2 (Agent CONSTRAIN): candidate-generation regime marker. Same class as
+            # anchor_source - additive telemetry the calibrator uses to separate the
+            # pre/post candidate-generation eras (the O2/O3 mega lanes changed which
+            # clusters can be mega, so a grade under the new regime is not comparable
+            # to one under the old). Never gates selection.
+            "candidate_gen_regime": CANDIDATE_GEN_REGIME,
         }
     except Exception as e:
         logger.warning("impact_ranking: compute_unified_lead failed: %s", e)
+        return None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LEAD AUTHORITY - LLM PICKS FROM A FILTERED, SCORED SHORTLIST (Agent CONSTRAIN)
+# ══════════════════════════════════════════════════════════════════════════════
+# Authority model: the monolith (Gemini) still CHOOSES the lead, but only from an
+# eligibility-filtered, scored shortlist - barred classes (L1 analyst-PT, L2
+# rumor/preview-with-alternative) removed, and any confirmed >= $1B mega-deal
+# GUARANTEED present (O2/O3). The head-to-head that motivated this: the LLM is better
+# at recognizing the mega-deal as the human-obvious lead, while the deterministic
+# scorer is better at excluding the bad classes. This gets both: bar with the scorer,
+# choose with the LLM, but constrain the LLM to the scorer's allowed set.
+#
+# Contract:
+#   build_lead_shortlist(...) -> the allowed candidate set + the deterministic argmax
+#     winner (the fallback). Pure; reuses compute_unified_lead so scoring/bars are
+#     identical to the served path.
+#   build_shortlist_directive(...) -> the prompt block naming the allowed candidates
+#     and their stable pick ids; the LLM MUST return one of these ids as
+#     primary_story_id.
+#   match_pick_to_shortlist(pid, shortlist) -> the matched row or None (id-exact then
+#     normalized-title-prefix). synthesize validates the LLM's returned id: in-set ->
+#     serve it; out-of-set -> re-ask once with a corrective directive; still out ->
+#     fall back to the deterministic winner.
+#
+# G3 (all-barred fallback): when every candidate is barred the shortlist is NOT empty
+# - it carries the single best barred candidate flagged all_barred=True, so a lead
+# always ships ("best barred candidate, logged as such").
+
+# Shortlist size cap. Small enough to keep the prompt tight and the LLM's choice
+# meaningful, large enough that the true lead is always in view. Mega-deal candidates
+# are force-included even past this cap (the guaranteed lane).
+SHORTLIST_MAX = 8
+
+
+def _pick_id_for_title(title: str) -> str:
+    """Stable, prompt-safe pick id for a candidate: normalized-whitespace title head.
+    Mirrors lead_preselect.build_preselect_directive's primary_story_id (first ~80
+    chars of the headline) so the id the LLM echoes back matches what downstream
+    already persists. Pure."""
+    return re.sub(r"\s+", " ", str(title or "")).strip()[:80]
+
+
+def build_lead_shortlist(
+    pool: list[dict],
+    now: datetime.datetime,
+    *,
+    brief_type: str = "morning",
+    tape: Optional[dict] = None,
+    name_session_pct: Optional[dict] = None,
+    mega_deal_urls: Optional[set[str]] = None,
+    asof_date: Optional[datetime.date] = None,
+    max_size: int = SHORTLIST_MAX,
+) -> Optional[dict]:
+    """Build the eligibility-filtered, scored lead SHORTLIST the LLM chooses from.
+
+    Runs the SAME unified contest as the served path (compute_unified_lead) so the
+    bars and scores are identical, then:
+      - drops lead-barred candidates (L1 analyst-PT, L2 rumor/preview-with-alt),
+      - GUARANTEES every confirmed mega-deal candidate is present (O2/O3), even past
+        the size cap,
+      - orders by unified_score desc and caps to max_size,
+      - names the deterministic argmax winner (the fallback when the LLM misbehaves).
+
+    G3: when EVERY candidate is barred, returns a one-item shortlist carrying the best
+    barred candidate with all_barred=True (best barred candidate, logged as such).
+
+    Returns None only on empty input. Pure; never raises."""
+    try:
+        if not pool:
+            return None
+        uni = compute_unified_lead(
+            pool, now, brief_type=brief_type, tape=tape,
+            name_session_pct=name_session_pct, mega_deal_urls=mega_deal_urls,
+            asof_date=asof_date,
+        )
+        if not uni:
+            return None
+        cands = uni.get("unified_candidates") or []
+        winner_ck = uni.get("cluster_key")
+        winner_title = str((uni.get("article") or {}).get("title") or "")
+
+        eligible = [c for c in cands if not c.get("lead_barred")]
+        all_barred = not eligible
+        if all_barred:
+            # G3: keep the single best barred candidate so a lead still ships.
+            best_barred = sorted(cands, key=lambda c: -(c.get("unified_score") or 0.0))
+            chosen = best_barred[:1]
+        else:
+            eligible.sort(key=lambda c: -(c.get("unified_score") or 0.0))
+            chosen = eligible[:max_size]
+            # Guaranteed lane: force every eligible mega-deal candidate in even if it
+            # ranked below the cap (the whole point of O2/O3).
+            present = {c["cluster_key"] for c in chosen}
+            for c in eligible:
+                if c.get("is_mega_deal") and c["cluster_key"] not in present:
+                    chosen.append(c)
+                    present.add(c["cluster_key"])
+
+        shortlist = []
+        for c in chosen:
+            shortlist.append({
+                "pick_id": _pick_id_for_title(c.get("title") or ""),
+                "cluster_key": c.get("cluster_key"),
+                "title": c.get("title"),
+                "unified_score": c.get("unified_score"),
+                "is_mega_deal": bool(c.get("is_mega_deal")),
+                "is_tier1": bool(c.get("is_tier1")),
+                "confirmation_reason": c.get("confirmation_reason"),
+                "distinct_sources": c.get("distinct_sources"),
+                "lead_barred": bool(c.get("lead_barred")),
+                "lead_bar_reason": c.get("lead_bar_reason"),
+            })
+        return {
+            "shortlist": shortlist,
+            "deterministic_winner_cluster": winner_ck,
+            "deterministic_winner_id": _pick_id_for_title(winner_title),
+            "deterministic_winner_title": winner_title,
+            "all_barred": all_barred,
+            "candidate_gen_regime": CANDIDATE_GEN_REGIME,
+            "mega_in_shortlist": any(c["is_mega_deal"] for c in shortlist),
+        }
+    except Exception as e:
+        logger.warning("impact_ranking: build_lead_shortlist failed: %s", e)
+        return None
+
+
+def build_shortlist_directive(shortlist_result: dict) -> str:
+    """Render the shortlist as a prompt directive: the LLM MUST set primary_story_id
+    to one of the listed pick ids. Names the deterministic winner so the model has a
+    default. Pure; never raises."""
+    try:
+        rows = (shortlist_result or {}).get("shortlist") or []
+        lines = [
+            "[LEAD SHORTLIST - you MUST pick the lead from EXACTLY this list]",
+            "Choose the single most important lead story below and return its "
+            "pick_id verbatim as primary_story_id. Do NOT invent a lead outside "
+            "this list; every barred / weak-class story has already been removed.",
+        ]
+        for i, r in enumerate(rows, 1):
+            tag = " [CONFIRMED $1B+ DEAL]" if r.get("is_mega_deal") else (
+                " [tier-1 macro]" if r.get("is_tier1") else "")
+            lines.append(
+                f'  {i}. pick_id: "{r.get("pick_id")}"{tag}'
+            )
+            lines.append(f'     title: "{str(r.get("title") or "")[:160]}"')
+        det = (shortlist_result or {}).get("deterministic_winner_id")
+        if det:
+            lines.append(f'  default (deterministic winner): "{det}"')
+        if (shortlist_result or {}).get("all_barred"):
+            lines.append(
+                "  NOTE: every candidate today is a weak class; the one listed is the "
+                "best available and will lead."
+            )
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def match_pick_to_shortlist(primary_story_id, shortlist_result: dict) -> Optional[dict]:
+    """Validate an LLM-returned primary_story_id against the shortlist. Match order:
+    exact pick_id, then normalized case-insensitive title-prefix (the LLM often
+    echoes the title rather than the truncated id). Returns the matched shortlist row
+    or None when the pick is OUT OF SET. Pure; never raises."""
+    try:
+        rows = (shortlist_result or {}).get("shortlist") or []
+        pid = re.sub(r"\s+", " ", str(primary_story_id or "")).strip().lower()
+        if not pid:
+            return None
+        for r in rows:
+            if str(r.get("pick_id") or "").strip().lower() == pid:
+                return r
+        # Title-prefix fallback: the model returned the headline, not the id.
+        for r in rows:
+            t = re.sub(r"\s+", " ", str(r.get("title") or "")).strip().lower()
+            if t and (t.startswith(pid) or pid.startswith(t[:60]) or pid in t):
+                return r
+        return None
+    except Exception:
         return None
 
 
@@ -1812,10 +2082,59 @@ def confirmed_mega_deal_urls(deal_rows: list[dict], pool: list[dict]) -> set[str
     for a in pool:
         cluster_members[cluster_key(a)].append(a)
 
+    # O3 company-join index: normalized company head -> article urls. Built once so a
+    # confirmed >= $1B deal_flow row whose Google-RSS source_url does not string-match
+    # any pool url can still be joined by entity name. Each article contributes its own
+    # companies plus a normalized title/summary token bag (a headline like "Uber to
+    # Acquire Delivery Hero" names the target even when the companies[] array is thin).
+    ents_by_url: dict[str, set[str]] = {}
+    urls_by_ent: dict[str, set[str]] = defaultdict(set)
+    for a in pool:
+        u = (a.get("url") or "").strip()
+        if not u:
+            continue
+        ents: set[str] = set()
+        for c in _parse_list(a.get("companies")):
+            e = _norm_entity(c)
+            if e:
+                ents.add(e)
+        ents_by_url[u] = ents
+        for e in ents:
+            urls_by_ent[e].add(u)
+
+    def _company_join(d: dict) -> set[str]:
+        """O3: urls of pool articles that (1) name the deal's company or acquirer,
+        (2) are not rumor/preview, and (3) themselves carry a confirmed-action verb
+        or a real priced deal_type. The last guard stops a same-company but unrelated
+        story (an analyst note, a stock-drift piece) from being promoted to mega."""
+        if not COMPANY_JOIN_MEGA_LANE:
+            return set()
+        targets = {e for e in (_norm_entity(d.get("company")),
+                               _norm_entity(d.get("acquirer"))) if e}
+        if not targets:
+            return set()
+        hits: set[str] = set()
+        for e in targets:
+            for u in urls_by_ent.get(e, ()):  # exact normalized-head match only
+                art = by_url.get(u)
+                if not art:
+                    continue
+                text = (str(art.get("title") or "") + " " + str(art.get("summary") or "")).lower()
+                if lp._has_unconfirmed_keyword(text) or lp._has_unconfirmed_keyword_non_ma(text):
+                    continue
+                # Reuse the L1/L2 bars as the guard: an analyst upgrade ("to Buy")
+                # or a rumor/preview about the same company is NOT the deal, even
+                # though it may contain a deal-shaped verb.
+                if is_analyst_rating_lead(art) or is_rumor_or_preview_lead(art):
+                    continue
+                title = str(art.get("title") or "")
+                confirmed_ctx = bool(_CONFIRMED_DEAL_VERB_RE.search(title)) or _has_priced_deal_type([art])
+                if confirmed_ctx:
+                    hits.add(u)
+        return hits
+
     for d in deal_rows:
         url = (d.get("source_url") or "").strip()
-        if not url:
-            continue
         v = lp.parse_valuation_to_usd_b(d.get("valuation"))
         if v is None or v < 1.0:
             continue
@@ -1823,7 +2142,13 @@ def confirmed_mega_deal_urls(deal_rows: list[dict], pool: list[dict]) -> set[str
 
         # Path 1: trusted stage.
         if stage in lp.CONFIRMED_STAGES:
-            out.add(url)
+            if url:
+                out.add(url)
+            # O3: exact-url join fails for Google-RSS source_urls; recover by entity.
+            if not url or url not in by_url:
+                out |= _company_join(d)
+            continue
+        if not url:
             continue
 
         # Path 2: relaxed same-day confirmation from the article side.

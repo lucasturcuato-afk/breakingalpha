@@ -4365,6 +4365,37 @@ def run(brief_type="morning"):
                     # must skip the run rather than mis-join. ──
                     _shipped_in_audit = any(c["is_shipped_lead"] for c in _c1_candidates)
 
+                    # G2 (Agent CONSTRAIN): candidate-generation regime marker + the
+                    # LLM-authority shortlist, both ADDITIVE + shadow-only. The regime
+                    # marker (same class as anchor_source) lets the calibrator separate
+                    # grades produced under the O2/O3 mega-candidate lanes from the old
+                    # regime. The shortlist is the eligibility-filtered, mega-guaranteed
+                    # set the LLM would choose from under LEAD_AUTHORITY; logged here so
+                    # the in-set / re-ask / fallback rate can be measured from telemetry
+                    # BEFORE the serve path is flipped on. Never gates the served lead.
+                    _regime = getattr(_uir, "CANDIDATE_GEN_REGIME", None) or _uni.get(
+                        "candidate_gen_regime")
+                    _authority_shadow = None
+                    try:
+                        _bl = getattr(_uir, "build_lead_shortlist", None)
+                        if callable(_bl):
+                            _slr = _bl(
+                                _pool, _now, brief_type=brief_type,
+                                tape=_materiality_tape, name_session_pct=_u_name_moves,
+                                mega_deal_urls=_uni_kwargs.get("mega_deal_urls"),
+                            )
+                            if _slr:
+                                _authority_shadow = {
+                                    "shortlist_size": len(_slr.get("shortlist") or []),
+                                    "mega_in_shortlist": _slr.get("mega_in_shortlist"),
+                                    "all_barred": _slr.get("all_barred"),
+                                    "deterministic_winner_id": _slr.get("deterministic_winner_id"),
+                                    "shortlist_ids": [r.get("pick_id")
+                                                      for r in (_slr.get("shortlist") or [])],
+                                }
+                    except Exception:
+                        _authority_shadow = None
+
                     _c1_unified = {
                         "computed": True,
                         "flag_state": UNIFIED_LEAD,
@@ -4375,6 +4406,8 @@ def run(brief_type="morning"):
                         "shipped_cluster": _shipped_cluster or None,
                         "shipped_title": (str((preselected or {}).get("title") or "")[:200] or None),
                         "shipped_in_audit": _shipped_in_audit,
+                        "candidate_gen_regime": _regime,
+                        "lead_authority_shadow": _authority_shadow,
                     }
                     try:
                         import lead_preselect as _lp_u
