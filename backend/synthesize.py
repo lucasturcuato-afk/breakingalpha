@@ -74,6 +74,22 @@ if UNIFIED_LEAD not in ("off", "on"):
           "falling back to 'off' (prod-neutral default)")
     UNIFIED_LEAD = "off"
 
+# LEAD_VETO_MODE: the deterministic AUTHORITY-VETO layer. The monolith/precedence path
+# picks the lead as it does today (impact_pick or deal_pick, or the unified argmax when
+# UNIFIED_LEAD=on); a post-hoc check (impact_ranking.apply_lead_veto) runs the #503/#505
+# eligibility bars against that pick plus the confirmed-mega margin. Tri-state, read like
+# MATERIALITY_RANK_MODE, coerced to a safe default on any unknown value:
+#   off    : never compute the veto (byte-identical to today).
+#   shadow : compute + LOG the would-veto (old pick vs override, reason, veto rate) but
+#            DO NOT change the served lead. Prod-neutral. DEFAULT.
+#   on     : actually override the shipped pick with the deterministic winner when the
+#            veto fires. Selection-only; fails closed to the shipped pick on any error.
+LEAD_VETO_MODE = os.environ.get("LEAD_VETO_MODE", "shadow").strip().lower()
+if LEAD_VETO_MODE not in ("off", "shadow", "on"):
+    print(f"  [lead-veto] unknown LEAD_VETO_MODE={LEAD_VETO_MODE!r}, "
+          "falling back to 'shadow' (prod-neutral: logs, does not serve)")
+    LEAD_VETO_MODE = "shadow"
+
 # MARKET_PULSE_V2: when true, market_pulse.narrative is produced by a dedicated
 # tape-first Gemini call (generate_market_pulse) that overwrites the monolith's
 # narrative BEFORE the existing grounding post-check + D13 temporal normalization
@@ -4410,6 +4426,43 @@ def run(brief_type="morning"):
                         lead_source = "unified"
                         print(f"  ✅ [unified:on] SERVED lead -> {_uni['cluster_key']} "
                               f"(was: {_prev_title[:50]})")
+
+                    # ── LEAD VETO (shadow-first): deterministic post-hoc override. Runs
+                    # the #503/#505 eligibility bars + the confirmed-mega margin against
+                    # the CURRENT shipped pick (`preselected`) using the already-computed
+                    # unified contest (`_uni`, whose candidate field now includes
+                    # article-confirmed megas via the O2 guaranteed lane and exposes
+                    # best_mega). Logs the decision on EVERY run (veto rate is a key
+                    # deliverable); SERVES the override only when LEAD_VETO_MODE == on.
+                    # Fails closed: any error keeps the shipped pick. Covers BOTH morning
+                    # (Today's Lead) and evening (Today's Story): same block, same seam. ──
+                    if LEAD_VETO_MODE != "off":
+                        try:
+                            _veto = _uir.apply_lead_veto(preselected, _uni)
+                            try:
+                                _lp_u._LAST_DECISION_LOG["lead_veto"] = _veto
+                            except Exception:
+                                pass
+                            print(f"  🛡️ [veto:{LEAD_VETO_MODE}] vetoed={_veto.get('vetoed')} "
+                                  f"reason={_veto.get('reason')} "
+                                  f"old=[{_veto.get('old_cluster')}] -> "
+                                  f"new=[{_veto.get('new_cluster')}] "
+                                  f"(old_score={_veto.get('old_score')} "
+                                  f"new_score={_veto.get('new_score')} "
+                                  f"shipped_barred={_veto.get('shipped_barred')})")
+                            if (LEAD_VETO_MODE == "on" and _veto.get("vetoed")
+                                    and _veto.get("new_article")):
+                                _v_prev = str((preselected or {}).get("title") or "")[:80]
+                                preselected = dict(_veto["new_article"])
+                                preselected["_preselect_reason"] = (
+                                    f"veto:{_veto.get('reason')}:{_veto.get('new_cluster')}")
+                                preselected["_impact_score"] = _veto.get("new_score")
+                                preselected["_impact_cluster"] = _veto.get("new_cluster")
+                                lead_source = "veto"
+                                print(f"  ✅ [veto:on] OVERRODE lead -> "
+                                      f"{_veto.get('new_cluster')} (was: {_v_prev[:50]})")
+                        except Exception as _ve:
+                            print(f"  ⚠ lead veto skipped (non-fatal, keeping shipped pick): {_ve}")
             except Exception as _uerr:
                 print(f"  ⚠ unified lead contest skipped (non-fatal, keeping precedence pick): {_uerr}")
 

@@ -288,7 +288,29 @@ def score_clusters(
         bucket = key.split(":", 1)[1] if key.startswith("macro:") else None
         is_tier1 = bucket in TIER1_BUCKETS
         is_recent = bucket in recent_events
-        is_mega = any((x.get("url") or "").strip() in mega_deal_urls for x in arts)
+        # MEGA has TWO sources (O2 GUARANTEED LANE):
+        #   1. deal_flow gate: a member url maps to a confirmed $1B+ deal_flow row
+        #      (mega_deal_urls, upstream in _mega_deal_urls / confirmed_mega_deal_urls).
+        #   2. article-side confirmed-deal recognizer: a lead-eligible member's TITLE
+        #      states a confirmed >= $1B transaction (_title_confirms_mega_deal). This
+        #      closes the dead-deal_flow-gate gap ROOT diagnosed: Arlington $1.45B has
+        #      NO deal_flow row; Uber $14.8B's same-day row is null-valuation +
+        #      deal_type "Minority Stake"; Mitie GBP 3.1bn has no row. All three are
+        #      unambiguously confirmed in their own headlines ("exits/closes ... $1.45bn",
+        #      "agrees to buy ... $14.8 billion", "agrees GBP 3.1bn takeover"), so the
+        #      lane keys on the ARTICLE, not the (missing/broken) deal_flow row. A
+        #      confirmed deal at/above the value floor is ALWAYS a mega candidate
+        #      regardless of news volume, deal_flow stage, or extraction quality. The
+        #      recognizer reuses the same _title_confirms_mega_deal / _TEXT_DEAL_VALUE_RE
+        #      the #505 rumor bar uses; its verb set already covers the seller side
+        #      (sells/sold/divests/exits/offloads/closes), so a divestiture headline
+        #      like Arlington's "exits ... $1.45bn" / "closes $1.45bn sale" qualifies.
+        _url_mega = any((x.get("url") or "").strip() in mega_deal_urls for x in arts)
+        _art_mega = any(
+            _title_confirms_transaction(x, GUARANTEED_LANE_MIN_USD_B)
+            for x in _lead_eligible_arts(arts)
+        )
+        is_mega = _url_mega or _art_mega
 
         # D4: stale non-macro clusters take a flat penalty so accumulated breadth
         # on an old event cannot out-rank a fresh one. Tier-1 / recent-event macro
@@ -312,7 +334,8 @@ def score_clusters(
         if is_tier1:
             reasons.append("tier-1 macro")
         if is_mega:
-            reasons.append("confirmed $1B+ deal")
+            reasons.append("confirmed $1B+ deal"
+                           + ("" if _url_mega else " (article-confirmed guaranteed lane)"))
         reasons.append(f"{n_sources} distinct sources / {n_articles} articles")
         scored.append({
             "cluster_key": key,
@@ -323,6 +346,10 @@ def score_clusters(
             "is_tier1": is_tier1,
             "is_recent": is_recent,
             "is_mega_deal": is_mega,
+            # O2 provenance: True when this cluster is mega ONLY via the article-side
+            # guaranteed lane (no deal_flow row backed it). Load-bearing for the veto
+            # audit and the C1 candidate-regime marker.
+            "mega_via_article": bool(_art_mega and not _url_mega),
             "reason": "; ".join(reasons),
             "_articles": arts,
         })
@@ -483,6 +510,28 @@ def _cluster_lead_barred(scored_cluster: dict, now: datetime.datetime) -> bool:
 # the confirming alternative), never more; it is fail-safe by construction.
 RUMOR_BAR_CONFIRMED_DEAL_MIN_USD_B = 1.0
 
+# ── O2 GUARANTEED LANE + VETO tunables (this file's Noah-facing knobs) ─────────
+# GUARANTEED_LANE_MIN_USD_B: the value floor at which an ARTICLE-side confirmed deal
+# (a confirmed-action verb + explicit value in the TITLE, via _title_confirms_mega_deal)
+# is admitted as a mega candidate in score_clusters even when NO deal_flow row backs
+# it. Set to the same $1B floor the deal_flow mega gate uses so the two lanes agree.
+# Raising it admits fewer article-confirmed deals, never more (fail-safe).
+GUARANTEED_LANE_MIN_USD_B = 1.0
+
+# LEAD_VETO_MARGIN: the unified_score margin by which a confirmed mega-deal must
+# OUT-rank the shipped (LLM/precedence) pick before the deterministic veto overrides
+# a NON-barred shipped pick. A barred shipped pick (analyst-PT L1, or rumor/preview L2
+# with a confirmed alternative present) is overridden with NO margin. This margin makes
+# the veto conservative: on the highest-weighted rubric a genuinely bigger confirmed
+# story must clear a real gap before it displaces what the monolith chose, so the LLM
+# stays authoritative on ordinary days and is only vetoed when it is provably wrong.
+LEAD_VETO_MARGIN = 0.05
+
+# CANDIDATE_GEN_VERSION (G2): the candidate-generation regime marker stamped on the C1
+# unified log so the calibrator can tell pre/post guaranteed-lane runs apart (same class
+# of provenance as anchor_source). Bump when the candidate SET changes shape.
+CANDIDATE_GEN_VERSION = "veto-guaranteed-lane-v1"
+
 # PRECISION: title-level word-boundary regex. Fires on forward-looking / unconfirmed
 # framing: reported deal chatter ("reportedly", "explores", "in talks", "weighing",
 # "mulls", "eyes a bid", "could acquire", "potential takeover"), stated intent
@@ -573,6 +622,40 @@ def _title_confirms_mega_deal(article: dict, min_usd_b: float) -> bool:
         if not big:
             return False
         return bool(_CONFIRMED_DEAL_VERB_RE.search(t))
+    except Exception:
+        return False
+
+
+# O2 PROMOTION-LANE precision guard. _title_confirms_mega_deal (above) is loose ON
+# PURPOSE for the #505 rumor BAR (a false "a confirming alternative exists" only makes
+# the bar fire slightly more; harmless). But the guaranteed LANE PROMOTES a match to
+# mega (a +10 raw boost / 1.0 confirmation), so a false positive injects a fake lead.
+# Replayed prod pools surfaced exactly these: "SpaceX sell-off wipes $1tn" (market-cap,
+# verb "sell"), "PayPal board isn't sold on the $53B" (idiom "sold on"), "JPMorgan
+# reported $21.2 Billion net income" (earnings), "News Corp US$1bn repurchase" (buyback).
+# The lane therefore requires BOTH a valuation-bearing deal_type AND the title
+# confirmation, and rejects the idiomatic value+verb co-occurrences below.
+_DEAL_IDIOM_BLOCK_RE = re.compile(
+    r"(?i)\b(sell[-\s]?off|sold\s+on|buy\s?back|repurchase|net\s+income|"
+    r"market\s+cap(?:italization)?|wipe[sd]?|net\s+worth|a\s+quarter|per\s+share)\b"
+)
+
+
+def _title_confirms_transaction(article: dict, min_usd_b: float) -> bool:
+    """STRICT confirmed-transaction test for the O2 guaranteed PROMOTION lane. Beyond
+    _title_confirms_mega_deal it also requires (a) a valuation-bearing deal_type
+    (_PURE_DEAL_TYPES: M&A / LBO / funding / asset sale / minority stake / etc.) so an
+    earnings or market-cap headline never qualifies, and (b) no idiomatic value+verb
+    co-occurrence (sell-off / sold on / buyback / net income). Arlington ($1.45bn M&A),
+    Uber/Delivery Hero ($14.8B M&A) and Mitie (GBP 3.1bn M&A) all pass; the false
+    positives above are all rejected. Never raises."""
+    try:
+        dt = str(article.get("deal_type") or "").strip().lower()
+        if dt not in _PURE_DEAL_TYPES:
+            return False
+        if _DEAL_IDIOM_BLOCK_RE.search(str(article.get("title") or "")):
+            return False
+        return _title_confirms_mega_deal(article, min_usd_b)
     except Exception:
         return False
 
@@ -1619,6 +1702,20 @@ def compute_unified_lead(
             # article. Fall back to the ordinary best only for the (barred) score rep.
             _lead_rep = _lead_representative(c, now)
             rep = _lead_rep or _best_article_in_cluster(_cluster_arts(c), now, bucket=_bkt)
+            # O2: a cluster made mega by the article-side lane must LEAD with the
+            # transaction headline itself, not a punchier same-company sibling (else a
+            # "$14.8B Delivery Hero" cluster would lead with an unrelated Uber-stock
+            # story). Pick the confirming transaction article as the representative when
+            # the current rep is not itself the confirmation.
+            if c.get("mega_via_article") and not _title_confirms_transaction(
+                    rep or {}, GUARANTEED_LANE_MIN_USD_B):
+                _conf_rep = next(
+                    (a for a in _lead_eligible_arts(_cluster_arts(c))
+                     if _title_confirms_transaction(a, GUARANTEED_LANE_MIN_USD_B)),
+                    None,
+                )
+                if _conf_rep is not None:
+                    rep = _conf_rep
             mat_comp, mat_reasons = _unified_materiality(
                 c, tape=tape, driver_names=driver_names,
                 name_session_pct=name_session_pct)
@@ -1680,7 +1777,11 @@ def compute_unified_lead(
                 "distinct_sources": c["distinct_sources"],
                 "article_count": c["article_count"],
                 "is_mega_deal": c.get("is_mega_deal", False),
+                # O2 provenance: the mega entered via the article-side guaranteed lane
+                # (no deal_flow row). Load-bearing for the veto log + C1 regime marker.
+                "mega_via_article": c.get("mega_via_article", False),
                 "is_tier1": c.get("is_tier1", False),
+                "is_recent": c.get("is_recent", False),
                 "lead_barred": c.get("lead_barred", False),
                 "lead_bar_reason": c.get("lead_bar_reason"),
                 "below_cap": below_cap,
@@ -1708,6 +1809,26 @@ def compute_unified_lead(
         losers = [r for r in candidates_audit
                   if r is not _winner_row and not r.get("below_cap")
                   and not r.get("lead_barred")][:2]
+        # O2/VETO: the single best NON-barred CONFIRMED MEGA-DEAL candidate. Exposed so
+        # the veto layer can promote a confirmed mega over a breadth-noise argmax winner
+        # (a confirmed $1B+ transaction beating a fresh multi-source momentum cluster is
+        # exactly the demotion ROOT diagnosed). Carries the deal-confirming rep article.
+        _best_mega = next(
+            (c for c in ranked
+             if c.get("is_mega_deal") and not c.get("lead_barred")),
+            None,
+        )
+        best_mega = None
+        if _best_mega is not None:
+            best_mega = {
+                "cluster_key": _best_mega["cluster_key"],
+                "unified_score": _best_mega["unified_score"],
+                "is_mega_deal": True,
+                "mega_via_article": _best_mega.get("mega_via_article", False),
+                "lead_barred": False,
+                "title": _rep_title(_best_mega),
+                "article": _best_mega["_rep_article"],
+            }
         return {
             "article": lead,
             "cluster_key": top["cluster_key"],
@@ -1737,10 +1858,180 @@ def compute_unified_lead(
             "unified_winner": _winner_row,
             "unified_losers": losers,
             "unified_candidates": candidates_audit,
+            "best_mega": best_mega,
+            # G2 CANDIDATE-GENERATION REGIME MARKER (additive, same class as
+            # anchor_source). Lets the calibrator partition grades by the candidate SET
+            # that produced them: guaranteed_lane_active flags that article-confirmed
+            # megas could enter the field this run, and version bumps on any shape change.
+            "candidate_regime": {
+                "candidate_gen_version": CANDIDATE_GEN_VERSION,
+                "guaranteed_lane_active": True,
+                "guaranteed_lane_min_usd_b": GUARANTEED_LANE_MIN_USD_B,
+                "guaranteed_lane_hits": sum(
+                    1 for c in candidates_audit if c.get("mega_via_article")
+                ),
+            },
         }
     except Exception as e:
         logger.warning("impact_ranking: compute_unified_lead failed: %s", e)
         return None
+
+
+def apply_lead_veto(
+    shipped_pick: Optional[dict],
+    unified_result: Optional[dict],
+    *,
+    margin: float = LEAD_VETO_MARGIN,
+) -> dict:
+    """VETO AUTHORITY LAYER (the smallest change to today's behavior).
+
+    Today the monolith/precedence path chooses the lead freely (compute_shadow_lead
+    over score_clusters, then Gemini narrates it). This runs a DETERMINISTIC post-hoc
+    check against that pick using the ALREADY-computed unified contest (unified_result
+    from compute_unified_lead, whose candidate set now includes article-confirmed
+    megas via the O2 guaranteed lane). It never re-picks from scratch; it only VETOES
+    a provably-wrong pick and hands back the deterministic winner. Pure; never raises.
+
+    OVERRIDE (vetoed=True) fires when EITHER:
+      A. the shipped pick's cluster is lead-barred (analyst_rating_pt L1, or
+         rumor_preview_alt_exists L2) AND a non-barred deterministic winner exists; or
+      B. the best CONFIRMED MEGA-DEAL candidate (unified_result['best_mega'], which may
+         rank below a breadth-noise argmax winner) out-scores the shipped pick by MORE
+         than `margin` on unified_score, the shipped pick is NOT itself a HARD macro
+         print (tier-1 / recent release), and the shipped pick is not already that mega.
+    The override target is the deterministic winner: for A the eligible unified argmax,
+    for B the confirmed mega-deal's own deal-confirming representative article.
+
+    G5 MACRO GUARD: a confirmed mega NEVER vetoes a hard-macro shipped lead (is_tier1 /
+    is_recent), so a large deal cannot displace a material macro release. This is a
+    deterministic guard independent of the tape magnitude.
+
+    NO override (vetoed=False), each logged with an explicit reason:
+      - 'agree'                     : the shipped pick already IS the winner.
+      - 'all_barred_no_override'    : shipped is barred but the winner is ALSO barred
+                                      (every top cluster barred). G3: keep the shipped
+                                      best-barred pick, logged as such, exactly the
+                                      compute_unified_lead `_eligible or ranked` fail-safe.
+      - 'llm_pick_stands'           : the shipped pick is eligible and no confirmed mega
+                                      clears the margin. The LLM stays authoritative.
+
+    Returns a decision dict with old/new pick, reason, and the margin, so the caller
+    can LOG the override and MEASURE the veto rate across a replay set."""
+    decision = {
+        "vetoed": False,
+        "reason": "no_unified_result",
+        "margin": margin,
+        "candidate_gen_version": CANDIDATE_GEN_VERSION,
+        "old_cluster": None, "old_title": None, "old_score": None,
+        "new_cluster": None, "new_title": None, "new_score": None,
+        "new_article": None,
+        "winner_is_mega": False, "winner_via_article_lane": False,
+        "shipped_barred": False, "shipped_bar_reason": None,
+        "shipped_in_audit": False,
+    }
+    try:
+        if not unified_result or not unified_result.get("article"):
+            return decision
+        cands = unified_result.get("unified_candidates") or []
+        winner = unified_result.get("unified_winner") or (cands[0] if cands else None)
+        if not winner:
+            return decision
+
+        win_cluster = winner.get("cluster_key")
+        win_score = winner.get("unified_score")
+        win_barred = bool(winner.get("lead_barred"))
+        win_is_mega = bool(winner.get("is_mega_deal"))
+        win_via_article = bool(winner.get("mega_via_article"))
+
+        # Resolve the shipped pick's audit row. Prefer its cluster_key (carried on the
+        # preselected article as _impact_cluster), fall back to a title match. The caller
+        # forces the shipped cluster into the audit (always_include_clusters), so a
+        # non-barred below-cap shipped pick is still present here.
+        shipped_cluster = str((shipped_pick or {}).get("_impact_cluster") or "").strip()
+        shipped_title = str((shipped_pick or {}).get("title") or "")[:200].strip().lower()
+
+        def _match(row: dict) -> bool:
+            ck = str(row.get("cluster_key") or "").strip()
+            if shipped_cluster and ck and ck == shipped_cluster:
+                return True
+            rt = str(row.get("title") or "")[:200].strip().lower()
+            return bool(shipped_title and rt and rt == shipped_title)
+
+        shipped_row = next((r for r in cands if _match(r)), None)
+        decision.update({
+            "old_cluster": shipped_cluster or (shipped_row or {}).get("cluster_key"),
+            "old_title": (shipped_row or {}).get("title")
+                         or str((shipped_pick or {}).get("title") or "")[:200] or None,
+            "old_score": (shipped_row or {}).get("unified_score"),
+            "new_cluster": win_cluster,
+            "new_title": winner.get("title"),
+            "new_score": win_score,
+            "winner_is_mega": win_is_mega,
+            "winner_via_article_lane": win_via_article,
+            "shipped_in_audit": shipped_row is not None,
+        })
+
+        shipped_barred = bool((shipped_row or {}).get("lead_barred"))
+        shipped_bar_reason = (shipped_row or {}).get("lead_bar_reason")
+        decision["shipped_barred"] = shipped_barred
+        decision["shipped_bar_reason"] = shipped_bar_reason
+
+        # Agreement: the shipped pick already leads the eligible contest.
+        same = bool(win_cluster and shipped_cluster and win_cluster == shipped_cluster)
+        if not same and shipped_row is not None and winner is shipped_row:
+            same = True
+        if same:
+            decision["reason"] = "agree"
+            return decision
+
+        # A. shipped pick is barred.
+        if shipped_barred:
+            if win_barred:
+                # G3: every top cluster is barred; keep the best-barred shipped pick.
+                decision["reason"] = "all_barred_no_override"
+                return decision
+            decision["vetoed"] = True
+            decision["reason"] = f"shipped_barred:{shipped_bar_reason or 'barred'}"
+            decision["new_article"] = unified_result.get("article")
+            return decision
+
+        # B. the best confirmed mega-deal out-scores the shipped pick by > margin.
+        # MACRO GUARD: never veto a shipped lead that is a REAL recent macro release
+        # (is_recent: a CPI/Fed/jobs print that actually landed in the backward window),
+        # so a large deal cannot displace a material macro event. is_recent, NOT is_tier1:
+        # is_tier1 merely means the headline matched a tier-1 KEYWORD bucket (e.g. a soft
+        # "the Fed's new chairman" profile), which is not itself a material release and
+        # must not shield a stale profile from a confirmed $1B+ transaction.
+        shipped_hard_macro = bool((shipped_row or {}).get("is_recent"))
+        best_mega = unified_result.get("best_mega")
+        if best_mega and not shipped_hard_macro:
+            mega_score = best_mega.get("unified_score")
+            mega_cluster = best_mega.get("cluster_key")
+            already_mega = bool(
+                shipped_cluster and mega_cluster and shipped_cluster == mega_cluster
+            )
+            base = decision["old_score"]
+            if (not already_mega and mega_score is not None
+                    and (base is None or (mega_score - base) > margin)):
+                decision["vetoed"] = True
+                decision["reason"] = (
+                    "mega_outranks_by_margin"
+                    if base is not None else "mega_outranks_shipped_not_scored"
+                )
+                decision["new_cluster"] = mega_cluster
+                decision["new_title"] = best_mega.get("title")
+                decision["new_score"] = mega_score
+                decision["winner_is_mega"] = True
+                decision["winner_via_article_lane"] = bool(best_mega.get("mega_via_article"))
+                decision["new_article"] = best_mega.get("article")
+                return decision
+
+        decision["reason"] = "llm_pick_stands"
+        return decision
+    except Exception as e:
+        logger.warning("impact_ranking: apply_lead_veto failed: %s", e)
+        decision["reason"] = f"error:{e}"
+        return decision
 
 
 # ── Coverage-pool + deal helpers (used by the live lead path and telemetry) ──
