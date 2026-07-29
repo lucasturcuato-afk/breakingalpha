@@ -4368,6 +4368,14 @@ def run(brief_type="morning"):
                     _c1_unified = {
                         "computed": True,
                         "flag_state": UNIFIED_LEAD,
+                        # G2: candidate-generation regime marker on the C1 row (same
+                        # provenance class as lead_outcome_grades.anchor_source). Lets the
+                        # calibrator separate candidate sets produced by the guaranteed-lane
+                        # regime from pre-lane ones instead of fitting across both silently.
+                        "candidate_gen_version": (
+                            _uni.get("candidate_gen_version")
+                            or getattr(_uir, "CANDIDATE_GEN_VERSION", None)
+                        ),
                         "winner": _c1_winner,
                         "candidates": _c1_candidates,
                         "losers": _c1_losers,
