@@ -1902,10 +1902,20 @@ def build_lead_shortlist(
     try:
         if not pool:
             return None
+        # GUARANTEED LANE: pre-score to find EVERY mega cluster key, then force those
+        # into compute_unified_lead's (capped) audit via always_include_clusters, so a
+        # mega that ranks below _TOP_CLUSTERS_AUDIT_CAP on a quiet tape is still a
+        # candidate here. Without this the "guaranteed" promise only held for megas
+        # that happened to rank in the top-10 (observed 07-28 PM: HSBC $2.09B divest
+        # dropped below the cap and vanished from the shortlist).
+        asof = asof_date or now.date()
+        _pre = score_clusters(pool, now, recent_events=recent_tier1_events(asof),
+                              mega_deal_urls=mega_deal_urls)
+        _mega_keys = {c["cluster_key"] for c in _pre if c.get("is_mega_deal")}
         uni = compute_unified_lead(
             pool, now, brief_type=brief_type, tape=tape,
             name_session_pct=name_session_pct, mega_deal_urls=mega_deal_urls,
-            asof_date=asof_date,
+            asof_date=asof_date, always_include_clusters=_mega_keys,
         )
         if not uni:
             return None
