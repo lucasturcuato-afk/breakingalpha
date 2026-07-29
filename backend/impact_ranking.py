@@ -86,8 +86,21 @@ TIER1_BUCKETS = {"fed", "cpi", "pce", "jobs"}
 # content signature (below) so near-identical syndications of one story still
 # merge, but unrelated stories do not. Macro buckets are unchanged.
 EVENT_THEMES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("ma", ("acquire", "acquisition", "acquires", "buyout", "buy out", "to buy",
-            "buys", "merger", "takeover", "tender offer", "bid for", "deal for")),
+    # O3 (Agent HARD): the "ma" theme was PRESENT-tense only, so ONE confirmed deal
+    # fragmented across sub-clusters when its coverage used past-tense / seller framing
+    # ("Uber Just BOUGHT ...", "Arlington closes SALE OF ...", "... $14.8B ACQUISITION").
+    # A headline that matched no M&A verb fell to the "stock" theme or a content sig,
+    # splitting distinct SOURCES of the SAME event across clusters and crushing the
+    # breadth of a genuine mega-deal (Uber $14.8B landed just below the audit cap on
+    # split breadth). Add the past-tense + seller-side M&A verbs so all coverage of one
+    # confirmed deal converges on co:NAME:ma. All additions are unambiguously
+    # transaction-directional (kept OUT: bare "sale"/"sells", which collide with the
+    # "offering" theme's "share sale" / equity-raise framing).
+    ("ma", ("acquire", "acquisition", "acquisitions", "acquires", "acquired",
+            "buyout", "buy out", "to buy", "buys", "bought", "merger", "takeover",
+            "tender offer", "bid for", "deal for", "sale of", "sale to", "to sell",
+            "divests", "divested", "agrees to buy", "agreed to buy",
+            "agrees to acquire", "agreed to acquire")),
     ("funding", ("bond", "debt deal", "notes offering", "note offering",
                  "raises $", "raise $", "funding round", "series a", "series b",
                  "series c", "series d", "fundraise", "fundraising", "credit facility",
@@ -575,6 +588,57 @@ def _title_confirms_mega_deal(article: dict, min_usd_b: float) -> bool:
         return bool(_CONFIRMED_DEAL_VERB_RE.search(t))
     except Exception:
         return False
+
+
+# ── O2 GUARANTEED LANE (Agent HARD) ─────────────────────────────────────────
+# ROOT verdict: a CONFIRMED >=$1B deal can be absent from the deal_flow-gated mega
+# set for reasons no cap or argmax change can fix:
+#   - it has NO deal_flow row at all (Arlington $1.45B, 2026-07-27; verified: the
+#     deal_flow table has zero rows for it), OR
+#   - its deal_flow row has a NULL / unparseable valuation (Uber $14.8B, 2026-07-17,
+#     deal_type "Minority Stake"), so parse_valuation_to_usd_b -> None and the row
+#     never clears the $1B gate.
+# deal_extractor cannot be re-run against prod here and backfilling those rows needs
+# a supervised extractor run, so NEITHER a deal_flow-side fix nor a migration surfaces
+# these two. The guaranteed lane reads the confirmation off the ARTICLE itself: a
+# confirmed-action verb + an explicit >=$1B value in the TITLE, and NOT rumor/preview
+# framing. It reuses _title_confirms_mega_deal (the #505 detector already trusted for
+# the confirmed-ALTERNATIVE rumor bar), whose verb set already covers the seller-verb
+# gap (exits / sells / divests / offloads) - confirmed live by "Arlington exits ... in
+# $1.45bn deal". A url flagged here is unioned into mega_deal_urls, so its cluster gets
+# is_mega_deal=True -> confirmation value-scaled to ~1.0 AND exemption from the
+# single-name-noise demote (-0.20): exactly the two penalties ROOT identified as
+# sinking a confirmed deal below 13F noise. It NEVER promotes a rumor (blocked upstream
+# by is_rumor_or_preview_lead) and never lowers any score.
+GUARANTEED_LANE_MIN_USD_B = 1.0
+
+# G2: candidate-generation regime marker (same provenance class as
+# lead_outcome_grades.anchor_source). Stamped onto the C1 unified payload so the
+# calibrator can tell candidate sets produced BEFORE the guaranteed lane apart from
+# those produced AFTER it, instead of silently fitting weights across two
+# incompatible candidate-generation regimes. Bump this string whenever candidate
+# generation (clustering / mega gate / lane) changes shape. Additive only.
+CANDIDATE_GEN_VERSION = "hard_v1_guaranteed_lane"
+
+
+def article_side_mega_deal_urls(pool: list[dict],
+                                min_usd_b: float = GUARANTEED_LANE_MIN_USD_B) -> set[str]:
+    """Pure: scan the article pool for CONFIRMED >=min_usd_b deals whose confirmation
+    is legible in the TITLE (confirmed verb + explicit value, not rumor/preview),
+    independent of whether a deal_flow row exists. Returns their source urls. This is
+    the O2 guaranteed lane: it recovers a confirmed mega-deal that the deal_flow gate
+    missed (no row / null valuation). Never raises."""
+    out: set[str] = set()
+    try:
+        for a in pool:
+            u = (a.get("url") or "").strip()
+            if not u or u in out:
+                continue
+            if _title_confirms_mega_deal(a, min_usd_b):
+                out.add(u)
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning("impact_ranking: article_side_mega_deal_urls failed: %s", e)
+    return out
 
 
 def is_rumor_or_preview_lead(article: dict) -> bool:
@@ -1410,6 +1474,21 @@ _MAT_WIDE_EDGE_MAX = 0.30     # max market-wide/macro lift added to the 0.5 neut
 _MAT_WIDE_MAG_SAT_PCT = 1.5   # |S&P move %| at which the wide edge saturates to the max
 _MAT_SINGLE_NAME_NOISE_DEMOTE = 0.20  # demote a non-driver single-name pure-deal cluster
 
+# O3 mega-deal materiality FLOOR (Agent HARD). ROOT diagnosis: a confirmed deal is
+# demoted by BOTH confirmation (0.80 vs 1.00) AND materiality. is_mega_deal already
+# fixes confirmation and exempts the single-name-noise demote, but on a QUIET tape a
+# confirmed mega-deal still earns only the 0.5 neutral materiality (materiality_delta
+# rewards tape-drivers / market-wide, not deal VALUE). Consequence: Uber $14.8B (whose
+# wire coverage collapses to ~2 distinct sources) loses the breadth tiebreak to a
+# 3-source $101M contract. A confirmed >=$1B transaction IS materially significant BY
+# VALUE regardless of tape, so its materiality gets a value-scaled FLOOR (never a
+# ceiling; a genuinely tape-material cluster keeps its higher earned score). Log-scaled
+# so $14.8B floors higher than $1.45B. Sized to stay UNDER the market-wide/macro cap
+# (0.5 + _MAT_WIDE_EDGE_MAX = 0.80) so a genuinely material macro on a moving tape still
+# outscores a mega-deal (the "a large deal must NOT displace a material macro" guard).
+_MEGA_MAT_FLOOR_MIN = 0.55    # a confirmed $1B mega-deal (value floored at $1B)
+_MEGA_MAT_FLOOR_MAX = 0.75    # a confirmed mega-deal at/above the value saturation point
+
 
 def _unified_session_fit(candidate: dict, brief_type: str,
                          now: datetime.datetime) -> tuple[float, bool]:
@@ -1548,6 +1627,17 @@ def _unified_materiality(scored_cluster: dict, *, tape: Optional[dict],
             and not is_driver and not scored_cluster.get("is_mega_deal")):
         comp -= _MAT_SINGLE_NAME_NOISE_DEMOTE
         reasons.append(f"single-name non-driver noise (-{_MAT_SINGLE_NAME_NOISE_DEMOTE})")
+
+    # O3 mega-deal materiality FLOOR: a confirmed >=$1B deal is material by VALUE. Floor
+    # only (never lowers a higher earned score), value-scaled, capped under the
+    # market-wide edge so a genuinely material macro still wins.
+    if scored_cluster.get("is_mega_deal"):
+        v = _deal_value_usd_b(text)
+        floor = _value_scaled_conf(max(v if v is not None else 1.0, 1.0),
+                                   _MEGA_MAT_FLOOR_MIN, _MEGA_MAT_FLOOR_MAX)
+        if floor is not None and comp < floor:
+            reasons.append(f"confirmed mega-deal value floor (-> {round(floor, 3)}, ~${max(v or 1.0, 1.0):.1f}B)")
+            comp = floor
 
     return max(0.0, min(1.0, comp)), reasons
 
@@ -1733,7 +1823,10 @@ def compute_unified_lead(
                 "session_fit_from_detector": top["session_fit_from_detector"],
                 "confirmation_reason": top["confirmation_reason"],
                 "materiality_reasons": top["unified_materiality_reasons"],
+                # G2: candidate-generation regime marker (provenance for the calibrator).
+                "candidate_gen_version": CANDIDATE_GEN_VERSION,
             },
+            "candidate_gen_version": CANDIDATE_GEN_VERSION,
             "unified_winner": _winner_row,
             "unified_losers": losers,
             "unified_candidates": candidates_audit,
@@ -1795,7 +1888,11 @@ def confirmed_mega_deal_urls(deal_rows: list[dict], pool: list[dict]) -> set[str
     NOT get the boost."""
     import lead_preselect as lp
 
-    out: set[str] = set()
+    # O2 guaranteed lane (Agent HARD): seed with article-side confirmed mega-deals so a
+    # confirmed >=$1B deal that the deal_flow gate misses entirely (no row, e.g.
+    # Arlington $1.45B; or null valuation, e.g. Uber $14.8B) still gets is_mega_deal.
+    # Unioned with the deal_flow-gated set below; never removes a deal_flow-confirmed url.
+    out: set[str] = article_side_mega_deal_urls(pool)
     if not deal_rows:
         return out
 
