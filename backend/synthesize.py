@@ -21,6 +21,10 @@ try:
     from call_horizons import resolve_on_for
 except Exception:  # pragma: no cover - path differs between runner and tests
     from backend.call_horizons import resolve_on_for
+try:
+    from call_falsifiability import apply_gate as apply_falsifiability_gate
+except Exception:  # pragma: no cover - path differs between runner and tests
+    from backend.call_falsifiability import apply_gate as apply_falsifiability_gate
 import prose_quality_guard
 import overview_grounding
 from dataclasses import asdict
@@ -1102,6 +1106,12 @@ A "claim" is a directional statement about a market, sector, index, or ticker th
 
 NOT gradeable: vague commentary, retrospective observations, "watch for X", non-directional context, commentary about the previous day.
 
+FALSIFIABILITY IS THE BAR. Every claim you emit must be capable of being WRONG. Before you write one, ask what tape would prove it false. If no tape could, it is not a claim, it is decoration.
+- A two-sided conditional is never a claim. "A hawkish or dovish surprise will impact rates and the curve" covers both outcomes and is unfalsifiable. So is anything containing "in either direction" or "could go either way".
+- An outcome with no sign is never a claim. "Deviation from consensus could trigger significant shifts in risk appetite" predicts movement without saying which way. Neither is "volatility", "a reaction", "repricing", or "the print will be watched closely".
+- expected_direction MUST be "bullish" or "bearish". "neutral" is a description of the tape, not a prediction, and any claim you would label neutral should simply not be emitted.
+- target_symbol MUST be a symbol the grader can fetch prices for. If your claim is about a thing with no ticker, express it against the instrument that prices that thing: rates to TLT, credit to LQD, the dollar to UUP, gold to GLD, industrial policy to XLI. If it cannot be expressed against anything priceable, drop it.
+
 For sector claims, pick the appropriate US sector ETF:
 - Technology -> XLK
 - Energy -> XLE
@@ -1117,12 +1127,14 @@ For sector claims, pick the appropriate US sector ETF:
 
 For aggregate/broad-market claims, use SPY as target_symbol (or null). For index claims, use the literal ETF (SPY, QQQ, DIA).
 
-Return 3 to 7 claims. If the brief is genuinely non-directional, it is acceptable to return fewer (even zero).
+Return only the claims that clear the bar above. There is no target count and no floor: three real calls beat five with two decorations, and a genuinely non-directional brief should return one or zero. Never pad the list to look thorough. A claim added to reach a number is a claim nobody can be wrong about, and it costs more credibility than an empty list does.
 
 For every claim also classify HOW LONG the claim needs to play out. Judge the claim's own language, not your preference. Be honest: forcing a multi-week thesis into a single session grades it on noise, and calling a same-day move a multi-week view delays a verdict everyone already knows.
 - "session"   the claim is about today's trading. Reactions to an overnight headline, an earnings print, a data release, a Fed tone. Words like today, this session, at the open, on the print.
 - "week"      the claim needs a few sessions to resolve. A move that builds over the week, a trend continuing, positioning unwinding.
 - "multiweek" the claim is a thesis, not a trade. A re-rating, a cycle turning, a structural shift, guidance playing out over a quarter.
+READ-THROUGH IS NOT SAME-SESSION. One company's result propagating to its sector takes weeks, because the sector has to re-rate on the read rather than on the print. "The healthcare services sector may face headwinds due to Ensign Group's Q2 sales being below analyst estimates" is a week claim, not a session claim: naming a single company as the evidence for a whole sector's move is the tell. The same is true for consolidation and M&A trends (multiweek: a wave, not a day) and for policy, tariffs, regulation and subsidies (week at minimum: the effect is priced in over sessions, not in one afternoon).
+Session is for DIRECT repricing: the market prices this headline today. An overnight geopolitical development moving crude, an earnings print moving the name that reported, a Fed decision moving the index this afternoon.
 When genuinely ambiguous, choose "session". Do not choose a longer horizon to make a claim look more serious.
 
 Respond ONLY with valid JSON in this exact schema, no preamble, no markdown fences:
@@ -1132,7 +1144,7 @@ Respond ONLY with valid JSON in this exact schema, no preamble, no markdown fenc
       "claim_text": "<short sentence stating the directional call>",
       "claim_type": "aggregate" | "sector" | "index" | "ticker",
       "target_symbol": "<ticker or ETF symbol; null only for pure aggregate with no proxy>",
-      "expected_direction": "bullish" | "bearish" | "neutral",
+      "expected_direction": "bullish" | "bearish",
       "horizon_type": "session" | "week" | "multiweek",
       "confidence": <float between 0.0 and 1.0>
     }
@@ -1255,7 +1267,7 @@ def extract_and_persist_claims(
     # Single anchor for both brief_date and resolve_on on every row in this run.
     _claims_brief_date = date.today().isoformat()
 
-    rows = []
+    candidates = []
     for c in claims:
         if not isinstance(c, dict):
             continue
@@ -1279,27 +1291,66 @@ def extract_and_persist_claims(
         if not claim_text or claim_type not in allowed_types or direction not in allowed_dirs:
             continue
 
-        rows.append({
+        candidates.append({
+            "claim_text": claim_text,
+            "claim_type": claim_type,
+            "target_symbol": target_symbol,
+            "expected_direction": direction,
+            "horizon_type": c.get("horizon_type"),
+            "confidence": confidence,
+        })
+
+    # Falsifiability gate (backend/call_falsifiability.py). Deterministic, in
+    # code, after generation: the prompt asks for falsifiable calls and mostly
+    # complies, but on 2026-07-27 two of five emitted claims were two-sided
+    # conditionals that no tape could contradict, and the grader had to record
+    # "no honest grader for this claim type yet" against 40 percent of the day.
+    # A claim that survives here has a priceable target, a direction, and a
+    # horizon that matches how long its thesis actually needs. A claim that is
+    # directionally real but not priceable as stated is expressed against a
+    # listed proxy rather than dropped. Nothing is backfilled to reach a count.
+    gated, verdicts = apply_falsifiability_gate(candidates)
+    for v in verdicts:
+        _txt = (v.claim.get("claim_text") or "")[:80]
+        if v.status == "reject":
+            print(f"  ✂ call gate REJECT: {_txt!r} :: {v.reason}")
+        elif v.changes:
+            print(f"  ↻ call gate RESHAPE: {_txt!r} :: {'; '.join(v.changes)}")
+    if len(gated) != len(candidates):
+        print(f"  🚦 call gate: {len(gated)}/{len(candidates)} candidates emitted "
+              f"(no backfill)")
+
+    rows = [
+        {
             "brief_id": brief_id,
             # brief_date is written explicitly rather than left to the column
             # default (CURRENT_DATE) so it and resolve_on derive from the SAME
             # anchor. A one-day drift between the DB clock and the runner clock
             # would otherwise make a "session" call resolve the following day.
             "brief_date": _claims_brief_date,
-            "claim_text": claim_text,
-            "claim_type": claim_type,
-            "target_symbol": target_symbol,
-            "expected_direction": direction,
+            "claim_text": g["claim_text"],
+            "claim_type": g["claim_type"],
+            "target_symbol": g["target_symbol"],
+            "expected_direction": g["expected_direction"],
             # Fixed map (backend/call_horizons.py): session +0, week +7,
-            # multiweek +21 calendar days. Missing or unrecognized falls back
-            # to session, i.e. exactly today's behavior.
-            "resolve_on": resolve_on_for(_claims_brief_date, c.get("horizon_type")),
-            "confidence": confidence,
+            # multiweek +21 calendar days. The gate has already raised the
+            # horizon to the floor the claim's own language implies.
+            "resolve_on": resolve_on_for(_claims_brief_date, g.get("horizon_type")),
+            "confidence": g.get("confidence"),
             "is_lead": False,
-        })
+        }
+        for g in gated
+    ]
 
     if not rows:
-        print("  ⚠ claims extraction: no valid claims after normalization")
+        # Zero is a real answer. The idempotent delete still runs so a prior
+        # run's calls are not left standing as if they were today's.
+        print("  ⚠ claims extraction: no claim cleared the falsifiability gate; "
+              "emitting zero rather than fabricating one")
+        try:
+            supabase_admin.table("morning_brief_calls").delete().eq("brief_id", brief_id).execute()
+        except Exception as e:
+            print(f"  ⚠ claims extraction: idempotent delete failed: {e}")
         return 0
 
     # Contract C2: mark the ONE claim that matches the shipped lead as is_lead=true.
