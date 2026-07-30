@@ -574,6 +574,7 @@ def _select_articles_for_synthesis(
     floor_count=6,
     spine_sector_cap=3,
     company_cap=2,
+    guaranteed=None,
 ):
     """
     Two-bucket article selection for synthesis input.
@@ -593,6 +594,18 @@ def _select_articles_for_synthesis(
     since they are breadth signals, not primary stories.
 
     articles must already be sorted by relevance_score descending.
+
+    guaranteed (Agent SUPPLY): optional list of driver article dicts that MUST
+    reach the spine so the pulse's top_stories can name the day's tape driver.
+    These are recovered from the WIDE recency-ordered coverage pool (see
+    _pulse_driver_candidates) because the relevance-top-60 synthesis pool can
+    arbitrarily drop an entire driver cluster when relevance_score saturates
+    (e.g. 576 score-10 articles on 2026-07-29 truncated to an arbitrary 60 that
+    held ZERO of the Middle East / oil cluster explaining WTI +7.75%). Injected
+    by URL identity right after spine slot 0 (the hoisted lead) so a driver
+    lands inside the first few spine slots and therefore inside top_stories.
+    Purely additive: when guaranteed is empty the spine/floor are byte-identical
+    to the pre-SUPPLY behavior.
     """
     from collections import defaultdict
 
@@ -649,7 +662,125 @@ def _select_articles_for_synthesis(
 
     floor = list(best_per_sector.values())[:floor_count]
 
+    # ── Guaranteed driver injection (Agent SUPPLY) ─────────────────────────────
+    # Force the day's tape-driver story(ies) into the spine so top_stories (which
+    # reads spine first, limit 5) can name the move. Dedupe by URL because these
+    # dicts come from a DIFFERENT fetch than `articles` (the coverage pool), so
+    # id() identity does not hold. Insert after slot 0 (the hoisted lead), keep
+    # spine bounded to spine_count by dropping the lowest-ranked tail (never a
+    # guaranteed driver, which sits at the front).
+    if guaranteed:
+        spine_urls = {(a.get("url") or "").strip() for a in spine}
+        inject = []
+        for g in guaranteed:
+            if not g:
+                continue
+            u = (g.get("url") or "").strip()
+            if not u or u in spine_urls:
+                continue
+            spine_urls.add(u)
+            inject.append(g)
+        if inject:
+            head, rest = spine[:1], spine[1:]
+            spine = (head + inject + rest)[:max(spine_count, len(head) + len(inject))]
+            # A driver may have naturally landed in the floor; drop the dup so
+            # the same story is not shown twice.
+            spine_urls = {(a.get("url") or "").strip() for a in spine}
+            floor = [a for a in floor if (a.get("url") or "").strip() not in spine_urls]
+
     return spine, floor
+
+
+DRIVER_DEAL_TYPES = ("Geopolitical", "Macro", "Macro & Policy")
+DRIVER_MIN_SCORE = 8
+DRIVER_QUERY_LIMIT = 24
+
+
+def _fetch_driver_pool(sb, now):
+    """Targeted, deterministic read of the day's tape-driver candidates: the
+    macro / geopolitical / policy stories with relevance_score >= DRIVER_MIN_SCORE
+    inside the same 24h-ingest / 48h-publish window synthesis uses.
+
+    This is NOT the relevance-top-60 synthesis pool nor the recency-top-1000
+    coverage pool. Both of those truncate BEFORE the driver cluster is reached
+    when volume is high and relevance_score saturates (2026-07-29: 576 score-10
+    articles; >1000 newer articles were ingested after the Middle East / oil
+    stories, so BOTH pools dropped the entire geopolitical cluster explaining
+    WTI +7.75%). A narrow deal_type + score filter always reaches it. Read-only;
+    returns [] on any failure so the brief is never blocked."""
+    if sb is None:
+        return []
+    try:
+        cutoff = (now - timedelta(hours=24)).isoformat()
+        publish_cutoff = (now - timedelta(hours=48)).isoformat()
+        resp = (
+            sb.table("articles")
+            .select(
+                "title, summary, url, source, sector, industry_verticals, "
+                "companies, deal_type, relevance_score, relevance_reason, "
+                "published_at, ingested_at"
+            )
+            .gte("ingested_at", cutoff)
+            .gte("published_at", publish_cutoff)
+            .in_("deal_type", list(DRIVER_DEAL_TYPES))
+            .gte("relevance_score", DRIVER_MIN_SCORE)
+            .order("relevance_score", desc=True)
+            .order("published_at", desc=True)
+            .limit(DRIVER_QUERY_LIMIT)
+            .execute()
+        )
+        return resp.data or []
+    except Exception as e:
+        print(f"  ⚠ driver-pool fetch failed (non-fatal): {e}")
+        return []
+
+
+def _pulse_driver_candidates(sb, now, limit=2):
+    """SUPPLY FIX (Agent SUPPLY): recover the day's tape-driver story(ies) so a
+    major tape move always has an explaining article in the pulse's story inputs.
+
+    Root cause (proven on 2026-07-29 morning): the synthesis pool is
+    `articles ORDER BY relevance_score DESC LIMIT 60`. When relevance_score
+    saturates (576 articles tied at score 10 that day) the limit-60 cut is an
+    arbitrary slice with no deterministic secondary sort, and it held ZERO of the
+    Middle East / oil cluster (all score 10) that explained WTI +7.75%. The
+    recency-ordered coverage pool the LEAD stage reads (limit 1000) ALSO missed
+    it because >1000 newer articles were ingested after those stories. Neither
+    truncated pool is a reliable driver source, so this pulls a NARROW,
+    deterministic driver query (_fetch_driver_pool) and then REUSES
+    lead_preselect's pure geo / macro pickers over it to select the top
+    geopolitical AND top macro driver, so whichever matches the tape reaches
+    top_stories. Returns driver article dicts (possibly empty). Never raises."""
+    pool = _fetch_driver_pool(sb, now)
+    if not pool:
+        return []
+    try:
+        import lead_preselect as _lp
+    except Exception:
+        return []
+    picks = []
+    for fn in (
+        getattr(_lp, "_pick_geopolitical", None),
+        getattr(_lp, "_pick_macro", None),
+    ):
+        if not callable(fn):
+            continue
+        try:
+            a = fn(pool, now)
+        except Exception:
+            a = None
+        if a:
+            picks.append(a)
+    out, seen = [], set()
+    for a in picks:
+        u = (a.get("url") or "").strip()
+        if not u or u in seen:
+            continue
+        seen.add(u)
+        out.append(a)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def _resolve_tickers_for_names(names):
@@ -4548,7 +4679,25 @@ def run(brief_type="morning"):
         preselected = None
         preselect_directive = None
 
-    spine, floor = _select_articles_for_synthesis(articles)
+    # SUPPLY FIX (Agent SUPPLY): recover the day's tape-driver story(ies) via a
+    # narrow deterministic driver query and guarantee them a front spine slot, so
+    # the pulse's top_stories can name a major tape move even when relevance_score
+    # saturation dropped that cluster from the relevance-top-60 synthesis pool.
+    # Falls back to no injection (old behavior) on any failure.
+    _driver_candidates = []
+    try:
+        _driver_candidates = _pulse_driver_candidates(supabase, _now)
+    except Exception as _dce:
+        print(f"  ⚠ pulse driver-supply skipped (non-fatal): {_dce}")
+        _driver_candidates = []
+
+    spine, floor = _select_articles_for_synthesis(articles, guaranteed=_driver_candidates)
+    if _driver_candidates:
+        print(
+            "  🛢️ Pulse driver-supply injected "
+            f"{len(_driver_candidates)} tape-driver story(ies): "
+            + " | ".join((d.get("title") or "")[:60] for d in _driver_candidates)
+        )
     print(f"  📰 Synthesis input: {len(spine)} spine + {len(floor)} floor articles "
           f"({len(spine) + len(floor)} total, from pool of up to 60)")
 
