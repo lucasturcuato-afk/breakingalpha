@@ -267,12 +267,17 @@ def score_clusters(
     *,
     recent_events: Optional[set[str]] = None,
     mega_deal_urls: Optional[set[str]] = None,
+    mega_demote_urls: Optional[set[str]] = None,
 ) -> list[dict]:
     """Cluster the pool and score each cluster. Returns clusters sorted by score
     desc. Pure: no network. `mega_deal_urls` is the set of article urls that map
-    to a confirmed $1B+ deal_flow row (preserves the mega-deal lead path)."""
+    to a confirmed $1B+ deal_flow row (preserves the mega-deal lead path).
+    `mega_demote_urls` is the NEGATIVE cross-check set (urls whose deal_flow row
+    contradicts: unconfirmed stage or null valuation); it can only REJECT the
+    article-side guaranteed lane, never promote."""
     recent_events = recent_events or set()
     mega_deal_urls = mega_deal_urls or set()
+    mega_demote_urls = mega_demote_urls or set()
     from collections import defaultdict
 
     clusters: dict[str, list[dict]] = defaultdict(list)
@@ -288,7 +293,31 @@ def score_clusters(
         bucket = key.split(":", 1)[1] if key.startswith("macro:") else None
         is_tier1 = bucket in TIER1_BUCKETS
         is_recent = bucket in recent_events
-        is_mega = any((x.get("url") or "").strip() in mega_deal_urls for x in arts)
+        # MEGA has TWO sources:
+        #   1. deal_flow gate: a member url maps to a confirmed $1B+ deal_flow row.
+        #   2. R3 article-side GUARANTEED lane: a lead-eligible member's TITLE states
+        #      a confirmed >= $1B transaction that passes the DEALGUARD strict guard
+        #      (tight deal_type + verb-value proximity + idiom block), and whose url
+        #      is not in mega_demote_urls. Closes the dead-deal_flow-gate gap
+        #      (Arlington / Mitie / Uber have no usable row) without re-admitting the
+        #      Funding/Fundraising and market-cap false positives.
+        # The deal_flow url gate is NOT an unconditional positive: a url that the
+        # NEGATIVE cross-check flags (unconfirmed stage / null valuation) is stripped
+        # here even if confirmed_mega_deal_urls admitted it via the D12 relaxed path.
+        # This is what kills PayPal $53B (an "announced"/rejected bid the relaxed path
+        # promoted): its row contradicts, so it must re-qualify through the ARTICLE
+        # lane or not at all. A genuinely confirmed same-day deal still passes because
+        # its TITLE clears _title_confirms_transaction.
+        _url_mega = any(
+            (x.get("url") or "").strip() in mega_deal_urls
+            and (x.get("url") or "").strip() not in mega_demote_urls
+            for x in arts
+        )
+        _art_mega = any(
+            _title_confirms_transaction(x, GUARANTEED_LANE_MIN_USD_B, mega_demote_urls)
+            for x in _lead_eligible_arts(arts)
+        )
+        is_mega = _url_mega or _art_mega
 
         # D4: stale non-macro clusters take a flat penalty so accumulated breadth
         # on an old event cannot out-rank a fresh one. Tier-1 / recent-event macro
@@ -312,7 +341,8 @@ def score_clusters(
         if is_tier1:
             reasons.append("tier-1 macro")
         if is_mega:
-            reasons.append("confirmed $1B+ deal")
+            reasons.append("confirmed $1B+ deal"
+                           + ("" if _url_mega else " (article-confirmed guaranteed lane)"))
         reasons.append(f"{n_sources} distinct sources / {n_articles} articles")
         scored.append({
             "cluster_key": key,
@@ -323,6 +353,7 @@ def score_clusters(
             "is_tier1": is_tier1,
             "is_recent": is_recent,
             "is_mega_deal": is_mega,
+            "mega_via_article": bool(_art_mega and not _url_mega),
             "reason": "; ".join(reasons),
             "_articles": arts,
         })
@@ -483,6 +514,12 @@ def _cluster_lead_barred(scored_cluster: dict, now: datetime.datetime) -> bool:
 # the confirming alternative), never more; it is fail-safe by construction.
 RUMOR_BAR_CONFIRMED_DEAL_MIN_USD_B = 1.0
 
+# GUARANTEED_LANE_MIN_USD_B: value floor at which an ARTICLE-side confirmed deal is
+# admitted as a mega candidate in score_clusters even when NO deal_flow row backs it
+# (the R3 dead-deal_flow-gate gap: Arlington / Mitie / Uber all lack a usable row).
+# Same $1B floor the deal_flow mega gate uses so the two lanes agree.
+GUARANTEED_LANE_MIN_USD_B = 1.0
+
 # PRECISION: title-level word-boundary regex. Fires on forward-looking / unconfirmed
 # framing: reported deal chatter ("reportedly", "explores", "in talks", "weighing",
 # "mulls", "eyes a bid", "could acquire", "potential takeover"), stated intent
@@ -577,6 +614,143 @@ def _title_confirms_mega_deal(article: dict, min_usd_b: float) -> bool:
         return False
 
 
+# ---------------------------------------------------------------------------
+# MEGA-LANE GUARD (DEALGUARD, R3). _title_confirms_mega_deal above is loose ON
+# PURPOSE for the rumor bar. The PROMOTION lane (score_clusters -> is_mega ->
+# +MEGA_DEAL_BOOST / 1.0 confirmation) cannot tolerate that: a false positive
+# injects a fake lead. Replayed prod pools showed the loose recognizer firing on
+# ~105 of ~690 $1B+ titles at ~55% FP. This tightens the veto-branch
+# _title_confirms_transaction along three axes, all NEGATIVE (they can only
+# reject, never promote):
+#   (a) a TIGHT deal_type allow-set (M&A / LBO / asset-sale / minority-stake).
+#       Funding / Fundraising / debt-financing / offering / IPO are DROPPED:
+#       bonds, leases, capex, term loans and bitcoin buys are all filed under
+#       those types and are not transactions that should lead.
+#   (b) deal_flow STAGE / valuation as a NEGATIVE cross-check WHERE A ROW EXISTS.
+#       A row whose stage is not signed/closed (PayPal $53B "announced"/rejected
+#       bid) or whose valuation is null (the Delivery Hero Minority Stake null
+#       sibling) DEMOTES its url. deal_flow is NEVER a positive gate: 9 of 13
+#       genuine deals have no row, so absence of a row is not a contradiction.
+#   (c) verb-value PROXIMITY plus an idiom block, so "sell-off" / "buy-back" /
+#       "reason to buy" cannot pair a stray verb with an unrelated figure
+#       ("SpaceX sell-off wipes $1tn", "3 reasons to buy this $2bn stock").
+_MEGA_LANE_DEAL_TYPES = frozenset({
+    "m&a", "mergers & acquisitions", "lbo", "private equity",
+    "asset sale", "minority stake", "stake sale",
+})
+# Idiom block: value+verb co-occurrences that are NOT a transaction. Earnings-only
+# idioms (net income / per share / a quarter) are deliberately EXCLUDED here because
+# the tight deal_type allow-set already drops Earnings; leaving them in only false-
+# dropped legit M&A headlines ("... for $5B at $55 per share").
+_DEAL_IDIOM_BLOCK_RE = re.compile(
+    r"(?i)\b(sell[-\s]?off|sold\s+on|buy\s?back|repurchase|"
+    r"market\s+cap(?:italization)?|wipe[sd]?|net\s+worth|"
+    r"reasons?\s+to\s+buy|stocks?\s+to\s+buy|buy\s+the\s+dip|worth\s+buying|"
+    r"top\s+pick|buy\s+rating|reason\s+to\s+sell)\b"
+)
+# Max character gap between a $1B+ value token and a confirmed-action verb for the
+# pair to count as one transaction statement. Arlington "exits ... $1.45bn sale",
+# Mitie "agrees GBP 3.1bn takeover" and Uber "agrees to buy ... $14.8 billion" all
+# sit well inside this; a verb and a figure at opposite ends of a headline do not.
+_VERB_VALUE_MAX_GAP = 55
+
+# Lane-local rumor/preview reject. _title_confirms_mega_deal already applies the
+# shared is_rumor_or_preview_lead, but replayed pools showed rumor-framed deal copy
+# leaking into the PROMOTION lane ("...reported $53B PayPal bet", "in race to buy ...
+# - report", "Uber nears EUR 12.5bn ... FT reports"). These extra markers reject that
+# framing in the promotion lane ONLY (they never touch the shared rumor bar). The 12
+# confirmed TPs use "agrees / to acquire / closes / completes / exits / divest" and
+# are unaffected.
+_MEGA_LANE_RUMOR_RE = re.compile(
+    r"(?i)\b(report(?:s|ed|edly)?\b|nears?\b|in\s+talks|race\s+to|"
+    r"rejected\s+bid|pay\s+package|mulls?|weigh(?:s|ing)|explor(?:es|ing)|"
+    r"eyeing|potential\s+(?:bid|deal)|could\s+(?:buy|acquire))\b"
+)
+
+
+def _verb_value_proximate(title: str, min_usd_b: float) -> bool:
+    """True when a >= min_usd_b value token and a confirmed-action verb co-occur
+    within _VERB_VALUE_MAX_GAP characters in the title. Kills stray verb+figure
+    co-occurrences (a 'buy' idiom far from an unrelated market-cap number). Never
+    raises."""
+    try:
+        big_vals: list[tuple[int, int]] = []
+        for m in _TEXT_DEAL_VALUE_RE.finditer(title):
+            v = float(m.group(1))
+            if m.group(2).lower().startswith("t"):
+                v *= 1000.0
+            if v >= min_usd_b:
+                big_vals.append((m.start(), m.end()))
+        if not big_vals:
+            return False
+        verbs = [(m.start(), m.end()) for m in _CONFIRMED_DEAL_VERB_RE.finditer(title)]
+        if not verbs:
+            return False
+        for vs, ve in big_vals:
+            for bs, be in verbs:
+                gap = (vs - be) if vs >= be else (bs - ve)
+                if gap <= _VERB_VALUE_MAX_GAP:
+                    return True
+        return False
+    except Exception:
+        return False
+
+
+def _title_confirms_transaction(article: dict, min_usd_b: float,
+                                demote_urls: Optional[set] = None) -> bool:
+    """STRICT confirmed-transaction test for the mega PROMOTION lane (DEALGUARD).
+    Beyond _title_confirms_mega_deal it requires ALL of:
+      (a) a valuation-bearing deal_type in the TIGHT _MEGA_LANE_DEAL_TYPES set
+          (M&A / LBO / asset-sale / minority-stake). Funding / Fundraising / IPO /
+          offering / debt-financing are rejected outright.
+      (b) the url is NOT in demote_urls (a deal_flow row that contradicts: stage
+          not signed/closed, or null valuation). Absence of a row never demotes.
+      (c) no idiomatic value+verb co-occurrence AND a proximate $1B+ value+verb
+          pair (verb-value proximity).
+    Arlington, Mitie, Uber/Delivery Hero, CBIZ, TransDigm etc. pass; PayPal $53B
+    (announced), the Delivery Hero null sibling, bond/loan/bitcoin 'Funding' rows
+    and market-cap idioms are all rejected. Never raises."""
+    try:
+        dt = str(article.get("deal_type") or "").strip().lower()
+        if dt not in _MEGA_LANE_DEAL_TYPES:
+            return False
+        url = str(article.get("url") or "").strip()
+        if demote_urls and url in demote_urls:
+            return False
+        title = str(article.get("title") or "")
+        if _DEAL_IDIOM_BLOCK_RE.search(title):
+            return False
+        if _MEGA_LANE_RUMOR_RE.search(title):
+            return False
+        if not _verb_value_proximate(title, min_usd_b):
+            return False
+        return _title_confirms_mega_deal(article, min_usd_b)
+    except Exception:
+        return False
+
+
+def _mega_demote_urls_from_rows(deal_rows: list[dict]) -> set:
+    """NEGATIVE cross-check builder. Given deal_flow rows, return the set of
+    source_urls whose row CONTRADICTS a confirmed $1B+ transaction: stage not in
+    CONFIRMED_STAGES (signed/closed), or a null/unparseable valuation. Used only
+    to DEMOTE the article-side promotion lane where a row exists. deal_flow is
+    never a positive gate (9 of 13 genuine deals have no row). Never raises."""
+    out: set = set()
+    try:
+        import lead_preselect as lp
+        for d in deal_rows or []:
+            url = str(d.get("source_url") or "").strip()
+            if not url:
+                continue
+            v = lp.parse_valuation_to_usd_b(d.get("valuation"))
+            stage = str(d.get("stage") or "").strip().lower()
+            if v is None or stage not in lp.CONFIRMED_STAGES:
+                out.add(url)
+    except Exception as e:
+        logger.warning("impact_ranking: mega_demote_urls failed: %s", e)
+    return out
+
+
 def is_rumor_or_preview_lead(article: dict) -> bool:
     """True when the article is a forward-looking / unconfirmed (rumor or preview)
     story. Deterministic, title-level, no LLM. Used to make such stories INELIGIBLE
@@ -663,6 +837,7 @@ def compute_shadow_lead(
     *,
     asof_date: Optional[datetime.date] = None,
     mega_deal_urls: Optional[set[str]] = None,
+    mega_demote_urls: Optional[set[str]] = None,
 ) -> Optional[dict]:
     """Return the market-impact shadow lead, or None on empty input. Never raises.
     Result keys: article, cluster_key, score, reason, breadth, top_clusters.
@@ -679,7 +854,8 @@ def compute_shadow_lead(
             return None
         asof_date = asof_date or now.date()
         recent = recent_tier1_events(asof_date)
-        scored = score_clusters(pool, now, recent_events=recent, mega_deal_urls=mega_deal_urls)
+        scored = score_clusters(pool, now, recent_events=recent, mega_deal_urls=mega_deal_urls,
+                                mega_demote_urls=mega_demote_urls)
         if not scored:
             return None
         # L2 gate is computed ONCE over the full scored field, then applied per
@@ -1056,6 +1232,7 @@ def compute_materiality_lead(
     name_session_pct: Optional[dict] = None,
     prior_lead_title: Optional[str] = None,
     mega_deal_urls: Optional[set[str]] = None,
+    mega_demote_urls: Optional[set[str]] = None,
     asof_date: Optional[datetime.date] = None,
 ) -> Optional[dict]:
     """Tape-aware materiality re-rank of the coverage pool. PURE: tape + per-name
@@ -1071,7 +1248,8 @@ def compute_materiality_lead(
             return None
         asof_date = asof_date or now.date()
         recent = recent_tier1_events(asof_date)
-        scored = score_clusters(pool, now, recent_events=recent, mega_deal_urls=mega_deal_urls)
+        scored = score_clusters(pool, now, recent_events=recent, mega_deal_urls=mega_deal_urls,
+                                mega_demote_urls=mega_demote_urls)
         if not scored:
             return None
         base_top_key = scored[0]["cluster_key"]
@@ -1560,6 +1738,7 @@ def compute_unified_lead(
     tape: Optional[dict] = None,
     name_session_pct: Optional[dict] = None,
     mega_deal_urls: Optional[set[str]] = None,
+    mega_demote_urls: Optional[set[str]] = None,
     asof_date: Optional[datetime.date] = None,
     always_include_clusters: Optional[set[str]] = None,
 ) -> Optional[dict]:
@@ -1589,7 +1768,8 @@ def compute_unified_lead(
         asof_date = asof_date or now.date()
         recent = recent_tier1_events(asof_date)
         scored = score_clusters(pool, now, recent_events=recent,
-                                mega_deal_urls=mega_deal_urls)
+                                mega_deal_urls=mega_deal_urls,
+                                mega_demote_urls=mega_demote_urls)
         if not scored:
             return None
         driver_names = _driver_names_from_moves(name_session_pct)
@@ -1864,6 +2044,19 @@ def _mega_deal_urls(sb, now: datetime.datetime) -> set[str]:
         return set()
 
 
+def _mega_demote_urls(sb, now: datetime.datetime) -> set[str]:
+    """Live builder for the NEGATIVE cross-check set. Reuse lead_preselect's
+    deal_flow fetch, then flag urls whose row contradicts a confirmed $1B+
+    transaction (_mega_demote_urls_from_rows). Read-only; never raises."""
+    try:
+        import lead_preselect as lp
+        deal_rows = lp.fetch_recent_deal_flow(sb, hours=48, limit=300)
+        return _mega_demote_urls_from_rows(deal_rows)
+    except Exception as e:
+        logger.warning("impact_ranking: _mega_demote_urls failed: %s", e)
+        return set()
+
+
 def shadow_compare(sb, live_lead_title: str, now: datetime.datetime,
                    *, asof_date: Optional[datetime.date] = None) -> dict:
     """Compute the SHADOW impact lead and a divergence record vs the live lead.
@@ -1872,7 +2065,8 @@ def shadow_compare(sb, live_lead_title: str, now: datetime.datetime,
     try:
         pool = fetch_coverage_pool(sb, now)
         res = compute_shadow_lead(pool, now, asof_date=asof_date or now.date(),
-                                  mega_deal_urls=_mega_deal_urls(sb, now))
+                                  mega_deal_urls=_mega_deal_urls(sb, now),
+                                  mega_demote_urls=_mega_demote_urls(sb, now))
         if not res:
             return {"shadow_lead_title": None, "shadow_pool_size": len(pool)}
         new_title = str(res["article"].get("title") or "").strip()

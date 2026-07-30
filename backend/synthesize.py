@@ -4566,7 +4566,9 @@ def run(brief_type="morning"):
             _pool = impact_ranking.fetch_coverage_pool(supabase, _now)
             _impact = (
                 impact_ranking.compute_lead(
-                    _pool, _now, mega_deal_urls=impact_ranking._mega_deal_urls(supabase, _now)
+                    _pool, _now,
+                    mega_deal_urls=impact_ranking._mega_deal_urls(supabase, _now),
+                    mega_demote_urls=impact_ranking._mega_demote_urls(supabase, _now),
                 )
                 if _pool else None
             )
@@ -4640,6 +4642,7 @@ def run(brief_type="morning"):
                     tape=_materiality_tape,
                     name_session_pct=_u_name_moves,
                     mega_deal_urls=_uir._mega_deal_urls(supabase, _now),
+                    mega_demote_urls=_uir._mega_demote_urls(supabase, _now),
                 )
                 try:
                     _uni = _uir.compute_unified_lead(
@@ -4837,6 +4840,7 @@ def run(brief_type="morning"):
                     name_session_pct=_name_moves,
                     prior_lead_title=_prior_lead,
                     mega_deal_urls=_ir._mega_deal_urls(supabase, _now),
+                    mega_demote_urls=_ir._mega_demote_urls(supabase, _now),
                 ) if _pool else None
                 if _mat and _mat.get("article"):
                     _mat_title = str(_mat["article"].get("title") or "")[:200]
