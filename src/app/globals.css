@@ -496,12 +496,37 @@ html.dark .skeleton-shimmer {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* The committed edge. Present whenever a call is tracked, including on a fresh
-   mount from server data, so persistence is visible and not just animated in. */
+/* The committed edge. Now the card's OWN left spine (ScoredObject swaps it to
+   gold when committed), so the accent belongs to the object instead of a
+   wrapper drawn around it. Present on a fresh mount from server data too, so
+   persistence is visible and not just animated in. */
+.scored-object-spine {
+  transition: background-color var(--duration-base) var(--ease-out);
+}
+
+/* Retained for any surface still wrapping a tracked card. New code should pass
+   `committed` to ScoredObject instead. */
 .call-tracked-edge {
   border-left: 2px solid var(--gold);
   padding-left: 8px;
   transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+/* ── Added to Radar, peripherally ──
+   A brief gold wash on the Radar nav row when a call lands. This is the
+   confirmation: no banner, no toast, nothing to dismiss. One pass, then gone. */
+.radar-nav-pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--gold);
+  animation: radar-nav-pulse var(--duration-slow) var(--ease-out) 2 alternate both;
+}
+@keyframes radar-nav-pulse {
+  from { opacity: 0; }
+  to { opacity: 0.16; }
 }
 
 /* Consolidated reduced-motion fallbacks */
@@ -511,6 +536,10 @@ html.dark .skeleton-shimmer {
   .call-stamp-collapse { animation: none; opacity: 1; }
   .call-stamp-in { animation: none; opacity: 1; transform: none; }
   .call-tracked-edge { transition: none; }
+  /* The end state, instantly. Not a slower transition: reduced motion means the
+     gold spine is simply already gold and the pulse never renders at all. */
+  .scored-object-spine { transition: none; }
+  .radar-nav-pulse::after { animation: none; content: none; }
   .brand-mark-pulse { animation: none; opacity: 1; }
   .bar-sweep-in { animation: none; }
   .card-hover-lift { transition: none; }

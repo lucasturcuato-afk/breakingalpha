@@ -22,6 +22,8 @@
  * like a still-pending Open either.
  */
 
+import type { ReactNode } from "react";
+
 export type ScoredState = "open" | "right" | "wrong" | "inconclusive" | "notGraded";
 
 export interface ScoredObjectProps {
@@ -66,6 +68,21 @@ export interface ScoredObjectProps {
    * "No price data for the session." Rendered muted; never a verdict.
    */
   notGradedReason?: string;
+
+  // ── Commitment (presentation only) ──
+  /**
+   * Rendered inside the card, below a rule, as the card's footer. This is where
+   * the commit affordance lives: the card is the unit, and an affordance
+   * floating in the gutter above a separately bordered card reads as debug UI
+   * rather than as part of the object.
+   */
+  footer?: ReactNode;
+  /**
+   * The reader has committed to this call. Swaps the left spine to the same
+   * gold a scored card reserves for its seal, so the edge says "this one is on
+   * your record" at a glance. Purely visual: it changes no verdict state.
+   */
+  committed?: boolean;
 }
 
 /** Verdict-state spine + verdict-word color, mapped to existing tokens (spec §3, Rule B). */
@@ -91,7 +108,9 @@ export function ScoredObject(props: ScoredObjectProps) {
   const { state, sector, claim } = props;
   const isOpen = state === "open";
   const isNotGraded = state === "notGraded";
-  const spine = STATE_COLOR[state];
+  // A committed call takes the gold edge. Everything else keeps its verdict
+  // spine, so the accent never overwrites what reality said.
+  const spine = props.committed ? "var(--gold)" : STATE_COLOR[state];
 
   return (
     <article
@@ -101,7 +120,7 @@ export function ScoredObject(props: ScoredObjectProps) {
       {/* Left spine — 3px, full height, verdict-state color. Not rounded. */}
       <span
         aria-hidden
-        className="absolute left-0 top-0 bottom-0 w-[3px]"
+        className="scored-object-spine absolute left-0 top-0 bottom-0 w-[3px]"
         style={{ backgroundColor: spine }}
       />
 
@@ -238,6 +257,14 @@ export function ScoredObject(props: ScoredObjectProps) {
             )}
           </div>
         )}
+
+        {/* Footer: the commit affordance, inside the card it belongs to. */}
+        {props.footer ? (
+          <>
+            <hr className="mt-3 mb-3 border-t border-border-subtle" />
+            <div data-testid="scored-object-footer">{props.footer}</div>
+          </>
+        ) : null}
       </div>
     </article>
   );
