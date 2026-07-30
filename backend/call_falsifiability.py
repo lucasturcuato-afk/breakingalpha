@@ -234,9 +234,37 @@ PROXY_MAP: tuple[tuple[str, str, str], ...] = (
     (r"\b(?:real\s+estate|reits?)\b", "XLRE", "sector"),
     (r"\b(?:utilities)\b", "XLU", "sector"),
     (r"\b(?:communication\s+services|media\s+sector|telecom)\b", "XLC", "sector"),
-    # Broad market, last: it is the fallback, not a first read.
-    (r"\b(?:s&p|s\s*&\s*p\s*500|spx|broad\s+market|equity\s+markets?|equities|"
-     r"stock\s+market)\b", "SPY", "index"),
+    # A NAMED index, last: it is the fallback, not a first read. Only tokens
+    # that name the instrument itself survive here. "broad market", "equities"
+    # and "stock market" were removed: see _BROAD_MARKET_NON_SUBJECTS below for
+    # why naming the market as a whole is not a priceable subject.
+    (r"\b(?:s&p|s\s*&\s*p\s*500|spx)\b", "SPY", "index"),
+)
+
+#: Collective nouns for the market as a whole. These name NO instrument.
+#:
+#: "Equities stay volatile" is not the claim "SPY moves more than X in the
+#: predicted direction", and reshaping it onto SPY invents a target the claim
+#: never made, then grades it confidently against a bar nobody set. That is
+#: worse than dropping the call: an ungradable claim is honest about its own
+#: limits, a mis-shaped one is not.
+#:
+#: The live record agrees. Across 26 graded aggregate calls: ZERO clean reads,
+#: 18 ungradable. The claim type has never once resolved cleanly.
+#:
+#: Matched ONLY to explain the drop in the run log. They are deliberately absent
+#: from PROXY_MAP, so a claim reaching here has no listed proxy and is rejected
+#: either way; this just says why in words a human can act on.
+_BROAD_MARKET_NON_SUBJECTS: tuple[str, ...] = (
+    r"\bbroad\s+market\b",
+    r"\bequity\s+markets?\b",
+    r"\bequities\b",
+    r"\bstock\s+market\b",
+    r"\bstocks\b",
+    r"\bthe\s+market\b",
+    r"\bmarkets\b",
+    r"\brisk\s+(?:assets|appetite|sentiment)\b",
+    r"\binvestor\s+sentiment\b",
 )
 
 #: Proxies whose price moves OPPOSITE to the quantity the claim is about. A
@@ -486,6 +514,14 @@ def evaluate_claim(claim: dict) -> Verdict:
     if not priceable:
         proxy = find_proxy(text)
         if proxy is None:
+            vague = _any(_BROAD_MARKET_NON_SUBJECTS, text.lower())
+            if vague:
+                return Verdict(
+                    REJECT, out,
+                    f"names the market as a whole ({vague!r}), which is not a "
+                    "priceable subject; a broad-index proxy would invent a target "
+                    "the claim never made",
+                )
             return Verdict(
                 REJECT, out,
                 "no priceable target and no listed proxy matches the claim",

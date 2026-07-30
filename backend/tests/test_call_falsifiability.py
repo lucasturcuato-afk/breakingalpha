@@ -263,11 +263,35 @@ class TestReshapeBeforeReject(unittest.TestCase):
         self.assertEqual(REJECT, v2.status)
         self.assertIn("no listed proxy", v2.reason)
 
-    def test_aggregate_with_a_symbol_is_reshaped_to_a_priceable_type(self):
+    def test_aggregate_naming_the_whole_market_is_dropped_not_reshaped(self):
+        """Contract CHANGED. This test previously asserted the opposite.
+
+        An aggregate claim about the market as a whole used to be reshaped onto
+        SPY/index and kept. It is now dropped: "the broad market grinds higher"
+        is not the claim "SPY moves more than X", and carrying an invented
+        target into the grader produces a confident verdict against a bar the
+        claim never set. The live record backs this up: 26 graded aggregate
+        calls, zero clean reads, 18 ungradable.
+
+        A claim that NAMES an index still reshapes; see
+        test_a_named_index_still_reshapes below.
+        """
         v = evaluate_claim({
             "claim_text": "The broad market grinds higher into the close.",
             "claim_type": "aggregate",
             "target_symbol": "SPY",
+            "expected_direction": "bullish",
+            "horizon_type": "session",
+        })
+        self.assertFalse(v.kept)
+        self.assertIn("market as a whole", v.reason)
+
+    def test_a_named_index_still_reshapes(self):
+        """The line held: naming an instrument is not naming the market."""
+        v = evaluate_claim({
+            "claim_text": "The S&P 500 grinds higher into the close.",
+            "claim_type": "aggregate",
+            "target_symbol": None,
             "expected_direction": "bullish",
             "horizon_type": "session",
         })
@@ -335,9 +359,22 @@ class TestProxyMapOrdering(unittest.TestCase):
         self.assertEqual(("SMH", "sector"), find_proxy("Semiconductors lead the tape."))
         self.assertEqual(("XHB", "sector"), find_proxy("Homebuilders slide on rates."))
 
-    def test_broad_market_is_the_last_read(self):
+    def test_named_index_is_the_last_read(self):
+        # A specific sector still beats the broad-index read.
         self.assertEqual(("XLE", "sector"), find_proxy("Energy leads the broad market higher."))
-        self.assertEqual(("SPY", "index"), find_proxy("The broad market grinds higher."))
+        # NAMED index: still the last read, still a legitimate reshape.
+        self.assertEqual(("SPY", "index"), find_proxy("The S&P 500 grinds higher."))
+
+    def test_the_market_as_a_whole_is_no_longer_a_proxy(self):
+        """Contract CHANGED. "The broad market" used to map to SPY.
+
+        Collective nouns for the market name no instrument, so there is nothing
+        to reshape onto without inventing the target. They were removed from
+        PROXY_MAP; see _BROAD_MARKET_NON_SUBJECTS for the drop reason."""
+        for text in ["The broad market grinds higher.", "Equities grind higher.",
+                     "The stock market grinds higher.", "Equity markets grind higher."]:
+            with self.subTest(text):
+                self.assertIsNone(find_proxy(text))
 
     def test_no_keyword_means_no_proxy(self):
         self.assertIsNone(find_proxy("Deal announcements accelerate."))
