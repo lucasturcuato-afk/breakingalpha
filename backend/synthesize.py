@@ -5116,8 +5116,15 @@ def run(brief_type="morning"):
     _catalyst_block = ""
     try:
         import event_calendar
-        _cat_asof = (datetime.now(timezone.utc) - timedelta(hours=5)).date()
-        catalyst_list = event_calendar.get_catalysts(_cat_asof, brief_type)
+        from zoneinfo import ZoneInfo
+        # Clock-bearing ET timestamp (not a bare date): event-resolution state needs
+        # the CLOCK so a same-day decision whose 2:00pm ET time has passed reads
+        # "earlier today" with its outcome, never "due today" at 10:31pm.
+        _cat_asof = datetime.now(timezone.utc).astimezone(ZoneInfo("America/New_York"))
+        # The brief's own corpus (spine + floor) sources the FOMC decision + tone,
+        # which has no FRED series; recon confirmed the outcome is in the pool.
+        catalyst_list = event_calendar.get_catalysts(
+            _cat_asof, brief_type, articles=(spine + floor))
         if catalyst_list:
             _catalyst_block = event_calendar.build_catalyst_block(catalyst_list, _cat_asof, brief_type)
             print(f"  🗓 Prepared {len(catalyst_list)} scheduled catalyst(s)")
