@@ -2827,6 +2827,214 @@ def _pulse_extra_tape_block(tape):
     return "\n".join(lines)
 
 
+# --- MARKET_PULSE driver signal (R2) -----------------------------------------
+# Named, tunable thresholds for a DETERMINISTIC "is there a real catalyst on the
+# tape today" signal, computed from inputs the pulse ALREADY receives at call
+# time (the tape enrichment + the top-story titles). This replaces
+# macro_is_release_day as the SOLE gate for the pulse's macro framing. The old
+# gate asserted "no fresh catalyst on the tape" whenever no FRED release printed,
+# even while the SAME prompt carried WTI +7.75% and a ~6.9pt sector-ETF spread.
+# A >5% crude move with a named oil story IS a catalyst; a wide sector spread IS
+# a catalyst. These constants make the bar auditable, not a magic number.
+#
+# Commodity: a WTI day move at/above this absolute % is an energy catalyst. Crude
+# runs a ~2% daily 1-sigma, so 5% is ~2.5 sigma - unambiguously the tape's driver,
+# not noise. Session-independent: a 5% crude move is a shock whenever it prints.
+PULSE_WTI_CATALYST_ABS_PCT = 5.0
+# Sector rotation: a leader-minus-laggard sector-ETF spread at/above this many
+# points is a rotation catalyst. A typical quiet day runs ~1-2pt of sector chop;
+# 4.0pt separates a genuine risk-on/off rotation from chop (a 6.9pt spread clears
+# it comfortably). Session-independent: a spread is a spread at any hour.
+PULSE_SECTOR_DISPERSION_PTS = 4.0
+# VIX: an absolute daily VIX % change at/above this is a volatility-repricing
+# catalyst. Aligned with market_tape.MATERIALITY_VIX_ABS_PCT (8.0) - the same bar
+# the tape layer already calls a material VIX day. Session-independent.
+PULSE_VIX_CATALYST_ABS_PCT = 8.0
+# Index move as a "decisive session" signal is SESSION-AWARE, because the same
+# index % means different things at 9:45 AM and 4:00 PM. A 0.5% move at the open
+# is partial, noisy, still-forming; the same move at the close is a settled
+# directional verdict. So MORNING demands a LARGER move to count as decisive
+# (early moves are noisier and incomplete) and EVENING accepts a more modest
+# settled move (the number is final). The morning bar being higher matters: the
+# no-catalyst clause misfires disproportionately in MORNING pulses, so a static
+# threshold would misjudge exactly where the defect lives. This gate does NOT
+# name the move as its own cause (that is the #463 tautology); it only tells the
+# honest-no-driver branch NOT to call a decisively-moving tape "quiet".
+PULSE_INDEX_DRIVER_ABS_PCT_MORNING = 1.25
+PULSE_INDEX_DRIVER_ABS_PCT_EVENING = 0.75
+
+# Story-title keywords that corroborate a commodity catalyst (a named oil/energy
+# story in the pool alongside a big crude move). Corroboration only; a >5% WTI
+# move qualifies on its own.
+_PULSE_OIL_STORY_KEYWORDS = (
+    "oil", "crude", "wti", "brent", "opec", "petroleum", "refiner", "refining",
+    "energy prices", "gasoline", "barrel",
+)
+
+
+def _pulse_driver_signal(tape, top_stories, brief_type):
+    """Deterministic detection of whether a REAL, nameable catalyst is on the
+    tape today, from inputs the pulse ALREADY receives. This is an INPUT signal
+    for the prompt framing, NOT a post-hoc veto: it decides what the model is
+    TOLD, never what it wrote. Pure; tolerant of dict-or-scalar field shapes.
+
+    Returns a dict:
+      has_driver    : bool  - at least one concrete external force is present.
+      decisive_move : bool  - the index tape is moving decisively for the session
+                              (session-aware); used only to keep the honest branch
+                              from calling a moving tape "quiet".
+      drivers       : [str] - short human labels for each detected force, already
+                              carrying the sourced figure so the framing can name
+                              them (every figure here is in the grounding
+                              supported set: WTI/sector via the #461 enrichment,
+                              VIX/index via the tape quotes).
+    """
+    out = {"has_driver": False, "decisive_move": False, "drivers": []}
+    if not isinstance(tape, dict):
+        return out
+    view = _enrichment_view(tape)
+    drivers = []
+
+    # 1) Commodity: a large WTI day move. Corroborated (not gated) by a named oil
+    #    story in the pool.
+    wti = view.get("wti")
+    wti_pct = None
+    if isinstance(wti, dict):
+        try:
+            wti_pct = float(wti.get("pct")) if wti.get("pct") is not None else None
+        except (TypeError, ValueError):
+            wti_pct = None
+    if wti_pct is not None and abs(wti_pct) >= PULSE_WTI_CATALYST_ABS_PCT:
+        titles = " ".join(
+            (s.get("title") or "") for s in (top_stories or []) if isinstance(s, dict)
+        ).lower()
+        has_oil_story = any(k in titles for k in _PULSE_OIL_STORY_KEYWORDS)
+        label = f"a {wti_pct:+.2f}% move in WTI crude (energy is the tape's driver)"
+        if has_oil_story:
+            label += " with a named oil story in the pool"
+        drivers.append(label)
+
+    # 2) Sector rotation: a wide leader-minus-laggard sector-ETF spread.
+    def _pcts(key):
+        vals = []
+        for s in (view.get(key) or []):
+            if isinstance(s, dict) and s.get("pct") is not None:
+                try:
+                    vals.append((
+                        (s.get("name") or s.get("sector") or s.get("label") or "").strip(),
+                        float(s["pct"]),
+                    ))
+                except (TypeError, ValueError):
+                    pass
+        return vals
+    leaders = _pcts("sector_leaders")
+    laggards = _pcts("sector_laggards")
+    if leaders and laggards:
+        top_name, top_pct = max(leaders, key=lambda x: x[1])
+        bot_name, bot_pct = min(laggards, key=lambda x: x[1])
+        spread = top_pct - bot_pct
+        if spread >= PULSE_SECTOR_DISPERSION_PTS:
+            drivers.append(
+                f"a sharp sector rotation ({top_name} {top_pct:+.2f}% vs "
+                f"{bot_name} {bot_pct:+.2f}%, a {spread:.1f}pt spread)"
+            )
+
+    # 3) VIX: a large day move in the volatility index (a risk repricing).
+    vix_q = ((tape.get("quotes") or {}).get("^VIX")) if isinstance(tape, dict) else None
+    vix_pct = None
+    if isinstance(vix_q, dict):
+        try:
+            vix_pct = float(vix_q.get("pct")) if vix_q.get("pct") is not None else None
+        except (TypeError, ValueError):
+            vix_pct = None
+    if vix_pct is not None and abs(vix_pct) >= PULSE_VIX_CATALYST_ABS_PCT:
+        drivers.append(
+            f"a {vix_pct:+.2f}% move in the VIX (a volatility repricing)"
+        )
+
+    # 4) Index move: SESSION-AWARE decisive-session flag (never named as its own
+    #    cause). Suppresses the "quiet trading" wording in the honest branch.
+    thresh = (
+        PULSE_INDEX_DRIVER_ABS_PCT_EVENING if brief_type == "evening"
+        else PULSE_INDEX_DRIVER_ABS_PCT_MORNING
+    )
+    quotes = (tape.get("quotes") or {}) if isinstance(tape, dict) else {}
+    idx_moves = []
+    for sym in ("^GSPC", "^IXIC", "^RUT"):
+        q = quotes.get(sym)
+        if isinstance(q, dict) and q.get("pct") is not None:
+            try:
+                idx_moves.append(abs(float(q["pct"])))
+            except (TypeError, ValueError):
+                pass
+    decisive = bool(idx_moves) and max(idx_moves) >= thresh
+
+    out["drivers"] = drivers
+    out["has_driver"] = bool(drivers)
+    out["decisive_move"] = decisive
+    return out
+
+
+def _pulse_macro_framing(macro_is_release_day, driver_signal):
+    """R2: build the pulse's MACRO FRAMING clause. macro_is_release_day is NO
+    LONGER the sole gate. THREE framings, keyed on (a) whether a dated macro
+    release printed today AND (b) the deterministic driver signal computed from
+    the SAME inputs this prompt already carries (tape enrichment + story titles).
+
+    The old two-way gate mandated 'no fresh catalyst on the tape' whenever no FRED
+    release printed, contradicting its own inputs (WTI +7.75%, a ~6.9pt sector
+    spread). Now:
+      1. release-day print  -> the release IS the catalyst (unchanged).
+      2. non-release driver -> name the tape driver; it IS the catalyst.
+      3. genuinely no driver -> say so honestly (PRESERVED so the model never
+         manufactures a catalyst; that reintroduces the #463 tautology).
+
+    Every figure the driver framing names (WTI / sector-ETF / VIX / index %) is
+    already in the pulse grounding supported set, so this adds NO ungrounded term.
+    Returns (framing_text, branch_name). Pure; testable offline."""
+    if macro_is_release_day:
+        return (
+            "MACRO FRAMING: a major economic release dropped TODAY (tagged 'RELEASED "
+            "TODAY' in the strip). It IS the day's catalyst - lead paragraph 1 with it "
+            "and the market's reaction to it, tied to the tape."
+        ), "release_day"
+    if driver_signal.get("has_driver"):
+        _driver_phrase = "; ".join(driver_signal.get("drivers") or [])
+        return (
+            "MACRO FRAMING (NO dated macro release today, but a REAL tape driver IS "
+            "present - it is your catalyst): no economic print dropped today, so do NOT "
+            "recite the standing macro figures. But the tape is NOT quiet: the "
+            f"deterministic driver signal names {_driver_phrase}. THIS is the day's "
+            "catalyst - lead sentence one with it (the concrete force + the indices, "
+            "together), tied to the tape. FORBIDDEN on a driver day: the 'no fresh "
+            "catalyst on the tape' / 'quiet trading' clause - it directly contradicts "
+            "the driver above and is the exact defect this framing fixes. Cite the "
+            "driver's figure EXACTLY as given (it is sourced from the tape); do not "
+            "round it away or restate the equity move as its own cause."
+        ), "non_release_driver"
+    _quiet_clause = (
+        "the session is moving but no single external catalyst is on the tape; "
+        "do NOT call it 'quiet' - lead with the strongest concrete force present "
+        "(sector leadership, rates, or oil) or the top corporate story"
+        if driver_signal.get("decisive_move") else
+        "with no fresh catalyst on the tape"
+    )
+    return (
+        "MACRO FRAMING (NO release today AND no tape driver, be COMPACT): NO major "
+        "economic release dropped today and the deterministic driver signal found "
+        "no commodity, sector-rotation, or volatility catalyst. State that plainly "
+        f"as a CLAUSE in sentence one (the honest why: '{_quiet_clause}'), then MOVE "
+        "ON. Do NOT recite the standing macro figures: the backdrop earns at most a "
+        "single short clause ('last week's soft-landing jobs read still underpins "
+        "sentiment'), NEVER a roll-call of prints (payrolls, unemployment, CPI, "
+        "PCE). Those figures moved nobody today; naming four of them buries the real "
+        "story. Never say investors are digesting, reacting to, or awaiting a dated "
+        "print today. On a no-catalyst day the SECTOR read and rates/oil ARE the "
+        "story - spend the space there. Do NOT manufacture a catalyst; an honest "
+        "no-catalyst line beats a fake why."
+    ), "honest_no_driver"
+
+
 def _narrative_carries_enrichment(narrative, tape, today_catalyst=None):
     """Observability (decision-log `enrichment_in_shipped`): True when the SHIPPED
     narrative actually surfaces the tape's #461 enrichment (rates 10Y / oil-WTI /
@@ -3249,24 +3457,10 @@ def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None,
     stories_block = "\n".join(story_lines) if story_lines else "(no ranked stories)"
     macro_block = macro.strip() if isinstance(macro, str) and macro.strip() else "(no fresh macro prints)"
     prior_block = (prior_ctx or "").strip()
-    if macro_is_release_day:
-        macro_framing = (
-            "MACRO FRAMING: a major economic release dropped TODAY (tagged 'RELEASED "
-            "TODAY' in the strip). It IS the day's catalyst - lead paragraph 1 with it "
-            "and the market's reaction to it, tied to the tape."
-        )
-    else:
-        macro_framing = (
-            "MACRO FRAMING (NO release today, be COMPACT): NO major economic release "
-            "dropped today. State that plainly as a CLAUSE in sentence one (the honest "
-            "why: 'with no fresh catalyst on the tape'), then MOVE ON. Do NOT recite the "
-            "standing macro figures: the backdrop earns at most a single short clause "
-            "('last week's soft-landing jobs read still underpins sentiment'), NEVER a "
-            "roll-call of prints (payrolls, unemployment, CPI, PCE). Those figures moved "
-            "nobody today; naming four of them buries the real story. Never say investors "
-            "are digesting, reacting to, or awaiting a dated print today. On a no-catalyst "
-            "day the SECTOR read and rates/oil ARE the story - spend the space there."
-        )
+    driver_signal = _pulse_driver_signal(tape, top_stories, brief_type)
+    macro_framing, _pulse_framing_branch = _pulse_macro_framing(
+        macro_is_release_day, driver_signal
+    )
     extra_block = (
         f"ADDITIONAL TAPE (rates / oil / sector leadership / breadth - fetched facts, "
         f"do not invent):\n{extra_tape}\n\n"
