@@ -34,6 +34,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          HORIZON_GRADING_MODE: ${{ vars.HORIZON_GRADING_MODE }}
         run: python -m backend.grading.grade_brief_calls
 
       - name: Grade due user claims
