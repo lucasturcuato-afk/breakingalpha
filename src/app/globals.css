@@ -534,6 +534,16 @@ html.dark #dash-cursor-glow {
 .dash-intro-el { animation: dash-intro-up 640ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 .dash-mark-glow { animation: dash-mark-glow 2.2s ease-in-out infinite; }
 
+/* Track-record bars grow up on mount (staggered via inline animation-delay). */
+@keyframes dash-bar-grow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+.dash-bar {
+  transform-origin: bottom;
+  animation: dash-bar-grow 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .dash-contentwrap,
   .dash-rise {
@@ -547,6 +557,7 @@ html.dark #dash-cursor-glow {
   #dash-cursor-glow { display: none !important; }
   .dash-intro { display: none !important; }
   .dash-mark-glow { animation: none !important; }
+  .dash-bar { animation: none !important; transform: none !important; }
 }
 
 /*

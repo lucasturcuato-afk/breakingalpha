@@ -5,6 +5,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { DashTile } from "@/components/dashboard/dash-tile";
+import { CallRecord } from "@/components/dashboard/call-record";
 import {
   Greeting,
   StatCard,
@@ -622,8 +623,11 @@ export default function DashboardPage() {
         {/* Radar row — The Watch (watchlist feed) + Your calls (active theses) */}
         <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-[18px] items-start">
           <WatchlistFeed riseDelay={120} />
-          <DashTile title="Your calls" subtitle="your open theses" riseDelay={180}>
-            <ActiveThesesWidget />
+          <DashTile title="Your calls" subtitle="graded track record" riseDelay={180}>
+            <CallRecord />
+            <div className="mt-4 pt-4 border-t border-border-subtle">
+              <ActiveThesesWidget />
+            </div>
           </DashTile>
         </div>
 
