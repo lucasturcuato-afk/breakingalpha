@@ -26,7 +26,7 @@ function timeAgo(iso: string | null): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-export function WatchlistFeed() {
+export function WatchlistFeed({ riseDelay = 0 }: { riseDelay?: number } = {}) {
   const [articles, setArticles] = useState<WatchlistArticle[]>([]);
   const [identifiers, setIdentifiers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +49,10 @@ export function WatchlistFeed() {
 
   if (loading) {
     return (
-      <div className="bg-parchment dark:bg-elevated border border-border-base rounded-2xl p-5">
+      <div
+        className="dash-tile dash-rise bg-white border border-border-base rounded-[28px_28px_28px_10px] p-5 md:p-6"
+        style={{ animationDelay: `${riseDelay}ms` }}
+      >
         <div className="animate-pulse space-y-3">
           <div className="h-4 bg-parchment-mid rounded w-1/3" />
           <div className="h-3 bg-parchment-mid rounded w-full" />
@@ -62,16 +65,22 @@ export function WatchlistFeed() {
   if (identifiers.length === 0) return null;
 
   return (
-    <div className="bg-parchment dark:bg-elevated border border-border-base rounded-2xl p-5">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Eye size={14} className="text-gold" />
-          <h3 className="font-display text-[15px] font-bold text-espresso inline-flex items-center gap-1.5">
-            Watchlist Feed
+    <div
+      className="dash-tile dash-rise bg-white border border-border-base rounded-[28px_28px_28px_10px] p-5 md:p-6"
+      style={{ animationDelay: `${riseDelay}ms` }}
+    >
+      <div className="flex items-baseline justify-between gap-3 border-b-[1.5px] border-[color:var(--espresso)] pb-2.5 mb-3.5">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <Eye size={14} className="text-gold self-center" />
+          <h3 className="font-display text-[18px] font-medium text-espresso m-0 inline-flex items-center gap-1.5">
+            The Watch
             <InfoTooltip content="Real-time articles mentioning companies on your watchlist." side="right" iconSize={12} />
           </h3>
+          <span className="font-display italic text-[12px] text-text-muted whitespace-nowrap">
+            your newsroom
+          </span>
         </div>
-        <span className="font-sans text-[9px] text-text-muted">
+        <span className="font-data text-[10px] text-text-muted whitespace-nowrap tabular-nums">
           {identifiers.length} tracked
         </span>
       </div>

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
 import { useUserProfile } from "@/hooks/useUserProfile";
-import { PanelWidget } from "@/components/shell/right-panel";
+import { DashTile } from "@/components/dashboard/dash-tile";
 import {
   Greeting,
   StatCard,
@@ -496,25 +496,6 @@ export default function DashboardPage() {
       mood={mood}
       moodHeadline={moodHeadline}
       moodDetails={moodDetails}
-      rightPanel={
-        <>
-          <PanelWidget title="Daily Briefs">
-            <DailyBriefsWidget />
-          </PanelWidget>
-          <PanelWidget title="Active Theses">
-            <ActiveThesesWidget />
-          </PanelWidget>
-          <PanelWidget title="Watchlist">
-            <WatchlistWidget />
-          </PanelWidget>
-          <PanelWidget title="Competitor Activity">
-            <CompetitorAlertsWidget />
-          </PanelWidget>
-          <PanelWidget title="Community Signals">
-            <CollectiveSignalsWidget />
-          </PanelWidget>
-        </>
-      }
     >
       <div className="dash-contentwrap dash-dots max-w-[1440px] mx-auto px-6 md:px-12 py-6 md:py-8 pb-16">
         <CursorGlow />
@@ -638,9 +619,42 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Watchlist Feed */}
-        <div className="mt-4">
-          <WatchlistFeed />
+        {/* Radar row — The Watch (watchlist feed) + Your calls (active theses) */}
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-[18px] items-start">
+          <WatchlistFeed riseDelay={120} />
+          <DashTile title="Your calls" subtitle="your open theses" riseDelay={180}>
+            <ActiveThesesWidget />
+          </DashTile>
+        </div>
+
+        {/* Follow row — Watchlist + Following (competitor + community signals) */}
+        <div className="mt-[18px] grid grid-cols-1 lg:grid-cols-[1fr_1.9fr] gap-[18px] items-start">
+          <DashTile title="Watchlist" riseDelay={240}>
+            <WatchlistWidget />
+          </DashTile>
+          <DashTile title="Following" subtitle="desks & sectors you track" riseDelay={300}>
+            <div className="space-y-5">
+              <div>
+                <p className="font-data text-[10px] tracking-[0.01em] text-text-faint mb-2">
+                  Competitor activity
+                </p>
+                <CompetitorAlertsWidget />
+              </div>
+              <div>
+                <p className="font-data text-[10px] tracking-[0.01em] text-text-faint mb-2">
+                  Community signals
+                </p>
+                <CollectiveSignalsWidget />
+              </div>
+            </div>
+          </DashTile>
+        </div>
+
+        {/* Daily briefs */}
+        <div className="mt-[18px]">
+          <DashTile title="Daily Briefs" subtitle="morning & evening" riseDelay={360}>
+            <DailyBriefsWidget />
+          </DashTile>
         </div>
 
         {/* Stories section */}
