@@ -15,7 +15,7 @@ function getTimeOfDay(): string {
   return "evening";
 }
 
-function getMarketStatus(): string {
+export function getMarketStatus(): string {
   const now = new Date();
   const day = now.getDay();
   const h = now.getHours();
@@ -28,10 +28,11 @@ function getMarketStatus(): string {
   return "Markets Closed";
 }
 
-function formatDate(): string {
+/** Compact date for the header pill, e.g. "Sat, Jul 12". */
+export function formatShortDate(): string {
   return new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
+    weekday: "short",
+    month: "short",
     day: "numeric",
   });
 }
@@ -74,20 +75,18 @@ export function Greeting({
   }
 
   const timeOfDay = getTimeOfDay();
-  const marketStatus = getMarketStatus();
-  const dateStr = formatDate();
 
   return (
-    <div>
-      <p className="font-sans text-[11px] text-text-muted font-medium">
-        {dateStr} · {marketStatus}
+    <div className="max-w-[640px]">
+      <p className="font-display italic text-[16px] text-gold-dark m-0 mb-2">
+        Your {timeOfDay} briefing
       </p>
-      <h2 className="font-display text-[26px] font-extrabold text-espresso mt-0.5 leading-tight">
+      <h2 className="font-display text-[32px] md:text-[42px] font-medium text-espresso m-0 leading-[1] tracking-[-0.025em]">
         Good {timeOfDay}, {userName}.
       </h2>
-      <p className="font-sans text-[13px] text-text-secondary mt-0.5">
+      <p className="font-display italic text-[15px] md:text-[17px] text-text-secondary mt-2.5 leading-[1.5]">
         {storyCount > 0
-          ? `${storyCount} high-signal stories in your feed — ${context}`
+          ? `${storyCount} high-signal stories worth your attention — ${context}`
           : `No new stories yet — ${context}`}
       </p>
     </div>

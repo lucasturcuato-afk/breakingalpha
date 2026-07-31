@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { AnimatedNumber } from "@/components/ui";
 import { formatChange, type DisplayUnit } from "@/lib/format-change";
 
 interface StatCardProps {
@@ -17,14 +17,58 @@ interface StatCardProps {
   /** "percent" (default) or "bps". See src/lib/format-change.ts. */
   displayUnit?: DisplayUnit;
   accentGold?: boolean;
+  /** Retained for call-site compatibility; the editorial stat cell renders no sparkline. */
   sparkData?: number[];
+  /**
+   * When two rows are present (e.g. Bullish / Bearish for the Signals cell)
+   * they render inline as "N up / N down" in place of the percent delta.
+   */
   detailRows?: { label: string; value: string }[];
-  /** When true, card renders "Markets closed · last: {value}" instead of percent-change. */
+  /** When true, cell shows "last close" instead of a percent-change. */
   stale?: boolean;
   /** Optional edit-mode overlay (swap dropdown + minus button). */
   editOverlay?: React.ReactNode;
+  /** Left hairline divider between cells in the stat band (all but the first). */
+  showDivider?: boolean;
 }
 
+/**
+ * Parse a pre-formatted stat string ("5,431.60", "4.21%", "128") into a
+ * count-up target plus a formatter that reproduces the original shape
+ * (thousands separators, decimal places, and a trailing "%"). Returns null
+ * for anything non-numeric ("—", "$1.2T") so the caller renders it static.
+ */
+function numericShape(
+  value: string,
+): { target: number; format: (n: number) => string } | null {
+  const trimmed = value.trim();
+  const suffix = trimmed.endsWith("%") ? "%" : "";
+  const core = suffix ? trimmed.slice(0, -1) : trimmed;
+  const hasComma = core.includes(",");
+  const bare = core.replace(/,/g, "");
+  if (bare === "" || !Number.isFinite(Number(bare))) return null;
+  const dot = bare.indexOf(".");
+  const decimals = dot >= 0 ? bare.length - dot - 1 : 0;
+  const target = Number(bare);
+  const format = (n: number) => {
+    const rounded = Number(n.toFixed(decimals));
+    const body = hasComma
+      ? rounded.toLocaleString("en-US", {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals,
+        })
+      : rounded.toFixed(decimals);
+    return body + suffix;
+  };
+  return { target, format };
+}
+
+/**
+ * StatCard — a single editorial figure cell in the dashboard stat band.
+ * IBM Plex Mono throughout with tabular figures; the value counts up on mount
+ * (reduced-motion safe via AnimatedNumber). Hover reveals a gold baseline
+ * rather than lifting the cell.
+ */
 export function StatCard({
   label,
   value,
@@ -32,194 +76,57 @@ export function StatCard({
   changeAbs,
   displayUnit = "percent",
   accentGold = false,
-  sparkData = [],
   detailRows = [],
   stale = false,
   editOverlay,
+  showDivider = false,
 }: StatCardProps) {
-  const [hovered, setHovered] = useState(false);
-
   const changeDisplay = formatChange({ pct: change, change: changeAbs, unit: displayUnit });
-  const isPositive = changeDisplay.isPositive;
-  const changeColor = isPositive ? "text-signal-up" : "text-signal-dn";
+  const changeColor = changeDisplay.isPositive ? "text-signal-up" : "text-signal-dn";
+  const shape = numericShape(value);
+  const valueColor = accentGold ? "text-gold" : "text-espresso";
+  const breakdown = detailRows.length >= 2 ? detailRows : null;
 
   return (
     <div
       className={cn(
-        "relative bg-white border border-border-base rounded-2xl overflow-hidden",
-        "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",
-        !editOverlay &&
-          "hover:-translate-y-0.5 hover:border-border-hover hover:shadow-[0_2px_12px_rgba(201,146,42,0.06)]",
-        "group",
+        "dash-figcell relative px-5 py-3.5 md:px-6 md:py-4",
+        showDivider && "border-l border-[rgba(212,168,75,0.14)]",
       )}
-      onMouseEnter={() => !editOverlay && setHovered(true)}
-      onMouseLeave={() => !editOverlay && setHovered(false)}
     >
       {editOverlay}
-      {/* Top accent line */}
-      <div
-        className={cn(
-          "absolute top-0 left-0 h-[3px] transition-all duration-[var(--duration-slow)] ease-[var(--ease-out)]",
-          accentGold
-            ? "bg-gradient-to-r from-gold to-gold-light"
-            : "bg-border-base",
-          hovered ? "w-full" : "w-12",
-        )}
-      />
-
-      <div className="px-3 pt-3 pb-2.5">
-        {/* Label */}
-        <p className="font-sans text-[11px] text-text-muted">
-          {label}
-        </p>
-
-        {/* Value + change */}
-        {stale ? (
-          <div className="mt-1.5">
-            <div className="flex items-baseline gap-2">
-              <span
-                className="font-data text-[22px] font-semibold text-espresso"
-              >
-                {value}
-              </span>
-              <span
-                className={cn(
-                  "font-data text-[11px] font-semibold",
-                  changeColor,
-                )}
-              >
-                {changeDisplay.text}
-              </span>
-            </div>
-            <span className="block font-sans text-[10px] text-text-muted mt-0.5">
-              Markets closed · last close
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-baseline gap-2 mt-1.5">
-            <span
-              className={cn(
-                "font-data text-[21px] font-bold",
-                accentGold ? "text-gold" : "text-espresso",
-              )}
-            >
-              {value}
-            </span>
-            <span
-              className={cn(
-                "font-display text-[11px] font-semibold",
-                changeColor,
-              )}
-            >
-              {changeDisplay.text}
-            </span>
-          </div>
-        )}
-
-        {/* Spark area */}
-        <div className="h-[30px] mt-1.5 relative">
-          {/* Bar chart (fades out on hover) */}
-          <div
-            className={cn(
-              "absolute inset-0 flex items-end gap-[2px]",
-              "transition-opacity duration-[var(--duration-base)]",
-              hovered ? "opacity-0" : "opacity-100",
-            )}
-          >
-            {sparkData.length > 0 ? (
-              sparkData.map((val, i) => {
-                const max = Math.max(...sparkData);
-                const min = Math.min(...sparkData);
-                const range = max - min || 1;
-                const height = ((val - min) / range) * 100;
-                return (
-                  <div
-                    key={i}
-                    className={cn(
-                      "flex-1 rounded-t-sm",
-                      accentGold ? "bg-gold/20" : "bg-border-base",
-                    )}
-                    style={{ height: `${Math.max(height, 8)}%` }}
-                  />
-                );
-              })
-            ) : (
-              Array.from({ length: 12 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="flex-1 rounded-t-sm bg-border-subtle"
-                  style={{ height: `${20 + ((i * 37) % 60)}%` }}
-                />
-              ))
-            )}
-          </div>
-
-          {/* Sparkline (fades in on hover) */}
-          <div
-            className={cn(
-              "absolute inset-0",
-              "transition-opacity duration-[var(--duration-base)]",
-              hovered ? "opacity-100" : "opacity-0",
-            )}
-          >
-            {sparkData.length > 1 && (
-              <Sparkline data={sparkData} color={accentGold ? "var(--gold)" : isPositive ? "var(--signal-up)" : "var(--signal-dn)"} />
-            )}
-          </div>
-        </div>
-
-        {/* Hover detail rows */}
-        <div
+      <p className="font-data text-[10px] tracking-[0.01em] text-text-muted m-0 mb-1.5">
+        {label}
+      </p>
+      <p className="flex items-baseline gap-2 m-0">
+        <span
           className={cn(
-            "overflow-hidden transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",
-            hovered ? "max-h-20 opacity-100 mt-2" : "max-h-0 opacity-0 mt-0",
+            "font-data text-[22px] font-semibold tabular-nums leading-none",
+            valueColor,
           )}
         >
-          <div className="border-t border-border-subtle pt-2 space-y-1.5">
-            {detailRows.map((row, i) => (
-              <div key={i} className="flex items-center justify-between">
-                <span className="font-sans text-[10px] text-text-muted">{row.label}</span>
-                <span className="font-data text-[11px] font-semibold text-text-primary">{row.value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+          {shape ? <AnimatedNumber value={shape.target} format={shape.format} /> : value}
+        </span>
+        {stale ? (
+          <span className="font-data text-[11px] text-text-muted leading-none">
+            · last close
+          </span>
+        ) : breakdown ? (
+          <span className="font-data text-[12px] leading-none tabular-nums">
+            <span className="text-signal-up">{breakdown[0].value}↑</span>{" "}
+            <span className="text-signal-dn">{breakdown[1].value}↓</span>
+          </span>
+        ) : (
+          <span
+            className={cn(
+              "font-data text-[12px] font-semibold leading-none tabular-nums",
+              changeColor,
+            )}
+          >
+            {changeDisplay.text}
+          </span>
+        )}
+      </p>
     </div>
-  );
-}
-
-function Sparkline({ data, color }: { data: number[]; color: string }) {
-  const width = 200;
-  const height = 30;
-  const padding = 2;
-
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
-
-  const points = data.map((val, i) => {
-    const x = padding + (i / (data.length - 1)) * (width - padding * 2);
-    const y = height - padding - ((val - min) / range) * (height - padding * 2);
-    return `${x},${y}`;
-  });
-
-  const pathD = `M ${points.join(" L ")}`;
-
-  return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      className="w-full h-full"
-      preserveAspectRatio="none"
-    >
-      <path
-        d={pathD}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }

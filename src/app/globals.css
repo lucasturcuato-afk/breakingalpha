@@ -417,6 +417,138 @@ html.dark .skeleton-shimmer {
   background-color: var(--parchment-mid, #faf5ed);
 }
 
+/* ============================================
+   Dashboard editorial re-skin (Pass 1)
+   Bento-shell entrance, stat band, cursor glow, cinematic intro.
+   Every animation here is disabled in the reduced-motion block below.
+   ============================================ */
+
+/* Content-column entrance — slow, deliberate fade-up (felt, not flashy). */
+@keyframes dash-page-fade {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.dash-contentwrap { animation: dash-page-fade 1150ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Per-section rise-in; stagger via inline animation-delay at the call site. */
+@keyframes dash-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.dash-rise { animation: dash-rise 720ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Dotted texture behind the content column (fades toward the bottom). */
+.dash-dots { position: relative; }
+.dash-dots::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--espresso) 7%, transparent) 1px, transparent 1.6px);
+  background-size: 26px 26px;
+  opacity: 0.5;
+  -webkit-mask-image: radial-gradient(120% 90% at 50% 0%, #000 30%, transparent 78%);
+  mask-image: radial-gradient(120% 90% at 50% 0%, #000 30%, transparent 78%);
+}
+.dash-dots > * { position: relative; z-index: 1; }
+
+/* Editorial tile: flat surface, hover reveals a spotlight + hairline ring.
+   Reveal, never lift — per the motion rules. */
+.dash-tile { position: relative; transition: box-shadow 220ms cubic-bezier(0.16, 1, 0.3, 1); }
+.dash-tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  background: radial-gradient(280px circle at var(--mx, 50%) var(--my, 50%), rgba(212, 168, 75, 0.13), rgba(0, 0, 0, 0) 60%);
+}
+.dash-tile:hover::after { opacity: 1; }
+.dash-tile:hover { box-shadow: inset 0 0 0 1px rgba(212, 168, 75, 0.18); }
+
+/* Stat cell hover: a gold baseline wipes in. No lift. */
+.dash-figcell { position: relative; }
+.dash-figcell::after {
+  content: '';
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: 0;
+  height: 2px;
+  background: var(--gold);
+  border-radius: 2px;
+  transform: scaleX(0);
+  transform-origin: left;
+  opacity: 0;
+  transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1), opacity 240ms;
+}
+.dash-figcell:hover::after { transform: scaleX(1); opacity: 0.8; }
+
+/* Cursor-follow glow (position driven by JS custom props). */
+#dash-cursor-glow {
+  position: fixed;
+  width: 560px;
+  height: 560px;
+  left: 0;
+  top: 0;
+  margin: -280px 0 0 -280px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 30;
+  opacity: 0;
+  background: radial-gradient(circle, rgba(212, 168, 75, 0.09), rgba(0, 0, 0, 0) 62%);
+  transition: opacity 500ms ease;
+  transform: translate(var(--gx, -9999px), var(--gy, -9999px));
+}
+#dash-cursor-glow.on { opacity: 1; }
+html.dark #dash-cursor-glow {
+  background: radial-gradient(circle, rgba(214, 178, 100, 0.10), rgba(0, 0, 0, 0) 62%);
+}
+
+/* Cinematic briefing intro splash. */
+@keyframes dash-intro-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes dash-intro-out {
+  to { opacity: 0; transform: scale(1.03); visibility: hidden; }
+}
+@keyframes dash-mark-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(212, 168, 75, 0.55); }
+  50% { box-shadow: 0 0 22px 3px rgba(212, 168, 75, 0.55); }
+}
+.dash-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(760px 420px at 50% 34%, color-mix(in srgb, var(--gold) 12%, transparent), transparent 60%), var(--parchment);
+}
+.dash-intro.out { animation: dash-intro-out 700ms cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.dash-intro-el { animation: dash-intro-up 640ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.dash-mark-glow { animation: dash-mark-glow 2.2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-contentwrap,
+  .dash-rise {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .dash-tile::after,
+  .dash-figcell::after { display: none !important; }
+  .dash-tile:hover { box-shadow: none !important; }
+  #dash-cursor-glow { display: none !important; }
+  .dash-intro { display: none !important; }
+  .dash-mark-glow { animation: none !important; }
+}
+
 /*
   Force-generate dynamic utility classes that are conditionally applied
   in JSX and may not be picked up by Tailwind v4's static content scan.

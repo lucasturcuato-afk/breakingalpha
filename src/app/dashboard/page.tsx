@@ -22,6 +22,7 @@ import { PersonalizationBanner } from "@/components/personalization/Personalizat
 import type { StoryData } from "@/components/dashboard";
 import { CompetitorAlertsWidget } from "@/components/dashboard/competitor-alerts-widget";
 import { CollectiveSignalsWidget } from "@/components/dashboard/collective-signals-widget";
+import { CursorGlow, DashboardIntro, DatePill } from "@/components/dashboard/dashboard-fx";
 import {
   MarketCardEditor,
   MARKET_CARD_OPTIONS,
@@ -422,6 +423,7 @@ export default function DashboardPage() {
             { label: "Bearish", value: String(bearishCount) },
           ]}
           editOverlay={overlay}
+          showDivider={i > 0}
         />
       );
     }
@@ -438,6 +440,7 @@ export default function DashboardPage() {
         accentGold={i === 0}
         detailRows={[]}
         editOverlay={overlay}
+        showDivider={i > 0}
       />
     );
   }
@@ -513,21 +516,24 @@ export default function DashboardPage() {
         </>
       }
     >
-      <div className="px-6 py-4">
+      <div className="dash-contentwrap dash-dots max-w-[1440px] mx-auto px-6 md:px-12 py-6 md:py-8 pb-16">
+        <CursorGlow />
+        <DashboardIntro storyCount={storyCount} />
+
         {/* Onboarding banner */}
         <OnboardingBanner />
         <PersonalizationBanner />
 
-        {/* Greeting */}
-        <Greeting
-          storyCount={storyCount}
-          context={greetingSubtitle ?? "markets are adjusting to new export policy data."}
-        />
-
-        {/* Stat cards — dynamic from user profile */}
-        <div className="relative mt-4">
-          {/* Edit-mode toolbar: pencil to enter, Done + Plus while editing. */}
-          <div className="absolute -top-6 right-0 flex items-center gap-2">
+        {/* Greeting header — kicker/title/subtitle + date pill + arrange controls */}
+        <div className="dash-rise flex items-start justify-between gap-4 flex-wrap mt-1">
+          <Greeting
+            storyCount={storyCount}
+            context={greetingSubtitle ?? "markets are adjusting to new export policy data."}
+          />
+          <div className="flex flex-col items-end gap-2.5 ml-auto">
+            <DatePill />
+            {/* Edit-mode controls: pencil to enter, Done + Plus while editing. */}
+            <div className="flex items-center gap-2">
             {isEditingCards ? (
               <>
                 <button
@@ -571,24 +577,27 @@ export default function DashboardPage() {
                 Customize
               </button>
             )}
+            </div>
           </div>
+        </div>
 
-          {isEditingCards ? (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleCardDragEnd}
-            >
-              <SortableContext
-                items={userMarketCards}
-                strategy={horizontalListSortingStrategy}
+        {/* Stat band — four editorial figure cells with count-up */}
+        <div className="dash-rise mt-2" style={{ animationDelay: "80ms" }}>
+          <div
+            className="dash-tile relative rounded-2xl bg-white border border-border-base overflow-hidden"
+            style={{ borderTop: "2px solid rgba(212,168,75,0.5)" }}
+          >
+            {isEditingCards ? (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleCardDragEnd}
               >
-                <div
-                  className={cn(
-                    "grid gap-2.5",
-                    gridColsForCount(userMarketCards.length),
-                  )}
+                <SortableContext
+                  items={userMarketCards}
+                  strategy={horizontalListSortingStrategy}
                 >
+                  <div className={cn("grid", gridColsForCount(userMarketCards.length))}>
                   {userMarketCards.map((sym, i) => {
                     const overlay: ReactNode = (
                       <MarketCardEditor
@@ -605,19 +614,15 @@ export default function DashboardPage() {
                       </SortableMarketCard>
                     );
                   })}
-                </div>
-              </SortableContext>
-            </DndContext>
-          ) : (
-            <div
-              className={cn(
-                "grid gap-2.5",
-                gridColsForCount(userMarketCards.length),
-              )}
-            >
-              {userMarketCards.map((sym, i) => renderStatCard(sym, i))}
-            </div>
-          )}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            ) : (
+              <div className={cn("grid", gridColsForCount(userMarketCards.length))}>
+                {userMarketCards.map((sym, i) => renderStatCard(sym, i))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* System Intelligence */}
