@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/strip-html";
 import { withCompanyLine } from "@/lib/memo-company-line";
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import {
@@ -92,9 +92,24 @@ interface LeadStoryCardProps {
   /** "hero" renders the immersive dark ember lead tile (dashboard). Default
    *  keeps the light card used on landing/preview. */
   variant?: "default" | "hero";
+  /** Hero-only: node rendered at the bottom of the ember tile (the rotating
+   *  rundown strip). Sits outside the per-story fade so only its highlight
+   *  changes as stories rotate. */
+  footer?: ReactNode;
+  /** Hero-only: hover/focus enters ("hold") and leaves the tile, so a parent
+   *  rotator can pause and resume auto-advance. */
+  onHoldStart?: () => void;
+  onHoldEnd?: () => void;
 }
 
-export function LeadStoryCard({ story, onBookmark, variant = "default" }: LeadStoryCardProps) {
+export function LeadStoryCard({
+  story,
+  onBookmark,
+  variant = "default",
+  footer,
+  onHoldStart,
+  onHoldEnd,
+}: LeadStoryCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [saved, setSaved] = useState(story.saved ?? false);
   const [memoOpen, setMemoOpen] = useState(false);
@@ -221,9 +236,14 @@ export function LeadStoryCard({ story, onBookmark, variant = "default" }: LeadSt
     return (
       <div
         className="dash-lead-hero relative rounded-2xl overflow-visible border-t-2 border-t-[rgba(212,168,75,0.5)] p-6 md:p-9"
-        onMouseEnter={() => setExpanded(true)}
-        onMouseLeave={() => setExpanded(false)}
+        onMouseEnter={() => { setExpanded(true); onHoldStart?.(); }}
+        onMouseLeave={() => { setExpanded(false); onHoldEnd?.(); }}
+        onFocusCapture={() => onHoldStart?.()}
+        onBlurCapture={() => onHoldEnd?.()}
       >
+        {/* Per-story content — keyed on story id so it (and HeroPeers) fades and
+            lifts in on each rotation, and peer bars re-resolve + count up. */}
+        <div key={story.id} className="dash-hero-in">
         {/* Eyebrow */}
         <div className="flex items-center justify-between gap-3 mb-4">
           <span className="inline-flex items-center gap-2 font-data text-[11px] tracking-[0.02em] text-[#e8c169]">
@@ -306,6 +326,9 @@ export function LeadStoryCard({ story, onBookmark, variant = "default" }: LeadSt
             <ExternalLink size={11} />
           </a>
         )}
+        </div>
+
+        {footer}
 
         <MemoModal
           isOpen={memoOpen}

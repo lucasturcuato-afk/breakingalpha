@@ -10,7 +10,6 @@ import {
   Greeting,
   StatCard,
   AISignalBar,
-  LeadStoryCard,
   CompactStoryCard,
   DailyBriefsWidget,
   ActiveThesesWidget,
@@ -25,6 +24,7 @@ import { CompetitorAlertsWidget } from "@/components/dashboard/competitor-alerts
 import { CollectiveSignalsWidget } from "@/components/dashboard/collective-signals-widget";
 import { CursorGlow, DashboardIntro, DatePill } from "@/components/dashboard/dashboard-fx";
 import { FreshRadar } from "@/components/dashboard/fresh-radar";
+import { RotatingLeadHero } from "@/components/dashboard/rotating-lead-hero";
 import {
   MarketCardEditor,
   MARKET_CARD_OPTIONS,
@@ -683,15 +683,13 @@ export default function DashboardPage() {
             />
           ) : (
             <>
-              {/* Lead story — immersive hero */}
-              <div className="relative">
-                {storyTab === "for-you" && (displayStories[0].tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
-                  <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 mb-1">
-                    Watching
-                  </span>
-                )}
-                <LeadStoryCard story={displayStories[0]} variant="hero" />
-              </div>
+              {/* Lead story — rotating immersive hero over the top stories */}
+              <RotatingLeadHero
+                stories={displayStories.slice(0, 4)}
+                isWatching={(s) =>
+                  storyTab === "for-you" && (s.tags ?? []).some((t) => isOnWatchlist(t, profile))
+                }
+              />
 
               {/* Compact stories */}
               <div className="mt-3 space-y-0">

@@ -558,6 +558,19 @@ html.dark #dash-cursor-glow {
    The target width is set in JS one frame after mount so this transition runs. */
 .dash-hbar { transition: width 720ms cubic-bezier(0.16, 1, 0.3, 1); }
 
+/* Rotating lead hero — the incoming story fades and lifts in (mirrors the
+   newsIn feel). Replayed by keying the content on story id. */
+@keyframes dash-hero-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+.dash-hero-in { animation: dash-hero-in 550ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* The Watch "paper-turn" deck — sheets fan behind the front card and ease
+   their transform/opacity when the top of the stack advances. Positions are
+   set inline per card; this only supplies the shared transition curve. */
+.dash-sheet { transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1), opacity 700ms cubic-bezier(0.16, 1, 0.3, 1); }
+
 /* Fresh-radar sparkline — the stroke draws in left to right. --spark-len is the
    path length (set inline); a comfortable default over-covers short paths. */
 @keyframes dash-fspark-draw {
@@ -585,6 +598,8 @@ html.dark #dash-cursor-glow {
   .dash-intro { display: none !important; }
   .dash-mark-glow { animation: none !important; }
   .dash-bar { animation: none !important; transform: none !important; }
+  .dash-hero-in { animation: none !important; }
+  .dash-sheet { transition: none !important; }
   .dash-hbar { transition: none !important; }
   .dash-fspark-path { animation: none !important; stroke-dashoffset: 0 !important; }
   .dash-fspark-dot { animation: none !important; opacity: 1 !important; }
