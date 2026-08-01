@@ -10,7 +10,6 @@ import {
   Greeting,
   StatCard,
   AISignalBar,
-  CompactStoryCard,
   DailyBriefsWidget,
   ActiveThesesWidget,
   WatchlistWidget,
@@ -612,20 +611,20 @@ export default function DashboardPage() {
         </div>
 
         {/* System Intelligence */}
-        <div className="mt-2">
+        <div className="dash-rise mt-2" style={{ animationDelay: "100ms" }}>
           <SystemIntelligenceWidget />
         </div>
 
         {/* AI signal bar */}
-        <div className="mt-3" data-tour="ai-signal-bar">
+        <div className="dash-rise mt-3" style={{ animationDelay: "140ms" }} data-tour="ai-signal-bar">
           <AISignalBar
             text={briefingHeadline ?? "Loading intelligence briefing..."}
             boldParts={[]}
           />
         </div>
 
-        {/* Top Stories — immersive lead hero + compact list */}
-        <div className="dash-rise mt-[18px]" style={{ animationDelay: "100ms" }}>
+        {/* Top Stories — immersive rotating lead hero */}
+        <div className="dash-rise mt-[18px]" style={{ animationDelay: "180ms" }}>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
               <h2 className="font-display text-[18px] font-medium text-espresso inline-flex items-center gap-1.5">
@@ -682,40 +681,25 @@ export default function DashboardPage() {
               description="Stories will appear once articles are ingested by the pipeline."
             />
           ) : (
-            <>
-              {/* Lead story — rotating immersive hero over the top stories */}
-              <RotatingLeadHero
-                stories={displayStories.slice(0, 4)}
-                isWatching={(s) =>
-                  storyTab === "for-you" && (s.tags ?? []).some((t) => isOnWatchlist(t, profile))
-                }
-              />
-
-              {/* Compact stories */}
-              <div className="mt-3 space-y-0">
-                {displayStories.slice(1).map((story, i) => (
-                  <div key={story.id}>
-                    {storyTab === "for-you" && (story.tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
-                      <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 ml-3 mb-0.5">
-                        Watching
-                      </span>
-                    )}
-                    <CompactStoryCard story={story} number={i + 2} />
-                  </div>
-                ))}
-              </div>
-            </>
+            /* Top stories live ONLY in the revolving hero (it cycles all ~4);
+               the numbered list that duplicated them below was removed. */
+            <RotatingLeadHero
+              stories={displayStories.slice(0, 4)}
+              isWatching={(s) =>
+                storyTab === "for-you" && (s.tags ?? []).some((t) => isOnWatchlist(t, profile))
+              }
+            />
           )}
         </div>
 
         {/* Fresh on your radar — surfaced-today tickers not yet on the watchlist.
             Renders nothing when no not-tracked ticker parses from Top Stories. */}
-        <FreshRadar stories={stories} watchlistTickers={watchlistTickers} riseDelay={110} />
+        <FreshRadar stories={stories} watchlistTickers={watchlistTickers} riseDelay={220} />
 
         {/* Radar row — The Watch (watchlist feed) + Your calls (active theses) */}
         <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-[18px] items-start">
-          <WatchlistFeed riseDelay={120} />
-          <DashTile title="Your calls" subtitle="graded track record" riseDelay={180}>
+          <WatchlistFeed riseDelay={260} />
+          <DashTile title="Your calls" subtitle="graded track record" riseDelay={300}>
             <CallRecord />
             <div className="mt-4 pt-4 border-t border-border-subtle">
               <ActiveThesesWidget />
@@ -725,10 +709,10 @@ export default function DashboardPage() {
 
         {/* Follow row — Watchlist + Following (competitor + community signals) */}
         <div className="mt-[18px] grid grid-cols-1 lg:grid-cols-[1fr_1.9fr] gap-[18px] items-start">
-          <DashTile title="Watchlist" riseDelay={240}>
+          <DashTile title="Watchlist" riseDelay={340}>
             <WatchlistWidget />
           </DashTile>
-          <DashTile title="Following" subtitle="desks & sectors you track" riseDelay={300}>
+          <DashTile title="Following" subtitle="desks & sectors you track" riseDelay={380}>
             <div className="space-y-5">
               <div>
                 <p className="font-data text-[10px] tracking-[0.01em] text-text-faint mb-2">
@@ -748,7 +732,7 @@ export default function DashboardPage() {
 
         {/* Daily briefs */}
         <div className="mt-[18px]">
-          <DashTile title="Daily Briefs" subtitle="morning & evening" riseDelay={360}>
+          <DashTile title="Daily Briefs" subtitle="morning & evening" riseDelay={420}>
             <DailyBriefsWidget />
           </DashTile>
         </div>

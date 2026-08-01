@@ -424,11 +424,11 @@ html.dark .skeleton-shimmer {
    ============================================ */
 
 /* Content-column entrance — slow, deliberate fade-up (felt, not flashy). */
-@keyframes dash-page-fade {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.dash-contentwrap { animation: dash-page-fade 1150ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+/* The content wrapper intentionally does NOT fade as a block. A whole-page
+   opacity fade runs concurrently with the per-tile rise-in and washes the
+   stagger into one uniform fade, so the staggered assembly reads as a single
+   fade. Leaving the wrapper static lets the per-tile dash-rise stagger below be
+   the visible entrance. */
 
 /* Per-section rise-in; stagger via inline animation-delay at the call site. */
 @keyframes dash-rise {
@@ -566,6 +566,14 @@ html.dark #dash-cursor-glow {
 }
 .dash-hero-in { animation: dash-hero-in 550ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 
+/* Revolving wire — the window of watch items gently cross-fades on each
+   auto-advance (keyed on the offset). Same feel as the hero rotation. */
+@keyframes dash-wire-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.dash-wire-in { animation: dash-wire-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
 /* The Watch "paper-turn" deck — sheets fan behind the front card and ease
    their transform/opacity when the top of the stack advances. Positions are
    set inline per card; this only supplies the shared transition curve. */
@@ -585,8 +593,8 @@ html.dark #dash-cursor-glow {
 .dash-fspark-dot { opacity: 0; animation: dash-fspark-dot 280ms ease both; animation-delay: 820ms; }
 
 @media (prefers-reduced-motion: reduce) {
-  .dash-contentwrap,
-  .dash-rise {
+  .dash-rise,
+  .dash-wire-in {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;

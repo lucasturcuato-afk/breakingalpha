@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { ExternalLink, Eye } from "lucide-react";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
@@ -19,10 +20,9 @@ interface WatchlistArticle {
 
 type Quote = { price: string; pct: number };
 
-// How many articles the browsable "Lead" deck holds, and how many land in
-// "The wire" after it.
+// How many articles the browsable "Lead" deck holds; everything after it feeds
+// the revolving wire.
 const DECK_N = 3;
-const WIRE_N = 6;
 
 // Fanned-sheet transform per stack position. Only 0/1/2 are visible; deeper
 // cards hide behind the stack. The front card (0) is the interactive Lead.
@@ -154,6 +154,71 @@ function WatchDeck({
   );
 }
 
+/**
+ * WireReel — "The wire" as a revolving window (like the hero). Auto-cycles a
+ * fixed window through the full set of watch items on an interval, each advance
+ * a gentle cross-fade; hover or focus pauses. Reduced motion: no auto-cycle,
+ * the first window renders statically.
+ */
+function WireReel({
+  items,
+  quotes,
+}: {
+  items: WatchlistArticle[];
+  quotes: Record<string, Quote>;
+}) {
+  const [offset, setOffset] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const reduce = useReducedMotion();
+  const WINDOW = 4;
+  const cyclable = items.length > WINDOW;
+
+  const pausedRef = useRef(paused);
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
+  useEffect(() => {
+    if (reduce || !cyclable) return;
+    const id = setInterval(() => {
+      if (!pausedRef.current) setOffset((o) => (o + 1) % items.length);
+    }, 3500);
+    return () => clearInterval(id);
+  }, [reduce, cyclable, items.length]);
+
+  const size = Math.min(WINDOW, items.length);
+  const view = Array.from({ length: size }, (_, k) => items[(offset + k) % items.length]);
+
+  return (
+    <div
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocusCapture={() => setPaused(true)}
+      onBlurCapture={() => setPaused(false)}
+    >
+      <div key={offset} className={cn("space-y-0", !reduce && "dash-wire-in")}>
+        {view.map((a) => (
+          <a
+            key={a.article_id}
+            href={a.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group block py-2 border-b border-border-subtle last:border-0"
+          >
+            <TickerPct ticker={a.identifier} quote={quotes[a.identifier]} />
+            <p className="font-display text-[14px] font-medium text-espresso leading-[1.3] mt-1 group-hover:text-gold-dark transition-colors line-clamp-1">
+              {a.title}
+              <ExternalLink size={9} className="inline ml-1 opacity-0 group-hover:opacity-60 transition-opacity" />
+            </p>
+            <span className="font-data text-[9.5px] text-text-faint tabular-nums">
+              {a.source} · {timeAgo(a.published_at)}
+            </span>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function WatchlistFeed({ riseDelay = 0 }: { riseDelay?: number } = {}) {
   const [articles, setArticles] = useState<WatchlistArticle[]>([]);
   const [identifiers, setIdentifiers] = useState<string[]>([]);
@@ -218,7 +283,7 @@ export function WatchlistFeed({ riseDelay = 0 }: { riseDelay?: number } = {}) {
   if (identifiers.length === 0) return null;
 
   const deck = articles.slice(0, DECK_N);
-  const wire = articles.slice(DECK_N, DECK_N + WIRE_N);
+  const wireItems = articles.slice(DECK_N);
 
   return (
     <div
@@ -250,8 +315,8 @@ export function WatchlistFeed({ riseDelay = 0 }: { riseDelay?: number } = {}) {
           {/* Lead — browsable newsroom sheet deck (paper-turn). */}
           {deck.length > 0 && <WatchDeck deck={deck} quotes={quotes} />}
 
-          {/* The wire — the rest of your watch, most-relevant first. */}
-          {wire.length > 0 && (
+          {/* The wire — revolving window through the rest of your watch. */}
+          {wireItems.length > 0 && (
             <>
               <div className="flex items-baseline gap-2.5 mb-2.5">
                 <span className="font-data text-[10px] tracking-[0.12em] text-gold-dark uppercase">
@@ -262,26 +327,7 @@ export function WatchlistFeed({ riseDelay = 0 }: { riseDelay?: number } = {}) {
                   more from your watch
                 </span>
               </div>
-              <div className="space-y-0">
-                {wire.map((a) => (
-                  <a
-                    key={a.article_id}
-                    href={a.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group block py-2 border-b border-border-subtle last:border-0"
-                  >
-                    <TickerPct ticker={a.identifier} quote={quotes[a.identifier]} />
-                    <p className="font-display text-[14px] font-medium text-espresso leading-[1.3] mt-1 group-hover:text-gold-dark transition-colors line-clamp-1">
-                      {a.title}
-                      <ExternalLink size={9} className="inline ml-1 opacity-0 group-hover:opacity-60 transition-opacity" />
-                    </p>
-                    <span className="font-data text-[9.5px] text-text-faint tabular-nums">
-                      {a.source} · {timeAgo(a.published_at)}
-                    </span>
-                  </a>
-                ))}
-              </div>
+              <WireReel items={wireItems} quotes={quotes} />
             </>
           )}
         </>
