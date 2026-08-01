@@ -59,7 +59,7 @@ export function PersonalizationBanner() {
   if (incomplete) {
     const pct = getCompletionPct(profile);
     return (
-      <div data-tour="personalization-banner" className="flex items-center justify-between gap-3 px-4 py-2 rounded-lg border border-gold-border bg-gold-muted/30 mb-4">
+      <div data-tour="personalization-banner" className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-gold-border bg-gold-muted/30 mb-4">
         <div className="flex items-center gap-2 min-w-0">
           <Sparkles className="h-3.5 w-3.5 text-gold-dark shrink-0" />
           <span className="text-xs text-text-secondary truncate">
@@ -94,7 +94,7 @@ export function PersonalizationBanner() {
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 px-4 py-2 rounded-lg border border-border-subtle bg-parchment-mid/40 mb-4">
+    <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-border-subtle bg-parchment-mid/40 mb-4">
       <div className="flex items-center gap-2 min-w-0 flex-wrap">
         <span className="text-xs text-text-muted whitespace-nowrap">
           Personalized for:

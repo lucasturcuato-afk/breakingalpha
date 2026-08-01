@@ -620,6 +620,92 @@ export default function DashboardPage() {
           />
         </div>
 
+        {/* Top Stories — immersive lead hero + compact list */}
+        <div className="dash-rise mt-[18px]" style={{ animationDelay: "100ms" }}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <h2 className="font-display text-[18px] font-medium text-espresso inline-flex items-center gap-1.5">
+                Top Stories
+                <InfoTooltip content={`The highest-signal stories from the last ${TOP_STORIES_MAX_AGE_DAYS} days, ranked by Signalera's relevance algorithm.`} side="bottom" iconSize={10} />
+              </h2>
+              {/* Tab bar */}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setStoryTab("for-you")}
+                  className={cn(
+                    "font-sans text-[11px] pb-1 cursor-pointer transition-colors border-b-2",
+                    storyTab === "for-you"
+                      ? "border-gold text-gold font-semibold"
+                      : "border-transparent text-text-muted hover:text-text-secondary",
+                  )}
+                >
+                  For You <InfoTooltip content="Stories ranked by relevance to your watchlist and sectors. Set up in Settings." side="bottom" iconSize={10} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStoryTab("all")}
+                  className={cn(
+                    "font-sans text-[11px] pb-1 cursor-pointer transition-colors border-b-2",
+                    storyTab === "all"
+                      ? "border-gold text-gold font-semibold"
+                      : "border-transparent text-text-muted hover:text-text-secondary",
+                  )}
+                >
+                  All
+                </button>
+              </div>
+            </div>
+            <Link
+              href="/live-feed"
+              className="font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors"
+            >
+              View all →
+            </Link>
+          </div>
+
+          {storiesLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-40 rounded-2xl" />
+              <Skeleton className="h-14 rounded-xl" />
+              <Skeleton className="h-14 rounded-xl" />
+              <Skeleton className="h-14 rounded-xl" />
+            </div>
+          ) : displayStories.length === 0 ? (
+            <EmptyState
+              icon={<FileText size={32} />}
+              title="No stories yet"
+              description="Stories will appear once articles are ingested by the pipeline."
+            />
+          ) : (
+            <>
+              {/* Lead story — immersive hero */}
+              <div className="relative">
+                {storyTab === "for-you" && (displayStories[0].tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
+                  <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 mb-1">
+                    Watching
+                  </span>
+                )}
+                <LeadStoryCard story={displayStories[0]} variant="hero" />
+              </div>
+
+              {/* Compact stories */}
+              <div className="mt-3 space-y-0">
+                {displayStories.slice(1).map((story, i) => (
+                  <div key={story.id}>
+                    {storyTab === "for-you" && (story.tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
+                      <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 ml-3 mb-0.5">
+                        Watching
+                      </span>
+                    )}
+                    <CompactStoryCard story={story} number={i + 2} />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
         {/* Radar row — The Watch (watchlist feed) + Your calls (active theses) */}
         <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-[18px] items-start">
           <WatchlistFeed riseDelay={120} />
@@ -661,91 +747,6 @@ export default function DashboardPage() {
           </DashTile>
         </div>
 
-        {/* Stories section */}
-        <div className="mt-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-3">
-              <h2 className="font-sans text-[11px] font-medium text-text-muted inline-flex items-center gap-1.5">
-                Top Stories — hover to expand
-                <InfoTooltip content={`The highest-signal stories from the last ${TOP_STORIES_MAX_AGE_DAYS} days, ranked by Signalera's relevance algorithm.`} side="bottom" iconSize={10} />
-              </h2>
-              {/* Tab bar */}
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setStoryTab("for-you")}
-                  className={cn(
-                    "font-sans text-[11px] pb-1 cursor-pointer transition-colors border-b-2",
-                    storyTab === "for-you"
-                      ? "border-gold text-gold font-semibold"
-                      : "border-transparent text-text-muted hover:text-text-secondary",
-                  )}
-                >
-                  For You <InfoTooltip content="Stories ranked by relevance to your watchlist and sectors. Set up in Settings." side="bottom" iconSize={10} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStoryTab("all")}
-                  className={cn(
-                    "font-sans text-[11px] pb-1 cursor-pointer transition-colors border-b-2",
-                    storyTab === "all"
-                      ? "border-gold text-gold font-semibold"
-                      : "border-transparent text-text-muted hover:text-text-secondary",
-                  )}
-                >
-                  All
-                </button>
-              </div>
-            </div>
-            <Link
-              href="/live-feed"
-              className="font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors"
-            >
-              View all →
-            </Link>
-          </div>
-
-          {storiesLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-32 rounded-xl" />
-              <Skeleton className="h-14 rounded-xl" />
-              <Skeleton className="h-14 rounded-xl" />
-              <Skeleton className="h-14 rounded-xl" />
-            </div>
-          ) : displayStories.length === 0 ? (
-            <EmptyState
-              icon={<FileText size={32} />}
-              title="No stories yet"
-              description="Stories will appear once articles are ingested by the pipeline."
-            />
-          ) : (
-            <>
-              {/* Lead story */}
-              <div className="relative">
-                {storyTab === "for-you" && (displayStories[0].tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
-                  <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 mb-1">
-                    Watching
-                  </span>
-                )}
-                <LeadStoryCard story={displayStories[0]} />
-              </div>
-
-              {/* Compact stories */}
-              <div className="mt-2 space-y-0">
-                {displayStories.slice(1).map((story, i) => (
-                  <div key={story.id}>
-                    {storyTab === "for-you" && (story.tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
-                      <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 ml-3 mb-0.5">
-                        Watching
-                      </span>
-                    )}
-                    <CompactStoryCard story={story} number={i + 2} />
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
       </div>
     </AppShell>
   );

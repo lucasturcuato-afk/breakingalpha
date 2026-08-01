@@ -79,15 +79,202 @@ export interface StoryData {
 interface LeadStoryCardProps {
   story: StoryData;
   onBookmark?: (id: string, saved: boolean) => void;
+  /** "hero" renders the immersive dark ember lead tile (dashboard). Default
+   *  keeps the light card used on landing/preview. */
+  variant?: "default" | "hero";
 }
 
-export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
+export function LeadStoryCard({ story, onBookmark, variant = "default" }: LeadStoryCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [saved, setSaved] = useState(story.saved ?? false);
   const [memoOpen, setMemoOpen] = useState(false);
   const [addingThesis, setAddingThesis] = useState(false);
   const [thesisToast, setThesisToast] = useState("");
   const router = useRouter();
+  const hero = variant === "hero";
+
+  // Extracted so the default and hero layouts share one implementation.
+  const persistBookmark = (v: boolean) => {
+    setSaved(v);
+    onBookmark?.(story.id, v);
+    const key = "signalera_reading_list";
+    const list: string[] = JSON.parse(localStorage.getItem(key) ?? "[]");
+    if (v && !list.includes(story.id)) list.push(story.id);
+    else if (!v) {
+      const idx = list.indexOf(story.id);
+      if (idx > -1) list.splice(idx, 1);
+    }
+    localStorage.setItem(key, JSON.stringify(list));
+  };
+
+  const matchThesis = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setAddingThesis(true);
+    setThesisToast("");
+    try {
+      const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+      const { data: theses } = await supabase
+        .from("theses")
+        .select("id, sector, title, rationale")
+        .neq("status", "archived");
+
+      const sector = (story.sector || "").toLowerCase();
+      const sameSector = (theses || []).filter(
+        (t) => (t.sector || "").toLowerCase() === sector
+      );
+
+      if (sameSector.length === 0) {
+        setThesisToast("No existing thesis for this sector — visit Thesis Board to build one");
+        setTimeout(() => setThesisToast(""), 3500);
+      } else {
+        const storyTerms = keyTerms(`${story.title} ${story.summary || ""}`);
+        const scored = sameSector.map((t) => ({
+          id: t.id,
+          score: termOverlap(storyTerms, keyTerms(`${t.title} ${t.rationale || ""}`)),
+        })).sort((a, b) => b.score - a.score);
+
+        const best = scored[0];
+        if (best.score >= MATCH_THRESHOLD) {
+          router.push(`/thesis-board?thesis=${best.id}`);
+        } else {
+          setThesisToast("No closely related thesis found — visit Thesis Board to build one");
+          setTimeout(() => setThesisToast(""), 3500);
+        }
+      }
+    } catch (err) {
+      console.error("Thesis match error:", err);
+    } finally {
+      setAddingThesis(false);
+    }
+  };
+
+  // Shared action row (Bookmark / Generate Memo / Thesis / Ask AI). Dark-aware.
+  const actions = (
+    <div className="flex items-center gap-2 mt-3">
+      <BookmarkButton saved={saved} onToggle={persistBookmark} />
+      <button
+        type="button"
+        onClick={() => setMemoOpen(true)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gold text-cream font-sans text-[11px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
+      >
+        <Sparkles size={11} />
+        Generate Memo
+      </button>
+      <div className="relative">
+        <button
+          type="button"
+          disabled={addingThesis}
+          onClick={matchThesis}
+          className={cn(
+            "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-sans text-[11px] font-medium transition-colors cursor-pointer",
+            "disabled:opacity-50 disabled:cursor-not-allowed",
+            hero
+              ? "bg-white/5 border border-[rgba(212,168,75,0.3)] text-[#e8c169] hover:border-[rgba(212,168,75,0.6)]"
+              : "bg-parchment-mid border border-border-base text-text-secondary hover:border-border-hover",
+          )}
+        >
+          {addingThesis ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+          {addingThesis ? "Matching..." : "Thesis"}
+        </button>
+        {thesisToast && (
+          <div className="absolute -top-8 left-0 whitespace-nowrap bg-espresso text-cream font-sans text-[10px] px-2.5 py-1 rounded-md z-10">
+            {thesisToast}
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        disabled
+        title="Ask AI is coming soon"
+        className={cn(
+          "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-sans text-[11px] font-medium cursor-not-allowed",
+          hero
+            ? "bg-white/5 border border-white/10 text-[#8a7d63] opacity-70"
+            : "bg-parchment-mid border border-border-base text-text-faint opacity-60",
+        )}
+      >
+        <MessageSquare size={11} />
+        Ask AI
+        <span
+          className={cn(
+            "ml-1 px-1 py-0.5 rounded text-[8px] font-semibold",
+            hero ? "bg-white/10 text-[#b9ad97]" : "bg-parchment-mid text-text-muted",
+          )}
+        >
+          Soon
+        </span>
+      </button>
+    </div>
+  );
+
+  if (hero) {
+    return (
+      <div
+        className="dash-lead-hero relative rounded-2xl overflow-visible border-t-2 border-t-[rgba(212,168,75,0.5)] p-6 md:p-9"
+        onMouseEnter={() => setExpanded(true)}
+        onMouseLeave={() => setExpanded(false)}
+      >
+        {/* Eyebrow */}
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <span className="inline-flex items-center gap-2 font-data text-[11px] tracking-[0.02em] text-[#e8c169]">
+            <span className="track-record-pending-dot w-1.5 h-1.5 rounded-full bg-[#e05c5c]" />
+            Today&rsquo;s lead
+          </span>
+          <span className="font-data text-[10.5px] text-[#8a7d63] tabular-nums whitespace-nowrap">
+            {story.source} · {story.timestamp}
+          </span>
+        </div>
+
+        {/* Sentiment + ticker chip + sector */}
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <SentimentPill tone={sentimentToTone(story.sentiment)} size="xs" />
+          {story.tags?.[0] && (
+            <span className="font-data text-[11px] px-2 py-0.5 rounded-full bg-[rgba(212,168,75,0.14)] border border-[rgba(212,168,75,0.3)] text-[#e8c169]">
+              {story.tags[0]}
+            </span>
+          )}
+          {story.sector && (
+            <span className="font-data text-[10px] text-[#8a7d63]">{story.sector}</span>
+          )}
+        </div>
+
+        {/* Headline */}
+        <h3 className="font-display text-[24px] md:text-[30px] font-medium text-[#f6ecdb] leading-[1.12] tracking-[-0.02em] text-wrap-pretty">
+          {story.title}
+        </h3>
+
+        {/* Dek (always shown in the hero) */}
+        {story.summary && (
+          <p className="font-display italic text-[15px] text-[#b9ad97] mt-3 leading-[1.5] max-w-[70ch]">
+            {stripHtml(story.summary)}
+          </p>
+        )}
+
+        {actions}
+
+        {story.url && (
+          <a
+            href={story.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 font-data text-[11px] text-[#e8c169] hover:text-[#f6ecdb] transition-colors mt-4"
+          >
+            Read the full story
+            <ExternalLink size={11} />
+          </a>
+        )}
+
+        <MemoModal
+          isOpen={memoOpen}
+          onClose={() => setMemoOpen(false)}
+          title={story.title}
+          content={withCompanyLine([story.title, stripHtml(story.summary)].join("\n\n"), story.companies?.[0])}
+          type="article"
+        />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -194,98 +381,7 @@ export function LeadStoryCard({ story, onBookmark }: LeadStoryCardProps) {
           )}
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2 mt-3">
-            <BookmarkButton
-              saved={saved}
-              onToggle={(v) => {
-                setSaved(v);
-                onBookmark?.(story.id, v);
-                const key = "signalera_reading_list";
-                const list: string[] = JSON.parse(localStorage.getItem(key) ?? "[]");
-                if (v && !list.includes(story.id)) list.push(story.id);
-                else if (!v) { const idx = list.indexOf(story.id); if (idx > -1) list.splice(idx, 1); }
-                localStorage.setItem(key, JSON.stringify(list));
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => setMemoOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gold text-cream font-sans text-[11px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer"
-            >
-              <Sparkles size={11} />
-              Generate Memo
-            </button>
-            <div className="relative">
-              <button
-                type="button"
-                disabled={addingThesis}
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  setAddingThesis(true);
-                  setThesisToast("");
-                  try {
-                    const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
-                    const { data: theses } = await supabase
-                      .from("theses")
-                      .select("id, sector, title, rationale")
-                      .neq("status", "archived");
-
-                    const sector = (story.sector || "").toLowerCase();
-                    const sameSector = (theses || []).filter(
-                      (t) => (t.sector || "").toLowerCase() === sector
-                    );
-
-                    if (sameSector.length === 0) {
-                      setThesisToast("No existing thesis for this sector — visit Thesis Board to build one");
-                      setTimeout(() => setThesisToast(""), 3500);
-                    } else {
-                      const storyTerms = keyTerms(`${story.title} ${story.summary || ""}`);
-                      const scored = sameSector.map((t) => ({
-                        id: t.id,
-                        score: termOverlap(storyTerms, keyTerms(`${t.title} ${t.rationale || ""}`)),
-                      })).sort((a, b) => b.score - a.score);
-
-                      const best = scored[0];
-                      if (best.score >= MATCH_THRESHOLD) {
-                        router.push(`/thesis-board?thesis=${best.id}`);
-                      } else {
-                        setThesisToast("No closely related thesis found — visit Thesis Board to build one");
-                        setTimeout(() => setThesisToast(""), 3500);
-                      }
-                    }
-                  } catch (err) {
-                    console.error("Thesis match error:", err);
-                  } finally {
-                    setAddingThesis(false);
-                  }
-                }}
-                className={cn(
-                  "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment-mid border border-border-base font-sans text-[11px] font-medium text-text-secondary hover:border-border-hover transition-colors cursor-pointer",
-                  "disabled:opacity-50 disabled:cursor-not-allowed",
-                )}
-              >
-                {addingThesis ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
-                {addingThesis ? "Matching..." : "Thesis"}
-              </button>
-              {thesisToast && (
-                <div className="absolute -top-8 left-0 whitespace-nowrap bg-espresso text-cream font-sans text-[10px] px-2.5 py-1 rounded-md z-10">
-                  {thesisToast}
-                </div>
-              )}
-            </div>
-            <button
-              type="button"
-              disabled
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment-mid border border-border-base font-sans text-[11px] font-medium text-text-faint opacity-60 cursor-not-allowed"
-              title="Ask AI is coming soon"
-            >
-              <MessageSquare size={11} />
-              Ask AI
-              <span className="ml-1 px-1 py-0.5 rounded bg-parchment-mid text-[8px] font-semibold text-text-muted">
-                Soon
-              </span>
-            </button>
-          </div>
+          {actions}
         </div>
       </div>
       <MemoModal
