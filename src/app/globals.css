@@ -554,6 +554,23 @@ html.dark #dash-cursor-glow {
   animation: dash-bar-grow 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* Horizontal peer bars — width grows from 0 to its inline target on mount.
+   The target width is set in JS one frame after mount so this transition runs. */
+.dash-hbar { transition: width 720ms cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* Fresh-radar sparkline — the stroke draws in left to right. --spark-len is the
+   path length (set inline); a comfortable default over-covers short paths. */
+@keyframes dash-fspark-draw {
+  from { stroke-dashoffset: var(--spark-len, 140); }
+  to { stroke-dashoffset: 0; }
+}
+.dash-fspark-path {
+  stroke-dasharray: var(--spark-len, 140);
+  animation: dash-fspark-draw 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes dash-fspark-dot { from { opacity: 0; } to { opacity: 1; } }
+.dash-fspark-dot { opacity: 0; animation: dash-fspark-dot 280ms ease both; animation-delay: 820ms; }
+
 @media (prefers-reduced-motion: reduce) {
   .dash-contentwrap,
   .dash-rise {
@@ -568,6 +585,9 @@ html.dark #dash-cursor-glow {
   .dash-intro { display: none !important; }
   .dash-mark-glow { animation: none !important; }
   .dash-bar { animation: none !important; transform: none !important; }
+  .dash-hbar { transition: none !important; }
+  .dash-fspark-path { animation: none !important; stroke-dashoffset: 0 !important; }
+  .dash-fspark-dot { animation: none !important; opacity: 1 !important; }
 }
 
 /*

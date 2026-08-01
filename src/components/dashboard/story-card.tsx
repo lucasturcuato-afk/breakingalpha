@@ -14,6 +14,7 @@ import { SentimentPill, sentimentToTone } from "@/components/ui/sentiment-pill";
 import { BookmarkButton } from "@/components/ui/bookmark";
 import { Sparkles, Plus, MessageSquare, Loader2, ExternalLink } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
+import { HeroPeers } from "@/components/dashboard/hero-peers";
 import type { Completeness } from "@/lib/article-signal";
 import { CompletenessBadge, SignalScore, SourceCredibilityBadge } from "@/lib/article-signal";
 
@@ -73,6 +74,15 @@ export interface StoryData {
   adjustedScore?: number | null;
   sourceWinRate?: number | null;
   sourceSampleSize?: number | null;
+  /**
+   * Per-article "why it matters" rationales (articles.sentiment_reason /
+   * relevance_reason). Rendered as bullets only in the hero variant; either or
+   * both may be absent, in which case the block is hidden (no placeholder).
+   */
+  sentimentReason?: string;
+  relevanceReason?: string;
+  /** Ticker parsed from a Google-News source label, for the hero peer bars. */
+  sourceTicker?: string | null;
 }
 
 
@@ -238,17 +248,49 @@ export function LeadStoryCard({ story, onBookmark, variant = "default" }: LeadSt
           )}
         </div>
 
-        {/* Headline */}
-        <h3 className="font-display text-[24px] md:text-[30px] font-medium text-[#f6ecdb] leading-[1.12] tracking-[-0.02em] text-wrap-pretty">
-          {story.title}
-        </h3>
+        {/* Body: headline + dek (+ peer bars) on the left, "why it matters" on
+            the right. When both reasons are null the right column is dropped and
+            the left content spans full width (dek gets the room). Peer bars
+            render themselves only when real tickers resolve. */}
+        {(() => {
+          const reasons = [story.sentimentReason, story.relevanceReason]
+            .map((r) => (r ?? "").trim())
+            .filter(Boolean);
+          const hasWhy = reasons.length > 0;
+          return (
+            <div className={cn("grid gap-x-8 gap-y-5", hasWhy && "md:grid-cols-[1.6fr_1fr]")}>
+              <div className="flex flex-col min-w-0">
+                <h3 className="font-display text-[24px] md:text-[30px] font-medium text-[#f6ecdb] leading-[1.12] tracking-[-0.02em] text-wrap-pretty m-0">
+                  {story.title}
+                </h3>
+                {story.summary && (
+                  <p className="font-display italic text-[15px] text-[#b9ad97] mt-3 leading-[1.5] max-w-[70ch]">
+                    {stripHtml(story.summary)}
+                  </p>
+                )}
+                <HeroPeers sourceTicker={story.sourceTicker} companies={story.companies} />
+              </div>
 
-        {/* Dek (always shown in the hero) */}
-        {story.summary && (
-          <p className="font-display italic text-[15px] text-[#b9ad97] mt-3 leading-[1.5] max-w-[70ch]">
-            {stripHtml(story.summary)}
-          </p>
-        )}
+              {hasWhy && (
+                <div className="flex flex-col justify-center md:border-l md:border-[rgba(212,168,75,0.12)] md:pl-7">
+                  <p className="font-data text-[10.5px] tracking-[0.02em] text-[#e8c169] m-0 mb-3">
+                    Why it matters
+                  </p>
+                  <div className="flex flex-col gap-4">
+                    {reasons.map((r, i) => (
+                      <div key={i} className="flex gap-2.5 items-start">
+                        <span className="w-[13px] h-[2px] rounded-[2px] bg-[#d4a84b] mt-[9px] shrink-0" />
+                        <p className="font-display text-[15px] leading-[1.5] text-[#eaddc6] m-0">
+                          {r}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {actions}
 

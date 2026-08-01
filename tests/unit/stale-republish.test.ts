@@ -509,6 +509,7 @@ function row(id: string, relevance: number): TopStoryRow {
   return {
     id, title: id, source: null, summary: null, content: null, sector: null,
     industry_verticals: null, activity_types: null, sentiment: null,
+    sentiment_reason: null, relevance_reason: null,
     published_at: null, ingested_at: new Date().toISOString(), url: null,
     companies: null, primary_company: null, relevance_score: relevance,
   };

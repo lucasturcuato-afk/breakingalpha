@@ -31,6 +31,10 @@ interface Record {
   graded: number;
   hitRate: number | null;
   recent: Bar[];
+  // Calls the grader explicitly could not score yet (verdict "ungradable" —
+  // e.g. no price data, no honest benchmark). Distinct from legacy rows that
+  // predate attribution; those are ignored, not surfaced.
+  ungraded: number;
 }
 
 function getSupabase() {
@@ -73,9 +77,14 @@ export function CallRecord() {
         let right = 0;
         let wrong = 0;
         let noCleanRead = 0;
+        let ungraded = 0;
         const bars: Bar[] = [];
         for (const o of latest) {
-          if (o.verdict === "ungradable" || o.attribution == null) continue; // not graded
+          if (o.verdict === "ungradable") {
+            ungraded += 1; // explicitly not yet graded — surfaced separately
+            continue;
+          }
+          if (o.attribution == null) continue; // legacy/naive-grader row — ignored
           if (o.attribution !== "clean") {
             noCleanRead += 1;
             bars.push("neutral");
@@ -92,7 +101,7 @@ export function CallRecord() {
         }
 
         const graded = right + wrong;
-        if (graded === 0 && noCleanRead === 0) {
+        if (graded === 0 && noCleanRead === 0 && ungraded === 0) {
           setRecord("empty");
           return;
         }
@@ -105,6 +114,7 @@ export function CallRecord() {
           graded,
           hitRate: graded > 0 ? right / graded : null,
           recent,
+          ungraded,
         });
       } catch {
         if (!cancelled) setRecord("empty");
@@ -130,33 +140,51 @@ export function CallRecord() {
   const pct = record.hitRate != null ? Math.round(record.hitRate * 100) : null;
 
   return (
-    <div className="flex items-center justify-between gap-4">
-      <div className="flex flex-col">
-        <span className="font-data text-[22px] font-bold text-espresso tabular-nums leading-none">
-          {pct != null ? `${pct}%` : "--"}
-          <span className="font-data text-[11px] font-medium text-text-muted ml-1.5">right</span>
-        </span>
-        <span className="font-data text-[10px] text-text-faint tabular-nums mt-1.5">
-          {record.right}W · {record.wrong}L
-          {record.noCleanRead > 0 ? ` · ${record.noCleanRead} no clean read` : ""}
-        </span>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col">
+          <span className="font-data text-[22px] font-bold text-espresso tabular-nums leading-none">
+            {pct != null ? `${pct}%` : "--"}
+            <span className="font-data text-[11px] font-medium text-text-muted ml-1.5">right</span>
+          </span>
+          <span className="font-data text-[10px] text-text-faint tabular-nums mt-1.5">
+            {record.right}W · {record.wrong}L
+            {record.noCleanRead > 0 ? ` · ${record.noCleanRead} no clean read` : ""}
+          </span>
+        </div>
+        <div className="flex items-end gap-[3px] h-7" aria-hidden="true">
+          {record.recent.map((b, i) => (
+            <span
+              key={i}
+              className={cn(
+                "dash-bar w-2 rounded-[1px]",
+                b === "correct"
+                  ? "bg-signal-up"
+                  : b === "wrong"
+                    ? "bg-signal-dn"
+                    : "bg-border-base",
+              )}
+              style={{ height: b === "neutral" ? "55%" : "100%", animationDelay: `${i * 45}ms` }}
+            />
+          ))}
+        </div>
       </div>
-      <div className="flex items-end gap-[3px] h-7" aria-hidden="true">
-        {record.recent.map((b, i) => (
-          <span
-            key={i}
-            className={cn(
-              "dash-bar w-2 rounded-[1px]",
-              b === "correct"
-                ? "bg-signal-up"
-                : b === "wrong"
-                  ? "bg-signal-dn"
-                  : "bg-border-base",
-            )}
-            style={{ height: b === "neutral" ? "55%" : "100%", animationDelay: `${i * 45}ms` }}
-          />
-        ))}
-      </div>
+
+      {record.ungraded > 0 && (
+        <div className="pt-2.5 border-t border-border-subtle">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="font-data text-[10px] tracking-[0.02em] text-text-faint uppercase">
+              Not yet graded
+            </span>
+            <span className="font-data text-[11px] text-text-muted tabular-nums">
+              {record.ungraded} pending
+            </span>
+          </div>
+          <p className="font-sans text-[10px] text-text-faint italic mt-1 leading-snug">
+            Awaiting price data or an honest benchmark. Excluded from the hit rate.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

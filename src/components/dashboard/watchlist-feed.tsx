@@ -17,6 +17,11 @@ interface WatchlistArticle {
   relevance_score: number | null;
 }
 
+type Quote = { price: string; pct: number };
+
+// How many articles land in "The wire" after the lead.
+const WIRE_N = 6;
+
 function timeAgo(iso: string | null): string {
   if (!iso) return "";
   const diff = Date.now() - new Date(iso).getTime();
@@ -26,25 +31,66 @@ function timeAgo(iso: string | null): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+// Small mono ticker + real day pct (omitted when no quote is available — never
+// a fabricated number).
+function TickerPct({ ticker, quote }: { ticker: string; quote?: Quote }) {
+  return (
+    <span className="font-data text-[10.5px] text-text-muted tabular-nums">
+      {ticker}
+      {quote && (
+        <span className={cn("ml-1", quote.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
+          {quote.pct >= 0 ? "+" : ""}
+          {quote.pct.toFixed(2)}%
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function WatchlistFeed({ riseDelay = 0 }: { riseDelay?: number } = {}) {
   const [articles, setArticles] = useState<WatchlistArticle[]>([]);
   const [identifiers, setIdentifiers] = useState<string[]>([]);
+  const [quotes, setQuotes] = useState<Record<string, Quote>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         const res = await fetch("/api/watchlist-feed");
         if (!res.ok) return;
         const json = await res.json();
-        setArticles(json.articles ?? []);
+        if (cancelled) return;
+        const arts: WatchlistArticle[] = json.articles ?? [];
+        setArticles(arts);
         setIdentifiers(json.identifiers ?? []);
+
+        // One batched quote call for the tickers we actually render, so The
+        // wire and the lead can show real day change. Ticker-shaped identifiers
+        // only (the quote API takes equity symbols).
+        const symbols = [...new Set(arts.map((a) => a.identifier))]
+          .filter((s) => /^[A-Z.\-]{1,10}$/.test(s))
+          .slice(0, 20);
+        if (symbols.length > 0) {
+          try {
+            const qr = await fetch(`/api/watchlist-quotes?symbols=${symbols.join(",")}`);
+            if (qr.ok && !cancelled) {
+              const qj = await qr.json();
+              setQuotes(qj.quotes ?? {});
+            }
+          } catch {
+            // quotes are optional — pct just won't render
+          }
+        }
       } catch {
         // silent
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (loading) {
@@ -63,6 +109,9 @@ export function WatchlistFeed({ riseDelay = 0 }: { riseDelay?: number } = {}) {
   }
 
   if (identifiers.length === 0) return null;
+
+  const lead = articles[0];
+  const wire = articles.slice(1, 1 + WIRE_N);
 
   return (
     <div
@@ -90,52 +139,71 @@ export function WatchlistFeed({ riseDelay = 0 }: { riseDelay?: number } = {}) {
           No recent articles for your watchlist. Check back later.
         </p>
       ) : (
-        <div className="space-y-2.5">
-          {articles.slice(0, 8).map((a) => (
+        <>
+          {/* Lead — the highest-relevance watch item, featured. */}
+          {lead && (
             <a
-              key={a.article_id}
-              href={a.url}
+              href={lead.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="group block"
+              className="group block pb-3.5 mb-3 border-b border-border-subtle"
             >
-              <div className="flex items-start gap-2">
-                <span
-                  className={cn(
-                    "shrink-0 mt-1 px-1.5 py-0.5 rounded font-data text-[8px] font-bold uppercase",
-                    "bg-gold-muted text-gold border border-gold/20",
-                  )}
-                >
-                  {a.identifier}
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="px-1.5 py-0.5 rounded font-data text-[8px] font-bold uppercase bg-gold-muted text-gold border border-gold/20">
+                  {lead.identifier}
                 </span>
-                <div className="flex-1 min-w-0">
-                  <p className="font-sans text-[12px] text-text-primary group-hover:text-gold transition-colors line-clamp-1">
-                    {a.title}
-                    <ExternalLink
-                      size={9}
-                      className="inline ml-1 opacity-0 group-hover:opacity-60 transition-opacity"
-                    />
-                  </p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="font-sans text-[9px] text-text-muted">
-                      {a.source}
-                    </span>
-                    {a.published_at && (
-                      <span className="font-sans text-[9px] text-text-faint">
-                        {timeAgo(a.published_at)}
-                      </span>
-                    )}
-                    {a.relevance_score != null && (
-                      <span className="font-data text-[9px] text-gold/70">
-                        {a.relevance_score}/10
-                      </span>
-                    )}
-                  </div>
-                </div>
+                <TickerPct ticker="" quote={quotes[lead.identifier]} />
+                <span className="font-data text-[9.5px] text-text-faint ml-auto tabular-nums">
+                  {lead.source} · {timeAgo(lead.published_at)}
+                </span>
               </div>
+              <h4 className="font-display text-[16px] font-medium text-espresso leading-[1.22] group-hover:text-gold-dark transition-colors">
+                {lead.title}
+                <ExternalLink size={11} className="inline ml-1 opacity-0 group-hover:opacity-60 transition-opacity" />
+              </h4>
+              {lead.summary && (
+                <p className="font-sans text-[11.5px] text-text-secondary leading-[1.5] mt-1 line-clamp-2">
+                  {lead.summary}
+                </p>
+              )}
             </a>
-          ))}
-        </div>
+          )}
+
+          {/* The wire — the rest of your watch, most-relevant first. */}
+          {wire.length > 0 && (
+            <>
+              <div className="flex items-baseline gap-2.5 mb-2.5">
+                <span className="font-data text-[10px] tracking-[0.12em] text-gold-dark uppercase">
+                  The wire
+                </span>
+                <span className="flex-1 h-px bg-border-subtle" />
+                <span className="font-display italic text-[11px] text-text-muted">
+                  more from your watch
+                </span>
+              </div>
+              <div className="space-y-0">
+                {wire.map((a) => (
+                  <a
+                    key={a.article_id}
+                    href={a.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group block py-2 border-b border-border-subtle last:border-0"
+                  >
+                    <TickerPct ticker={a.identifier} quote={quotes[a.identifier]} />
+                    <p className="font-display text-[14px] font-medium text-espresso leading-[1.3] mt-1 group-hover:text-gold-dark transition-colors line-clamp-1">
+                      {a.title}
+                      <ExternalLink size={9} className="inline ml-1 opacity-0 group-hover:opacity-60 transition-opacity" />
+                    </p>
+                    <span className="font-data text-[9.5px] text-text-faint tabular-nums">
+                      {a.source} · {timeAgo(a.published_at)}
+                    </span>
+                  </a>
+                ))}
+              </div>
+            </>
+          )}
+        </>
       )}
     </div>
   );

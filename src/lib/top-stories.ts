@@ -53,7 +53,7 @@ export const SAME_EVENT_TITLE_SIMILARITY = 0.5;
 export const SAME_EVENT_WINDOW_HOURS = 48;
 
 export const TOP_STORIES_COLUMNS =
-  "id, title, source, summary, content, sector, industry_verticals, activity_types, sentiment, published_at, ingested_at, url, companies, primary_company, relevance_score";
+  "id, title, source, summary, content, sector, industry_verticals, activity_types, sentiment, sentiment_reason, relevance_reason, published_at, ingested_at, url, companies, primary_company, relevance_score";
 
 export interface TopStoryRow {
   id: string;
@@ -65,6 +65,11 @@ export interface TopStoryRow {
   industry_verticals: string[] | null;
   activity_types: string[] | null;
   sentiment: string | null;
+  // One-sentence "why it matters" rationales written per-article at ingest.
+  // sentiment_reason names the event sentiment anchored on; relevance_reason
+  // leads with the market implication. Either can be null on older rows.
+  sentiment_reason: string | null;
+  relevance_reason: string | null;
   published_at: string | null;
   ingested_at: string; // NOT NULL in the articles schema (DEFAULT now())
   url: string | null;
@@ -77,7 +82,9 @@ const hoursAgo = (h: number) => new Date(Date.now() - h * 60 * 60 * 1000).toISOS
 
 // Ticker embedded in the Google News source label, e.g. "Google News (VCTR)".
 // Null for non-gnews sources, which then never cluster and pass through as-is.
-const parseSourceTicker = (source: string | null): string | null => {
+// Exported so client surfaces (dashboard hero peers, Fresh-on-radar) can derive
+// a story's ticker without duplicating the parse.
+export const parseSourceTicker = (source: string | null): string | null => {
   if (!source) return null;
   const m = source.match(/Google News \(([^)]+)\)/);
   return m ? m[1] : null;

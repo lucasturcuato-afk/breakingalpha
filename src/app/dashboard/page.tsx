@@ -24,6 +24,7 @@ import type { StoryData } from "@/components/dashboard";
 import { CompetitorAlertsWidget } from "@/components/dashboard/competitor-alerts-widget";
 import { CollectiveSignalsWidget } from "@/components/dashboard/collective-signals-widget";
 import { CursorGlow, DashboardIntro, DatePill } from "@/components/dashboard/dashboard-fx";
+import { FreshRadar } from "@/components/dashboard/fresh-radar";
 import {
   MarketCardEditor,
   MARKET_CARD_OPTIONS,
@@ -51,7 +52,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
-import { fetchTopStories, TOP_STORIES_MAX_AGE_DAYS } from "@/lib/top-stories";
+import { fetchTopStories, parseSourceTicker, TOP_STORIES_MAX_AGE_DAYS } from "@/lib/top-stories";
 import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
 import type { ContentDescriptor } from "@/lib/personalization";
 import { useLiveMood } from "@/hooks/useLiveMood";
@@ -275,6 +276,9 @@ export default function DashboardPage() {
                 completeness,
                 adjustedScore,
                 sourceWinRate: a.source ? credMap.get(a.source) ?? null : null,
+                sentimentReason: a.sentiment_reason || undefined,
+                relevanceReason: a.relevance_reason || undefined,
+                sourceTicker: parseSourceTicker(a.source),
               };
             }),
           );
@@ -705,6 +709,10 @@ export default function DashboardPage() {
             </>
           )}
         </div>
+
+        {/* Fresh on your radar — surfaced-today tickers not yet on the watchlist.
+            Renders nothing when no not-tracked ticker parses from Top Stories. */}
+        <FreshRadar stories={stories} watchlistTickers={watchlistTickers} riseDelay={110} />
 
         {/* Radar row — The Watch (watchlist feed) + Your calls (active theses) */}
         <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-[18px] items-start">
