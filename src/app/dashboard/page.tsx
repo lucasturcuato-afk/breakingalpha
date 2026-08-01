@@ -692,13 +692,14 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Fresh on your radar — surfaced-today tickers not yet on the watchlist.
-            Renders nothing when no not-tracked ticker parses from Top Stories. */}
-        <FreshRadar stories={stories} watchlistTickers={watchlistTickers} riseDelay={220} />
-
-        {/* Radar row — The Watch (watchlist feed) + Your calls (active theses) */}
+        {/* Radar row — The Watch newsroom (lead deck + wire + fresh radar) and
+            Your calls. Fresh-on-radar lives inside the newsroom tile per the
+            mockup; it renders nothing when no not-tracked ticker surfaces. */}
         <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-[18px] items-start">
-          <WatchlistFeed riseDelay={260} />
+          <WatchlistFeed
+            riseDelay={220}
+            fresh={<FreshRadar stories={stories} watchlistTickers={watchlistTickers} embedded />}
+          />
           <DashTile title="Your calls" subtitle="graded track record" riseDelay={300}>
             <CallRecord />
             <div className="mt-4 pt-4 border-t border-border-subtle">

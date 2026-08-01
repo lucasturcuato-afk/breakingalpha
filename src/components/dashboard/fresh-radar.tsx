@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Loader2, Check } from "lucide-react";
+import { DrawSpark, loadCloses } from "@/components/dashboard/spark-line";
 import type { StoryData } from "@/components/dashboard/story-card";
 
 /**
@@ -26,62 +27,6 @@ interface RadarCard {
   url?: string;
   closes: number[];
   pct: number | null;
-}
-
-interface ChartResponse {
-  points?: { t: number; c: number }[];
-}
-
-// The sparkline series (1mo trend). The day change comes from watchlist-quotes
-// instead — chart-meta's chartPreviousClose anchors to the window start, so
-// deriving pct from a 1mo chart would report a monthly return, not the day's.
-async function loadCloses(ticker: string): Promise<number[] | null> {
-  try {
-    const res = await fetch(`/api/stock-chart?ticker=${encodeURIComponent(ticker)}&range=1mo`);
-    if (!res.ok) return null;
-    const data: ChartResponse = await res.json();
-    const closes = (data.points ?? []).map((p) => p.c).filter((c) => Number.isFinite(c));
-    return closes.length >= 2 ? closes : null;
-  } catch {
-    return null;
-  }
-}
-
-// Draw-in sparkline. Path length is summed so the stroke-dash reveal is exact.
-function Spark({ closes, up }: { closes: number[]; up: boolean }) {
-  const w = 64;
-  const h = 26;
-  const min = Math.min(...closes);
-  const max = Math.max(...closes);
-  const span = Math.max(1e-6, max - min);
-  const denom = Math.max(1, closes.length - 1);
-  const pts = closes.map((v, i) => {
-    const x = (i / denom) * (w - 4) + 2;
-    const y = h - 3 - ((v - min) / span) * (h - 6);
-    return [x, y] as const;
-  });
-  let len = 0;
-  for (let i = 1; i < pts.length; i += 1) {
-    len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-  }
-  const d = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
-  const last = pts[pts.length - 1];
-  const color = up ? "var(--signal-up)" : "var(--signal-dn)";
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block", overflow: "visible" }}>
-      <path
-        className="dash-fspark-path"
-        style={{ "--spark-len": Math.ceil(len + 1) } as React.CSSProperties}
-        d={d}
-        fill="none"
-        stroke={color}
-        strokeWidth={1.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle className="dash-fspark-dot" cx={last[0]} cy={last[1]} r={2.2} fill={color} />
-    </svg>
-  );
 }
 
 function TrackButton({ ticker, company }: { ticker: string; company: string }) {
@@ -129,10 +74,14 @@ export function FreshRadar({
   stories,
   watchlistTickers,
   riseDelay = 0,
+  embedded = false,
 }: {
   stories: StoryData[];
   watchlistTickers: string[];
   riseDelay?: number;
+  /** Render inside another tile (The Watch newsroom block): no own rise-in
+   *  wrapper or top margin; the host tile supplies both. */
+  embedded?: boolean;
 }) {
   const [cards, setCards] = useState<RadarCard[] | null>(null);
 
@@ -189,7 +138,10 @@ export function FreshRadar({
   if (!cards || cards.length === 0) return null;
 
   return (
-    <div className="dash-rise mt-[18px]" style={{ animationDelay: `${riseDelay}ms` }}>
+    <div
+      className={embedded ? "mt-5 pt-4 border-t border-border-subtle" : "dash-rise mt-[18px]"}
+      style={embedded ? undefined : { animationDelay: `${riseDelay}ms` }}
+    >
       <div className="flex items-baseline gap-2.5 mb-3.5 border-b border-border-subtle pb-2">
         <span className="font-data text-[10px] tracking-[0.12em] text-gold-dark uppercase">
           Fresh on your radar
@@ -199,7 +151,7 @@ export function FreshRadar({
           surfaced today, not yet tracked
         </span>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className={cn("grid grid-cols-2 gap-3", embedded ? "md:grid-cols-4" : "md:grid-cols-3 lg:grid-cols-5")}>
         {cards.map((c) => {
           // Spark colored by its own trend; the pct chip by the day change.
           const sparkUp = c.closes[c.closes.length - 1] >= c.closes[0];
@@ -224,7 +176,7 @@ export function FreshRadar({
                 )}
               </div>
               <div className="my-2">
-                <Spark closes={c.closes} up={sparkUp} />
+                <DrawSpark closes={c.closes} up={sparkUp} />
               </div>
               {c.url ? (
                 <a

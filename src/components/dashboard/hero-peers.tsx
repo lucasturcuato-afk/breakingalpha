@@ -2,17 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { AnimatedNumber } from "@/components/ui";
+import { DrawSpark, loadCloses } from "@/components/dashboard/spark-line";
 
 /**
- * HeroPeers — the immersive lead hero's peer-performance bars.
+ * HeroPeers — the immersive lead hero's session chart.
  *
  * Resolves the lead story's associated tickers (its parsed source ticker plus
  * the company names in articles.companies, resolved via /api/company/resolve)
- * and fetches real intraday change via /api/watchlist-quotes. Renders one
- * horizontal bar per ticker, width proportional to |pct| and colored by
- * direction. Renders NOTHING when no tickers resolve or no quotes return, so
- * the hero gives that space back to the dek + "why it matters" — never a
- * fabricated chart. Count-up and width-grow are reduced-motion gated.
+ * and fetches real intraday change via /api/watchlist-quotes. Then:
+ * - 2+ peers with quotes: horizontal peer bars (the mockup's NVDA/AMD/ASML).
+ * - Single-name story: never a one-bar chart. The ticker's own 1mo price path
+ *   renders as a draw-in sparkline (/api/stock-chart) with the real day pct.
+ * - Nothing resolves: render nothing; the hero gives the space back to the
+ *   dek + why-it-matters. Never a fabricated chart.
+ * All motion (width-grow, count-up, stroke draw-in) is reduced-motion gated.
  */
 
 const HERO_UP = "#5bbf8a";
@@ -26,6 +29,12 @@ const MAX_BARS = 4;
 interface PeerBar {
   ticker: string;
   pct: number;
+}
+
+interface SoloSpark {
+  ticker: string;
+  pct: number | null;
+  closes: number[];
 }
 
 // A name already shaped like a ticker (all-caps, <=5 chars) needs no resolve.
@@ -57,6 +66,7 @@ export function HeroPeers({
   companies?: string[];
 }) {
   const [bars, setBars] = useState<PeerBar[]>([]);
+  const [solo, setSolo] = useState<SoloSpark | null>(null);
   const [grown, setGrown] = useState(false);
 
   useEffect(() => {
@@ -83,24 +93,35 @@ export function HeroPeers({
       if (cancelled || tickers.size === 0) return;
 
       const symbols = [...tickers].slice(0, MAX_BARS);
+      let quoted: PeerBar[] = [];
       try {
         const res = await fetch(`/api/watchlist-quotes?symbols=${symbols.join(",")}`);
-        if (!res.ok) return;
-        const json = await res.json();
-        const quotes: Record<string, { price: string; pct: number }> = json.quotes ?? {};
-        const next: PeerBar[] = [];
-        for (const sym of symbols) {
-          const q = quotes[sym];
-          if (q && typeof q.pct === "number") next.push({ ticker: sym, pct: q.pct });
-        }
-        if (!cancelled && next.length > 0) {
-          // Widest bar first — most-moved peer leads the eye.
-          next.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
-          setBars(next);
+        if (res.ok) {
+          const json = await res.json();
+          const quotes: Record<string, { price: string; pct: number }> = json.quotes ?? {};
+          for (const sym of symbols) {
+            const q = quotes[sym];
+            if (q && typeof q.pct === "number") quoted.push({ ticker: sym, pct: q.pct });
+          }
         }
       } catch {
-        // silent — no bars, hero falls back to dek + why-it-matters
+        quoted = [];
       }
+      if (cancelled) return;
+
+      if (quoted.length >= 2) {
+        // Real peer set: bars, widest first so the most-moved name leads.
+        quoted.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+        setBars(quoted);
+        return;
+      }
+
+      // Single-name story (or only one quote came back): the ticker's own
+      // recent path as a sparkline, never a lone bar.
+      const one = quoted[0]?.ticker ?? symbols[0];
+      const closes = await loadCloses(one);
+      if (cancelled || !closes) return;
+      setSolo({ ticker: one, pct: quoted[0]?.pct ?? null, closes });
     })();
     return () => {
       cancelled = true;
@@ -115,6 +136,38 @@ export function HeroPeers({
     const raf = requestAnimationFrame(() => setGrown(true));
     return () => cancelAnimationFrame(raf);
   }, [bars]);
+
+  if (solo) {
+    const sparkUp = solo.closes[solo.closes.length - 1] >= solo.closes[0];
+    const dayUp = solo.pct != null ? solo.pct >= 0 : sparkUp;
+    return (
+      <div className="flex flex-col justify-end gap-2 mt-5">
+        <p className="font-data text-[9px] tracking-[0.12em] text-[#e8c169] m-0 uppercase">
+          {solo.ticker} · past month
+        </p>
+        <div className="flex items-end gap-4">
+          <DrawSpark
+            closes={solo.closes}
+            up={sparkUp}
+            w={200}
+            h={40}
+            upColor={HERO_UP}
+            dnColor={HERO_DN}
+          />
+          {solo.pct != null && (
+            <span
+              className="font-data text-[11px] tabular-nums whitespace-nowrap"
+              style={{ color: dayUp ? HERO_UP : HERO_DN }}
+            >
+              {dayUp ? "+" : "−"}
+              <AnimatedNumber value={Math.abs(solo.pct)} format={(n) => n.toFixed(2)} duration={900} />
+              % today
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (bars.length === 0) return null;
 

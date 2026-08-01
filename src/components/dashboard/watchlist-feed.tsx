@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, type ReactNode } from "react";
 import { useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { ExternalLink, Eye } from "lucide-react";
@@ -23,6 +23,11 @@ type Quote = { price: string; pct: number };
 // How many articles the browsable "Lead" deck holds; everything after it feeds
 // the revolving wire.
 const DECK_N = 3;
+// The Lead deck auto-revolves at the same cadence as the top-stories hero.
+const DECK_ROTATE_MS = 7000;
+// Refetch the feed on this interval so the newsroom updates as the pipeline
+// lands newer stories, instead of sitting static all session.
+const REFRESH_MS = 5 * 60 * 1000;
 
 // Fanned-sheet transform per stack position. Only 0/1/2 are visible; deeper
 // cards hide behind the stack. The front card (0) is the interactive Lead.
@@ -65,11 +70,40 @@ function TickerPct({ ticker, quote }: { ticker: string; quote?: Quote }) {
 }
 
 /**
+ * Recency-plus-variety ordering for the wire: group by identifier (each group
+ * newest-first), order groups by their freshest story, then round-robin across
+ * groups. Freshest story per name leads and no single ticker can monopolize
+ * the reel, matching the mockup's varied-name column. Pure re-ordering of the
+ * real feed; nothing is filtered out.
+ */
+function interleaveByIdentifier(items: WatchlistArticle[]): WatchlistArticle[] {
+  const ts = (a: WatchlistArticle) =>
+    a.published_at ? new Date(a.published_at).getTime() : 0;
+  const groups = new Map<string, WatchlistArticle[]>();
+  for (const a of items) {
+    const g = groups.get(a.identifier) ?? [];
+    g.push(a);
+    groups.set(a.identifier, g);
+  }
+  const ordered = [...groups.values()]
+    .map((g) => [...g].sort((x, y) => ts(y) - ts(x)))
+    .sort((ga, gb) => ts(gb[0]) - ts(ga[0]));
+  const out: WatchlistArticle[] = [];
+  for (let round = 0; out.length < items.length; round += 1) {
+    for (const g of ordered) {
+      if (round < g.length) out.push(g[round]);
+    }
+  }
+  return out;
+}
+
+/**
  * WatchDeck — the featured "Lead" as a browsable stack of newsroom sheets
- * (the mockup's "tap to browse" paper-turn). Clicking the front card (or a
- * dot) advances the stack; the front card eases forward while the others fan
- * behind it. Reduced motion disables the transition, so browsing becomes an
- * instant swap. Every card links to its real article.
+ * (the mockup's paper-turn). It AUTO-REVOLVES like the top-stories hero:
+ * advances on an interval with the sheet transition, pauses on hover/focus,
+ * resumes on leave. Tap the front card or a dot to browse manually. Reduced
+ * motion: no auto-rotate and no transition — manual browse only, instant swap.
+ * Every card links to its real article.
  */
 function WatchDeck({
   deck,
@@ -79,14 +113,36 @@ function WatchDeck({
   quotes: Record<string, Quote>;
 }) {
   const [top, setTop] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const reduce = useReducedMotion();
   const k = deck.length;
   const advance = () => setTop((t) => (t + 1) % k);
 
+  const pausedRef = useRef(paused);
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
+  useEffect(() => {
+    if (reduce || k <= 1) return;
+    const id = setInterval(() => {
+      if (!pausedRef.current) setTop((t) => (t + 1) % k);
+    }, DECK_ROTATE_MS);
+    return () => clearInterval(id);
+  }, [reduce, k]);
+
+  // Keep top in range if a refetch shrinks the deck.
+  const topIdx = k > 0 ? top % k : 0;
+
   return (
-    <div className="pb-3.5 mb-3 border-b border-border-subtle">
-      <div className="relative h-[168px] pr-7">
+    <div
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocusCapture={() => setPaused(true)}
+      onBlurCapture={() => setPaused(false)}
+    >
+      <div className="relative h-[172px] pr-7">
         {deck.map((a, i) => {
-          const pos = (i - top + k) % k;
+          const pos = (i - topIdx + k) % k;
           const front = pos === 0;
           return (
             <div
@@ -138,15 +194,15 @@ function WatchDeck({
               type="button"
               onClick={() => setTop(i)}
               aria-label={`Show watch story ${i + 1}`}
-              aria-current={i === top}
+              aria-current={i === topIdx}
               className={cn(
                 "h-[3px] rounded-[2px] cursor-pointer transition-all duration-300",
-                i === top ? "w-[30px] bg-gold" : "w-[22px] bg-border-hover",
+                i === topIdx ? "w-[30px] bg-gold" : "w-[22px] bg-border-hover",
               )}
             />
           ))}
           <span className="font-data text-[9.5px] text-text-faint ml-1.5">
-            tap to browse
+            {reduce ? "tap to browse" : paused ? "held" : "auto · tap to browse"}
           </span>
         </div>
       )}
@@ -170,7 +226,7 @@ function WireReel({
   const [offset, setOffset] = useState(0);
   const [paused, setPaused] = useState(false);
   const reduce = useReducedMotion();
-  const WINDOW = 4;
+  const WINDOW = 3;
   const cyclable = items.length > WINDOW;
 
   const pausedRef = useRef(paused);
@@ -202,10 +258,10 @@ function WireReel({
             href={a.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="group block py-2 border-b border-border-subtle last:border-0"
+            className="group block py-2.5 border-b border-border-subtle last:border-0"
           >
             <TickerPct ticker={a.identifier} quote={quotes[a.identifier]} />
-            <p className="font-display text-[14px] font-medium text-espresso leading-[1.3] mt-1 group-hover:text-gold-dark transition-colors line-clamp-1">
+            <p className="font-display text-[14px] font-medium text-espresso leading-[1.3] mt-1 group-hover:text-gold-dark transition-colors line-clamp-2">
               {a.title}
               <ExternalLink size={9} className="inline ml-1 opacity-0 group-hover:opacity-60 transition-opacity" />
             </p>
@@ -219,7 +275,16 @@ function WireReel({
   );
 }
 
-export function WatchlistFeed({ riseDelay = 0 }: { riseDelay?: number } = {}) {
+/**
+ * WatchlistFeed — "The Watch" newsroom block, one integrated tile per the
+ * mockup: the auto-revolving Lead deck beside the compact revolving wire
+ * column, with the Fresh-on-your-radar cards (passed in via `fresh`) along the
+ * bottom. Feed refetches every REFRESH_MS so newer stories rotate in.
+ */
+export function WatchlistFeed({
+  riseDelay = 0,
+  fresh,
+}: { riseDelay?: number; fresh?: ReactNode } = {}) {
   const [articles, setArticles] = useState<WatchlistArticle[]>([]);
   const [identifiers, setIdentifiers] = useState<string[]>([]);
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
@@ -227,7 +292,7 @@ export function WatchlistFeed({ riseDelay = 0 }: { riseDelay?: number } = {}) {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    async function load() {
       try {
         const res = await fetch("/api/watchlist-feed");
         if (!res.ok) return;
@@ -237,9 +302,9 @@ export function WatchlistFeed({ riseDelay = 0 }: { riseDelay?: number } = {}) {
         setArticles(arts);
         setIdentifiers(json.identifiers ?? []);
 
-        // One batched quote call for the tickers we actually render, so The
-        // wire and the lead can show real day change. Ticker-shaped identifiers
-        // only (the quote API takes equity symbols).
+        // One batched quote call for the tickers we actually render, so the
+        // wire and the lead can show real day change. Ticker-shaped
+        // identifiers only (the quote API takes equity symbols).
         const symbols = [...new Set(arts.map((a) => a.identifier))]
           .filter((s) => /^[A-Z.\-]{1,10}$/.test(s))
           .slice(0, 20);
@@ -259,11 +324,23 @@ export function WatchlistFeed({ riseDelay = 0 }: { riseDelay?: number } = {}) {
       } finally {
         if (!cancelled) setLoading(false);
       }
-    })();
+    }
+    load();
+    const id = setInterval(load, REFRESH_MS);
     return () => {
       cancelled = true;
+      clearInterval(id);
     };
   }, []);
+
+  // Deck: the top relevance stories (the story moving your names). Wire: the
+  // whole remainder of the feed, recency-first and identifier-interleaved so
+  // varied names surface instead of one ticker repeated.
+  const deck = articles.slice(0, DECK_N);
+  const wireItems = useMemo(
+    () => interleaveByIdentifier(articles.slice(DECK_N)),
+    [articles],
+  );
 
   if (loading) {
     return (
@@ -281,9 +358,6 @@ export function WatchlistFeed({ riseDelay = 0 }: { riseDelay?: number } = {}) {
   }
 
   if (identifiers.length === 0) return null;
-
-  const deck = articles.slice(0, DECK_N);
-  const wireItems = articles.slice(DECK_N);
 
   return (
     <div
@@ -312,24 +386,41 @@ export function WatchlistFeed({ riseDelay = 0 }: { riseDelay?: number } = {}) {
         </p>
       ) : (
         <>
-          {/* Lead — browsable newsroom sheet deck (paper-turn). */}
-          {deck.length > 0 && <WatchDeck deck={deck} quotes={quotes} />}
-
-          {/* The wire — revolving window through the rest of your watch. */}
-          {wireItems.length > 0 && (
-            <>
-              <div className="flex items-baseline gap-2.5 mb-2.5">
-                <span className="font-data text-[10px] tracking-[0.12em] text-gold-dark uppercase">
-                  The wire
-                </span>
-                <span className="flex-1 h-px bg-border-subtle" />
-                <span className="font-display italic text-[11px] text-text-muted">
-                  more from your watch
-                </span>
+          {/* Newsroom row: Lead deck | wire column. */}
+          <div className={cn("grid grid-cols-1 gap-x-7 gap-y-5", wireItems.length > 0 && "md:grid-cols-[1.45fr_1fr]")}>
+            {deck.length > 0 && (
+              <div className="min-w-0">
+                <div className="flex items-baseline gap-2.5 mb-2.5">
+                  <span className="font-data text-[10px] tracking-[0.12em] text-gold-dark uppercase">
+                    Lead
+                  </span>
+                  <span className="flex-1 h-px bg-border-subtle" />
+                  <span className="font-display italic text-[11px] text-text-muted">
+                    the story moving your names
+                  </span>
+                </div>
+                <WatchDeck deck={deck} quotes={quotes} />
               </div>
-              <WireReel items={wireItems} quotes={quotes} />
-            </>
-          )}
+            )}
+
+            {wireItems.length > 0 && (
+              <div className="min-w-0">
+                <div className="flex items-baseline gap-2.5 mb-2.5">
+                  <span className="font-data text-[10px] tracking-[0.12em] text-gold-dark uppercase">
+                    The wire
+                  </span>
+                  <span className="flex-1 h-px bg-border-subtle" />
+                  <span className="font-display italic text-[11px] text-text-muted">
+                    more from your watch
+                  </span>
+                </div>
+                <WireReel items={wireItems} quotes={quotes} />
+              </div>
+            )}
+          </div>
+
+          {/* Fresh on your radar — passed in so the newsroom stays one block. */}
+          {fresh}
         </>
       )}
     </div>

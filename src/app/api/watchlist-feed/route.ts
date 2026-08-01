@@ -34,7 +34,9 @@ export async function GET() {
     .in("identifier", identifiers.slice(0, 50))
     .gte("fetched_at", cutoff)
     .order("relevance_score", { ascending: false })
-    .limit(20);
+    // 40 rows so the dashboard wire spans more of the watchlist instead of
+    // whichever single name dominates the relevance top-20 that day.
+    .limit(40);
 
   if (error) {
     console.error("[watchlist-feed] error:", error.message);

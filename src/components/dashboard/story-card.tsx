@@ -15,6 +15,7 @@ import { BookmarkButton } from "@/components/ui/bookmark";
 import { Sparkles, Plus, MessageSquare, Loader2, ExternalLink } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { HeroPeers } from "@/components/dashboard/hero-peers";
+import { HeroThread } from "@/components/dashboard/hero-thread";
 import type { Completeness } from "@/lib/article-signal";
 import { CompletenessBadge, SignalScore, SourceCredibilityBadge } from "@/lib/article-signal";
 
@@ -326,6 +327,10 @@ export function LeadStoryCard({
             <ExternalLink size={11} />
           </a>
         )}
+
+        {/* In this thread — stored-embedding nearest neighbors; hides itself
+            when the RPC returns nothing. */}
+        <HeroThread storyId={story.id} />
         </div>
 
         {footer}
