@@ -67,16 +67,41 @@ export async function GET() {
       }
     }
 
-    // Deduplicate and limit
+    // Deduplicate exact repeats first.
     const seen = new Set<string>();
     const uniqueAlerts = alerts.filter(a => {
       const key = `${a.competitor}:${a.article.title}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
-    }).slice(0, 10);
+    });
 
-    return NextResponse.json({ alerts: uniqueAlerts });
+    // Rank by recency (strength as tiebreak), then apply diversity caps so a
+    // single prolific competitor or watchlist name cannot monopolize the tile
+    // the way raw ingest order did. If the result is thin after capping, that
+    // is honest sparsity; the widget shows its clean empty/short state.
+    uniqueAlerts.sort((a, b) => {
+      const ta = new Date(a.article.published_at ?? 0).getTime();
+      const tb = new Date(b.article.published_at ?? 0).getTime();
+      if (tb !== ta) return tb - ta;
+      return b.coMentionStrength - a.coMentionStrength;
+    });
+    const MAX_PER_COMPETITOR = 2;
+    const MAX_PER_WATCHLIST_NAME = 3;
+    const perCompetitor = new Map<string, number>();
+    const perWatch = new Map<string, number>();
+    const capped: typeof uniqueAlerts = [];
+    for (const a of uniqueAlerts) {
+      const c = perCompetitor.get(a.competitor) ?? 0;
+      const w = perWatch.get(a.watchlistTicker) ?? 0;
+      if (c >= MAX_PER_COMPETITOR || w >= MAX_PER_WATCHLIST_NAME) continue;
+      perCompetitor.set(a.competitor, c + 1);
+      perWatch.set(a.watchlistTicker, w + 1);
+      capped.push(a);
+      if (capped.length >= 10) break;
+    }
+
+    return NextResponse.json({ alerts: capped });
   } catch (err) {
     console.error("[competitor-alerts] error:", err);
     return NextResponse.json({ alerts: [] });

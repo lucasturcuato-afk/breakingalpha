@@ -145,7 +145,7 @@ function WatchDeck({
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={() => setPaused(false)}
     >
-      <div className="relative h-[172px] pr-7">
+      <div className="relative h-[150px] pr-7">
         {deck.map((a, i) => {
           const pos = (i - topIdx + k) % k;
           const front = pos === 0;
@@ -215,11 +215,18 @@ function WatchDeck({
   );
 }
 
+// Fixed wire row height so the departure-board roll distance is exact.
+const WIRE_ROW_H = 74;
+const WIRE_WINDOW = 3;
+const WIRE_ROLL_MS = 620;
+
 /**
- * WireReel — "The wire" as a revolving window (like the hero). Auto-cycles a
- * fixed window through the full set of watch items on an interval, each advance
- * a gentle cross-fade; hover or focus pauses. Reduced motion: no auto-cycle,
- * the first window renders statically.
+ * WireReel — "The wire" as a departure board: rows roll UPWARD continuously
+ * (the top item advances up and out while the next rolls in from below), not
+ * a cross-fade. Fixed row heights inside a clipped viewport; each advance
+ * translates the track up one row, then snaps back with the offset bumped so
+ * the motion is seamless. Hover or focus pauses; reduced motion renders a
+ * static list with no rotation.
  */
 function WireReel({
   items,
@@ -229,25 +236,40 @@ function WireReel({
   quotes: Record<string, Quote>;
 }) {
   const [offset, setOffset] = useState(0);
+  const [rolling, setRolling] = useState(false);
   const [paused, setPaused] = useState(false);
   const reduce = useReducedMotion();
-  const WINDOW = 3;
-  const cyclable = items.length > WINDOW;
+  const n = items.length;
+  const cyclable = n > WIRE_WINDOW;
 
   const pausedRef = useRef(paused);
   useEffect(() => {
     pausedRef.current = paused;
   }, [paused]);
+
+  // Kick a roll on a slow cadence; the roll itself resolves via timeout so a
+  // missed transitionend (hidden tab) can never wedge the reel.
   useEffect(() => {
     if (reduce || !cyclable) return;
     const id = setInterval(() => {
-      if (!pausedRef.current) setOffset((o) => (o + 1) % items.length);
-    }, 3500);
+      if (!pausedRef.current) setRolling(true);
+    }, 3800);
     return () => clearInterval(id);
-  }, [reduce, cyclable, items.length]);
+  }, [reduce, cyclable]);
 
-  const size = Math.min(WINDOW, items.length);
-  const view = Array.from({ length: size }, (_, k) => items[(offset + k) % items.length]);
+  useEffect(() => {
+    if (!rolling) return;
+    const t = setTimeout(() => {
+      setOffset((o) => (o + 1) % n);
+      setRolling(false);
+    }, WIRE_ROLL_MS);
+    return () => clearTimeout(t);
+  }, [rolling, n]);
+
+  const size = Math.min(WIRE_WINDOW, n);
+  // One extra row below the fold so the incoming item is already in place
+  // when the track rolls up.
+  const view = Array.from({ length: Math.min(size + 1, n) }, (_, k) => items[(offset + k) % n]);
 
   return (
     <div
@@ -255,18 +277,28 @@ function WireReel({
       onMouseLeave={() => setPaused(false)}
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={() => setPaused(false)}
+      className="overflow-hidden"
+      style={{ height: WIRE_ROW_H * size }}
     >
-      <div key={offset} className={cn("space-y-0", !reduce && "dash-wire-in")}>
-        {view.map((a) => (
+      <div
+        style={{
+          transform: rolling ? `translateY(-${WIRE_ROW_H}px)` : "translateY(0)",
+          transition: rolling && !reduce
+            ? `transform ${WIRE_ROLL_MS}ms cubic-bezier(0.16, 1, 0.3, 1)`
+            : "none",
+        }}
+      >
+        {view.map((a, i) => (
           <a
-            key={a.article_id}
+            key={`${a.article_id}-${(offset + i) % n}`}
             href={a.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="group block py-2.5 border-b border-border-subtle last:border-0"
+            className="group flex flex-col justify-center border-b border-border-subtle"
+            style={{ height: WIRE_ROW_H }}
           >
             <TickerPct ticker={a.identifier} quote={quotes[a.identifier]} />
-            <p className="font-display text-[14px] font-medium text-espresso leading-[1.3] mt-1 group-hover:text-gold-dark transition-colors line-clamp-2">
+            <p className="font-display text-[14px] font-medium text-espresso leading-[1.3] mt-0.5 group-hover:text-gold-dark transition-colors line-clamp-1 m-0">
               {a.title}
               <ExternalLink size={9} className="inline ml-1 opacity-0 group-hover:opacity-60 transition-opacity" />
             </p>
@@ -348,15 +380,24 @@ export function WatchlistFeed({
   );
 
   if (loading) {
+    // Skeleton mirrors the final newsroom layout at its real size (header,
+    // lead deck | wire column, fresh row) so filling in causes no layout shift.
     return (
       <div
-        className="dash-tile dash-rise bg-white border border-border-base rounded-[28px_28px_28px_10px] p-5 md:p-6"
+        className="dash-tile dash-rise h-full bg-white border border-border-base rounded-[28px_28px_28px_10px] p-5 md:p-6"
         style={{ animationDelay: `${riseDelay}ms` }}
       >
-        <div className="animate-pulse space-y-3">
-          <div className="h-4 bg-parchment-mid rounded w-1/3" />
-          <div className="h-3 bg-parchment-mid rounded w-full" />
-          <div className="h-3 bg-parchment-mid rounded w-2/3" />
+        <div className="animate-pulse">
+          <div className="h-5 bg-parchment-mid rounded w-1/3 mb-4" />
+          <div className="grid grid-cols-1 md:grid-cols-[1.45fr_1fr] gap-x-7 gap-y-5">
+            <div className="h-[196px] bg-parchment-mid/60 rounded-2xl" />
+            <div className="space-y-3">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-[62px] bg-parchment-mid/50 rounded-lg" />
+              ))}
+            </div>
+          </div>
+          <div className="h-[150px] bg-parchment-mid/40 rounded-xl mt-5" />
         </div>
       </div>
     );
@@ -366,7 +407,7 @@ export function WatchlistFeed({
 
   return (
     <div
-      className="dash-tile dash-rise bg-white border border-border-base rounded-[28px_28px_28px_10px] p-5 md:p-6"
+      className="dash-tile dash-rise dash-fill-in h-full bg-white border border-border-base rounded-[28px_28px_28px_10px] p-5 md:p-6"
       style={{ animationDelay: `${riseDelay}ms` }}
     >
       <div className="flex items-baseline justify-between gap-3 border-b-[1.5px] border-[color:var(--espresso)] pb-2.5 mb-3.5">

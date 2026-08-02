@@ -165,11 +165,16 @@ export default function DashboardPage() {
   }, [refetchProfile]);
 
   useEffect(() => {
-    async function loadStories() {
-      try {
-        const supabase = getSupabase();
+    // Cold-start: the four data groups below are independent, so they run in
+    // PARALLEL and each fills its section as it resolves. Previously they ran
+    // sequentially in one function, which held the hero (the slowest visual)
+    // behind counts/spark/briefing round-trips and made tiles pop in one by
+    // one over many seconds.
+    const supabase = getSupabase();
 
-        // Count articles ingested today (since midnight UTC)
+    // 1. Stat-band counts (today + bullish/bearish split)
+    async function loadCounts() {
+      try {
         const todayMidnight = new Date();
         todayMidnight.setUTCHours(0, 0, 0, 0);
         const [{ count }, { count: bullish }, { count: bearish }] = await Promise.all([
@@ -191,8 +196,14 @@ export default function DashboardPage() {
         setStoryCount(count ?? 0);
         setBullishCount(bullish ?? 0);
         setBearishCount(bearish ?? 0);
+      } catch (e) {
+        console.error("Failed to load dashboard counts:", e);
+      }
+    }
 
-        // Sparkline: article counts per day for last 12 days
+    // 2. Signals sparkline (12-day ingest buckets)
+    async function loadSpark() {
+      try {
         const sparkStart = new Date();
         sparkStart.setUTCHours(0, 0, 0, 0);
         sparkStart.setUTCDate(sparkStart.getUTCDate() - (SPARK_DAYS - 1));
@@ -210,8 +221,14 @@ export default function DashboardPage() {
           }
           setSparkSignals(buckets);
         }
+      } catch (e) {
+        console.error("Failed to load dashboard sparkline:", e);
+      }
+    }
 
-        // Fetch latest briefing headline + market_tone
+    // 3. Latest briefing headline + market_tone (AI signal bar)
+    async function loadBriefing() {
+      try {
         const { data: briefRow } = await supabase
           .from("briefings")
           .select("headline, market_tone")
@@ -223,7 +240,15 @@ export default function DashboardPage() {
           if (b.headline) setBriefingHeadline(b.headline);
           if (b.market_tone) setMarketTone(b.market_tone);
         }
+      } catch (e) {
+        console.error("Failed to load dashboard briefing:", e);
+      }
+    }
 
+    // 4. Top Stories (the hero) — the critical visual path, no longer queued
+    //    behind the other three groups.
+    async function loadStories() {
+      try {
         // Top Stories: highest relevance within the shared recency window.
         // See src/lib/top-stories.ts for the single-source-of-truth windows.
         const data = await fetchTopStories(supabase);
@@ -288,6 +313,10 @@ export default function DashboardPage() {
         setStoriesLoading(false);
       }
     }
+
+    loadCounts();
+    loadSpark();
+    loadBriefing();
     loadStories();
   }, []);
 
@@ -668,11 +697,11 @@ export default function DashboardPage() {
           </div>
 
           {storiesLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-40 rounded-2xl" />
-              <Skeleton className="h-14 rounded-xl" />
-              <Skeleton className="h-14 rounded-xl" />
-              <Skeleton className="h-14 rounded-xl" />
+            // Hero-sized skeleton (dark ember silhouette + rundown strip line)
+            // so the resolved hero causes no layout shift.
+            <div>
+              <Skeleton className="h-[380px] rounded-2xl bg-[#241a10]/20" />
+              <Skeleton className="h-6 w-2/3 rounded-md mt-3" />
             </div>
           ) : displayStories.length === 0 ? (
             <EmptyState
@@ -683,41 +712,45 @@ export default function DashboardPage() {
           ) : (
             /* Top stories live ONLY in the revolving hero (it cycles all ~4);
                the numbered list that duplicated them below was removed. */
-            <RotatingLeadHero
-              stories={displayStories.slice(0, 4)}
-              isWatching={(s) =>
-                storyTab === "for-you" && (s.tags ?? []).some((t) => isOnWatchlist(t, profile))
-              }
-            />
+            <div className="dash-fill-in">
+              <RotatingLeadHero
+                stories={displayStories.slice(0, 4)}
+                isWatching={(s) =>
+                  storyTab === "for-you" && (s.tags ?? []).some((t) => isOnWatchlist(t, profile))
+                }
+              />
+            </div>
           )}
         </div>
 
         {/* Radar row — The Watch newsroom (lead deck + wire + fresh radar) and
             Your calls. Fresh-on-radar lives inside the newsroom tile per the
-            mockup; it renders nothing when no not-tracked ticker surfaces. */}
-        <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-[18px] items-start">
+            mockup; it renders nothing when no not-tracked ticker surfaces.
+            items-stretch + h-full tiles keep the two column bottoms aligned
+            instead of leaving a ragged edge. */}
+        <div className="mt-[18px] grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-[18px] items-stretch">
           <WatchlistFeed
             riseDelay={220}
             fresh={<FreshRadar stories={stories} watchlistTickers={watchlistTickers} embedded />}
           />
-          <DashTile title="Your calls" subtitle="graded track record" riseDelay={300}>
+          <DashTile title="Your calls" subtitle="graded track record" riseDelay={300} className="h-full flex flex-col">
             <CallRecord />
-            <div className="mt-4 pt-4 border-t border-border-subtle">
+            <div className="mt-4 pt-4 border-t border-border-subtle flex-1">
               <ActiveThesesWidget />
             </div>
           </DashTile>
         </div>
 
-        {/* Follow row — Watchlist + Following (competitor + community signals) */}
-        <div className="mt-[18px] grid grid-cols-1 lg:grid-cols-[1fr_1.9fr] gap-[18px] items-start">
-          <DashTile title="Watchlist" riseDelay={340}>
+        {/* Follow row — Watchlist + Signals, bottoms aligned. */}
+        <div className="mt-[18px] grid grid-cols-1 lg:grid-cols-[1fr_1.9fr] gap-[18px] items-stretch">
+          <DashTile title="Watchlist" riseDelay={340} className="h-full">
             <WatchlistWidget />
           </DashTile>
           {/* Honest label: there is no Radar-follow storage yet (no follows or
               tracked-views table or endpoint), so this tile shows what is real
               today: competitor activity + community signals derived from the
               watchlist. Rename back to "Following" once follows exist. */}
-          <DashTile title="Signals" subtitle="around your watchlist" riseDelay={380}>
+          <DashTile title="Signals" subtitle="around your watchlist" riseDelay={380} className="h-full">
             <div className="space-y-5">
               <div>
                 <p className="font-data text-[10px] tracking-[0.01em] text-text-faint mb-2">

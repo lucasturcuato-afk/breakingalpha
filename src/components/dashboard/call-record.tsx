@@ -126,7 +126,13 @@ export function CallRecord() {
   }, []);
 
   if (record === null) {
-    return <div className="h-9 rounded-lg bg-parchment-mid/40 animate-pulse" />;
+    // Approximate the filled height (record row + ungraded strip).
+    return (
+      <div className="space-y-3">
+        <div className="h-12 rounded-lg bg-parchment-mid/40 animate-pulse" />
+        <div className="h-10 rounded-lg bg-parchment-mid/30 animate-pulse" />
+      </div>
+    );
   }
 
   if (record === "empty") {
@@ -140,7 +146,7 @@ export function CallRecord() {
   const pct = record.hitRate != null ? Math.round(record.hitRate * 100) : null;
 
   return (
-    <div className="space-y-3">
+    <div className="dash-fill-in space-y-3">
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col">
           <span className="font-data text-[22px] font-bold text-espresso tabular-nums leading-none">

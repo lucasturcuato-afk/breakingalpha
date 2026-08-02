@@ -566,13 +566,13 @@ html.dark #dash-cursor-glow {
 }
 .dash-hero-in { animation: dash-hero-in 550ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 
-/* Revolving wire — the window of watch items gently cross-fades on each
-   auto-advance (keyed on the offset). Same feel as the hero rotation. */
-@keyframes dash-wire-in {
-  from { opacity: 0; transform: translateY(6px); }
+/* Skeleton-to-content resolve — each tile's real content fades in subtly when
+   its data arrives. Under reduced motion content appears instantly. */
+@keyframes dash-fill-in {
+  from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: none; }
 }
-.dash-wire-in { animation: dash-wire-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.dash-fill-in { animation: dash-fill-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 
 /* The Watch "paper-turn" deck — sheets fan behind the front card and ease
    their transform/opacity when the top of the stack advances. Positions are
@@ -594,7 +594,7 @@ html.dark #dash-cursor-glow {
 
 @media (prefers-reduced-motion: reduce) {
   .dash-rise,
-  .dash-wire-in {
+  .dash-fill-in {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;

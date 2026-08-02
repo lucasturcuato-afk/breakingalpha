@@ -31,7 +31,7 @@ export function CollectiveSignalsWidget() {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="dash-fill-in space-y-3">
       {data.trendingTickers.length > 0 && (
         <div>
           <p className="font-sans text-[9px] text-text-muted mb-1.5">

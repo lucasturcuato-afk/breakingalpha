@@ -45,7 +45,10 @@ export function HeroThread({ storyId }: { storyId: string }) {
           if (!res.ok) return;
           const json = await res.json();
           related = (json.related ?? []) as RelatedItem[];
-          threadCache.set(storyId, related);
+          // Cache only non-empty results: an empty answer may be a cold-start
+          // RPC timeout, and caching it would hide the row for the whole
+          // session; retrying on the next rotation costs one cheap request.
+          if (related.length > 0) threadCache.set(storyId, related);
         } catch {
           return;
         }

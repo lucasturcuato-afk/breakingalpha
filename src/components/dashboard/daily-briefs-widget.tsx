@@ -105,7 +105,7 @@ export function DailyBriefsWidget() {
           <div className="h-3 bg-parchment-mid/40 rounded w-4/5 animate-pulse" />
         </div>
       ) : brief ? (
-        <div>
+        <div className="dash-fill-in">
           <p className="font-display text-[15px] font-medium text-espresso leading-[1.3] m-0">
             {brief.headline}
           </p>

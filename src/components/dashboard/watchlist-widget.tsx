@@ -91,10 +91,11 @@ export function WatchlistWidget() {
   }, []);
 
   if (items === null) {
+    // Five rows — the widget's real filled height — so resolve causes no shift.
     return (
       <div className="space-y-1 py-2">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="h-6 bg-parchment-mid/40 rounded animate-pulse" />
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div key={i} className="h-8 bg-parchment-mid/40 rounded animate-pulse" />
         ))}
       </div>
     );
@@ -117,7 +118,7 @@ export function WatchlistWidget() {
   }
 
   return (
-    <div>
+    <div className="dash-fill-in">
       <div className="space-y-0.5">
         {items.map((item) => {
           const isUnavailable = item.price === 0;
