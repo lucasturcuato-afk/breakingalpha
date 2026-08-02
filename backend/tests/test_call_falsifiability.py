@@ -18,7 +18,7 @@ from backend.call_falsifiability import (
     apply_gate,
     evaluate_claim,
     find_proxy,
-    horizon_floor,
+    horizon_floor_days,
     unfalsifiable_hits,
 )
 
@@ -31,7 +31,7 @@ OIL_IRAN = {
     "claim_type": "sector",
     "target_symbol": "XLE",
     "expected_direction": "bearish",
-    "horizon_type": "session",
+    "horizon_days": 0,
     "confidence": 0.8,
 }
 
@@ -40,7 +40,7 @@ HEALTHCARE_MA = {
     "claim_type": "sector",
     "target_symbol": "XLV",
     "expected_direction": "bullish",
-    "horizon_type": "multiweek",
+    "horizon_days": 21,
     "confidence": 0.75,
 }
 
@@ -52,7 +52,7 @@ PCE_CONDITIONAL = {
     "claim_type": "aggregate",
     "target_symbol": None,
     "expected_direction": "neutral",
-    "horizon_type": "session",
+    "horizon_days": 0,
     "confidence": 0.7,
 }
 
@@ -64,7 +64,7 @@ ENSIGN_READ_THROUGH = {
     "claim_type": "sector",
     "target_symbol": "XLV",
     "expected_direction": "bearish",
-    "horizon_type": "session",
+    "horizon_days": 0,
     "confidence": 0.7,
 }
 
@@ -76,7 +76,7 @@ FOMC_CONDITIONAL = {
     "claim_type": "aggregate",
     "target_symbol": None,
     "expected_direction": "neutral",
-    "horizon_type": "session",
+    "horizon_days": 0,
     "confidence": 0.7,
 }
 
@@ -127,20 +127,20 @@ class TestTodaysFive(unittest.TestCase):
     def test_ensign_read_through_is_not_same_session(self):
         v = evaluate_claim(ENSIGN_READ_THROUGH)
         self.assertTrue(v.kept, f"the Ensign call is a real call: {v.reason}")
-        self.assertIn(v.claim["horizon_type"], ("week", "multiweek"))
-        self.assertEqual("week", v.claim["horizon_type"])
+        self.assertGreaterEqual(v.claim["horizon_days"], 7)
+        self.assertEqual(7, v.claim["horizon_days"])
         self.assertEqual(RESHAPE, v.status)
 
     def test_oil_iran_stays_session(self):
         v = evaluate_claim(OIL_IRAN)
         self.assertEqual(KEEP, v.status)
-        self.assertEqual("session", v.claim["horizon_type"])
+        self.assertEqual(0, v.claim["horizon_days"])
         self.assertEqual("XLE", v.claim["target_symbol"])
 
     def test_healthcare_ma_stays_multiweek(self):
         v = evaluate_claim(HEALTHCARE_MA)
         self.assertTrue(v.kept)
-        self.assertEqual("multiweek", v.claim["horizon_type"])
+        self.assertEqual(21, v.claim["horizon_days"])
 
     def test_the_day_emits_three_not_five(self):
         kept, verdicts = apply_gate(TODAYS_FIVE)
@@ -161,14 +161,14 @@ class TestNoBackfill(unittest.TestCase):
                 "claim_type": "aggregate",
                 "target_symbol": None,
                 "expected_direction": "neutral",
-                "horizon_type": "session",
+                "horizon_days": 0,
             },
             {
                 "claim_text": "Markets could move in either direction on the jobs number.",
                 "claim_type": "index",
                 "target_symbol": "SPY",
                 "expected_direction": "bullish",
-                "horizon_type": "session",
+                "horizon_days": 0,
             },
         ]
         kept, verdicts = apply_gate(candidates)
@@ -188,7 +188,7 @@ class TestReshapeBeforeReject(unittest.TestCase):
             "claim_type": "aggregate",
             "target_symbol": None,
             "expected_direction": "bullish",
-            "horizon_type": "session",
+            "horizon_days": 0,
         })
         self.assertEqual(RESHAPE, v.status)
         self.assertEqual("TLT", v.claim["target_symbol"])
@@ -202,7 +202,7 @@ class TestReshapeBeforeReject(unittest.TestCase):
             "claim_type": "aggregate",
             "target_symbol": None,
             "expected_direction": "bullish",
-            "horizon_type": "week",
+            "horizon_days": 7,
         })
         self.assertEqual(RESHAPE, v.status)
         self.assertEqual("TLT", v.claim["target_symbol"])
@@ -214,7 +214,7 @@ class TestReshapeBeforeReject(unittest.TestCase):
             "claim_type": "aggregate",
             "target_symbol": None,
             "expected_direction": "bullish",
-            "horizon_type": "week",
+            "horizon_days": 7,
         })
         self.assertEqual("UUP", v.claim["target_symbol"])
         self.assertEqual("bullish", v.claim["expected_direction"])
@@ -225,7 +225,7 @@ class TestReshapeBeforeReject(unittest.TestCase):
             "claim_type": "aggregate",
             "target_symbol": None,
             "expected_direction": "bullish",
-            "horizon_type": "week",
+            "horizon_days": 7,
         })
         self.assertEqual("LQD", v.claim["target_symbol"])
         self.assertEqual("bearish", v.claim["expected_direction"])
@@ -236,7 +236,7 @@ class TestReshapeBeforeReject(unittest.TestCase):
             "claim_type": "aggregate",
             "target_symbol": None,
             "expected_direction": "bullish",
-            "horizon_type": "session",
+            "horizon_days": 0,
         })
         self.assertEqual(REJECT, v.status)
         self.assertIn("sign cannot be determined", v.reason)
@@ -247,7 +247,7 @@ class TestReshapeBeforeReject(unittest.TestCase):
             "claim_type": "aggregate",
             "target_symbol": None,
             "expected_direction": "bullish",
-            "horizon_type": "multiweek",
+            "horizon_days": 21,
         })
         # "credit" is a listed proxy keyword, so this one reshapes rather than
         # dropping. The genuinely unmappable case is below.
@@ -258,7 +258,7 @@ class TestReshapeBeforeReject(unittest.TestCase):
             "claim_type": "aggregate",
             "target_symbol": None,
             "expected_direction": "bullish",
-            "horizon_type": "multiweek",
+            "horizon_days": 21,
         })
         self.assertEqual(REJECT, v2.status)
         self.assertIn("no listed proxy", v2.reason)
@@ -281,7 +281,7 @@ class TestReshapeBeforeReject(unittest.TestCase):
             "claim_type": "aggregate",
             "target_symbol": "SPY",
             "expected_direction": "bullish",
-            "horizon_type": "session",
+            "horizon_days": 0,
         })
         self.assertFalse(v.kept)
         self.assertIn("market as a whole", v.reason)
@@ -307,7 +307,7 @@ class TestDirectionRequired(unittest.TestCase):
             "claim_type": "sector",
             "target_symbol": "XLE",
             "expected_direction": "neutral",
-            "horizon_type": "session",
+            "horizon_days": 0,
         })
         self.assertEqual(REJECT, v.status)
         self.assertIn("no explicit direction", v.reason)
@@ -317,31 +317,46 @@ class TestDirectionRequired(unittest.TestCase):
             "claim_text": "Energy leads the tape.",
             "claim_type": "sector",
             "target_symbol": "XLE",
-            "horizon_type": "session",
+            "horizon_days": 0,
         })
         self.assertEqual(REJECT, v.status)
 
 
 class TestHorizonFloor(unittest.TestCase):
-    def test_read_through_floors_at_week(self):
-        floor, reason = horizon_floor(ENSIGN_READ_THROUGH["claim_text"], "sector")
-        self.assertEqual("week", floor)
+    """The floor is now a day count and the rule is max(). Same semantics as the
+    ordinal rank it replaced, and it can finally rank a 13-day call."""
+
+    def test_read_through_floors_at_a_week(self):
+        floor, reason = horizon_floor_days(ENSIGN_READ_THROUGH["claim_text"], "sector")
+        self.assertEqual(7, floor)
         self.assertIn("single-name", reason)
 
-    def test_consolidation_floors_at_multiweek(self):
-        floor, _ = horizon_floor(HEALTHCARE_MA["claim_text"], "sector")
-        self.assertEqual("multiweek", floor)
+    def test_consolidation_floors_at_three_weeks(self):
+        floor, _ = horizon_floor_days(HEALTHCARE_MA["claim_text"], "sector")
+        self.assertEqual(21, floor)
 
-    def test_policy_floors_at_week_unless_repriced_today(self):
-        floor, _ = horizon_floor("New tariffs push industrials lower.", "sector")
-        self.assertEqual("week", floor)
-        floor2, _ = horizon_floor("New tariffs push industrials lower today.", "sector")
-        self.assertEqual("session", floor2)
+    def test_policy_floors_at_a_week_unless_repriced_today(self):
+        floor, _ = horizon_floor_days("New tariffs push industrials lower.", "sector")
+        self.assertEqual(7, floor)
+        floor2, _ = horizon_floor_days("New tariffs push industrials lower today.", "sector")
+        self.assertEqual(0, floor2)
 
-    def test_direct_repricing_stays_session(self):
-        floor, reason = horizon_floor(OIL_IRAN["claim_text"], "sector")
-        self.assertEqual("session", floor)
+    def test_direct_repricing_stays_same_session(self):
+        floor, reason = horizon_floor_days(OIL_IRAN["claim_text"], "sector")
+        self.assertEqual(0, floor)
         self.assertIsNone(reason)
+
+    def test_the_floor_raises_a_too_short_horizon(self):
+        # The model asked for 2 days on a read-through. The text says 7.
+        v = evaluate_claim({
+            "claim_text": ENSIGN_READ_THROUGH["claim_text"],
+            "claim_type": "sector",
+            "target_symbol": "XLV",
+            "expected_direction": "bearish",
+            "horizon_days": 2,
+        })
+        self.assertEqual(7, v.claim["horizon_days"])
+        self.assertTrue(any("2d -> 7d" in c for c in v.changes), v.changes)
 
     def test_the_floor_never_shortens_a_longer_model_choice(self):
         v = evaluate_claim({
@@ -349,9 +364,42 @@ class TestHorizonFloor(unittest.TestCase):
             "claim_type": "sector",
             "target_symbol": "XLE",
             "expected_direction": "bearish",
-            "horizon_type": "multiweek",
+            "horizon_days": 45,
         })
-        self.assertEqual("multiweek", v.claim["horizon_type"])
+        self.assertEqual(45, v.claim["horizon_days"])
+
+    def test_an_off_bucket_count_survives_the_gate_unchanged(self):
+        # 13 days is the whole point: not 0, not 7, not 21, and above the floor.
+        v = evaluate_claim({
+            "claim_text": "Oil prices will decline on the ceasefire.",
+            "claim_type": "sector",
+            "target_symbol": "XLE",
+            "expected_direction": "bearish",
+            "horizon_days": 13,
+        })
+        self.assertEqual(13, v.claim["horizon_days"])
+
+    def test_a_model_asking_for_400_days_is_clamped_not_trusted(self):
+        v = evaluate_claim({
+            "claim_text": "Oil prices will decline on the ceasefire.",
+            "claim_type": "sector",
+            "target_symbol": "XLE",
+            "expected_direction": "bearish",
+            "horizon_days": 400,
+        })
+        self.assertEqual(90, v.claim["horizon_days"])
+
+    def test_a_missing_or_nonsense_count_degrades_to_same_session(self):
+        for bad in (None, "soon", -5, True, float("nan"), {}):
+            with self.subTest(bad=bad):
+                v = evaluate_claim({
+                    "claim_text": "Oil prices will decline on the ceasefire.",
+                    "claim_type": "sector",
+                    "target_symbol": "XLE",
+                    "expected_direction": "bearish",
+                    "horizon_days": bad,
+                })
+                self.assertEqual(0, v.claim["horizon_days"])
 
 
 class TestProxyMapOrdering(unittest.TestCase):

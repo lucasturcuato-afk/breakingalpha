@@ -29,8 +29,10 @@ from backend.call_horizons import (
     HORIZON_DAYS,
     MAX_HORIZON_DAYS,
     horizon_days,
+    normalize_horizon_days,
     normalize_horizon_type,
     resolve_on_for,
+    resolve_on_for_days,
 )
 from backend.grading.grade_brief_calls import (
     HORIZON_MODE_ACTIVE,
@@ -137,6 +139,71 @@ class TestHorizonMap(unittest.TestCase):
     def test_bad_brief_date_yields_none_so_the_call_is_never_due(self):
         for bad in [None, "", "not-a-date", 20260725, "2026-13-45"]:
             self.assertIsNone(resolve_on_for(bad, "week"), f"input {bad!r}")
+
+
+# ---------------------------------------------------------------------------
+# Variable horizons: a day count, not a bucket
+# ---------------------------------------------------------------------------
+
+
+class TestHorizonDays(unittest.TestCase):
+    """The generator now states how many days a claim needs. The code clamps it
+    and owns the date. A bounded non-negative integer cannot express a window in
+    the past or a year out, so absurd values are unrepresentable rather than
+    caught."""
+
+    def test_real_counts_produce_the_right_date(self):
+        cases = {
+            0: "2026-07-25",   # same session, the old "session" bucket
+            3: "2026-07-28",   # Thursday's print, which used to cost 7 days
+            7: "2026-08-01",   # the old "week" bucket, unchanged
+            13: "2026-08-07",  # off-bucket, the whole point
+            21: "2026-08-15",  # the old "multiweek" bucket, unchanged
+            45: "2026-09-08",
+            90: "2026-10-23",  # the cap itself
+        }
+        for days, expected in cases.items():
+            with self.subTest(days=days):
+                self.assertEqual(resolve_on_for_days(BRIEF_DATE, days), expected)
+
+    def test_the_named_buckets_still_agree_with_their_counts(self):
+        for name, days in HORIZON_DAYS.items():
+            with self.subTest(name=name):
+                self.assertEqual(
+                    resolve_on_for(BRIEF_DATE, name),
+                    resolve_on_for_days(BRIEF_DATE, days),
+                )
+
+    def test_out_of_range_clamps_to_the_cap(self):
+        self.assertEqual(normalize_horizon_days(91), MAX_HORIZON_DAYS)
+        self.assertEqual(normalize_horizon_days(400), MAX_HORIZON_DAYS)
+        self.assertEqual(normalize_horizon_days(10**9), MAX_HORIZON_DAYS)
+        # 400 days out is not merely rejected, it is unreachable.
+        span = (date.fromisoformat(resolve_on_for_days(BRIEF_DATE, 400))
+                - date.fromisoformat(BRIEF_DATE))
+        self.assertEqual(span.days, MAX_HORIZON_DAYS)
+
+    def test_negative_and_non_integer_fall_back_to_same_session(self):
+        for bad in [-1, -400, None, "", "  ", "soon", "week", [], {}, object(),
+                    True, False, float("nan"), float("inf"), float("-inf")]:
+            with self.subTest(bad=repr(bad)):
+                self.assertEqual(normalize_horizon_days(bad), 0)
+                self.assertEqual(resolve_on_for_days(BRIEF_DATE, bad), BRIEF_DATE)
+
+    def test_no_count_can_resolve_before_the_brief(self):
+        for raw in [-1, -90, -10**6, 0, 1, 45, 400]:
+            with self.subTest(raw=raw):
+                out = resolve_on_for_days(BRIEF_DATE, raw)
+                self.assertGreaterEqual(out, BRIEF_DATE, f"input {raw!r}")
+
+    def test_numeric_strings_and_floats_are_read_as_counts(self):
+        self.assertEqual(normalize_horizon_days("7"), 7)
+        self.assertEqual(normalize_horizon_days(" 13 "), 13)
+        self.assertEqual(normalize_horizon_days(7.9), 7)
+
+    def test_bad_brief_date_still_yields_none(self):
+        for bad in [None, "", "not-a-date", 20260725, "2026-13-45"]:
+            self.assertIsNone(resolve_on_for_days(bad, 13), f"input {bad!r}")
 
     def test_accepts_a_date_object_not_just_a_string(self):
         self.assertEqual(resolve_on_for(date(2026, 7, 25), "week"), "2026-08-01")

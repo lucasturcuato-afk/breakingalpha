@@ -16,8 +16,9 @@
  * commitment.
  *
  * Three states, one decision:
- *   untracked   the window being committed to, in words, defaulted to the
- *               call's OWN horizon and still changeable, next to a real button.
+ *   untracked   the window being committed to, in words, preselected from the
+ *               call's OWN span (any number of days, not one of three buckets)
+ *               and still changeable, next to a real button.
  *   ungradeable no control at all, and a sentence saying why. Offering a commit
  *               the system cannot resolve is worse than offering nothing.
  *   tracked     a ledger entry: when it was logged, when it is reviewed, the
@@ -36,9 +37,9 @@
 
 import { HorizonChip } from "@/components/calls/HorizonChip";
 import {
-  HORIZON_PHRASE,
-  HORIZON_TYPES,
-  type HorizonType,
+  adoptWindowOptions,
+  adoptWindowValue,
+  type AdoptWindow,
 } from "@/lib/call-horizons";
 
 /**
@@ -171,8 +172,8 @@ export function CallCommitFooter({
   tracked,
   available,
   busy,
-  horizon,
-  onHorizonChange,
+  window,
+  onWindowChange,
   onTrack,
   justStamped = false,
   gradeable = true,
@@ -183,8 +184,13 @@ export function CallCommitFooter({
   tracked: TrackedClaimLike | null;
   available: boolean;
   busy: boolean;
-  horizon: HorizonType;
-  onHorizonChange: (h: HorizonType) => void;
+  /**
+   * The window being committed to. Preselected from the call's OWN span, which
+   * is why this is an AdoptWindow and not a HorizonType: a 13-day call has no
+   * bucket, and defaulting it to "1 week" is the exact defect #535 fixed.
+   */
+  window: AdoptWindow;
+  onWindowChange: (w: AdoptWindow) => void;
   onTrack: () => void;
   justStamped?: boolean;
   /**
@@ -240,6 +246,10 @@ export function CallCommitFooter({
 
   if (!available) return null;
 
+  // The call's own window first when it is off-bucket, then the three named
+  // alternatives. No date picker.
+  const options = adoptWindowOptions(window);
+
   return (
     <div data-testid="track-state-untracked">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
@@ -248,14 +258,18 @@ export function CallCommitFooter({
           <span className="sr-only">Tracking horizon</span>
           <select
             aria-label="Tracking horizon"
-            value={horizon}
+            data-testid="track-horizon-select"
+            value={adoptWindowValue(window)}
             disabled={busy}
-            onChange={(e) => onHorizonChange(e.target.value as HorizonType)}
+            onChange={(e) => {
+              const picked = options.find((o) => o.value === e.target.value);
+              if (picked) onWindowChange(picked.window);
+            }}
             className="cursor-pointer rounded-md border border-border-subtle bg-transparent px-2 py-1 font-sans text-[11px] text-text-secondary disabled:opacity-50"
           >
-            {HORIZON_TYPES.map((h) => (
-              <option key={h} value={h}>
-                {HORIZON_PHRASE[h]}
+            {options.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
               </option>
             ))}
           </select>

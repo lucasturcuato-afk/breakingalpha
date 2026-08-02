@@ -7,11 +7,20 @@ Grading both against one afternoon's close is a category error: it scores the
 thesis on noise. This module turns a coarse horizon_type emitted by the claims
 extractor into a concrete resolve_on date.
 
-The map is FIXED, not model-chosen. The extractor picks a bucket; the code picks
-the days. A model that could name its own resolution date could also move the
-goalposts, and the value of a call is that its window was fixed when it was made.
+The extractor states how long the claim needs; the code turns that into a date.
+A model that could name its own resolution date could also move the goalposts,
+and the value of a call is that its window was fixed when it was made.
 
-    session    -> brief_date        (unchanged, today's close)
+The extractor now emits a DAY COUNT rather than one of three buckets, because
+three buckets stood in for reasoning the model can do directly: a call about
+Thursday's print does not need seven days, it needs three. The count is clamped
+to [0, MAX_HORIZON_DAYS] by normalize_horizon_days, and a bounded non-negative
+integer cannot express a window in the past or a year out. See that function.
+
+The three named buckets survive as a VOCABULARY, not as the only vocabulary.
+The user-facing selector and the adopt route still speak in them:
+
+    session    -> brief_date        (today's close)
     week       -> brief_date +  7   calendar days
     multiweek  -> brief_date + 21   calendar days
 
@@ -75,6 +84,50 @@ def horizon_days(raw: object) -> int:
     return min(days, MAX_HORIZON_DAYS)
 
 
+# ---------------------------------------------------------------------------
+# Variable horizons: a day count, not a bucket
+# ---------------------------------------------------------------------------
+
+#: Floor on any window. Zero is same-session, which is a real and common answer.
+MIN_HORIZON_DAYS = 0
+
+
+def normalize_horizon_days(raw: object) -> int:
+    """
+    Coerce a model-supplied day count to an integer in [0, MAX_HORIZON_DAYS].
+
+    This is the whole safety argument for emitting a count rather than a date.
+    A bounded non-negative integer CANNOT express a window 400 days out or one
+    that ends in the past: those values are not rejected after the fact, they
+    are unrepresentable. There is no date to parse, no timezone to get wrong,
+    and no plausible-but-wrong arithmetic for the model to do.
+
+    Anything missing, non-numeric, boolean, or NaN falls back to 0, which is
+    same-session, which is exactly what an unrecognized bucket did before. An
+    out-of-range value is clamped rather than dropped: a model asking for 120
+    days meant "a long window", and 90 is the longest honest one.
+    """
+    # bool is an int subclass in Python. True would silently become 1 day.
+    if isinstance(raw, bool):
+        return MIN_HORIZON_DAYS
+    if isinstance(raw, int):
+        value = raw
+    elif isinstance(raw, float):
+        # NaN and the infinities are not windows.
+        if raw != raw or raw in (float("inf"), float("-inf")):
+            return MIN_HORIZON_DAYS
+        value = int(raw)
+    elif isinstance(raw, str):
+        text = raw.strip()
+        try:
+            value = int(float(text))
+        except (TypeError, ValueError):
+            return MIN_HORIZON_DAYS
+    else:
+        return MIN_HORIZON_DAYS
+    return max(MIN_HORIZON_DAYS, min(value, MAX_HORIZON_DAYS))
+
+
 def _parse_date(value: object) -> date | None:
     if isinstance(value, date):
         return value
@@ -99,3 +152,19 @@ def resolve_on_for(brief_date: object, raw_horizon_type: object) -> str | None:
     if base is None:
         return None
     return (base + timedelta(days=horizon_days(raw_horizon_type))).isoformat()
+
+
+def resolve_on_for_days(brief_date: object, raw_days: object) -> str | None:
+    """
+    The resolve_on date for a call whose horizon is a day COUNT.
+
+    Same contract as resolve_on_for, same fail-closed behavior on an unusable
+    brief_date, same function boundary. The model states how long the claim
+    needs; the code owns the date. That division is the reason this module
+    exists (see the header) and a variable count does not change it: a count is
+    still intent, not arithmetic.
+    """
+    base = _parse_date(brief_date)
+    if base is None:
+        return None
+    return (base + timedelta(days=normalize_horizon_days(raw_days))).isoformat()
