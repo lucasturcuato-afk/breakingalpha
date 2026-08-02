@@ -562,7 +562,7 @@ export default function EveningWrapPage() {
         status: "new-signal",
         generated_at: new Date().toISOString(),
       });
-      router.push("/thesis-board");
+      router.push("/radar/calls?views=open");
     } catch (err) {
       console.error("Failed to add thesis:", err);
     } finally {
@@ -1216,7 +1216,7 @@ export default function EveningWrapPage() {
                               status: "new-signal",
                               generated_at: new Date().toISOString(),
                             });
-                            router.push("/thesis-board");
+                            router.push("/radar/calls?views=open");
                           } catch (err) {
                             console.error("Failed to add thesis:", err);
                           } finally {

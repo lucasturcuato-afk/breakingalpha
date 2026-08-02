@@ -719,7 +719,7 @@ Constraints:
         {/* Back button */}
         <button
           type="button"
-          onClick={() => router.push("/watchlist")}
+          onClick={() => router.push("/radar/watchlist")}
           className="inline-flex items-center gap-1.5 font-sans text-[11px] text-text-muted hover:text-text-primary cursor-pointer transition-colors"
         >
           <ArrowLeft size={14} /> Watchlist

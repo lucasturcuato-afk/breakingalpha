@@ -170,7 +170,7 @@ function FeedRowInner({ story, saved: savedProp, onBookmark }: FeedRowProps) {
                       );
 
                       if (match) {
-                        router.push(`/thesis-board?thesis=${match.id}`);
+                        router.push(`/radar/calls?thesis=${match.id}`);
                       } else {
                         setThesisToast("No thesis yet — this article hasn't been linked to a thesis");
                         setTimeout(() => setThesisToast(""), 3000);

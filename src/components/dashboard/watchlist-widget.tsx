@@ -108,7 +108,7 @@ export function WatchlistWidget() {
           Add companies to your watchlist to track them here.
         </p>
         <Link
-          href="/watchlist"
+          href="/radar/watchlist"
           className="block mt-2 font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors"
         >
           Go to watchlist →
@@ -177,7 +177,7 @@ export function WatchlistWidget() {
         </p>
       )}
       <Link
-        href="/watchlist"
+        href="/radar/watchlist"
         className="block mt-2 font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors"
       >
         Full watchlist →

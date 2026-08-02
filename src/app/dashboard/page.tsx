@@ -746,11 +746,13 @@ export default function DashboardPage() {
           <DashTile title="Watchlist" riseDelay={340} className="h-full">
             <WatchlistWidget />
           </DashTile>
-          {/* Honest label: there is no Radar-follow storage yet (no follows or
-              tracked-views table or endpoint), so this tile shows what is real
-              today: competitor activity + community signals derived from the
-              watchlist. Rename back to "Following" once follows exist. */}
-          <DashTile title="Signals" subtitle="around your watchlist" riseDelay={380} className="h-full">
+          {/* Label restored ahead of the merge: main (PR #450, Radar unified)
+              ships real follow storage at /api/radar/follows +
+              /api/radar/following-feed, so "Following" is accurate again.
+              FOLLOW-UP (post-merge, not this pass): swap the competitor +
+              community widgets below for the user's real Radar follows and
+              each follow's latest matching headline. */}
+          <DashTile title="Following" subtitle="desks & sectors you track" riseDelay={380} className="h-full">
             <div className="space-y-5">
               <div>
                 <p className="font-data text-[10px] tracking-[0.01em] text-text-faint mb-2">

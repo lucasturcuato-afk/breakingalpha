@@ -65,7 +65,7 @@ export default function WatchlistExportPage() {
       {/* Print / navigation controls — hidden when printing */}
       <div className="no-print bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between sticky top-0 z-10">
         <Link
-          href="/watchlist"
+          href="/radar/watchlist"
           className="font-sans text-[12px] text-gray-500 hover:text-gray-900 transition-colors"
         >
           ← Back to Watchlist
@@ -99,7 +99,7 @@ export default function WatchlistExportPage() {
               <div className="flex flex-col items-center justify-center py-24 text-center">
                 <p className="font-serif text-[18px] text-gray-700 mb-2">Your watchlist is empty</p>
                 <p className="font-sans text-[13px] text-gray-500 mb-4">Add tickers, companies, or sectors to your watchlist to generate an export.</p>
-                <Link href="/watchlist" className="font-sans text-[13px] text-amber-600 hover:text-amber-700 underline">← Back to Watchlist</Link>
+                <Link href="/radar/watchlist" className="font-sans text-[13px] text-amber-600 hover:text-amber-700 underline">← Back to Watchlist</Link>
               </div>
             ) : (
               <>

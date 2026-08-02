@@ -1167,7 +1167,7 @@ export default function TrendsPage() {
                 return (
                   <div className="border-t border-border-base pt-4">
                     <a
-                      href={`/thesis-board?thesis=${related.id}`}
+                      href={`/radar/calls?thesis=${related.id}`}
                       className="inline-flex items-center gap-2 font-sans text-[12px] font-semibold text-gold hover:text-gold-dark transition-colors"
                     >
                       Related thesis: {neutralizeThesisTitle(related.title)} {"\u2192"}
