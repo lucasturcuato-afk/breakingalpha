@@ -10,9 +10,10 @@
 
 @theme inline {
   /* ── Fonts ── */
-  --font-display: var(--font-playfair-display);
-  --font-sans: var(--font-inter);
-  --font-mono: var(--font-jetbrains-mono);
+  --font-display: var(--font-fraunces);
+  --font-serif: var(--font-fraunces);
+  --font-sans: var(--font-space-grotesk);
+  --font-mono: var(--font-plex-mono);
 
   /* ── Core palette ── */
   --color-cream: var(--cream);
@@ -103,34 +104,47 @@
 
 @layer base {
   body {
+    /* Back-compat aliases: prior variable names used throughout the
+       components now resolve to the new families, so the font swap
+       needs no per-file edits. Declared here (same element as the
+       next/font className variables) so all descendants resolve them. */
+    --font-playfair-display: var(--font-fraunces);
+    --font-inter: var(--font-space-grotesk);
+    --font-jetbrains-mono: var(--font-plex-mono);
+
     background: var(--parchment);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
     color: var(--text-primary);
-    font-family: var(--font-inter), sans-serif;
+    /* Reference the emitted next/font variables directly. The @theme
+       inline tokens (--font-sans etc.) are inlined into Tailwind
+       utilities and are NOT available as runtime custom properties, so
+       hand-written rules must use the real font variables. */
+    font-family: var(--font-space-grotesk), sans-serif;
     font-size: 14px;
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
   }
-  h1, h2 {
-    font-family: var(--font-playfair-display), serif;
+  /* Serif voice: headings and the lead story (an h3). */
+  h1, h2, h3 {
+    font-family: var(--font-fraunces), serif;
   }
-  h3, h4, h5, h6 {
-    font-family: var(--font-inter), sans-serif;
+  h4, h5, h6 {
+    font-family: var(--font-space-grotesk), sans-serif;
   }
 }
 
 /* ── Font utility classes ── */
 
 .font-display {
-  font-family: var(--font-playfair-display), serif;
+  font-family: var(--font-fraunces), serif;
 }
 
 .font-body {
-  font-family: var(--font-inter), sans-serif;
+  font-family: var(--font-space-grotesk), sans-serif;
 }
 
 .font-data {
-  font-family: var(--font-jetbrains-mono), monospace;
+  font-family: var(--font-plex-mono), monospace;
   font-variant-numeric: tabular-nums;
 }
 
