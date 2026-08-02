@@ -69,12 +69,16 @@ function TickerPct({ ticker, quote }: { ticker: string; quote?: Quote }) {
   );
 }
 
+// A single name may contribute at most this many items to the wire reel, so a
+// heavy news day for one ticker cannot turn the reel into a one-name loop.
+const MAX_PER_IDENTIFIER = 4;
+
 /**
  * Recency-plus-variety ordering for the wire: group by identifier (each group
- * newest-first), order groups by their freshest story, then round-robin across
- * groups. Freshest story per name leads and no single ticker can monopolize
- * the reel, matching the mockup's varied-name column. Pure re-ordering of the
- * real feed; nothing is filtered out.
+ * newest-first, capped at MAX_PER_IDENTIFIER), order groups by their freshest
+ * story, then round-robin across groups. Freshest story per name leads and no
+ * single ticker can monopolize the reel, matching the mockup's varied-name
+ * column. Pure re-ordering plus a per-name cap of the real feed.
  */
 function interleaveByIdentifier(items: WatchlistArticle[]): WatchlistArticle[] {
   const ts = (a: WatchlistArticle) =>
@@ -86,10 +90,11 @@ function interleaveByIdentifier(items: WatchlistArticle[]): WatchlistArticle[] {
     groups.set(a.identifier, g);
   }
   const ordered = [...groups.values()]
-    .map((g) => [...g].sort((x, y) => ts(y) - ts(x)))
+    .map((g) => [...g].sort((x, y) => ts(y) - ts(x)).slice(0, MAX_PER_IDENTIFIER))
     .sort((ga, gb) => ts(gb[0]) - ts(ga[0]));
+  const total = ordered.reduce((n, g) => n + g.length, 0);
   const out: WatchlistArticle[] = [];
-  for (let round = 0; out.length < items.length; round += 1) {
+  for (let round = 0; out.length < total; round += 1) {
     for (const g of ordered) {
       if (round < g.length) out.push(g[round]);
     }

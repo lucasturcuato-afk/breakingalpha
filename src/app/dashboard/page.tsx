@@ -713,7 +713,11 @@ export default function DashboardPage() {
           <DashTile title="Watchlist" riseDelay={340}>
             <WatchlistWidget />
           </DashTile>
-          <DashTile title="Following" subtitle="desks & sectors you track" riseDelay={380}>
+          {/* Honest label: there is no Radar-follow storage yet (no follows or
+              tracked-views table or endpoint), so this tile shows what is real
+              today: competitor activity + community signals derived from the
+              watchlist. Rename back to "Following" once follows exist. */}
+          <DashTile title="Signals" subtitle="around your watchlist" riseDelay={380}>
             <div className="space-y-5">
               <div>
                 <p className="font-data text-[10px] tracking-[0.01em] text-text-faint mb-2">
