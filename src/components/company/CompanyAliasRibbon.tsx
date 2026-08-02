@@ -64,7 +64,7 @@ export function CompanyAliasRibbon({ canonical, aliasMentions, maxBeforeCollapse
             style={{ fontFamily: SERIF, fontSize: 11, background: "transparent", border: "none", padding: 0, cursor: "pointer" }}
           >
             <span style={{ color: "var(--espresso)" }}>{alias.name}</span>
-            <span style={{ color: "var(--text-faint)" }}>{alias.n}</span>
+            <span style={{ color: "var(--text-faint)", fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>{alias.n}</span>
           </button>
         </Fragment>
       ))}

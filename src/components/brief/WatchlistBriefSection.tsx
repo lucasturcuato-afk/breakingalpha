@@ -158,7 +158,7 @@ export default function WatchlistBriefSection({
             {/* Ticker -> watchlist detail page */}
             <Link
               href={`/watchlist/${encodeURIComponent(b.ticker)}`}
-              className="font-display"
+              className="font-data"
               style={{
                 flex: "0 0 auto",
                 fontSize: 12,

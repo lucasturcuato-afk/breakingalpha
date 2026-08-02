@@ -1617,7 +1617,7 @@ function SortableEntryRow(props: {
 
       {/* LEFT: identifier + optional display_name subtitle */}
       <div className="flex flex-col min-w-0 flex-1">
-        <span className="font-display text-[13px] font-bold text-text-primary truncate">
+        <span className="font-data text-[13px] font-bold text-text-primary truncate">
           {entry.identifier}
         </span>
         {subtitle && (

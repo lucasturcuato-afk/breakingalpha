@@ -78,7 +78,7 @@ export function WatchlistWidget() {
               )}
             >
               <div className="flex-1 min-w-0">
-                <span className="font-display text-[12px] font-bold text-text-primary">
+                <span className="font-data text-[12px] font-bold text-text-primary">
                   {item.ticker}
                 </span>
                 {item.name !== item.ticker && (
@@ -89,7 +89,7 @@ export function WatchlistWidget() {
               </div>
               <span
                 className={cn(
-                  "font-display text-[12px]",
+                  "font-data text-[12px]",
                   isUnavailable ? "text-text-muted" : "text-text-primary",
                 )}
               >
@@ -97,7 +97,7 @@ export function WatchlistWidget() {
               </span>
               <span
                 className={cn(
-                  "font-display text-[10px] font-semibold min-w-[48px] text-right",
+                  "font-data text-[10px] font-semibold min-w-[48px] text-right",
                   isUnavailable
                     ? "text-text-muted"
                     : isPositive

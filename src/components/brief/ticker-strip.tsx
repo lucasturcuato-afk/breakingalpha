@@ -69,11 +69,11 @@ export function TickerStrip({ quotes: externalQuotes }: TickerStripProps) {
       <div className="flex items-center h-full animate-[ticker-scroll_60s_linear_infinite]">
         {items.map((q, i) => (
           <div key={`${q.symbol}-${i}`} className="flex items-center gap-1.5 px-4 flex-shrink-0">
-            <span className="font-display text-[10px] text-text-muted dark:text-text-muted">{q.symbol}</span>
-            <span className="font-display text-[11px] font-bold text-cream dark:text-text-secondary">{q.price}</span>
+            <span className="font-data text-[10px] text-text-muted dark:text-text-muted">{q.symbol}</span>
+            <span className="font-data text-[11px] font-bold text-cream dark:text-text-secondary">{q.price}</span>
             <span
               className={cn(
-                "font-display text-[10px] font-semibold",
+                "font-data text-[10px] font-semibold",
                 q.pct >= 0 ? "text-signal-up" : "text-signal-dn",
               )}
             >

@@ -510,7 +510,7 @@ function DealFlowContent() {
               { label: "With Valuation", value: deals.filter((d) => d.valuation || d.value).length },
             ].map((stat) => (
               <div key={stat.label} className="bg-white border border-border-base rounded-xl p-3.5">
-                <div className="font-display text-[24px] font-bold text-espresso mb-0.5">
+                <div className="font-data text-[24px] font-bold text-espresso mb-0.5">
                   {stat.value}
                 </div>
                 <div className="font-sans text-[9px] text-text-muted">
@@ -842,7 +842,7 @@ function DealFlowContent() {
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {displayValue && (
-                        <span className="font-display text-[12px] font-semibold text-gold">
+                        <span className="font-data text-[12px] font-semibold text-gold">
                           {displayValue}
                         </span>
                       )}

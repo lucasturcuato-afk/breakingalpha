@@ -319,11 +319,11 @@ export function CompanyStockChart({ ticker, companyName }: CompanyStockChartProp
             </span>
           ) : (
             <>
-              <span className="font-display text-[20px] font-bold text-espresso leading-none">
+              <span className="font-data text-[20px] font-bold text-espresso leading-none">
                 {formatPrice(headerPrice, data?.currency ?? null)}
               </span>
               <span
-                className="font-display text-[12px] font-semibold leading-none"
+                className="font-data text-[12px] font-semibold leading-none"
                 style={{ color: headerPct >= 0 ? "var(--signal-up)" : "var(--signal-dn)" }}
               >
                 {formatPct(headerPct)}
