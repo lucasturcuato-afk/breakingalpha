@@ -52,6 +52,17 @@ let lastFocus: FocusRecord | null = null;
 /** Last object with entityType === "story". Kept apart so a call card in view
  *  does not erase which story the user had just been reading. */
 let lastStory: FocusRecord | null = null;
+/**
+ * When each object first entered view, keyed `${type}:${id}`.
+ *
+ * `lastFocus` answers "what was on screen most recently", which is the wrong
+ * question when the user taps the third card after the fifth scrolled past. An
+ * action knows which object it is about, so it can ask about that one directly.
+ * First write wins: the honest reading of "since it entered view".
+ */
+const objectFirstSeen = new Map<string, number>();
+/** Bound on the per-object clock. One reading surface never holds this many. */
+const MAX_TRACKED_OBJECTS = 500;
 
 function now(): number {
   try {
@@ -154,6 +165,7 @@ export function openAttentionContext(ctx: {
     };
     lastFocus = null;
     lastStory = null;
+    objectFirstSeen.clear();
   } catch {
     // ignore
   }
@@ -163,6 +175,7 @@ export function closeAttentionContext(): void {
   pageContext = null;
   lastFocus = null;
   lastStory = null;
+  objectFirstSeen.clear();
 }
 
 /** Seconds since the surface opened, or null when no context is open. */
@@ -186,8 +199,32 @@ export function noteObjectInView(rec: {
     };
     lastFocus = focus;
     if (rec.entityType === "story") lastStory = focus;
+    if (rec.entityId) {
+      const key = `${rec.entityType}:${rec.entityId}`;
+      if (!objectFirstSeen.has(key) && objectFirstSeen.size < MAX_TRACKED_OBJECTS) {
+        objectFirstSeen.set(key, focus.since);
+      }
+    }
   } catch {
     // ignore
+  }
+}
+
+/**
+ * Seconds since a SPECIFIC object entered view, or null if it never did.
+ *
+ * An action call site passes the identity it already holds as a prop, so this
+ * never depends on which card happened to be on screen last.
+ */
+export function secondsSinceObjectFirstInView(
+  entityType: string,
+  entityId: string | null | undefined,
+): number | null {
+  try {
+    if (!entityId) return null;
+    return secondsSince(objectFirstSeen.get(`${entityType}:${entityId}`) ?? null);
+  } catch {
+    return null;
   }
 }
 

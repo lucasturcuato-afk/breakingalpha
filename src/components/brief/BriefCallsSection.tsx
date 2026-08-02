@@ -45,6 +45,11 @@ import {
 } from "@/components/calls/TrackCallControl";
 import { trackClientEvent } from "@/lib/track-event";
 import { notifyRadarLanded } from "@/lib/radar-landed";
+import { buildTrackProvenance } from "@/lib/call-track-provenance";
+import {
+  readProvenance,
+  secondsSinceObjectFirstInView,
+} from "@/lib/attention-context";
 
 interface BriefCall {
   id: string;
@@ -71,11 +76,20 @@ type LoadState = "loading" | "loaded" | "error";
 /** One trust line per section; every card's button describes itself with it. */
 const TRUST_LINE_ID = "brief-calls-track-why";
 
+/** What a surface needs to observe one rendered call card. Identity included,
+ *  so the observer never has to read it back out of the DOM. */
+export interface CallCardExposure {
+  callId: string;
+  rank: number;
+  listLength: number;
+}
+
 export default function BriefCallsSection({
   briefId,
   briefDate,
   heading = "Today's Calls",
   surface = "brief",
+  observeCard,
 }: {
   /** Match calls by their brief_id (morning brief). Takes precedence. */
   briefId?: string | null;
@@ -85,6 +99,16 @@ export default function BriefCallsSection({
   heading?: string;
   /** Telemetry surface only. Does not change behavior. */
   surface?: "brief" | "wrap";
+  /**
+   * Hand the page a ref for each card, WITH the call's identity.
+   *
+   * This replaces observing the grid from the outside and sniffing the id back
+   * out of an `aria-describedby` anchor. That resolver ran before the async
+   * claims read had rendered the control it was looking for, so it returned
+   * null on every row ever written, and #535 then removed the anchor outright.
+   * Passing identity down is the retirement #519 called for.
+   */
+  observeCard?: (card: CallCardExposure) => ((el: HTMLElement | null) => void) | undefined;
 }) {
   const [calls, setCalls] = useState<BriefCall[]>([]);
   // null = outcomes unavailable (query failed): render Open, claim nothing.
@@ -202,8 +226,25 @@ export default function BriefCallsSection({
    *
    * Never a modal, a toast, or a navigation. The reader stays in the brief.
    */
-  const track = async (call: BriefCall, horizon: HorizonType) => {
+  const track = async (
+    call: BriefCall,
+    horizon: HorizonType,
+    offeredHorizon: HorizonType,
+  ) => {
     setBusy(call.id);
+    // Read provenance at the TAP, not after the round trip: every elapsed-time
+    // number would otherwise carry the adopt request's latency. Identity comes
+    // from `call`, which is a prop of this render, so the block is meaningful
+    // even when no attention context is open at all (the evening wrap).
+    const provenance = buildTrackProvenance({
+      callId: call.id,
+      sourceType: "brief_call",
+      briefingId: briefId ?? null,
+      horizon,
+      offeredHorizon,
+      readAmbient: readProvenance,
+      secondsSinceSourceInView: secondsSinceObjectFirstInView("brief_call", call.id),
+    });
     setTrackError((prev) => {
       const next = { ...prev };
       delete next[call.id];
@@ -270,6 +311,9 @@ export default function BriefCallsSection({
       trackClientEvent(
         `${surface}.call.tracked`,
         {
+          // Provenance first: the ambient enricher's keys are the same names,
+          // and anything measured here must win over anything inferred there.
+          ...provenance,
           horizon,
           already_tracked: json.alreadyAdopted === true,
           gradeable: json.gradeable ?? null,
@@ -319,15 +363,14 @@ export default function BriefCallsSection({
         </div>
       ) : (
         <div className="grid gap-2">
-          {calls.map((c) => {
+          {calls.map((c, i) => {
             const trackedClaim = tracked?.get(c.id) ?? null;
             // The selector defaults to the call's OWN horizon, so a three-week
             // card never sits beside a one-week selector. Still changeable; the
             // adopt call and the horizon math are untouched.
-            const chosen =
-              horizonFor[c.id] ??
-              horizonTypeFromDates(c.brief_date, c.resolve_on) ??
-              DEFAULT_ADOPT_HORIZON;
+            const offered =
+              horizonTypeFromDates(c.brief_date, c.resolve_on) ?? DEFAULT_ADOPT_HORIZON;
+            const chosen = horizonFor[c.id] ?? offered;
             // The stamp plays once, only for a call committed in THIS session.
             // A claim loaded from the server on mount renders its end state
             // with no animation: a persisted entry is a fact, not an event.
@@ -335,36 +378,48 @@ export default function BriefCallsSection({
             return (
               // One object. The commit affordance is the card's footer, inside
               // its border; nothing floats above or between cards.
-              <ScoredObject
+              //
+              // The wrapper exists only to carry the observing surface's ref. It
+              // has no class, no attribute and no style, so it is the grid item
+              // the card was before and the card's own layout is untouched.
+              <div
                 key={c.id}
-                {...(outcomes && todayPt
-                  ? scoredCallProps(c, outcomes.get(c.id) ?? null, todayPt)
-                  : openCallProps(c))}
-                committed={!!trackedClaim}
-                footer={
-                  hasCommitFooter({
-                    tracked: trackedClaim,
-                    available: tracked !== null,
-                    gradeable: isPriceableClaimType(c.claim_type),
-                  }) ? (
-                  <CallCommitFooter
-                    callId={c.id}
-                    tracked={trackedClaim}
-                    available={tracked !== null}
-                    busy={busy === c.id}
-                    horizon={chosen}
-                    onHorizonChange={(h) =>
-                      setHorizonFor((prev) => ({ ...prev, [c.id]: h }))
-                    }
-                    onTrack={() => void track(c, chosen)}
-                    justStamped={justStamped}
-                    gradeable={isPriceableClaimType(c.claim_type)}
-                    trustLineId={TRUST_LINE_ID}
-                    error={trackError[c.id] ?? null}
-                  />
-                  ) : undefined
-                }
-              />
+                ref={observeCard?.({
+                  callId: c.id,
+                  rank: i,
+                  listLength: calls.length,
+                })}
+              >
+                <ScoredObject
+                  {...(outcomes && todayPt
+                    ? scoredCallProps(c, outcomes.get(c.id) ?? null, todayPt)
+                    : openCallProps(c))}
+                  committed={!!trackedClaim}
+                  footer={
+                    hasCommitFooter({
+                      tracked: trackedClaim,
+                      available: tracked !== null,
+                      gradeable: isPriceableClaimType(c.claim_type),
+                    }) ? (
+                    <CallCommitFooter
+                      callId={c.id}
+                      tracked={trackedClaim}
+                      available={tracked !== null}
+                      busy={busy === c.id}
+                      horizon={chosen}
+                      onHorizonChange={(h) =>
+                        setHorizonFor((prev) => ({ ...prev, [c.id]: h }))
+                      }
+                      onTrack={() => void track(c, chosen, offered)}
+                      justStamped={justStamped}
+                      gradeable={isPriceableClaimType(c.claim_type)}
+                      trustLineId={TRUST_LINE_ID}
+                      error={trackError[c.id] ?? null}
+                    />
+                    ) : undefined
+                  }
+                />
+              </div>
             );
           })}
         </div>
