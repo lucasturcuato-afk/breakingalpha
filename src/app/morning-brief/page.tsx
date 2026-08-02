@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { AppShell } from "@/components/shell";
 import { PanelWidget } from "@/components/shell/right-panel";
 import { TickerStrip } from "@/components/brief/ticker-strip";
@@ -39,7 +39,6 @@ import {
   openAttentionContext,
 } from "@/lib/attention-context";
 import { useExposure } from "@/hooks/useExposure";
-import { useChildExposure } from "@/hooks/useChildExposure";
 import { useSectionDwell } from "@/hooks/useSectionDwell";
 import { useScrollDepth } from "@/hooks/useScrollDepth";
 import { useCopySignal } from "@/hooks/useCopySignal";
@@ -654,30 +653,30 @@ export default function MorningBriefPage() {
   const storiesDwellRef = useSectionDwell({ sectionKey: "stories", eventName: "brief.section.dwelled", enabled: attnOn, extra: attnExtra });
   const callsDwellRef = useSectionDwell({ sectionKey: "calls", eventName: "brief.section.dwelled", enabled: attnOn, extra: attnExtra });
 
-  // Call cards are rendered by BriefCallsSection, which is being edited in a
-  // parallel branch and is off limits here. So they are observed from the
-  // outside: position and list size come from the rendered order and are always
-  // right; identity is read back out of the DOM through the id that
-  // TrackCallControl already puts on its describedby target. When the card
-  // carries no such id (it is already tracked, so the control is gone), the row
-  // lands with a null entity_id rather than a guessed one. A one-line
-  // data-attn-id on the card retires this resolver; see the PR body.
-  useChildExposure(callsDwellRef, {
+  // Call cards used to be observed from the OUTSIDE, with identity sniffed back
+  // out of an `aria-describedby` anchor id on whatever the grid happened to
+  // contain. That resolver ran at first attach, before the async claims read had
+  // rendered the control it was looking for, so it returned null on every row
+  // ever written (0 of 28 brief.call.exposed), and #535 then replaced the
+  // per-card anchor with one section-level id, removing even the possibility.
+  // BriefCallsSection now hands us a ref per card WITH the call id, so identity
+  // is a prop and the DOM is not consulted.
+  const callExposure = useExposure({
     eventName: "brief.call.exposed",
     enabled: attnOn,
-    entityType: "brief_call",
-    listKey: "calls",
-    childSelector: ":scope .grid > *",
-    resolveEntityId: (el) => {
-      const described = el.querySelector("[aria-describedby^='track-why-']");
-      const attr = described?.getAttribute("aria-describedby");
-      if (attr) return attr.slice("track-why-".length) || null;
-      const trust = el.querySelector("[id^='track-why-']");
-      const id = trust?.getAttribute("id");
-      return id ? id.slice("track-why-".length) || null : null;
-    },
     extra: attnExtra,
   });
+  const observeCall = useCallback(
+    (card: { callId: string; rank: number; listLength: number }) =>
+      callExposure.observe({
+        entityType: "brief_call",
+        entityId: card.callId,
+        rank: card.rank,
+        listKey: "calls",
+        listLength: card.listLength,
+      }),
+    [callExposure],
+  );
 
   useScrollDepth({
     eventName: "brief.page.scrolled",
@@ -1156,7 +1155,7 @@ export default function MorningBriefPage() {
             {/* ── Today's Calls — scored objects (Open state; real morning_brief_calls,
                  grading not live yet). Additive: no existing per-call rendering replaced. ── */}
             <section ref={callsDwellRef} style={{ marginBottom: 40 }}>
-              <BriefCallsSection briefId={briefing.id} heading="Today's Calls" surface="brief" />
+              <BriefCallsSection briefId={briefing.id} heading="Today's Calls" surface="brief" observeCard={observeCall} />
             </section>
 
             {/* ── Today's Lead ── */}
