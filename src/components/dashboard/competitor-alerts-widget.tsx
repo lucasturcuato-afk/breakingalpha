@@ -30,9 +30,10 @@ export function CompetitorAlertsWidget() {
   }, []);
 
   if (loading) {
+    // Three card-height rows to match the typical filled state.
     return (
       <div className="space-y-2">
-        {[1, 2].map(i => <div key={i} className="h-12 rounded-lg bg-parchment-mid animate-pulse" />)}
+        {[1, 2, 3].map(i => <div key={i} className="h-16 rounded-lg bg-parchment-mid animate-pulse" />)}
       </div>
     );
   }
@@ -46,7 +47,7 @@ export function CompetitorAlertsWidget() {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="dash-fill-in space-y-2">
       {alerts.slice(0, 5).map((alert, i) => (
         <div key={i} className="bg-parchment rounded-lg px-3 py-2">
           <div className="flex items-center gap-1.5 mb-1">

@@ -133,7 +133,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             ) : (
               Array.from(sections.entries()).map(([section, items]) => (
                 <div key={section}>
-                  <p className="px-4 pt-2 pb-1 font-sans text-[10px] font-semibold text-text-faint">
+                  <p className="px-4 pt-2 pb-1 font-data text-[10px] font-semibold uppercase tracking-[0.08em] text-text-faint">
                     {section}
                   </p>
                   {items.map((item) => {

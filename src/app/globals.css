@@ -582,6 +582,202 @@ html.dark .skeleton-shimmer {
   background-color: var(--parchment-mid, #faf5ed);
 }
 
+/* ============================================
+   Dashboard editorial re-skin (Pass 1)
+   Bento-shell entrance, stat band, cursor glow, cinematic intro.
+   Every animation here is disabled in the reduced-motion block below.
+   ============================================ */
+
+/* Content-column entrance — slow, deliberate fade-up (felt, not flashy). */
+/* The content wrapper intentionally does NOT fade as a block. A whole-page
+   opacity fade runs concurrently with the per-tile rise-in and washes the
+   stagger into one uniform fade, so the staggered assembly reads as a single
+   fade. Leaving the wrapper static lets the per-tile dash-rise stagger below be
+   the visible entrance. */
+
+/* Per-section rise-in; stagger via inline animation-delay at the call site. */
+@keyframes dash-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.dash-rise { animation: dash-rise 720ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Dotted texture behind the content column (fades toward the bottom). */
+.dash-dots { position: relative; }
+.dash-dots::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--espresso) 7%, transparent) 1px, transparent 1.6px);
+  background-size: 26px 26px;
+  opacity: 0.5;
+  -webkit-mask-image: radial-gradient(120% 90% at 50% 0%, #000 30%, transparent 78%);
+  mask-image: radial-gradient(120% 90% at 50% 0%, #000 30%, transparent 78%);
+}
+.dash-dots > * { position: relative; z-index: 1; }
+
+/* Editorial tile: flat surface, hover reveals a spotlight + hairline ring.
+   Reveal, never lift — per the motion rules. */
+.dash-tile { position: relative; transition: box-shadow 220ms cubic-bezier(0.16, 1, 0.3, 1); }
+.dash-tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  background: radial-gradient(280px circle at var(--mx, 50%) var(--my, 50%), rgba(212, 168, 75, 0.13), rgba(0, 0, 0, 0) 60%);
+}
+.dash-tile:hover::after { opacity: 1; }
+.dash-tile:hover { box-shadow: inset 0 0 0 1px rgba(212, 168, 75, 0.18); }
+
+/* Stat cell hover: a gold baseline wipes in. No lift. */
+.dash-figcell { position: relative; }
+.dash-figcell::after {
+  content: '';
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: 0;
+  height: 2px;
+  background: var(--gold);
+  border-radius: 2px;
+  transform: scaleX(0);
+  transform-origin: left;
+  opacity: 0;
+  transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1), opacity 240ms;
+}
+.dash-figcell:hover::after { transform: scaleX(1); opacity: 0.8; }
+
+/* Cursor-follow glow (position driven by JS custom props). */
+#dash-cursor-glow {
+  position: fixed;
+  width: 560px;
+  height: 560px;
+  left: 0;
+  top: 0;
+  margin: -280px 0 0 -280px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 30;
+  opacity: 0;
+  background: radial-gradient(circle, rgba(212, 168, 75, 0.09), rgba(0, 0, 0, 0) 62%);
+  transition: opacity 500ms ease;
+  transform: translate(var(--gx, -9999px), var(--gy, -9999px));
+}
+#dash-cursor-glow.on { opacity: 1; }
+html.dark #dash-cursor-glow {
+  background: radial-gradient(circle, rgba(214, 178, 100, 0.10), rgba(0, 0, 0, 0) 62%);
+}
+
+/* Cinematic briefing intro splash. */
+@keyframes dash-intro-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes dash-intro-out {
+  to { opacity: 0; transform: scale(1.03); visibility: hidden; }
+}
+@keyframes dash-mark-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(212, 168, 75, 0.55); }
+  50% { box-shadow: 0 0 22px 3px rgba(212, 168, 75, 0.55); }
+}
+.dash-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(760px 420px at 50% 34%, color-mix(in srgb, var(--gold) 12%, transparent), transparent 60%), var(--parchment);
+}
+.dash-intro.out { animation: dash-intro-out 700ms cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.dash-intro-el { animation: dash-intro-up 640ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.dash-mark-glow { animation: dash-mark-glow 2.2s ease-in-out infinite; }
+
+/* Immersive lead-story hero — dark ember surface (always dark, both themes). */
+.dash-lead-hero {
+  background:
+    repeating-linear-gradient(90deg, rgba(212, 168, 75, 0.045) 0 1px, transparent 1px 132px),
+    radial-gradient(820px 480px at 14% -22%, rgba(212, 168, 75, 0.22), transparent 56%),
+    radial-gradient(620px 380px at 104% 126%, rgba(220, 38, 38, 0.13), transparent 60%),
+    linear-gradient(150deg, #2c2013, #130f08 66%);
+  box-shadow: 0 22px 50px -28px rgba(20, 14, 4, 0.42);
+}
+
+/* Track-record bars grow up on mount (staggered via inline animation-delay). */
+@keyframes dash-bar-grow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+.dash-bar {
+  transform-origin: bottom;
+  animation: dash-bar-grow 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Horizontal peer bars — width grows from 0 to its inline target on mount.
+   The target width is set in JS one frame after mount so this transition runs. */
+.dash-hbar { transition: width 720ms cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* Rotating lead hero — the incoming story fades and lifts in (mirrors the
+   newsIn feel). Replayed by keying the content on story id. */
+@keyframes dash-hero-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+.dash-hero-in { animation: dash-hero-in 550ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Skeleton-to-content resolve — each tile's real content fades in subtly when
+   its data arrives. Under reduced motion content appears instantly. */
+@keyframes dash-fill-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.dash-fill-in { animation: dash-fill-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* The Watch "paper-turn" deck — sheets fan behind the front card and ease
+   their transform/opacity when the top of the stack advances. Positions are
+   set inline per card; this only supplies the shared transition curve. */
+.dash-sheet { transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1), opacity 700ms cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* Fresh-radar sparkline — the stroke draws in left to right. --spark-len is the
+   path length (set inline); a comfortable default over-covers short paths. */
+@keyframes dash-fspark-draw {
+  from { stroke-dashoffset: var(--spark-len, 140); }
+  to { stroke-dashoffset: 0; }
+}
+.dash-fspark-path {
+  stroke-dasharray: var(--spark-len, 140);
+  animation: dash-fspark-draw 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes dash-fspark-dot { from { opacity: 0; } to { opacity: 1; } }
+.dash-fspark-dot { opacity: 0; animation: dash-fspark-dot 280ms ease both; animation-delay: 820ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-rise,
+  .dash-fill-in {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .dash-tile::after,
+  .dash-figcell::after { display: none !important; }
+  .dash-tile:hover { box-shadow: none !important; }
+  #dash-cursor-glow { display: none !important; }
+  .dash-intro { display: none !important; }
+  .dash-mark-glow { animation: none !important; }
+  .dash-bar { animation: none !important; transform: none !important; }
+  .dash-hero-in { animation: none !important; }
+  .dash-sheet { transition: none !important; }
+  .dash-hbar { transition: none !important; }
+  .dash-fspark-path { animation: none !important; stroke-dashoffset: 0 !important; }
+  .dash-fspark-dot { animation: none !important; opacity: 1 !important; }
+}
+
 /*
   Force-generate dynamic utility classes that are conditionally applied
   in JSX and may not be picked up by Tailwind v4's static content scan.

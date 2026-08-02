@@ -4,13 +4,12 @@ import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
 import { useUserProfile } from "@/hooks/useUserProfile";
-import { PanelWidget } from "@/components/shell/right-panel";
+import { DashTile } from "@/components/dashboard/dash-tile";
+import { CallRecord } from "@/components/dashboard/call-record";
 import {
   Greeting,
   StatCard,
   AISignalBar,
-  LeadStoryCard,
-  CompactStoryCard,
   DailyBriefsWidget,
   ActiveThesesWidget,
   WatchlistWidget,
@@ -22,6 +21,9 @@ import { PersonalizationBanner } from "@/components/personalization/Personalizat
 import type { StoryData } from "@/components/dashboard";
 import { CompetitorAlertsWidget } from "@/components/dashboard/competitor-alerts-widget";
 import { CollectiveSignalsWidget } from "@/components/dashboard/collective-signals-widget";
+import { CursorGlow, DashboardIntro, DatePill } from "@/components/dashboard/dashboard-fx";
+import { FreshRadar } from "@/components/dashboard/fresh-radar";
+import { RotatingLeadHero } from "@/components/dashboard/rotating-lead-hero";
 import {
   MarketCardEditor,
   MARKET_CARD_OPTIONS,
@@ -49,7 +51,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
-import { fetchTopStories, TOP_STORIES_MAX_AGE_DAYS } from "@/lib/top-stories";
+import { fetchTopStories, parseSourceTicker, TOP_STORIES_MAX_AGE_DAYS } from "@/lib/top-stories";
 import { sortByRelevance, isOnWatchlist } from "@/lib/personalization";
 import type { ContentDescriptor } from "@/lib/personalization";
 import { useLiveMood } from "@/hooks/useLiveMood";
@@ -163,11 +165,16 @@ export default function DashboardPage() {
   }, [refetchProfile]);
 
   useEffect(() => {
-    async function loadStories() {
-      try {
-        const supabase = getSupabase();
+    // Cold-start: the four data groups below are independent, so they run in
+    // PARALLEL and each fills its section as it resolves. Previously they ran
+    // sequentially in one function, which held the hero (the slowest visual)
+    // behind counts/spark/briefing round-trips and made tiles pop in one by
+    // one over many seconds.
+    const supabase = getSupabase();
 
-        // Count articles ingested today (since midnight UTC)
+    // 1. Stat-band counts (today + bullish/bearish split)
+    async function loadCounts() {
+      try {
         const todayMidnight = new Date();
         todayMidnight.setUTCHours(0, 0, 0, 0);
         const [{ count }, { count: bullish }, { count: bearish }] = await Promise.all([
@@ -189,8 +196,14 @@ export default function DashboardPage() {
         setStoryCount(count ?? 0);
         setBullishCount(bullish ?? 0);
         setBearishCount(bearish ?? 0);
+      } catch (e) {
+        console.error("Failed to load dashboard counts:", e);
+      }
+    }
 
-        // Sparkline: article counts per day for last 12 days
+    // 2. Signals sparkline (12-day ingest buckets)
+    async function loadSpark() {
+      try {
         const sparkStart = new Date();
         sparkStart.setUTCHours(0, 0, 0, 0);
         sparkStart.setUTCDate(sparkStart.getUTCDate() - (SPARK_DAYS - 1));
@@ -208,8 +221,14 @@ export default function DashboardPage() {
           }
           setSparkSignals(buckets);
         }
+      } catch (e) {
+        console.error("Failed to load dashboard sparkline:", e);
+      }
+    }
 
-        // Fetch latest briefing headline + market_tone
+    // 3. Latest briefing headline + market_tone (AI signal bar)
+    async function loadBriefing() {
+      try {
         const { data: briefRow } = await supabase
           .from("briefings")
           .select("headline, market_tone")
@@ -221,7 +240,15 @@ export default function DashboardPage() {
           if (b.headline) setBriefingHeadline(b.headline);
           if (b.market_tone) setMarketTone(b.market_tone);
         }
+      } catch (e) {
+        console.error("Failed to load dashboard briefing:", e);
+      }
+    }
 
+    // 4. Top Stories (the hero) — the critical visual path, no longer queued
+    //    behind the other three groups.
+    async function loadStories() {
+      try {
         // Top Stories: highest relevance within the shared recency window.
         // See src/lib/top-stories.ts for the single-source-of-truth windows.
         const data = await fetchTopStories(supabase);
@@ -273,6 +300,9 @@ export default function DashboardPage() {
                 completeness,
                 adjustedScore,
                 sourceWinRate: a.source ? credMap.get(a.source) ?? null : null,
+                sentimentReason: a.sentiment_reason || undefined,
+                relevanceReason: a.relevance_reason || undefined,
+                sourceTicker: parseSourceTicker(a.source),
               };
             }),
           );
@@ -283,6 +313,10 @@ export default function DashboardPage() {
         setStoriesLoading(false);
       }
     }
+
+    loadCounts();
+    loadSpark();
+    loadBriefing();
     loadStories();
   }, []);
 
@@ -422,6 +456,7 @@ export default function DashboardPage() {
             { label: "Bearish", value: String(bearishCount) },
           ]}
           editOverlay={overlay}
+          showDivider={i > 0}
         />
       );
     }
@@ -438,6 +473,7 @@ export default function DashboardPage() {
         accentGold={i === 0}
         detailRows={[]}
         editOverlay={overlay}
+        showDivider={i > 0}
       />
     );
   }
@@ -493,41 +529,25 @@ export default function DashboardPage() {
       mood={mood}
       moodHeadline={moodHeadline}
       moodDetails={moodDetails}
-      rightPanel={
-        <>
-          <PanelWidget title="Daily Briefs">
-            <DailyBriefsWidget />
-          </PanelWidget>
-          <PanelWidget title="Active Theses">
-            <ActiveThesesWidget />
-          </PanelWidget>
-          <PanelWidget title="Watchlist">
-            <WatchlistWidget />
-          </PanelWidget>
-          <PanelWidget title="Competitor Activity">
-            <CompetitorAlertsWidget />
-          </PanelWidget>
-          <PanelWidget title="Community Signals">
-            <CollectiveSignalsWidget />
-          </PanelWidget>
-        </>
-      }
     >
-      <div className="px-6 py-4">
+      <div className="dash-contentwrap dash-dots max-w-[1440px] mx-auto px-6 md:px-12 py-6 md:py-8 pb-16">
+        <CursorGlow />
+        <DashboardIntro storyCount={storyCount} />
+
         {/* Onboarding banner */}
         <OnboardingBanner />
         <PersonalizationBanner />
 
-        {/* Greeting */}
-        <Greeting
-          storyCount={storyCount}
-          context={greetingSubtitle ?? "markets are adjusting to new export policy data."}
-        />
-
-        {/* Stat cards — dynamic from user profile */}
-        <div className="relative mt-4">
-          {/* Edit-mode toolbar: pencil to enter, Done + Plus while editing. */}
-          <div className="absolute -top-6 right-0 flex items-center gap-2">
+        {/* Greeting header — kicker/title/subtitle + date pill + arrange controls */}
+        <div className="dash-rise flex items-start justify-between gap-4 flex-wrap mt-1">
+          <Greeting
+            storyCount={storyCount}
+            context={greetingSubtitle ?? "markets are adjusting to new export policy data."}
+          />
+          <div className="flex flex-col items-end gap-2.5 ml-auto">
+            <DatePill />
+            {/* Edit-mode controls: pencil to enter, Done + Plus while editing. */}
+            <div className="flex items-center gap-2">
             {isEditingCards ? (
               <>
                 <button
@@ -571,24 +591,27 @@ export default function DashboardPage() {
                 Customize
               </button>
             )}
+            </div>
           </div>
+        </div>
 
-          {isEditingCards ? (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleCardDragEnd}
-            >
-              <SortableContext
-                items={userMarketCards}
-                strategy={horizontalListSortingStrategy}
+        {/* Stat band — four editorial figure cells with count-up */}
+        <div className="dash-rise mt-2" style={{ animationDelay: "80ms" }}>
+          <div
+            className="dash-tile relative rounded-2xl bg-white border border-border-base overflow-hidden"
+            style={{ borderTop: "2px solid rgba(212,168,75,0.5)" }}
+          >
+            {isEditingCards ? (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleCardDragEnd}
               >
-                <div
-                  className={cn(
-                    "grid gap-2.5",
-                    gridColsForCount(userMarketCards.length),
-                  )}
+                <SortableContext
+                  items={userMarketCards}
+                  strategy={horizontalListSortingStrategy}
                 >
+                  <div className={cn("grid", gridColsForCount(userMarketCards.length))}>
                   {userMarketCards.map((sym, i) => {
                     const overlay: ReactNode = (
                       <MarketCardEditor
@@ -605,45 +628,36 @@ export default function DashboardPage() {
                       </SortableMarketCard>
                     );
                   })}
-                </div>
-              </SortableContext>
-            </DndContext>
-          ) : (
-            <div
-              className={cn(
-                "grid gap-2.5",
-                gridColsForCount(userMarketCards.length),
-              )}
-            >
-              {userMarketCards.map((sym, i) => renderStatCard(sym, i))}
-            </div>
-          )}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            ) : (
+              <div className={cn("grid", gridColsForCount(userMarketCards.length))}>
+                {userMarketCards.map((sym, i) => renderStatCard(sym, i))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* System Intelligence */}
-        <div className="mt-2">
+        <div className="dash-rise mt-2" style={{ animationDelay: "100ms" }}>
           <SystemIntelligenceWidget />
         </div>
 
         {/* AI signal bar */}
-        <div className="mt-3" data-tour="ai-signal-bar">
+        <div className="dash-rise mt-3" style={{ animationDelay: "140ms" }} data-tour="ai-signal-bar">
           <AISignalBar
             text={briefingHeadline ?? "Loading intelligence briefing..."}
             boldParts={[]}
           />
         </div>
 
-        {/* Watchlist Feed */}
-        <div className="mt-4">
-          <WatchlistFeed />
-        </div>
-
-        {/* Stories section */}
-        <div className="mt-4">
-          <div className="flex items-center justify-between mb-2">
+        {/* Top Stories — immersive rotating lead hero */}
+        <div className="dash-rise mt-[18px]" style={{ animationDelay: "180ms" }}>
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
-              <h2 className="font-sans text-[11px] font-medium text-text-muted inline-flex items-center gap-1.5">
-                Top Stories — hover to expand
+              <h2 className="font-display text-[18px] font-medium text-espresso inline-flex items-center gap-1.5">
+                Top Stories
                 <InfoTooltip content={`The highest-signal stories from the last ${TOP_STORIES_MAX_AGE_DAYS} days, ranked by Signalera's relevance algorithm.`} side="bottom" iconSize={10} />
               </h2>
               {/* Tab bar */}
@@ -683,11 +697,11 @@ export default function DashboardPage() {
           </div>
 
           {storiesLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-32 rounded-xl" />
-              <Skeleton className="h-14 rounded-xl" />
-              <Skeleton className="h-14 rounded-xl" />
-              <Skeleton className="h-14 rounded-xl" />
+            // Hero-sized skeleton (dark ember silhouette + rundown strip line)
+            // so the resolved hero causes no layout shift.
+            <div>
+              <Skeleton className="h-[380px] rounded-2xl bg-[#241a10]/20" />
+              <Skeleton className="h-6 w-2/3 rounded-md mt-3" />
             </div>
           ) : displayStories.length === 0 ? (
             <EmptyState
@@ -696,33 +710,73 @@ export default function DashboardPage() {
               description="Stories will appear once articles are ingested by the pipeline."
             />
           ) : (
-            <>
-              {/* Lead story */}
-              <div className="relative">
-                {storyTab === "for-you" && (displayStories[0].tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
-                  <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 mb-1">
-                    Watching
-                  </span>
-                )}
-                <LeadStoryCard story={displayStories[0]} />
-              </div>
-
-              {/* Compact stories */}
-              <div className="mt-2 space-y-0">
-                {displayStories.slice(1).map((story, i) => (
-                  <div key={story.id}>
-                    {storyTab === "for-you" && (story.tags ?? []).some((t) => isOnWatchlist(t, profile)) && (
-                      <span className="inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold bg-gold-muted border border-gold/20 rounded px-1.5 py-0.5 ml-3 mb-0.5">
-                        Watching
-                      </span>
-                    )}
-                    <CompactStoryCard story={story} number={i + 2} />
-                  </div>
-                ))}
-              </div>
-            </>
+            /* Top stories live ONLY in the revolving hero (it cycles all ~4);
+               the numbered list that duplicated them below was removed. */
+            <div className="dash-fill-in">
+              <RotatingLeadHero
+                stories={displayStories.slice(0, 4)}
+                isWatching={(s) =>
+                  storyTab === "for-you" && (s.tags ?? []).some((t) => isOnWatchlist(t, profile))
+                }
+              />
+            </div>
           )}
         </div>
+
+        {/* Radar row — The Watch newsroom (lead deck + wire + fresh radar) and
+            Your calls. Fresh-on-radar lives inside the newsroom tile per the
+            mockup; it renders nothing when no not-tracked ticker surfaces.
+            items-stretch + h-full tiles keep the two column bottoms aligned
+            instead of leaving a ragged edge. */}
+        <div className="mt-[18px] grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-[18px] items-stretch">
+          <WatchlistFeed
+            riseDelay={220}
+            fresh={<FreshRadar stories={stories} watchlistTickers={watchlistTickers} embedded />}
+          />
+          <DashTile title="Your calls" subtitle="graded track record" riseDelay={300} className="h-full flex flex-col">
+            <CallRecord />
+            <div className="mt-4 pt-4 border-t border-border-subtle flex-1">
+              <ActiveThesesWidget />
+            </div>
+          </DashTile>
+        </div>
+
+        {/* Follow row — Watchlist + Signals, bottoms aligned. */}
+        <div className="mt-[18px] grid grid-cols-1 lg:grid-cols-[1fr_1.9fr] gap-[18px] items-stretch">
+          <DashTile title="Watchlist" riseDelay={340} className="h-full">
+            <WatchlistWidget />
+          </DashTile>
+          {/* Label restored ahead of the merge: main (PR #450, Radar unified)
+              ships real follow storage at /api/radar/follows +
+              /api/radar/following-feed, so "Following" is accurate again.
+              FOLLOW-UP (post-merge, not this pass): swap the competitor +
+              community widgets below for the user's real Radar follows and
+              each follow's latest matching headline. */}
+          <DashTile title="Following" subtitle="desks & sectors you track" riseDelay={380} className="h-full">
+            <div className="space-y-5">
+              <div>
+                <p className="font-data text-[10px] tracking-[0.01em] text-text-faint mb-2">
+                  Competitor activity
+                </p>
+                <CompetitorAlertsWidget />
+              </div>
+              <div>
+                <p className="font-data text-[10px] tracking-[0.01em] text-text-faint mb-2">
+                  Community signals
+                </p>
+                <CollectiveSignalsWidget />
+              </div>
+            </div>
+          </DashTile>
+        </div>
+
+        {/* Daily briefs */}
+        <div className="mt-[18px]">
+          <DashTile title="Daily Briefs" subtitle="morning & evening" riseDelay={420}>
+            <DailyBriefsWidget />
+          </DashTile>
+        </div>
+
       </div>
     </AppShell>
   );
