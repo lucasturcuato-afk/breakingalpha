@@ -1256,7 +1256,7 @@ For sector claims, pick the appropriate US sector ETF:
 - Utilities -> XLU
 - Communication Services -> XLC
 
-For aggregate/broad-market claims, use SPY as target_symbol (or null). For index claims, use the literal ETF (SPY, QQQ, DIA).
+Do NOT make claims about the market as a whole. "Stocks stay volatile", "equities drift higher", "risk appetite improves" name no instrument anyone can be scored against, and they are dropped before they ship. Across every such claim made so far, not one has ever resolved cleanly. If the claim really is about a NAMED index, use claim_type "index" with the literal ETF (SPY, QQQ, DIA) and say which index. Otherwise find the specific sector or company the claim is actually about, or do not make the claim at all.
 
 Return only the claims that clear the bar above. There is no target count and no floor: three real calls beat five with two decorations, and a genuinely non-directional brief should return one or zero. Never pad the list to look thorough. A claim added to reach a number is a claim nobody can be wrong about, and it costs more credibility than an empty list does.
 
