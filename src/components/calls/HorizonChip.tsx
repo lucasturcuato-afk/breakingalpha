@@ -14,17 +14,36 @@
  * so a call with no horizon shows nothing rather than a wrong label.
  */
 
-import { horizonFromDates } from "@/lib/call-horizons";
+import { horizonFromDates, horizonPhraseForDays } from "@/lib/call-horizons";
 
 export function HorizonChip({
   anchor,
   resolveOn,
+  variant = "chip",
 }: {
   anchor: string | null | undefined;
   resolveOn: string | null | undefined;
+  /**
+   * "chip" is the bordered token, kept for any surface still framing a horizon
+   * as metadata. "phrase" is the plain-language reading used inside a card,
+   * where the horizon is part of a decision and a monospace token reads as
+   * debug output. Monospace now belongs to the ledger line alone.
+   */
+  variant?: "chip" | "phrase";
 }) {
   const h = horizonFromDates(anchor, resolveOn);
   if (!h) return null;
+  if (variant === "phrase") {
+    return (
+      <span
+        data-testid="horizon-chip"
+        title={`Resolves ${resolveOn}`}
+        className="font-sans text-[11px] leading-none text-text-muted"
+      >
+        {horizonPhraseForDays(h.days)}
+      </span>
+    );
+  }
   return (
     <span
       data-testid="horizon-chip"

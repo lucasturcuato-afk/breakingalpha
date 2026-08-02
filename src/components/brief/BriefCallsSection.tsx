@@ -27,19 +27,24 @@
 import { useCallback, useEffect, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { ScoredObject } from "@/components/scored-object/ScoredObject";
-import { HorizonChip } from "@/components/calls/HorizonChip";
 import {
   openCallProps,
   scoredCallProps,
   type CallOutcomeRow,
 } from "@/lib/scored-object-map";
-import { DEFAULT_ADOPT_HORIZON, type HorizonType } from "@/lib/call-horizons";
 import {
-  CallLedgerLine,
-  TrackCallControl,
-  TrackTrustLine,
+  DEFAULT_ADOPT_HORIZON,
+  horizonTypeFromDates,
+  isPriceableClaimType,
+  type HorizonType,
+} from "@/lib/call-horizons";
+import {
+  CallCommitFooter,
+  CallsTrustLine,
+  hasCommitFooter,
 } from "@/components/calls/TrackCallControl";
 import { trackClientEvent } from "@/lib/track-event";
+import { notifyRadarLanded } from "@/lib/radar-landed";
 
 interface BriefCall {
   id: string;
@@ -62,6 +67,9 @@ interface TrackedClaim {
 }
 
 type LoadState = "loading" | "loaded" | "error";
+
+/** One trust line per section; every card's button describes itself with it. */
+const TRUST_LINE_ID = "brief-calls-track-why";
 
 export default function BriefCallsSection({
   briefId,
@@ -254,6 +262,9 @@ export default function BriefCallsSection({
         return next;
       });
       setStamped((prev) => new Set(prev).add(call.id));
+      // Peripheral confirmation: a brief pulse on the Radar nav row. Not a
+      // toast, not a banner, and never a navigation.
+      notifyRadarLanded();
       // Moat event: immediate flush, since a dropped track corrupts the
       // dataset rather than just adding noise.
       trackClientEvent(
@@ -284,10 +295,18 @@ export default function BriefCallsSection({
       <h2 className="font-display text-[15px] font-semibold text-text-primary leading-snug">
         {heading}
       </h2>
-      <p className="font-sans text-[12px] text-text-muted mt-0.5 mb-3">
+      <p className="font-sans text-[12px] text-text-muted mt-0.5">
         Predictions from this brief, captured before the outcome and scored
         against the market close with benchmark attribution.
       </p>
+      {/* The reason to commit, said ONCE. Every card's button points here with
+          aria-describedby, so the relationship survives the copy appearing one
+          time instead of above every card. */}
+      {tracked !== null && (
+        <div className="mt-2 mb-3">
+          <CallsTrustLine id={TRUST_LINE_ID} />
+        </div>
+      )}
 
       {calls.length === 0 ? (
         // Honest pending/empty state, never faked to look complete.
@@ -302,17 +321,33 @@ export default function BriefCallsSection({
         <div className="grid gap-2">
           {calls.map((c) => {
             const trackedClaim = tracked?.get(c.id) ?? null;
-            const chosen = horizonFor[c.id] ?? DEFAULT_ADOPT_HORIZON;
+            // The selector defaults to the call's OWN horizon, so a three-week
+            // card never sits beside a one-week selector. Still changeable; the
+            // adopt call and the horizon math are untouched.
+            const chosen =
+              horizonFor[c.id] ??
+              horizonTypeFromDates(c.brief_date, c.resolve_on) ??
+              DEFAULT_ADOPT_HORIZON;
             // The stamp plays once, only for a call committed in THIS session.
             // A claim loaded from the server on mount renders its end state
             // with no animation: a persisted entry is a fact, not an event.
             const justStamped = stamped.has(c.id);
             return (
-              <div key={c.id} className={trackedClaim ? "call-tracked-edge" : undefined}>
-                <div className="mb-1 flex items-baseline justify-between gap-2 px-1 font-sans text-[11px] text-text-faint">
-                  {/* Derived from resolve_on. Absent when the call has none. */}
-                  <HorizonChip anchor={c.brief_date} resolveOn={c.resolve_on} />
-                  <TrackCallControl
+              // One object. The commit affordance is the card's footer, inside
+              // its border; nothing floats above or between cards.
+              <ScoredObject
+                key={c.id}
+                {...(outcomes && todayPt
+                  ? scoredCallProps(c, outcomes.get(c.id) ?? null, todayPt)
+                  : openCallProps(c))}
+                committed={!!trackedClaim}
+                footer={
+                  hasCommitFooter({
+                    tracked: trackedClaim,
+                    available: tracked !== null,
+                    gradeable: isPriceableClaimType(c.claim_type),
+                  }) ? (
+                  <CallCommitFooter
                     callId={c.id}
                     tracked={trackedClaim}
                     available={tracked !== null}
@@ -323,25 +358,13 @@ export default function BriefCallsSection({
                     }
                     onTrack={() => void track(c, chosen)}
                     justStamped={justStamped}
+                    gradeable={isPriceableClaimType(c.claim_type)}
+                    trustLineId={TRUST_LINE_ID}
+                    error={trackError[c.id] ?? null}
                   />
-                </div>
-                <ScoredObject
-                  {...(outcomes && todayPt
-                    ? scoredCallProps(c, outcomes.get(c.id) ?? null, todayPt)
-                    : openCallProps(c))}
-                />
-                {/* Committed: the ledger entry. Not committed: the reason to. */}
-                {trackedClaim ? (
-                  <CallLedgerLine claim={trackedClaim} justStamped={justStamped} />
-                ) : tracked !== null ? (
-                  <TrackTrustLine callId={c.id} />
-                ) : null}
-                {trackError[c.id] && (
-                  <p className="mt-1 px-1 font-sans text-[11px] text-text-muted">
-                    {trackError[c.id]}
-                  </p>
-                )}
-              </div>
+                  ) : undefined
+                }
+              />
             );
           })}
         </div>

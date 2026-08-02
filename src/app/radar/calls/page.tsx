@@ -38,19 +38,24 @@ import type { Article as MapArticle } from "@/lib/clustering-utils";
 import { GroupJumpNav, useGroupScrollSpy } from "@/components/radar/GroupJumpNav";
 import { useMotionSettled } from "@/lib/use-motion-settled";
 import { useTopicClusters } from "@/lib/use-topic-clusters";
-import { HorizonChip } from "@/components/calls/HorizonChip";
 import {
-  CallLedgerLine,
-  TrackCallControl,
-  TrackTrustLine,
+  CallCommitFooter,
+  CallsTrustLine,
+  hasCommitFooter,
 } from "@/components/calls/TrackCallControl";
+import { notifyRadarLanded } from "@/lib/radar-landed";
 import {
   DEFAULT_ADOPT_HORIZON,
+  horizonTypeFromDates,
+  isPriceableClaimType,
   horizonFromDates,
   type HorizonType,
 } from "@/lib/call-horizons";
 
 const SERIF = "var(--font-playfair-display), serif";
+
+/** One trust line per section; every card's button describes itself with it. */
+const BRIEF_TRUST_LINE_ID = "radar-brief-calls-track-why";
 
 interface UserClaim {
   id: string;
@@ -378,6 +383,8 @@ export default function CallsPage() {
         return;
       }
       setStamped((prev) => new Set(prev).add(callId));
+      // Peripheral confirmation on the Radar nav row. No toast, no navigation.
+      notifyRadarLanded();
       await load();
     } catch {
       setStamped((prev) => { const n = new Set(prev); n.delete(callId); return n; });
@@ -645,6 +652,14 @@ export default function CallsPage() {
                   last 14 days · graded by the attribution grader
                 </span>
               </h2>
+              {/* The reason to commit, said ONCE for the whole section. Every
+                  card's button points here with aria-describedby. Repeating it
+                  above each card turned it into wallpaper. */}
+              {!unavailable && briefCalls.length > 0 && (
+                <div className="mb-3">
+                  <CallsTrustLine id={BRIEF_TRUST_LINE_ID} />
+                </div>
+              )}
               {briefCalls.length === 0 ? (
                 <p className="rounded-lg border border-border-subtle bg-elevated px-4 py-4 font-sans text-[13px] text-text-muted">
                   No brief calls captured in the last two weeks.
@@ -674,7 +689,12 @@ export default function CallsPage() {
                     const trackedClaim = claims.find(
                       (uc) => uc.adopted_from_call_id === c.id,
                     );
-                    const chosen = adoptHorizon[c.id] ?? DEFAULT_ADOPT_HORIZON;
+                    // Defaults to the call's OWN horizon, not a blanket one
+                    // week. Still changeable; no horizon math changes here.
+                    const chosen =
+                      adoptHorizon[c.id] ??
+                      horizonTypeFromDates(c.brief_date, c.resolve_on) ??
+                      DEFAULT_ADOPT_HORIZON;
                     return (
                       <div
                         key={c.id}
@@ -687,46 +707,47 @@ export default function CallsPage() {
                             : ""
                         }`}
                       >
-                        <div className="mb-1 flex items-baseline justify-between gap-2 px-1 font-sans text-[11px] text-text-faint">
-                          <span className="flex items-baseline gap-1.5">
-                            Signalera brief · {c.brief_date}
-                            <HorizonChip anchor={c.brief_date} resolveOn={c.resolve_on} />
-                          </span>
-                          {/* Shared control (@/components/calls/TrackCallControl).
-                              Present on EVERY call including already-scored ones:
-                              tracking is a fresh forward claim from today over the
-                              user's own window, not a re-run of the brief's
-                              already-settled verdict. */}
-                          <TrackCallControl
-                            callId={c.id}
-                            tracked={trackedClaim ?? null}
-                            available={!unavailable}
-                            busy={adoptBusy === c.id}
-                            horizon={chosen}
-                            onHorizonChange={(h) =>
-                              setAdoptHorizon((prev) => ({ ...prev, [c.id]: h }))
+                        <p className="mb-1 px-1 font-sans text-[11px] text-text-faint">
+                          Signalera brief · {c.brief_date}
+                        </p>
+                        {/* One object: the commit affordance is the card's
+                            footer, inside its border. Offered on EVERY gradeable
+                            call including already-scored ones, because tracking
+                            is a fresh forward claim from today over the user's
+                            own window, not a re-run of the brief's settled
+                            verdict. Same shared implementation as the brief. */}
+                        <div className="card-hover-lift">
+                          <ScoredObject
+                            {...props}
+                            committed={!!trackedClaim}
+                            footer={
+                              hasCommitFooter({
+                                tracked: trackedClaim,
+                                available: !unavailable,
+                                gradeable: isPriceableClaimType(c.claim_type),
+                              }) ? (
+                              <CallCommitFooter
+                                callId={c.id}
+                                tracked={trackedClaim ?? null}
+                                available={!unavailable}
+                                busy={adoptBusy === c.id}
+                                horizon={chosen}
+                                onHorizonChange={(h: HorizonType) =>
+                                  setAdoptHorizon((prev) => ({ ...prev, [c.id]: h }))
+                                }
+                                onTrack={() => void adopt(c.id, chosen)}
+                                justStamped={stamped.has(c.id)}
+                                gradeable={isPriceableClaimType(c.claim_type)}
+                                trustLineId={BRIEF_TRUST_LINE_ID}
+                                error={adoptError[c.id] ?? null}
+                              />
+                              ) : undefined
                             }
-                            onTrack={() => void adopt(c.id, chosen)}
-                            justStamped={stamped.has(c.id)}
                           />
                         </div>
-                        <div className="card-hover-lift">
-                          <ScoredObject {...props} />
-                        </div>
-                        {/* Committed: the ledger entry. Not committed: the reason to. */}
-                        {trackedClaim ? (
-                          <CallLedgerLine claim={trackedClaim} justStamped={stamped.has(c.id)} />
-                        ) : !unavailable ? (
-                          <TrackTrustLine callId={c.id} />
-                        ) : null}
                         <p className="motion-fade-reveal mt-1 px-1 font-sans text-[11px] leading-snug text-text-muted">
                           {briefResolutionSentence(c)}
                         </p>
-                        {adoptError[c.id] && (
-                          <p className="mt-1 px-1 font-sans text-[11px] text-text-muted">
-                            {adoptError[c.id]}
-                          </p>
-                        )}
                       </div>
                     );
                   })}

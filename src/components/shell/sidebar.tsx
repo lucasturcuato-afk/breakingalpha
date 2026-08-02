@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { onRadarLanded } from "@/lib/radar-landed";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
@@ -743,6 +744,21 @@ function NavGroup({
   unreadCount?: number;
   watchlistCount?: number;
 }) {
+  // Peripheral confirmation that a tracked call landed in Radar. A brief wash
+  // on the row, not a banner and not a count bump: the badge here is the
+  // watchlist count, and incrementing it for a call would put a wrong number on
+  // screen. See src/lib/radar-landed.ts.
+  const [radarLanded, setRadarLanded] = useState(false);
+  useEffect(() => {
+    return onRadarLanded(() => {
+      setRadarLanded(false);
+      // Next frame, so a second commit re-triggers the animation instead of
+      // being swallowed by the class already being present.
+      requestAnimationFrame(() => setRadarLanded(true));
+      window.setTimeout(() => setRadarLanded(false), 700);
+    });
+  }, []);
+
   return (
     <div>
       {/* Eyebrow header: hidden at icon-only width to avoid unreadable wrapping. */}
@@ -777,6 +793,7 @@ function NavGroup({
                   isActive
                     ? "bg-espresso text-cream [&_svg]:text-gold dark:bg-elevated dark:text-foreground dark:border-border-default"
                     : "text-text-muted [&_svg]:text-text-faint hover:bg-parchment-mid hover:text-espresso hover:border-l-gold [&:hover_svg]:text-gold-dark dark:text-text-secondary dark:hover:bg-overlay",
+                  isWatchlist && radarLanded && "radar-nav-pulse",
                 )}
               >
                 {item.icon}

@@ -39,6 +39,60 @@ export const HORIZON_LABEL: Record<HorizonType, string> = {
   multiweek: "3 weeks",
 };
 
+/**
+ * The same horizon said in words.
+ *
+ * "3 weeks" in a monospace chip reads as a system token, which is the wrong
+ * register for the thing a reader is deciding to commit to. Monospace is
+ * reserved for the ledger line, where it signals a record entry. Everywhere a
+ * horizon is being CHOSEN or previewed, it reads as a sentence fragment.
+ *
+ * Presentation only: no arithmetic here, and the day counts in HORIZON_DAYS are
+ * untouched.
+ */
+export const HORIZON_PHRASE: Record<HorizonType, string> = {
+  session: "resolves at today's close",
+  week: "resolves in about a week",
+  multiweek: "resolves in about three weeks",
+};
+
+/**
+ * Plain-language phrase for an arbitrary day count, mirroring
+ * horizonLabelForDays. A custom window states its real length rather than being
+ * rounded into a named bucket.
+ */
+export function horizonPhraseForDays(days: number): string {
+  if (days <= 0) return HORIZON_PHRASE.session;
+  for (const t of HORIZON_TYPES) {
+    if (HORIZON_DAYS[t] === days) return HORIZON_PHRASE[t];
+  }
+  if (days === 1) return "resolves tomorrow";
+  if (days % 7 === 0) {
+    const weeks = days / 7;
+    return weeks === 1 ? "resolves in about a week" : `resolves in about ${weeks} weeks`;
+  }
+  return `resolves in ${days} days`;
+}
+
+/**
+ * The bucket a stored window falls in, so a card's selector can DEFAULT to the
+ * call's own horizon instead of offering one week on every card. Exact matches
+ * only; anything else returns null and the caller keeps its own default rather
+ * than snapping a custom window into a bucket it is not.
+ */
+export function horizonTypeFromDates(
+  anchorIso: string | null | undefined,
+  resolveOnIso: string | null | undefined,
+): HorizonType | null {
+  if (!anchorIso || !resolveOnIso) return null;
+  const days = daysBetween(anchorIso, resolveOnIso);
+  if (days === null || days < 0) return null;
+  for (const t of HORIZON_TYPES) {
+    if (HORIZON_DAYS[t] === days) return t;
+  }
+  return null;
+}
+
 export function isHorizonType(v: unknown): v is HorizonType {
   return typeof v === "string" && (HORIZON_TYPES as string[]).includes(v);
 }
