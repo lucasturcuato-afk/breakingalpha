@@ -55,7 +55,7 @@ interface VerdictRow {
   weighted_sentiment_alignment: number | null;
   supporting_vs_contradicting_ratio: number | null;
   notes: string | null;
-  grader_version: string | null;
+  model_version: string | null;
 }
 
 export default function ThesisDetailPage() {
@@ -86,7 +86,7 @@ export default function ThesisDetailPage() {
             .select(
               "id, thesis_id, graded_at, verdict, confidence, " +
               "weighted_sentiment_alignment, supporting_vs_contradicting_ratio, " +
-              "notes, grader_version",
+              "notes, model_version",
             )
             .eq("thesis_id", thesisId)
             .order("graded_at", { ascending: true }),
@@ -332,8 +332,8 @@ export default function ThesisDetailPage() {
                       {v.notes}
                     </p>
                   )}
-                  {v.grader_version && (
-                    <span className="font-sans text-[9px] text-text-faint">{v.grader_version}</span>
+                  {v.model_version && (
+                    <span className="font-sans text-[9px] text-text-faint">{v.model_version}</span>
                   )}
                 </div>
               ))}

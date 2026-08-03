@@ -83,10 +83,18 @@ async function matchTaxonomy(
   value: string,
   days: number,
 ): Promise<FollowArticle[]> {
+  // industry_verticals / activity_types are JSONB arrays, not text[]. The
+  // supabase-js .contains(col, [value]) helper serializes to a POSTGRES array
+  // literal (cs.{Technology}), which a jsonb column rejects outright:
+  //   400  22P02  invalid input syntax for type json
+  // Every industry and activity follow therefore matched NOTHING, ever -- the
+  // error was swallowed as an empty result and rendered as a "quiet" follow.
+  // A jsonb containment filter needs a JSON array literal (cs.["Technology"]),
+  // which is what passing a JSON string to .contains() produces.
   const { data, error } = await sb
     .from("articles")
     .select(ARTICLE_SELECT)
-    .contains(column, [value])
+    .contains(column, JSON.stringify([value]))
     .gte("published_at", sinceIso(days))
     .order("published_at", { ascending: false })
     .limit(PER_FOLLOW_LIMIT);

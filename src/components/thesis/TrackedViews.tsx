@@ -66,7 +66,7 @@ export interface VerdictRow {
   graded_at: string;
   confidence: number | null;
   notes: string | null;
-  grader_version: string | null;
+  model_version: string | null;
 }
 
 function verdictDotColor(verdict: string): string {
@@ -129,8 +129,8 @@ export function ReviewTimeline({ verdicts }: { verdicts: VerdictRow[] | null }) 
           {v.notes && (
             <p className="mt-0.5 font-sans text-[11.5px] leading-snug text-text-secondary">{v.notes}</p>
           )}
-          {v.grader_version && (
-            <span className="font-sans text-[9px] text-text-faint">{v.grader_version}</span>
+          {v.model_version && (
+            <span className="font-sans text-[9px] text-text-faint">{v.model_version}</span>
           )}
         </div>
       ))}
@@ -266,7 +266,7 @@ export function TrackedViews({
         const supabase = getSupabase();
         const { data } = await supabase
           .from("thesis_verdicts")
-          .select("id, verdict, graded_at, confidence, notes, grader_version")
+          .select("id, verdict, graded_at, confidence, notes, model_version")
           .eq("thesis_id", thesisId)
           .order("graded_at", { ascending: true });
         setVerdictsByThesis((prev) => ({ ...prev, [thesisId]: (data as VerdictRow[] | null) ?? [] }));

@@ -127,8 +127,8 @@ const FIXTURE_THESIS_ARTICLES = [
   { id: "ta2", title: "Hyperscalers sign behind-the-meter nuclear PPAs", source: "Reuters", published_at: "2026-06-29T10:00:00Z", sector: "Energy & Oil/Gas", sentiment: "neutral" },
 ];
 const FIXTURE_VERDICTS: VerdictRow[] = [
-  { id: "v1", verdict: "inconclusive", graded_at: "2026-06-18T09:00:00Z", confidence: 0.55, notes: "Evidence thin; interconnect data mixed.", grader_version: "evidence_grader_v2" },
-  { id: "v2", verdict: "confirmed", graded_at: "2026-07-01T09:00:00Z", confidence: 0.72, notes: "Queue growth and PPA activity both support the constraint thesis.", grader_version: "evidence_grader_v2" },
+  { id: "v1", verdict: "inconclusive", graded_at: "2026-06-18T09:00:00Z", confidence: 0.55, notes: "Evidence thin; interconnect data mixed.", model_version: "gemini-2.5-flash" },
+  { id: "v2", verdict: "confirmed", graded_at: "2026-07-01T09:00:00Z", confidence: 0.72, notes: "Queue growth and PPA activity both support the constraint thesis.", model_version: "gemini-2.5-flash" },
 ];
 
 const MAP_ARTICLES = [

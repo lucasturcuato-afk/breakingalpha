@@ -41,6 +41,9 @@ interface FollowSummary {
 interface Development {
   follow: FollowSummary;
   articles: FollowArticle[];
+  /** True when this follow's match query errored. The route sets it so a
+   *  broken follow is never reported as a quiet one. */
+  failed?: boolean;
 }
 
 type ViewMode = "topic" | "activity" | "timeline" | "map";
@@ -185,8 +188,19 @@ export default function FollowingPage() {
     () => (developments ?? []).filter((d) => !d.follow.muted && d.articles.length > 0),
     [developments],
   );
+  // Quiet == the query ran and matched nothing. A follow whose match FAILED is
+  // excluded here and surfaced separately; calling it quiet would repeat the
+  // exact false claim this page's copy makes ("that is the honest answer, not a
+  // gap in coverage display").
   const quiet = useMemo(
-    () => (developments ?? []).filter((d) => d.follow.muted || d.articles.length === 0),
+    () =>
+      (developments ?? []).filter(
+        (d) => !d.failed && (d.follow.muted || d.articles.length === 0),
+      ),
+    [developments],
+  );
+  const failedFollows = useMemo(
+    () => (developments ?? []).filter((d) => d.failed),
     [developments],
   );
   const allArticles = useMemo(() => {
@@ -399,6 +413,26 @@ export default function FollowingPage() {
             )}
 
             </div>
+
+            {/* Follows whose matching errored. Distinct from quiet on purpose. */}
+            {failedFollows.length > 0 && (
+              <div className="mt-8 rounded-xl border border-signal-dn/30 bg-signal-dn/5 px-4 py-3">
+                <p className="font-sans text-[11px] font-semibold uppercase tracking-[0.14em] text-signal-dn">
+                  Could not check
+                </p>
+                <p className="mt-2 font-sans text-[13px] text-text-secondary">
+                  {failedFollows.map((d, i) => (
+                    <span key={d.follow.id}>
+                      {i > 0 && " · "}
+                      {followLabel(d.follow)}
+                    </span>
+                  ))}
+                </p>
+                <p className="mt-1 font-sans text-[12px] text-text-faint">
+                  Matching failed for these. This is an error, not an empty result.
+                </p>
+              </div>
+            )}
 
             {/* Quiet follows: honest collapse, never padded. */}
             {quiet.length > 0 && (
