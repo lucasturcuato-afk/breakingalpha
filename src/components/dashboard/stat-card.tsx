@@ -26,6 +26,13 @@ interface StatCardProps {
   detailRows?: { label: string; value: string }[];
   /** When true, cell shows "last close" instead of a percent-change. */
   stale?: boolean;
+  /**
+   * True when no quote was returned for this symbol. The change cell then
+   * renders an absence. Without it, a missing card fell through as
+   * `change = 0` and printed "0.00%", which asserts a flat session the feed
+   * never reported.
+   */
+  changeUnknown?: boolean;
   /** Optional edit-mode overlay (swap dropdown + minus button). */
   editOverlay?: React.ReactNode;
   /** Left hairline divider between cells in the stat band (all but the first). */
@@ -78,6 +85,7 @@ export function StatCard({
   accentGold = false,
   detailRows = [],
   stale = false,
+  changeUnknown = false,
   editOverlay,
   showDivider = false,
 }: StatCardProps) {
@@ -107,7 +115,11 @@ export function StatCard({
         >
           {shape ? <AnimatedNumber value={shape.target} format={shape.format} /> : value}
         </span>
-        {stale ? (
+        {changeUnknown ? (
+          <span className="font-data text-[11px] text-text-muted leading-none">
+            · no quote
+          </span>
+        ) : stale ? (
           <span className="font-data text-[11px] text-text-muted leading-none">
             · last close
           </span>

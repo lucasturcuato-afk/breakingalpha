@@ -51,6 +51,13 @@ export interface DeskCallRow {
   outcome: CallOutcomeRow;
 }
 
+// Re-exported so the user's own record (src/lib/your-record.ts, PR #542) buckets
+// through exactly this shared table rather than growing a parallel one that could
+// drift. The definitions now live in verdict-vocabulary.ts (PR #543); #542
+// originally declared them locally here, which this rebase drops in favor of the
+// shared source.
+export { RESOLUTION_BY_STATE, VERDICT_WORD };
+
 /** All copy the record surface authors itself. Every user-visible string on
  *  the surface that is not verbatim call text lives here so the compliance
  *  test can assert over the whole of it. */

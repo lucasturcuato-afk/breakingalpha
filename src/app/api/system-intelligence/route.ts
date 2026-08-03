@@ -130,8 +130,37 @@ export async function GET() {
     /* soft-fail */
   }
 
+  // 7. Is the calibrator actually learning?
+  //
+  // "Learning active" used to be an unconditional string in the widget. The
+  // only calibrator on this system writes lead_weights, and it publishes a
+  // fitted row (is_default false, n_train > 0) once it has enough graded days
+  // to move a weight. Until then the live row is the hand-tuned seed and
+  // nothing has been learned from outcomes. This is the evidence the badge is
+  // gated on; the badge renders only when `calibrated` is true.
+  let learning: { calibrated: boolean; fitTs: string | null; nTrain: number } | null = null;
+  try {
+    const { data } = await supabase
+      .from("lead_weights")
+      .select("version, fit_ts, n_train, is_default")
+      .eq("is_default", false)
+      .gt("n_train", 0)
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    learning = {
+      calibrated: !!data,
+      fitTs: (data?.fit_ts as string | null) ?? null,
+      nTrain: (data?.n_train as number | null) ?? 0,
+    };
+  } catch {
+    // soft-fail: no evidence means no badge, never an assumed yes
+    learning = { calibrated: false, fitTs: null, nTrain: 0 };
+  }
+
   return NextResponse.json({
     lastRun,
+    learning,
     avgQualityScore,
     topPattern,
     topSource,

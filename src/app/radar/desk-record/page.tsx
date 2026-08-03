@@ -21,36 +21,17 @@ import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
 import { RadarTabs } from "@/components/radar/RadarTabs";
 import { DeskRecordView } from "@/components/record/DeskRecordView";
-import { buildDeskRecord, type DeskCallRow, type DeskRecord } from "@/lib/desk-record.ts";
-import type { CallOutcomeRow } from "@/lib/scored-object-map";
+import type { DeskRecord } from "@/lib/desk-record.ts";
+import { fetchDeskRecord } from "@/lib/desk-record-query.ts";
 
-/** Newest graded calls. Generous enough to hold the whole record today while
- *  still bounding the read; the counts are over exactly what is fetched, and
- *  the window label on the page states the span covered. */
-const OUTCOME_LIMIT = 500;
 /** How many resolved calls the list renders. Counts always cover all rows. */
 const LIST_LIMIT = 40;
-
-interface BriefCallRow {
-  id: string;
-  claim_text: string;
-  claim_type: string | null;
-  target_symbol: string | null;
-  brief_date: string | null;
-  created_at: string | null;
-  confidence: number | null;
-}
 
 function getSupabase() {
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
-}
-
-/** Today's US-Pacific session date. Used only for the live-window check. */
-function todayPt(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 }
 
 export default function DeskRecordPage() {
@@ -62,54 +43,15 @@ export default function DeskRecordPage() {
 
     (async () => {
       try {
-        const supabase = getSupabase();
-
-        const { data: outcomeData, error: outcomeError } = await supabase
-          .from("morning_brief_call_outcomes")
-          .select(
-            "call_id, verdict, attribution, actual_pct_change, actual_direction, verdict_notes, graded_at, metadata",
-          )
-          .order("graded_at", { ascending: false })
-          .limit(OUTCOME_LIMIT);
+        // Same loader the dashboard's desk-record summary uses, so the two
+        // surfaces cannot disagree about the counts.
+        const result = await fetchDeskRecord(getSupabase(), LIST_LIMIT);
         if (cancelled) return;
-        if (outcomeError) {
+        if (!result) {
           setStatus("error");
           return;
         }
-
-        // Latest outcome per call (no unique constraint on call_id in the DB).
-        const byCall = new Map<string, CallOutcomeRow>();
-        for (const o of (outcomeData as CallOutcomeRow[] | null) ?? []) {
-          const prev = byCall.get(o.call_id);
-          if (!prev || (o.graded_at ?? "") > (prev.graded_at ?? "")) byCall.set(o.call_id, o);
-        }
-
-        if (byCall.size === 0) {
-          setRecord(buildDeskRecord([], todayPt(), LIST_LIMIT));
-          setStatus("ready");
-          return;
-        }
-
-        const { data: callData, error: callError } = await supabase
-          .from("morning_brief_calls")
-          .select("id, claim_text, claim_type, target_symbol, brief_date, created_at, confidence")
-          .in("id", [...byCall.keys()]);
-        if (cancelled) return;
-        if (callError) {
-          setStatus("error");
-          return;
-        }
-
-        // Only calls whose text we actually have. A grade with no claim behind
-        // it is dropped rather than rendered as an anonymous verdict.
-        const rows: DeskCallRow[] = [];
-        for (const c of (callData as BriefCallRow[] | null) ?? []) {
-          const outcome = byCall.get(c.id);
-          if (!outcome || !c.claim_text) continue;
-          rows.push({ call: c, outcome });
-        }
-
-        setRecord(buildDeskRecord(rows, todayPt(), LIST_LIMIT));
+        setRecord(result);
         setStatus("ready");
       } catch {
         if (!cancelled) setStatus("error");
