@@ -145,7 +145,7 @@ function WatchDeck({
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={() => setPaused(false)}
     >
-      <div className="relative h-[150px] pr-7">
+      <div className="relative pr-7" style={{ height: DECK_CARD_H }}>
         {deck.map((a, i) => {
           const pos = (i - topIdx + k) % k;
           const front = pos === 0;
@@ -153,7 +153,7 @@ function WatchDeck({
             <div
               key={a.article_id}
               className={cn(
-                "dash-sheet absolute inset-0 rounded-2xl border border-border-base bg-white p-4 shadow-[0_16px_40px_-22px_rgba(20,14,4,0.34)]",
+                "dash-sheet absolute inset-0 flex flex-col rounded-2xl border border-border-base bg-white p-4 shadow-[0_16px_40px_-22px_rgba(20,14,4,0.34)]",
                 front && k > 1 && "cursor-pointer",
               )}
               style={{ ...sheetStyle(pos), pointerEvents: front ? "auto" : "none" }}
@@ -182,7 +182,7 @@ function WatchDeck({
                 <ExternalLink size={11} className="inline ml-1 opacity-0 group-hover:opacity-60 transition-opacity" />
               </a>
               {a.summary && (
-                <p className="font-sans text-[11.5px] text-text-secondary leading-[1.5] mt-1 line-clamp-2">
+                <p className="font-sans text-[11.5px] text-text-secondary leading-[1.5] mt-1 line-clamp-3 flex-1 min-h-0">
                   {a.summary}
                 </p>
               )}
@@ -215,10 +215,20 @@ function WatchDeck({
   );
 }
 
-// Fixed wire row height so the departure-board roll distance is exact.
-const WIRE_ROW_H = 74;
+// Newsroom column geometry. The wire needs a fixed row height so the
+// departure-board roll distance is exact; the Lead deck derives its card
+// height from the SAME numbers, so the two columns end at exactly the same
+// baseline instead of one floating above a gap. Change WIRE_ROW_H or
+// WIRE_WINDOW and both columns stay aligned by construction.
+const WIRE_ROW_H = 68;
 const WIRE_WINDOW = 3;
 const WIRE_ROLL_MS = 620;
+/** Total height of the wire viewport, and therefore of the newsroom row. */
+const NEWSROOM_H = WIRE_ROW_H * WIRE_WINDOW; // 204
+/** Dots strip under the deck (3px bar + its 14px top margin, rounded). */
+const DECK_DOTS_H = 18;
+/** Deck card height so card + dots == the wire's height. */
+const DECK_CARD_H = NEWSROOM_H - DECK_DOTS_H; // 186
 
 /**
  * WireReel — "The wire" as a departure board: rows roll UPWARD continuously
@@ -278,7 +288,7 @@ function WireReel({
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={() => setPaused(false)}
       className="overflow-hidden"
-      style={{ height: WIRE_ROW_H * size }}
+      style={{ height: size === WIRE_WINDOW ? NEWSROOM_H : WIRE_ROW_H * size }}
     >
       <div
         style={{
@@ -390,12 +400,10 @@ export function WatchlistFeed({
         <div className="animate-pulse">
           <div className="h-5 bg-parchment-mid rounded w-1/3 mb-4" />
           <div className="grid grid-cols-1 md:grid-cols-[1.45fr_1fr] gap-x-7 gap-y-5">
-            <div className="h-[196px] bg-parchment-mid/60 rounded-2xl" />
-            <div className="space-y-3">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="h-[62px] bg-parchment-mid/50 rounded-lg" />
-              ))}
-            </div>
+            {/* Same geometry as the resolved newsroom row, so filling in
+                causes no layout shift. */}
+            <div className="bg-parchment-mid/60 rounded-2xl" style={{ height: NEWSROOM_H }} />
+            <div className="bg-parchment-mid/50 rounded-lg" style={{ height: NEWSROOM_H }} />
           </div>
           <div className="h-[150px] bg-parchment-mid/40 rounded-xl mt-5" />
         </div>

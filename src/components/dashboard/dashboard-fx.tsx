@@ -64,6 +64,61 @@ export function CursorGlow() {
 }
 
 /**
+ * TileSpotlight — makes the per-tile hover glow actually follow the pointer.
+ *
+ * .dash-tile::after positions its radial gradient at var(--mx) var(--my), but
+ * nothing ever set those properties, so every tile fell back to the 50% 50%
+ * default and lit its own centre no matter where the cursor was. This sets
+ * them, in tile-relative pixels, from a single delegated listener.
+ *
+ * One document-level pointermove handler (passive) resolves the tile under the
+ * cursor via closest(), and writes are coalesced into a rAF so a fast drag
+ * across the page cannot queue more than one style write per frame. Skipped
+ * entirely under prefers-reduced-motion, where the hover reveal is disabled in
+ * CSS anyway.
+ */
+export function TileSpotlight() {
+  useEffect(() => {
+    if (prefersReducedMotion()) return;
+
+    // The rect is read once per tile the pointer enters (and refreshed on
+    // scroll/resize) rather than on every move, so the hot path is just two
+    // custom-property writes. Deliberately NOT rAF-throttled: rAF is paused
+    // while a page is hidden, which would make the effect silently dead and
+    // untestable, and two setProperty calls do not force layout.
+    let lastTile: HTMLElement | null = null;
+    let rect: DOMRect | null = null;
+
+    function onMove(e: PointerEvent) {
+      const target = e.target as Element | null;
+      const tile = (target?.closest?.(".dash-tile") ?? null) as HTMLElement | null;
+      if (!tile) return;
+      if (tile !== lastTile || !rect) {
+        lastTile = tile;
+        rect = tile.getBoundingClientRect();
+      }
+      tile.style.setProperty("--mx", `${e.clientX - rect.left}px`);
+      tile.style.setProperty("--my", `${e.clientY - rect.top}px`);
+    }
+
+    function invalidate() {
+      rect = lastTile ? lastTile.getBoundingClientRect() : null;
+    }
+
+    document.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("scroll", invalidate, { passive: true });
+    window.addEventListener("resize", invalidate);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      window.removeEventListener("scroll", invalidate);
+      window.removeEventListener("resize", invalidate);
+    };
+  }, []);
+
+  return null;
+}
+
+/**
  * Cinematic briefing intro — a one-time-per-session splash that counts up a few
  * headline metrics while "compiling" the briefing, then fades out to reveal the
  * dashboard. Skipped entirely under prefers-reduced-motion and after it has run
