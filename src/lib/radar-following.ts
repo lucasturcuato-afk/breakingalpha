@@ -90,7 +90,10 @@ async function matchTaxonomy(
     .gte("published_at", sinceIso(days))
     .order("published_at", { ascending: false })
     .limit(PER_FOLLOW_LIMIT);
-  if (error) return [];
+  // Throw rather than return []: a query failure is not "no matches", and the
+  // Following surface tells the reader a quiet feed is "the honest answer, not
+  // a gap in coverage display". That claim is only true when the query ran.
+  if (error) throw new Error(`taxonomy match failed: ${error.message}`);
   return (data as FollowArticle[] | null) ?? [];
 }
 
@@ -108,7 +111,7 @@ async function matchKeywords(
     .gte("published_at", sinceIso(days))
     .order("published_at", { ascending: false })
     .limit(PER_FOLLOW_LIMIT);
-  if (error) return [];
+  if (error) throw new Error(`keyword match failed: ${error.message}`);
   return (data as FollowArticle[] | null) ?? [];
 }
 
@@ -187,7 +190,10 @@ export async function matchFollow(
       default:
         return [];
     }
-  } catch {
-    return [];
+  } catch (e) {
+    // Re-thrown so the caller can mark THIS follow as failed rather than
+    // silently listing it as quiet. Swallowing here made a Postgres error
+    // indistinguishable from a genuine no-match.
+    throw e instanceof Error ? e : new Error("follow match failed");
   }
 }

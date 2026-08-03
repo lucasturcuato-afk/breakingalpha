@@ -22,6 +22,7 @@ import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { stripHtml } from "@/lib/strip-html";
+import { createUserThesis } from "@/lib/create-user-thesis";
 import { reconcileCloseWord } from "@/lib/tape-adjective";
 import { Moon } from "lucide-react";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
@@ -749,7 +750,7 @@ export default function EveningWrapPage() {
   const handleLeadAddThesis = async () => {
     setAddingThesis(true);
     try {
-      await getSupabase().from("theses").insert({
+      await createUserThesis(getSupabase(), {
         title: briefing?.headline || "Evening Wrap Lead",
         conviction: "WATCH",
         sector: "General",
@@ -1430,7 +1431,7 @@ export default function EveningWrapPage() {
                         onClick={async () => {
                           setAddingThesis(true);
                           try {
-                            await getSupabase().from("theses").insert({
+                            await createUserThesis(getSupabase(), {
                               title: "Tomorrow's Setup",
                               conviction: "WATCH",
                               sector: "General",
@@ -1516,7 +1517,7 @@ export default function EveningWrapPage() {
                           onClick={async () => {
                             setAddingThesis(true);
                             try {
-                              await getSupabase().from("theses").insert({
+                              await createUserThesis(getSupabase(), {
                                 title: item.lead.slice(0, 80),
                                 conviction: "WATCH",
                                 sector: "General",

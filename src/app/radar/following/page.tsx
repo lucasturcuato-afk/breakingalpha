@@ -92,6 +92,7 @@ export default function FollowingPage() {
   const [developments, setDevelopments] = useState<Development[] | null>(null);
   const [follows, setFollows] = useState<FollowSummary[]>([]);
   const [unavailable, setUnavailable] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewMode>("topic");
   const [addOpen, setAddOpen] = useState(false);
@@ -117,6 +118,7 @@ export default function FollowingPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const res = await fetch("/api/radar/following-feed");
       if (!res.ok) throw new Error(String(res.status));
@@ -126,7 +128,13 @@ export default function FollowingPage() {
       setDevelopments(devs);
       setFollows(devs.map((d) => d.follow));
     } catch {
-      setDevelopments([]);
+      // A failed load is NOT an empty following list. Falling through to
+      // developments=[] rendered the first-run onboarding, telling a user with
+      // existing follows that they had none -- and the zero-match copy claims
+      // "that is the honest answer, not a gap in coverage display", which would
+      // be false when the query failed. Keep developments null and say so.
+      setLoadError(true);
+      setDevelopments(null);
       setFollows([]);
     } finally {
       setLoading(false);
@@ -245,7 +253,9 @@ export default function FollowingPage() {
       }));
   }, [unionTree, entryById, allArticles]);
 
-  const isEmpty = !loading && follows.length === 0;
+  // "Empty" means the feed loaded and returned nothing. A failed load is a
+  // separate state and must never reach the first-run onboarding.
+  const isEmpty = !loading && !loadError && follows.length === 0;
 
   return (
     <AppShell pageTitle="Radar">
@@ -256,7 +266,9 @@ export default function FollowingPage() {
       >
         <RadarTabs active="following" />
 
-        {loading ? null : isEmpty ? (
+        {loading ? null : loadError ? (
+          <FeedLoadError onRetry={load} />
+        ) : isEmpty ? (
           <FirstRun
             onAdd={addFollow}
             busy={addBusy}
@@ -735,6 +747,32 @@ function AddFollowForm({
       {error && (
         <p className="mt-2 font-sans text-[12px] text-signal-dn">{error}</p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Shown when the feed request itself failed. Deliberately distinct from both
+ * the first-run onboarding and the zero-match state: this page's copy claims a
+ * quiet feed is "the honest answer, not a gap in coverage display", and that
+ * claim is only true when the query actually succeeded.
+ */
+function FeedLoadError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="rounded-xl border border-signal-dn/30 bg-signal-dn/5 px-5 py-6">
+      <p className="font-display text-[17px] text-espresso m-0">
+        Could not load what you follow.
+      </p>
+      <p className="font-sans text-[12.5px] text-text-secondary mt-1.5 mb-3 leading-snug">
+        This is a loading failure, not an empty feed. Your follows are intact.
+      </p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="font-sans text-[11px] font-semibold text-gold hover:text-gold-dark transition-colors cursor-pointer"
+      >
+        Try again
+      </button>
     </div>
   );
 }

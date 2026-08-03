@@ -89,6 +89,7 @@ export default function TrackRecordPage() {
   const [scored, setScored] = useState<ScoredThesis[]>([]);
   const [overdueCount, setOverdueCount] = useState<number>(0);
   const [awaitingCount, setAwaitingCount] = useState<number>(0);
+  const [loadError, setLoadError] = useState(false);
 
   // Banner mood comes from the shared SSOT hook so this page agrees with
   // the dashboard / live feed / etc. Without this, AppShell falls back to
@@ -193,7 +194,11 @@ export default function TrackRecordPage() {
         setOverdueCount(overdue);
         setAwaitingCount(awaiting);
       } catch (e) {
+        // Without this flag a total load failure fell through to the
+        // "No theses yet" empty state, reporting a broken query as an empty
+        // pipeline.
         console.error("Track record load error:", e);
+        setLoadError(true);
       } finally {
         setLoading(false);
       }
@@ -315,7 +320,9 @@ export default function TrackRecordPage() {
 
   const showPipelineStatus = !loading && awaitingCount > 0;
   const showGradingHeader = !loading && totalCount > 0;
-  const isFirstPaintEmpty = !loading && totalCount === 0;
+  // Empty means the queries succeeded and returned nothing. A failed load is a
+  // separate state and must not borrow the empty-pipeline copy.
+  const isFirstPaintEmpty = !loading && !loadError && totalCount === 0;
 
   return (
     <AppShell
@@ -379,7 +386,16 @@ export default function TrackRecordPage() {
           )}
         </div>
 
-        {isFirstPaintEmpty ? (
+        {loadError ? (
+          <div className="rounded-2xl border border-signal-dn/30 bg-signal-dn/5 px-5 py-6">
+            <p className="font-display text-[17px] text-espresso m-0">
+              Could not load the thesis record.
+            </p>
+            <p className="font-sans text-[12.5px] text-text-secondary mt-1.5 leading-snug">
+              This is a loading failure, not an empty pipeline. Nothing has been lost.
+            </p>
+          </div>
+        ) : isFirstPaintEmpty ? (
           // Only the literally-empty case keeps the legacy "check back" copy.
           <div className="relative rounded-2xl bg-gradient-to-b from-gold-muted/40 to-transparent border border-gold-border/60">
             <EmptyState

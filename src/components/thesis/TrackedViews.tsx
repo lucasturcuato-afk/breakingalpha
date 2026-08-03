@@ -180,11 +180,17 @@ export function TrackedViews({
   const fetchTheses = useCallback(async () => {
     try {
       const res = await fetch("/api/theses");
+      // A 500 whose body is {error: ...} used to fall through here: data.theses
+      // was undefined, the guard below skipped silently, error stayed null, and
+      // the surface rendered "No tracked views right now" -- reporting a failed
+      // request as an empty workspace.
+      if (!res.ok) throw new Error(`theses request failed: ${res.status}`);
       const data = await res.json();
-      if (data.theses && Array.isArray(data.theses)) {
-        // Display-only neutralisation, same as the old board surface.
-        setTheses(data.theses.map(mapThesisRow).map(neutralizeThesis));
+      if (!data.theses || !Array.isArray(data.theses)) {
+        throw new Error("theses response missing the theses array");
       }
+      // Display-only neutralisation, same as the old board surface.
+      setTheses(data.theses.map(mapThesisRow).map(neutralizeThesis));
     } catch (e) {
       console.error("Failed to fetch theses:", e);
       setError("Failed to load tracked views");

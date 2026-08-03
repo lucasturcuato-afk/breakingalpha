@@ -1526,6 +1526,19 @@ def extract_and_persist_claims(
                 {k: v for k, v in r.items() if k not in _OPTIONAL_COLS} for r in rows
             ]
             supabase_admin.table("morning_brief_calls").insert(_rows_base).execute()
+            # LOUD: this is not a cosmetic degradation. A call inserted without
+            # resolve_on never becomes due (grade_brief_calls.is_due requires it)
+            # and is therefore excluded from grading PERMANENTLY -- silently, and
+            # with no backfill path by design. A console warning was not enough:
+            # emit a GitHub Actions error annotation so the run surfaces it.
+            print(
+                "::error::morning_brief_calls inserted WITHOUT resolve_on/is_lead "
+                f"({len(_rows_base)} call(s) for brief {brief_id}). Migrations "
+                "sql/0013_morning_brief_calls_is_lead.sql and "
+                "sql/0014_morning_brief_calls_resolve_on.sql are not applied on this "
+                "database. These calls will NEVER be graded and cannot be backfilled. "
+                "Apply the migrations, then re-run."
+            )
         except Exception as e2:
             print(f"  ⚠ claims extraction: insert failed: {e2}")
             return 0
