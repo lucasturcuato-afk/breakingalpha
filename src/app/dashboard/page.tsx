@@ -11,7 +11,6 @@ import {
   StatCard,
   AISignalBar,
   DailyBriefsWidget,
-  ActiveThesesWidget,
   WatchlistWidget,
   OnboardingBanner,
   SystemIntelligenceWidget,
@@ -19,9 +18,9 @@ import {
 } from "@/components/dashboard";
 import { PersonalizationBanner } from "@/components/personalization/PersonalizationBanner";
 import type { StoryData } from "@/components/dashboard";
-import { CompetitorAlertsWidget } from "@/components/dashboard/competitor-alerts-widget";
-import { CollectiveSignalsWidget } from "@/components/dashboard/collective-signals-widget";
-import { CursorGlow, DashboardIntro, DatePill } from "@/components/dashboard/dashboard-fx";
+import { YourCallsWidget } from "@/components/dashboard/your-calls-widget";
+import { FollowingWidget } from "@/components/dashboard/following-widget";
+import { CursorGlow, DashboardIntro, DatePill, TileSpotlight } from "@/components/dashboard/dashboard-fx";
 import { FreshRadar } from "@/components/dashboard/fresh-radar";
 import { RotatingLeadHero } from "@/components/dashboard/rotating-lead-hero";
 import {
@@ -532,6 +531,7 @@ export default function DashboardPage() {
     >
       <div className="dash-contentwrap dash-dots max-w-[1440px] mx-auto px-6 md:px-12 py-6 md:py-8 pb-16">
         <CursorGlow />
+        <TileSpotlight />
         <DashboardIntro storyCount={storyCount} />
 
         {/* Onboarding banner */}
@@ -733,10 +733,17 @@ export default function DashboardPage() {
             riseDelay={220}
             fresh={<FreshRadar stories={stories} watchlistTickers={watchlistTickers} embedded />}
           />
-          <DashTile title="Your calls" subtitle="graded track record" riseDelay={300} className="h-full flex flex-col">
-            <CallRecord />
-            <div className="mt-4 pt-4 border-t border-border-subtle flex-1">
-              <ActiveThesesWidget />
+          {/* Your calls = the user's OWN claims (/api/radar/claims), with
+              CallRecord kept as a separate, explicitly-labeled block for
+              Signalera's graded brief-call record. The two are different
+              things and are no longer presented as one. */}
+          <DashTile title="Your calls" subtitle="your tracked views" riseDelay={300} className="h-full flex flex-col">
+            <YourCallsWidget />
+            <div className="mt-4 pt-3.5 border-t border-border-subtle">
+              <p className="font-data text-[9.5px] tracking-[0.02em] text-text-faint uppercase mb-2">
+                Signalera&rsquo;s graded record
+              </p>
+              <CallRecord />
             </div>
           </DashTile>
         </div>
@@ -746,27 +753,12 @@ export default function DashboardPage() {
           <DashTile title="Watchlist" riseDelay={340} className="h-full">
             <WatchlistWidget />
           </DashTile>
-          {/* Label restored ahead of the merge: main (PR #450, Radar unified)
-              ships real follow storage at /api/radar/follows +
-              /api/radar/following-feed, so "Following" is accurate again.
-              FOLLOW-UP (post-merge, not this pass): swap the competitor +
-              community widgets below for the user's real Radar follows and
-              each follow's latest matching headline. */}
+          {/* Following = the user's real Radar follows, each with its latest
+              matching headline, from /api/radar/following-feed. Replaces the
+              competitor/community fallback that stood in before Radar's
+              follow storage existed on this branch. */}
           <DashTile title="Following" subtitle="desks & sectors you track" riseDelay={380} className="h-full">
-            <div className="space-y-5">
-              <div>
-                <p className="font-data text-[10px] tracking-[0.01em] text-text-faint mb-2">
-                  Competitor activity
-                </p>
-                <CompetitorAlertsWidget />
-              </div>
-              <div>
-                <p className="font-data text-[10px] tracking-[0.01em] text-text-faint mb-2">
-                  Community signals
-                </p>
-                <CollectiveSignalsWidget />
-              </div>
-            </div>
+            <FollowingWidget />
           </DashTile>
         </div>
 
