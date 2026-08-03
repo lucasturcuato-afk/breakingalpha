@@ -110,6 +110,71 @@ export function horizonPhraseForDays(days: number): string {
 }
 
 /**
+ * When a STORED window resolves, said relative to the reader's today.
+ *
+ * horizonPhraseForDays takes a DURATION and horizonPhraseForDays is correct for
+ * one job: a selector, where the reader is choosing a length and "resolves in
+ * about a week" means seven days from the tap. It is wrong for a window that
+ * already exists, because its vocabulary is deictic. "Tomorrow" and "one day
+ * long" are the same thing only on the day the window opened.
+ *
+ * The live defect: a claim logged 2026-08-01 resolving 2026-08-02 has a one-day
+ * span, so a card read on 2026-08-02 said "resolves tomorrow" about a window
+ * closing that same day. Nothing in the path consulted today's date at all.
+ *
+ * So this one takes the END DATE and today, never a span. `todayIso` must be
+ * the reader's session date; pass it in rather than reading a clock here, so
+ * the function stays pure and a server render cannot disagree with the client.
+ *
+ * Returns null when there is no date to speak about, so a caller renders
+ * nothing rather than a wrong phrase.
+ */
+export function resolutionPhrase(
+  resolveOnIso: string | null | undefined,
+  todayIso: string | null | undefined,
+): string | null {
+  if (!resolveOnIso || !todayIso) return null;
+  const days = daysBetween(todayIso, resolveOnIso);
+  if (days === null) return null;
+  if (days < 0) return "resolved";
+  if (days === 0) return "resolves at today's close";
+  if (days === 1) return "resolves tomorrow";
+  if (days % 7 === 0) {
+    const weeks = days / 7;
+    return weeks === 1 ? "resolves in about a week" : `resolves in about ${weeks} weeks`;
+  }
+  return `resolves in ${days} days`;
+}
+
+/**
+ * The date a claim was logged, as it can honestly be shown.
+ *
+ * A log date is a fact about the past and can never be in the future. The live
+ * data has some anyway: /api/radar/claims/adopt stamps the window with
+ * `new Date().toISOString().slice(0, 10)`, which is UTC, while every other date
+ * in the product is the US-Pacific session date. Between 17:00 and 24:00 PT,
+ * UTC has already rolled over, so a claim adopted at 20:22 PT on 2026-08-02 was
+ * written with resolution_window_start 2026-08-03 and rendered a log date one
+ * day in the reader's future.
+ *
+ * The real repair is in the write path, which is out of scope here. This is the
+ * display-side containment: a stored start ahead of today is a frame artifact,
+ * and the session date the reader is actually in is the closest honest value.
+ * Clamping only ever moves the date backwards, so a correctly stamped claim is
+ * returned untouched.
+ */
+export function displayLoggedDate(
+  windowStartIso: string | null | undefined,
+  todayIso: string | null | undefined,
+): string | null {
+  const start = windowStartIso ? windowStartIso.slice(0, 10) : null;
+  if (!start || !/^\d{4}-\d{2}-\d{2}$/.test(start)) return null;
+  const today = todayIso ? todayIso.slice(0, 10) : null;
+  if (!today || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return start;
+  return start > today ? today : start;
+}
+
+/**
  * The bucket a stored window falls in, so a card's selector can DEFAULT to the
  * call's own horizon instead of offering one week on every card. Exact matches
  * only; anything else returns null and the caller keeps its own default rather

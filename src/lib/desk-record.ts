@@ -35,41 +35,21 @@ import {
   type OpenCallInput,
 } from "./scored-object-map.ts";
 import type { ScoredObjectProps, ScoredState } from "@/components/scored-object/ScoredObject";
+// The single vocabulary table. It used to live here as two private constants,
+// which is why ScoredObject could not reach it and defaulted to Right/Wrong.
+import {
+  RESOLUTION_BY_STATE,
+  VERDICT_WORD,
+  type Resolution,
+} from "./verdict-vocabulary.ts";
+
+export type { Resolution };
 
 /** A morning_brief_calls row joined to its morning_brief_call_outcomes row. */
 export interface DeskCallRow {
   call: OpenCallInput & { id: string };
   outcome: CallOutcomeRow;
 }
-
-/**
- * How a call resolved, in observational terms.
- *  supported    - the desk's direction held AND the grader could attribute it
- *  challenged   - the desk's direction did not hold, cleanly attributable
- *  noCleanRead  - the move could not be separated from sector/market, or it
- *                 sat under the attribution bar. Never counted as a hit.
- *  notGraded    - no credible grade exists (ungradable, or a legacy row)
- */
-export type Resolution = "supported" | "challenged" | "noCleanRead" | "notGraded";
-
-/** ScoredObject state -> resolution bucket. The mapper owns the decision. */
-const RESOLUTION_BY_STATE: Record<ScoredState, Resolution> = {
-  right: "supported",
-  wrong: "challenged",
-  inconclusive: "noCleanRead",
-  notGraded: "notGraded",
-  // A row with an outcome never maps to open; kept total for exhaustiveness.
-  open: "notGraded",
-};
-
-/** Verdict word shown on the card. Overrides the component's default
- *  Right/Wrong so the record speaks in observational terms only. */
-const VERDICT_WORD: Record<Resolution, string | undefined> = {
-  supported: "Supported",
-  challenged: "Challenged",
-  noCleanRead: "No clean read",
-  notGraded: undefined, // notGraded renders an absence, not a verdict word
-};
 
 /** All copy the record surface authors itself. Every user-visible string on
  *  the surface that is not verbatim call text lives here so the compliance
@@ -78,10 +58,14 @@ export const DESK_RECORD_COPY = {
   title: "How the desk's calls resolved",
   intro:
     "Every predictive call in the morning brief is graded against real prices, and the grade stands whichever way it went. This is the whole record, misses included.",
+  // Derived, not retyped: the bucket heading and the word on a card are the
+  // same vocabulary, and a second literal copy is how they drift apart.
+  // notGraded has no verdict word (an absence is not a verdict), so the
+  // heading supplies its own.
   bucketLabel: {
-    supported: "Supported",
-    challenged: "Challenged",
-    noCleanRead: "No clean read",
+    supported: VERDICT_WORD.supported!,
+    challenged: VERDICT_WORD.challenged!,
+    noCleanRead: VERDICT_WORD.noCleanRead!,
     notGraded: "Not graded",
   } as Record<Resolution, string>,
   bucketNote: {

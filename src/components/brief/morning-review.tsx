@@ -1,6 +1,7 @@
 "use client";
 import { cn } from "@/lib/utils";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
+import { VERDICT_WORD } from "@/lib/verdict-vocabulary";
 
 interface SectorReflection {
   sector: string;
@@ -29,10 +30,12 @@ function VerdictPill({ verdict }: { verdict: "correct" | "wrong" | "partial" }) 
     wrong: "bg-signal-dn/10 text-signal-dn border-signal-dn/20",
     partial: "bg-signal-warn/10 text-signal-warn border-signal-warn/20",
   };
+  // Same observational vocabulary as the scored card and the desk record. A
+  // recap of yesterday's calls is still a verdict on claims, not on people.
   const labels: Record<string, string> = {
-    correct: "Correct",
-    wrong: "Wrong",
-    partial: "Partial",
+    correct: VERDICT_WORD.supported!,
+    wrong: VERDICT_WORD.challenged!,
+    partial: VERDICT_WORD.noCleanRead!,
   };
   return (
     <span

@@ -10,7 +10,8 @@
  * there is no font switching inside the card and no all-caps mono.
  *
  * PURELY PRESENTATIONAL. Every value is a prop. The resolved states
- * (right / wrong / inconclusive) carry NO data source and NO invented numbers:
+ * (right / wrong / inconclusive, shown as supported / challenged / no clean
+ * read) carry NO data source and NO invented numbers:
  * if a receipt/calibration/attribution field is not passed, it is not rendered.
  * On live surfaces, resolved states may ONLY be produced by the outcome mapper
  * (scored-object-map.ts scoredCallProps) from a real morning_brief_call_outcomes
@@ -23,6 +24,9 @@
  */
 
 import type { ReactNode } from "react";
+
+import { RESOLVED_ZONE_TYPE, typeVar } from "@/lib/scored-object-type-scale";
+import { verdictWordForState } from "@/lib/verdict-vocabulary";
 
 export type ScoredState = "open" | "right" | "wrong" | "inconclusive" | "notGraded";
 
@@ -52,14 +56,20 @@ export interface ScoredObjectProps {
   /** Date shown on the gold seal, e.g. "Apr 22" -> "◆ Scored Apr 22". */
   scoredDate?: string;
   /**
-   * Verdict word override. Defaults to the state's own label
-   * (right -> "Right", wrong -> "Wrong", inconclusive -> "No clean read").
-   * These are state labels, not grades or numbers.
+   * Verdict word override. Defaults to the shared observational vocabulary
+   * (right -> "Supported", wrong -> "Challenged", inconclusive -> "No clean
+   * read"); see @/lib/verdict-vocabulary. These are state labels, not grades on
+   * a person and not numbers.
    */
   verdict?: string;
   /** Calibration sentence, e.g. "More confident than consensus — a bold, correct call." */
   calibration?: string;
-  /** Attribution note, sentence case, e.g. "Attribution: clean." Rendered italic. */
+  /**
+   * The benchmark evidence, sentence case, e.g.
+   * "Attribution: clean - MSFT +3.27% vs XLK -1.19%, SPY +0.32%."
+   * The most prominent line in the resolved zone: it is what makes the verdict
+   * earned rather than asserted.
+   */
   attribution?: string;
 
   // ── notGraded-state verdict zone ──
@@ -95,12 +105,10 @@ const STATE_COLOR: Record<ScoredState, string> = {
   notGraded: "var(--border-subtle)",
 };
 
-/** Default verdict label per state (a label, not data; overridable via `verdict`). */
-const STATE_VERDICT: Record<Exclude<ScoredState, "open" | "notGraded">, string> = {
-  right: "Right",
-  wrong: "Wrong",
-  inconclusive: "No clean read",
-};
+// The default verdict label now comes from the shared vocabulary table rather
+// than a local Right/Wrong map. Only /radar/desk-record passed the observational
+// word explicitly, so every other surface fell through to a default that said
+// something the grader cannot support. There is nothing left to fall through to.
 
 const SERIF = "var(--font-playfair-display), serif";
 
@@ -220,39 +228,48 @@ export function ScoredObject(props: ScoredObjectProps) {
           </>
         ) : (
           <div className="resolve-fade-up mt-3">
-            {/* Verdict word — state color. "No clean read" is a phrase, so smaller. */}
+            {/* The verdict, as a quiet label. It used to be the largest element
+                on the card at 31px, which put the loudest weight on the least
+                specific fact. State color still carries it at a glance. */}
             <p
+              data-testid="scored-object-verdict"
               style={{
                 color: spine,
-                fontSize:
-                  state === "inconclusive"
-                    ? "var(--type-verdict-phrase-size)"
-                    : "var(--type-verdict-size)",
-                fontWeight: "var(--type-verdict-weight)" as unknown as number,
+                fontSize: typeVar(RESOLVED_ZONE_TYPE.verdict.sizeVar),
+                fontWeight: typeVar(RESOLVED_ZONE_TYPE.verdict.weightVar) as unknown as number,
                 lineHeight: "var(--type-verdict-leading)",
               }}
             >
-              {props.verdict ?? STATE_VERDICT[state]}
+              {props.verdict ?? verdictWordForState(state)}
             </p>
-            {/* Calibration sentence — honest for wins AND losses (spec §4). */}
-            {props.calibration && (
-              <p
-                className="mt-1.5 text-text-secondary"
-                style={{ fontSize: "var(--type-receipt-size)", lineHeight: "var(--type-receipt-leading)" }}
-              >
-                {props.calibration}
-              </p>
-            )}
-            {/* Attribution note — Newsreader italic (the quiet-footnote job). */}
+            {/* The evidence, and now the largest thing in the zone. This line is
+                the product: a benchmark-attributed move is what separates a
+                graded call from an opinion, and it was rendering as a footnote
+                in small faint italic. Roman, not italic; italic is an aside. */}
             {props.attribution && (
               <p
-                className="mt-1 text-text-faint italic"
+                data-testid="scored-object-attribution"
+                className="mt-1.5 text-text-primary"
                 style={{
-                  fontSize: "var(--type-note-size)",
-                  fontWeight: "var(--type-note-weight)" as unknown as number,
+                  fontSize: typeVar(RESOLVED_ZONE_TYPE.attribution.sizeVar),
+                  fontWeight: typeVar(RESOLVED_ZONE_TYPE.attribution.weightVar) as unknown as number,
+                  lineHeight: "var(--type-claim-leading)",
                 }}
               >
                 {props.attribution}
+              </p>
+            )}
+            {/* The grader's prose. Honest for supported AND challenged
+                (spec §4), and it sits below the evidence it is explaining. */}
+            {props.calibration && (
+              <p
+                className="mt-1.5 text-text-secondary"
+                style={{
+                  fontSize: typeVar(RESOLVED_ZONE_TYPE.calibration.sizeVar),
+                  lineHeight: "var(--type-receipt-leading)",
+                }}
+              >
+                {props.calibration}
               </p>
             )}
           </div>

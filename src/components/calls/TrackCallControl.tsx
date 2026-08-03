@@ -36,11 +36,12 @@
  */
 
 import { useState } from "react";
-import { HorizonChip } from "@/components/calls/HorizonChip";
 import {
   adoptWindowOptions,
   adoptWindowPhrase,
   adoptWindowValue,
+  displayLoggedDate,
+  resolutionPhrase,
   type AdoptWindow,
 } from "@/lib/call-horizons";
 
@@ -84,9 +85,19 @@ function isoDay(value: string | null | undefined): string | null {
  * Segments are joined only when real. No id (none exists on user_claims), and
  * REVIEW is dropped entirely when the window end is unknown rather than filled
  * with today, the horizon default, or any other stand-in.
+ *
+ * `todayIso` is the reader's session date, and it exists because a log date can
+ * never be in the future. See displayLoggedDate: the adopt route stamps the
+ * window in UTC while the product runs on the US-Pacific session date, so a
+ * claim adopted after 17:00 PT is born a day ahead. Omit it and the stored
+ * value renders as-is, which is what every caller did before.
  */
-export function buildLedgerLine(claim: TrackedClaimLike): string {
-  const logged = isoDay(claim.resolution_window_start);
+export function buildLedgerLine(
+  claim: TrackedClaimLike,
+  todayIso?: string | null,
+): string {
+  const logged = displayLoggedDate(claim.resolution_window_start, todayIso ?? null)
+    ?? isoDay(claim.resolution_window_start);
   const review = isoDay(claim.resolution_window_end);
   const parts: string[] = [];
   if (logged) parts.push(`LOGGED ${logged}`);
@@ -107,9 +118,12 @@ export function buildLedgerLine(claim: TrackedClaimLike): string {
 export function CallLedgerLine({
   claim,
   justStamped = false,
+  today,
 }: {
   claim: TrackedClaimLike;
   justStamped?: boolean;
+  /** The reader's session date (YYYY-MM-DD). Keeps LOGGED out of the future. */
+  today?: string | null;
 }) {
   return (
     <p
@@ -118,7 +132,7 @@ export function CallLedgerLine({
         justStamped ? " call-stamp-in" : ""
       }`}
     >
-      {buildLedgerLine(claim)}
+      {buildLedgerLine(claim, today)}
     </p>
   );
 }
@@ -181,6 +195,7 @@ export function CallCommitFooter({
   gradeable = true,
   trustLineId = "calls-track-why",
   error,
+  today,
 }: {
   callId: string;
   tracked: TrackedClaimLike | null;
@@ -206,6 +221,13 @@ export function CallCommitFooter({
   /** Adopt failure, rendered in place. The optimistic state has already been
    *  reverted by the caller; this only says what happened. */
   error?: string | null;
+  /**
+   * The reader's session date (YYYY-MM-DD), US-Pacific. Both date facts on a
+   * tracked card are relative to it: when the window resolves, and whether the
+   * stored log date is in the reader's future. Passed in, never read from a
+   * clock here, so a server render cannot disagree with the client.
+   */
+  today?: string | null;
 }) {
   if (tracked) {
     return (
@@ -216,11 +238,19 @@ export function CallCommitFooter({
           }`}
         >
           <span className="font-medium text-text-primary">Tracked</span>
-          <HorizonChip
-            anchor={tracked.resolution_window_start}
-            resolveOn={tracked.resolution_window_end}
-            variant="phrase"
-          />
+          {/* When this window resolves, said relative to TODAY. HorizonChip
+              renders a duration, and a duration phrased deictically is wrong
+              the day after it was logged: a one-day window read "resolves
+              tomorrow" on the day it actually closed. */}
+          {resolutionPhrase(tracked.resolution_window_end, today) ? (
+            <span
+              data-testid="horizon-chip"
+              title={`Resolves ${tracked.resolution_window_end}`}
+              className="font-sans text-[11px] leading-none text-text-muted"
+            >
+              {resolutionPhrase(tracked.resolution_window_end, today)}
+            </span>
+          ) : null}
           {/* Only after the commit. A link, never a redirect. */}
           <a
             href="/radar/calls"
@@ -230,7 +260,7 @@ export function CallCommitFooter({
             View in Radar
           </a>
         </div>
-        <CallLedgerLine claim={tracked} justStamped={justStamped} />
+        <CallLedgerLine claim={tracked} justStamped={justStamped} today={today} />
       </div>
     );
   }
