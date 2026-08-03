@@ -3,7 +3,7 @@ export { StatCard } from "./stat-card";
 export { AISignalBar } from "./ai-signal-bar";
 export { LeadStoryCard, CompactStoryCard, type StoryData } from "./story-card";
 export { DailyBriefsWidget } from "./daily-briefs-widget";
-export { ActiveThesesWidget, type ThesisPreview } from "./active-theses-widget";
+export { ActiveThesesWidget } from "./active-theses-widget";
 export { WatchlistWidget } from "./watchlist-widget";
 export { OnboardingBanner } from "./onboarding-banner";
 export { SystemIntelligenceWidget } from "./system-intelligence-widget";

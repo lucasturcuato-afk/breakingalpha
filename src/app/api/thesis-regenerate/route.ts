@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { canWriteThesis } from "@/lib/thesis-write-guard";
 import { enforceThesisRecommendation, hasThesisViolation } from "@/lib/thesis-recommendation-guard";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -182,13 +183,24 @@ Rules: one entry per article (${articleList.length} total), cite specific data.`
     if (catalystNote) updateData.catalyst_note = catalystNote;
     if (evidenceChain.length > 0) updateData.evidence_chain = evidenceChain;
 
-    const { error: updateErr } = await supabase
-      .from("theses")
-      .update(updateData)
-      .eq("id", thesisId);
+    // Ownership guard. This route rewrites title and rationale -- the two most
+    // visible fields on a thesis. Unguarded, any authenticated caller could
+    // rewrite shared pipeline content for every other user. The regenerated
+    // text is still returned to the caller on refusal.
+    const decision = await canWriteThesis(supabase, thesisId, user.id);
+    if (!decision.allowed) {
+      console.warn(
+        `[thesis-regenerate] not persisted for ${thesisId}: ${decision.reason}`,
+      );
+    } else {
+      const { error: updateErr } = await supabase
+        .from("theses")
+        .update(updateData)
+        .eq("id", thesisId);
 
-    if (updateErr) {
-      console.error("Supabase update error:", updateErr);
+      if (updateErr) {
+        console.error("Supabase update error:", updateErr);
+      }
     }
 
     return NextResponse.json({

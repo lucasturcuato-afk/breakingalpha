@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { canWriteThesis } from "@/lib/thesis-write-guard";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -82,6 +83,17 @@ Rules: one evidence entry per article (${articleList.length} total), cite specif
     }
 
     if (thesisId && (parsed.catalyst_note || parsed.evidence)) {
+      // Ownership guard. Without it any authenticated caller could rewrite
+      // catalyst_note / evidence_chain on a shared pipeline thesis. The
+      // enrichment is still returned below on refusal; it is simply not
+      // persisted onto a row other users read.
+      const decision = await canWriteThesis(supabase, thesisId, user.id);
+      if (!decision.allowed) {
+        console.warn(
+          `[thesis-detail] enrichment not persisted for ${thesisId}: ${decision.reason}`,
+        );
+        return NextResponse.json(parsed);
+      }
       const updateData: Record<string, unknown> = {};
       if (parsed.catalyst_note) updateData.catalyst_note = parsed.catalyst_note;
       if (parsed.evidence) updateData.evidence_chain = parsed.evidence;
