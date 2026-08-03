@@ -93,6 +93,95 @@ export function horizonTypeFromDates(
   return null;
 }
 
+/**
+ * The window a card's selector is currently set to.
+ *
+ * horizonTypeFromDates returns null for any span that is not exactly 0, 7, or
+ * 21 days. Before variable horizons that was harmless: no call had any other
+ * span. The moment a call can resolve in 13 days, every caller that fell back
+ * to DEFAULT_ADOPT_HORIZON on null would silently offer "1 week" for a call
+ * that is not a week, which is precisely the defect #535 shipped to fix.
+ *
+ * So the selection is a union, not a bucket. "as-called" carries the call's own
+ * day count and is what an off-bucket call preselects; "bucket" is one of the
+ * three named alternatives a reader may pick instead. There is no date picker:
+ * a calendar widget asks the reader to do arithmetic at the exact moment they
+ * are deciding whether to put their name on a claim.
+ */
+export type AdoptWindow =
+  | { kind: "as-called"; days: number }
+  | { kind: "bucket"; type: HorizonType };
+
+/**
+ * The window a card should preselect: the call's OWN span whenever it has one.
+ *
+ * An exact bucket match returns that bucket rather than a duplicate "as-called"
+ * entry, so a genuine 7-day call shows three options and not four. A call with
+ * no resolve_on (every row written before migration 0014) has no span to
+ * preselect and falls back to the shared default.
+ */
+export function adoptWindowForCall(
+  anchorIso: string | null | undefined,
+  resolveOnIso: string | null | undefined,
+): AdoptWindow {
+  const bucket = horizonTypeFromDates(anchorIso, resolveOnIso);
+  if (bucket) return { kind: "bucket", type: bucket };
+  const h = horizonFromDates(anchorIso, resolveOnIso);
+  if (h && h.days >= 0 && h.days <= MAX_WINDOW_DAYS) {
+    return { kind: "as-called", days: h.days };
+  }
+  return { kind: "bucket", type: DEFAULT_ADOPT_HORIZON };
+}
+
+/** One entry in the selector: a stable value, the label, and the span. */
+export interface AdoptWindowOption {
+  value: string;
+  label: string;
+  window: AdoptWindow;
+}
+
+/**
+ * What the selector offers. The call's own window first and preselected when it
+ * is off-bucket, then the three named alternatives.
+ */
+export function adoptWindowOptions(current: AdoptWindow): AdoptWindowOption[] {
+  const options: AdoptWindowOption[] = [];
+  if (current.kind === "as-called") {
+    options.push({
+      value: `as-called:${current.days}`,
+      // The existing phrase formatter already states the real number for an
+      // off-bucket span ("resolves in 13 days"). No new copy function.
+      label: `${horizonPhraseForDays(current.days)} (as called)`,
+      window: current,
+    });
+  }
+  for (const t of HORIZON_TYPES) {
+    options.push({ value: `bucket:${t}`, label: HORIZON_PHRASE[t], window: { kind: "bucket", type: t } });
+  }
+  return options;
+}
+
+/** The stable select value for a window. Pairs with adoptWindowOptions. */
+export function adoptWindowValue(w: AdoptWindow): string {
+  return w.kind === "as-called" ? `as-called:${w.days}` : `bucket:${w.type}`;
+}
+
+/**
+ * The adopt-route body for a window.
+ *
+ * /api/radar/claims/adopt already accepts an arbitrary `window_days` alongside
+ * `horizon` (see resolveAdoptWindow's explicitDays), so an off-bucket window
+ * needs no API change: it sends the count and a horizon that is only a fallback
+ * if the count is ever dropped.
+ */
+export function adoptWindowRequest(w: AdoptWindow): {
+  horizon: HorizonType;
+  window_days?: number;
+} {
+  if (w.kind === "bucket") return { horizon: w.type };
+  return { horizon: DEFAULT_ADOPT_HORIZON, window_days: w.days };
+}
+
 export function isHorizonType(v: unknown): v is HorizonType {
   return typeof v === "string" && (HORIZON_TYPES as string[]).includes(v);
 }

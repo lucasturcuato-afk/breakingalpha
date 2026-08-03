@@ -55,17 +55,19 @@ from dataclasses import dataclass, field
 
 try:  # same dual-path import synthesize.py uses for call_horizons
     from call_horizons import (
+        HORIZON_DAYS,
         HORIZON_MULTIWEEK,
         HORIZON_SESSION,
         HORIZON_WEEK,
-        normalize_horizon_type,
+        normalize_horizon_days,
     )
 except ImportError:  # pragma: no cover - import path only
     from backend.call_horizons import (
+        HORIZON_DAYS,
         HORIZON_MULTIWEEK,
         HORIZON_SESSION,
         HORIZON_WEEK,
-        normalize_horizon_type,
+        normalize_horizon_days,
     )
 
 # ---------------------------------------------------------------------------
@@ -397,7 +399,20 @@ _DIRECT_REPRICING_PATTERNS = (
     r"\bsame[-\s]session\b",
 )
 
-_HORIZON_RANK = {HORIZON_SESSION: 0, HORIZON_WEEK: 1, HORIZON_MULTIWEEK: 2}
+#: The floor each signal implies, as a DAY COUNT.
+#:
+#: These were an ordinal rank over three bucket names, which only worked because
+#: there were exactly three of them. With a variable horizon the comparison is
+#: plain arithmetic: the floor is a number of days and the rule is max(). Same
+#: semantics, one fewer indirection, and it now ranks a 13-day call correctly
+#: against a 7-day floor, which a bucket rank could not express at all.
+#:
+#: The values are the named buckets' own day counts (call_horizons.HORIZON_DAYS),
+#: so the floors this gate enforced before it spoke in days are unchanged.
+FLOOR_STRUCTURAL_DAYS = HORIZON_DAYS[HORIZON_MULTIWEEK]   # 21
+FLOOR_READ_THROUGH_DAYS = HORIZON_DAYS[HORIZON_WEEK]      # 7
+FLOOR_POLICY_DAYS = HORIZON_DAYS[HORIZON_WEEK]            # 7
+FLOOR_NONE_DAYS = HORIZON_DAYS[HORIZON_SESSION]           # 0
 
 
 def _any(patterns: tuple[str, ...], low: str) -> str | None:
@@ -408,49 +423,56 @@ def _any(patterns: tuple[str, ...], low: str) -> str | None:
     return None
 
 
-def horizon_floor(text: object, claim_type: object) -> tuple[str, str | None]:
+def horizon_floor_days(text: object, claim_type: object) -> tuple[int, str | None]:
     """
-    The shortest horizon this claim can honestly resolve over, and why.
+    The shortest window this claim can honestly resolve over, in calendar days,
+    and why.
 
-    Returns (floor, reason). Session floor with a None reason means nothing in
-    the text argues for a longer window.
+    Returns (min_days, reason). A zero floor with a None reason means nothing in
+    the text argues for a longer window than same-session.
     """
     if not isinstance(text, str) or not text.strip():
-        return HORIZON_SESSION, None
+        return FLOOR_NONE_DAYS, None
     low = text.lower()
 
     structural = _any(_STRUCTURAL_PATTERNS, low)
     if structural:
-        return HORIZON_MULTIWEEK, f"structural or consolidation language ({structural!r})"
+        return FLOOR_STRUCTURAL_DAYS, f"structural or consolidation language ({structural!r})"
 
     read_through = _any(_READ_THROUGH_PATTERNS, low)
     if read_through:
-        return HORIZON_WEEK, f"read-through language ({read_through!r})"
+        return FLOOR_READ_THROUGH_DAYS, f"read-through language ({read_through!r})"
 
     # A single named company's result carried onto a whole sector or index.
     if isinstance(claim_type, str) and claim_type.lower() in ("sector", "index", "aggregate"):
         if _COMPANY_POSSESSIVE_RE.search(text) and _RESULT_TOKEN_RE.search(text):
-            return HORIZON_WEEK, "single-name result read across a sector"
+            return FLOOR_READ_THROUGH_DAYS, "single-name result read across a sector"
 
     policy = _any(_POLICY_PATTERNS, low)
     if policy and not _any(_DIRECT_REPRICING_PATTERNS, low):
-        return HORIZON_WEEK, f"policy effect ({policy!r})"
+        return FLOOR_POLICY_DAYS, f"policy effect ({policy!r})"
 
-    return HORIZON_SESSION, None
+    return FLOOR_NONE_DAYS, None
 
 
-def classify_horizon(text: object, claim_type: object, model_horizon: object) -> tuple[str, str | None]:
+def classify_horizon_days(
+    text: object, claim_type: object, model_days: object
+) -> tuple[int, str | None]:
     """
-    The horizon to store. Never shorter than the floor the text implies, never
-    shorter than what the model asked for.
+    The window to store, in calendar days. Never shorter than the floor the text
+    implies, never shorter than what the model asked for.
 
-    Upgrade-only on purpose. Overriding a model that chose multiweek would be a
-    second guess with nothing deterministic behind it; overriding a model that
-    chose session for a read-through is a correction with the text as evidence.
+    Upgrade-only on purpose, and now literally max(). Overriding a model that
+    asked for 30 days would be a second guess with nothing deterministic behind
+    it; raising a model that asked for 0 on a read-through is a correction with
+    the text as evidence.
+
+    The model's own value is clamped to [0, 90] first, so the result is bounded
+    whatever the model said.
     """
-    chosen = normalize_horizon_type(model_horizon)
-    floor, reason = horizon_floor(text, claim_type)
-    if _HORIZON_RANK[floor] > _HORIZON_RANK[chosen]:
+    chosen = normalize_horizon_days(model_days)
+    floor, reason = horizon_floor_days(text, claim_type)
+    if floor > chosen:
         return floor, reason
     return chosen, None
 
@@ -483,7 +505,7 @@ def evaluate_claim(claim: dict) -> Verdict:
     Apply the three rules plus the horizon floor to one normalized claim.
 
     Expects the keys extract_and_persist_claims already builds: claim_text,
-    claim_type, target_symbol, expected_direction, horizon_type. Returns a
+    claim_type, target_symbol, expected_direction, horizon_days. Returns a
     Verdict carrying a possibly-reshaped copy. Never mutates the input.
     """
     if not isinstance(claim, dict):
@@ -545,12 +567,11 @@ def evaluate_claim(claim: dict) -> Verdict:
         symbol, claim_type, direction = proxy_symbol, proxy_type, resolved
 
     # Rule 4. Horizon floor.
-    horizon, reason = classify_horizon(text, claim_type, out.get("horizon_type"))
-    if horizon != normalize_horizon_type(out.get("horizon_type")):
-        changes.append(
-            f"horizon {normalize_horizon_type(out.get('horizon_type'))} -> {horizon} ({reason})"
-        )
-    out["horizon_type"] = horizon
+    asked = normalize_horizon_days(out.get("horizon_days"))
+    horizon, reason = classify_horizon_days(text, claim_type, out.get("horizon_days"))
+    if horizon != asked:
+        changes.append(f"horizon {asked}d -> {horizon}d ({reason})")
+    out["horizon_days"] = horizon
 
     return Verdict(RESHAPE if changes else KEEP, out, "", changes)
 

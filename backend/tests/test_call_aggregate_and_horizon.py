@@ -26,10 +26,10 @@ from backend.call_falsifiability import (
     REJECT,
     RESHAPE,
     apply_gate,
-    classify_horizon,
+    classify_horizon_days,
     evaluate_claim,
     find_proxy,
-    horizon_floor,
+    horizon_floor_days,
 )
 
 
@@ -39,7 +39,7 @@ def claim(**over) -> dict:
         "claim_type": "ticker",
         "target_symbol": "NVDA",
         "expected_direction": "bullish",
-        "horizon_type": "session",
+        "horizon_days": 0,
     }
     base.update(over)
     return base
@@ -147,10 +147,10 @@ class TestHorizonFloor(unittest.TestCase):
         # the floor. The model still says session; the floor must upgrade it.
         text = ("The healthcare services sector may face headwinds due to Ensign "
                 "Group's Q2 sales being below analyst estimates")
-        floor, reason = horizon_floor(text, "sector")
-        self.assertEqual(floor, "week", reason)
-        chosen, _ = classify_horizon(text, "sector", "session")
-        self.assertEqual(chosen, "week")
+        floor, reason = horizon_floor_days(text, "sector")
+        self.assertEqual(floor, 7, reason)
+        chosen, _ = classify_horizon_days(text, "sector", 0)
+        self.assertEqual(chosen, 7)
 
     def test_explicit_read_through_language_is_at_least_week(self):
         for text in [
@@ -159,20 +159,20 @@ class TestHorizonFloor(unittest.TestCase):
             "A bellwether print points lower for the group",
         ]:
             with self.subTest(text):
-                chosen, _ = classify_horizon(text, "sector", "session")
-                self.assertIn(chosen, ("week", "multiweek"))
+                chosen, _ = classify_horizon_days(text, "sector", 0)
+                self.assertGreaterEqual(chosen, 7)
 
     def test_consolidation_and_MA_language_is_multiweek(self):
         text = "The Healthcare & Biotech sector will see continued M&A activity and consolidation."
-        floor, reason = horizon_floor(text, "sector")
-        self.assertEqual(floor, "multiweek", reason)
-        chosen, _ = classify_horizon(text, "sector", "session")
-        self.assertEqual(chosen, "multiweek")
+        floor, reason = horizon_floor_days(text, "sector")
+        self.assertEqual(floor, 21, reason)
+        chosen, _ = classify_horizon_days(text, "sector", 0)
+        self.assertEqual(chosen, 21)
 
     def test_policy_language_is_at_least_week(self):
-        chosen, _ = classify_horizon(
-            "New tariffs pressure industrials", "sector", "session")
-        self.assertEqual(chosen, "week")
+        chosen, _ = classify_horizon_days(
+            "New tariffs pressure industrials", "sector", 0)
+        self.assertEqual(chosen, 7)
 
     def test_a_direct_same_day_repricing_candidate_STAYS_session(self):
         for text in [
@@ -182,55 +182,58 @@ class TestHorizonFloor(unittest.TestCase):
             "XLE gaps higher at the open",
         ]:
             with self.subTest(text):
-                chosen, _ = classify_horizon(text, "ticker", "session")
-                self.assertEqual(chosen, "session", f"{text!r} was upgraded")
+                chosen, _ = classify_horizon_days(text, "ticker", 0)
+                self.assertEqual(chosen, 0, f"{text!r} was upgraded")
 
     def test_the_floor_is_upgrade_only_and_never_shortens(self):
         # A model that asks for multiweek is never talked down.
-        chosen, _ = classify_horizon("NVDA rallies today", "ticker", "multiweek")
-        self.assertEqual(chosen, "multiweek")
-        chosen, _ = classify_horizon("New tariffs pressure industrials", "sector", "multiweek")
-        self.assertEqual(chosen, "multiweek")
+        chosen, _ = classify_horizon_days("NVDA rallies today", "ticker", 21)
+        self.assertEqual(chosen, 21)
+        chosen, _ = classify_horizon_days("New tariffs pressure industrials", "sector", 21)
+        self.assertEqual(chosen, 21)
 
     def test_policy_with_a_direct_repricing_marker_stays_session(self):
-        chosen, _ = classify_horizon(
-            "Tariff headlines hit industrials today", "sector", "session")
-        self.assertEqual(chosen, "session")
+        chosen, _ = classify_horizon_days(
+            "Tariff headlines hit industrials today", "sector", 0)
+        self.assertEqual(chosen, 0)
 
     def test_a_read_through_stays_slow_even_with_a_today_marker(self):
         # Deliberate asymmetry: a read-through is slow even when the headline is
         # new, so direct-repricing does not override it the way it does policy.
-        chosen, _ = classify_horizon(
-            "The read-through for the sector lands today", "sector", "session")
-        self.assertIn(chosen, ("week", "multiweek"))
+        chosen, _ = classify_horizon_days(
+            "The read-through for the sector lands today", "sector", 0)
+        self.assertGreaterEqual(chosen, 7)
 
 
 class TestHorizonFallback(unittest.TestCase):
-    def test_horizon_type_absent_falls_back_to_session_without_crashing(self):
+    def test_horizon_days_absent_falls_back_to_session_without_crashing(self):
         v = evaluate_claim({
             "claim_text": "NVDA rallies today on its AI guidance",
             "claim_type": "ticker", "target_symbol": "NVDA",
             "expected_direction": "bullish",
-            # horizon_type deliberately absent
+            # horizon_days deliberately absent
         })
         self.assertTrue(v.kept)
-        self.assertEqual(v.claim["horizon_type"], "session")
+        self.assertEqual(v.claim["horizon_days"], 0)
 
     def test_unrecognized_and_malformed_horizons_fall_back_without_crashing(self):
-        for bad in [None, "", "  ", "event", "quarter", 7, [], {}, "SESSIONS"]:
+        # The bucket names the model used to send are now nonsense values, and
+        # they must degrade the same way anything else unusable does.
+        for bad in [None, "", "  ", "event", "quarter", "session", [], {},
+                    "SESSIONS", -5, True, float("nan")]:
             with self.subTest(repr(bad)):
-                v = evaluate_claim(claim(horizon_type=bad))
+                v = evaluate_claim(claim(horizon_days=bad))
                 self.assertTrue(v.kept)
-                self.assertEqual(v.claim["horizon_type"], "session")
+                self.assertEqual(v.claim["horizon_days"], 0)
 
     def test_a_malformed_horizon_still_gets_the_floor_upgrade(self):
         v = evaluate_claim(claim(
             claim_text="The sector will see continued M&A activity and consolidation",
             claim_type="sector", target_symbol="XLV",
-            expected_direction="bullish", horizon_type=None,
+            expected_direction="bullish", horizon_days=None,
         ))
         self.assertTrue(v.kept)
-        self.assertEqual(v.claim["horizon_type"], "multiweek")
+        self.assertEqual(v.claim["horizon_days"], 21)
 
 
 # ---------------------------------------------------------------------------
@@ -245,35 +248,35 @@ class TestRealisticMix(unittest.TestCase):
     FIXTURES = [
         # Direct same-day repricing. Should stay session.
         claim(claim_text="NVDA rallies today on its AI guidance",
-              claim_type="ticker", target_symbol="NVDA", horizon_type="session"),
+              claim_type="ticker", target_symbol="NVDA", horizon_days=0),
         claim(claim_text="Crude gives back gains overnight, pressuring energy",
               claim_type="sector", target_symbol="XLE",
-              expected_direction="bearish", horizon_type="session"),
+              expected_direction="bearish", horizon_days=0),
         # Read-through. Model says session; the floor must upgrade.
         claim(claim_text=("The healthcare services sector may face headwinds due to "
                           "Ensign Group's Q2 sales being below analyst estimates"),
               claim_type="sector", target_symbol="XLV",
-              expected_direction="bearish", horizon_type="session"),
+              expected_direction="bearish", horizon_days=0),
         # Structural. Model says session; floor must upgrade to multiweek.
         claim(claim_text="Healthcare will see continued M&A activity and consolidation",
-              claim_type="sector", target_symbol="XLV", horizon_type="session"),
+              claim_type="sector", target_symbol="XLV", horizon_days=0),
         # Policy. Model says session; floor must upgrade to week.
         claim(claim_text="New tariffs pressure industrial manufacturers",
               claim_type="sector", target_symbol="XLI",
-              expected_direction="bearish", horizon_type="session"),
+              expected_direction="bearish", horizon_days=0),
         # Aggregate. Must be dropped entirely.
         claim(claim_text="Equities drift higher as risk appetite improves",
-              claim_type="aggregate", target_symbol=None, horizon_type="session"),
+              claim_type="aggregate", target_symbol=None, horizon_days=0),
     ]
 
     def test_the_mix_is_NOT_all_session(self):
         kept, _ = apply_gate(self.FIXTURES)
-        horizons = [c["horizon_type"] for c in kept]
+        horizons = [c["horizon_days"] for c in kept]
         self.assertGreater(len(set(horizons)), 1,
                            f"every kept call collapsed to one horizon: {horizons}")
-        self.assertIn("session", horizons)
-        self.assertIn("week", horizons)
-        self.assertIn("multiweek", horizons)
+        self.assertIn(0, horizons)
+        self.assertIn(7, horizons)
+        self.assertIn(21, horizons)
 
     def test_the_aggregate_candidate_is_the_one_that_does_not_ship(self):
         kept, verdicts = apply_gate(self.FIXTURES)

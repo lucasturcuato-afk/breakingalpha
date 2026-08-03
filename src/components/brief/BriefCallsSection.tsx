@@ -33,10 +33,11 @@ import {
   type CallOutcomeRow,
 } from "@/lib/scored-object-map";
 import {
-  DEFAULT_ADOPT_HORIZON,
-  horizonTypeFromDates,
+  adoptWindowForCall,
+  adoptWindowRequest,
+  adoptWindowValue,
   isPriceableClaimType,
-  type HorizonType,
+  type AdoptWindow,
 } from "@/lib/call-horizons";
 import {
   CallCommitFooter,
@@ -120,7 +121,7 @@ export default function BriefCallsSection({
   // out, or the claims read failed. In that case the control is not rendered at
   // all, because offering a button that can only 401 is worse than omitting it.
   const [tracked, setTracked] = useState<Map<string, TrackedClaim> | null>(null);
-  const [horizonFor, setHorizonFor] = useState<Record<string, HorizonType>>({});
+  const [windowFor, setWindowFor] = useState<Record<string, AdoptWindow>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [trackError, setTrackError] = useState<Record<string, string>>({});
   /** Calls committed in THIS session. Drives the one-time stamp only; it is
@@ -216,7 +217,7 @@ export default function BriefCallsSection({
   }, [briefId, briefDate, loadTracked]);
 
   /**
-   * Track a brief call as a forward claim of the user's own, over `horizon`.
+   * Track a brief call as a forward claim of the user's own, over `window`.
    *
    * Optimistic, then reconciled. The card flips to tracked immediately so the
    * tap feels answered, and the server response replaces the placeholder with
@@ -228,8 +229,8 @@ export default function BriefCallsSection({
    */
   const track = async (
     call: BriefCall,
-    horizon: HorizonType,
-    offeredHorizon: HorizonType,
+    window: AdoptWindow,
+    offeredWindow: AdoptWindow,
   ) => {
     setBusy(call.id);
     // Read provenance at the TAP, not after the round trip: every elapsed-time
@@ -240,8 +241,13 @@ export default function BriefCallsSection({
       callId: call.id,
       sourceType: "brief_call",
       briefingId: briefId ?? null,
-      horizon,
-      offeredHorizon,
+      // Both sides in the SAME vocabulary. adoptWindowRequest maps every
+      // off-bucket window onto the "week" fallback horizon, so comparing the
+      // request bodies would record "accepted as offered" for a reader who
+      // deliberately changed a 13-day window to one week. adoptWindowValue
+      // distinguishes them, which is what horizon_changed is measuring.
+      horizon: adoptWindowValue(window),
+      offeredHorizon: adoptWindowValue(offeredWindow),
       readAmbient: readProvenance,
       secondsSinceSourceInView: secondsSinceObjectFirstInView("brief_call", call.id),
     });
@@ -284,7 +290,10 @@ export default function BriefCallsSection({
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ call_id: call.id, horizon }),
+        // adoptWindowRequest sends window_days for an off-bucket span, which
+        // the route already accepts (resolveAdoptWindow's explicitDays). No
+        // API change was needed for variable horizons.
+        body: JSON.stringify({ call_id: call.id, ...adoptWindowRequest(window) }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -314,7 +323,10 @@ export default function BriefCallsSection({
           // Provenance first: the ambient enricher's keys are the same names,
           // and anything measured here must win over anything inferred there.
           ...provenance,
-          horizon,
+          horizon: adoptWindowRequest(window).horizon,
+          // The real span, so a 13-day commitment is not filed as a week.
+          window_days: adoptWindowRequest(window).window_days ?? null,
+          window_kind: window.kind,
           already_tracked: json.alreadyAdopted === true,
           gradeable: json.gradeable ?? null,
           resolution_window_end: json.resolution_window_end ?? null,
@@ -365,12 +377,16 @@ export default function BriefCallsSection({
         <div className="grid gap-2">
           {calls.map((c, i) => {
             const trackedClaim = tracked?.get(c.id) ?? null;
-            // The selector defaults to the call's OWN horizon, so a three-week
-            // card never sits beside a one-week selector. Still changeable; the
-            // adopt call and the horizon math are untouched.
-            const offered =
-              horizonTypeFromDates(c.brief_date, c.resolve_on) ?? DEFAULT_ADOPT_HORIZON;
-            const chosen = horizonFor[c.id] ?? offered;
+            // Preselects the call's OWN span, whatever it is. Going through
+            // horizonTypeFromDates alone returns null for a 13-day call and
+            // falls back to "1 week", which is the defect #535 fixed and the
+            // one variable horizons would re-introduce.
+            //
+            // `offered` is per card and is what #538 compares against to record
+            // accepted-versus-changed. It must be the same value the selector
+            // preselected, or every acceptance reads as an edit.
+            const offered = adoptWindowForCall(c.brief_date, c.resolve_on);
+            const chosen = windowFor[c.id] ?? offered;
             // The stamp plays once, only for a call committed in THIS session.
             // A claim loaded from the server on mount renders its end state
             // with no animation: a persisted entry is a fact, not an event.
@@ -406,9 +422,9 @@ export default function BriefCallsSection({
                       tracked={trackedClaim}
                       available={tracked !== null}
                       busy={busy === c.id}
-                      horizon={chosen}
-                      onHorizonChange={(h) =>
-                        setHorizonFor((prev) => ({ ...prev, [c.id]: h }))
+                      window={chosen}
+                      onWindowChange={(w) =>
+                        setWindowFor((prev) => ({ ...prev, [c.id]: w }))
                       }
                       onTrack={() => void track(c, chosen, offered)}
                       justStamped={justStamped}

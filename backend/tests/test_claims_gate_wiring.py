@@ -35,30 +35,30 @@ TODAYS_MODEL_RESPONSE = json.dumps({
         {
             "claim_text": "Oil prices will decline due to a pause in strikes between the U.S. and Iran.",
             "claim_type": "sector", "target_symbol": "XLE",
-            "expected_direction": "bearish", "horizon_type": "session", "confidence": 0.8,
+            "expected_direction": "bearish", "horizon_days": 0, "confidence": 0.8,
         },
         {
             "claim_text": "The Healthcare & Biotech sector will see continued M&A activity and consolidation.",
             "claim_type": "sector", "target_symbol": "XLV",
-            "expected_direction": "bullish", "horizon_type": "multiweek", "confidence": 0.75,
+            "expected_direction": "bullish", "horizon_days": 21, "confidence": 0.75,
         },
         {
             "claim_text": ("Deviation from consensus on the PCE price index could trigger "
                            "significant shifts in risk appetite and sector-specific valuations."),
             "claim_type": "aggregate", "target_symbol": None,
-            "expected_direction": "neutral", "horizon_type": "session", "confidence": 0.7,
+            "expected_direction": "neutral", "horizon_days": 0, "confidence": 0.7,
         },
         {
             "claim_text": ("The healthcare services sector may face headwinds due to Ensign "
                            "Group's Q2 CY2026 sales being below analyst estimates."),
             "claim_type": "sector", "target_symbol": "XLV",
-            "expected_direction": "bearish", "horizon_type": "session", "confidence": 0.7,
+            "expected_direction": "bearish", "horizon_days": 0, "confidence": 0.7,
         },
         {
             "claim_text": ("A hawkish or dovish surprise from the FOMC rate decision will "
                            "directly impact rates and the curve."),
             "claim_type": "aggregate", "target_symbol": None,
-            "expected_direction": "neutral", "horizon_type": "session", "confidence": 0.7,
+            "expected_direction": "neutral", "horizon_days": 0, "confidence": 0.7,
         },
     ]
 })
@@ -68,12 +68,12 @@ ALL_UNFALSIFIABLE_RESPONSE = json.dumps({
         {
             "claim_text": "Watch for a reaction in risk appetite after the print.",
             "claim_type": "aggregate", "target_symbol": None,
-            "expected_direction": "neutral", "horizon_type": "session", "confidence": 0.6,
+            "expected_direction": "neutral", "horizon_days": 0, "confidence": 0.6,
         },
         {
             "claim_text": "The jobs number could move equities in either direction.",
             "claim_type": "index", "target_symbol": "SPY",
-            "expected_direction": "bullish", "horizon_type": "session", "confidence": 0.6,
+            "expected_direction": "bullish", "horizon_days": 0, "confidence": 0.6,
         },
     ]
 })

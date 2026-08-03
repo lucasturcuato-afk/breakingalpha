@@ -45,11 +45,11 @@ import {
 } from "@/components/calls/TrackCallControl";
 import { notifyRadarLanded } from "@/lib/radar-landed";
 import {
-  DEFAULT_ADOPT_HORIZON,
-  horizonTypeFromDates,
+  adoptWindowForCall,
+  adoptWindowRequest,
   isPriceableClaimType,
   horizonFromDates,
-  type HorizonType,
+  type AdoptWindow,
 } from "@/lib/call-horizons";
 
 const SERIF = "var(--font-playfair-display), serif";
@@ -216,7 +216,7 @@ export default function CallsPage() {
   const [pinned, setPinned] = useState<string[]>([]);
   const [adoptBusy, setAdoptBusy] = useState<string | null>(null);
   /** Per-call horizon picked in the track control. Defaults per call, not globally. */
-  const [adoptHorizon, setAdoptHorizon] = useState<Record<string, HorizonType>>({});
+  const [adoptWindow, setAdoptWindow] = useState<Record<string, AdoptWindow>>({});
   /** Inline per-call failure text. Replaces the adopt toast, which adopt was
    *  the only writer of; tracking state now resolves in place on the card. */
   const [adoptError, setAdoptError] = useState<Record<string, string>>({});
@@ -359,11 +359,11 @@ export default function CallsPage() {
   }, [load]);
 
   /**
-   * Track a brief call as a forward claim of the user's own, over `horizon`.
+   * Track a brief call as a forward claim of the user's own, over `window`.
    * Resolves inline: the card swaps to a tracked state in place. No toast, no
    * modal, no navigation, so the user never loses their position in the list.
    */
-  const adopt = async (callId: string, horizon: HorizonType) => {
+  const adopt = async (callId: string, window: AdoptWindow) => {
     setAdoptBusy(callId);
     setAdoptError((prev) => {
       const next = { ...prev };
@@ -374,7 +374,9 @@ export default function CallsPage() {
       const res = await fetch("/api/radar/claims/adopt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ call_id: callId, horizon }),
+        // window_days rides along for an off-bucket span; the route already
+        // accepts it (resolveAdoptWindow's explicitDays). No API change.
+        body: JSON.stringify({ call_id: callId, ...adoptWindowRequest(window) }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -689,12 +691,11 @@ export default function CallsPage() {
                     const trackedClaim = claims.find(
                       (uc) => uc.adopted_from_call_id === c.id,
                     );
-                    // Defaults to the call's OWN horizon, not a blanket one
-                    // week. Still changeable; no horizon math changes here.
+                    // Preselects the call's OWN span, whatever it is. See
+                    // adoptWindowForCall: horizonTypeFromDates alone returns
+                    // null off-bucket and would fall back to "1 week".
                     const chosen =
-                      adoptHorizon[c.id] ??
-                      horizonTypeFromDates(c.brief_date, c.resolve_on) ??
-                      DEFAULT_ADOPT_HORIZON;
+                      adoptWindow[c.id] ?? adoptWindowForCall(c.brief_date, c.resolve_on);
                     return (
                       <div
                         key={c.id}
@@ -731,9 +732,9 @@ export default function CallsPage() {
                                 tracked={trackedClaim ?? null}
                                 available={!unavailable}
                                 busy={adoptBusy === c.id}
-                                horizon={chosen}
-                                onHorizonChange={(h: HorizonType) =>
-                                  setAdoptHorizon((prev) => ({ ...prev, [c.id]: h }))
+                                window={chosen}
+                                onWindowChange={(w: AdoptWindow) =>
+                                  setAdoptWindow((prev) => ({ ...prev, [c.id]: w }))
                                 }
                                 onTrack={() => void adopt(c.id, chosen)}
                                 justStamped={stamped.has(c.id)}

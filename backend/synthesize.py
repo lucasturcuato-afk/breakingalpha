@@ -18,9 +18,9 @@ import macro_calendar
 import bea_calendar
 from brief_voice_guard import enforce_brief_voice, has_voice_violation
 try:
-    from call_horizons import resolve_on_for
+    from call_horizons import resolve_on_for_days
 except Exception:  # pragma: no cover - path differs between runner and tests
-    from backend.call_horizons import resolve_on_for
+    from backend.call_horizons import resolve_on_for_days
 try:
     from call_falsifiability import apply_gate as apply_falsifiability_gate
 except Exception:  # pragma: no cover - path differs between runner and tests
@@ -1260,13 +1260,15 @@ Do NOT make claims about the market as a whole. "Stocks stay volatile", "equitie
 
 Return only the claims that clear the bar above. There is no target count and no floor: three real calls beat five with two decorations, and a genuinely non-directional brief should return one or zero. Never pad the list to look thorough. A claim added to reach a number is a claim nobody can be wrong about, and it costs more credibility than an empty list does.
 
-For every claim also classify HOW LONG the claim needs to play out. Judge the claim's own language, not your preference. Be honest: forcing a multi-week thesis into a single session grades it on noise, and calling a same-day move a multi-week view delays a verdict everyone already knows.
-- "session"   the claim is about today's trading. Reactions to an overnight headline, an earnings print, a data release, a Fed tone. Words like today, this session, at the open, on the print.
-- "week"      the claim needs a few sessions to resolve. A move that builds over the week, a trend continuing, positioning unwinding.
-- "multiweek" the claim is a thesis, not a trade. A re-rating, a cycle turning, a structural shift, guidance playing out over a quarter.
-READ-THROUGH IS NOT SAME-SESSION. One company's result propagating to its sector takes weeks, because the sector has to re-rate on the read rather than on the print. "The healthcare services sector may face headwinds due to Ensign Group's Q2 sales being below analyst estimates" is a week claim, not a session claim: naming a single company as the evidence for a whole sector's move is the tell. The same is true for consolidation and M&A trends (multiweek: a wave, not a day) and for policy, tariffs, regulation and subsidies (week at minimum: the effect is priced in over sessions, not in one afternoon).
+For every claim also state HOW MANY CALENDAR DAYS it needs to play out, as horizon_days: a whole number from 0 to 90. Judge the claim's own language, not your preference. Be honest: forcing a multi-week thesis into a single session grades it on noise, and stretching a same-day move over three weeks delays a verdict everyone already knows.
+Do not round to a habit. If a claim resolves on a specific scheduled event, count the days to that event: a call about Thursday's print is 3 days when today is Monday, not 7. Anchors, not buckets:
+- 0        the claim is about today's trading. Reactions to an overnight headline, an earnings print, a data release, a Fed tone. Words like today, this session, at the open, on the print.
+- 2 to 10  the claim needs a few sessions. A move that builds over the week, a trend continuing, positioning unwinding, a sector re-rating on one company's read.
+- 14 to 30 the claim is a thesis, not a trade. A re-rating, a cycle turning, a structural shift, a consolidation wave, guidance playing out.
+- above 45 rare, and only for something that genuinely cannot resolve sooner.
+READ-THROUGH IS NOT SAME-SESSION. One company's result propagating to its sector takes weeks, because the sector has to re-rate on the read rather than on the print. "The healthcare services sector may face headwinds due to Ensign Group's Q2 sales being below analyst estimates" needs at least a week, not a session: naming a single company as the evidence for a whole sector's move is the tell. The same is true for consolidation and M&A trends (at least three weeks: a wave, not a day) and for policy, tariffs, regulation and subsidies (a week at minimum: the effect is priced in over sessions, not in one afternoon).
 Session is for DIRECT repricing: the market prices this headline today. An overnight geopolitical development moving crude, an earnings print moving the name that reported, a Fed decision moving the index this afternoon.
-When genuinely ambiguous, choose "session". Do not choose a longer horizon to make a claim look more serious.
+When genuinely ambiguous, choose 0. Do not stretch a horizon to make a claim look more serious.
 
 Respond ONLY with valid JSON in this exact schema, no preamble, no markdown fences:
 {
@@ -1276,7 +1278,7 @@ Respond ONLY with valid JSON in this exact schema, no preamble, no markdown fenc
       "claim_type": "aggregate" | "sector" | "index" | "ticker",
       "target_symbol": "<ticker or ETF symbol; null only for pure aggregate with no proxy>",
       "expected_direction": "bullish" | "bearish",
-      "horizon_type": "session" | "week" | "multiweek",
+      "horizon_days": <whole number of calendar days, 0 to 90>,
       "confidence": <float between 0.0 and 1.0>
     }
   ]
@@ -1427,7 +1429,11 @@ def extract_and_persist_claims(
             "claim_type": claim_type,
             "target_symbol": target_symbol,
             "expected_direction": direction,
-            "horizon_type": c.get("horizon_type"),
+            # A day count, not a bucket. The code clamps it (call_horizons.
+            # normalize_horizon_days) and the gate floors it; a value the model
+            # never sent, or sent as nonsense, degrades to 0 (same session),
+            # which is exactly what an unrecognized bucket did before.
+            "horizon_days": c.get("horizon_days"),
             "confidence": confidence,
         })
 
@@ -1463,10 +1469,12 @@ def extract_and_persist_claims(
             "claim_type": g["claim_type"],
             "target_symbol": g["target_symbol"],
             "expected_direction": g["expected_direction"],
-            # Fixed map (backend/call_horizons.py): session +0, week +7,
-            # multiweek +21 calendar days. The gate has already raised the
-            # horizon to the floor the claim's own language implies.
-            "resolve_on": resolve_on_for(_claims_brief_date, g.get("horizon_type")),
+            # brief_date + the clamped day count (backend/call_horizons.py).
+            # The gate has already raised the count to the floor the claim's own
+            # language implies, and normalize_horizon_days bounds it to [0, 90],
+            # so a window in the past or a year out is unrepresentable rather
+            # than merely rejected.
+            "resolve_on": resolve_on_for_days(_claims_brief_date, g.get("horizon_days")),
             "confidence": g.get("confidence"),
             "is_lead": False,
         }

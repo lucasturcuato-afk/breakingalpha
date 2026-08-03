@@ -9,9 +9,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  adoptWindowForCall,
+  adoptWindowOptions,
+  adoptWindowRequest,
+  adoptWindowValue,
+  horizonPhraseForDays,
   DEFAULT_ADOPT_HORIZON,
   HORIZON_DAYS,
   HORIZON_LABEL,
+  HORIZON_PHRASE,
+  horizonTypeFromDates,
   MAX_WINDOW_DAYS,
   addCalendarDays,
   daysBetween,
@@ -164,4 +171,89 @@ test("every backend bucket has a label and round-trips through the chip", () => 
 test("calendar arithmetic crosses month and year boundaries", () => {
   assert.equal(addCalendarDays("2026-12-28", 7), "2027-01-04");
   assert.equal(addCalendarDays("2026-02-25", 21), "2026-03-18");
+});
+
+
+// ---------------------------------------------------------------------------
+// Variable horizons: the selector must preselect the call's OWN window
+// ---------------------------------------------------------------------------
+
+test("REGRESSION: a 13-day call preselects its own window, NOT 1 week", () => {
+  // horizonTypeFromDates returns null for any span that is not 0, 7, or 21.
+  // Every caller that fell back to DEFAULT_ADOPT_HORIZON on null would offer
+  // "1 week" for a call that is not a week, re-introducing the exact defect
+  // #535 shipped to fix. This is the guard.
+  const anchor = "2026-07-25";
+  const resolveOn = addCalendarDays(anchor, 13);
+
+  assert.equal(horizonTypeFromDates(anchor, resolveOn), null, "precondition");
+
+  const w = adoptWindowForCall(anchor, resolveOn);
+  assert.deepEqual(w, { kind: "as-called", days: 13 });
+  assert.notEqual(adoptWindowValue(w), `bucket:${DEFAULT_ADOPT_HORIZON}`);
+
+  const options = adoptWindowOptions(w);
+  assert.equal(options[0].value, adoptWindowValue(w), "own window is first");
+  assert.equal(options.length, 4, "own window plus the three named alternatives");
+  assert.match(options[0].label, /13 days/);
+});
+
+test("an exact bucket match preselects the bucket, with no duplicate entry", () => {
+  const anchor = "2026-07-25";
+  for (const [name, days] of Object.entries(HORIZON_DAYS) as [HorizonType, number][]) {
+    const w = adoptWindowForCall(anchor, addCalendarDays(anchor, days));
+    assert.deepEqual(w, { kind: "bucket", type: name }, name);
+    assert.equal(adoptWindowOptions(w).length, 3, `${name}: no duplicate first entry`);
+  }
+});
+
+test("a call with no resolve_on falls back to the shared default", () => {
+  assert.deepEqual(adoptWindowForCall("2026-07-25", null), {
+    kind: "bucket",
+    type: DEFAULT_ADOPT_HORIZON,
+  });
+  assert.deepEqual(adoptWindowForCall(null, null), {
+    kind: "bucket",
+    type: DEFAULT_ADOPT_HORIZON,
+  });
+});
+
+test("an off-bucket span renders a sensible phrase, never null", () => {
+  for (const days of [1, 2, 3, 5, 13, 14, 30, 45, 89, 90]) {
+    const phrase = horizonPhraseForDays(days);
+    assert.ok(phrase && phrase.length > 0, `days=${days}`);
+    assert.ok(!/null|undefined|NaN/.test(phrase), `days=${days}: ${phrase}`);
+  }
+  assert.equal(horizonPhraseForDays(13), "resolves in 13 days");
+  assert.equal(horizonPhraseForDays(14), "resolves in about 2 weeks");
+  assert.equal(horizonPhraseForDays(0), HORIZON_PHRASE.session);
+});
+
+test("an off-bucket span renders a sensible chip label, never null", () => {
+  const anchor = "2026-07-25";
+  const h = horizonFromDates(anchor, addCalendarDays(anchor, 13));
+  assert.equal(h?.days, 13);
+  assert.equal(h?.label, "13 days");
+});
+
+test("the adopt body sends window_days for an off-bucket span and no API change", () => {
+  // The route already accepts window_days (resolveAdoptWindow's explicitDays).
+  const asCalled = adoptWindowRequest({ kind: "as-called", days: 13 });
+  assert.equal(asCalled.window_days, 13);
+  assert.equal(resolveAdoptWindow(TODAY, asCalled.horizon, asCalled.window_days),
+    addCalendarDays(TODAY, 13));
+
+  // A bucket sends no window_days, exactly as before.
+  const bucket = adoptWindowRequest({ kind: "bucket", type: "multiweek" });
+  assert.equal(bucket.window_days, undefined);
+  assert.equal(resolveAdoptWindow(TODAY, bucket.horizon, bucket.window_days),
+    addCalendarDays(TODAY, 21));
+});
+
+test("an as-called window is never 0, 7, or 21, so it never duplicates a bucket", () => {
+  const anchor = "2026-07-25";
+  for (const days of [0, 7, 21]) {
+    const w = adoptWindowForCall(anchor, addCalendarDays(anchor, days));
+    assert.equal(w.kind, "bucket", `days=${days}`);
+  }
 });
