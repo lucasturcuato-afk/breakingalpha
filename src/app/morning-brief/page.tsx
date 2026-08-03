@@ -22,6 +22,7 @@ import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { stripHtml } from "@/lib/strip-html";
+import { createUserThesis } from "@/lib/create-user-thesis";
 import { FileText } from "lucide-react";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { useRouter } from "next/navigation";
@@ -768,7 +769,7 @@ export default function MorningBriefPage() {
   const handleLeadAddThesis = async () => {
     setAddingThesis(true);
     try {
-      await getSupabase().from("theses").insert({
+      await createUserThesis(getSupabase(), {
         title: briefing?.headline || "Morning Brief Lead",
         conviction: "WATCH",
         sector: "General",

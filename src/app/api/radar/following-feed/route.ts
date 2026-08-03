@@ -37,16 +37,25 @@ export async function GET(request: NextRequest) {
 
   const rows = (follows ?? []) as FollowRow[];
   const developments = await Promise.all(
-    rows.map(async (follow) => ({
-      follow: {
+    rows.map(async (follow) => {
+      const meta = {
         id: follow.id,
         follow_type: follow.follow_type,
         target: follow.target,
         display_name: follow.display_name,
         muted: follow.muted,
-      },
-      articles: follow.muted ? [] : await matchFollow(supabase, follow, days),
-    })),
+      };
+      if (follow.muted) return { follow: meta, articles: [], failed: false };
+      try {
+        return { follow: meta, articles: await matchFollow(supabase, follow, days), failed: false };
+      } catch (e) {
+        // One bad follow must not take down the whole feed, but it must also
+        // not masquerade as a quiet follow. Mark it so the UI can say the
+        // matching failed instead of reporting "nothing matched".
+        console.error("[following-feed] match failed for follow", follow.id, e);
+        return { follow: meta, articles: [], failed: true };
+      }
+    }),
   );
 
   return NextResponse.json({ developments });

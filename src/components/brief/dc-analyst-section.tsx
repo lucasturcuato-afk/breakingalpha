@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import { Sparkles, Plus, ThumbsUp, ThumbsDown, Loader2 } from "lucide-react";
 import { stripHtml } from "@/lib/strip-html";
+import { createUserThesis } from "@/lib/create-user-thesis";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { useOutputFeedback } from "@/hooks/useOutputFeedback";
 
@@ -46,7 +47,7 @@ export function DCAnalystSection({
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       );
-      await supabase.from("theses").insert({
+      await createUserThesis(supabase, {
         title,
         conviction: "WATCH",
         sector: "General",
