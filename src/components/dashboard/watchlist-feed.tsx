@@ -182,7 +182,12 @@ function WatchDeck({
                 <ExternalLink size={11} className="inline ml-1 opacity-0 group-hover:opacity-60 transition-opacity" />
               </a>
               {a.summary && (
-                <p className="font-sans text-[11.5px] text-text-secondary leading-[1.5] mt-1 line-clamp-3 flex-1 min-h-0">
+                // No flex-1: the paragraph used to stretch to the bottom of the
+                // fixed-height sheet, so a short summary rendered as a tall
+                // empty block. It now sits under the headline at its real
+                // size, and the extra line of clamp lets a long summary use
+                // the space instead of the space using nothing.
+                <p className="font-sans text-[11.5px] text-text-secondary leading-[1.5] mt-1 line-clamp-4">
                   {a.summary}
                 </p>
               )}
@@ -220,7 +225,12 @@ function WatchDeck({
 // height from the SAME numbers, so the two columns end at exactly the same
 // baseline instead of one floating above a gap. Change WIRE_ROW_H or
 // WIRE_WINDOW and both columns stay aligned by construction.
-const WIRE_ROW_H = 68;
+// 60px holds a wire row's real content (ticker line, one-line headline, source
+// line ~= 44px) with comfortable breathing room. It was 68, which inflated the
+// whole newsroom row: the deck card height is derived from it, and the Lead
+// card ended up ~68px taller than its own content, leaving a visible void
+// under the summary.
+const WIRE_ROW_H = 60;
 const WIRE_WINDOW = 3;
 const WIRE_ROLL_MS = 620;
 /** Total height of the wire viewport, and therefore of the newsroom row. */

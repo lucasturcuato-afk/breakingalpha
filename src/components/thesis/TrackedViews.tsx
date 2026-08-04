@@ -208,7 +208,8 @@ export function TrackedViews({
         setUserThesisStates(data.states as UserThesisState[]);
       }
     } catch {
-      setUserThesisStates([]);
+      // Leave existing state intact: blanking it here made archived/watching
+      // theses look unclassified, and a later POST could overwrite real state.
     }
   }, []);
 

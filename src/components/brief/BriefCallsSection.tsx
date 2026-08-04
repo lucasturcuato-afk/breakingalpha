@@ -529,43 +529,104 @@ export default function BriefCallsSection({
     );
   };
 
-  /** The forward hook under a resolved call: the most specific REAL related
-   *  object, or an honest "no related live call yet". Never generated. */
+  /**
+   * The forward hook under a resolved call.
+   *
+   * Presented as a CONNECTED continuation, not a footnote: an elbow connector
+   * drawn from the closed card's bottom-left into an inset, tinted panel, so
+   * the eye reads "this one closed, that one carries it forward" without any
+   * copy explaining the relationship. The panel is a real link target with a
+   * hover affordance and an arrow, because the whole point is that it is
+   * clickable.
+   *
+   * Still honest: it only ever points at a row that already exists, the
+   * relationship reason is stated as data ("same sector"), and when nothing
+   * real matches it degrades to a quiet line with no panel and no link.
+   */
   const renderNextToWatch = (next: RelatedNext | null) => {
     if (!next) {
       return (
-        <p className="mt-1 font-sans text-[11px] text-text-faint" data-testid="next-none">
+        <p
+          className="mt-1.5 pl-4 font-sans text-[11px] text-text-faint"
+          data-testid="next-none"
+        >
           No related live call yet.
         </p>
       );
     }
-    if (next.kind === "call") {
-      const target = next.call;
-      const inLive = liveIds.has(target.id);
-      return (
-        <p className="mt-1 font-sans text-[11px] text-text-muted" data-testid="next-call">
-          Next to watch{" "}
-          <span className="text-text-faint">({next.why}, live now)</span>:{" "}
-          <a
-            href={inLive ? `#live-call-${target.id}` : "/radar/calls"}
-            className="font-semibold text-text-secondary underline underline-offset-2 hover:text-text-primary"
-          >
-            {target.target_symbol ?? "desk call"}
-            {target.resolve_on ? ` · resolves ${shortDate(target.resolve_on)}` : ""}
-          </a>
-        </p>
-      );
-    }
+
+    const isCall = next.kind === "call";
+    const href = isCall
+      ? liveIds.has(next.call.id)
+        ? `#live-call-${next.call.id}`
+        : "/radar/calls"
+      : "/trends";
+    const eyebrow = isCall ? `Still live · ${next.why}` : `Emerging on Radar · ${next.why}`;
+    const title = isCall
+      ? `${next.call.target_symbol ?? "Desk call"}${
+          next.call.claim_text ? ` — ${next.call.claim_text}` : ""
+        }`
+      : (next.cluster.label ?? next.cluster.headline ?? "View trends");
+    const meta = isCall
+      ? next.call.resolve_on
+        ? `Resolves ${shortDate(next.call.resolve_on)}`
+        : null
+      : next.cluster.created_at
+        ? `Clustered ${shortDate(next.cluster.created_at)}`
+        : null;
+
     return (
-      <p className="mt-1 font-sans text-[11px] text-text-muted" data-testid="next-cluster">
-        Emerging on Radar:{" "}
+      <div className="relative mt-1.5 pl-4" data-testid={isCall ? "next-call" : "next-cluster"}>
+        {/* Elbow connector: a short drop from the closed card, turning right
+            into the panel. Pure border, no asset, and it inherits the card's
+            own subtle border color so it reads as structure, not decoration. */}
+        <span
+          aria-hidden
+          className="absolute left-1 top-0 h-[18px] w-2.5 rounded-bl-md border-b border-l border-border-default"
+        />
         <a
-          href="/trends"
-          className="font-semibold text-text-secondary underline underline-offset-2 hover:text-text-primary"
+          href={href}
+          onClick={
+            href.startsWith("#")
+              ? (e) => {
+                  // In-page target: scroll it into view and flash its border,
+                  // so the reader SEES which live call the closed one handed
+                  // off to instead of being teleported to an anchor.
+                  const el = document.getElementById(href.slice(1));
+                  if (!el) return;
+                  e.preventDefault();
+                  el.scrollIntoView({ behavior: "smooth", block: "center" });
+                  el.classList.add("call-handoff-target");
+                  window.setTimeout(
+                    () => el.classList.remove("call-handoff-target"),
+                    1600,
+                  );
+                }
+              : undefined
+          }
+          className="group flex items-start gap-2.5 rounded-lg border border-border-subtle bg-parchment-mid/60 px-3 py-2 transition-colors duration-[var(--duration-fast)] ease-[var(--ease-out)] hover:border-gold hover:bg-parchment-mid dark:bg-overlay/40 dark:hover:bg-overlay"
         >
-          {next.cluster.label ?? next.cluster.headline ?? "view trends"}
+          <div className="min-w-0 flex-1">
+            <p className="font-data text-[9.5px] uppercase tracking-[0.1em] text-gold-dark">
+              Next to watch · {eyebrow}
+            </p>
+            <p className="mt-0.5 font-sans text-[12px] font-semibold leading-snug text-text-primary line-clamp-2">
+              {title}
+            </p>
+            {meta && (
+              <p className="mt-0.5 font-data text-[10px] text-text-faint tabular-nums">
+                {meta}
+              </p>
+            )}
+          </div>
+          <span
+            aria-hidden
+            className="mt-0.5 shrink-0 font-sans text-[13px] text-text-faint transition-transform duration-[var(--duration-fast)] group-hover:translate-x-0.5 group-hover:text-gold-dark"
+          >
+            →
+          </span>
         </a>
-      </p>
+      </div>
     );
   };
 

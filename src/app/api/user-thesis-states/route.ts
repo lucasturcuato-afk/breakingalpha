@@ -15,7 +15,7 @@ export async function GET() {
 
     if (error) {
       console.warn("[user-thesis-states GET] query failed:", error.message);
-      return NextResponse.json({ states: [] });
+      return NextResponse.json({ error: "Could not load thesis states." }, { status: 500 });
     }
     return NextResponse.json({ states: data || [] });
   } catch (e) {

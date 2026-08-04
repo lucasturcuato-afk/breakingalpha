@@ -16,6 +16,7 @@ import {
   horizonPhraseForDays,
   DEFAULT_ADOPT_HORIZON,
   HORIZON_DAYS,
+  HORIZON_TYPES,
   HORIZON_LABEL,
   HORIZON_PHRASE,
   horizonTypeFromDates,
@@ -36,8 +37,30 @@ const TODAY = "2026-07-25";
 // The map must match backend/call_horizons.py
 // ---------------------------------------------------------------------------
 
-test("day counts match the backend map exactly", () => {
-  assert.deepEqual(HORIZON_DAYS, { session: 0, week: 7, multiweek: 21 });
+// The three buckets the Python claims extractor emits. Their day counts MUST
+// equal HORIZON_DAYS in backend/call_horizons.py, or a chip on a brief call and
+// a chip on an adopted claim would mean different things.
+const BACKEND_SHARED_DAYS = { session: 0, week: 7, multiweek: 21 } as const;
+
+test("the backend-shared buckets match backend/call_horizons.py exactly", () => {
+  for (const [name, days] of Object.entries(BACKEND_SHARED_DAYS)) {
+    assert.equal(HORIZON_DAYS[name as HorizonType], days, name);
+  }
+});
+
+test("adopt-only long buckets exist and are frontend-only additions", () => {
+  // Long-dated theses need a real window. These are resolved by the TS adopt
+  // route, never by the Python extractor, so they add no backend contract.
+  assert.equal(HORIZON_DAYS.month, 30);
+  assert.equal(HORIZON_DAYS.quarter, 90);
+  for (const name of Object.keys(HORIZON_DAYS)) {
+    if (!(name in BACKEND_SHARED_DAYS)) {
+      assert.ok(
+        HORIZON_TYPES.includes(name as HorizonType),
+        `${name} must be offered in the selector`,
+      );
+    }
+  }
 });
 
 test("no bucket exceeds the 90 day cap", () => {
@@ -194,7 +217,11 @@ test("REGRESSION: a 13-day call preselects its own window, NOT 1 week", () => {
 
   const options = adoptWindowOptions(w);
   assert.equal(options[0].value, adoptWindowValue(w), "own window is first");
-  assert.equal(options.length, 4, "own window plus the three named alternatives");
+  assert.equal(
+    options.length,
+    HORIZON_TYPES.length + 1,
+    "own window plus every named alternative",
+  );
   assert.match(options[0].label, /13 days/);
 });
 
@@ -203,7 +230,11 @@ test("an exact bucket match preselects the bucket, with no duplicate entry", () 
   for (const [name, days] of Object.entries(HORIZON_DAYS) as [HorizonType, number][]) {
     const w = adoptWindowForCall(anchor, addCalendarDays(anchor, days));
     assert.deepEqual(w, { kind: "bucket", type: name }, name);
-    assert.equal(adoptWindowOptions(w).length, 3, `${name}: no duplicate first entry`);
+    assert.equal(
+      adoptWindowOptions(w).length,
+      HORIZON_TYPES.length,
+      `${name}: no duplicate first entry`,
+    );
   }
 });
 

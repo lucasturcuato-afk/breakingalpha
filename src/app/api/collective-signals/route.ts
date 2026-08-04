@@ -12,10 +12,15 @@ export async function GET() {
 
     // 1. Trending watchlist tickers — most added in last 7 days
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-    const { data: recentWatchlist } = await supabase
+    const { data: recentWatchlist, error: watchErr } = await supabase
       .from("watchlist")
       .select("identifier")
       .gte("added_at", weekAgo);
+
+    if (watchErr) {
+      console.error("[collective-signals] watchlist error:", watchErr.message);
+      return NextResponse.json({ error: "Could not load collective signals." }, { status: 500 });
+    }
 
     const tickerCounts = new Map<string, number>();
     for (const w of recentWatchlist ?? []) {
@@ -30,12 +35,17 @@ export async function GET() {
       .map(([ticker, count]) => ({ ticker, watcherCount: count }));
 
     // 2. Most active sectors — from user events in last 7 days
-    const { data: recentEvents } = await supabase
+    const { data: recentEvents, error: eventsErr } = await supabase
       .from("user_events")
       .select("payload")
       .gte("created_at", weekAgo)
       .in("event_type", ["thesis_viewed", "thesis_approved", "sector_filter_applied"])
       .limit(500);
+
+    if (eventsErr) {
+      console.error("[collective-signals] events error:", eventsErr.message);
+      return NextResponse.json({ error: "Could not load collective signals." }, { status: 500 });
+    }
 
     const sectorCounts = new Map<string, number>();
     for (const e of recentEvents ?? []) {
@@ -61,6 +71,6 @@ export async function GET() {
     });
   } catch (err) {
     console.error("[collective-signals] error:", err);
-    return NextResponse.json({ trendingTickers: [], activeSectors: [], totalUsers: 0 });
+    return NextResponse.json({ error: "Could not load collective signals." }, { status: 500 });
   }
 }

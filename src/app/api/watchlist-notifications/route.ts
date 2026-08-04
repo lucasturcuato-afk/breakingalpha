@@ -27,12 +27,12 @@ export async function GET() {
 
     if (error) {
       console.warn("[watchlist-notifications GET] query failed:", error.message);
-      return NextResponse.json({ notifications: [] });
+      return NextResponse.json({ error: "Could not load notifications." }, { status: 500 });
     }
     return NextResponse.json({ notifications: data ?? [] });
   } catch (e) {
     console.error("[watchlist-notifications GET] error:", e);
-    return NextResponse.json({ notifications: [] });
+    return NextResponse.json({ error: "Could not load notifications." }, { status: 500 });
   }
 }
 
