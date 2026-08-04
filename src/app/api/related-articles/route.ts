@@ -34,10 +34,19 @@ export async function GET(request: NextRequest) {
     p_article_id: id,
     p_count: 3,
   });
-  if (error || !matches || matches.length === 0) {
-    // Missing function (not yet applied) or no neighbors: empty row, no error
-    // surfaced to the hero.
-    if (error) console.error("[related-articles] rpc error:", error.message);
+  if (error) {
+    // A NOT-YET-APPLIED function is a real "not available" and stays an empty
+    // row. Any other failure is an error: merging the two is what let an RPC
+    // timeout render as "this story has no related coverage".
+    const missingFn =
+      error.code === "42883" ||
+      error.code === "PGRST202" ||
+      /does not exist|schema cache/i.test(error.message ?? "");
+    console.error("[related-articles] rpc error:", error.message);
+    if (missingFn) return NextResponse.json({ related: [] });
+    return NextResponse.json({ error: "Could not load related articles." }, { status: 500 });
+  }
+  if (!matches || matches.length === 0) {
     return NextResponse.json({ related: [] });
   }
 

@@ -35,9 +35,11 @@
  *     the decision. It is a link the reader may take, never a redirect.
  */
 
+import { useState } from "react";
 import { HorizonChip } from "@/components/calls/HorizonChip";
 import {
   adoptWindowOptions,
+  adoptWindowPhrase,
   adoptWindowValue,
   type AdoptWindow,
 } from "@/lib/call-horizons";
@@ -246,6 +248,45 @@ export function CallCommitFooter({
 
   if (!available) return null;
 
+  return (
+    <UntrackedFooter
+      window={window}
+      onWindowChange={onWindowChange}
+      onTrack={onTrack}
+      busy={busy}
+      trustLineId={trustLineId}
+      error={error ?? null}
+    />
+  );
+}
+
+/**
+ * The untracked footer, split out because it holds edit-toggle state.
+ *
+ * The horizon is SYSTEM-INFERRED, not user-guessed: the preselected window is
+ * the call's own span (its resolve_on, fixed at creation from the claim's
+ * nature - an event reaction gets days, a structural thesis gets weeks). The
+ * reader is TOLD the window as a sentence ("resolves in about a week") instead
+ * of being handed a menu they have no basis to pick from. "Change" reveals the
+ * old selector for anyone who deliberately wants a different span; picking one
+ * keeps the text presentation with the new value.
+ */
+function UntrackedFooter({
+  window,
+  onWindowChange,
+  onTrack,
+  busy,
+  trustLineId,
+  error,
+}: {
+  window: AdoptWindow;
+  onWindowChange: (w: AdoptWindow) => void;
+  onTrack: () => void;
+  busy: boolean;
+  trustLineId: string;
+  error: string | null;
+}) {
+  const [editing, setEditing] = useState(false);
   // The call's own window first when it is off-bucket, then the three named
   // alternatives. No date picker.
   const options = adoptWindowOptions(window);
@@ -253,27 +294,46 @@ export function CallCommitFooter({
   return (
     <div data-testid="track-state-untracked">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        {/* The window being committed to, in words, editable before the tap. */}
-        <label className="flex items-center gap-1.5 font-sans text-[11px] text-text-muted">
-          <span className="sr-only">Tracking horizon</span>
-          <select
-            aria-label="Tracking horizon"
-            data-testid="track-horizon-select"
-            value={adoptWindowValue(window)}
-            disabled={busy}
-            onChange={(e) => {
-              const picked = options.find((o) => o.value === e.target.value);
-              if (picked) onWindowChange(picked.window);
-            }}
-            className="cursor-pointer rounded-md border border-border-subtle bg-transparent px-2 py-1 font-sans text-[11px] text-text-secondary disabled:opacity-50"
-          >
-            {options.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        {editing ? (
+          <label className="flex items-center gap-1.5 font-sans text-[11px] text-text-muted">
+            <span className="sr-only">Tracking horizon</span>
+            <select
+              aria-label="Tracking horizon"
+              data-testid="track-horizon-select"
+              value={adoptWindowValue(window)}
+              disabled={busy}
+              autoFocus
+              onChange={(e) => {
+                const picked = options.find((o) => o.value === e.target.value);
+                if (picked) {
+                  onWindowChange(picked.window);
+                  setEditing(false);
+                }
+              }}
+              onBlur={() => setEditing(false)}
+              className="cursor-pointer rounded-md border border-border-subtle bg-transparent px-2 py-1 font-sans text-[11px] text-text-secondary disabled:opacity-50"
+            >
+              {options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <span className="flex items-baseline gap-2 font-sans text-[11px] text-text-muted">
+            <span data-testid="track-horizon-phrase">{adoptWindowPhrase(window)}</span>
+            <button
+              type="button"
+              data-testid="track-horizon-change"
+              disabled={busy}
+              onClick={() => setEditing(true)}
+              className="cursor-pointer text-text-faint underline underline-offset-2 hover:text-text-primary disabled:opacity-50"
+            >
+              change
+            </button>
+          </span>
+        )}
         {/* A real button: bordered, padded, hit-target sized. Existing tokens
             only, no new color. Restraint is the point; this is a record entry,
             not a purchase. */}

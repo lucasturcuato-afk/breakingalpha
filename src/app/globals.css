@@ -510,6 +510,23 @@ html.dark .skeleton-shimmer {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Hand-off target. Applied for ~1.6s to the live call a resolved call's
+   "Next to watch" panel points at, so following the link visibly ARRIVES
+   somewhere instead of silently jumping. Outline, not layout: nothing reflows,
+   and it is removed again by the caller. */
+.call-handoff-target {
+  border-radius: 12px;
+  animation: call-handoff-flash 1.6s var(--ease-out) both;
+}
+@keyframes call-handoff-flash {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--gold) 55%, transparent); }
+  22%  { box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 55%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--gold) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .call-handoff-target { animation: none; box-shadow: 0 0 0 2px var(--gold); }
+}
+
 /* The committed edge. Now the card's OWN left spine (ScoredObject swaps it to
    gold when committed), so the accent belongs to the object instead of a
    wrapper drawn around it. Present on a fresh mount from server data too, so

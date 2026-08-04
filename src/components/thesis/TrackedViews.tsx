@@ -28,6 +28,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import Link from "next/link";
 import { ThesisList } from "@/components/thesis/ThesisList";
 import { ThesisDetailPanel } from "@/components/thesis/thesis-detail-panel";
 import type { ThesisItem } from "@/components/thesis";
@@ -207,7 +208,8 @@ export function TrackedViews({
         setUserThesisStates(data.states as UserThesisState[]);
       }
     } catch {
-      setUserThesisStates([]);
+      // Leave existing state intact: blanking it here made archived/watching
+      // theses look unclassified, and a later POST could overwrite real state.
     }
   }, []);
 
@@ -395,7 +397,13 @@ export function TrackedViews({
           <div className="mb-3 flex items-center justify-between">
             <p className="font-sans text-[12px] text-text-faint">
               Judged by evidence review, not benchmark attribution. A leaning is
-              not a verdict; graded calls above are the record.
+              not a verdict; graded calls above are the record.{" "}
+              <Link
+                href="/radar/track-record"
+                className="text-gold hover:text-gold-dark font-semibold whitespace-nowrap"
+              >
+                Full evidence tracker →
+              </Link>
             </p>
             <div className="flex items-center gap-1 font-sans text-[11px]">
               {(

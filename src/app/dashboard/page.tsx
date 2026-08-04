@@ -135,6 +135,9 @@ export default function DashboardPage() {
   const { profile, refetch: refetchProfile, updateProfile } = useUserProfile();
   const [stories, setStories] = useState<StoryData[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
+  // A failed Top Stories read renders an error state. It used to fall through
+  // to "No stories yet", which blamed the pipeline for a database timeout.
+  const [storiesError, setStoriesError] = useState(false);
   const [storyCount, setStoryCount] = useState(0);
   const [marketCards, setMarketCards] = useState<Record<string, MarketCardData | null>>({});
   const [bullishCount, setBullishCount] = useState(0);
@@ -308,6 +311,7 @@ export default function DashboardPage() {
         }
       } catch (e) {
         console.error("Failed to load dashboard stories:", e);
+        setStoriesError(true);
       } finally {
         setStoriesLoading(false);
       }
@@ -703,6 +707,12 @@ export default function DashboardPage() {
               <Skeleton className="h-[380px] rounded-2xl bg-[#241a10]/20" />
               <Skeleton className="h-6 w-2/3 rounded-md mt-3" />
             </div>
+          ) : storiesError ? (
+            <EmptyState
+              icon={<FileText size={32} />}
+              title="Couldn't load top stories"
+              description="The story query failed. It will retry on the next refresh."
+            />
           ) : displayStories.length === 0 ? (
             <EmptyState
               icon={<FileText size={32} />}

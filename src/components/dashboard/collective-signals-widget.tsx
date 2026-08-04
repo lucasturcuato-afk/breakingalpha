@@ -10,13 +10,26 @@ interface CollectiveData {
 
 export function CollectiveSignalsWidget() {
   const [data, setData] = useState<CollectiveData | null>(null);
+  // A failed read must not render as a factual claim about the user base.
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     fetch("/api/collective-signals")
-      .then(r => r.json())
+      .then(async (r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      })
       .then(setData)
-      .catch(() => {});
+      .catch(() => setFailed(true));
   }, []);
+
+  if (failed) {
+    return (
+      <p className="font-sans text-[11px] text-text-muted italic">
+        Couldn&apos;t load community signals.
+      </p>
+    );
+  }
 
   if (!data) {
     return <div className="h-16 rounded-lg bg-parchment-mid animate-pulse" />;

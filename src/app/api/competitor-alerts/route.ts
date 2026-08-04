@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { unwrapRows } from "@/lib/supabase-query";
 
 export const dynamic = "force-dynamic";
 
@@ -15,38 +16,46 @@ export async function GET() {
     );
 
     // Get user's watchlist tickers
-    const { data: watchlist } = await authClient
-      .from("watchlist")
-      .select("identifier")
-      .eq("user_id", user.id);
+    const watchlist = unwrapRows<{ identifier: string }>(
+      await authClient.from("watchlist").select("identifier").eq("user_id", user.id),
+      "competitor-alerts watchlist",
+    );
 
-    const tickers = (watchlist ?? []).map(w => w.identifier.toLowerCase());
+    const tickers = watchlist.map((w) => w.identifier.toLowerCase());
     if (tickers.length === 0) return NextResponse.json({ alerts: [] });
 
     // Find competitors of watchlist companies
-    const { data: competitors } = await supabase
-      .from("competitor_map")
-      .select("ticker, competitor_ticker, co_mention_count")
-      .in("ticker", tickers)
-      .order("co_mention_count", { ascending: false })
-      .limit(20);
+    const competitors = unwrapRows<{ ticker: string; competitor_ticker: string; co_mention_count: number }>(
+      await supabase
+        .from("competitor_map")
+        .select("ticker, competitor_ticker, co_mention_count")
+        .in("ticker", tickers)
+        .order("co_mention_count", { ascending: false })
+        .limit(20),
+      "competitor-alerts competitor_map",
+    );
 
-    if (!competitors || competitors.length === 0) return NextResponse.json({ alerts: [] });
+    if (competitors.length === 0) return NextResponse.json({ alerts: [] });
 
-    // Find recent articles mentioning these competitors (last 48h)
-    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    // Recent articles mentioning these competitors. Windowed on published_at,
+    // not ingested_at: the ingest timestamp measures when the pipeline last
+    // ran, so a missed run emptied this widget while real articles existed.
+    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    const { data: articles } = await supabase
-      .from("articles")
-      .select("id, title, source, companies, published_at")
-      .gte("ingested_at", cutoff)
-      .order("ingested_at", { ascending: false })
-      .limit(200);
+    const articles = unwrapRows<{ id: string; title: string; source: string; companies: unknown; published_at: string }>(
+      await supabase
+        .from("articles")
+        .select("id, title, source, companies, published_at")
+        .gte("published_at", cutoff)
+        .order("published_at", { ascending: false })
+        .limit(200),
+      "competitor-alerts articles",
+    );
 
     // Match articles to competitors
     const alerts: { competitor: string; watchlistTicker: string; article: { title: string; source: string; published_at: string }; coMentionStrength: number }[] = [];
 
-    for (const article of articles ?? []) {
+    for (const article of articles) {
       let articleCompanies = article.companies;
       if (typeof articleCompanies === "string") {
         try { articleCompanies = JSON.parse(articleCompanies); } catch { continue; }
@@ -103,7 +112,9 @@ export async function GET() {
 
     return NextResponse.json({ alerts: capped });
   } catch (err) {
+    // A failed read is an error, not "no competitor activity". Returning an
+    // empty list here made a broken query indistinguishable from a quiet market.
     console.error("[competitor-alerts] error:", err);
-    return NextResponse.json({ alerts: [] });
+    return NextResponse.json({ error: "Could not load competitor alerts." }, { status: 500 });
   }
 }

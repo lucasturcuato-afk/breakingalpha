@@ -3,24 +3,53 @@
  *
  * Mirrors backend/call_horizons.py. The backend map decides what a brief call's
  * resolve_on is at creation; this module decides what a user's adopted window
- * is, and how any horizon renders. Both use the same three buckets and the same
- * day counts so a chip on a brief call and a chip on an adopted claim mean the
- * same thing.
+ * is, and how any horizon renders. The three buckets the Python extractor emits
+ * (session/week/multiweek) carry identical day counts on both sides, so a chip
+ * on a brief call and a chip on an adopted claim mean the same thing. This
+ * module additionally offers longer adopt-only windows; see HORIZON_DAYS.
  *
  * Everything here is pure: no fetch, no React, no DOM. Importable from a route
  * handler, a client component, and a test.
  */
 
-export type HorizonType = "session" | "week" | "multiweek";
+export type HorizonType = "session" | "week" | "multiweek" | "month" | "quarter";
 
-/** Calendar days added to the anchor date. Must match HORIZON_DAYS in backend/call_horizons.py. */
+/**
+ * Calendar days added to the anchor date.
+ *
+ * session/week/multiweek MUST match HORIZON_DAYS in backend/call_horizons.py:
+ * those three are the vocabulary the Python claims extractor emits when it
+ * sets a brief call's resolve_on.
+ *
+ * month/quarter are FRONTEND-ONLY adopt/author windows. The adopt route
+ * (src/app/api/radar/claims/adopt/route.ts) resolves windows through this
+ * module, not through Python, so a longer bucket needs no backend change. A
+ * real thesis can be long-dated, and forcing "three weeks" onto a structural
+ * call is the same category error as grading a thesis on one afternoon's
+ * close. quarter lands exactly on MAX_WINDOW_DAYS, the server-enforced clamp.
+ *
+ * GRADING SUPPORT VERIFIED, not assumed. backend/grading/price_attribution.py
+ * fetches Tiingo daily bars over an arbitrary range (no cap), counts real
+ * sessions, and scales the attribution bars by sqrt(sessions), so a quarter's
+ * single-stock excess bar rises from 0.75% to about 5.95%. Prices are ADJUSTED
+ * (adjOpen/adjClose in backend/market_data.py), so splits and dividends cannot
+ * corrupt a multi-month comparison.
+ */
 export const HORIZON_DAYS: Record<HorizonType, number> = {
   session: 0,
   week: 7,
   multiweek: 21,
+  month: 30,
+  quarter: 90,
 };
 
-export const HORIZON_TYPES: HorizonType[] = ["session", "week", "multiweek"];
+export const HORIZON_TYPES: HorizonType[] = [
+  "session",
+  "week",
+  "multiweek",
+  "month",
+  "quarter",
+];
 
 /** Ceiling on any user-chosen window. Matches MAX_WINDOW_DAYS in claims/author/route.ts. */
 export const MAX_WINDOW_DAYS = 90;
@@ -37,6 +66,8 @@ export const HORIZON_LABEL: Record<HorizonType, string> = {
   session: "Same session",
   week: "1 week",
   multiweek: "3 weeks",
+  month: "1 month",
+  quarter: "1 quarter",
 };
 
 /**
@@ -54,6 +85,8 @@ export const HORIZON_PHRASE: Record<HorizonType, string> = {
   session: "resolves at today's close",
   week: "resolves in about a week",
   multiweek: "resolves in about three weeks",
+  month: "resolves in about a month",
+  quarter: "resolves in about a quarter",
 };
 
 /**
@@ -67,6 +100,8 @@ export function horizonPhraseForDays(days: number): string {
     if (HORIZON_DAYS[t] === days) return HORIZON_PHRASE[t];
   }
   if (days === 1) return "resolves tomorrow";
+  if (days >= 75) return "resolves in about a quarter";
+  if (days >= 28 && days <= 31) return "resolves in about a month";
   if (days % 7 === 0) {
     const weeks = days / 7;
     return weeks === 1 ? "resolves in about a week" : `resolves in about ${weeks} weeks`;
@@ -96,8 +131,8 @@ export function horizonTypeFromDates(
 /**
  * The window a card's selector is currently set to.
  *
- * horizonTypeFromDates returns null for any span that is not exactly 0, 7, or
- * 21 days. Before variable horizons that was harmless: no call had any other
+ * horizonTypeFromDates returns null for any span that is not exactly one of the
+ * named bucket day counts. Before variable horizons that was harmless: no call had any other
  * span. The moment a call can resolve in 13 days, every caller that fell back
  * to DEFAULT_ADOPT_HORIZON on null would silently offer "1 week" for a call
  * that is not a week, which is precisely the defect #535 shipped to fix.
@@ -116,7 +151,7 @@ export type AdoptWindow =
  * The window a card should preselect: the call's OWN span whenever it has one.
  *
  * An exact bucket match returns that bucket rather than a duplicate "as-called"
- * entry, so a genuine 7-day call shows three options and not four. A call with
+ * entry, so a genuine 7-day call shows one option per bucket and no duplicate. A call with
  * no resolve_on (every row written before migration 0014) has no span to
  * preselect and falls back to the shared default.
  */
@@ -142,7 +177,7 @@ export interface AdoptWindowOption {
 
 /**
  * What the selector offers. The call's own window first and preselected when it
- * is off-bucket, then the three named alternatives.
+ * is off-bucket, then every named alternative.
  */
 export function adoptWindowOptions(current: AdoptWindow): AdoptWindowOption[] {
   const options: AdoptWindowOption[] = [];
@@ -164,6 +199,20 @@ export function adoptWindowOptions(current: AdoptWindow): AdoptWindowOption[] {
 /** The stable select value for a window. Pairs with adoptWindowOptions. */
 export function adoptWindowValue(w: AdoptWindow): string {
   return w.kind === "as-called" ? `as-called:${w.days}` : `bucket:${w.type}`;
+}
+
+/**
+ * The window said in words, for the default-shown-as-text presentation.
+ *
+ * The horizon is SYSTEM-inferred (a call's own resolve_on, set at creation by
+ * the claims extractor's per-claim day count), so the reader is told what it
+ * is rather than asked to pick one. The selector still exists behind a
+ * "change" affordance for anyone who wants a different window.
+ */
+export function adoptWindowPhrase(w: AdoptWindow): string {
+  return w.kind === "as-called"
+    ? horizonPhraseForDays(w.days)
+    : HORIZON_PHRASE[w.type];
 }
 
 /**
@@ -263,6 +312,8 @@ export function horizonLabelForDays(days: number): string {
     if (HORIZON_DAYS[t] === days) return HORIZON_LABEL[t];
   }
   if (days === 1) return "1 day";
+  if (days >= 75) return "1 quarter";
+  if (days >= 28 && days <= 31) return "1 month";
   if (days % 7 === 0) {
     const weeks = days / 7;
     return weeks === 1 ? "1 week" : `${weeks} weeks`;

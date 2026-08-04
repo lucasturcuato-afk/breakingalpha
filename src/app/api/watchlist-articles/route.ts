@@ -24,8 +24,13 @@ export async function GET(request: NextRequest) {
     .limit(30);
 
   if (error) {
+    // 200-with-[] here made a failed read look like a cold cache, which the
+    // radar watchlist then treated as a cache miss. Same class as the Watch bug.
     console.error("watchlist-articles GET error:", error.message);
-    return NextResponse.json({ articles: [], count: 0 });
+    return NextResponse.json(
+      { error: "Could not load articles for this identifier." },
+      { status: 500 },
+    );
   }
 
   const articles = data ?? [];

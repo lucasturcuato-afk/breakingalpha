@@ -23,8 +23,15 @@ export async function GET() {
     return NextResponse.json({ articles: [], identifiers: [] });
   }
 
-  // 2. Fetch recent articles across all watchlist identifiers (last 48h)
-  const cutoff = new Date(Date.now() - 48 * 3600000).toISOString();
+  // 2. Fetch recent articles across all watchlist identifiers.
+  //
+  // Recency means PUBLISHED recently, over a 7-day window. The old filter was
+  // fetched_at >= 48h, which measured when the SYNC JOB last cached rows, not
+  // how old the news is: one missed pipeline window emptied the whole tile
+  // while 150+ real articles from the past week sat in the table. Each row
+  // renders its real age, so a 3-day-old story is honest; a false "no recent
+  // articles" is not.
+  const cutoff = new Date(Date.now() - 7 * 24 * 3600000).toISOString();
 
   const { data: articles, error } = await supabase
     .from("watchlist_articles")
@@ -32,7 +39,7 @@ export async function GET() {
       "article_id, identifier, title, url, source, source_type, summary, published_at, relevance_score",
     )
     .in("identifier", identifiers.slice(0, 50))
-    .gte("fetched_at", cutoff)
+    .gte("published_at", cutoff)
     .order("relevance_score", { ascending: false })
     // 40 rows so the dashboard wire spans more of the watchlist instead of
     // whichever single name dominates the relevance top-20 that day.
@@ -40,7 +47,12 @@ export async function GET() {
 
   if (error) {
     console.error("[watchlist-feed] error:", error.message);
-    return NextResponse.json({ articles: [], identifiers });
+    // A failed query is an error, not an empty feed. Returning 200 with []
+    // here is what made a DB failure render as "no recent articles".
+    return NextResponse.json(
+      { error: "Could not load watchlist articles.", identifiers },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({

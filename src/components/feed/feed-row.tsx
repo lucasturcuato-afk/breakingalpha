@@ -3,12 +3,12 @@
 import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/strip-html";
 import { withCompanyLine } from "@/lib/memo-company-line";
+import { makeCallLink } from "@/lib/make-call-link";
 import { getSectorStyle, getTagPillStyle } from "@/lib/sector-colors";
 import { memo, useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
 import { SentimentPill, sentimentToTone } from "@/components/ui/sentiment-pill";
-import { Sparkles, Plus, MessageSquare, ExternalLink, Bookmark, BookmarkCheck, Loader2 } from "lucide-react";
+import { Sparkles, Plus, MessageSquare, ExternalLink, Bookmark, BookmarkCheck } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { CompletenessBadge, SignalScore, SourceCredibilityBadge } from "@/lib/article-signal";
 import type { StoryData } from "@/components/dashboard";
@@ -23,8 +23,6 @@ function FeedRowInner({ story, saved: savedProp, onBookmark }: FeedRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [memoOpen, setMemoOpen] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
-  const [thesisLoading, setThesisLoading] = useState(false);
-  const [thesisToast, setThesisToast] = useState("");
   // Prefer explicit `saved` prop; fall back to legacy `story.saved` for unmigrated callers
   const saved = savedProp ?? story.saved ?? false;
   const cleanSummary = useMemo(() => stripHtml(story.summary ?? ""), [story.summary]);
@@ -147,54 +145,14 @@ function FeedRowInner({ story, saved: savedProp, onBookmark }: FeedRowProps) {
                 <Sparkles size={11} />
                 Generate Memo
               </button>
-              <div className="relative">
-                <button
+              <button
                   type="button"
-                  disabled={thesisLoading}
-                  onClick={async () => {
-                    setThesisLoading(true);
-                    setThesisToast("");
-                    try {
-                      const supabase = createBrowserClient(
-                        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-                      );
-                      const { data: theses } = await supabase
-                        .from("theses")
-                        .select("id, sector, title")
-                        .neq("status", "archived");
-
-                      const sector = (story.industry_verticals?.[0] ?? story.sector ?? "").toLowerCase();
-                      const match = theses?.find(
-                        (t) => (t.sector || "").toLowerCase() === sector,
-                      );
-
-                      if (match) {
-                        router.push(`/radar/calls?thesis=${match.id}`);
-                      } else {
-                        setThesisToast("No thesis yet — this article hasn't been linked to a thesis");
-                        setTimeout(() => setThesisToast(""), 3000);
-                      }
-                    } catch (err) {
-                      console.error("Thesis match error:", err);
-                    } finally {
-                      setThesisLoading(false);
-                    }
-                  }}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment border border-border-base font-sans text-[11px] font-medium text-text-secondary hover:border-border-hover transition-colors cursor-pointer",
-                    "disabled:opacity-50 disabled:cursor-not-allowed",
-                  )}
+                  onClick={() => router.push(makeCallLink(story.title))}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment border border-border-base font-sans text-[11px] font-medium text-text-secondary hover:border-border-hover transition-colors cursor-pointer"
                 >
-                  {thesisLoading ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
-                  Thesis
+                  <Plus size={11} />
+                  Make a call
                 </button>
-                {thesisToast && (
-                  <div className="absolute -top-8 left-0 whitespace-nowrap bg-espresso text-cream font-sans text-[10px] px-2.5 py-1 rounded-md z-10">
-                    {thesisToast}
-                  </div>
-                )}
-              </div>
               <button
                 type="button"
                 disabled

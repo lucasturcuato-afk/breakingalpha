@@ -275,7 +275,7 @@ export function LeadHero({
           )}
           {onAddThesis && (
             <Button variant="secondary" size="md" onClick={onAddThesis}>
-              Add Thesis
+              Make a call
             </Button>
           )}
         </div>

@@ -4,6 +4,7 @@ import {
   type StaleVerdict,
   resolveStaleRepublishMode,
 } from "./stale-republish.ts";
+import { queryRows } from "./supabase-query.ts";
 
 // Single source of truth for the dashboard and preview "Top Stories" modules.
 // relevance_score is computed once at ingest and never decayed, so ordering by
@@ -55,7 +56,35 @@ export const SAME_EVENT_WINDOW_HOURS = 48;
 export const TOP_STORIES_COLUMNS =
   "id, title, source, summary, content, sector, industry_verticals, activity_types, sentiment, sentiment_reason, relevance_reason, published_at, ingested_at, url, companies, primary_company, relevance_score";
 
-export interface TopStoryRow {
+// RANKING COLUMNS: everything the sort, the recency filters and
+// collapseSameEvent need, and nothing else.
+//
+// The full column list carries `content` (whole article bodies) and `summary`.
+// Postgres materializes those payloads through the top-N sort, which is what
+// pushed this query past the statement timeout on a cold cache: measured 1.54s
+// average and 2.8s+ spikes with content, versus 0.38s without. So ranking runs
+// on these light columns and the ~4 survivors are hydrated by id afterwards.
+// Two round trips, a quarter of the latency, and no behavior change: the
+// ordering keys and the collapse inputs are identical.
+export const TOP_STORIES_RANK_COLUMNS =
+  "id, title, source, published_at, ingested_at, relevance_score, primary_company";
+
+/**
+ * The subset of a row that ranking and same-event collapse actually read.
+ * TopStoryRow extends it, so collapseSameEvent works on either a light
+ * ranking row or a fully hydrated one.
+ */
+export interface TopStoryRankRow {
+  id: string;
+  title: string | null;
+  source: string | null;
+  published_at: string | null;
+  ingested_at: string;
+  primary_company: string | null;
+  relevance_score: number | null;
+}
+
+export interface TopStoryRow extends TopStoryRankRow {
   id: string;
   title: string | null;
   source: string | null;
@@ -103,7 +132,7 @@ const jaccard = (a: Set<string>, b: Set<string>): number => {
   return union === 0 ? 0 : inter / union;
 };
 
-const withinSameEventWindow = (a: TopStoryRow, b: TopStoryRow): boolean => {
+const withinSameEventWindow = (a: TopStoryRankRow, b: TopStoryRankRow): boolean => {
   if (!a.published_at || !b.published_at) return false;
   const ta = new Date(a.published_at).getTime();
   const tb = new Date(b.published_at).getTime();
@@ -129,8 +158,8 @@ const subjectKey = (primaryCompany: string | null): string | null => {
   return k.length > 0 ? k : null;
 };
 
-interface DecoratedRow {
-  row: TopStoryRow;
+interface DecoratedRow<T extends TopStoryRankRow> {
+  row: T;
   ticker: string | null;
   subject: string | null;
   toks: Set<string>;
@@ -139,7 +168,7 @@ interface DecoratedRow {
 
 // Deterministic keep-which: highest relevance_score, then the more complete
 // headline, then earliest published, then lowest id as a total-order tiebreak.
-const keepWhichReplaces = (candidate: TopStoryRow, current: TopStoryRow): boolean => {
+const keepWhichReplaces = (candidate: TopStoryRankRow, current: TopStoryRankRow): boolean => {
   const rc = candidate.relevance_score ?? -Infinity;
   const rk = current.relevance_score ?? -Infinity;
   if (rc !== rk) return rc > rk;
@@ -163,8 +192,8 @@ const keepWhichReplaces = (candidate: TopStoryRow, current: TopStoryRow): boolea
  * arriving through one broker/aggregator feed can never merge. See
  * docs/recon/top-stories-dedup.md.
  */
-export function collapseSameEvent(rows: TopStoryRow[]): TopStoryRow[] {
-  const decorated: DecoratedRow[] = rows.map((row, idx) => ({
+export function collapseSameEvent<T extends TopStoryRankRow>(rows: T[]): T[] {
+  const decorated: DecoratedRow<T>[] = rows.map((row, idx) => ({
     row,
     idx,
     ticker: parseSourceTicker(row.source),
@@ -172,7 +201,7 @@ export function collapseSameEvent(rows: TopStoryRow[]): TopStoryRow[] {
     toks: titleTokens(row.title),
   }));
 
-  const clusters: DecoratedRow[][] = [];
+  const clusters: DecoratedRow<T>[][] = [];
   for (const d of decorated) {
     const target = clusters.find((cluster) =>
       cluster.some(
@@ -218,61 +247,71 @@ export function collapseSameEvent(rows: TopStoryRow[]): TopStoryRow[] {
  * unique total order that makes the result identical across repeated runs. See
  * docs/recon/top-stories-freshness.md.
  *
- * Never throws: on a query error it logs and returns whatever it has (possibly
- * an empty array), so callers degrade to their EmptyState rather than crashing.
+ * THROWS on a failed read (QueryFailedError), and retries once on a statement
+ * timeout first. It used to return [] on error, which the dashboard rendered
+ * as "No stories yet. Stories will appear once articles are ingested by the
+ * pipeline" - a confident, wrong claim about the pipeline for what was really
+ * a database timeout. Emptiness must come from a query that succeeded.
  */
 export async function fetchTopStories(supabase: SupabaseClient): Promise<TopStoryRow[]> {
   const publishedCeiling = hoursAgo(TOP_STORIES_MAX_AGE_DAYS * 24);
 
-  const primary = await supabase
-    .from("articles")
-    .select(TOP_STORIES_COLUMNS)
-    .gte("ingested_at", hoursAgo(TOP_STORIES_PRIMARY_WINDOW_HOURS))
-    .gte("published_at", publishedCeiling)
-    .order("relevance_score", { ascending: false })
-    .order("ingested_at", { ascending: false })
-    .order("published_at", { ascending: false, nullsFirst: false })
-    .order("id", { ascending: true })
-    .limit(TOP_STORIES_CANDIDATE_LIMIT);
-
-  if (primary.error) {
-    console.error("Top Stories primary query error:", primary.error.message);
-    return [];
-  }
+  /** One ranking tier: light columns only, ordered and capped identically. */
+  const rankTier = (ingestedFloor: string) =>
+    queryRows<TopStoryRankRow>(
+      () =>
+        supabase
+          .from("articles")
+          .select(TOP_STORIES_RANK_COLUMNS)
+          .gte("ingested_at", ingestedFloor)
+          .gte("published_at", publishedCeiling)
+          .order("relevance_score", { ascending: false })
+          .order("ingested_at", { ascending: false })
+          .order("published_at", { ascending: false, nullsFirst: false })
+          .order("id", { ascending: true })
+          .limit(TOP_STORIES_CANDIDATE_LIMIT),
+      "Top Stories ranking",
+    );
 
   // Collapse same-event near-duplicates, then trim to the rendered count. The
   // over-fetch above means removing a duplicate backfills the next distinct
-  // story rather than shortening the list. The MIN_RESULTS gate now checks the
-  // count of distinct stories, so a primary window thinned by collapse widens to
-  // the fallback the same way an ingest drought does.
-  const primaryRows = collapseSameEvent((primary.data ?? []) as TopStoryRow[]);
-  if (primaryRows.length >= TOP_STORIES_MIN_RESULTS) return primaryRows.slice(0, TOP_STORIES_LIMIT);
+  // story rather than shortening the list. The MIN_RESULTS gate checks the
+  // count of distinct stories, so a primary window thinned by collapse widens
+  // to the fallback the same way an ingest drought does.
+  const primaryRows = collapseSameEvent(
+    await rankTier(hoursAgo(TOP_STORIES_PRIMARY_WINDOW_HOURS)),
+  );
 
-  // Thin primary window (ingest drought longer than the surfacing window):
-  // widen the ingested_at floor to the ceiling. published_at stays pinned to the
-  // same ceiling, so nothing older than TOP_STORIES_MAX_AGE_DAYS can enter.
-  const fallback = await supabase
-    .from("articles")
-    .select(TOP_STORIES_COLUMNS)
-    .gte("ingested_at", publishedCeiling)
-    .gte("published_at", publishedCeiling)
-    .order("relevance_score", { ascending: false })
-    .order("ingested_at", { ascending: false })
-    .order("published_at", { ascending: false, nullsFirst: false })
-    .order("id", { ascending: true })
-    .limit(TOP_STORIES_CANDIDATE_LIMIT);
-
-  if (fallback.error) {
-    console.error("Top Stories fallback query error:", fallback.error.message);
-    return primaryRows.slice(0, TOP_STORIES_LIMIT);
+  let chosen = primaryRows;
+  if (primaryRows.length < TOP_STORIES_MIN_RESULTS) {
+    // Thin primary window (ingest drought longer than the surfacing window):
+    // widen the ingested_at floor to the ceiling. published_at stays pinned to
+    // the same ceiling, so nothing older than TOP_STORIES_MAX_AGE_DAYS enters.
+    const fallbackRows = collapseSameEvent(await rankTier(publishedCeiling));
+    // The fallback window is a superset of the primary, so after the identical
+    // collapse it returns at least as many distinct stories; prefer it when it
+    // does.
+    if (fallbackRows.length >= primaryRows.length) chosen = fallbackRows;
   }
 
-  const fallbackRows = collapseSameEvent((fallback.data ?? []) as TopStoryRow[]);
-  // The fallback window is a superset of the primary, so after the identical
-  // collapse it returns at least as many distinct stories; prefer it when it
-  // does.
-  const chosen = fallbackRows.length >= primaryRows.length ? fallbackRows : primaryRows;
-  return chosen.slice(0, TOP_STORIES_LIMIT);
+  const winners = chosen.slice(0, TOP_STORIES_LIMIT);
+  if (winners.length === 0) return [];
+
+  // Hydrate the survivors only. Keyed by id, so the heavy columns never pass
+  // through a sort; the ranking above already fixed the order, which this
+  // restores after PostgREST returns the rows in its own order.
+  const hydrated = await queryRows<TopStoryRow>(
+    () =>
+      supabase
+        .from("articles")
+        .select(TOP_STORIES_COLUMNS)
+        .in("id", winners.map((r) => r.id)),
+    "Top Stories hydration",
+  );
+  const byId = new Map(hydrated.map((r) => [r.id, r]));
+  // A winner missing from the hydration (deleted between the two reads) is
+  // dropped rather than rendered from the partial ranking row.
+  return winners.map((w) => byId.get(w.id)).filter((r): r is TopStoryRow => !!r);
 }
 
 // ---------------------------------------------------------------------------

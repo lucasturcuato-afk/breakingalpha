@@ -20,12 +20,17 @@ function timeAgo(dateStr: string): string {
 export function CompetitorAlertsWidget() {
   const [alerts, setAlerts] = useState<CompetitorAlert[]>([]);
   const [loading, setLoading] = useState(true);
+  // A failed read is not "no competitor activity".
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     fetch("/api/competitor-alerts")
-      .then(r => r.json())
+      .then(async (r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      })
       .then(d => setAlerts(d.alerts ?? []))
-      .catch(() => {})
+      .catch(() => setFailed(true))
       .finally(() => setLoading(false));
   }, []);
 
@@ -38,10 +43,18 @@ export function CompetitorAlertsWidget() {
     );
   }
 
+  if (failed) {
+    return (
+      <p className="font-sans text-[11px] text-text-muted italic">
+        Couldn&apos;t load competitor activity.
+      </p>
+    );
+  }
+
   if (alerts.length === 0) {
     return (
       <p className="font-sans text-[11px] text-text-muted italic">
-        No competitor activity detected in the last 48 hours.
+        No competitor activity detected in the last 7 days.
       </p>
     );
   }

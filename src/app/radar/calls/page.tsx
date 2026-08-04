@@ -20,7 +20,7 @@
  *    headline; only the resolution beneath is standardized.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
 import { RadarTabs } from "@/components/radar/RadarTabs";
@@ -49,6 +49,8 @@ import {
   adoptWindowRequest,
   isPriceableClaimType,
   horizonFromDates,
+  horizonPhraseForDays,
+  daysBetween,
   type AdoptWindow,
 } from "@/lib/call-horizons";
 
@@ -938,13 +940,22 @@ function AuthorClaim({
   initialText?: string | null;
 }) {
   const [text, setText] = useState("");
+  const rootRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    if (initialText) setText(initialText);
+    if (!initialText) return;
+    setText(initialText);
+    // Arriving from a "Make a call" action elsewhere: bring the composer into
+    // view so the pre-filled draft is what the user lands on. Review-and-edit
+    // stays fully manual; nothing is proposed or committed automatically.
+    rootRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [initialText]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [proposal, setProposal] = useState<AuthorProposal | null>(null);
   const [proposedFor, setProposedFor] = useState("");
+  // The window is system-inferred from the claim's nature and shown as a
+  // sentence; the date input only appears behind "change".
+  const [editWindow, setEditWindow] = useState(false);
 
   const propose = async () => {
     setBusy(true);
@@ -961,6 +972,7 @@ function AuthorClaim({
         return;
       }
       setProposal(json.proposal);
+      setEditWindow(false);
       setProposedFor(json.user_claim);
     } catch {
       setError("Could not analyze the claim.");
@@ -993,7 +1005,7 @@ function AuthorClaim({
   };
 
   return (
-    <section className="rounded-xl border border-border-subtle bg-elevated px-5 py-4">
+    <section ref={rootRef} className="rounded-xl border border-border-subtle bg-elevated px-5 py-4">
       <h2 className="font-sans text-[12px] font-semibold uppercase tracking-[0.14em] text-text-muted">
         Make a call
       </h2>
@@ -1061,17 +1073,44 @@ function AuthorClaim({
                       <option value="neutral">neutral</option>
                     </select>
                   </label>
-                  <label className="flex items-center gap-1.5">
-                    Window ends
-                    <input
-                      type="date"
-                      value={proposal.resolution_window_end ?? ""}
-                      onChange={(e) =>
-                        setProposal({ ...proposal, resolution_window_end: e.target.value })
-                      }
-                      className="rounded border border-border-default bg-transparent px-1.5 py-0.5"
-                    />
-                  </label>
+                  {editWindow ? (
+                    <label className="flex items-center gap-1.5">
+                      Window ends
+                      <input
+                        type="date"
+                        autoFocus
+                        value={proposal.resolution_window_end ?? ""}
+                        onChange={(e) =>
+                          setProposal({ ...proposal, resolution_window_end: e.target.value })
+                        }
+                        className="rounded border border-border-default bg-transparent px-1.5 py-0.5"
+                      />
+                    </label>
+                  ) : (
+                    // System-inferred window, stated in words. The date input
+                    // is an advanced affordance behind "change", not a field
+                    // the user must reason about to make a call.
+                    <span className="flex items-baseline gap-1.5">
+                      <span data-testid="author-window-phrase">
+                        {(() => {
+                          const d = daysBetween(
+                            proposal.resolution_window_start ?? "",
+                            proposal.resolution_window_end ?? "",
+                          );
+                          return d !== null && d >= 0
+                            ? horizonPhraseForDays(d)
+                            : `window ends ${proposal.resolution_window_end ?? "?"}`;
+                        })()}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setEditWindow(true)}
+                        className="cursor-pointer text-text-faint underline underline-offset-2 hover:text-text-primary"
+                      >
+                        change
+                      </button>
+                    </span>
+                  )}
                 </div>
               </>
             ) : (
