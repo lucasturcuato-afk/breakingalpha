@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
-import { Sparkles, Plus, ThumbsUp, ThumbsDown, Loader2 } from "lucide-react";
+import { Sparkles, Plus, ThumbsUp, ThumbsDown } from "lucide-react";
 import { stripHtml } from "@/lib/strip-html";
-import { createUserThesis } from "@/lib/create-user-thesis";
+import { makeCallLink } from "@/lib/make-call-link";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { useOutputFeedback } from "@/hooks/useOutputFeedback";
 
@@ -32,7 +31,6 @@ export function DCAnalystSection({
   outputId,
 }: DCAnalystSectionProps) {
   const [memoOpen, setMemoOpen] = useState(false);
-  const [addingThesis, setAddingThesis] = useState(false);
   const router = useRouter();
   const { ref: feedbackRef, setThumbs, recordFollowup } = useOutputFeedback({
     output_id: outputId,
@@ -40,28 +38,11 @@ export function DCAnalystSection({
 
   const plain = stripHtml(content);
 
-  const handleAddThesis = async () => {
-    setAddingThesis(true);
-    try {
-      const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      );
-      await createUserThesis(supabase, {
-        title,
-        conviction: "WATCH",
-        sector: "General",
-        rationale: plain,
-        source: briefSource,
-        status: "new-signal",
-        generated_at: new Date().toISOString(),
-      });
-      router.push("/radar/calls?views=open");
-    } catch (err) {
-      console.error("Failed to add thesis:", err);
-    } finally {
-      setAddingThesis(false);
-    }
+  // Option A consolidation: this action makes a CALL via the author flow,
+  // pre-filled from the section title. The user edits direction/window before
+  // committing; the click writes nothing.
+  const handleMakeCall = () => {
+    router.push(makeCallLink(title));
   };
 
   return (
@@ -137,8 +118,7 @@ export function DCAnalystSection({
         </button>
         <button
           type="button"
-          disabled={addingThesis}
-          onClick={handleAddThesis}
+          onClick={handleMakeCall}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -151,12 +131,11 @@ export function DCAnalystSection({
             fontFamily: "var(--font-inter), Inter, sans-serif",
             fontSize: 11,
             fontWeight: 600,
-            cursor: addingThesis ? "not-allowed" : "pointer",
-            opacity: addingThesis ? 0.5 : 1,
+            cursor: "pointer",
           }}
         >
-          {addingThesis ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
-          Thesis
+          <Plus size={11} />
+          Make a call
         </button>
 
         <div

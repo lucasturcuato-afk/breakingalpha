@@ -22,7 +22,7 @@ import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { stripHtml } from "@/lib/strip-html";
-import { createUserThesis } from "@/lib/create-user-thesis";
+import { makeCallLink } from "@/lib/make-call-link";
 import { reconcileCloseWord } from "@/lib/tape-adjective";
 import { Moon } from "lucide-react";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
@@ -201,7 +201,6 @@ export default function EveningWrapPage() {
   const [storiesLabel, setStoriesLabel] = useState("Today's Top Stories");
   const [isStale, setIsStale] = useState(false);
   const [lastRunStatus, setLastRunStatus] = useState<"success" | "stub" | "error" | null>(null);
-  const [addingThesis, setAddingThesis] = useState(false);
   const [sectionRatings, setSectionRatings] = useState<Record<string, number>>({});
   const [leadMemoOpen, setLeadMemoOpen] = useState(false);
   const [leadMemoContent, setLeadMemoContent] = useState("");
@@ -747,24 +746,11 @@ export default function EveningWrapPage() {
     );
   };
 
-  const handleLeadAddThesis = async () => {
-    setAddingThesis(true);
-    try {
-      await createUserThesis(getSupabase(), {
-        title: briefing?.headline || "Evening Wrap Lead",
-        conviction: "WATCH",
-        sector: "General",
-        rationale: briefing?.summary || "",
-        source: "Evening Wrap",
-        status: "new-signal",
-        generated_at: new Date().toISOString(),
-      });
-      router.push("/radar/calls?views=open");
-    } catch (err) {
-      console.error("Failed to add thesis:", err);
-    } finally {
-      setAddingThesis(false);
-    }
+  // Option A consolidation: the lead action makes a CALL. The author flow on
+  // /radar/calls proposes symbol/direction/window from this draft and the user
+  // edits everything before committing; nothing is written by the click.
+  const handleLeadMakeCall = () => {
+    router.push(makeCallLink(briefing?.headline));
   };
 
   return (
@@ -775,7 +761,7 @@ export default function EveningWrapPage() {
       moodDetails={liveMood.moodDetails}
       rightPanel={
         <>
-          <PanelWidget title="Active Theses">
+          <PanelWidget title="Tracked Views">
             <ActiveThesesWidget />
           </PanelWidget>
           <PanelWidget title="Watchlist">
@@ -1312,8 +1298,8 @@ export default function EveningWrapPage() {
                   >
                     Generate Memo
                   </Button>
-                  <Button variant="secondary" size="md" onClick={handleLeadAddThesis} disabled={addingThesis}>
-                    Add Thesis
+                  <Button variant="secondary" size="md" onClick={handleLeadMakeCall}>
+                    Make a call
                   </Button>
                   <Button variant="secondary" size="md" onClick={handleAskAI}>
                     Ask AI
@@ -1427,26 +1413,7 @@ export default function EveningWrapPage() {
                     <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
                       <button
                         type="button"
-                        disabled={addingThesis}
-                        onClick={async () => {
-                          setAddingThesis(true);
-                          try {
-                            await createUserThesis(getSupabase(), {
-                              title: "Tomorrow's Setup",
-                              conviction: "WATCH",
-                              sector: "General",
-                              rationale: stripHtml(tomorrowSetupContent),
-                              source: "Evening Wrap · Tomorrow's Setup",
-                              status: "new-signal",
-                              generated_at: new Date().toISOString(),
-                            });
-                            router.push("/radar/calls?views=open");
-                          } catch (err) {
-                            console.error("Failed to add thesis:", err);
-                          } finally {
-                            setAddingThesis(false);
-                          }
-                        }}
+                        onClick={() => router.push(makeCallLink(stripHtml(tomorrowSetupContent)))}
                         className="font-sans cursor-pointer"
                         style={{
                           fontSize: 11,
@@ -1455,8 +1422,7 @@ export default function EveningWrapPage() {
                           background: "none",
                           border: "none",
                           padding: 0,
-                          opacity: addingThesis ? 0.5 : 1,
-                          cursor: addingThesis ? "not-allowed" : "pointer",
+                          cursor: "pointer",
                         }}
                       >
                         Add to thesis board →
@@ -1514,24 +1480,7 @@ export default function EveningWrapPage() {
                         </div>
                         <button
                           type="button"
-                          onClick={async () => {
-                            setAddingThesis(true);
-                            try {
-                              await createUserThesis(getSupabase(), {
-                                title: item.lead.slice(0, 80),
-                                conviction: "WATCH",
-                                sector: "General",
-                                rationale: `${item.lead} ${item.rest}`.trim(),
-                                source: "Evening Wrap · Tomorrow's Setup",
-                                status: "new-signal",
-                                generated_at: new Date().toISOString(),
-                              });
-                            } catch (err) {
-                              console.error("Failed to add thesis:", err);
-                            } finally {
-                              setAddingThesis(false);
-                            }
-                          }}
+                          onClick={() => router.push(makeCallLink(`${item.lead} ${item.rest}`.trim()))}
                           className="font-sans cursor-pointer"
                           style={{
                             fontSize: 11,

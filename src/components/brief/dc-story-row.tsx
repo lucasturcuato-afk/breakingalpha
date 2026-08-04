@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
-import { Sparkles, Plus, MessageSquare, Loader2 } from "lucide-react";
+import { Sparkles, Plus, MessageSquare } from "lucide-react";
 import { stripHtml } from "@/lib/strip-html";
+import { makeCallLink } from "@/lib/make-call-link";
 import { withCompanyLine } from "@/lib/memo-company-line";
 import { cn } from "@/lib/utils";
 import { BookmarkButton } from "@/components/ui/bookmark";
@@ -17,31 +17,6 @@ import type { StoryData } from "@/components/dashboard";
 // constant across the theme flip (html.dark rebinds --espresso/--cream).
 const HERITAGE_GOLD = "#d4a84b";
 const DC_ESPRESSO = "#1a1208";
-
-const STOP_WORDS = new Set([
-  "the","a","an","and","or","but","in","on","at","to","for","of","with","by",
-  "from","as","is","are","was","were","be","been","has","have","had","will",
-  "would","could","should","may","might","this","that","these","those","it",
-  "its","i","we","they","he","she","you","new","says","said","after","over",
-  "amid","s",
-]);
-
-function keyTerms(text: string): Set<string> {
-  return new Set(
-    text.toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .split(/\s+/)
-      .filter((w) => w.length > 2 && !STOP_WORDS.has(w)),
-  );
-}
-
-function termOverlap(a: Set<string>, b: Set<string>): number {
-  let n = 0;
-  for (const w of a) if (b.has(w)) n++;
-  return n;
-}
-
-const MATCH_THRESHOLD = 2;
 
 function alnum(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -85,8 +60,6 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
   const [expanded, setExpanded] = useState(false);
   const [saved, setSaved] = useState(story.saved ?? false);
   const [memoOpen, setMemoOpen] = useState(false);
-  const [addingThesis, setAddingThesis] = useState(false);
-  const [thesisToast, setThesisToast] = useState("");
   const router = useRouter();
 
   const storyTone = sentimentToTone(story.sentiment);
@@ -317,56 +290,11 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
                 <Sparkles size={11} />
                 Generate Memo
               </button>
-              <div style={{ position: "relative" }}>
-                <button
+              <button
                   type="button"
-                  disabled={addingThesis}
-                  onClick={async (e) => {
+                  onClick={(e) => {
                     e.stopPropagation();
-                    setAddingThesis(true);
-                    setThesisToast("");
-                    try {
-                      const supabase = createBrowserClient(
-                        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-                      );
-                      const { data: theses } = await supabase
-                        .from("theses")
-                        .select("id, sector, title, rationale")
-                        .neq("status", "archived");
-
-                      const sector = (story.sector || "").toLowerCase();
-                      const sameSector = (theses || []).filter(
-                        (t) => (t.sector || "").toLowerCase() === sector,
-                      );
-
-                      if (sameSector.length === 0) {
-                        setThesisToast("No existing thesis for this sector — visit Thesis Board to build one");
-                        setTimeout(() => setThesisToast(""), 3500);
-                      } else {
-                        const storyTerms = keyTerms(`${story.title} ${story.summary || ""}`);
-                        const scored = sameSector
-                          .map((t) => ({
-                            id: t.id,
-                            score: termOverlap(
-                              storyTerms,
-                              keyTerms(`${t.title} ${t.rationale || ""}`),
-                            ),
-                          }))
-                          .sort((a, b) => b.score - a.score);
-                        const best = scored[0];
-                        if (best.score >= MATCH_THRESHOLD) {
-                          router.push(`/radar/calls?thesis=${best.id}`);
-                        } else {
-                          setThesisToast("No closely related thesis found — see Tracked views in Calls");
-                          setTimeout(() => setThesisToast(""), 3500);
-                        }
-                      }
-                    } catch (err) {
-                      console.error("Thesis match error:", err);
-                    } finally {
-                      setAddingThesis(false);
-                    }
+                    router.push(makeCallLink(story.title));
                   }}
                   style={{
                     display: "inline-flex",
@@ -380,32 +308,12 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
                     fontFamily: "var(--font-inter), Inter, sans-serif",
                     fontSize: 11,
                     fontWeight: 600,
-                    cursor: addingThesis ? "not-allowed" : "pointer",
-                    opacity: addingThesis ? 0.5 : 1,
+                    cursor: "pointer",
                   }}
                 >
-                  {addingThesis ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
-                  {addingThesis ? "Matching…" : "Thesis"}
+                  <Plus size={11} />
+                  Make a call
                 </button>
-                {thesisToast && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: -32,
-                      left: 0,
-                      whiteSpace: "nowrap",
-                      background: DC_ESPRESSO,
-                      color: "#fffdf9",
-                      fontSize: 10,
-                      padding: "4px 10px",
-                      borderRadius: 6,
-                      zIndex: 10,
-                    }}
-                  >
-                    {thesisToast}
-                  </div>
-                )}
-              </div>
               <button
                 type="button"
                 disabled

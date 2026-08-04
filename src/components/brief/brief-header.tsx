@@ -173,7 +173,7 @@ export function BriefHeader({
                 }}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-parchment-mid border border-border-base font-sans text-[11px] font-medium text-text-secondary hover:border-border-hover transition-colors cursor-pointer"
               >
-                + Add to Thesis Board
+                + Make a call
               </button>
             )}
             {sourceUrl && (

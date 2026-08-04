@@ -22,7 +22,7 @@ import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { stripHtml } from "@/lib/strip-html";
-import { createUserThesis } from "@/lib/create-user-thesis";
+import { makeCallLink } from "@/lib/make-call-link";
 import { FileText } from "lucide-react";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { useRouter } from "next/navigation";
@@ -162,7 +162,6 @@ export default function MorningBriefPage() {
   const [storiesLabel, setStoriesLabel] = useState("Today's Stories");
   const [isStale, setIsStale] = useState(false);
   const [lastRunStatus, setLastRunStatus] = useState<"success" | "stub" | "error" | null>(null);
-  const [addingThesis, setAddingThesis] = useState(false);
   const [sectionRatings, setSectionRatings] = useState<Record<string, number>>({});
   const [leadMemoOpen, setLeadMemoOpen] = useState(false);
   const [leadMemoContent, setLeadMemoContent] = useState("");
@@ -766,24 +765,12 @@ export default function MorningBriefPage() {
     );
   };
 
-  const handleLeadAddThesis = async () => {
-    setAddingThesis(true);
-    try {
-      await createUserThesis(getSupabase(), {
-        title: briefing?.headline || "Morning Brief Lead",
-        conviction: "WATCH",
-        sector: "General",
-        rationale: briefing?.summary || "",
-        source: "Morning Brief",
-        status: "new-signal",
-        generated_at: new Date().toISOString(),
-      });
-      router.push("/radar/calls?views=open");
-    } catch (err) {
-      console.error("Failed to add thesis:", err);
-    } finally {
-      setAddingThesis(false);
-    }
+  // Option A consolidation: the lead action makes a CALL, not a thesis. The
+  // author flow on /radar/calls proposes symbol/direction/window from this
+  // draft and the user edits everything before committing; nothing is written
+  // by the click itself.
+  const handleLeadMakeCall = () => {
+    router.push(makeCallLink(briefing?.headline));
   };
 
   return (
@@ -794,7 +781,7 @@ export default function MorningBriefPage() {
       moodDetails={liveMood.moodDetails}
       rightPanel={
         <>
-          <PanelWidget title="Active Theses">
+          <PanelWidget title="Tracked Views">
             <ActiveThesesWidget />
           </PanelWidget>
           <PanelWidget title="Watchlist">
@@ -1373,8 +1360,8 @@ export default function MorningBriefPage() {
                   >
                     Generate Memo
                   </Button>
-                  <Button variant="secondary" size="md" onClick={handleLeadAddThesis} disabled={addingThesis}>
-                    Add Thesis
+                  <Button variant="secondary" size="md" onClick={handleLeadMakeCall}>
+                    Make a call
                   </Button>
                   <Button variant="secondary" size="md" onClick={handleAskAI}>
                     Ask AI

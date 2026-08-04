@@ -20,7 +20,7 @@
  *    headline; only the resolution beneath is standardized.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
 import { RadarTabs } from "@/components/radar/RadarTabs";
@@ -938,8 +938,14 @@ function AuthorClaim({
   initialText?: string | null;
 }) {
   const [text, setText] = useState("");
+  const rootRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    if (initialText) setText(initialText);
+    if (!initialText) return;
+    setText(initialText);
+    // Arriving from a "Make a call" action elsewhere: bring the composer into
+    // view so the pre-filled draft is what the user lands on. Review-and-edit
+    // stays fully manual; nothing is proposed or committed automatically.
+    rootRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [initialText]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -993,7 +999,7 @@ function AuthorClaim({
   };
 
   return (
-    <section className="rounded-xl border border-border-subtle bg-elevated px-5 py-4">
+    <section ref={rootRef} className="rounded-xl border border-border-subtle bg-elevated px-5 py-4">
       <h2 className="font-sans text-[12px] font-semibold uppercase tracking-[0.14em] text-text-muted">
         Make a call
       </h2>
