@@ -167,6 +167,20 @@ export function adoptWindowValue(w: AdoptWindow): string {
 }
 
 /**
+ * The window said in words, for the default-shown-as-text presentation.
+ *
+ * The horizon is SYSTEM-inferred (a call's own resolve_on, set at creation by
+ * the claims extractor's per-claim day count), so the reader is told what it
+ * is rather than asked to pick one. The selector still exists behind a
+ * "change" affordance for anyone who wants a different window.
+ */
+export function adoptWindowPhrase(w: AdoptWindow): string {
+  return w.kind === "as-called"
+    ? horizonPhraseForDays(w.days)
+    : HORIZON_PHRASE[w.type];
+}
+
+/**
  * The adopt-route body for a window.
  *
  * /api/radar/claims/adopt already accepts an arbitrary `window_days` alongside

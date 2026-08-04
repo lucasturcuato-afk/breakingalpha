@@ -1,9 +1,22 @@
 "use client";
 
 /**
- * BriefCallsSection - renders a brief's predictive calls as ScoredObjects,
- * resolved against REAL grader outcomes, each with its resolution horizon and a
- * one-tap control to track it as a claim of your own.
+ * BriefCallsSection - the desk's calls, organized by what the reader can DO.
+ *
+ * Three layers, in order of usefulness:
+ *   LIVE      the desk's OPEN, ungraded calls across recent briefs, freshest
+ *             first, each with the one-tap track control. This is the
+ *             actionable layer; a resolved call never appears here and never
+ *             carries a track affordance.
+ *   RECORD    the desk's graded accuracy, computed from ALL real outcome rows
+ *             and shown ONCE at section level as a trust signal, not as a
+ *             scoreboard of stale calls mixed into today's action.
+ *   THIS BRIEF the brief's own calls that have resolved, each shown with its
+ *             real outcome and then a forward hook: the most specific REAL
+ *             related object that already exists (an open desk call on the
+ *             same symbol or sector, or an emerging Radar trend cluster - see
+ *             @/lib/brief-call-related). If nothing real matches, it says
+ *             "no related live call yet" rather than inventing one.
  *
  * Data is real end to end: calls come from morning_brief_calls and verdicts
  * from morning_brief_call_outcomes (both public-readable), written by the
@@ -12,16 +25,14 @@
  * "Not graded" (window closed, no credible grade). No verdict is ever
  * fabricated, and the stored LLM confidence is never rendered.
  *
- * Fail-soft on the outcomes read: if the outcomes query errors, calls fall
- * back to the Open state (the least-claiming state) rather than guessing
- * about expiry or verdicts, and the surrounding brief never breaks.
+ * Fail-soft, stated: if the open-pool read errors the LIVE layer says so; if
+ * the outcomes read errors the record says "unavailable" and this brief's
+ * calls fall back to Open (the least-claiming state). Errors are never
+ * rendered as emptiness.
  *
  * The track control is the SAME affordance as the Radar calls page: same
- * horizon vocabulary (@/lib/call-horizons), same chip component
- * (@/components/calls/HorizonChip), same POST to /api/radar/claims/adopt.
- * Nothing about adopting is reimplemented here. PR #507 shipped the control to
- * src/app/radar/calls/page.tsx only, and the brief pages render this component
- * instead, so the affordance did not exist where people actually read.
+ * horizon vocabulary (@/lib/call-horizons), same POST to
+ * /api/radar/claims/adopt. Nothing about adopting is reimplemented here.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -30,6 +41,7 @@ import { ScoredObject } from "@/components/scored-object/ScoredObject";
 import {
   openCallProps,
   scoredCallProps,
+  shortDate,
   type CallOutcomeRow,
 } from "@/lib/scored-object-map";
 import {
@@ -44,6 +56,11 @@ import {
   CallsTrustLine,
   hasCommitFooter,
 } from "@/components/calls/TrackCallControl";
+import {
+  findNextToWatch,
+  type EmergingCluster,
+  type RelatedNext,
+} from "@/lib/brief-call-related";
 import { trackClientEvent } from "@/lib/track-event";
 import { notifyRadarLanded } from "@/lib/radar-landed";
 import { buildTrackProvenance } from "@/lib/call-track-provenance";
@@ -76,6 +93,21 @@ type LoadState = "loading" | "loaded" | "error";
 
 /** One trust line per section; every card's button describes itself with it. */
 const TRUST_LINE_ID = "brief-calls-track-why";
+
+/** How many open desk calls the LIVE layer shows. */
+const LIVE_MAX = 5;
+
+/** How far back the open-pool and cluster reads look, in days. */
+const POOL_LOOKBACK_DAYS = 14;
+const CLUSTER_LOOKBACK_DAYS = 7;
+
+/** The desk's graded record, computed from real outcome rows only. */
+interface DeskRecord {
+  correct: number;
+  wrong: number;
+  partial: number;
+  ungradable: number;
+}
 
 /** What a surface needs to observe one rendered call card. Identity included,
  *  so the observer never has to read it back out of the DOM. */
@@ -116,6 +148,15 @@ export default function BriefCallsSection({
   const [outcomes, setOutcomes] = useState<Map<string, CallOutcomeRow> | null>(null);
   const [todayPt, setTodayPt] = useState<string>("");
   const [status, setStatus] = useState<LoadState>("loading");
+  // The open pool: recent desk calls whose window is still live. null after a
+  // failed read, which renders as an error line, never as emptiness.
+  const [pool, setPool] = useState<BriefCall[] | null>([]);
+  // Desk record aggregated from ALL real outcome rows. null = unavailable.
+  const [record, setRecord] = useState<DeskRecord | null>(null);
+  // ticker -> companies.sector, for the relatedness ladder. Best-effort.
+  const [sectorByTicker, setSectorByTicker] = useState<Record<string, string>>({});
+  // Recent emerging trend clusters, for the relatedness ladder. Best-effort.
+  const [clusters, setClusters] = useState<EmergingCluster[]>([]);
 
   // Tracking state. `tracked` is null until we know: either the user is signed
   // out, or the claims read failed. In that case the control is not rendered at
@@ -162,32 +203,87 @@ export default function BriefCallsSection({
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         );
-        let q = sb
-          .from("morning_brief_calls")
-          .select(
-            "id, claim_text, target_symbol, claim_type, confidence, created_at, brief_date, resolve_on",
-          );
+        const today = new Date().toLocaleDateString("en-CA", {
+          timeZone: "America/Los_Angeles",
+        });
+        setTodayPt(today);
+
+        const CALL_COLS =
+          "id, claim_text, target_symbol, claim_type, confidence, created_at, brief_date, resolve_on";
+
+        let q = sb.from("morning_brief_calls").select(CALL_COLS);
         q = briefId ? q.eq("brief_id", briefId) : q.eq("brief_date", briefDate as string);
-        const { data, error } = await q.order("confidence", { ascending: false });
+
+        const poolCutoff = new Date(Date.now() - POOL_LOOKBACK_DAYS * 86_400_000)
+          .toISOString()
+          .slice(0, 10);
+        const clusterCutoff = new Date(
+          Date.now() - CLUSTER_LOOKBACK_DAYS * 86_400_000,
+        ).toISOString();
+
+        // The brief's own calls, the open pool, the desk record and the
+        // emerging clusters are independent reads; fetch them together.
+        const [briefRes, poolRes, recordRes, clusterRes] = await Promise.all([
+          q.order("confidence", { ascending: false }),
+          sb
+            .from("morning_brief_calls")
+            .select(CALL_COLS)
+            .gte("resolve_on", today)
+            .gte("brief_date", poolCutoff)
+            .order("brief_date", { ascending: false })
+            .limit(24),
+          sb.from("morning_brief_call_outcomes").select("verdict").limit(1000),
+          sb
+            .from("trend_clusters")
+            .select("id, label, headline, top_sectors, created_at")
+            .eq("cluster_type", "emerging")
+            .gte("created_at", clusterCutoff)
+            .order("created_at", { ascending: false })
+            .limit(20),
+        ]);
         if (cancelled) return;
-        if (error) {
+        if (briefRes.error) {
           setStatus("error");
           return;
         }
-        const rows = (data as BriefCall[] | null) ?? [];
+        const rows = (briefRes.data as BriefCall[] | null) ?? [];
         setCalls(rows);
-        // Session date for the open-vs-window-closed distinction only.
-        setTodayPt(
-          new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }),
+
+        const poolRows = poolRes.error ? null : ((poolRes.data as BriefCall[] | null) ?? []);
+        setPool(poolRows);
+
+        if (recordRes.error) {
+          setRecord(null);
+        } else {
+          const rec: DeskRecord = { correct: 0, wrong: 0, partial: 0, ungradable: 0 };
+          for (const r of (recordRes.data as { verdict: string }[] | null) ?? []) {
+            if (r.verdict === "correct") rec.correct += 1;
+            else if (r.verdict === "wrong") rec.wrong += 1;
+            else if (r.verdict === "partial") rec.partial += 1;
+            else rec.ungradable += 1;
+          }
+          setRecord(rec);
+        }
+
+        // Clusters are a best-effort enrichment for the forward hooks;
+        // a failed read degrades to fewer hooks, never to invented ones.
+        setClusters(
+          clusterRes.error ? [] : ((clusterRes.data as EmergingCluster[] | null) ?? []),
         );
 
-        if (rows.length > 0) {
+        // Outcomes for every call this section may render (brief + pool):
+        // resolved state for the brief's calls, and the open-pool filter
+        // (a graded call is not live no matter what its window says).
+        const idsForOutcomes = [
+          ...new Set([...rows.map((r) => r.id), ...(poolRows ?? []).map((r) => r.id)]),
+        ];
+        if (idsForOutcomes.length > 0) {
           const { data: outcomeData, error: outcomeError } = await sb
             .from("morning_brief_call_outcomes")
             .select(
               "call_id, verdict, attribution, actual_pct_change, actual_direction, verdict_notes, graded_at, metadata",
             )
-            .in("call_id", rows.map((r) => r.id));
+            .in("call_id", idsForOutcomes);
           if (cancelled) return;
           if (outcomeError) {
             setOutcomes(null); // fall back to Open; never guess a verdict
@@ -205,6 +301,30 @@ export default function BriefCallsSection({
           if (!cancelled) void loadTracked();
         } else {
           setOutcomes(new Map());
+        }
+
+        // Sector labels for every ticker in play, so the relatedness ladder
+        // can match a closed NVO call to an open XLV call. Best-effort.
+        const tickers = [
+          ...new Set(
+            [...rows, ...(poolRows ?? [])]
+              .filter((c) => (c.claim_type ?? "").toLowerCase() === "ticker")
+              .map((c) => (c.target_symbol ?? "").trim().toUpperCase())
+              .filter(Boolean),
+          ),
+        ];
+        if (tickers.length > 0) {
+          const { data: compData, error: compError } = await sb
+            .from("companies")
+            .select("ticker, sector")
+            .in("ticker", tickers);
+          if (!cancelled && !compError) {
+            const bySym: Record<string, string> = {};
+            for (const c of (compData as { ticker: string; sector: string | null }[] | null) ?? []) {
+              if (c.ticker && c.sector) bySym[c.ticker.toUpperCase()] = c.sector;
+            }
+            setSectorByTicker(bySym);
+          }
         }
         setStatus("loaded");
       } catch {
@@ -346,14 +466,119 @@ export default function BriefCallsSection({
   // Loading: render nothing (the brief around it stays intact).
   if (status === "loading") return null;
 
+  // ── Layer derivation, all from real rows ─────────────────────────────
+  // Live = window still open AND no outcome row. A graded call is never live
+  // no matter what its window says, and never carries a track affordance.
+  const livePool =
+    pool === null || outcomes === null
+      ? null
+      : pool.filter((c) => !outcomes.get(c.id) && (c.resolve_on ?? "") >= todayPt);
+  const live = (livePool ?? []).slice(0, LIVE_MAX);
+  const liveIds = new Set(live.map((c) => c.id));
+  // This brief's calls that are NOT rendered in the live layer above.
+  const briefLayer = calls.filter((c) => !liveIds.has(c.id));
+
+  /** One live/open card with the track control as its footer. */
+  const renderTrackableCard = (c: BriefCall, i: number, listLength: number) => {
+    const trackedClaim = tracked?.get(c.id) ?? null;
+    // Preselects the call's OWN span (its resolve_on, fixed at creation from
+    // the claim's nature). The horizon is system-inferred; the reader sees it
+    // as a sentence with a "change" affordance, never a mandatory menu.
+    const offered = adoptWindowForCall(c.brief_date, c.resolve_on);
+    const chosen = windowFor[c.id] ?? offered;
+    const justStamped = stamped.has(c.id);
+    return (
+      // The wrapper carries the observing surface's ref and the anchor id the
+      // "next to watch" hooks point at. No class, no style: layout untouched.
+      <div
+        key={c.id}
+        id={`live-call-${c.id}`}
+        ref={observeCard?.({ callId: c.id, rank: i, listLength })}
+      >
+        <ScoredObject
+          {...openCallProps(c)}
+          // The call's REAL window end, stated on the card. openCallProps
+          // omits it only because its input type predates resolve_on.
+          resolvesWhen={shortDate(c.resolve_on)}
+          committed={!!trackedClaim}
+          footer={
+            hasCommitFooter({
+              tracked: trackedClaim,
+              available: tracked !== null,
+              gradeable: isPriceableClaimType(c.claim_type),
+            }) ? (
+              <CallCommitFooter
+                callId={c.id}
+                tracked={trackedClaim}
+                available={tracked !== null}
+                busy={busy === c.id}
+                window={chosen}
+                onWindowChange={(w) =>
+                  setWindowFor((prev) => ({ ...prev, [c.id]: w }))
+                }
+                onTrack={() => void track(c, chosen, offered)}
+                justStamped={justStamped}
+                gradeable={isPriceableClaimType(c.claim_type)}
+                trustLineId={TRUST_LINE_ID}
+                error={trackError[c.id] ?? null}
+              />
+            ) : undefined
+          }
+        />
+      </div>
+    );
+  };
+
+  /** The forward hook under a resolved call: the most specific REAL related
+   *  object, or an honest "no related live call yet". Never generated. */
+  const renderNextToWatch = (next: RelatedNext | null) => {
+    if (!next) {
+      return (
+        <p className="mt-1 font-sans text-[11px] text-text-faint" data-testid="next-none">
+          No related live call yet.
+        </p>
+      );
+    }
+    if (next.kind === "call") {
+      const target = next.call;
+      const inLive = liveIds.has(target.id);
+      return (
+        <p className="mt-1 font-sans text-[11px] text-text-muted" data-testid="next-call">
+          Next to watch{" "}
+          <span className="text-text-faint">({next.why}, live now)</span>:{" "}
+          <a
+            href={inLive ? `#live-call-${target.id}` : "/radar/calls"}
+            className="font-semibold text-text-secondary underline underline-offset-2 hover:text-text-primary"
+          >
+            {target.target_symbol ?? "desk call"}
+            {target.resolve_on ? ` · resolves ${shortDate(target.resolve_on)}` : ""}
+          </a>
+        </p>
+      );
+    }
+    return (
+      <p className="mt-1 font-sans text-[11px] text-text-muted" data-testid="next-cluster">
+        Emerging on Radar:{" "}
+        <a
+          href="/trends"
+          className="font-semibold text-text-secondary underline underline-offset-2 hover:text-text-primary"
+        >
+          {next.cluster.label ?? next.cluster.headline ?? "view trends"}
+        </a>
+      </p>
+    );
+  };
+
+  const gradedTotal = record ? record.correct + record.wrong + record.partial : 0;
+
   return (
     <section>
       <h2 className="font-display text-[15px] font-semibold text-text-primary leading-snug">
         {heading}
       </h2>
       <p className="font-sans text-[12px] text-text-muted mt-0.5">
-        Predictions from this brief, captured before the outcome and scored
-        against the market close with benchmark attribution.
+        Open calls you can track now, the desk&apos;s graded record, and how
+        this brief&apos;s calls resolved.
       </p>
       {/* The reason to commit, said ONCE. Every card's button points here with
           aria-describedby, so the relationship survives the copy appearing one
@@ -364,80 +589,102 @@ export default function BriefCallsSection({
         </div>
       )}
 
-      {calls.length === 0 ? (
-        // Honest pending/empty state, never faked to look complete.
-        <div className="rounded-lg border border-border-subtle bg-elevated px-4 py-4">
+      {/* ── LIVE: the actionable layer, freshest first ─────────────────── */}
+      <div className="mt-3">
+        <p className="font-data text-[10px] tracking-[0.12em] uppercase text-gold-dark mb-2">
+          Live now
+        </p>
+        {livePool === null ? (
+          <p className="font-sans text-[12px] text-text-muted">
+            Live calls are momentarily unavailable.
+          </p>
+        ) : live.length === 0 ? (
+          <p className="font-sans text-[12px] text-text-muted">
+            No open desk calls right now.
+          </p>
+        ) : (
+          <div className="grid gap-2">
+            {live.map((c, i) => renderTrackableCard(c, i, live.length))}
+          </div>
+        )}
+      </div>
+
+      {/* ── DESK RECORD: credibility, said once at section level ───────── */}
+      <div className="mt-4" data-testid="desk-record">
+        {record === null ? (
+          <p className="font-sans text-[11px] text-text-faint">
+            Desk record unavailable.
+          </p>
+        ) : (
+          <p className="font-sans text-[11px] text-text-muted">
+            <span className="font-data text-[10px] tracking-[0.12em] uppercase text-text-faint mr-2">
+              Desk record
+            </span>
+            {record.correct}W · {record.wrong}L · {record.partial} partial
+            {gradedTotal > 0
+              ? ` · ${Math.round((100 * record.correct) / gradedTotal)}% hit rate across ${gradedTotal} graded calls`
+              : ""}
+            {" · "}graded by price attribution
+          </p>
+        )}
+      </div>
+
+      {/* ── THIS BRIEF: resolved outcomes with a real forward hook ─────── */}
+      {status === "error" ? (
+        <div className="mt-4 rounded-lg border border-border-subtle bg-elevated px-4 py-4">
           <p className="font-sans text-[13px] text-text-muted">
-            {status === "error"
-              ? "Calls are momentarily unavailable."
-              : "No scored calls were captured for this brief yet."}
+            Calls are momentarily unavailable.
           </p>
         </div>
+      ) : briefLayer.length === 0 ? (
+        calls.length === 0 && live.length === 0 ? (
+          <div className="mt-4 rounded-lg border border-border-subtle bg-elevated px-4 py-4">
+            <p className="font-sans text-[13px] text-text-muted">
+              No scored calls were captured for this brief yet.
+            </p>
+          </div>
+        ) : null
       ) : (
-        <div className="grid gap-2">
-          {calls.map((c, i) => {
-            const trackedClaim = tracked?.get(c.id) ?? null;
-            // Preselects the call's OWN span, whatever it is. Going through
-            // horizonTypeFromDates alone returns null for a 13-day call and
-            // falls back to "1 week", which is the defect #535 fixed and the
-            // one variable horizons would re-introduce.
-            //
-            // `offered` is per card and is what #538 compares against to record
-            // accepted-versus-changed. It must be the same value the selector
-            // preselected, or every acceptance reads as an edit.
-            const offered = adoptWindowForCall(c.brief_date, c.resolve_on);
-            const chosen = windowFor[c.id] ?? offered;
-            // The stamp plays once, only for a call committed in THIS session.
-            // A claim loaded from the server on mount renders its end state
-            // with no animation: a persisted entry is a fact, not an event.
-            const justStamped = stamped.has(c.id);
-            return (
-              // One object. The commit affordance is the card's footer, inside
-              // its border; nothing floats above or between cards.
-              //
-              // The wrapper exists only to carry the observing surface's ref. It
-              // has no class, no attribute and no style, so it is the grid item
-              // the card was before and the card's own layout is untouched.
-              <div
-                key={c.id}
-                ref={observeCard?.({
-                  callId: c.id,
-                  rank: i,
-                  listLength: calls.length,
-                })}
-              >
-                <ScoredObject
-                  {...(outcomes && todayPt
-                    ? scoredCallProps(c, outcomes.get(c.id) ?? null, todayPt)
-                    : openCallProps(c))}
-                  committed={!!trackedClaim}
-                  footer={
-                    hasCommitFooter({
-                      tracked: trackedClaim,
-                      available: tracked !== null,
-                      gradeable: isPriceableClaimType(c.claim_type),
-                    }) ? (
-                    <CallCommitFooter
-                      callId={c.id}
-                      tracked={trackedClaim}
-                      available={tracked !== null}
-                      busy={busy === c.id}
-                      window={chosen}
-                      onWindowChange={(w) =>
-                        setWindowFor((prev) => ({ ...prev, [c.id]: w }))
-                      }
-                      onTrack={() => void track(c, chosen, offered)}
-                      justStamped={justStamped}
-                      gradeable={isPriceableClaimType(c.claim_type)}
-                      trustLineId={TRUST_LINE_ID}
-                      error={trackError[c.id] ?? null}
-                    />
-                    ) : undefined
-                  }
-                />
-              </div>
-            );
-          })}
+        <div className="mt-4">
+          <p className="font-data text-[10px] tracking-[0.12em] uppercase text-text-faint mb-2">
+            From this brief
+          </p>
+          <div className="grid gap-2">
+            {briefLayer.map((c) => {
+              const outcome = outcomes?.get(c.id) ?? null;
+              const windowClosed =
+                !!todayPt && !!c.resolve_on && c.resolve_on < todayPt;
+              const isSettled = !!outcome || windowClosed;
+              // Outcomes unavailable: fall back to Open cards with no track
+              // affordance and no hooks. Claiming nothing beats guessing.
+              if (outcomes === null || !todayPt) {
+                return (
+                  <div key={c.id}>
+                    <ScoredObject {...openCallProps(c)} />
+                  </div>
+                );
+              }
+              // A settled call is never trackable; it gets its real outcome
+              // and a forward hook instead.
+              if (isSettled) {
+                const next = findNextToWatch(
+                  c,
+                  livePool ?? [],
+                  sectorByTicker,
+                  clusters,
+                );
+                return (
+                  <div key={c.id}>
+                    <ScoredObject {...scoredCallProps(c, outcome, todayPt)} />
+                    {renderNextToWatch(next)}
+                  </div>
+                );
+              }
+              // Still open but not in the live layer (older than the pool
+              // lookback, or squeezed out by the cap): trackable here.
+              return renderTrackableCard(c, 0, 1);
+            })}
+          </div>
         </div>
       )}
     </section>

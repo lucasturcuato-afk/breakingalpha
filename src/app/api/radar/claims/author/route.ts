@@ -66,6 +66,8 @@ Our only v1 grading method is price attribution: after a bounded window closes, 
 - a clear direction (bullish / bearish / neutral),
 - a bounded window ending no more than ${MAX_WINDOW_DAYS} days from today (window_end strictly after today).
 
+INFER the window length from the claim's nature; do not default to one size. A reaction to a discrete, already-dated event (an earnings print, an announced deal closing, a scheduled decision) resolves fast: 1-3 days. A single-name move driven by fresh news flow needs about a week: 5-10 days. A sector, macro, or structural thesis needs room to play out: 14-28 days. When the claim names its own horizon, use that (clamped to ${MAX_WINDOW_DAYS} days).
+
 If the claim is about earnings beats, economic data, discrete events, private companies, crypto without an obvious listed proxy the user named, or has no bounded horizon, it is NOT gradeable in v1 AS WRITTEN: set gradeable=false and write a plain, honest gradeability_note saying what we'd need to grade it. Do not force a price reduction onto a claim that is not a price claim.
 
 WHEN gradeable=false, also try to propose gradeable_alternative: the closest honest PRICE proxy that captures the claim's intent, as a specific listed ticker, sector, or index ETF plus a clear direction and a bounded window (<= ${MAX_WINDOW_DAYS} days). Examples: an industrial-policy claim -> XLI; an "AI capex" claim -> a named beneficiary or SMH; a rates claim -> TLT direction. Include a one-sentence rationale for why the proxy captures the intent. If no listed proxy honestly captures it, set gradeable_alternative to null; never invent a stretch.

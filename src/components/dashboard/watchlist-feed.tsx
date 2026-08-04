@@ -336,15 +336,28 @@ export function WatchlistFeed({
   const [identifiers, setIdentifiers] = useState<string[]>([]);
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
   const [loading, setLoading] = useState(true);
+  // A failed feed read renders an error state, never "no recent articles":
+  // real emptiness and a broken query are different facts.
+  const [feedError, setFeedError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
         const res = await fetch("/api/watchlist-feed");
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (!cancelled && res.status !== 401) {
+            // Keep identifiers if the error body carried them, so the tile
+            // renders its error inside the normal frame instead of vanishing.
+            const body = await res.json().catch(() => ({}));
+            if (Array.isArray(body.identifiers)) setIdentifiers(body.identifiers);
+            setFeedError(true);
+          }
+          return;
+        }
         const json = await res.json();
         if (cancelled) return;
+        setFeedError(false);
         const arts: WatchlistArticle[] = json.articles ?? [];
         setArticles(arts);
         setIdentifiers(json.identifiers ?? []);
@@ -367,7 +380,7 @@ export function WatchlistFeed({
           }
         }
       } catch {
-        // silent
+        if (!cancelled) setFeedError(true);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -411,7 +424,7 @@ export function WatchlistFeed({
     );
   }
 
-  if (identifiers.length === 0) return null;
+  if (identifiers.length === 0 && !feedError) return null;
 
   return (
     <div
@@ -434,9 +447,13 @@ export function WatchlistFeed({
         </span>
       </div>
 
-      {articles.length === 0 ? (
+      {feedError ? (
         <p className="font-sans text-[12px] text-text-muted italic">
-          No recent articles for your watchlist. Check back later.
+          Couldn&apos;t load your watchlist feed. It will retry automatically.
+        </p>
+      ) : articles.length === 0 ? (
+        <p className="font-sans text-[12px] text-text-muted italic">
+          No articles published for your watchlist in the last 7 days.
         </p>
       ) : (
         <>
