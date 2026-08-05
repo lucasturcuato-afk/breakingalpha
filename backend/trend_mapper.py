@@ -80,37 +80,53 @@ except Exception:  # pragma: no cover - usage logging must never break import
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 
 # ---------------------------------------------------------------------------
-# Phase 5 — source credibility multiplier
-# Each cluster's aggregate strength is nudged by the mean win_rate of its
-# contributing sources. The table is populated by `source_credibility.py`
-# after `thesis_grader` produces outcomes. Until the table has rows we skip
-# the multiplier entirely (returning the original strength untouched) so
-# cold-start runs aren't halved by a blanket 0.5 default.
+# Phase 5 source credibility multiplier — REMOVED (see below). Do not restore.
 # ---------------------------------------------------------------------------
-try:
-    import source_credibility as _src_cred
-except Exception:
-    _src_cred = None
-
-_SOURCE_WIN_RATES: dict[str, float] | None = None
-_SOURCE_WIN_RATES_LOADED = False
-_SOURCE_WIN_RATE_DEFAULT = 0.5
-
-
-def _get_source_win_rates() -> dict[str, float] | None:
-    """Load and cache `{source: win_rate}` for this process. None = skip."""
-    global _SOURCE_WIN_RATES, _SOURCE_WIN_RATES_LOADED
-    if _SOURCE_WIN_RATES_LOADED:
-        return _SOURCE_WIN_RATES
-    _SOURCE_WIN_RATES_LOADED = True
-    if _src_cred is None:
-        _SOURCE_WIN_RATES = None
-        return None
-    try:
-        _SOURCE_WIN_RATES = _src_cred.load_win_rates()
-    except Exception:
-        _SOURCE_WIN_RATES = None
-    return _SOURCE_WIN_RATES
+# What used to live here: `_apply_source_credibility` multiplied every cluster's
+# strength by the MEAN `source_credibility.win_rate` of its distinct sources,
+# with unknown sources defaulting to 0.5. The old header called it "a gentle
+# multiplier". It was not one, in three separate ways.
+#
+# 1. IT WAS UNBOUNDED DOWNWARD. `mult` ranged over [0.0, 1.0] with no floor, so
+#    a cluster could be multiplied to exactly zero. The `_apply_pattern_boost`
+#    directly below it IS bounded, to [0.85, 1.15]; this one never was.
+#
+# 2. THE SCORES IT READ WERE STRUCTURALLY BROKEN. source_credibility.py computes
+#    win_rate = n_confirmed / n_theses over `theses.outcome`, an LLM prose
+#    verdict, and it counts `inconclusive` and `ungradable` in the DENOMINATOR
+#    while computing `n_invalidated` and never using it. Production has 39
+#    graded theses: 28 inconclusive, 7 ungradable, 3 confirmed, 1 invalidated.
+#    So 18 of 22 sources sit at win_rate 0.0 — not because they were wrong, but
+#    because their theses never resolved. Being demonstrably wrong and being
+#    merely unresolved produce the identical score.
+#
+# 3. THE MEASURED EFFECT WAS A BLANKET HAIRCUT PLUS ARBITRARY ZEROING. Yahoo,
+#    the largest named source at 359 articles per 48h, carried win_rate 0.0, as
+#    did NYT Business, FT Tech and Axios. A cluster drawn only from those was
+#    zeroed outright. And because only 19 of 781 distinct sources in a 48h
+#    window appear in the table at all, the typical cluster landed near the 0.5
+#    unknown-source default: an across-the-board halving. Meanwhile the three
+#    sources at win_rate 1.0 each earned it on a single thesis.
+#
+# That is not cosmetic. `strength_score` is persisted to trend_clusters and both
+# generators rank on it (`thesis_generator._fetch_latest_clusters` and
+# src/app/api/theses/route.ts both ORDER BY strength_score DESC, take the top
+# 10, print the number into the prompt, and instruct the model to prioritise
+# higher values). `underrepresented_flag` also tests strength against an
+# ABSOLUTE floor (UNDERREPRESENTED_STRENGTH_FLOOR), which a uniform halving
+# quietly suppresses.
+#
+# Cluster strength is now `score_cluster_strength` alone: article count, source
+# diversity, and relevance. Generation behaves as if credibility weighting is
+# neutral, which is the honest state until an outcome-based signal matures.
+#
+# THE REPLACEMENT IS NOT READY AND WAS DELIBERATELY NOT WIRED IN HERE.
+# backend/source_reliability.py derives accuracy from the clean
+# price-attribution grader, but measured against production it yields 40 clean
+# directional outcomes -> 13 attributable -> 10 identities, of which ZERO clear
+# the n>=10 reporting bar and zero clear the n>=30 weighting bar (largest is
+# n=3). Wiring it in today would substitute one noise source for another. When
+# an identity reaches `ready_for_weighting`, add a BOUNDED multiplier here.
 
 
 # ---------------------------------------------------------------------------
@@ -188,34 +204,6 @@ def _apply_pattern_boost(cluster, strength: float) -> float:
             return strength
         mult = 1.0 + 0.3 * (float(wr) - 0.5)
         mult = max(0.85, min(1.15, mult))
-        return round(max(0.0, min(1.0, float(strength) * mult)), 4)
-    except Exception:
-        return strength
-
-
-def _apply_source_credibility(cluster, strength: float) -> float:
-    """
-    Multiply a cluster's strength by the mean win_rate of its contributing
-    sources. Unknown sources fall back to `_SOURCE_WIN_RATE_DEFAULT` (0.5).
-    Returns the original strength unchanged when the table is missing.
-    """
-    try:
-        rates = _get_source_win_rates()
-        if rates is None:
-            return strength
-        if not cluster:
-            return strength
-        seen: set[str] = set()
-        weights: list[float] = []
-        for art in cluster:
-            src = art.get("source") or ""
-            if not src or src in seen:
-                continue
-            seen.add(src)
-            weights.append(float(rates.get(src, _SOURCE_WIN_RATE_DEFAULT)))
-        if not weights:
-            return strength
-        mult = sum(weights) / len(weights)
         return round(max(0.0, min(1.0, float(strength) * mult)), 4)
     except Exception:
         return strength
@@ -1122,7 +1110,9 @@ def map_trends(brief_type, started_at, run_id=None):
             cluster_key = make_cluster_key(cluster)
             label       = make_cluster_label(cluster)
             strength    = score_cluster_strength(cluster)
-            strength    = _apply_source_credibility(cluster, strength)  # Phase 5
+            # Phase 5 source-credibility multiplier removed; see the block above
+            # the (deleted) loader near the top of this module. Do not restore it
+            # without a bounded multiplier and a signal that clears its sample bar.
             strength    = _apply_pattern_boost(cluster, strength)       # Phase 6
             confidence  = score_cluster_confidence(cluster)
 

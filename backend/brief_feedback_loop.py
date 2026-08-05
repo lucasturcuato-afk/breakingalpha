@@ -9,10 +9,16 @@ Two functions:
      the LLM scores in the brief_quality_scores.soft_flags JSONB column.
 
   2. build_brief_improvement_addendum(brief_type, lookback_days=7)
-     Aggregates recent LLM quality scores, recurring weaknesses, top
-     pattern_library rows by win_rate, and top source_credibility rows
-     by win_rate, then asks Gemini for a 4-6 sentence improvement
-     directive to prepend to the synthesis system prompt.
+     Aggregates recent LLM quality scores, recurring weaknesses, and top
+     pattern_library rows by win_rate, then asks Gemini for a 4-6 sentence
+     improvement directive to prepend to the synthesis system prompt.
+
+     The `source_credibility` top-N block was REMOVED. It selected the top 5
+     rows ORDER BY win_rate DESC with no minimum sample size, and that table's
+     win_rate counts unresolved theses as losses, so the rows it surfaced were
+     the three sources sitting at a perfect 1.0 on a SINGLE thesis each. Naming
+     those to the model as "sources to lean into" is a confident instruction
+     built on one observation.
 
 Wired into backend/run.py as soft-fail steps after synthesize.run().
 """
@@ -160,8 +166,9 @@ _IMPROVEMENT_SYSTEM = (
 def build_brief_improvement_addendum(brief_type: str, lookback_days: int = 7) -> str:
     """
     Aggregate recent LLM quality scores and weaknesses, combine with
-    pattern_library and source_credibility top performers, then ask
-    Gemini for a 4-6 sentence improvement directive.
+    pattern_library top performers, then ask Gemini for a 4-6 sentence
+    improvement directive. Source credibility is deliberately NOT included;
+    see the module docstring.
 
     Returns the directive string, or "" on failure.
     """
@@ -236,19 +243,15 @@ def build_brief_improvement_addendum(brief_type: str, lookback_days: int = 7) ->
         except Exception as e:
             logger.warning("build_brief_improvement_addendum: pattern_library fetch failed: %s", e)
 
-        # ---- Top source_credibility rows by win_rate -----------------------
-        top_sources: list[dict] = []
-        try:
-            resp = (
-                supabase.table("source_credibility")
-                .select("source, win_rate, n_theses")
-                .order("win_rate", desc=True)
-                .limit(5)
-                .execute()
-            )
-            top_sources = resp.data or []
-        except Exception as e:
-            logger.warning("build_brief_improvement_addendum: source_credibility fetch failed: %s", e)
+        # ---- source_credibility block REMOVED ------------------------------
+        # It was `select(source, win_rate, n_theses).order(win_rate desc).limit(5)`
+        # with NO sample-size filter, feeding "sources to lean into" into the
+        # synthesis prompt. See the module docstring for why that ranking is
+        # meaningless: win_rate = n_confirmed / n_theses counts inconclusive and
+        # ungradable in the denominator, so 18 of 22 sources read 0.0 and the
+        # top of the sort is whoever has one lucky thesis. Do not reinstate this
+        # until an outcome-based signal clears a sample bar; see
+        # backend/source_reliability.py (today: 0 identities at n>=10).
 
         # ---- Build Gemini prompt -------------------------------------------
         aggregates = {
@@ -256,7 +259,6 @@ def build_brief_improvement_addendum(brief_type: str, lookback_days: int = 7) ->
             "recurring_weaknesses": recurring_weaknesses,
             "n_briefs_analyzed": len(quality_rows),
             "top_patterns": top_patterns,
-            "top_sources": top_sources,
         }
 
         prompt = (
@@ -268,7 +270,7 @@ def build_brief_improvement_addendum(brief_type: str, lookback_days: int = 7) ->
             "1. Which quality dimensions need the most improvement based "
             "on average scores.\n"
             "2. Recurring weaknesses to avoid.\n"
-            "3. High-win-rate patterns and sources to lean into.\n\n"
+            "3. High-win-rate patterns to lean into.\n\n"
             "Write plain prose — no headers, no bullets, no preamble. "
             "This text will be prepended directly to a synthesis system prompt."
         )
