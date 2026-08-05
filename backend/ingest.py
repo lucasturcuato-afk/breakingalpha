@@ -17,6 +17,11 @@ from dotenv import load_dotenv
 from watchlist import boost_watchlist_relevance
 from wikidata import is_valid_company
 from fulltext import fetch_full_text, SCRAPEABLE_SOURCES
+from publishers import (
+    extract_publisher,
+    normalize_domain,
+    publisher_from_title_suffix,
+)
 from entity_resolver import resolve_entity, increment_mention_counts
 from supabase_client import get_service_client
 try:
@@ -366,11 +371,22 @@ def _fetch_single_gnews_feed(ticker: str) -> list[dict]:
             # echo summary so the frontend renders its "Headline only" note
             # (defect #4 data half) instead of echoing the title back.
             echo = _is_headline_echo(raw_summary, title)
+            # Publisher identity, captured BEFORE _clean_gnews_title strips the
+            # " - Publisher" suffix. Google News RSS carries the real outlet in
+            # the item's <source> element; the suffix is the fallback for
+            # entries that lack one. Without this the row's only identity is the
+            # feed name, and 819 `Google News (TICKER)` feeds read as 819
+            # distinct outlets.
+            publisher, publisher_domain = extract_publisher(e)
+            if not publisher:
+                publisher = publisher_from_title_suffix(title)
             articles.append({
                 "title": _clean_gnews_title(title),
                 "summary": "" if echo else raw_summary,
                 "url": link,
                 "source": f"Google News ({ticker})",
+                "publisher": publisher,
+                "publisher_domain": publisher_domain,
                 "published_at": published_at,
                 "content_type": "snippet",
             })
@@ -1416,11 +1432,17 @@ def fetch_all_articles():
                             continue
                     except Exception:
                         pass  # if parsing fails, let the entry through
+                # A configured RSS feed IS its publisher, so `source` is the
+                # honest publisher name here. The domain comes from the item
+                # link, which for these feeds is a real publisher URL (unlike
+                # the Google News redirect blobs).
                 articles.append({
                     "title": e.get("title", ""),
                     "summary": strip_html(e.get("summary", e.get("description", "")))[:500],
                     "url": e.get("link", ""),
                     "source": source,
+                    "publisher": source,
+                    "publisher_domain": normalize_domain(e.get("link", "")),
                     "published_at": published_at,
                     "content_type": "full_text" if source in FULL_TEXT_SOURCES else "snippet"
                 })
@@ -1998,6 +2020,28 @@ def _fold_primary_into_companies(clean_companies, analysis):
     return [*clean_companies, primary]
 
 
+#: Cached probe for the sql/0025 publisher columns. The migration is HAND-APPLY,
+#: so ingest must run correctly both before and after it lands: including a
+#: column that does not exist yet fails the whole insert batch with a 400.
+#: Probed once per process, then cached.
+_PUBLISHER_COLUMNS_AVAILABLE = None
+
+
+def _publisher_columns_available():
+    """True when articles.publisher / publisher_domain exist. Probes once."""
+    global _PUBLISHER_COLUMNS_AVAILABLE
+    if _PUBLISHER_COLUMNS_AVAILABLE is not None:
+        return _PUBLISHER_COLUMNS_AVAILABLE
+    try:
+        supabase.table("articles").select("publisher, publisher_domain").limit(1).execute()
+        _PUBLISHER_COLUMNS_AVAILABLE = True
+    except Exception as ex:
+        _PUBLISHER_COLUMNS_AVAILABLE = False
+        print("  publisher: articles.publisher missing "
+              f"(apply sql/0025_cross_source_observation.sql) - not storing publisher ({ex})")
+    return _PUBLISHER_COLUMNS_AVAILABLE
+
+
 def _article_row(article, analysis, clean_companies):
     """Build the articles-table insert row. Shared by store_article (legacy) and
     store_articles_batch so the column shape can never drift between them."""
@@ -2006,7 +2050,7 @@ def _article_row(article, analysis, clean_companies):
     # Backward compat: write sector as first vertical so synthesize.py and any
     # frontend code still reading the old column keeps working.
     sector_fallback = industry_verticals[0] if industry_verticals else ""
-    return {
+    row = {
         # Decode HTML entities in the stored title (defect FIX 2): PR Newswire /
         # Bloomberg feeds leak literal &amp; / &#39; / &quot; into the title.
         # Shared by both store paths, so this covers every source, not just gnews.
@@ -2032,6 +2076,14 @@ def _article_row(article, analysis, clean_companies):
         "primary_company": analysis.get("primary_company"),
         "content_type": article.get("content_type", "snippet"),
     }
+    # Publisher identity. `source` names the FEED (for 88% of the corpus that is
+    # one of ~819 `Google News (TICKER)` names), which is why cross-source work
+    # could not tell outlets apart. Stored only once sql/0025 has landed; a NULL
+    # publisher stays NULL rather than being guessed from the feed name.
+    if _publisher_columns_available():
+        row["publisher"] = article.get("publisher")
+        row["publisher_domain"] = article.get("publisher_domain")
+    return row
 
 
 def _clean_companies(analysis):
