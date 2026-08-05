@@ -102,6 +102,114 @@ class PartitionTest(unittest.TestCase):
         self.assertEqual(len(fresh), 2, "in-run title dupes left for the store, not dropped pre-filter")
 
 
+class ProbeModeTest(unittest.TestCase):
+    """The 30-day URL leg is a bounded membership PROBE when the caller knows the
+    candidate pool, instead of reading every url ingested in the last 30 days.
+
+    The equivalence that makes this safe: membership is only ever tested for
+    urls IN the pool, so probing for exactly those urls gives the same answer
+    the full-window read gave. Urls outside the pool were loaded and never
+    consulted.
+    """
+
+    def _pool(self):
+        return [
+            _article("https://db.com/by-url", "brand new title 1")[0],   # url in DB
+            _article("https://fresh.com/2", "Already Stored Headline")[0],  # title in DB
+            _article("https://fresh.com/3", "genuinely new three")[0],   # fresh
+            _article("https://fresh.com/4", "genuinely new four")[0],    # fresh
+        ]
+
+    def test_probe_mode_matches_full_window_mode(self):
+        pool = self._pool()
+        urls = [a["url"] for a in pool]
+
+        full_fake = _FakeSupabase(existing=_existing_db())
+        with patch.object(ingest, "supabase", full_fake):
+            full_sets = ingest._load_store_dedup_sets()
+        full_fresh, full_skipped = ingest.partition_unseen_articles(pool, *full_sets)
+
+        probe_fake = _FakeSupabase(existing=_existing_db())
+        with patch.object(ingest, "supabase", probe_fake):
+            probe_sets = ingest._load_store_dedup_sets(candidate_urls=urls)
+        probe_fresh, probe_skipped = ingest.partition_unseen_articles(pool, *probe_sets)
+
+        self.assertEqual(probe_skipped, full_skipped)
+        self.assertEqual(
+            [a["url"] for a in probe_fresh], [a["url"] for a in full_fresh],
+            "probe mode partitions the pool identically to the full-window read",
+        )
+        self.assertEqual(probe_skipped, 2, "url-match + title-match both dropped")
+
+    def test_probe_only_asks_about_pool_urls(self):
+        # The point of the fix: the query carries the pool's urls, so the DB
+        # returns at most len(pool) rows instead of the whole 30-day window.
+        pool = self._pool()
+        urls = [a["url"] for a in pool]
+        fake = _FakeSupabase(existing=_existing_db())
+        with patch.object(ingest, "supabase", fake):
+            existing_urls, _titles = ingest._load_store_dedup_sets(candidate_urls=urls)
+        self.assertTrue(
+            existing_urls.issubset(set(urls)),
+            "probe never returns urls outside the candidate pool",
+        )
+        self.assertEqual(existing_urls, {"https://db.com/by-url"})
+
+    def test_probe_chunks_stay_bounded(self):
+        # 1000 candidate urls must not become one giant request URL.
+        pool_urls = [f"https://fresh.com/{i}" for i in range(1000)]
+        fake = _FakeSupabase(existing=_existing_db())
+        with patch.object(ingest, "supabase", fake):
+            ingest._load_store_dedup_sets(candidate_urls=pool_urls)
+        self.assertTrue(fake.in_sizes, "probe path was exercised")
+        self.assertTrue(
+            all(n <= ingest._URL_PROBE_CHUNK for n in fake.in_sizes),
+            f"every url list stays within _URL_PROBE_CHUNK; saw {sorted(set(fake.in_sizes))}",
+        )
+
+    def test_long_urls_are_bounded_by_characters_not_count(self):
+        """The count cap alone is not a bound on the request URL. 200 x 400-char
+        urls is a ~80KB query string -- the same oversized-filter class that
+        returned a raw 400 in run #142. Chunking must fall back to the character
+        budget well before the count cap."""
+        long_urls = [f"https://fresh.com/{'p' * 380}/{i}" for i in range(300)]
+        for chunk in ingest._chunk_urls_by_budget(long_urls):
+            joined = len(",".join(chunk))
+            self.assertLessEqual(
+                joined, ingest._URL_PROBE_CHAR_BUDGET + max(len(u) for u in chunk),
+                "a chunk never exceeds the character budget by more than one url",
+            )
+            self.assertLess(len(chunk), ingest._URL_PROBE_CHUNK,
+                            "long urls hit the character budget before the count cap")
+
+    def test_chunker_covers_every_url_exactly_once(self):
+        urls = [f"https://fresh.com/{i}" for i in range(457)]
+        flat = [u for chunk in ingest._chunk_urls_by_budget(urls) for u in chunk]
+        self.assertEqual(flat, urls, "chunking is a partition: no url dropped or repeated")
+
+    def test_single_oversized_url_is_not_dropped(self):
+        huge = "https://fresh.com/" + ("q" * (ingest._URL_PROBE_CHAR_BUDGET * 2))
+        chunks = list(ingest._chunk_urls_by_budget([huge]))
+        self.assertEqual(chunks, [[huge]], "an over-budget url still gets its own chunk")
+
+    def test_probe_dedupes_candidate_urls(self):
+        # A pool with repeats must not ask about the same url twice.
+        fake = _FakeSupabase(existing=_existing_db())
+        dupes = ["https://fresh.com/a"] * 50 + ["https://fresh.com/b"] * 50
+        with patch.object(ingest, "supabase", fake):
+            ingest._load_store_dedup_sets(candidate_urls=dupes)
+        self.assertEqual(sum(fake.in_sizes), 2, "asked about 2 distinct urls, not 100")
+
+    def test_no_candidates_falls_back_to_full_window(self):
+        # Omitting candidate_urls keeps the original behavior for every existing
+        # caller and test path.
+        fake = _FakeSupabase(existing=_existing_db())
+        with patch.object(ingest, "supabase", fake):
+            existing_urls, _titles = ingest._load_store_dedup_sets()
+        self.assertEqual(fake.in_sizes, [], "full-window mode sends no id list")
+        self.assertEqual(existing_urls, {"https://db.com/by-url", "https://db.com/other"})
+
+
 class _Flow:
     """Run one store flow against a fresh FakeSupabase, capturing what persisted
     and the mention_count increments. Mirrors test_store_batch's patches."""
