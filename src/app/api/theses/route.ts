@@ -364,43 +364,24 @@ ${articleLines}`;
       ? `WEEKLY PIPELINE FEEDBACK — incorporate into thesis framing:\n${thesisAddendum}\n\n`
       : "";
 
-    // Phase 6: inject high-win-rate historical patterns so Gemini knows
-    // which (sector, horizon, dominant_signal) combinations have actually
-    // paid off historically. Best-effort — never blocks generation.
-    let patternBlock = "";
-    try {
-      const { data: patternRows, error: patternErr } = await supabase
-        .from("pattern_library")
-        .select("sector, horizon, dominant_signal, n_observed, n_confirmed, win_rate")
-        .gte("n_observed", 5)
-        .order("win_rate", { ascending: false })
-        .limit(5);
-      if (patternErr) {
-        console.log(
-          "[theses] pattern_library lookup failed (continuing):",
-          patternErr.message
-        );
-      } else if (patternRows && patternRows.length > 0) {
-        const lines = patternRows
-          .map((p) => {
-            const wr =
-              typeof p.win_rate === "number"
-                ? (p.win_rate * 100).toFixed(0) + "%"
-                : "—";
-            return `  - ${p.sector || "Unknown"} / ${p.horizon || "30d"} / ${p.dominant_signal || "mixed"}: ${p.n_confirmed ?? 0}/${p.n_observed ?? 0} confirmed (${wr})`;
-          })
-          .join("\n");
-        patternBlock = `HISTORICAL PATTERN PERFORMANCE — prefer thesis framings that match high-win-rate patterns below. Each line is (sector / horizon / dominant_signal) with the historical confirm rate:\n${lines}\n\n`;
-        console.log(
-          `[theses] Injecting ${patternRows.length} historical patterns into prompt`
-        );
-      }
-    } catch (patternErr) {
-      console.log(
-        "[theses] pattern_library lookup threw (continuing):",
-        patternErr instanceof Error ? patternErr.message : String(patternErr)
-      );
-    }
+    // Phase 6 HISTORICAL PATTERN PERFORMANCE block: REMOVED. Do not restore.
+    //
+    // It read pattern_library with `.gte("n_observed", 5).order("win_rate",
+    // desc).limit(5)` and rendered the rows into a prompt block headed
+    // "prefer thesis framings that match high-win-rate patterns below".
+    //
+    // Measured against production, that query returns exactly ONE row:
+    // `General / 30d / unknown: 0/7 confirmed (0%)`. So the instruction the
+    // generator actually received was to prefer framings matching a catch-all
+    // bucket with a 0% confirm rate. The library holds 27 buckets, 22 of them
+    // at n_observed = 1, and 3 confirmed theses in total.
+    //
+    // pattern_memory computes win_rate = n_confirmed / n_observed over
+    // theses.outcome, counting `inconclusive` and `ungradable` as observations
+    // that failed to confirm, so 0% means "never resolved", not "never worked".
+    // Restoring any of this needs an outcome-based signal that clears a stated
+    // sample bar. Generation runs with no learned pattern weighting until then.
+    const patternBlock = "";
 
     const prompt = `You are a senior investment banking analyst at a top-tier firm (Goldman Sachs, Blackstone, KKR level). You have been given today's market narrative clusters, each representing a group of related news articles that have been algorithmically clustered by topic, company, and sector.
 

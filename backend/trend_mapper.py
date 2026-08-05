@@ -130,83 +130,44 @@ supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_K
 
 
 # ---------------------------------------------------------------------------
-# Phase 6 — pattern library feedback boost
-# Clusters whose dominant sector matches a high-win-rate historical pattern
-# get a gentle multiplier nudge so they rank above identical-strength
-# clusters with no historical backing. The boost is bounded to [0.9, 1.15]
-# — enough to tie-break reliably, never enough to invert a weaker cluster
-# above a much stronger one.
+# Phase 6 pattern library feedback boost — REMOVED (see below). Do not restore.
 # ---------------------------------------------------------------------------
-try:
-    import pattern_memory as _pattern_memory
-except Exception:
-    _pattern_memory = None
-
-_PATTERN_SECTOR_RATES: dict[str, float] | None = None
-_PATTERN_SECTOR_RATES_LOADED = False
-
-
-def _get_pattern_sector_rates() -> dict[str, float] | None:
-    """Return {sector: best_win_rate} across horizons and signals. None = skip."""
-    global _PATTERN_SECTOR_RATES, _PATTERN_SECTOR_RATES_LOADED
-    if _PATTERN_SECTOR_RATES_LOADED:
-        return _PATTERN_SECTOR_RATES
-    _PATTERN_SECTOR_RATES_LOADED = True
-    if _pattern_memory is None:
-        _PATTERN_SECTOR_RATES = None
-        return None
-    try:
-        # Pull up to 200 patterns with n_observed >= 5 and build a
-        # per-sector maximum win rate. query_relevant_patterns is ordered
-        # by win_rate desc so the first hit per sector is the best one.
-        rows = _pattern_memory.query_relevant_patterns(
-            sector=None, horizon=None, min_n=5, limit=200,
-        )
-        best: dict[str, float] = {}
-        for r in rows or []:
-            sector = r.get("sector") or ""
-            wr = r.get("win_rate")
-            if not sector or wr is None:
-                continue
-            try:
-                val = float(wr)
-            except Exception:
-                continue
-            if sector not in best or val > best[sector]:
-                best[sector] = val
-        _PATTERN_SECTOR_RATES = best if best else None
-    except Exception:
-        _PATTERN_SECTOR_RATES = None
-    return _PATTERN_SECTOR_RATES
-
-
-def _apply_pattern_boost(cluster, strength: float) -> float:
-    """
-    Nudge a cluster's strength by its dominant sector's historical win rate.
-    Multiplier = 1 + 0.3 * (win_rate - 0.5) → capped to [0.85, 1.15].
-    Returns strength unchanged when pattern data is missing or inconclusive.
-    """
-    try:
-        rates = _get_pattern_sector_rates()
-        if not rates or not cluster:
-            return strength
-        # Dominant sector = most common non-empty sector in the cluster
-        counts: dict[str, int] = {}
-        for art in cluster:
-            sec = art.get("sector")
-            if sec:
-                counts[sec] = counts.get(sec, 0) + 1
-        if not counts:
-            return strength
-        dominant = max(counts, key=counts.get)
-        wr = rates.get(dominant)
-        if wr is None:
-            return strength
-        mult = 1.0 + 0.3 * (float(wr) - 0.5)
-        mult = max(0.85, min(1.15, mult))
-        return round(max(0.0, min(1.0, float(strength) * mult)), 4)
-    except Exception:
-        return strength
+# What used to live here: `_get_pattern_sector_rates` pulled the best
+# `pattern_library.win_rate` per sector (min_n=5) and `_apply_pattern_boost`
+# nudged each cluster's strength by `1 + 0.3 * (win_rate - 0.5)`, clamped to
+# [0.85, 1.15]. Unlike the source-credibility multiplier removed above, this one
+# WAS bounded. It was removed for the other two reasons, which it shares.
+#
+# 1. SAME BROKEN DENOMINATOR. pattern_memory.py computes
+#    win_rate = n_confirmed / n_observed over `theses.outcome`, counting
+#    `inconclusive` and `ungradable` as observations that failed to confirm. The
+#    underlying corpus is 39 graded theses of which 28 are inconclusive and 7
+#    ungradable, so a bucket reads 0.0 when its theses never resolved, not when
+#    its pattern failed.
+#
+# 2. IT COULD ONLY EVER PENALISE. Measured against production: pattern_library
+#    holds 27 buckets, 22 of them at n_observed = 1, and the TOTAL n_confirmed
+#    across every bucket is 3. Exactly ONE bucket clears the min_n=5 gate:
+#    `General|30d|unknown`, 0 confirmed of 7, win_rate 0.0. So the per-sector
+#    map was `{"General": 0.0}` and the only multiplier this code could produce
+#    was 1 + 0.3 * (0.0 - 0.5) = 0.85, clamped at the floor. A "boost" that can
+#    only subtract 15%, and only from clusters whose dominant sector is the
+#    catch-all label "General". The three buckets at win_rate 1.0 are all
+#    n_observed = 1 and never clear the gate.
+#
+# Note also that the bucket key is derived from `signal_breakdown` sampled at
+# GRADE time, not at generation time, and `dominant_signal = "unknown"` is what
+# that produces when the bundle is missing entirely. So the one qualifying
+# bucket is not a pattern at all.
+#
+# Cluster strength is now `score_cluster_strength` alone: article count, source
+# diversity, and relevance. No learned multiplier is applied to it.
+#
+# THE RAW PATTERN SIGNAL WAS DELIBERATELY NOT SWAPPED IN. It is as immature as
+# the credibility signal removed above: zero buckets clear n_observed >= 10, one
+# clears 5, and the whole library rests on 3 confirmed theses. Restoring any
+# weighting here requires an outcome-based signal that clears a stated sample
+# bar, and it must stay bounded.
 
 
 # ---------------------------------------------------------------------------
@@ -1109,11 +1070,12 @@ def map_trends(brief_type, started_at, run_id=None):
         try:
             cluster_key = make_cluster_key(cluster)
             label       = make_cluster_label(cluster)
+            # Cluster strength is the unweighted score. Both learned multipliers
+            # that used to sit here (Phase 5 source credibility, Phase 6 pattern
+            # library) are removed; see the two comment blocks near the top of
+            # this module for the measured reasons. Do not add another without a
+            # bounded multiplier and a signal that clears a stated sample bar.
             strength    = score_cluster_strength(cluster)
-            # Phase 5 source-credibility multiplier removed; see the block above
-            # the (deleted) loader near the top of this module. Do not restore it
-            # without a bounded multiplier and a signal that clears its sample bar.
-            strength    = _apply_pattern_boost(cluster, strength)       # Phase 6
             confidence  = score_cluster_confidence(cluster)
 
             cluster_type, matched_run_count, matched_prior_keys = classify_cluster_type(

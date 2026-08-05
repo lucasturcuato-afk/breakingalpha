@@ -9,16 +9,21 @@ Two functions:
      the LLM scores in the brief_quality_scores.soft_flags JSONB column.
 
   2. build_brief_improvement_addendum(brief_type, lookback_days=7)
-     Aggregates recent LLM quality scores, recurring weaknesses, and top
-     pattern_library rows by win_rate, then asks Gemini for a 4-6 sentence
-     improvement directive to prepend to the synthesis system prompt.
+     Aggregates recent LLM quality scores and recurring weaknesses, then asks
+     Gemini for a 4-6 sentence improvement directive to prepend to the
+     synthesis system prompt.
 
-     The `source_credibility` top-N block was REMOVED. It selected the top 5
-     rows ORDER BY win_rate DESC with no minimum sample size, and that table's
-     win_rate counts unresolved theses as losses, so the rows it surfaced were
-     the three sources sitting at a perfect 1.0 on a SINGLE thesis each. Naming
-     those to the model as "sources to lean into" is a confident instruction
-     built on one observation.
+     Both learned-signal blocks were REMOVED, for the same root cause: a
+     win_rate whose denominator counts unresolved theses as failures.
+
+     `source_credibility`: top 5 ORDER BY win_rate DESC with NO minimum sample
+     size, so it surfaced the three sources sitting at a perfect 1.0 on a
+     SINGLE thesis each and named them to the model as "sources to lean into".
+
+     `pattern_library`: top 5 with n_observed >= 5. Exactly one bucket clears
+     that gate in production (`General|30d|unknown`, 0 confirmed of 7,
+     win_rate 0.0), so "patterns to lean into" resolved to one catch-all bucket
+     that has never confirmed anything.
 
 Wired into backend/run.py as soft-fail steps after synthesize.run().
 """
@@ -165,10 +170,9 @@ _IMPROVEMENT_SYSTEM = (
 
 def build_brief_improvement_addendum(brief_type: str, lookback_days: int = 7) -> str:
     """
-    Aggregate recent LLM quality scores and weaknesses, combine with
-    pattern_library top performers, then ask Gemini for a 4-6 sentence
-    improvement directive. Source credibility is deliberately NOT included;
-    see the module docstring.
+    Aggregate recent LLM quality scores and weaknesses, then ask Gemini for a
+    4-6 sentence improvement directive. Neither source_credibility nor
+    pattern_library is included; see the module docstring.
 
     Returns the directive string, or "" on failure.
     """
@@ -228,20 +232,13 @@ def build_brief_improvement_addendum(brief_type: str, lookback_days: int = 7) ->
         # Weaknesses appearing in 3+ rows
         recurring_weaknesses = [w for w, count in weakness_counter.items() if count >= 3]
 
-        # ---- Top pattern_library rows by win_rate --------------------------
-        top_patterns: list[dict] = []
-        try:
-            resp = (
-                supabase.table("pattern_library")
-                .select("sector, horizon, dominant_signal, win_rate, n_observed")
-                .gte("n_observed", 5)
-                .order("win_rate", desc=True)
-                .limit(5)
-                .execute()
-            )
-            top_patterns = resp.data or []
-        except Exception as e:
-            logger.warning("build_brief_improvement_addendum: pattern_library fetch failed: %s", e)
+        # ---- pattern_library block REMOVED ---------------------------------
+        # It was `select(...).gte(n_observed, 5).order(win_rate desc).limit(5)`,
+        # feeding "patterns to lean into" into the synthesis prompt. Exactly one
+        # bucket clears that gate in production (`General|30d|unknown`, 0 of 7,
+        # win_rate 0.0), and win_rate counts inconclusive and ungradable theses
+        # as non-confirmations, so it means "never resolved" rather than "never
+        # worked". The whole library rests on 3 confirmed theses.
 
         # ---- source_credibility block REMOVED ------------------------------
         # It was `select(source, win_rate, n_theses).order(win_rate desc).limit(5)`
@@ -258,7 +255,6 @@ def build_brief_improvement_addendum(brief_type: str, lookback_days: int = 7) ->
             "score_averages": score_averages,
             "recurring_weaknesses": recurring_weaknesses,
             "n_briefs_analyzed": len(quality_rows),
-            "top_patterns": top_patterns,
         }
 
         prompt = (
@@ -269,8 +265,7 @@ def build_brief_improvement_addendum(brief_type: str, lookback_days: int = 7) ->
             "brief generation. Address:\n"
             "1. Which quality dimensions need the most improvement based "
             "on average scores.\n"
-            "2. Recurring weaknesses to avoid.\n"
-            "3. High-win-rate patterns to lean into.\n\n"
+            "2. Recurring weaknesses to avoid.\n\n"
             "Write plain prose — no headers, no bullets, no preamble. "
             "This text will be prepended directly to a synthesis system prompt."
         )

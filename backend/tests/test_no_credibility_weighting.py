@@ -1,19 +1,27 @@
 """
-Generation must not weight on the old source_credibility signal.
+Generation must not weight on the immature learned signals.
 
-These tests exist because the removed wiring was silent: a cluster multiplied to
-zero looks exactly like a weak cluster, and a synthesis prompt naming a source
-"to lean into" looks exactly like a good instruction. Nothing failed loudly, so
-nothing caught it for two phases.
+Two signals, one root cause: both `source_credibility.win_rate` and
+`pattern_library.win_rate` divide confirmations by a denominator that counts
+UNRESOLVED theses (inconclusive, ungradable) as failures. Measured against
+production, 18 of 22 sources read 0.0 and 24 of 27 pattern buckets read 0.0,
+almost none of them because anything was wrong.
+
+These tests exist because the removed wiring was silent. A cluster multiplied to
+zero looks exactly like a weak cluster; a "boost" that can only ever subtract
+15% looks exactly like a boost; and a prompt block headed "prefer thesis
+framings that match high-win-rate patterns" looks exactly like a good
+instruction even when the single qualifying row reads 0/7. Nothing failed
+loudly, so nothing caught it for two phases.
 
 The load-bearing test is
 TestClusterStrengthIsUnweighted::test_strength_is_exactly_the_unweighted_score.
 It pins the pipeline value to the scoring function, so ANY multiplier
-reintroduced between them fails here.
+reintroduced between them fails here, named.
 
-Deliberately source-level rather than behavioural: the credibility path read a
-module-level cache and a live table, so the honest way to prove it is gone is to
-prove the code is gone.
+Deliberately source-level rather than behavioural: both paths read module-level
+caches and live tables, so the honest way to prove they are gone is to prove the
+code is gone.
 """
 
 from __future__ import annotations
@@ -25,8 +33,11 @@ from pathlib import Path
 import pytest
 
 BACKEND = Path(__file__).resolve().parents[1]
+REPO = BACKEND.parent
 TREND_MAPPER = BACKEND / "trend_mapper.py"
 FEEDBACK_LOOP = BACKEND / "brief_feedback_loop.py"
+SUMMARIZE = BACKEND / "summarize.py"
+THESES_ROUTE = REPO / "src" / "app" / "api" / "theses" / "route.ts"
 
 
 def _source(path: Path) -> str:
@@ -70,6 +81,34 @@ def _code(path: Path) -> str:
 _STRENGTH_MULTIPLIER = re.compile(r"strength\s*=\s*(\w+)\(cluster,\s*strength\)")
 
 
+def _ts_code(path: Path) -> str:
+    """TypeScript source with whole-line `//` comments removed.
+
+    Same problem as the Python files: the removal is documented in a comment
+    block that necessarily quotes the prompt header it deleted, so asserting
+    against raw source matches the explanation. Only lines whose first
+    non-whitespace characters are `//` are dropped, so a `https://` inside a
+    string literal is never touched and no real code can go missing.
+    """
+    return "\n".join(
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if not line.lstrip().startswith("//")
+    )
+
+
+def _find_dict_assign(path: Path, name: str) -> set[str]:
+    """Return the literal string keys of `name = {...}` in a module."""
+    found = None
+    for node in ast.walk(ast.parse(_source(path))):
+        if isinstance(node, ast.Assign):
+            for tgt in node.targets:
+                if isinstance(tgt, ast.Name) and tgt.id == name:
+                    found = node.value
+    assert isinstance(found, ast.Dict), f"{name} dict literal not found in {path.name}"
+    return {k.value for k in found.keys if isinstance(k, ast.Constant)}
+
+
 class TestTrendMapperHasNoCredibilityPath:
     def test_the_multiplier_function_is_gone(self):
         assert "_apply_source_credibility" not in _code(TREND_MAPPER)
@@ -106,62 +145,125 @@ class TestClusterStrengthIsUnweighted:
         """THE load-bearing assertion.
 
         Every cluster-strength multiplier took the shape
-        `strength = <fn>(cluster, strength)`. After this change the only one
-        permitted is the BOUNDED pattern boost. Any third function reintroduced
-        between the base score and the persisted value fails here, named.
+        `strength = <fn>(cluster, strength)`. Both are now gone, so the set must
+        be EMPTY. Any multiplier reintroduced between the base score and the
+        persisted value fails here, named.
         """
         multipliers = set(_STRENGTH_MULTIPLIER.findall(_code(TREND_MAPPER)))
-        assert multipliers <= {"_apply_pattern_boost"}, (
-            f"unbounded or unreviewed strength weighting reintroduced: "
-            f"{sorted(multipliers - {'_apply_pattern_boost'})}"
+        assert multipliers == set(), (
+            f"learned strength weighting reintroduced: {sorted(multipliers)}"
         )
 
-    def test_the_removed_multiplier_specifically_cannot_return(self):
-        assert "_apply_source_credibility" not in _STRENGTH_MULTIPLIER.findall(
-            _code(TREND_MAPPER)
-        )
-
-    def test_pattern_boost_if_present_is_still_bounded(self):
-        """Not the target of this change, but it is the one multiplier left, so
-        pin the fact that it has a floor and a ceiling."""
-        src = _source(TREND_MAPPER)
-        if "_apply_pattern_boost" in src:
-            assert "max(0.85, min(1.15, mult))" in src
+    @pytest.mark.parametrize(
+        "fn", ["_apply_source_credibility", "_apply_pattern_boost"]
+    )
+    def test_the_removed_multipliers_specifically_cannot_return(self, fn):
+        assert fn not in _STRENGTH_MULTIPLIER.findall(_code(TREND_MAPPER))
 
 
-class TestFeedbackAddendumHasNoCredibility:
-    def test_source_credibility_is_not_queried(self):
-        assert "source_credibility" not in _code(FEEDBACK_LOOP)
+class TestTrendMapperHasNoPatternPath:
+    def test_the_boost_function_is_gone(self):
+        assert "_apply_pattern_boost" not in _code(TREND_MAPPER)
 
-    def test_top_sources_is_not_in_the_prompt_payload(self):
-        assert "top_sources" not in _code(FEEDBACK_LOOP)
+    def test_the_loader_and_its_cache_are_gone(self):
+        code = _code(TREND_MAPPER)
+        for symbol in (
+            "_get_pattern_sector_rates",
+            "_PATTERN_SECTOR_RATES",
+            "query_relevant_patterns",
+        ):
+            assert symbol not in code, f"{symbol} still referenced in code"
 
-    def test_prompt_no_longer_asks_the_model_to_lean_into_sources(self):
-        src = _source(FEEDBACK_LOOP)
-        assert "patterns and sources to lean into" not in src
-        assert "High-win-rate patterns to lean into" in src
+    def test_pattern_memory_is_not_imported(self):
+        tree = ast.parse(_source(TREND_MAPPER))
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(a.name for a in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+        assert "pattern_memory" not in imported
+
+    def test_no_lingering_reference_in_executable_code(self):
+        code = _code(TREND_MAPPER)
+        assert "pattern_memory" not in code
+        assert "pattern_library" not in code
+
+
+class TestFeedbackAddendumHasNoLearnedSignals:
+    @pytest.mark.parametrize(
+        "symbol",
+        ["source_credibility", "pattern_library", "top_sources", "top_patterns"],
+    )
+    def test_signal_is_not_queried_or_shipped(self, symbol):
+        assert symbol not in _code(FEEDBACK_LOOP)
+
+    def test_prompt_no_longer_asks_the_model_to_lean_into_anything(self):
+        code = _code(FEEDBACK_LOOP)
+        assert "to lean into" not in code
+        # The two dimensions that remain are real brief-quality feedback.
+        assert "Recurring weaknesses to avoid" in code
+
+
+class TestWeeklyDigestAddendumHasNoPatterns:
+    """summarize.py fed pattern win rates into the THESIS generation prompt and
+    instructed the model to reproduce the percentages verbatim."""
+
+    @pytest.mark.parametrize(
+        "symbol",
+        ["pattern_memory", "pattern_phrasings", "top_pattern_rows", "top_patterns"],
+    )
+    def test_pattern_plumbing_is_gone(self, symbol):
+        assert symbol not in _code(SUMMARIZE)
+
+    def test_the_verbatim_percentage_instruction_is_gone(self):
+        code = _code(SUMMARIZE)
+        assert "VERBATIM" not in code
+        assert "must stay numerically" not in code
+
+    def test_addendum_input_keys_are_the_expected_remainder(self):
+        found = _find_dict_assign(SUMMARIZE, "addendum_input")
+        assert found == {
+            "recurring_soft_flags",
+            "underrepresented_clusters",
+            "recurring_themes",
+            "total_missed_score10",
+        }
 
 
 class TestTheAggregatesPayloadStillWorks:
-    """Removing a key must not break the payload the prompt is built from."""
+    """Removing keys must not break the payload the prompt is built from."""
 
     def test_aggregates_dict_keys_are_intact(self):
-        src = _source(FEEDBACK_LOOP)
-        tree = ast.parse(src)
-        found = None
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign):
-                for tgt in node.targets:
-                    if isinstance(tgt, ast.Name) and tgt.id == "aggregates":
-                        found = node.value
-        assert isinstance(found, ast.Dict), "aggregates literal not found"
-        keys = {k.value for k in found.keys if isinstance(k, ast.Constant)}
-        assert keys == {
+        assert _find_dict_assign(FEEDBACK_LOOP, "aggregates") == {
             "score_averages",
             "recurring_weaknesses",
             "n_briefs_analyzed",
-            "top_patterns",
         }
+
+
+class TestThesesRouteHasNoPatternBlock:
+    """The TS thesis generator injected a HISTORICAL PATTERN PERFORMANCE block
+    telling the model to prefer framings matching high-win-rate patterns. The
+    single qualifying row read 0/7."""
+
+    def test_route_exists(self):
+        assert THESES_ROUTE.is_file(), f"missing {THESES_ROUTE}"
+
+    def test_pattern_library_is_not_queried(self):
+        assert '.from("pattern_library")' not in _ts_code(THESES_ROUTE)
+
+    def test_the_prompt_header_is_gone(self):
+        code = _ts_code(THESES_ROUTE)
+        assert "HISTORICAL PATTERN PERFORMANCE" not in code
+        assert "high-win-rate patterns" not in code
+
+    def test_pattern_block_is_a_neutral_empty_string(self):
+        """The variable stays so the template literal keeps compiling, but it
+        must be a constant empty string, never repopulated."""
+        code = _ts_code(THESES_ROUTE)
+        assert 'const patternBlock = "";' in code
+        assert "patternBlock =" not in code.replace('const patternBlock = "";', "")
 
 
 class TestModulesStillImportCleanly:
