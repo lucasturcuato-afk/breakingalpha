@@ -2046,10 +2046,91 @@ def _clean_companies(analysis):
     return out
 
 
-def _load_store_dedup_sets():
+# Membership-probe chunk bounds. Article urls are variable-length and can run to
+# hundreds of characters, so a COUNT-only bound is not actually a bound on the
+# request URL: 200 x 300-char urls is a ~60KB query string, which is the same
+# class of failure that killed run #142 (an oversized filter overflowing the
+# proxy limit and returning a raw 400). The character budget is therefore the
+# real guard and the count is a secondary cap.
+_URL_PROBE_CHUNK = 200          # max urls per probe (secondary cap)
+_URL_PROBE_CHAR_BUDGET = 6000   # max joined url characters per probe (primary)
+
+
+def _chunk_urls_by_budget(urls, max_chars=_URL_PROBE_CHAR_BUDGET, max_count=_URL_PROBE_CHUNK):
+    """Split urls into chunks bounded by BOTH joined length and count.
+
+    A single url longer than the budget still gets its own chunk rather than
+    being dropped: an over-budget request that fails is caught per-chunk and
+    degrades to 'treat as new', whereas dropping it silently would mean the
+    dedup key never sees it.
+    """
+    chunk, size = [], 0
+    for u in urls:
+        # postgrest-py's sanitize_param wraps every value in double quotes (which
+        # is also what makes urls containing commas or parens safe here), so the
+        # on-wire cost is the url plus two quotes plus the separator.
+        cost = len(u) + 3
+        if chunk and (size + cost > max_chars or len(chunk) >= max_count):
+            yield chunk
+            chunk, size = [], 0
+        chunk.append(u)
+        size += cost
+    if chunk:
+        yield chunk
+
+
+def _probe_existing_urls(candidate_urls, since_iso):
+    """Return the subset of `candidate_urls` already stored within the window.
+
+    This is the disk-IO fix for the 30-day URL leg. The full-window read below
+    pulled EVERY url ingested in the last 30 days using .range() -- LIMIT/OFFSET,
+    which is O(offset), so page N produces and discards N*1000 rows first. It ran
+    on every pipeline run against the largest table in the database.
+
+    Membership is only ever tested for urls that are in the fetched pool, so
+    probing for exactly those urls returns an identical answer: for any u in the
+    pool, `u in probe_result` iff `u in full_window_result`. Urls outside the
+    pool were loaded and never consulted.
+
+    Requires an index on articles.url to pay off (see the accompanying SQL);
+    without one each chunk degrades to a scan and this is no worse than the
+    full-window read it replaces.
+
+    Soft-fails per chunk in the SAME direction as the existing preload: a failed
+    chunk yields no "already exists" urls, so those articles are treated as new.
+    That risks a redundant insert attempt, never a silent drop.
+    """
+    found = set()
+    uniq = list(dict.fromkeys(u for u in candidate_urls if u))
+    for chunk in _chunk_urls_by_budget(uniq):
+        try:
+            resp = (supabase.table("articles").select("url")
+                    .gte("ingested_at", since_iso)
+                    .in_("url", chunk).execute())
+            for r in resp.data or []:
+                if r.get("url"):
+                    found.add(r["url"])
+        except Exception as ex:
+            print(f"  store: existing-url probe chunk failed ({len(chunk)} urls, continuing): {ex}")
+    return found
+
+
+def _load_store_dedup_sets(candidate_urls=None):
     """Pre-fetch existing URLs (30d) and recent normalized titles (24h) ONCE,
-    replacing the per-article dedup SELECTs. Paginated past PostgREST's 1000-row
-    default cap. Read-only; failures degrade to empty sets (store still runs)."""
+    replacing the per-article dedup SELECTs. Read-only; failures degrade to
+    empty sets (store still runs).
+
+    `candidate_urls` is the fetched pool's urls. When supplied, the 30-day URL
+    leg is a bounded membership probe instead of a full-window read (see
+    _probe_existing_urls). When omitted, the original paginated full-window read
+    runs unchanged, so every existing caller and test keeps its behavior.
+
+    The 24-hour title leg is deliberately NOT inverted. Titles are dedup-keyed on
+    _normalize_title() output (entity-decoded, punctuation-stripped, whitespace-
+    collapsed) while the DB stores raw titles, so there is no value to probe on;
+    probing raw titles would silently weaken dedup to exact-string matches. It
+    stays a full-window read, and it is the cheap leg: 24 hours, not 30 days.
+    """
     existing_urls, recent_titles = set(), set()
 
     def _paged(select_col, since_iso):
@@ -2066,9 +2147,12 @@ def _load_store_dedup_sets():
 
     try:
         url_cut = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-        for r in _paged("url", url_cut):
-            if r.get("url"):
-                existing_urls.add(r["url"])
+        if candidate_urls is None:
+            for r in _paged("url", url_cut):
+                if r.get("url"):
+                    existing_urls.add(r["url"])
+        else:
+            existing_urls = _probe_existing_urls(candidate_urls, url_cut)
     except Exception as ex:
         print(f"  store: existing-url preload failed (continuing without it): {ex}")
     try:
@@ -2243,7 +2327,12 @@ def store_articles_batch(relevant, deadline=None, dedup_sets=None):
     if dedup_sets is not None:
         existing_urls, recent_titles = dedup_sets
     else:
-        existing_urls, recent_titles = _load_store_dedup_sets()
+        # Standalone call (no preloaded sets): the candidates are exactly the
+        # articles about to be stored, so the URL leg probes for those instead
+        # of reading the whole 30-day window.
+        existing_urls, recent_titles = _load_store_dedup_sets(
+            candidate_urls=[a.get("url") for a, _an in relevant]
+        )
     seen_urls, seen_titles = set(existing_urls), set(recent_titles)
 
     def _over_budget():
@@ -2411,7 +2500,12 @@ def run_ingestion():
     # not repeated. Already-in-DB rows produce no stored data today (they are
     # skipped at store with no mention/count side effect), so removing them here
     # is data-neutral -- it only saves the redundant filter calls.
-    dedup_sets = _load_store_dedup_sets()
+    # The pool is known here, so the 30-day URL leg probes for exactly these urls
+    # instead of reading every url ingested in the last 30 days. Membership is
+    # only ever tested for pool members, so the answer is identical.
+    dedup_sets = _load_store_dedup_sets(
+        candidate_urls=[a.get("url") for a in articles]
+    )
     fresh, prefilter_skipped = partition_unseen_articles(articles, *dedup_sets)
     print(
         f"  [3/4] dedup-before-filter: {prefilter_skipped} already-in-DB skipped, "

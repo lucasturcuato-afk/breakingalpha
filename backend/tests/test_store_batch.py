@@ -40,6 +40,7 @@ class _Query:
         self.table = table
         self._op = None
         self._rows = None
+        self._in = None
 
     def select(self, *a, **k):
         self._op = "select"
@@ -49,6 +50,15 @@ class _Query:
         return self
 
     def eq(self, *a, **k):
+        return self
+
+    def in_(self, col, values):
+        # Bounded membership probe (dedup URL leg, embedded-id probe). Recorded
+        # so tests can assert the list stays chunked, and applied so probe-mode
+        # results are really filtered rather than echoing the whole table.
+        vals = list(values)
+        self._in = (col, set(vals))
+        self.fake.in_sizes.append(len(vals))
         return self
 
     def range(self, *a, **k):
@@ -63,7 +73,11 @@ class _Query:
         if self._op == "select":
             self.fake.select_calls += 1
             # dedup preload: return any pre-seeded existing rows for this table
-            return _Resp(list(self.fake.existing.get(self.table, [])))
+            rows = list(self.fake.existing.get(self.table, []))
+            if self._in is not None:
+                col, wanted = self._in
+                rows = [r for r in rows if r.get(col) in wanted]
+            return _Resp(rows)
         if self._op == "insert":
             self.fake.insert_calls.append((self.table, len(self._rows)))
             out = []
@@ -83,6 +97,7 @@ class _FakeSupabase:
         self.insert_calls = []   # (table, nrows)
         self.inserted = {}       # table -> [rows]
         self.select_calls = 0
+        self.in_sizes = []       # every .in_ list length seen (probe chunking)
         self._id = 0
 
     def table(self, name):
@@ -229,8 +244,17 @@ class StoreBatchTest(unittest.TestCase):
         self.assertEqual(self.fake.n_inserted("articles"), 1000)
         # Mentions: 1000 mentions / 500 = 2 bulk inserts.
         self.assertEqual(self.fake.n_insert_calls("company_mentions"), 2)
-        # Dedup preload is a small paginated set of SELECTs, not per-article.
-        self.assertLessEqual(self.fake.select_calls, 4)
+        # Dedup preload is a small bounded set of SELECTs, not per-article. The
+        # URL leg now probes for the batch's own urls in budget-bounded chunks
+        # (ceil(chars/budget) requests) plus the paginated title leg, so the
+        # count scales with chunks, never with articles. 1000 articles must
+        # still be nowhere near 1000 selects.
+        self.assertLessEqual(self.fake.select_calls, 12)
+        self.assertLess(self.fake.select_calls, 1000 // 10, "not per-article")
+        self.assertTrue(
+            all(n <= ingest._URL_PROBE_CHUNK for n in self.fake.in_sizes),
+            f"probe chunks respect the count cap; saw {sorted(set(self.fake.in_sizes))}",
+        )
 
     # --- Dedup semantics preserved ------------------------------------------
     def test_dedup_against_existing_and_within_batch(self):

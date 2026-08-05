@@ -50,33 +50,73 @@ CREATE INDEX IF NOT EXISTS content_embeddings_type_idx ON content_embeddings(con
 # PostgREST returns at most 1000 rows per request; we paginate with .range().
 _PAGE_SIZE = 1000
 
+# Ids per membership probe. Bounded so the id list can never grow the request URL
+# without limit -- the failure that took out run #142 was an UNBOUNDED
+# not.in.(<every embedded id>) filter, not the use of an id list as such. The
+# codebase already probes with bounded chunks elsewhere (the priority-tier
+# hydrate below uses 100, source_credibility.py uses 500); 200 keeps the URL far
+# under the proxy limit while holding the round-trip count low.
+_PROBE_CHUNK = 200
 
-def _embedded_content_ids(content_type: str) -> set:
-    """Full set of already-embedded content_ids for a content_type.
+# Hard ceiling on candidate pages scanned per content type. Only reachable when
+# the corpus is fully caught up (fewer unembedded rows than `limit` exist at
+# all), in which case the answer is "nothing to do" and paging the rest of the
+# table just burns disk IO to confirm it. Bounds the worst case at
+# _MAX_CANDIDATE_PAGES * _PAGE_SIZE rows instead of the whole table.
+_MAX_CANDIDATE_PAGES = 25
 
-    Paginated: the prior single .select() silently capped at PostgREST's
-    1000-row default, so once >1000 items were embedded the exclusion set was
-    incomplete and embedded items got re-embedded.
+
+def _embedded_among(content_type: str, candidate_ids: list) -> set:
+    """Return the subset of `candidate_ids` that is ALREADY embedded.
+
+    This is the membership test the job actually needs, and it is the whole
+    disk-IO fix. The prior `_embedded_content_ids()` paginated the ENTIRE
+    content_embeddings table into a Python set on every run (~55k rows), using
+    .range() -- i.e. LIMIT/OFFSET, which is O(offset): page N makes Postgres
+    produce and discard N*1000 rows first. Total row visits per call was
+    ~n^2/2 pages-worth (~1.5M at 55k rows), it ran twice per run (articles and
+    theses) on a twice-daily pipeline, and it had NO ORDER BY, so the offset
+    pagination was not even a stable partition of the table.
+
+    Probing instead turns that into a handful of index lookups: the predicate is
+    (content_type, content_id), which is exactly the UNIQUE(content_type,
+    content_id) constraint's index, so each chunk is an index scan over the ids
+    asked for and nothing else.
+
+    Chunked to _PROBE_CHUNK so the id list in the request URL stays bounded.
+    content_ids are uuids (fixed 36 chars), so a COUNT bound is a real bound
+    here: 200 ids is ~7.5KB of query string. That is not true of the url probe
+    in ingest.py, where lengths vary and the bound has to be on characters.
+
+    On a chunk error the failure direction is deliberate: an unreadable chunk
+    contributes no "already embedded" ids, so its candidates are treated as
+    unembedded and get re-embedded. That wastes an embed call (the UNIQUE
+    constraint rejects the duplicate insert) rather than silently skipping
+    content forever, which is the failure mode that actually costs us.
     """
-    ids: set = set()
-    page = 0
-    while True:
-        rows = (
-            supabase.table("content_embeddings")
-            .select("content_id")
-            .eq("content_type", content_type)
-            .range(page * _PAGE_SIZE, page * _PAGE_SIZE + _PAGE_SIZE - 1)
-            .execute()
-            .data
-            or []
-        )
+    if not candidate_ids:
+        return set()
+    found: set = set()
+    for i in range(0, len(candidate_ids), _PROBE_CHUNK):
+        chunk = candidate_ids[i:i + _PROBE_CHUNK]
+        try:
+            rows = (
+                supabase.table("content_embeddings")
+                .select("content_id")
+                .eq("content_type", content_type)
+                .in_("content_id", chunk)
+                .execute()
+                .data
+                or []
+            )
+        except Exception as e:
+            print(f"  ⚠️  embedded-probe chunk failed ({content_type}, {len(chunk)} ids): {e}")
+            continue
         for r in rows:
             cid = r.get("content_id")
             if cid:
-                ids.add(cid)
-        if len(rows) < _PAGE_SIZE:
-            return ids
-        page += 1
+                found.add(cid)
+    return found
 
 
 # --- Priority tier: the Radar-clustered + Calls set, embedded FIRST -----------
@@ -232,12 +272,19 @@ def _priority_article_ids() -> list[str]:
     return ids
 
 
-def _fetch_priority_unembedded(embedded: set, limit: int) -> list[dict]:
+def _fetch_priority_unembedded(limit: int) -> list[dict]:
     """Priority article rows (id, title, summary) not yet embedded, up to limit.
     Soft-fails to [] so a priority-computation error (including a missing service
-    key) degrades to today's newest-first behavior instead of crashing."""
+    key) degrades to today's newest-first behavior instead of crashing.
+
+    The embedded-set argument is gone: membership is now probed for exactly the
+    priority ids (a bounded, already-computed list) instead of being answered
+    from a full-table pull of every embedded id.
+    """
     try:
-        pri_ids = [i for i in _priority_article_ids() if i not in embedded][:limit]
+        all_pri = _priority_article_ids()
+        already = _embedded_among("article", all_pri)
+        pri_ids = [i for i in all_pri if i not in already][:limit]
         if not pri_ids:
             return []
         sc = _priority_client()
@@ -260,15 +307,21 @@ def _fetch_priority_unembedded(embedded: set, limit: int) -> list[dict]:
 
 
 def _fetch_unembedded(content_table: str, content_type: str, select_cols: str,
-                      order_col: str, limit: int, embedded: set | None = None) -> list[dict]:
+                      order_col: str, limit: int, exclude_ids: set | None = None) -> list[dict]:
     """Return up to `limit` rows from `content_table` not yet embedded.
 
-    Filters against the embedded-id set IN MEMORY instead of a
-    not.in.(<ids>) URL filter. That exclusion list grew to ~800 ids and
-    overflowed the proxy URL limit (raw 400), so embedding_job silently embedded
-    nothing in pipeline run #142. (Chunking a not.in. list is not an option:
-    each chunk would only exclude its own slice, re-embedding everything.) Pages
-    newest-first so freshly ingested content is embedded first and the scan
+    No id list is ever sent as an EXCLUSION filter. The original bug (run #142)
+    was articles?id=not.in.(<every embedded id>): that list grew without bound
+    and overflowed the proxy URL limit, so the job silently embedded nothing.
+    Chunking a not.in. list cannot fix it either, because each chunk only
+    excludes its own slice. Both remain true and both remain forbidden.
+
+    What changed is how membership is answered. Each candidate PAGE is now
+    probed against content_embeddings for just that page's ids (_embedded_among),
+    instead of the job first pulling every embedded id in the table into memory.
+    Same answer, ~3 orders of magnitude fewer rows visited.
+
+    Pages newest-first so freshly ingested content is embedded first and the scan
     stays bounded -- the newest page is almost always already unembedded.
 
     The order has a stable `id` tiebreaker: `order_col` alone is not a total
@@ -277,12 +330,14 @@ def _fetch_unembedded(content_table: str, content_type: str, select_cols: str,
     appear on two adjacent pages (duplicate embed) or fall between them (skipped
     forever). A backfill on the no-tiebreaker version produced ~262 duplicate
     embeddings and ~262 skips; adding `id` makes pagination exact.
+
+    `exclude_ids` drops rows already claimed by the caller (the priority tier)
+    before they are probed. It is a small in-memory set, never a URL filter.
     """
-    if embedded is None:
-        embedded = _embedded_content_ids(content_type)
+    exclude_ids = exclude_ids or set()
     out: list[dict] = []
     page = 0
-    while len(out) < limit:
+    while len(out) < limit and page < _MAX_CANDIDATE_PAGES:
         rows = (
             supabase.table(content_table)
             .select(select_cols)
@@ -295,20 +350,27 @@ def _fetch_unembedded(content_table: str, content_type: str, select_cols: str,
         )
         if not rows:
             break
-        for r in rows:
-            if r["id"] not in embedded:
+        candidates = [r for r in rows if r["id"] not in exclude_ids]
+        already = _embedded_among(content_type, [r["id"] for r in candidates])
+        for r in candidates:
+            if r["id"] not in already:
                 out.append(r)
                 if len(out) >= limit:
                     break
         if len(rows) < _PAGE_SIZE:
             break
         page += 1
+    if page >= _MAX_CANDIDATE_PAGES and len(out) < limit:
+        print(
+            f"  ℹ️  {content_type}: candidate scan hit the {_MAX_CANDIDATE_PAGES}-page cap "
+            f"with {len(out)}/{limit} found (corpus is caught up; not scanning the rest)"
+        )
     return out
 
 
-def _fetch_unembedded_articles(limit: int, embedded: set | None = None) -> list[dict]:
+def _fetch_unembedded_articles(limit: int, exclude_ids: set | None = None) -> list[dict]:
     """Fetch articles that don't yet have embeddings (newest-first, bounded)."""
-    return _fetch_unembedded("articles", "article", "id, title, summary", "ingested_at", limit, embedded)
+    return _fetch_unembedded("articles", "article", "id, title, summary", "ingested_at", limit, exclude_ids)
 
 
 def _fetch_unembedded_theses(limit: int) -> list[dict]:
@@ -375,15 +437,12 @@ def main():
     total_embedded = 0
 
     # --- Articles: priority tier FIRST, then newest-first fill ---
-    try:
-        embedded_ids = _embedded_content_ids("article")
-    except Exception as e:
-        print(f"⚠️  Failed to load embedded id set: {e}")
-        embedded_ids = set()
+    # No full-table pull of embedded ids any more: each tier probes membership
+    # for only the ids it is actually considering (see _embedded_among).
 
     # Priority tier (Radar-clustered + Calls set). Soft-fails to [] so the run
     # degrades to today's newest-first behavior, never crashes or embeds nothing.
-    priority = _fetch_priority_unembedded(embedded_ids, MAX_ITEMS_PER_RUN)
+    priority = _fetch_priority_unembedded(MAX_ITEMS_PER_RUN)
     priority_id_set = {r["id"] for r in priority}
     print(f"⭐ Priority tier: {len(priority)} unembedded Radar/Calls articles (embedded first)")
 
@@ -391,12 +450,12 @@ def main():
     remaining = MAX_ITEMS_PER_RUN - len(priority)
     if remaining > 0:
         try:
-            newest = _fetch_unembedded_articles(remaining, embedded=embedded_ids)
+            # A priority article can also be newest; exclude it up front so it is
+            # neither probed twice nor embedded twice.
+            newest = _fetch_unembedded_articles(remaining, exclude_ids=priority_id_set)
         except Exception as e:
             print(f"⚠️  Failed to fetch newest-first articles: {e}")
             newest = []
-        # A priority article can also be newest; do not embed it twice.
-        newest = [r for r in newest if r["id"] not in priority_id_set]
 
     articles = (priority + newest)[:MAX_ITEMS_PER_RUN]
     print(f"📄 Embedding {len(articles)} articles ({len(priority)} priority + {len(articles) - len(priority)} newest-fill)")
