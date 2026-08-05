@@ -128,6 +128,25 @@ export interface CallOutcomeBenchmark {
   meaningful_bar_pct: number;
 }
 
+/** One fixed-fraction interim read, written by the long-horizon panel in
+ *  backend/grading/price_attribution.py. Pure price math, no LLM. */
+export interface CallCheckpoint {
+  fraction: number;
+  date: string;
+  sessions: number;
+  entity_pct: number;
+  /** Excess vs the weakest benchmark, signed into the credited direction. */
+  signed_excess_pct: number;
+  bar_pct: number;
+  /** The call was materially behind its benchmarks here. */
+  disagrees: boolean;
+}
+
+/** How strong the attribution claim is. Descriptive: no verdict reads it.
+ *  "high" = short window; "moderate" = long window with agreeing checkpoints;
+ *  "directional" = long window with no usable interim evidence. */
+export type AttributionGrade = "high" | "moderate" | "directional" | "none";
+
 /** metadata jsonb written by the grader. Gradable rows carry the price
  *  evidence; ungradable rows carry ungradable_reason/detail instead. */
 export interface CallOutcomeMetadata {
@@ -142,6 +161,60 @@ export interface CallOutcomeMetadata {
   window?: { from?: string; to?: string };
   ungradable_reason?: string;
   ungradable_detail?: string;
+  /** Present only on long-horizon grades (>= 10 sessions). Absent entirely on
+   *  short calls, whose rows are unchanged by the panel. */
+  horizon_class?: "long";
+  attribution_grade?: AttributionGrade;
+  checkpoints?: CallCheckpoint[];
+  panel?: {
+    agreed: boolean;
+    downgraded: boolean;
+    pre_panel_verdict: string;
+    pre_panel_attribution: string;
+  };
+  window_sessions?: number;
+  threshold_scale?: number;
+}
+
+/**
+ * The honest confidence label for a graded call.
+ *
+ * A quarter-long call and a same-session call can both clear the attribution
+ * bar, but they do not support the same causal claim: a quarter accumulates
+ * earnings, guidance and rotation between entry and exit. This states that
+ * difference instead of letting both render with identical authority.
+ *
+ * Returns null when there is nothing to say (short call, or nothing cleanly
+ * attributed), so the label never becomes decoration.
+ */
+export function attributionGradeLabel(
+  meta: CallOutcomeMetadata | null,
+): string | null {
+  const grade = meta?.attribution_grade;
+  if (!grade || grade === "none") return null;
+  const sessions = meta?.window_sessions;
+  const over = sessions ? ` over ${sessions} sessions` : "";
+  if (grade === "high") return null; // short calls say nothing extra
+  if (grade === "moderate") {
+    return `Directional read${over}: benchmark-relative at every checkpoint.`;
+  }
+  return `Directional read${over}: no interim benchmark evidence available.`;
+}
+
+/**
+ * The one-line explanation of a panel downgrade, or null.
+ *
+ * A downgrade is never silent: the reader is told the terminal numbers cleared
+ * the bar and why that was not enough.
+ */
+export function panelDowngradeNote(
+  meta: CallOutcomeMetadata | null,
+): string | null {
+  if (!meta?.panel?.downgraded) return null;
+  const behind = (meta.checkpoints ?? []).filter((c) => c.disagrees);
+  if (behind.length === 0) return null;
+  const dates = behind.map((c) => c.date).join(" and ");
+  return `Cleared the bar at the close, but trailed its benchmarks at ${dates}. Counted as no clean read, not a win.`;
 }
 
 /** A morning_brief_call_outcomes row as read by the frontend. */
@@ -280,22 +353,37 @@ export function scoredCallProps(
     state: "inconclusive",
   };
 
+  // A long-horizon grade appends its honest confidence label, and a panel
+  // downgrade states plainly what happened.
+  //
+  // A panel downgrade REPLACES the generic attribution line rather than
+  // appending to it. The generic inconclusive line says "below the attribution
+  // bar", which is false for a downgraded call: AMD cleared the 5.95% bar by
+  // 40 points and was downgraded for trailing at its checkpoints. Appending
+  // would have published a sentence contradicted by its own numbers.
+  const downgradeNote = panelDowngradeNote(meta);
+  const gradeLabel = attributionGradeLabel(meta);
+  const withHorizon = (line: string) => {
+    const base = downgradeNote ?? line;
+    return gradeLabel ? `${base} ${gradeLabel}` : base;
+  };
+
   // Attribution wins over raw direction: a move the grader could not credit
   // to the thesis is "No clean read" whatever direction prices went.
   if (outcome.attribution === "confounded") {
-    return { ...resolved, attribution: confoundedAttributionLine(meta) };
+    return { ...resolved, attribution: withHorizon(confoundedAttributionLine(meta)) };
   }
   if (outcome.attribution === "inconclusive") {
-    return { ...resolved, attribution: inconclusiveAttributionLine(meta) };
+    return { ...resolved, attribution: withHorizon(inconclusiveAttributionLine(meta)) };
   }
 
   // attribution === "clean"
   if (outcome.verdict === "correct") {
-    return { ...resolved, state: "right", attribution: cleanAttributionLine(meta) };
+    return { ...resolved, state: "right", attribution: withHorizon(cleanAttributionLine(meta)) };
   }
   if (outcome.verdict === "wrong") {
-    return { ...resolved, state: "wrong", attribution: cleanAttributionLine(meta) };
+    return { ...resolved, state: "wrong", attribution: withHorizon(cleanAttributionLine(meta)) };
   }
   // partial + clean: graded, decoupled from benchmarks, but no directional hit.
-  return { ...resolved, attribution: cleanAttributionLine(meta) };
+  return { ...resolved, attribution: withHorizon(cleanAttributionLine(meta)) };
 }

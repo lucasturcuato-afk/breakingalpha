@@ -128,6 +128,222 @@ def resolve_tier(claim_type: str, symbol: str) -> AttributionTier:
     return TIER_SINGLE_STOCK
 
 
+# ==========================================================================
+# LONG-HORIZON PANEL (checkpoints + strict agreement + cleanliness grade)
+# ==========================================================================
+#
+# A 90-day call that sat flat for 80 sessions and jumped once on the 89th
+# grades identically to one that beat its benchmarks the whole way. Both clear
+# the terminal bar; only one of them is a clean read. The panel separates them
+# WITHOUT touching the bar.
+#
+# THE ONE INVARIANT. The panel is a one-directional gate on crediting. Its only
+# permitted transition is
+#
+#     (correct, clean)  ->  (partial, inconclusive)      i.e. "no clean read"
+#
+# It can never create a correct, never convert a wrong into anything, and never
+# raise an attribution. Removing a WIN lowers the hit rate under both of the
+# rates this codebase computes (right/(right+wrong) on the dashboard, and
+# correct/(correct+wrong+partial) on the briefs); removing a LOSS would raise
+# the first one, which is precisely why losses are untouchable here. See
+# apply_long_horizon_panel and its property test in
+# backend/tests/test_long_horizon_panel.py.
+#
+# NO LLM, NO EXTRA IO. Checkpoints are read off the daily bar series that
+# fetch_historical_candle already returns for the terminal grade, so the panel
+# adds zero API requests, zero rows and zero scheduled jobs.
+
+#: Sessions below which a call is SHORT: the terminal benchmark attribution
+#: stands alone, exactly as before. A same-session brief call has one bar and
+#: nothing to check in between; ~10 sessions (two trading weeks) is the first
+#: point where a third of the window is a meaningful stretch of trading.
+LONG_HORIZON_MIN_SESSIONS = 10
+
+#: Where the checkpoints land, as fractions of the window. FRACTIONS, not fixed
+#: intervals, so the checkpoint count is constant (2) at every horizon: a
+#: quarter-long call costs exactly what a month-long call costs. On a ~63
+#: session quarter these fall near the 1-month and 2-month marks.
+CHECKPOINT_FRACTIONS = (1.0 / 3.0, 2.0 / 3.0)
+
+#: How the strength of an attribution is LABELLED. Descriptive only: no verdict
+#: anywhere reads these, they exist so a long call cannot quietly present
+#: itself with the same authority as a same-session one.
+GRADE_HIGH = "high"                # short window, direct read
+GRADE_MODERATE = "moderate"        # long window, checkpoints agree
+GRADE_DIRECTIONAL = "directional"  # long window, no usable interim evidence
+GRADE_NONE = "none"                # nothing was cleanly attributed
+
+#: Confidence penalty applied to a LONG window's attribution_confidence.
+#: Honest labelling, not a verdict input: a quarter of drift, earnings and
+#: rotation sits between entry and exit, so the same excess return supports a
+#: weaker causal claim than it would over one session.
+LONG_HORIZON_CONFIDENCE_PENALTY = 0.15
+
+
+@dataclass(frozen=True)
+class Checkpoint:
+    """One fixed-fraction interim read. Pure arithmetic over bars already
+    fetched for the terminal grade."""
+
+    fraction: float
+    date: str
+    sessions: int
+    entity_pct: float
+    #: Signed excess vs the WEAKEST benchmark at this point, in the direction
+    #: the terminal grade credited. Negative means the call was behind its
+    #: benchmarks while it was supposedly working.
+    signed_excess_pct: float
+    #: The noise bar at this point, scaled by sqrt(sessions) exactly like the
+    #: terminal bar, so the comparison is dimensionally consistent.
+    bar_pct: float
+    #: True when the call was MATERIALLY behind its benchmarks here, i.e. this
+    #: interim read contradicts a clean terminal win.
+    disagrees: bool
+
+    def as_dict(self) -> dict:
+        return {
+            "fraction": round(self.fraction, 3),
+            "date": self.date,
+            "sessions": self.sessions,
+            "entity_pct": round(self.entity_pct, 3),
+            "signed_excess_pct": round(self.signed_excess_pct, 3),
+            "bar_pct": round(self.bar_pct, 3),
+            "disagrees": self.disagrees,
+        }
+
+
+def _pct_from_open(bars: list[dict], upto_index: int) -> float | None:
+    """Percent move from the first bar's open to bars[upto_index]'s close."""
+    if not bars or upto_index < 0 or upto_index >= len(bars):
+        return None
+    first_open = bars[0].get("open")
+    close = bars[upto_index].get("close")
+    if not first_open or close is None:
+        return None
+    return (close - first_open) / first_open * 100.0
+
+
+def _index_on_or_before(bars: list[dict], day: str) -> int | None:
+    """Index of the last bar dated on or before `day`. Benchmarks and the
+    entity can have different session counts (halts, listings), so checkpoints
+    are aligned by DATE, never by position."""
+    found = None
+    for i, b in enumerate(bars):
+        d = b.get("date") or ""
+        if d and d <= day:
+            found = i
+        else:
+            break
+    return found
+
+
+def compute_checkpoints(
+    entity_bars: list[dict],
+    benchmark_bars: Mapping[str, list[dict]],
+    credited_sign: float,
+    tier: AttributionTier,
+    fractions: tuple[float, ...] = CHECKPOINT_FRACTIONS,
+) -> list[Checkpoint]:
+    """
+    Interim benchmark-excess reads at fixed fractions of the window.
+
+    `credited_sign` is +1/-1 for the direction the terminal grade credited;
+    every excess is signed into that direction so "positive" always means "the
+    call was working" regardless of whether it was bullish or bearish.
+
+    Returns [] when there is nothing honest to compute (too few sessions, no
+    bars, no benchmarks). An empty list never downgrades anything: absence of
+    evidence is not evidence of a dirty win.
+    """
+    n = len(entity_bars)
+    if n < LONG_HORIZON_MIN_SESSIONS or credited_sign == 0.0:
+        return []
+
+    out: list[Checkpoint] = []
+    seen_dates: set[str] = set()
+    for f in fractions:
+        idx = int(f * (n - 1))
+        if idx <= 0 or idx >= n - 1:
+            # Degenerate: a checkpoint at the very start or the terminal bar
+            # tells us nothing the terminal grade does not already say.
+            continue
+        day = entity_bars[idx].get("date") or ""
+        if not day or day in seen_dates:
+            continue
+        entity_pct = _pct_from_open(entity_bars, idx)
+        if entity_pct is None:
+            continue
+
+        # Weakest excess across benchmarks, matching the terminal rule that the
+        # entity must beat EVERY benchmark.
+        worst: float | None = None
+        for bars in benchmark_bars.values():
+            b_idx = _index_on_or_before(bars, day)
+            if b_idx is None:
+                continue
+            b_pct = _pct_from_open(bars, b_idx)
+            if b_pct is None:
+                continue
+            signed = credited_sign * (entity_pct - b_pct)
+            worst = signed if worst is None else min(worst, signed)
+        if worst is None:
+            continue
+
+        sessions_here = idx + 1
+        bar = round(tier.min_excess_pct * window_scale(sessions_here), 3)
+        seen_dates.add(day)
+        out.append(
+            Checkpoint(
+                fraction=f,
+                date=day,
+                sessions=sessions_here,
+                entity_pct=credited_sign * entity_pct,
+                signed_excess_pct=worst,
+                bar_pct=bar,
+                # Materially behind its benchmarks, beyond the noise bar.
+                disagrees=worst <= -bar,
+            )
+        )
+    return out
+
+
+def attribution_grade(
+    attribution: str, sessions: int, checkpoints: list[Checkpoint]
+) -> str:
+    """How strong the attribution claim is, in words. Descriptive only."""
+    if attribution != ATTRIBUTION_CLEAN:
+        return GRADE_NONE
+    if sessions < LONG_HORIZON_MIN_SESSIONS:
+        return GRADE_HIGH
+    return GRADE_MODERATE if checkpoints else GRADE_DIRECTIONAL
+
+
+def apply_long_horizon_panel(
+    result: AttributionResult, checkpoints: list[Checkpoint]
+) -> AttributionResult:
+    """
+    The strict agreement gate. STRICTER OR IDENTICAL, NEVER MORE LENIENT.
+
+    Only one transition exists: a credited, cleanly attributed win whose
+    interim reads contradict it becomes "no clean read". Every other input is
+    returned unchanged, including every WRONG, so a miss can never be
+    downgraded out of the denominator.
+    """
+    if result.verdict != VERDICT_CORRECT or result.attribution != ATTRIBUTION_CLEAN:
+        return result
+    if not any(c.disagrees for c in checkpoints):
+        return result
+    return AttributionResult(
+        verdict=VERDICT_PARTIAL,
+        attribution=ATTRIBUTION_INCONCLUSIVE,
+        realized_direction=result.realized_direction,
+        # A contradicted win is less certain than the terminal numbers implied.
+        attribution_confidence=_clamp_conf(result.attribution_confidence - 0.20),
+        detail={**result.detail, "panel_downgraded": True},
+    )
+
+
 def window_scale(sessions: int) -> float:
     """
     Threshold scale for multi-session grading windows: sqrt(sessions),
@@ -321,7 +537,8 @@ class PriceAttributionGrader:
                 grader=self.name,
             )
 
-        tier = resolve_tier(claim_type, target)
+        base_tier = resolve_tier(claim_type, target)
+        tier = base_tier
         # Multi-session extension (user claims): an optional window_start
         # widens the grading window; brief calls never set it, so their
         # path is unchanged.
@@ -347,9 +564,9 @@ class PriceAttributionGrader:
         # tier unchanged.
         sessions = int(entity.get("candle_count") or 1)
         scale = window_scale(sessions)
-        tier = scale_tier_for_sessions(tier, sessions)
+        tier = scale_tier_for_sessions(base_tier, sessions)
 
-        benchmarks, coverage, bench_error = self._fetch_benchmarks(
+        benchmarks, coverage, bench_error, bench_bars = self._fetch_benchmarks(
             claim_type, target, day_start, day_end, bar_scale=scale
         )
         if bench_error:
@@ -366,10 +583,46 @@ class PriceAttributionGrader:
             benchmarks,
             tier,
         )
+
+        # ---- Long-horizon panel -------------------------------------------
+        # Short calls (under LONG_HORIZON_MIN_SESSIONS) skip this entirely and
+        # keep benchmark attribution alone, so the brief-call path is byte
+        # identical to before. Long calls get fixed-fraction checkpoints read
+        # off bars ALREADY fetched above: no extra request, no extra row.
+        credited_sign = (
+            1.0
+            if result.realized_direction == "up"
+            else -1.0
+            if result.realized_direction == "down"
+            else 0.0
+        )
+        checkpoints = compute_checkpoints(
+            entity.get("bars") or [],
+            bench_bars,
+            credited_sign,
+            # The UNSCALED tier: compute_checkpoints applies its own
+            # sqrt(sessions) scaling per checkpoint. Passing the already
+            # window-scaled tier would square the scaling and inflate a
+            # checkpoint's bar by ~5x on a quarter, which would silently make
+            # the panel almost never fire. That is the failure direction that
+            # matters: a too-large bar makes grading MORE lenient.
+            base_tier,
+        )
+        pre_panel_verdict = result.verdict
+        pre_panel_attribution = result.attribution
+        result = apply_long_horizon_panel(result, checkpoints)
+        panel_downgraded = result.verdict != pre_panel_verdict
+
         confidence = result.attribution_confidence
         if coverage == "market_only" and claim_type == "ticker":
             # Sector benchmark unavailable: attribution is less grounded.
             confidence = _clamp_conf(confidence - 0.15)
+        if sessions >= LONG_HORIZON_MIN_SESSIONS:
+            # A quarter of drift, earnings and rotation sits between entry and
+            # exit: the same excess supports a weaker causal claim than it
+            # would over one session. Labelling only; no verdict reads this.
+            confidence = _clamp_conf(confidence - LONG_HORIZON_CONFIDENCE_PENALTY)
+        grade = attribution_grade(result.attribution, sessions, checkpoints)
 
         return Outcome(
             verdict=result.verdict,
@@ -410,6 +663,32 @@ class PriceAttributionGrader:
                     if sessions > 1
                     else {}
                 ),
+                # Long-horizon panel keys, likewise added only where the panel
+                # actually ran. A short call's row is unchanged in every byte.
+                **(
+                    {
+                        "horizon_class": "long",
+                        "attribution_grade": grade,
+                        "checkpoints": [c.as_dict() for c in checkpoints],
+                        "panel": {
+                            # A FACT about the checkpoints, independent of
+                            # whether the panel acted: the panel only evaluates
+                            # credited clean wins, so a confounded call can
+                            # carry a disagreeing checkpoint and never be
+                            # downgraded. Reporting "agreed" as "not
+                            # downgraded" would have claimed agreement that did
+                            # not exist.
+                            "agreed": not any(c.disagrees for c in checkpoints),
+                            "downgraded": panel_downgraded,
+                            # What the terminal numbers alone would have said,
+                            # so a downgrade is auditable rather than silent.
+                            "pre_panel_verdict": pre_panel_verdict,
+                            "pre_panel_attribution": pre_panel_attribution,
+                        },
+                    }
+                    if sessions >= LONG_HORIZON_MIN_SESSIONS
+                    else {}
+                ),
             },
         )
 
@@ -429,15 +708,19 @@ class PriceAttributionGrader:
         day_start: datetime,
         day_end: datetime,
         bar_scale: float = 1.0,
-    ) -> tuple[list[BenchmarkMove], str, str | None]:
-        """Returns (benchmarks, coverage, error). A non-None error means
-        required benchmark data failed and the call is ungradable.
+    ) -> tuple[list[BenchmarkMove], str, str | None, dict[str, list[dict]]]:
+        """Returns (benchmarks, coverage, error, bars_by_symbol). A non-None
+        error means required benchmark data failed and the call is ungradable.
         bar_scale scales the benchmarks' meaningful-move bars for
-        multi-session windows; the default 1.0 is the brief-call path."""
+        multi-session windows; the default 1.0 is the brief-call path.
+
+        bars_by_symbol carries each benchmark's daily series from the SAME
+        fetch, so the long-horizon checkpoint panel can align interim reads
+        against it without issuing a second request."""
         sym = entity_symbol.upper()
         if claim_type == "index" or sym in BROAD_INDEX_ETFS:
             # The index is the market; grading is absolute.
-            return [], "none", None
+            return [], "none", None, {}
 
         wanted: list[tuple[str, str, float]] = []
         if claim_type == "ticker" and sym not in SECTOR_ETF_SYMBOLS:
@@ -451,6 +734,7 @@ class PriceAttributionGrader:
         )
 
         moves: list[BenchmarkMove] = []
+        bars_by_symbol: dict[str, list[dict]] = {}
         for role, bench_sym, bar in wanted:
             candle = self._fetch_candle(bench_sym, day_start, day_end)
             if not candle:
@@ -459,14 +743,18 @@ class PriceAttributionGrader:
                     "none",
                     f"benchmark {bench_sym} ({role}) has no session candle "
                     f"for {day_start.date().isoformat()}",
+                    {},
                 )
             b_open, b_close = candle["open_price"], candle["close_price"]
             b_pct = ((b_close - b_open) / b_open * 100.0) if b_open else 0.0
             moves.append(BenchmarkMove(bench_sym, role, b_pct, bar))
+            series = candle.get("bars")
+            if series:
+                bars_by_symbol[bench_sym] = series
 
         has_sector = any(b.role == "sector" for b in moves)
         coverage = "sector_and_market" if has_sector else "market_only"
-        return moves, coverage, None
+        return moves, coverage, None, bars_by_symbol
 
 
 def _parse_grading_date(value: object) -> date | None:

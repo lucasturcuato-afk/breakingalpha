@@ -66,10 +66,27 @@ from backend.grading.price_attribution import PriceAttributionGrader
 from backend.grading.resolver import Outcome, default_resolver
 
 
+#: Whether the grading loop may call an LLM at all.
+#:
+#: DEFAULT OFF. Grading is pure price math: the verdict, the attribution, the
+#: checkpoints and the long-horizon panel are all deterministic arithmetic, and
+#: the only LLM that was ever in this loop wrote the display sentence AFTER the
+#: verdict was already decided. That still cost one Gemini request per graded
+#: call and made "no LLM in the grading loop" untrue, so it is now opt-in.
+#:
+#: Off, verdict_notes is the deterministic sentence built from the same numbers
+#: the card already renders, so nothing is lost but the prose styling, and a
+#: grading run costs exactly zero API spend beyond the price fetches.
+#: Set GRADER_LLM_NOTES=1 to restore the generated prose.
+def _llm_notes_enabled() -> bool:
+    return os.environ.get("GRADER_LLM_NOTES", "").strip().lower() in {"1", "true", "yes"}
+
+
 def gemini_verdict_notes(claim_text: str, expected: str, outcome: Outcome) -> str:
-    """Generate 1-2 sentence reasoning via Gemini. Display text only; the
-    verdict itself is computed deterministically before this runs.
-    Graceful deterministic fallback on any failure."""
+    """The verdict sentence. Deterministic by default (no network, no spend);
+    optionally phrased by Gemini when GRADER_LLM_NOTES is set. The verdict
+    itself is computed before this runs either way, and any failure falls back
+    to the deterministic text."""
     meta = outcome.metadata
     entity_pct = meta.get("entity_move_pct")
     fallback = (
@@ -85,6 +102,9 @@ def gemini_verdict_notes(claim_text: str, expected: str, outcome: Outcome) -> st
         )
         + "."
     )
+    if not _llm_notes_enabled():
+        return fallback
+
     try:
         from google import genai  # google-genai
 

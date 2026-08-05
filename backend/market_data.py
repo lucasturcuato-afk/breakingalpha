@@ -297,6 +297,23 @@ def fetch_historical_candle(
         return None
     open_price, close_price = first[0], last[1]
     pct_change = ((close_price - open_price) / open_price) * 100 if open_price else 0.0
+
+    # Per-session series, carried alongside the summary.
+    #
+    # The bars were already fetched and were previously discarded, keeping only
+    # first-open and last-close. The long-horizon checkpoint panel
+    # (backend/grading/price_attribution.py) reads interim points off THIS list
+    # rather than issuing extra requests, so checkpoints cost zero additional
+    # Tiingo calls against the 45/hour, 950/day budget. Adjusted prices only,
+    # same as the summary, so a split cannot skew an interim read.
+    series: list[dict] = []
+    for bar in bars:
+        oc = _bar_open_close(bar)
+        day = (bar.get("date") or "")[:10]
+        if oc is None or not day:
+            continue
+        series.append({"date": day, "open": oc[0], "close": oc[1]})
+
     return {
         "open_price": round(open_price, 2),
         "close_price": round(close_price, 2),
@@ -304,6 +321,7 @@ def fetch_historical_candle(
         "candle_count": len(bars),
         "from_ts": from_ts.isoformat(),
         "to_ts": to_ts.isoformat(),
+        "bars": series,
     }
 
 
