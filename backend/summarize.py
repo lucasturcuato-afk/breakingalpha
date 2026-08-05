@@ -598,37 +598,25 @@ def generate_weekly_digest(brief_type: str) -> dict:
         digest["gemini_digest"] = gemini_digest
 
         # ---- Gemini call 2: thesis prompt addendum ---------------------
-        # Pull top patterns from pattern_library so the addendum can cite
-        # real win rates from graded thesis history. Never blocks on failure.
-        top_pattern_rows: list[dict] = []
-        try:
-            import pattern_memory  # local import — avoid circular import at boot
-            top_pattern_rows = pattern_memory.top_patterns(limit=5, min_n=5)
-        except Exception as e:
-            logger.warning("weekly_digest: top patterns lookup failed: %s", e)
-
-        # Phase 6: pre-format long-form pattern phrasing so Gemini can cite
-        # real stats verbatim instead of hallucinating percentages. Each
-        # line reads naturally when spliced into a thesis generation prompt.
-        pattern_phrasings: list[str] = []
-        for p in top_pattern_rows:
-            try:
-                sector = p.get("sector") or "Unknown"
-                horizon = p.get("horizon") or "30d"
-                dom = p.get("dominant_signal") or "mixed"
-                n_obs = int(p.get("n_observed") or 0)
-                n_conf = int(p.get("n_confirmed") or 0)
-                wr_raw = p.get("win_rate")
-                if wr_raw is None or n_obs < 5:
-                    continue
-                wr_pct = int(round(float(wr_raw) * 100))
-                pattern_phrasings.append(
-                    f"{sector} theses on a {horizon} horizon with a "
-                    f"{dom} dominant signal have historically confirmed at "
-                    f"{wr_pct}% ({n_conf}/{n_obs})."
-                )
-            except Exception:
-                continue
+        # The pattern_library block that used to sit here is REMOVED.
+        #
+        # It called `pattern_memory.top_patterns(limit=5, min_n=5)` and rendered
+        # each row into a sentence like "X theses on a 30d horizon with a Y
+        # dominant signal have historically confirmed at Z% (n/m)", then told
+        # Gemini to weave one in VERBATIM and keep the percentages "numerically
+        # exact" because they were "drawn from real graded thesis outcomes".
+        #
+        # Measured against production, exactly one bucket clears min_n=5:
+        # `General|30d|unknown`, 0 confirmed of 7, win_rate 0.0. So the one
+        # sentence this could emit was a claim that General/30d/unknown theses
+        # confirm 0% of the time, stated as calibration data, in a thesis
+        # generation system prompt. The whole library holds 27 buckets, 22 at
+        # n_observed = 1, and 3 confirmed theses in total.
+        #
+        # `win_rate = n_confirmed / n_observed` also counts inconclusive and
+        # ungradable theses as non-confirmations, so a 0% bucket means "never
+        # resolved", not "never worked". Do not reinstate without a signal that
+        # clears a stated sample bar.
 
         thesis_addendum = ""
         if gemini_client is not None:
@@ -638,8 +626,6 @@ def generate_weekly_digest(brief_type: str) -> dict:
                     "underrepresented_clusters": underrepresented_clusters,
                     "recurring_themes": recurring_themes,
                     "total_missed_score10": int(total_missed_score10),
-                    "top_patterns": top_pattern_rows,
-                    "pattern_phrasings": pattern_phrasings,
                 }
                 prompt = (
                     "Given this weekly pipeline feedback:\n\n"
@@ -651,13 +637,7 @@ def generate_weekly_digest(brief_type: str) -> dict:
                     "underrepresented clusters by their label name.\n"
                     "2. Warns against any patterns matching the recurring soft flags.\n"
                     "3. Notes the most recurring market themes to weave into "
-                    "thesis framing.\n"
-                    "4. If pattern_phrasings is non-empty, weave in at least one "
-                    "line VERBATIM from that list (do not paraphrase the "
-                    "percentages — they are drawn from real graded thesis "
-                    "outcomes in pattern_library and must stay numerically "
-                    "exact) so the generator can calibrate conviction based "
-                    "on prior graded theses.\n\n"
+                    "thesis framing.\n\n"
                     "Format: a single plain paragraph, no headers, no bullets, "
                     "no preamble. This text will be appended directly to a thesis "
                     "generation system prompt."

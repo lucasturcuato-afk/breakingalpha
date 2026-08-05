@@ -80,145 +80,94 @@ except Exception:  # pragma: no cover - usage logging must never break import
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 
 # ---------------------------------------------------------------------------
-# Phase 5 — source credibility multiplier
-# Each cluster's aggregate strength is nudged by the mean win_rate of its
-# contributing sources. The table is populated by `source_credibility.py`
-# after `thesis_grader` produces outcomes. Until the table has rows we skip
-# the multiplier entirely (returning the original strength untouched) so
-# cold-start runs aren't halved by a blanket 0.5 default.
+# Phase 5 source credibility multiplier — REMOVED (see below). Do not restore.
 # ---------------------------------------------------------------------------
-try:
-    import source_credibility as _src_cred
-except Exception:
-    _src_cred = None
-
-_SOURCE_WIN_RATES: dict[str, float] | None = None
-_SOURCE_WIN_RATES_LOADED = False
-_SOURCE_WIN_RATE_DEFAULT = 0.5
-
-
-def _get_source_win_rates() -> dict[str, float] | None:
-    """Load and cache `{source: win_rate}` for this process. None = skip."""
-    global _SOURCE_WIN_RATES, _SOURCE_WIN_RATES_LOADED
-    if _SOURCE_WIN_RATES_LOADED:
-        return _SOURCE_WIN_RATES
-    _SOURCE_WIN_RATES_LOADED = True
-    if _src_cred is None:
-        _SOURCE_WIN_RATES = None
-        return None
-    try:
-        _SOURCE_WIN_RATES = _src_cred.load_win_rates()
-    except Exception:
-        _SOURCE_WIN_RATES = None
-    return _SOURCE_WIN_RATES
+# What used to live here: `_apply_source_credibility` multiplied every cluster's
+# strength by the MEAN `source_credibility.win_rate` of its distinct sources,
+# with unknown sources defaulting to 0.5. The old header called it "a gentle
+# multiplier". It was not one, in three separate ways.
+#
+# 1. IT WAS UNBOUNDED DOWNWARD. `mult` ranged over [0.0, 1.0] with no floor, so
+#    a cluster could be multiplied to exactly zero. The `_apply_pattern_boost`
+#    directly below it IS bounded, to [0.85, 1.15]; this one never was.
+#
+# 2. THE SCORES IT READ WERE STRUCTURALLY BROKEN. source_credibility.py computes
+#    win_rate = n_confirmed / n_theses over `theses.outcome`, an LLM prose
+#    verdict, and it counts `inconclusive` and `ungradable` in the DENOMINATOR
+#    while computing `n_invalidated` and never using it. Production has 39
+#    graded theses: 28 inconclusive, 7 ungradable, 3 confirmed, 1 invalidated.
+#    So 18 of 22 sources sit at win_rate 0.0 — not because they were wrong, but
+#    because their theses never resolved. Being demonstrably wrong and being
+#    merely unresolved produce the identical score.
+#
+# 3. THE MEASURED EFFECT WAS A BLANKET HAIRCUT PLUS ARBITRARY ZEROING. Yahoo,
+#    the largest named source at 359 articles per 48h, carried win_rate 0.0, as
+#    did NYT Business, FT Tech and Axios. A cluster drawn only from those was
+#    zeroed outright. And because only 19 of 781 distinct sources in a 48h
+#    window appear in the table at all, the typical cluster landed near the 0.5
+#    unknown-source default: an across-the-board halving. Meanwhile the three
+#    sources at win_rate 1.0 each earned it on a single thesis.
+#
+# That is not cosmetic. `strength_score` is persisted to trend_clusters and both
+# generators rank on it (`thesis_generator._fetch_latest_clusters` and
+# src/app/api/theses/route.ts both ORDER BY strength_score DESC, take the top
+# 10, print the number into the prompt, and instruct the model to prioritise
+# higher values). `underrepresented_flag` also tests strength against an
+# ABSOLUTE floor (UNDERREPRESENTED_STRENGTH_FLOOR), which a uniform halving
+# quietly suppresses.
+#
+# Cluster strength is now `score_cluster_strength` alone: article count, source
+# diversity, and relevance. Generation behaves as if credibility weighting is
+# neutral, which is the honest state until an outcome-based signal matures.
+#
+# THE REPLACEMENT IS NOT READY AND WAS DELIBERATELY NOT WIRED IN HERE.
+# backend/source_reliability.py derives accuracy from the clean
+# price-attribution grader, but measured against production it yields 40 clean
+# directional outcomes -> 13 attributable -> 10 identities, of which ZERO clear
+# the n>=10 reporting bar and zero clear the n>=30 weighting bar (largest is
+# n=3). Wiring it in today would substitute one noise source for another. When
+# an identity reaches `ready_for_weighting`, add a BOUNDED multiplier here.
 
 
 # ---------------------------------------------------------------------------
-# Phase 6 — pattern library feedback boost
-# Clusters whose dominant sector matches a high-win-rate historical pattern
-# get a gentle multiplier nudge so they rank above identical-strength
-# clusters with no historical backing. The boost is bounded to [0.9, 1.15]
-# — enough to tie-break reliably, never enough to invert a weaker cluster
-# above a much stronger one.
+# Phase 6 pattern library feedback boost — REMOVED (see below). Do not restore.
 # ---------------------------------------------------------------------------
-try:
-    import pattern_memory as _pattern_memory
-except Exception:
-    _pattern_memory = None
-
-_PATTERN_SECTOR_RATES: dict[str, float] | None = None
-_PATTERN_SECTOR_RATES_LOADED = False
-
-
-def _get_pattern_sector_rates() -> dict[str, float] | None:
-    """Return {sector: best_win_rate} across horizons and signals. None = skip."""
-    global _PATTERN_SECTOR_RATES, _PATTERN_SECTOR_RATES_LOADED
-    if _PATTERN_SECTOR_RATES_LOADED:
-        return _PATTERN_SECTOR_RATES
-    _PATTERN_SECTOR_RATES_LOADED = True
-    if _pattern_memory is None:
-        _PATTERN_SECTOR_RATES = None
-        return None
-    try:
-        # Pull up to 200 patterns with n_observed >= 5 and build a
-        # per-sector maximum win rate. query_relevant_patterns is ordered
-        # by win_rate desc so the first hit per sector is the best one.
-        rows = _pattern_memory.query_relevant_patterns(
-            sector=None, horizon=None, min_n=5, limit=200,
-        )
-        best: dict[str, float] = {}
-        for r in rows or []:
-            sector = r.get("sector") or ""
-            wr = r.get("win_rate")
-            if not sector or wr is None:
-                continue
-            try:
-                val = float(wr)
-            except Exception:
-                continue
-            if sector not in best or val > best[sector]:
-                best[sector] = val
-        _PATTERN_SECTOR_RATES = best if best else None
-    except Exception:
-        _PATTERN_SECTOR_RATES = None
-    return _PATTERN_SECTOR_RATES
-
-
-def _apply_pattern_boost(cluster, strength: float) -> float:
-    """
-    Nudge a cluster's strength by its dominant sector's historical win rate.
-    Multiplier = 1 + 0.3 * (win_rate - 0.5) → capped to [0.85, 1.15].
-    Returns strength unchanged when pattern data is missing or inconclusive.
-    """
-    try:
-        rates = _get_pattern_sector_rates()
-        if not rates or not cluster:
-            return strength
-        # Dominant sector = most common non-empty sector in the cluster
-        counts: dict[str, int] = {}
-        for art in cluster:
-            sec = art.get("sector")
-            if sec:
-                counts[sec] = counts.get(sec, 0) + 1
-        if not counts:
-            return strength
-        dominant = max(counts, key=counts.get)
-        wr = rates.get(dominant)
-        if wr is None:
-            return strength
-        mult = 1.0 + 0.3 * (float(wr) - 0.5)
-        mult = max(0.85, min(1.15, mult))
-        return round(max(0.0, min(1.0, float(strength) * mult)), 4)
-    except Exception:
-        return strength
-
-
-def _apply_source_credibility(cluster, strength: float) -> float:
-    """
-    Multiply a cluster's strength by the mean win_rate of its contributing
-    sources. Unknown sources fall back to `_SOURCE_WIN_RATE_DEFAULT` (0.5).
-    Returns the original strength unchanged when the table is missing.
-    """
-    try:
-        rates = _get_source_win_rates()
-        if rates is None:
-            return strength
-        if not cluster:
-            return strength
-        seen: set[str] = set()
-        weights: list[float] = []
-        for art in cluster:
-            src = art.get("source") or ""
-            if not src or src in seen:
-                continue
-            seen.add(src)
-            weights.append(float(rates.get(src, _SOURCE_WIN_RATE_DEFAULT)))
-        if not weights:
-            return strength
-        mult = sum(weights) / len(weights)
-        return round(max(0.0, min(1.0, float(strength) * mult)), 4)
-    except Exception:
-        return strength
+# What used to live here: `_get_pattern_sector_rates` pulled the best
+# `pattern_library.win_rate` per sector (min_n=5) and `_apply_pattern_boost`
+# nudged each cluster's strength by `1 + 0.3 * (win_rate - 0.5)`, clamped to
+# [0.85, 1.15]. Unlike the source-credibility multiplier removed above, this one
+# WAS bounded. It was removed for the other two reasons, which it shares.
+#
+# 1. SAME BROKEN DENOMINATOR. pattern_memory.py computes
+#    win_rate = n_confirmed / n_observed over `theses.outcome`, counting
+#    `inconclusive` and `ungradable` as observations that failed to confirm. The
+#    underlying corpus is 39 graded theses of which 28 are inconclusive and 7
+#    ungradable, so a bucket reads 0.0 when its theses never resolved, not when
+#    its pattern failed.
+#
+# 2. IT COULD ONLY EVER PENALISE. Measured against production: pattern_library
+#    holds 27 buckets, 22 of them at n_observed = 1, and the TOTAL n_confirmed
+#    across every bucket is 3. Exactly ONE bucket clears the min_n=5 gate:
+#    `General|30d|unknown`, 0 confirmed of 7, win_rate 0.0. So the per-sector
+#    map was `{"General": 0.0}` and the only multiplier this code could produce
+#    was 1 + 0.3 * (0.0 - 0.5) = 0.85, clamped at the floor. A "boost" that can
+#    only subtract 15%, and only from clusters whose dominant sector is the
+#    catch-all label "General". The three buckets at win_rate 1.0 are all
+#    n_observed = 1 and never clear the gate.
+#
+# Note also that the bucket key is derived from `signal_breakdown` sampled at
+# GRADE time, not at generation time, and `dominant_signal = "unknown"` is what
+# that produces when the bundle is missing entirely. So the one qualifying
+# bucket is not a pattern at all.
+#
+# Cluster strength is now `score_cluster_strength` alone: article count, source
+# diversity, and relevance. No learned multiplier is applied to it.
+#
+# THE RAW PATTERN SIGNAL WAS DELIBERATELY NOT SWAPPED IN. It is as immature as
+# the credibility signal removed above: zero buckets clear n_observed >= 10, one
+# clears 5, and the whole library rests on 3 confirmed theses. Restoring any
+# weighting here requires an outcome-based signal that clears a stated sample
+# bar, and it must stay bounded.
 
 
 # ---------------------------------------------------------------------------
@@ -1121,9 +1070,12 @@ def map_trends(brief_type, started_at, run_id=None):
         try:
             cluster_key = make_cluster_key(cluster)
             label       = make_cluster_label(cluster)
+            # Cluster strength is the unweighted score. Both learned multipliers
+            # that used to sit here (Phase 5 source credibility, Phase 6 pattern
+            # library) are removed; see the two comment blocks near the top of
+            # this module for the measured reasons. Do not add another without a
+            # bounded multiplier and a signal that clears a stated sample bar.
             strength    = score_cluster_strength(cluster)
-            strength    = _apply_source_credibility(cluster, strength)  # Phase 5
-            strength    = _apply_pattern_boost(cluster, strength)       # Phase 6
             confidence  = score_cluster_confidence(cluster)
 
             cluster_type, matched_run_count, matched_prior_keys = classify_cluster_type(
