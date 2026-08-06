@@ -743,6 +743,7 @@ export default function CallsPage() {
                                 gradeable={isPriceableClaimType(c.claim_type)}
                                 trustLineId={BRIEF_TRUST_LINE_ID}
                                 error={adoptError[c.id] ?? null}
+                                today={today}
                               />
                               ) : undefined
                             }

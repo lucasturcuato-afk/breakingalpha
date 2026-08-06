@@ -520,6 +520,7 @@ export default function BriefCallsSection({
                 justStamped={justStamped}
                 gradeable={isPriceableClaimType(c.claim_type)}
                 trustLineId={TRUST_LINE_ID}
+                today={todayPt || null}
                 error={trackError[c.id] ?? null}
               />
             ) : undefined

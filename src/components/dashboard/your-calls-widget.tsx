@@ -8,6 +8,7 @@ import {
   isAwaitingOwnVerdict,
   type ClaimOutcomeRow,
 } from "@/lib/claim-outcome";
+import { VERDICT_WORD } from "@/lib/verdict-vocabulary";
 
 /**
  * YourCallsWidget — the user's OWN calls, from GET /api/radar/claims
@@ -55,15 +56,26 @@ function directionTone(dir: string | null): string {
   return "text-text-muted border-border-base bg-parchment-mid";
 }
 
-/** Verdict label + tone, only ever from the claim's own outcome row. */
+/**
+ * Verdict label + tone, only ever from the claim's own outcome row.
+ *
+ * The word comes from the shared vocabulary table, never a local Right/Wrong
+ * pair. These are the reader's OWN claims, which is where the difference
+ * between "the evidence challenged this" and "you were wrong" decides whether
+ * someone keeps a record at all.
+ */
 function verdictChip(outcome: ClaimOutcomeRow): { label: string; cls: string } {
   const v = (outcome.verdict ?? "").toLowerCase();
   const clean = (outcome.attribution ?? "").toLowerCase() === "clean";
-  if (v === "correct" && clean) return { label: "Right", cls: "text-signal-up" };
-  if (v === "wrong" && clean) return { label: "Wrong", cls: "text-signal-dn" };
+  if (v === "correct" && clean) {
+    return { label: VERDICT_WORD.supported!, cls: "text-signal-up" };
+  }
+  if (v === "wrong" && clean) {
+    return { label: VERDICT_WORD.challenged!, cls: "text-signal-dn" };
+  }
   if (v === "ungradable") return { label: "Ungradable", cls: "text-text-faint" };
   // partial, or a verdict without a clean attribution: no clean read.
-  return { label: "No clean read", cls: "text-text-muted" };
+  return { label: VERDICT_WORD.noCleanRead!, cls: "text-text-muted" };
 }
 
 export function YourCallsWidget() {

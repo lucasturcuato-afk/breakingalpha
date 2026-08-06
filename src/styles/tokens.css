@@ -113,7 +113,7 @@
   --type-display-xl-weight: 500;
   --type-display-xl-tracking: -0.01em;
   --type-display-xl-leading: 0.9;
-  --type-verdict-size: 31px;       /* Right / Wrong verdict word */
+  --type-verdict-size: 31px;       /* legacy large verdict word, no longer used on the card */
   --type-verdict-weight: 500;
   --type-verdict-leading: 1.05;
   --type-verdict-phrase-size: 24px; /* "No clean read" runs smaller (it's a phrase) */
