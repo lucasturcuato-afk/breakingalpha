@@ -1,14 +1,20 @@
 /**
- * ComingSoonTab -- F6/F7/F8/F9 placeholder tab content.
+ * ComingSoonTab -- placeholder tab content for tabs that are not built yet.
  * Tab IDs LOCKED via PR-A2: F6 Filings, F7 Transcripts, F8 Insider, F9 Comps.
+ *
+ * F8 Insider is NO LONGER a placeholder. It renders InsiderTab from real
+ * insider_transactions rows, so its slot config is gone from here. The copy it
+ * used to carry ("Pending the SEC Form 4 ingest fix") described a fix that was
+ * not pending, and it stayed reachable through the type union after the real
+ * tab shipped. Do not re-add a slot for a tab that has real content.
  */
 
 import type { ReactNode } from "react";
-import { FileText, Mic, Scale, UserRound } from "lucide-react";
+import { FileText, Mic, Scale } from "lucide-react";
 import type { CompanyTabId } from "@/hooks/useCompanyTabState";
 import { ComingSoonCard } from "@/components/company/ComingSoonCard";
 
-type ComingSoonTabId = Extract<CompanyTabId, "filings" | "transcripts" | "insider" | "comps">;
+type ComingSoonTabId = Extract<CompanyTabId, "filings" | "transcripts" | "comps">;
 
 interface SlotConfig {
   slot: "f6" | "f7" | "f8" | "f9";
@@ -33,13 +39,6 @@ const SLOTS: Record<ComingSoonTabId, SlotConfig> = {
     description: "Earnings call transcripts with speaker turns, sentiment, and key Q&A pulls.",
     step: "",
     icon: <Mic className={ICON} />,
-  },
-  insider: {
-    slot: "f8",
-    title: "Insider",
-    description: "Form 4 insider buys and sells, ranked by signal strength and recency.",
-    step: "Pending the SEC Form 4 ingest fix",
-    icon: <UserRound className={ICON} />,
   },
   comps: {
     slot: "f9",

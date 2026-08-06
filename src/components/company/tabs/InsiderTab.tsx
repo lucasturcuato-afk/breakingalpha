@@ -32,6 +32,7 @@ import {
   formatRole,
   type InsiderTransaction,
 } from "@/lib/insider-transactions";
+import { INSIDER_COVERAGE_NOTE, insiderEmptyCopy } from "./empty-state-copy";
 
 export interface InsiderTabProps {
   transactions: InsiderTransaction[];
@@ -142,17 +143,28 @@ export function InsiderTab({ transactions, hasCik }: InsiderTabProps) {
     [transactions],
   );
 
-  if (!hasCik || transactions.length === 0) {
+  // Branch on rows FIRST, not on hasCik. getInsiderTransactions falls back to a
+  // company_id match when the CIK is unresolved, so rows can arrive with
+  // cik === null; the old `!hasCik || length === 0` guard hid real transactions
+  // in that case.
+  if (transactions.length === 0) {
+    const copy = insiderEmptyCopy(hasCik);
     return (
       <div
         data-testid="insider-tab"
         className="rounded-md border border-border-subtle bg-cream-hi p-6"
       >
         <p data-testid="insider-empty-state" className="text-sm text-text-muted">
-          {hasCik
-            ? "No insider transactions recorded for this company."
-            : "No SEC identity for this company, so no Section 16 filings are tracked."}
+          {copy.headline}
         </p>
+        {copy.note ? (
+          <p
+            data-testid="insider-coverage-note"
+            className="mt-2 text-[11px] text-text-muted"
+          >
+            {copy.note}
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -190,10 +202,7 @@ export function InsiderTab({ transactions, hasCik }: InsiderTabProps) {
       )}
 
       <p data-testid="insider-coverage-note" className="text-[11px] text-text-muted">
-        Source: SEC Form 4 filings. Coverage is partial: the ingest records
-        open-market purchases and sales, and records a sale only when it exceeds
-        $1,000,000 or the filer is an executive officer. Absence of a row is not
-        evidence that no transaction occurred.
+        {INSIDER_COVERAGE_NOTE}
       </p>
     </div>
   );
