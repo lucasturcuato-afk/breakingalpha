@@ -1,0 +1,61 @@
+# Known-failing backend tests, deselected from the CI gate and reported separately.
+#
+# WHY THIS FILE EXISTS. backend/tests/ was executed by nothing until this file's
+# PR. test_macro_slice2.py held the correct failing assertion for the
+# _MACRO_MONTHS constant collision and was RED from 2026-07-10 to 2026-08-08,
+# silently disabling every release-day code path for four weeks across four
+# merged PRs. Wiring the suite into CI is only useful if the job is green on day
+# one; a job that is red on arrival gets disabled within a day and we are back
+# where we started. So the 13 pre-existing failures below are deselected from the
+# gate and printed by a separate, visible, non-blocking step.
+#
+# EVERY LINE HERE IS A DEBT, NOT AN EXEMPTION. Delete a line as soon as its test
+# is fixed. The gate covers everything not listed.
+#
+# All 13 were verified identical at 6992ec29 (before #556, #557 and #558), so
+# none were introduced by those merges. Verified deterministic across repeated
+# runs at three commits: no flakes.
+#
+# Format: one pytest node id per line. Blank lines and # comments ignored.
+
+
+# ---------------------------------------------------------------------------
+# CLASS (b) STALE TEST: production deliberately changed, the test double did not.
+# ---------------------------------------------------------------------------
+# backend/ingest.py:1696 now passes cache_name= into the filter callable. These
+# five test doubles were written before that parameter existed and raise
+# TypeError: got an unexpected keyword argument 'cache_name'. The last two are
+# downstream cascades of the same TypeError, not separate defects.
+backend/tests/test_ingest.py::FilterRetryTest::test_both_calls_none_drops
+backend/tests/test_ingest.py::FilterRetryTest::test_first_call_success_no_retry
+backend/tests/test_ingest.py::FilterRetryTest::test_retry_after_first_none
+backend/tests/test_ingest.py::FilterArticlesOrchestrationTest::test_results_index_aligned_with_none_for_drops
+backend/tests/test_ingest.py::FilterArticlesOrchestrationTest::test_single_article_kept
+
+# market_tape now serializes an 'open' subfield. These assert the older two-key
+# shape: {'pct': ..., 'level': ...} != {'pct': ..., 'level': ..., 'open': ...}.
+backend/tests/test_market_tape.py::SerializeTapeSnapshotTests::test_missing_dow_serializes_to_null_subfields
+backend/tests/test_market_tape.py::SerializeTapeSnapshotTests::test_missing_symbol_serializes_null_subfields
+backend/tests/test_market_tape.py::SerializeTapeSnapshotTests::test_serializes_expected_shape
+
+# The committed offline fixture expects winner 'co:spacex:stock'; the harness now
+# selects 'co:qualcomm:ma'. Needs an owner decision on whether the fixture or the
+# selector is wrong. This one is the likeliest of the three (b) groups to be
+# hiding a real behavior change, so treat it as the highest-priority debt here.
+backend/tests/test_lead_overview_offline.py::Assertion1_LeadIsFreshNotStaleDebut::test_winner_is_fresh_event_not_stale_debut
+backend/tests/test_lead_overview_offline.py::Assertion8_HarnessHonestyMetaCheck::test_real_fixture_winner_satisfies_predicate
+
+
+# ---------------------------------------------------------------------------
+# CLASS (c) REQUIRES PROD CREDENTIALS: cannot be a CI gate.
+# ---------------------------------------------------------------------------
+# These execute run.py's __main__ and assert exit 0. Without a real
+# SUPABASE_SERVICE_ROLE_KEY the STORY RAIL step fails with
+#   "SUPABASE_SERVICE_ROLE_KEY required to persist the story rail"
+# and run.py correctly reports the run as degraded, exiting 1. The tests are
+# behaving as designed; the environment simply cannot satisfy them. Putting a
+# service-role key into CI to make these pass would be strictly worse than
+# leaving them out.
+backend/tests/test_run_degraded.py::RunDegradedTest::test_benign_addendum_nothing_to_improve_stays_green
+backend/tests/test_run_degraded.py::RunDegradedTest::test_benign_no_brief_scoring_skip_stays_green
+backend/tests/test_run_degraded.py::RunDegradedTest::test_happy_path_exit_zero

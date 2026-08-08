@@ -12,6 +12,20 @@ on:
       - 'requirements*.txt'
       - 'ruff.toml'
       - 'scripts/verify-py.sh'
+      - 'scripts/backend-tests.sh'
+      - '.github/workflows/verify-py.yml'
+  # Also on pushes to main. A gate that only runs pre-merge cannot tell you that
+  # main itself went red, which is exactly how backend/tests/ stayed broken for
+  # four weeks.
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'requirements*.txt'
+      - 'ruff.toml'
+      - 'scripts/verify-py.sh'
+      - 'scripts/backend-tests.sh'
       - '.github/workflows/verify-py.yml'
 
 # Cancel superseded runs on the same PR branch so only the latest commit's gate
@@ -43,3 +57,48 @@ jobs:
 
       - name: Run verify-py gate
         run: bash scripts/verify-py.sh
+
+  backend-tests:
+    # The behavior gate. verify-py proves the backend modules import; this proves
+    # they behave. Separate job so a lint failure and a test failure are
+    # distinguishable at a glance, and so neither blocks the other from running.
+    # Overlap with verify-py is exactly one test (test_smoke.py, which the full
+    # suite also collects). That is deliberate: the smoke test must keep running
+    # inside verify-py.sh's own pinned venv, and re-collecting it here costs
+    # milliseconds.
+    name: backend/tests suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            requirements-dev.txt
+
+      - name: Install pinned deps
+        run: |
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet -r backend/requirements.txt -r requirements-dev.txt
+
+      # GATING. Any failure here fails the build. Covers everything not listed in
+      # backend/tests/known_failures.txt, including test_macro_slice2.py and its
+      # AST guard against a module-level constant being assigned twice, which is
+      # the specific class of bug that cost four weeks.
+      - name: Backend test gate
+        env:
+          PYTHON: python
+        run: bash scripts/backend-tests.sh
+
+      # REPORTING. Never blocks. Prints the quarantined failures so the debt stays
+      # visible instead of being forgotten the moment the gate goes green.
+      - name: Known failures (non-blocking)
+        if: always()
+        env:
+          PYTHON: python
+        run: bash scripts/backend-tests.sh --report
