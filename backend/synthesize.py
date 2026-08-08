@@ -873,6 +873,64 @@ def _build_story_items(spine, floor):
         return None
 
 
+def _validate_sections(sections):
+    """
+    Validate and repair `sections` after parsing. Mirrors
+    _validate_sector_breakdown, which has guarded sector_breakdown values since
+    it was written; sections had no equivalent, and that asymmetry is what took
+    /morning-brief down on 2026-08-07.
+
+    sections is generated with response_mime_type="application/json" and NO
+    response_schema, so value types are entirely unconstrained. Every consumer
+    (four frontend render paths, the email renderer, the PDF renderer) treats a
+    value as a string. On 2026-08-07 the model emitted
+
+        "sector_spotlight": {"Consumer & Retail": "<prose>"}
+
+    which threw TypeError on .trim() in three of them and was silently dropped
+    by the other three.
+
+    Guarantees on the returned dict:
+
+    1. Every key is a string.
+    2. Every value is a non-empty string.
+    3. A nested {label: prose} dict is flattened to "label: prose" rather than
+       dropped, so signal is not silently lost. This is the observed failure
+       mode, not a hypothetical.
+    4. Anything else is dropped with a warning, never persisted.
+
+    Every repair prints. Silent absorption is how this class of bug survives.
+    """
+    if not isinstance(sections, dict):
+        if sections:
+            print(f"  \u26a0 sections: dropped entirely, expected dict got {type(sections).__name__}")
+        return {}
+
+    clean: dict[str, str] = {}
+    for key, val in sections.items():
+        if not isinstance(key, str):
+            print(f"  \u26a0 sections: dropped non-string key {key!r}")
+            continue
+
+        if isinstance(val, str):
+            if val.strip():
+                clean[key] = val
+            continue
+
+        if isinstance(val, dict) and val and all(isinstance(v, str) for v in val.values()):
+            flattened = " ".join(
+                f"{k}: {v.strip()}" for k, v in val.items() if v.strip()
+            )
+            if flattened:
+                clean[key] = flattened
+                print(f"  \u26a0 sections.{key}: flattened nested dict to prose (keys: {list(val.keys())})")
+            continue
+
+        print(f"  \u26a0 sections.{key}: dropped, unusable type {type(val).__name__}")
+
+    return clean
+
+
 def _validate_sector_breakdown(sb):
     """
     Validate and repair sector_breakdown after parsing.
@@ -6487,23 +6545,7 @@ def run(brief_type="morning"):
         except Exception as e:
             print(f"  ⚠ section routing fixup error (non-fatal): {e}")
 
-    # Section values must be flat strings. `sections` goes to Gemini with
-    # response_mime_type="application/json" and NO response_schema, so the value
-    # type is unconstrained. On 2026-08-07 the model returned sector_spotlight as
-    # {"Consumer & Retail": "<prose>"} instead of prose, and every frontend
-    # consumer calls .trim() on the value. Flatten the nested form back to prose
-    # here so the shape can never reach the database.
-    if isinstance(data.get("sections"), dict):
-        _flat = {}
-        for _k, _v in data["sections"].items():
-            if isinstance(_v, str):
-                _flat[_k] = _v
-            elif isinstance(_v, dict) and all(isinstance(x, str) for x in _v.values()):
-                _flat[_k] = " ".join(f"{_sk}: {_sv.strip()}" for _sk, _sv in _v.items() if _sv.strip())
-                print(f"  \u26a0 sections.{_k}: flattened nested dict to prose ({list(_v.keys())})")
-            else:
-                print(f"  \u26a0 sections.{_k}: dropped, unusable type {type(_v).__name__}")
-        data["sections"] = _flat
+    data["sections"] = _validate_sections(data.get("sections", {}))
 
     sector_breakdown = _validate_sector_breakdown(data.get("sector_breakdown", {}))
     print(f"  📊 sector_breakdown: {len(sector_breakdown)} sector(s) — {list(sector_breakdown.keys())}")
