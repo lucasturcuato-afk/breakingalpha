@@ -1607,6 +1607,23 @@ _MAT_WIDE_EDGE_MAX = 0.30     # max market-wide/macro lift added to the 0.5 neut
 # above 0.80 without deciding you want deals to outrank macro.
 _MEGA_MAT_FLOOR_MIN = 0.55    # a confirmed $1B mega-deal (value floored at $1B)
 _MEGA_MAT_FLOOR_MAX = 0.75    # a confirmed mega-deal at/above the value saturation point
+# THE FLOOR MAY NEVER FLIP THE WINNER FROM MACRO TO A DEAL (fix for the #560 regression).
+# #560 argued that capping the floor at 0.75, under the 0.80 market-wide cap, meant macro
+# could never be displaced. That was wrong twice over. First, 0.80 caps macro's EARNED
+# edge, and that edge is scaled by |S&P move %|, so on a quiet tape macro earns almost
+# none of it: on 2026-08-07 macro:jobs earned c_materiality 0.544 and the 0.75 floor
+# walked over it, which is how the payrolls-miss day led with Electronic Arts. Second,
+# materiality is only ONE of four weighted components, so capping it does not even
+# guarantee the ordering: on 2026-07-31 a $1.2bn tuck-in still beat macro:cpi on the
+# other three (measured, not assumed).
+#
+# So the guard is applied where the damage actually happens, at the argmax. The floor is
+# free to reorder deals among themselves and to lift a deal over single-name noise, which
+# is what it was built for. It is only forbidden from being the reason a macro cluster
+# stops winning. Deliberately NOT conditioned on macro_panel.fired_today: that flag was
+# broken by the _MACRO_MONTHS collision for four weeks, and on 2026-07-31 it was empty
+# while a real macro:cpi cluster was present, so a flag-based fix would have missed one of
+# the two regressions outright.
 _MAT_WIDE_MAG_SAT_PCT = 1.5   # |S&P move %| at which the wide edge saturates to the max
 _MAT_SINGLE_NAME_NOISE_DEMOTE = 0.20  # demote a non-driver single-name pure-deal cluster
 
@@ -1704,7 +1721,8 @@ def _unified_breadth(scored_cluster: dict) -> float:
 
 def _unified_materiality(scored_cluster: dict, *, tape: Optional[dict],
                          driver_names: set[str],
-                         name_session_pct: Optional[dict]) -> tuple[float, list[str]]:
+                         name_session_pct: Optional[dict],
+                         apply_mega_floor: bool = True) -> tuple[float, list[str]]:
     """Materiality component in [0,1], the HIGHEST-weighted dimension. Built on
     materiality_delta (the #PR1 signal) PLUS a deterministic market-wide edge and a
     single-name-noise demote, so the component discriminates macro-vs-single-name
@@ -1751,7 +1769,7 @@ def _unified_materiality(scored_cluster: dict, *, tape: Optional[dict],
 
     # Rebased from #527 (O3). Confirmed mega-deal materiality floor: see the constants
     # above. Floor only, value-scaled, capped under the market-wide edge.
-    if scored_cluster.get("is_mega_deal"):
+    if scored_cluster.get("is_mega_deal") and apply_mega_floor:
         v = _deal_value_usd_b(text)
         floor = _value_scaled_conf(max(v if v is not None else 1.0, 1.0),
                                    _MEGA_MAT_FLOOR_MIN, _MEGA_MAT_FLOOR_MAX)
@@ -1837,6 +1855,14 @@ def compute_unified_lead(
             mat_comp, mat_reasons = _unified_materiality(
                 c, tape=tape, driver_names=driver_names,
                 name_session_pct=name_session_pct)
+            # Same vector with the mega-deal floor switched off. Used only by the
+            # macro-protection guard below; it never changes what is scored or logged.
+            if c.get("is_mega_deal"):
+                _mat_nofloor, _ = _unified_materiality(
+                    c, tape=tape, driver_names=driver_names,
+                    name_session_pct=name_session_pct, apply_mega_floor=False)
+            else:
+                _mat_nofloor = mat_comp
             sf_comp, sf_used = _unified_session_fit(rep, brief_type, now)
             conf_comp, conf_reason = _unified_confirmation(c)
             breadth_comp = _unified_breadth(c)
@@ -1857,6 +1883,23 @@ def compute_unified_lead(
             rec["confirmation_reason"] = conf_reason
             rec["unified_materiality_reasons"] = mat_reasons
             rec["unified_score"] = unified_score
+            # Shadow score with the mega-deal floor off. Not logged into the C1 vector
+            # (which must stay exactly the served components); used only by the guard.
+            rec["_score_nofloor"] = round(
+                w_materiality * _mat_nofloor
+                + w_session_fit * sf_comp
+                + w_confirmation * conf_comp
+                + w_breadth * breadth_comp,
+                4,
+            )
+            # Guard trigger is the macro: cluster KEY, not _is_market_wide_cluster.
+            # That helper also classifies generic index-move copy ("European Stock
+            # Indexes Gain at Open", "Stock Market Today: futures gain") as market-wide,
+            # and those are exactly the low-signal stories the floor is helping us
+            # escape. Measured: triggering on the helper suppressed the floor on 7 days
+            # and cost real improvements (Uber $14.8bn, DCC GBP 5.75bn, Visa/BioCatch).
+            # A real release cluster is keyed macro:jobs, macro:cpi and so on.
+            rec["_is_macro_cluster"] = c["cluster_key"].startswith("macro:")
             # L1 + L2: a cluster is LEAD-INELIGIBLE when the shared _lead_bar_reason
             # gate returns a reason: analyst rating / PT (L1, unconditional) OR
             # rumor / preview with a confirmed alternative present (L2, conditional).
@@ -1868,6 +1911,43 @@ def compute_unified_lead(
             rec["lead_bar_reason"] = _bar_reason
             ranked.append(rec)
 
+        # MACRO-PROTECTION GUARD. The mega-deal floor may reorder deals and lift a deal
+        # over single-name noise. It may NOT be the reason a macro cluster stops winning.
+        # If the floored argmax is a floored mega-deal while the unfloored argmax is a
+        # macro cluster, the floor caused the flip: undo it for that candidate only.
+        _elig = [c for c in ranked if not _lead_bar_reason(c, now, rumor_bar_active=rumor_bar_active)] or ranked
+        if _elig:
+            _win_f = max(_elig, key=lambda c: c["unified_score"])
+            _win_n = max(_elig, key=lambda c: c["_score_nofloor"])
+            if (_win_f.get("is_mega_deal")
+                    and _win_f["unified_score"] > _win_f["_score_nofloor"]
+                    and _win_n.get("_is_macro_cluster")
+                    and _win_n["cluster_key"] != _win_f["cluster_key"]):
+                logger.info(
+                    "unified: mega-deal floor flipped the winner from macro %s (%.4f) to "
+                    "%s (%.4f); reverting the floor on that deal",
+                    _win_n["cluster_key"], _win_n["_score_nofloor"],
+                    _win_f["cluster_key"], _win_f["unified_score"],
+                )
+                # Suppress the floor for the WHOLE FIELD on this day, not just for the
+                # winning deal. Reverting one candidate only hands the lead to the next
+                # floored deal (measured: 2026-08-07 fell through to a Pizza Hut sale).
+                # The day either gets the floor or it does not.
+                for _r in ranked:
+                    if _r["unified_score"] == _r["_score_nofloor"]:
+                        continue
+                    _delta = _r["unified_score"] - _r["_score_nofloor"]
+                    _r["unified_score"] = _r["_score_nofloor"]
+                    _r["c_materiality"] = round(
+                        _r["c_materiality"] - _delta / (w_materiality or 1.0), 4
+                    )
+                    _r.setdefault("unified_materiality_reasons", []).append(
+                        "mega-deal floor suppressed: it would have displaced a macro lead"
+                    )
+
+        for _r in ranked:
+            _r.pop("_score_nofloor", None)
+            _r.pop("_is_macro_cluster", None)
         ranked.sort(key=lambda c: -c["unified_score"])
         # L1: the LEAD argmax is over candidates NOT barred as analyst rating / PT.
         # Fail-safe: if the bar would empty the field, fall back to the full ranking
