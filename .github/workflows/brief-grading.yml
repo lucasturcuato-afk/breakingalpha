@@ -7,7 +7,7 @@ on:
     # both land after the 4pm ET close so the same-session daily candle is final.
     # Live-forward only: the grader has no backfill mode by design (grading old
     # calls produces false verdicts), so there is no backfill input anymore.
-    - cron: '0 22 * * 1-5'
+    - cron: '0 2 * * 2-6'
   repository_dispatch:
     types: [grade-brief]
   workflow_dispatch:
