@@ -189,5 +189,78 @@ class GatedMacroRead(unittest.TestCase):
         self.assertIn("regime", synthesize._format_tape_for_read({"regime": "neutral", "vix_level": 15.0}))
 
 
+# ── Regression: the 2026-07-10 module-constant collision ─────────────────────
+# A second module-level `_MACRO_MONTHS` (lowercase keys, added for
+# _macro_period_month) shadowed the capitalized one used by
+# _macro_period_ordinal. Every MONTHLY period stopped parsing, so monthly
+# releases could never fire; quarterly GDP still parsed and still fired. That is
+# exactly the prod signature: fired=[] on the 2026-08-07 payroll day and
+# fired=['gdp'] on the 2026-07-30 GDP+PCE day. These cases replay the period
+# dicts persisted on the real briefings rows, offline.
+_PERIODS_AUG06 = {
+    "cpi": "June 2026", "core_cpi": "June 2026", "ppi": "June 2026",
+    "gdp": "Q2 2026", "pce": "June 2026", "core_pce": "June 2026",
+    "unemployment": "June 2026", "nonfarm_payrolls": "June 2026",
+}
+_PERIODS_AUG07 = {**_PERIODS_AUG06, "unemployment": "July 2026", "nonfarm_payrolls": "July 2026"}
+_PERIODS_JUL29 = {
+    "cpi": "June 2026", "core_cpi": "June 2026", "ppi": "June 2026",
+    "gdp": "Q1 2026", "pce": "May 2026", "core_pce": "May 2026",
+    "unemployment": "June 2026", "nonfarm_payrolls": "June 2026",
+}
+_PERIODS_JUL30 = {
+    "cpi": "June 2026", "core_cpi": "June 2026", "ppi": "June 2026",
+    "gdp": "Q2 2026", "pce": "June 2026", "core_pce": "June 2026",
+    "unemployment": "June 2026", "nonfarm_payrolls": "June 2026",
+}
+
+
+class MacroConstantCollision(unittest.TestCase):
+    def test_no_module_level_constant_is_assigned_twice(self):
+        """A duplicate module-level CONSTANT name silently rebinds the first
+        definition for every reader below it. That is what broke detection for
+        four weeks with no error, no log line and no failing import."""
+        import ast
+        import collections
+
+        src = Path(synthesize.__file__).read_text()
+        counts = collections.Counter()
+        for node in ast.parse(src).body:
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    name = getattr(target, "id", None)
+                    if name and name.lstrip("_").isupper():
+                        counts[name] += 1
+        self.assertEqual(
+            [n for n, c in counts.items() if c > 1], [],
+            "module-level constant assigned more than once; the later one shadows the earlier",
+        )
+
+    def test_every_month_name_parses(self):
+        months = [
+            "January", "February", "March", "April", "May", "June", "July",
+            "August", "September", "October", "November", "December",
+        ]
+        for i, m in enumerate(months, start=1):
+            self.assertEqual(synthesize._macro_period_ordinal(f"{m} 2026"), (2026, i), m)
+
+    def test_payroll_day_fires_both_series(self):
+        self.assertEqual(
+            synthesize.detect_fired_releases(_PERIODS_AUG06, _PERIODS_AUG07),
+            ["nonfarm_payrolls", "unemployment"],
+        )
+
+    def test_gdp_pce_day_fires_all_three(self):
+        self.assertEqual(
+            synthesize.detect_fired_releases(_PERIODS_JUL29, _PERIODS_JUL30),
+            ["core_pce", "gdp", "pce"],
+        )
+
+    def test_non_release_day_stays_empty(self):
+        self.assertEqual(
+            synthesize.detect_fired_releases(_PERIODS_AUG06, _PERIODS_AUG06), []
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
