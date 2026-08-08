@@ -1,0 +1,135 @@
+stored runs with a unified winner: 19
+DEGRADED dimensions (declared, never substituted):
+  - name_session_pct (live intraday per-name quotes, unrecoverable)
+  - mega_deal_urls (deal_flow.stage mutates after the run)
+
+2026-08-08T02:29 evening  pool=1000  tape=Y MATCH
+   stored : macro:jobs
+            July 2026 Employment Report - Much Weaker Than Expected, But Was It Really Weak?
+   replay : macro:jobs
+            July 2026 Employment Report - Much Weaker Than Expected, But Was It Really Weak?
+   clusters: 10 shared, 10 component-identical, 0 only-stored, 0 only-replay
+2026-08-07T14:17 morning  pool=1000  tape=Y DIVERGE
+   stored : macro:jobs
+            S&P 500 rallies after July jobs report misses forecasts
+   replay : co:electronic arts:ma
+            Electronic Arts closes at $209.70 following $55 billion buyout, attention moves to debt
+   clusters: 10 shared, 8 component-identical, 1 only-stored, 0 only-replay
+     DRIFT co:electronic arts:ma: {'materiality': [0.1875, 0.75]} score 7.075 -> 9.325 [replay flags MEGA]
+     DRIFT one:two-pizza-hut-sales: {'materiality': [0.5, 0.6359]} score 8.1539 -> 8.6977 [replay flags MEGA]
+2026-08-07T02:28 evening  pool=1000  tape=Y DIVERGE
+   stored : one:broadstone-net-lease-announces
+            Broadstone Net Lease, Inc. Announces Public Offering of Common Stock
+   replay : co:easyjet:ma
+            EasyJet agrees to £5.7bn takeover by US private equity firm
+   clusters: 10 shared, 9 component-identical, 1 only-stored, 0 only-replay
+     DRIFT co:easyjet:ma: {'materiality': [0.1875, 0.6885]} score 7.3828 -> 9.3869 [replay flags MEGA]
+2026-08-06T14:15 morning  pool=1000  tape=Y MATCH
+   stored : one:closes-$55-billion-buyout
+            EA Closes $55 Billion Buyout by Saudi-Led Group, Ending 36 Years as Public Company
+   replay : one:closes-$55-billion-buyout
+            EA Closes $55 Billion Buyout by Saudi-Led Group, Ending 36 Years as Public Company
+   clusters: 8 shared, 7 component-identical, 2 only-stored, 2 only-replay
+     DRIFT one:closes-$55-billion-buyout: {'materiality': [0.5, 0.75]} score 8.325 -> 9.325 [replay flags MEGA]
+2026-08-06T02:30 evening  pool=1000  tape=Y MATCH
+   stored : co:warner bros. discovery:sig:paramount-skydance-nasdaq-psky
+            Paramount Skydance (Nasdaq: PSKY) secures $46.7B equity, $54B debt for WBD
+   replay : co:warner bros. discovery:sig:paramount-skydance-nasdaq-psky
+            Paramount Skydance (Nasdaq: PSKY) secures $46.7B equity, $54B debt for WBD
+   clusters: 10 shared, 9 component-identical, 1 only-stored, 0 only-replay
+     DRIFT co:warner bros. discovery:sig:paramount-skyd: {'materiality': [0.6438, 0.75]} score 9.925 -> 10.35 [replay flags MEGA]
+2026-08-05T14:15 morning  pool=1000  tape=Y DIVERGE
+   stored : co:spacex:ipo
+            SpaceX’s $101 Billion Unlock Heaps Pressure on Battered Shares
+   replay : one:saudi-led-group-completes
+            Saudi-led group completes $55bn purchase of gaming giant EA
+   clusters: 9 shared, 7 component-identical, 2 only-stored, 1 only-replay
+     DRIFT co:electronic arts:ma: {'materiality': [0.3135, 0.75]} score 7.004 -> 8.75 [replay flags MEGA]
+     DRIFT one:saudi-led-group-completes: {'materiality': [0.5, 0.75]} score 8.325 -> 9.325 [replay flags MEGA]
+2026-08-05T02:32 evening  pool=1000  tape=Y MATCH
+   stored : macro:fed
+            Mitsubishi UFJ Financial: Bullish After Q1 Surprise And Hawkish BoJ Signals (NYSE:MUFG)
+   replay : macro:fed
+            Mitsubishi UFJ Financial: Bullish After Q1 Surprise And Hawkish BoJ Signals (NYSE:MUFG)
+   clusters: 10 shared, 9 component-identical, 1 only-stored, 0 only-replay
+     DRIFT one:goes-private-saudi-pif: {'materiality': [0.5, 0.75]} score 8.725 -> 9.725 [replay flags MEGA]
+2026-08-04T14:24 morning  pool=1000  tape=Y DIVERGE
+   stored : one:bending-spoons-buy-airtable
+            Bending Spoons to buy Airtable for $1.28B
+   replay : co:visa:ma
+            Visa agrees to buy fraud intelligence provider BioCatch for $2.4bn
+   clusters: 9 shared, 7 component-identical, 2 only-stored, 1 only-replay
+     DRIFT co:visa:ma: {'materiality': [0.1875, 0.6304]} score 7.0206 -> 8.7922 [replay flags MEGA]
+     DRIFT one:bending-spoons-buy-airtable: {'materiality': [0.69, 0.7132]} score 8.4549 -> 8.5478 [replay flags MEGA]
+2026-08-04T02:39 evening  pool=1000  tape=Y MATCH
+   stored : one:srx-global-portfolio-company
+            SRX Global Portfolio Company Smartkem, Inc. (NASDAQ: SMTK) Announces Merger
+   replay : one:srx-global-portfolio-company
+            SRX Global Portfolio Company Smartkem, Inc. (NASDAQ: SMTK) Announces Merger
+   clusters: 10 shared, 10 component-identical, 1 only-stored, 0 only-replay
+2026-08-01T02:39 evening  pool=1000  tape=Y MATCH
+   stored : co:micron:stock
+            Micron’s stock falls after Apple’s Tim Cook expresses a desire for more memory suppliers
+   replay : co:micron:stock
+            Micron’s stock falls after Apple’s Tim Cook expresses a desire for more memory suppliers
+   clusters: 10 shared, 10 component-identical, 1 only-stored, 0 only-replay
+2026-07-31T14:23 morning  pool=1000  tape=Y DIVERGE
+   stored : macro:cpi
+            Stock Market Today: S&P 500, Dow, Nasdaq 100 Futures Gain Amid Cooler June PCE Inflation Data and Slower
+   replay : co:ebay:ma
+            eBay completes $1.2bn acquisition of fashion resale platform Depop
+   clusters: 8 shared, 7 component-identical, 3 only-stored, 2 only-replay
+     DRIFT co:ebay:ma: {'materiality': [0.1875, 0.6018]} score 6.8527 -> 8.5099 [replay flags MEGA]
+2026-07-31T02:40 evening  pool=1000  tape=Y DIVERGE
+   stored : co:terawulf:sig:terawulf-nasdaq-wulf-surges
+            TeraWulf (NASDAQ:WULF) surges 18% after Maryland power agreement receives federal go-ahead
+   replay : co:intel:stock
+            Intel Stock Soars as Microsoft's Cloud Fuels AI Hardware Market
+   clusters: 9 shared, 9 component-identical, 2 only-stored, 1 only-replay
+2026-07-30T14:36 morning  pool=1000  tape=Y MATCH
+   stored : macro:fed
+            Stock Market Today: S&P 500, Nasdaq 100 Futures Gain as Federal Reserve Holds Interest Rates—Meta, Micros
+   replay : macro:fed
+            Stock Market Today: S&P 500, Nasdaq 100 Futures Gain as Federal Reserve Holds Interest Rates—Meta, Micros
+   clusters: 10 shared, 10 component-identical, 1 only-stored, 0 only-replay
+2026-07-30T02:31 evening  pool=1000  tape=Y MATCH
+   stored : co:meta:stock
+            Meta Stock Drops 10% on Steeper AI Costs, Missed Forecast
+   replay : co:meta:stock
+            Meta Stock Drops 10% on Steeper AI Costs, Missed Forecast
+   clusters: 10 shared, 10 component-identical, 1 only-stored, 0 only-replay
+2026-07-29T15:15 morning  pool=1000  tape=Y MATCH
+   stored : one:ionic-digital-jumps-nasdaq
+            Ionic Digital jumps 26% in Nasdaq debut, giving Celsius Network claimholders an exit route
+   replay : one:ionic-digital-jumps-nasdaq
+            Ionic Digital jumps 26% in Nasdaq debut, giving Celsius Network claimholders an exit route
+   clusters: 10 shared, 10 component-identical, 0 only-stored, 0 only-replay
+2026-07-29T02:52 evening  pool=1000  tape=Y DIVERGE
+   stored : one:tpg-trust-closes-$400m
+            TPG RE Finance Trust closes $400M loan and $100M credit line
+   replay : one:pypl-stock-gains-earnings
+            PYPL Stock Gains After Q2 Earnings Beat – CEO Says Company ‘Open’ To Buyout Offers That Create 'Superior Value
+   clusters: 9 shared, 9 component-identical, 2 only-stored, 1 only-replay
+2026-07-28T14:41 morning  pool=1000  tape=Y DIVERGE
+   stored : one:european-stock-indexes-gain
+            European Stock Indexes Gain at Open as Oil Falls Further
+   replay : co:kkr & co inc:sig:key-facts-kkr-75bn
+            Key facts: KKR & Co Inc £5.75bn DCC bid; $16B Kuwait JV stake; LCY exit
+   clusters: 9 shared, 9 component-identical, 2 only-stored, 1 only-replay
+2026-07-28T02:42 evening  pool=1000  tape=Y DIVERGE
+   stored : co:transdigm group:ma
+            TransDigm Group (TDG) Announces Acquisition of Prince & Izant fo
+   replay : co:dcc:ma
+            DCC, one of FTSE 100’s biggest energy firms, agrees £5.75bn takeover
+   clusters: 7 shared, 4 component-identical, 3 only-stored, 3 only-replay
+     DRIFT co:changxin memory technologies:ipo: {'confirmation': [0.8, 0.85]} score 8.806 -> 8.956
+     DRIFT co:kuwait oil company:sig:reported-saturday-: {'confirmation': [0.8, 0.8292]} score 8.125 -> 8.2125
+     DRIFT co:transdigm group:ma: {'materiality': [0.5, 0.5978], 'confirmation': [1.0, 0.9239]} score 8.975 -> 9.1379 [replay flags MEGA]
+2026-07-27T14:37 morning  pool=1000  tape=Y DIVERGE
+   stored : one:mstr-stock-climbs-michael
+            MSTR Stock Climbs After Michael Saylor’s Strategy Skips Bitcoin Buys Again, Raises $545M Through Share Sale
+   replay : co:kkr:ma
+            KKR and Energy Capital Partners Agree Deal to Buy DCC Energy for $7.66 Billion
+   clusters: 9 shared, 9 component-identical, 2 only-stored, 1 only-replay
+
+FIDELITY: 9/19 cluster matches
