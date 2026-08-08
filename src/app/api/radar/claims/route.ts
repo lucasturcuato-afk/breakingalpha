@@ -83,6 +83,28 @@ export async function GET() {
     }
   }
 
+  // Evidence ledger: supporting/challenging stories recorded against each open
+  // claim while it waits (backend/grading/claim_evidence.py). Read-only here,
+  // grouped by claim. Fail-open: before the migration (sql/0026) the table is
+  // absent and this degrades to no evidence, never an error. It is never a
+  // verdict; the surface renders it as plain counts, and the grader alone
+  // resolves outcomes.
+  const evidence: Record<string, unknown[]> = {};
+  if (claimIds.length) {
+    const { data, error: evErr } = await supabase
+      .from("claim_evidence")
+      .select("claim_id, stance, article_published_at, articles(title, url)")
+      .in("claim_id", claimIds)
+      .order("article_published_at", { ascending: false });
+    if (!evErr) {
+      for (const row of data ?? []) {
+        const cid = (row as { claim_id: string }).claim_id;
+        (evidence[cid] ??= []).push(row);
+      }
+    }
+    // On a missing table (or any read error) evidence simply stays empty.
+  }
+
   // Provenance only: what the desk's original call did. NEVER the adopted
   // claim's verdict. src/lib/claim-outcome.ts is the single resolver and it
   // takes no parameter through which this map could reach a verdict.
@@ -102,7 +124,7 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({ claims: rows, outcomes, adoptedOutcomes });
+  return NextResponse.json({ claims: rows, outcomes, adoptedOutcomes, evidence });
 }
 
 export async function POST(request: NextRequest) {

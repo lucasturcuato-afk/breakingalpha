@@ -66,6 +66,7 @@ import thesis_grader  # noqa: E402
 import pattern_memory  # noqa: E402
 import source_credibility  # noqa: E402
 from grading import live_score as live_score_mod  # noqa: E402
+from grading import claim_evidence as claim_evidence_mod  # noqa: E402
 
 
 logger = logging.getLogger(__name__)
@@ -155,11 +156,20 @@ def main(force: bool = False) -> dict:
         "live_score", live_score_mod.update_all_live_scores
     )
 
+    # Evidence ledger: record supporting/challenging stories against OPEN claims
+    # in their window. Gated by EVIDENCE_LEDGER_MODE (default off => writes
+    # nothing, leaves everything above byte-identical). Soft-fail via _run_step,
+    # and fail-open inside run() as well, so it can never break grading.
+    claim_evidence_summary = _run_step(
+        "claim_evidence", claim_evidence_mod.run
+    )
+
     summary = {
         "grader": grader_summary,
         "patterns": patterns_summary,
         "sources": sources_summary,
         "live_score": live_score_summary,
+        "claim_evidence": claim_evidence_summary,
     }
     print(
         "daily_grading: grader={grader} patterns={patterns} sources={sources} "

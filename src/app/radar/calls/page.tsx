@@ -32,6 +32,8 @@ import {
 } from "@/lib/scored-object-map";
 import { matchFollow, type FollowRow } from "@/lib/radar-following";
 import { resolveClaimOutcome } from "@/lib/claim-outcome";
+import { ClaimEvidenceStrip } from "@/components/calls/ClaimEvidenceStrip";
+import type { RawEvidenceRow } from "@/lib/claim-evidence";
 import { TrackedViews } from "@/components/thesis/TrackedViews";
 import { EvidenceMap } from "@/components/radar/EvidenceMap";
 import type { Article as MapArticle } from "@/lib/clustering-utils";
@@ -210,6 +212,8 @@ export default function CallsPage() {
   const [claims, setClaims] = useState<UserClaim[]>([]);
   const [tickerSectors, setTickerSectors] = useState<Record<string, string>>({});
   const [claimOutcomes, setClaimOutcomes] = useState<Record<string, CallOutcomeRow>>({});
+  // Evidence ledger rows per claim (supporting/challenging stories while open).
+  const [evidence, setEvidence] = useState<Record<string, RawEvidenceRow[]>>({});
   const [unavailable, setUnavailable] = useState(false);
   const [briefCalls, setBriefCalls] = useState<BriefCallRow[]>([]);
   const [briefOutcomes, setBriefOutcomes] = useState<Map<string, CallOutcomeRow> | null>(null);
@@ -288,6 +292,7 @@ export default function CallsPage() {
         const json = await res.json();
         setClaims(json.claims ?? []);
         setClaimOutcomes(json.outcomes ?? {});
+        setEvidence(json.evidence ?? {});
         // json.adoptedOutcomes is provenance only and is deliberately not read
         // here: a claim's verdict is its own outcome row. See lib/claim-outcome.
         setUnavailable(Boolean(json.unavailable));
@@ -622,6 +627,10 @@ export default function CallsPage() {
                         <p className="motion-fade-reveal mt-1 px-1 font-sans text-[11px] leading-snug text-text-muted">
                           {resolutionSentence(c)}
                         </p>
+                        {/* Evidence accumulating while the claim is still open.
+                            Once the grader has resolved it, its outcome stands
+                            and this running log steps aside. */}
+                        {!outcome && <ClaimEvidenceStrip rows={evidence[c.id]} />}
                       </div>
                     );
                   })}
