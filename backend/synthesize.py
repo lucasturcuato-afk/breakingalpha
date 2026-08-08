@@ -1653,7 +1653,12 @@ def generate_morning_review_for_evening(today_date, sb):
 
 
 # ── Macro release detection (slice 2, pure logic) ────────────────────────────
-_MACRO_MONTHS = {
+# NAME IS DELIBERATELY UNIQUE. A second module-level `_MACRO_MONTHS` (lowercase
+# keys, defined further down for _macro_period_month) shadowed the original name
+# from 2026-07-10 and silently made every MONTHLY period unparseable here, so
+# fired_today came back empty on CPI/PPI/PCE/payroll days while quarterly GDP
+# still fired. Do not reuse a constant name that already exists in this module.
+_MACRO_MONTH_ORDINALS = {
     m: i
     for i, m in enumerate(
         [
@@ -1680,8 +1685,8 @@ def _macro_period_ordinal(period):
         year = int(year_s)
     except ValueError:
         return None
-    if head in _MACRO_MONTHS:
-        return (year, _MACRO_MONTHS[head])
+    if head in _MACRO_MONTH_ORDINALS:
+        return (year, _MACRO_MONTH_ORDINALS[head])
     if len(head) == 2 and head[0] == "Q" and head[1] in "1234":
         return (year, int(head[1]))
     return None
@@ -6811,9 +6816,11 @@ def run(brief_type="morning"):
                 # brief_id) and take the most recent remaining morning row. Cold
                 # start (no prior row) fires nothing.
                 previous_periods = {}
+                prev_id = None
+                prev_created_at = None
                 prev_resp = (
                     supabase.table("briefings")
-                    .select("macro_panel")
+                    .select("id,created_at,macro_panel")
                     .eq("briefing_type", "morning")
                     .neq("id", brief_id)
                     .order("created_at", desc=True)
@@ -6821,14 +6828,33 @@ def run(brief_type="morning"):
                     .execute()
                 )
                 if prev_resp.data:
+                    prev_id = prev_resp.data[0].get("id")
+                    prev_created_at = prev_resp.data[0].get("created_at")
                     prev_mp = prev_resp.data[0].get("macro_panel") or {}
                     if isinstance(prev_mp, dict):
                         previous_periods = prev_mp.get("periods") or {}
                 fired_today = detect_fired_releases(previous_periods, periods)
+                # PERMANENT AUDIT TRAIL. fired_today alone is unfalsifiable: an
+                # empty list looks identical whether nothing advanced, the
+                # previous row was never found, or every period failed to parse.
+                # Persisting the compared inputs plus the unparseable keys makes
+                # a miss diagnosable FROM THE ROW, with no pipeline log. The
+                # 2026-07-10 constant collision that killed monthly detection
+                # would have shown up here as unparsed_periods listing all seven
+                # monthly keys on the very first brief after it landed.
+                unparsed = sorted(
+                    k for k, v in periods.items() if _macro_period_ordinal(v) is None
+                )
                 macro_panel = {
                     "releases": releases,
                     "periods": periods,
                     "fired_today": fired_today,
+                    "detection": {
+                        "previous_brief_id": prev_id,
+                        "previous_created_at": prev_created_at,
+                        "previous_periods": previous_periods,
+                        "unparsed_periods": unparsed,
+                    },
                 }
                 # Gated read: only on a release day. The tape block above is
                 # evening-only, so fetch the morning tape here (soft-fail), then
@@ -6849,7 +6875,8 @@ def run(brief_type="morning"):
                 ).eq("id", brief_id).execute()
                 print(
                     f"  📊 Attached macro_panel ({len(releases)} releases, "
-                    f"fired={fired_today}) to morning brief {brief_id}"
+                    f"fired={fired_today}, prev={prev_id}, unparsed={unparsed}) "
+                    f"to morning brief {brief_id}"
                 )
             else:
                 print("  ⚠ macro_panel skipped: data layers returned no releases")
