@@ -431,3 +431,208 @@ def surprise_framing_clause(surprise):
         "fresh catalyst on the tape' clause - a release that surprised IS a fresh "
         "catalyst. Cite ONLY the figures given on this line; invent nothing."
     )
+
+
+# ── RELEASE CONTEXT (supersedes the surprise-only gate) ──────────────────────
+#
+# THE DEFECT THIS FIXES. extract_macro_surprise returns None whenever the corpus
+# carries no explicit comparator language ("total == 0 -> return None"). That made
+# the whole macro-analysis path SURPRISE-GATED: on a release day where nobody wrote
+# "below expectations", the pulse said nothing about the print at all, even though
+# the release still happened and its value was already in hand from BLS.
+#
+# An in-line print is still the day's event. So the trigger is now the RELEASE, and
+# the surprise is one optional field on it.
+#
+# WHERE EACH FIELD COMES FROM, which is also why this is grounded:
+#   series, period, actual, prior   the macro_panel release rows, straight from the
+#                                   BLS/BEA data layers. These are the SAME figures
+#                                   the macro strip already renders, so they are
+#                                   already in the pulse's sourced-figure set.
+#   consensus, direction_vs_consensus, reactions
+#                                   the corpus, and OPTIONAL. Absent stays absent.
+#
+# HONESTY. direction_vs_prior is arithmetic on two BLS numbers and is always safe.
+# direction_vs_consensus comes ONLY from explicit comparator language, never from
+# the price move (the #463 tautology). Missing fields are omitted, never guessed.
+
+
+def _direction_vs_prior(actual, prior):
+    """Pure arithmetic on two authoritative figures. Never a claim about
+    expectations, so it is safe on a day with no consensus in the corpus."""
+    if actual is None or prior is None:
+        return None
+    if actual > prior:
+        return "higher"
+    if actual < prior:
+        return "lower"
+    return "unchanged"
+
+
+def build_release_context(articles, releases=None, fired_keys=None):
+    """One context object per release that printed today. Returns a list, possibly
+    empty. Never raises, never guesses a missing field.
+
+    articles     the pool the corpus-side fields are read from. Feed the COVERAGE
+                 pool, not the relevance-top spine: on 2026-08-07 every payrolls
+                 article ranked 696 or worse of 1000 because 600 articles tied at
+                 relevance_score 10, so the spine never saw the consensus.
+    releases     macro_panel-style release rows (key, name, period, figures).
+    fired_keys   detect_fired_releases output. When given, only those series are
+                 built, which is what makes this a RELEASE-DAY object rather than a
+                 restatement of the standing macro backdrop.
+    """
+    out = []
+    for rel in (releases or []):
+        if not isinstance(rel, dict):
+            continue
+        # Two row shapes reach here and both are supported rather than one being
+        # silently dropped: macro_panel rows (key + figures[]) and
+        # released_macro_context rows (name + flat value/prior/unit +
+        # is_release_day). Resolve the key from whichever is present.
+        key = rel.get("key")
+        if not key:
+            _nm = (rel.get("name") or "").strip().lower()
+            key = next((k for k, (n, _r, _v) in RELEASE_KINDS.items()
+                        if n.strip().lower() == _nm), None)
+        if key not in RELEASE_KINDS:
+            continue
+        if fired_keys is not None:
+            if key not in set(fired_keys):
+                continue
+        elif "is_release_day" in rel and not rel.get("is_release_day"):
+            # No explicit fired list: fall back to the row's own authoritative
+            # release-day flag so this stays a RELEASE-DAY object and never
+            # restates the standing backdrop.
+            continue
+        name, _rx, value_kind = RELEASE_KINDS[key]
+
+        figs = [f for f in (rel.get("figures") or []) if isinstance(f, dict)]
+        head = next((f for f in figs if f.get("value") is not None), None)
+        if head is None and rel.get("value") is not None:
+            head = {"value": rel.get("value"), "prior": rel.get("prior"),
+                    "unit": rel.get("unit") or "", "label": rel.get("name")}
+            figs = [head]
+        actual = head.get("value") if head else None
+        prior = head.get("prior") if head else None
+        unit = (head.get("unit") or "") if head else ""
+
+        # BLS reports payrolls in thousands; the corpus-side extractor works in
+        # jobs. Normalise so the two can be compared without a unit bug.
+        a_cmp, p_cmp = actual, prior
+        if value_kind == "jobs" and unit.upper() == "K":
+            a_cmp = None if actual is None else actual * 1000.0
+            p_cmp = None if prior is None else prior * 1000.0
+
+        sur = None
+        try:
+            sur = extract_macro_surprise(articles, release_key=key)
+        except Exception:
+            sur = None
+
+        ctx = {
+            "release_key": key,
+            "release_name": rel.get("name") or name,
+            "period": rel.get("period"),
+            "actual": a_cmp,
+            "actual_display": None if actual is None else f"{actual}{unit}",
+            "prior": p_cmp,
+            "prior_display": None if prior is None else f"{prior}{unit}",
+            "unit": "jobs" if value_kind == "jobs" else (unit or "%"),
+            "direction_vs_prior": _direction_vs_prior(a_cmp, p_cmp),
+            "figures": figs,
+            # OPTIONAL, corpus-derived. Absent when the corpus does not say it.
+            "consensus": (sur or {}).get("expected"),
+            "direction_vs_consensus": (sur or {}).get("direction"),
+            "consensus_confidence": (sur or {}).get("confidence"),
+            "reactions": (sur or {}).get("reactions") or [],
+            "evidence": (sur or {}).get("evidence") or [],
+        }
+        out.append(ctx)
+    return out
+
+
+def format_release_strip_line(ctx):
+    """One deterministic strip line per release. Every figure here is either a BLS
+    panel figure (already sourced) or a corpus-quoted consensus."""
+    if not ctx:
+        return ""
+    fmt = _fmt_jobs if ctx.get("unit") == "jobs" else (lambda v: _fmt_val(v, ctx.get("unit") or "%"))
+    bits = [f"RELEASED TODAY - {ctx['release_name']} ({ctx.get('period')})"]
+    if ctx.get("actual") is not None:
+        bits.append(f"printed {fmt(ctx['actual'])}")
+    if ctx.get("prior") is not None:
+        bits.append(f"prior {fmt(ctx['prior'])}")
+    exp = ctx.get("consensus")
+    if exp:
+        bits.append(f"consensus {format_expected(exp)}"
+                    f" [{ctx.get('consensus_confidence')}, {exp.get('n_sources')} source(s)]")
+        if ctx.get("direction_vs_consensus"):
+            bits.append(f"{ctx['direction_vs_consensus'].upper()} consensus")
+    if ctx.get("reactions"):
+        bits.append("observed reaction: " + "; ".join(ctx["reactions"][:2]))
+    return ", ".join(bits)
+
+
+def release_framing_clause(contexts):
+    """The pulse's MACRO FRAMING for a release day. Three cases, all demonstrated
+    in the PR: MISS / ABOVE, IN LINE, and NO CONSENSUS IN CORPUS."""
+    contexts = [c for c in (contexts or []) if c]
+    if not contexts:
+        return ""
+    lead = contexts[0]
+    lines = [format_release_strip_line(c) for c in contexts if format_release_strip_line(c)]
+    body = "\n".join(f"  {ln}" for ln in lines)
+
+    d = lead.get("direction_vs_consensus")
+    has_number = bool(lead.get("consensus"))
+    if d in ("below", "above") and has_number:
+        word = "BELOW" if d == "below" else "ABOVE"
+        case = (
+            f"{lead['release_name']} came in {word} expectations and THAT is the story, "
+            f"not the level. Name BOTH numbers (the print and the consensus) and say it "
+            f"{'missed' if d == 'below' else 'beat'}. If an observed market reaction is "
+            f"listed above, you may state the print and the reaction together; do NOT "
+            f"invent a causal claim that is not in that list."
+        )
+    elif d in ("below", "above"):
+        # DIRECTION WITHOUT A NUMBER. Sources wrote "below expectations" but no
+        # numeric consensus was extractable. Found by the #565 backtest: on
+        # 2026-07-02 and 2026-07-14 the old wording said "Name BOTH numbers" with
+        # only one number in hand, and the model duly wrote "missing the consensus"
+        # and "below expectations" against a consensus that was never in the context.
+        # That is the exact failure this design exists to prevent, so the direction
+        # is now reported as SOURCED LANGUAGE and the figure is forbidden.
+        word = "below" if d == "below" else "above"
+        case = (
+            f"Today's coverage describes {lead['release_name']} as coming in {word} "
+            f"expectations, but NO numeric consensus is in the corpus. You may say that "
+            f"reporting characterised the print as {word} expectations. You MUST NOT state "
+            f"or imply any consensus FIGURE, and you MUST NOT write 'missed the consensus' "
+            f"or 'beat the consensus' as if a number were known. The print and its move "
+            f"versus the PRIOR are the only figures you have."
+        )
+    elif d == "inline":
+        case = (
+            f"{lead['release_name']} came in IN LINE with expectations. Say so plainly: "
+            f"an in-line print is still today's event, and 'matched expectations, leaving "
+            f"the path unchanged' is the analysis. Do NOT dramatise it into a surprise."
+        )
+    else:
+        case = (
+            f"NO CONSENSUS IS IN TODAY'S CORPUS for {lead['release_name']}. State the print "
+            f"and its direction versus the PRIOR only. You MUST NOT say it beat, missed, "
+            f"surprised, or matched expectations, and you MUST NOT infer any of that from "
+            f"the equity move. If a market reaction is listed above, state it as a separate "
+            f"observation, never as a consequence you are asserting."
+        )
+
+    return (
+        "MACRO FRAMING (RELEASE DAY, deterministic, extracted from today's corpus and "
+        "the BLS/BEA panel, NOT inferred from the price move):\n"
+        f"{body}\n"
+        f"{case} This release IS the day's catalyst; lead sentence one with it. "
+        "FORBIDDEN: calling it 'last week's', 'recent', or backdrop; it is TODAY'S. "
+        "FORBIDDEN: the 'no fresh catalyst on the tape' clause. Cite ONLY the figures "
+        "given on the lines above; invent nothing."
+    )

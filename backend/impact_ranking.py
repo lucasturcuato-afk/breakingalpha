@@ -2062,6 +2062,55 @@ def fetch_coverage_pool(sb, now: datetime.datetime, hours_ingest: int = 24,
         return []
 
 
+_RELEASE_TEXT_COLS = "title, summary, source, published_at, ingested_at"
+
+
+def fetch_release_text_pool(sb, now: datetime.datetime, hours_ingest: int = 24,
+                            hours_publish: int = 48, limit: int = 5000) -> list[dict]:
+    """Point-in-time TEXT-ONLY window for the macro release extractor.
+
+    WHY THIS EXISTS AND WHY THE EXISTING POOLS DO NOT WORK. The extractor needs to
+    see every article that mentions today's release. Neither existing pool does:
+
+      spine (relevance-top-60)   on 2026-08-07 the payrolls articles ranked 696,
+                                 718, 963 and 965 of 1000 because 600 articles tied
+                                 at relevance_score 10. Never seen.
+      fetch_coverage_pool        recency-ordered LIMIT 1000, but the window held
+                                 2397 articles, so the 1000 rows spanned only
+                                 13:59:18 to 14:04:14, FIVE MINUTES. The 13:59:18
+                                 consensus article sat exactly on the cut.
+
+    So this is a separate, deliberately CHEAP query: five small text columns, no
+    content body, no join, ordered on the indexed ingested_at. It costs ONE extra
+    SELECT per run and is the only way the extractor sees the whole day.
+    Read-only; never raises."""
+    try:
+        ing = (now - datetime.timedelta(hours=hours_ingest)).isoformat()
+        pub = (now - datetime.timedelta(hours=hours_publish)).isoformat()
+        upper = now.isoformat()
+        # PAGINATED. PostgREST enforces a server-side max-rows of 1000 regardless
+        # of .limit(), so a single call silently truncates. On 2026-08-07 that gave
+        # 1000 rows spanning FIVE MINUTES of a 2397-article window, and the 13:59:18
+        # consensus article sat exactly on the cut. Page until the window is
+        # exhausted or `limit` is reached.
+        out: list[dict] = []
+        page = 1000
+        for start in range(0, max(limit, page), page):
+            resp = (sb.table("articles").select(_RELEASE_TEXT_COLS)
+                    .gte("ingested_at", ing).lt("ingested_at", upper)
+                    .gte("published_at", pub).lt("published_at", upper)
+                    .order("ingested_at", desc=True)
+                    .range(start, start + page - 1).execute())
+            batch = resp.data or []
+            out.extend(batch)
+            if len(batch) < page or len(out) >= limit:
+                break
+        return out[:limit]
+    except Exception as e:
+        logger.warning("impact_ranking: fetch_release_text_pool failed: %s", e)
+        return []
+
+
 # D12 same-day-confirmation relaxation thresholds. A deal whose deal_flow stage
 # is STALE (e.g. still 'rumored' after the deal was actually announced, because
 # deal_extractor did not re-run) can still qualify for the mega-deal boost when
