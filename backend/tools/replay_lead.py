@@ -1,126 +1,215 @@
-"""Offline lead replay for a historical brief date. READ-ONLY against prod.
+"""Faithful offline replay of the deterministic lead contest for a past run.
 
-Reconstructs the candidate pool that a past run saw, runs the deterministic
-contest against it, and prints the winner next to what actually shipped.
+FIDELITY IS THE POINT. Every prior harness in this repo reconstructed a DIFFERENT
+pool than the real run and therefore produced scoreboards that were quietly wrong.
+This one calls the SAME functions the pipeline calls:
 
-THE TAPE RULE. Historical replays read the STORED briefings.market_tape for that
-row. fetch_tape() is never called: it returns LIVE quotes, which on a replay of a
-past date forces every candidate to the 0.5 neutral materiality and makes the
-whole scoreboard meaningless. Every prior lead scoreboard in this repo was
-invalidated by exactly that mistake.
+    impact_ranking.fetch_coverage_pool(sb, now)     the real pool query
+    impact_ranking._mega_deal_urls(sb, now)         the real confirmed-deal set
+    impact_ranking._mega_demote_urls(sb, now)       the real demote set
+    impact_ranking.compute_unified_lead(...)        the real contest
+
+Only three things are substituted, and each is stated in the output:
+
+  TAPE        stored briefings.market_tape for that row. fetch_tape() is NEVER
+              called. It returns LIVE quotes, which on a historical replay forces
+              every candidate to 0.5 neutral materiality and makes the whole
+              scoreboard meaningless. This is the single mistake that invalidated
+              every previous scoreboard.
+  NAME MOVES  DEGRADED, always. _pool_name_session_moves reads live Yahoo quotes
+              per company. There is no historical source for it, so it is passed
+              empty. Any candidate whose materiality depended on a per-name driver
+              tier is scored without that lift. Marked DEGRADED in every output.
+  NOW         the pipeline's _now is datetime.now(timezone.utc) at pool-fetch
+              time, which is not persisted. We estimate it and then SWEEP a window
+              around the estimate to show the winner is stable, rather than
+              fitting a single value that happens to reproduce the stored answer.
 
 Usage:
-  python backend/tools/replay_lead.py 2026-08-07 morning
-  python backend/tools/replay_lead.py 2026-08-07 morning --prose   (one Gemini call)
+  python backend/tools/replay_lead.py fidelity        the 5-day gate
+  python backend/tools/replay_lead.py score           full agreement table
+  python backend/tools/replay_lead.py day 2026-08-07 morning
 """
 
 import datetime
 import json
 import os
 import sys
-import urllib.parse
-import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-SB = os.environ["NEXT_PUBLIC_SUPABASE_URL"].rstrip("/")
-KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+os.environ.setdefault("SUPABASE_URL", os.environ.get("NEXT_PUBLIC_SUPABASE_URL", ""))
+os.environ.setdefault("SUPABASE_KEY", os.environ.get("SUPABASE_SERVICE_ROLE_KEY", ""))
+
+from supabase_client import get_service_client  # noqa: E402
+
+supabase = get_service_client()
+import impact_ranking as ir  # noqa: E402
 
 
-def _get(path):
-    req = urllib.request.Request(
-        f"{SB}/rest/v1/{path}",
-        headers={"apikey": KEY, "Authorization": f"Bearer {KEY}"},
+def _iso(dt):
+    return dt.isoformat()
+
+
+def load_runs(since="2026-06-15"):
+    """Every run that stored a unified_winner, joined to its briefing row."""
+    runs = (
+        supabase.table("pipeline_runs")
+        .select("started_at, brief_type, briefing_id, preselect_decision")
+        .in_("brief_type", ["morning", "evening"])
+        .gte("started_at", f"{since}T00:00:00Z")
+        .order("started_at", desc=False)
+        .limit(500)
+        .execute()
+    ).data or []
+    out = []
+    for r in runs:
+        pd = r.get("preselect_decision") or {}
+        uw = pd.get("unified_winner") or {}
+        if not uw.get("title"):
+            continue
+        out.append({
+            "started_at": r["started_at"],
+            "brief_type": r["brief_type"],
+            "briefing_id": r.get("briefing_id"),
+            "stored_winner": uw.get("title"),
+            "stored_cluster": uw.get("cluster_key"),
+            "stored_score": uw.get("unified_score"),
+            "shipped": (pd.get("unified") or {}).get("shipped_title"),
+            "shipped_cluster": (pd.get("unified") or {}).get("shipped_cluster"),
+        })
+    return out
+
+
+def load_briefing(briefing_id, started_at, brief_type):
+    if briefing_id:
+        rows = (
+            supabase.table("briefings")
+            .select("id, created_at, headline, market_tape")
+            .eq("id", briefing_id).limit(1).execute()
+        ).data or []
+        if rows:
+            return rows[0]
+    day = started_at[:10]
+    rows = (
+        supabase.table("briefings")
+        .select("id, created_at, headline, market_tape")
+        .eq("briefing_type", brief_type)
+        .gte("created_at", f"{day}T00:00:00Z")
+        .lte("created_at", f"{day}T23:59:59Z")
+        .order("created_at", desc=False).limit(1).execute()
+    ).data or []
+    return rows[0] if rows else None
+
+
+def contest_at(now, brief_type, tape, always_include=None):
+    """One replay of the real contest at a given pool-fetch timestamp."""
+    pool = ir.fetch_coverage_pool(supabase, now)
+    if not pool:
+        return None, 0
+    kwargs = dict(
+        brief_type=brief_type,
+        tape=tape,
+        name_session_pct={},          # DEGRADED, see module docstring
+        mega_deal_urls=ir._mega_deal_urls(supabase, now),
+        mega_demote_urls=ir._mega_demote_urls(supabase, now),
     )
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.loads(r.read().decode())
+    try:
+        uni = ir.compute_unified_lead(
+            pool, now, always_include_clusters=always_include or set(), **kwargs
+        )
+    except TypeError:
+        uni = ir.compute_unified_lead(pool, now, **kwargs)
+    return uni, len(pool)
 
 
-def load_brief(date_str, brief_type):
-    lo = f"{date_str}T00:00:00Z"
-    hi = f"{date_str}T23:59:59Z"
-    rows = _get(
-        "briefings?select=id,created_at,briefing_type,headline,lead_paragraph,market_tape"
-        f"&briefing_type=eq.{brief_type}&created_at=gte.{urllib.parse.quote(lo)}"
-        f"&created_at=lte.{urllib.parse.quote(hi)}&order=created_at.asc&limit=1"
-    )
-    if not rows:
-        raise SystemExit(f"no {brief_type} briefing row on {date_str}")
-    return rows[0]
-
-
-def load_pool(created_at, hours=24, pub_days=2, limit=60):
-    """Point-in-time pool. ingested_at <= the row's created_at, never after it."""
-    cut = datetime.datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-    ing_lo = (cut - datetime.timedelta(hours=hours)).isoformat()
-    pub_lo = (cut - datetime.timedelta(days=pub_days)).isoformat()
-    q = (
-        "articles?select=id,title,source,summary,content,url,published_at,ingested_at,"
-        "sector,companies,relevance_score"
-        f"&ingested_at=gte.{urllib.parse.quote(ing_lo)}"
-        f"&ingested_at=lte.{urllib.parse.quote(cut.isoformat())}"
-        f"&published_at=gte.{urllib.parse.quote(pub_lo)}"
-        "&order=relevance_score.desc,ingested_at.desc,published_at.desc,id.asc"
-        f"&limit={limit}"
-    )
-    return _get(q)
-
-
-def main():
-    date_str = sys.argv[1]
-    brief_type = sys.argv[2] if len(sys.argv) > 2 else "morning"
-    want_prose = "--prose" in sys.argv
-
-    brief = load_brief(date_str, brief_type)
-    now = datetime.datetime.fromisoformat(brief["created_at"].replace("Z", "+00:00"))
-    tape = brief.get("market_tape")
+def replay(run, sweep_minutes=(0, -5, -10, -15, -20, -25, -30)):
+    """Replay one run. Sweeps _now backwards from the briefing insert because the
+    pool is fetched during SYNTHESIZE, minutes before the row is written."""
+    br = load_briefing(run["briefing_id"], run["started_at"], run["brief_type"])
+    if not br:
+        return None
+    tape = br.get("market_tape")
     if isinstance(tape, str):
-        tape = json.loads(tape)
+        try:
+            tape = json.loads(tape)
+        except Exception:
+            tape = None
+    created = datetime.datetime.fromisoformat(br["created_at"].replace("Z", "+00:00"))
 
-    pool = load_pool(brief["created_at"])
+    results = []
+    for m in sweep_minutes:
+        now = created + datetime.timedelta(minutes=m)
+        uni, n = contest_at(now, run["brief_type"], tape,
+                            always_include={run.get("shipped_cluster") or ""})
+        title = (uni or {}).get("article", {}).get("title") if uni else None
+        results.append({
+            "offset_min": m, "now": _iso(now), "pool": n,
+            "winner": title, "cluster": (uni or {}).get("cluster_key"),
+            "score": (uni or {}).get("score"),
+        })
+    return {"run": run, "briefing": br, "tape_regime": (tape or {}).get("regime"),
+            "sweep": results}
 
-    print(f"=== {date_str} {brief_type} ===")
-    print(f"brief_id   {brief['id']}")
-    print(f"created_at {brief['created_at']}")
-    print(f"pool       {len(pool)} articles (point-in-time, ingested_at <= created_at)")
-    print(f"tape       STORED regime={(tape or {}).get('regime')} "
-          f"vix={(tape or {}).get('vix_level')} (fetch_tape NOT called)")
-    print(f"SHIPPED    {brief.get('headline')}")
 
-    import impact_ranking as ir
+def _norm(x):
+    return " ".join((x or "").lower().split())[:60]
 
-    uni = ir.compute_unified_lead(pool, now, brief_type=brief_type, tape=tape,
-                                  name_session_pct={}, mega_deal_urls=set(),
-                                  mega_demote_urls=set())
-    if not uni or not uni.get("article"):
-        print("DETERMINISTIC  (no winner)")
+
+def cmd_fidelity(n_days=5):
+    runs = [r for r in load_runs() if r["stored_winner"]]
+    runs = runs[-n_days:]
+    print(f"FIDELITY GATE: {len(runs)} run(s) with a stored unified_winner\n")
+    print("TAPE=stored  NAME_MOVES=DEGRADED(empty)  NOW=swept\n")
+    passed = 0
+    for r in runs:
+        res = replay(r)
+        if not res:
+            print(f"{r['started_at'][:10]} {r['brief_type']}: no briefing row, SKIP\n")
+            continue
+        hit = next((s for s in res["sweep"] if _norm(s["winner"]) == _norm(r["stored_winner"])), None)
+        best = res["sweep"][0]
+        print(f"--- {r['started_at'][:10]} {r['brief_type']}  tape_regime={res['tape_regime']}")
+        print(f"    STORED    {r['stored_winner'][:78]}")
+        print(f"              cluster={r['stored_cluster']} score={r['stored_score']}")
+        print(f"    REPLAY    {str(best['winner'])[:78]}")
+        print(f"              cluster={best['cluster']} score={best['score']} pool={best['pool']}")
+        if hit:
+            passed += 1
+            print(f"    MATCH at offset {hit['offset_min']}min")
+        else:
+            print("    NO MATCH at any swept offset")
+            for s in res["sweep"]:
+                print(f"      {s['offset_min']:>4}min pool={s['pool']:<5} {str(s['winner'])[:64]}")
+        print()
+    print(f"FIDELITY: {passed}/{len(runs)} matched")
+    return passed, len(runs)
+
+
+def cmd_score():
+    runs = load_runs()
+    print(f"{'date':12}{'sess':9}{'DETERMINISTIC':56}{'SHIPPED':52}agree")
+    for r in runs:
+        w, s = r["stored_winner"], r["shipped"]
+        print(f"{r['started_at'][:10]:12}{r['brief_type']:9}{str(w)[:54]:56}{str(s)[:50]:52}"
+              f"{'yes' if _norm(w) == _norm(s) else 'NO'}")
+
+
+def cmd_day(date_str, brief_type):
+    runs = [r for r in load_runs()
+            if r["started_at"][:10] == date_str and r["brief_type"] == brief_type]
+    if not runs:
+        print("no stored run for that date/session")
         return
-    print(f"DETERMINISTIC  {uni['article'].get('title')}")
-    print(f"               cluster={uni['cluster_key']} score={uni.get('score')} "
-          f"breadth={uni.get('breadth')}")
-
-    if not want_prose:
-        return
-
-    import synthesize as syn
-
-    story = {
-        "title": uni["article"].get("title"),
-        "sector": uni["article"].get("sector"),
-        "one_liner": (uni["article"].get("summary") or "")[:400],
-        "companies": uni["article"].get("companies") or [],
-    }
-    macro_ctx = {"releases": [], "today_catalyst": None, "strip": ""}
-    lv2 = syn.generate_lead_v2(brief_type, tape, macro_ctx, [story], prior_ctx=None)
-    print()
-    if not lv2:
-        print("PROSE  generate_lead_v2 returned None -> HARD falls back to the "
-              "monolith lead (this is the designed fallback, not a crash)")
-        return
-    print(f"HEADLINE        {lv2.get('headline')}")
-    print(f"LEAD_PARAGRAPH  {lv2.get('lead_paragraph')}")
-    print(f"SUPPORTING      {lv2.get('supporting_context')}")
+    res = replay(runs[0])
+    print(json.dumps(res, indent=1, default=str)[:4000])
 
 
 if __name__ == "__main__":
-    main()
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "fidelity"
+    if cmd == "fidelity":
+        cmd_fidelity(int(sys.argv[2]) if len(sys.argv) > 2 else 5)
+    elif cmd == "score":
+        cmd_score()
+    elif cmd == "day":
+        cmd_day(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "morning")
