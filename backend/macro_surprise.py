@@ -530,8 +530,48 @@ def build_release_context(articles, releases=None, fired_keys=None):
         except Exception:
             sur = None
 
+        # PROVENANCE. #566 verifies that "down" matches actual < prior. It cannot
+        # verify that actual is the RIGHT number: if the panel said CPI printed -0.3%
+        # when it printed -0.4%, every directional claim still passes and the brief is
+        # confidently wrong. Traced on a real Aug 7 run, the sources are NOT uniform:
+        #
+        #   actual   BLS/BEA API via series_ids, AND on some days a second,
+        #            independent value stated in article text. Two sources -> checkable.
+        #   prior    BLS/BEA API only. SINGLE SOURCE, and the panel's own vintage_note
+        #            warns it is BLS's current value for the preceding period and may
+        #            itself have been revised.
+        #   period   BLS/BEA period label only. SINGLE SOURCE for the value; the
+        #            release DATE has a second authority in event_calendar, but a date
+        #            is not a value.
+        #
+        # So a cross-check is possible for `actual` and only for `actual`. For the
+        # rest the honest fix is provenance: record where the number came from so a
+        # wrong value is traceable afterwards instead of invisible.
+        _corpus_actual = (sur or {}).get("actual") or None
+        _cv = (_corpus_actual or {}).get("value")
+        if _cv is None or a_cmp is None:
+            _xcheck = "single_source"
+            _xdelta = None
+        else:
+            _tol = max(abs(a_cmp) * 0.02, 1e-9)
+            _xdelta = _cv - a_cmp
+            _xcheck = "agree" if abs(_xdelta) <= _tol else "disagree"
+        provenance = {
+            "actual_source": ("BLS/BEA series " + ",".join(rel.get("series_ids") or [])
+                              if rel.get("series_ids") else "BLS/BEA panel"),
+            "prior_source": "BLS/BEA panel (SINGLE SOURCE, revisable, see vintage_note)",
+            "period_source": "BLS/BEA period label (SINGLE SOURCE)",
+            "series_ids": rel.get("series_ids") or [],
+            "panel_confidence": rel.get("confidence"),
+            "vintage_note": rel.get("vintage_note"),
+            "corpus_actual": _corpus_actual,
+            "actual_cross_check": _xcheck,
+            "actual_cross_check_delta": _xdelta,
+        }
+
         ctx = {
             "release_key": key,
+            "provenance": provenance,
             "release_name": rel.get("name") or name,
             "period": rel.get("period"),
             "actual": a_cmp,
@@ -550,6 +590,34 @@ def build_release_context(articles, releases=None, fired_keys=None):
         }
         out.append(ctx)
     return out
+
+
+def cross_check_report(contexts):
+    """One line per series: the two sources and the verdict. Deterministic."""
+    out = []
+    for c in contexts or []:
+        p = c.get("provenance") or {}
+        ca = (p.get("corpus_actual") or {}).get("value")
+        out.append({
+            "series": c.get("release_key"), "period": c.get("period"),
+            "panel_actual": c.get("actual"), "corpus_actual": ca,
+            "verdict": p.get("actual_cross_check"),
+            "delta": p.get("actual_cross_check_delta"),
+            "corpus_text": (p.get("corpus_actual") or {}).get("text"),
+            "actual_source": p.get("actual_source"),
+            "panel_confidence": p.get("panel_confidence"),
+        })
+    return out
+
+
+def format_cross_check(r):
+    tag = {"agree": "AGREE", "disagree": "DISAGREE  <<< FLAG",
+           "single_source": "SINGLE SOURCE (no corpus value, not checkable)"}
+    return (f"[macro-provenance] {r['series']} ({r['period']}): panel={r['panel_actual']} "
+            f"corpus={r['corpus_actual']} -> {tag.get(r['verdict'], r['verdict'])}"
+            + (f" delta={r['delta']}" if r.get("delta") is not None else "")
+            + f" | src={r['actual_source']} conf={r['panel_confidence']}"
+            + (f" | corpus said {r['corpus_text']!r}" if r.get("corpus_text") else ""))
 
 
 def format_release_strip_line(ctx):
