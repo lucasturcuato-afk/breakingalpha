@@ -73,8 +73,24 @@ if MATERIALITY_RANK_MODE not in ("off", "shadow", "active"):
 # off (DEFAULT), the lead path is BYTE-IDENTICAL to today's `impact_pick or deal_pick`
 # precedence. This is orthogonal to MATERIALITY_RANK_MODE and does NOT flip it.
 # Read exactly like MATERIALITY_RANK_MODE so the surfaces stay symmetric.
+# THIRD STATE, "hard". The seam this closes: with "on", the deterministic winner is
+# handed to the monolith as a "narrate this, do not re-rank" DIRECTIVE, and the monolith
+# still emits its own headline / lead_paragraph / primary_story_id and is free to
+# override. It did, twice on record: 2026-08-07 the unified pick was the July payrolls
+# miss and the brief shipped the Electronic Arts buyout; 2026-07-28 the pick was
+# Paramount $54B and the brief shipped the SpaceX lockup unlock. Weeks of eligibility,
+# DEALGUARD, value-scaling and fragmentation work were improving a pick that never
+# reached the page.
+#
+# "hard" makes the deterministic winner AUTHORITATIVE: it writes headline and
+# primary_story_id, and the narrator is re-asked to write the lead block ABOUT the
+# chosen story rather than being trusted to have chosen it. See _apply_lead_authority.
+#
+#   off  (DEFAULT) shadow only. Byte-identical to prod.
+#   on             serve the directive, monolith may still override. Today's "on".
+#   hard           serve the directive AND write the lead block authoritatively.
 UNIFIED_LEAD = os.environ.get("UNIFIED_LEAD", "off").strip().lower()
-if UNIFIED_LEAD not in ("off", "on"):
+if UNIFIED_LEAD not in ("off", "on", "hard"):
     print(f"  [unified-lead] unknown UNIFIED_LEAD={UNIFIED_LEAD!r}, "
           "falling back to 'off' (prod-neutral default)")
     UNIFIED_LEAD = "off"
@@ -4951,6 +4967,7 @@ def run(brief_type="morning"):
         # calibrator re-fits weights from them and joins the grade to the right
         # candidate. Orthogonal to MATERIALITY_RANK_MODE (does NOT flip it). Fails
         # closed: any error keeps the precedence pick and logs nothing. Selection-only.
+        _unified_authority = None
         if brief_type in ("morning", "evening") and _pool:
             try:
                 import impact_ranking as _uir
@@ -5137,7 +5154,7 @@ def run(brief_type="morning"):
 
                     # ── SERVE: only when the flag is ON do we replace the shipped
                     # precedence pick with the unified argmax. OFF is shadow-only. ──
-                    if UNIFIED_LEAD == "on":
+                    if UNIFIED_LEAD in ("on", "hard"):
                         _prev_title = str((preselected or {}).get("title") or "")[:200]
                         preselected = dict(_uni["article"])
                         preselected["_preselect_reason"] = f"unified:{_uni['cluster_key']}"
@@ -5145,7 +5162,16 @@ def run(brief_type="morning"):
                         preselected["_impact_breadth"] = _uni.get("breadth")
                         preselected["_impact_cluster"] = _uni["cluster_key"]
                         lead_source = "unified"
-                        print(f"  ✅ [unified:on] SERVED lead -> {_uni['cluster_key']} "
+                        # Stash for the hard-authority pass further down. run() is one
+                        # function, so this survives to the persist path.
+                        _unified_authority = {
+                            "cluster_key": _uni["cluster_key"],
+                            "title": str(_uni["article"].get("title") or "").strip(),
+                            "article": dict(_uni["article"]),
+                            "score": _uni.get("score"),
+                            "precedence_title": _prev_title,
+                        }
+                        print(f"  ✅ [unified:{UNIFIED_LEAD}] SERVED lead -> {_uni['cluster_key']} "
                               f"(was: {_prev_title[:50]})")
             except Exception as _uerr:
                 print(f"  ⚠ unified lead contest skipped (non-fatal, keeping precedence pick): {_uerr}")
@@ -6196,9 +6222,55 @@ def run(brief_type="morning"):
     # existing chain (headline figure guard, temporal + prose guards) runs on it.
     # A deterministic anti-tautology post-check ('reflects investor caution ahead
     # of ...') gets ONE bounded re-ask before the overwrite commits.
-    if LEAD_V2 and not brief_is_stub and isinstance(data, dict):
+    # HARD AUTHORITY (UNIFIED_LEAD=hard). The deterministic winner is authoritative:
+    # the narrator is handed EXACTLY ONE story and therefore cannot re-pick. This reuses
+    # the LEAD_V2 generate-then-overwrite machinery rather than adding a second narrator,
+    # so the headline still runs through the figure guard, the tautology guard and the
+    # temporal guard exactly as a V2 lead does.
+    #
+    # FALLBACK, and this is what stops an empty headline shipping: hard only engages when
+    # _unified_authority is populated, which requires the contest to have produced an
+    # argmax with a non-empty article title. Winner missing, contest errored, pool empty,
+    # or brief is a stub -> this block is skipped and the monolith lead ships exactly as
+    # it does today. A failed generate_lead_v2 call inside the block is likewise
+    # soft-fail: the monolith lead is kept.
+    _monolith_headline = str((data or {}).get("headline") or "").strip() if isinstance(data, dict) else ""
+    _monolith_psid = str((data or {}).get("primary_story_id") or "").strip() if isinstance(data, dict) else ""
+    _hard_authority = (
+        UNIFIED_LEAD == "hard"
+        and isinstance(locals().get("_unified_authority"), dict)
+        and bool((_unified_authority or {}).get("title"))
+    )
+    if (LEAD_V2 or _hard_authority) and not brief_is_stub and isinstance(data, dict):
         try:
             _lead_stories = _pulse_top_stories(spine, floor, _companies_of)
+            # HARD: pin the narrator to the deterministic winner. Passing a single
+            # story is the enforcement mechanism, not a hint. If the winner is not in
+            # the ranked set (it is a scored cluster, not necessarily a top story) we
+            # synthesize a minimal entry from its article so the narrator still has a
+            # subject. Prefer the ranked entry when present because it carries the
+            # one_liner and companies the narrator uses for the real why.
+            if _hard_authority:
+                _w = _unified_authority
+                _wt = (_w.get("title") or "").strip().lower()
+                _match = next(
+                    (st for st in (_lead_stories or [])
+                     if str(st.get("title") or "").strip().lower() == _wt),
+                    None,
+                )
+                if _match is None:
+                    _wa = _w.get("article") or {}
+                    _match = {
+                        "title": _w.get("title"),
+                        "sector": _wa.get("sector"),
+                        "one_liner": (_wa.get("summary") or "")[:400],
+                        "companies": _wa.get("companies") or [],
+                    }
+                    print("  [unified:hard] winner absent from the ranked set; "
+                          "narrating from its article directly")
+                _lead_stories = [_match]
+                print(f"  🔒 [unified:hard] narrator pinned to 1 story: "
+                      f"{str(_w.get('title'))[:70]}")
             # Reuse the ONE shared macro object the pulse consumed (same
             # today_catalyst, same authoritative is_release_day flag) so pulse and
             # lead CANNOT disagree on CPI freshness. Fall back to a fresh fetch only
@@ -6250,6 +6322,51 @@ def run(brief_type="morning"):
                 print("  ✨ LEAD_V2: dedicated real-why + macro-recency lead wired in")
         except Exception as e:
             print(f"  ⚠ LEAD_V2 wire-in skipped (non-fatal): {e}")
+
+    # HARD AUTHORITY, part 2: the deterministic winner writes primary_story_id too.
+    # headline is already authoritative because the narrator was pinned to one story
+    # above. Writing primary_story_id here keeps the two fields agreeing, which the
+    # monolith prompt asks for and could previously violate.
+    #
+    # OVERRIDE RATE IS MEASURABLE AFTER THE FACT. We record the deterministic winner,
+    # whether authority was actually applied, and what the monolith would have shipped.
+    # Without the last field there is no way to tell a run where authority changed the
+    # outcome from a run where the monolith agreed anyway.
+    if _hard_authority and isinstance(data, dict):
+        try:
+            _w_title = str(_unified_authority.get("title") or "").strip()
+            if _w_title:
+                data["primary_story_id"] = _w_title[:200]
+            _final_hl = str(data.get("headline") or "").strip()
+            def _norm_hl(x):
+                return " ".join((x or "").lower().split())
+            _overrode = _norm_hl(_final_hl) != _norm_hl(_monolith_headline)
+            _lead_authority_log = {
+                "mode": UNIFIED_LEAD,
+                "applied": True,
+                "winner_cluster": _unified_authority.get("cluster_key"),
+                "winner_title": _w_title[:200],
+                "winner_score": _unified_authority.get("score"),
+                "precedence_title": str(_unified_authority.get("precedence_title") or "")[:200],
+                "monolith_headline": _monolith_headline[:200],
+                "monolith_primary_story_id": _monolith_psid[:200],
+                "shipped_headline": _final_hl[:200],
+                "changed_the_outcome": bool(_overrode),
+            }
+            try:
+                import lead_preselect as _lp_auth
+                _lp_auth._LAST_DECISION_LOG.update({"lead_authority": _lead_authority_log})
+            except Exception as _le:
+                print(f"  ⚠ [unified:hard] decision-log capture skipped (non-fatal): {_le}")
+            print(f"  🔒 [unified:hard] AUTHORITATIVE lead -> {_w_title[:70]}")
+            print(f"     monolith would have shipped: {_monolith_headline[:70] or '(none)'}")
+            print(f"     changed_the_outcome={_overrode}")
+        except Exception as _ae:
+            print(f"  ⚠ [unified:hard] authority write skipped (non-fatal, monolith lead kept): {_ae}")
+    elif UNIFIED_LEAD == "hard":
+        # Explicit so a silent no-op is never mistaken for authority having run.
+        print("  ⚠ [unified:hard] no usable deterministic winner; "
+              "falling back to today's monolith lead")
 
     # Headline figure guard (non-fatal). The V2 pulse figure guard covers the
     # narrative but NOT the lead HEADLINE, where an unsourced "$3 Billion" has
