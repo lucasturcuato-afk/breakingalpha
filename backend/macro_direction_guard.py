@@ -295,6 +295,60 @@ def format_violation(v):
               f"consensus={v.get('consensus')} | clause={v['clause'][:110]!r}")
 
 
+# Tokens that must NEVER be title-cased when they land at the start of a sentence.
+# A ticker, an all-caps series name and a figure are already correctly cased, and
+# "capitalising" them corrupts the text (Cpi, Gdp, Wti, +0.4%).
+_NO_TOUCH_RX = re.compile(r"^(?:[A-Z0-9&./$+\-]{2,}|[$+\-]?[\d(].*)")
+
+# Orphaned conjunctions. After a clause strip the remainder can begin with the
+# connective that used to join it to the removed clause: "and the unemployment rate
+# ticked down", "while the VIX...". Leading them is not prose.
+_ORPHAN_RX = re.compile(
+    r"^(?:and|but|while|whereas|although|though|as|with|which|also|then)\b[\s,]*", re.I)
+
+
+def _tidy(text):
+    """Repair-artifact cleanup. Deterministic, order matters.
+
+    Every rule here fixes an artifact observed in #566's acceptance run, not a
+    hypothetical one. The observed set was: a lowercase fragment after a sentence
+    boundary ("in early trade. and the unemployment"), a comma left touching a
+    period, doubled spaces, and a leading comma on the remainder."""
+    t = text or ""
+    t = re.sub(r"\s{2,}", " ", t)                    # doubled spaces
+    t = re.sub(r"\s+([.,;:])", r"\1", t)             # space before punctuation
+    t = re.sub(r",\s*([.!?])", r"\1", t)             # trailing comma before a period
+    t = re.sub(r"([.!?])\s*,", r"\1", t)             # period immediately followed by a comma
+    t = re.sub(r"([.!?])\s*\1+", r"\1", t)           # doubled terminators
+    t = re.sub(r"([,;:])\s*\1+", r"\1", t)           # doubled commas / semicolons
+    t = re.sub(r"(?m)^[\s,;:]+", "", t)              # leading punctuation on the whole text
+    t = re.sub(r"\(\s*\)", "", t)                    # empty parens left by a strip
+
+    # Sentence-start pass: drop an orphaned conjunction, then capitalise, skipping
+    # tokens that are already correctly cased.
+    parts = re.split(r"(?<=[.!?])(\s+)", t)
+    rebuilt = []
+    for i, seg in enumerate(parts):
+        if i % 2 == 1:            # the whitespace separator itself
+            rebuilt.append(seg)
+            continue
+        seg2 = _ORPHAN_RX.sub("", seg, count=1) if seg else seg
+        # Refuse the orphan strip if it would leave nothing meaningful.
+        if seg and not seg2.strip():
+            seg2 = seg
+        if seg2 and not _NO_TOUCH_RX.match(seg2):
+            seg2 = seg2[0].upper() + seg2[1:]
+        rebuilt.append(seg2)
+    t = "".join(rebuilt)
+    t = re.sub(r"\s{2,}", " ", t)
+    # Terminal punctuation. Stripping a trailing clause takes the sentence's own
+    # period with it, observed on #566 criterion 3b which ended "from a prior +129K".
+    t = t.rstrip()
+    if t and t[-1] not in ".!?":
+        t = t.rstrip(",;: ") + "."
+    return t
+
+
 def strip_violations(narrative, violations):
     """CLAUSE-LEVEL removal, the #491 pattern. The rest of the narrative is left
     byte-identical. Returns (new_narrative, n_stripped). Never returns empty: if
@@ -316,10 +370,7 @@ def strip_violations(narrative, violations):
             f = re.match(r"(,\s+|\s+while\s+|\s+whereas\s+|\s+although\s+|;\s+)", out[e:])
             s2, e2 = s, e + (f.end() if f else 0)
         out = out[:s2] + out[e2:]
-    out = re.sub(r"\s{2,}", " ", out)
-    out = re.sub(r"\s+([.,;])", r"\1", out)
-    out = re.sub(r"(?m)^[\s,;]+", "", out)
-    out = re.sub(r"([.!?])\s*\1+", r"\1", out)
+    out = _tidy(out)
     # Only refuse the strip when it leaves essentially nothing. The earlier 80-char
     # floor silently swallowed a legitimate repair (criterion 3c left a valid 63-char
     # sentence), which is exactly the "guard that half works" failure mode.
