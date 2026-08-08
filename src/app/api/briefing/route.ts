@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { normalizeSections } from "@/lib/brief-sections";
 
 /* ── User profile types for personalization ── */
 interface UserProfile {
@@ -404,7 +405,14 @@ export async function GET(request: NextRequest) {
   const hasModulePrefs = (userPreferences?.modules?.length ?? 0) > 0;
   const hasSectorPrefs = (userPreferences?.sectors?.length ?? 0) > 0;
 
-  const sections = (safeParseJSON(raw.sections) || {}) as Record<string, unknown>;
+  // Normalize section values at the read boundary. `sections` is written by
+  // Gemini with no response_schema, so a key that is normally prose can arrive
+  // as a nested object (2026-08-07: sector_spotlight). Every consumer that
+  // reads through this route then either throws on .trim() or silently drops
+  // the section. Coerce once, here, so none of them have to care.
+  const sections = normalizeSections(
+    (safeParseJSON(raw.sections) || {}) as Record<string, unknown>
+  );
   const sectorBreak = (safeParseJSON(raw.sector_breakdown) || {}) as Record<string, unknown>;
 
   // Market Pulse passthrough (additive, A-Subagent 1). market_pulse is in the
