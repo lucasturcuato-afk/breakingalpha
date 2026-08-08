@@ -86,8 +86,18 @@ TIER1_BUCKETS = {"fed", "cpi", "pce", "jobs"}
 # content signature (below) so near-identical syndications of one story still
 # merge, but unrelated stories do not. Macro buckets are unchanged.
 EVENT_THEMES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("ma", ("acquire", "acquisition", "acquires", "buyout", "buy out", "to buy",
-            "buys", "merger", "takeover", "tender offer", "bid for", "deal for")),
+    # Rebased from #527 (O3). The "ma" theme was PRESENT-tense only, so ONE confirmed
+    # deal fragmented across sub-clusters whenever its coverage used past-tense or
+    # seller-side framing: Uber "Just Bought" matched no M&A verb and fell to the
+    # "stock" theme, splitting distinct sources and crushing the breadth signal.
+    # Every added verb is transaction-directional. Bare "sale" and "sells" are
+    # deliberately kept OUT: they collide with the "offering" theme's "share sale"
+    # and equity-raise framing.
+    ("ma", ("acquire", "acquisition", "acquisitions", "acquires", "acquired",
+            "buyout", "buy out", "to buy", "buys", "bought", "merger", "takeover",
+            "tender offer", "bid for", "deal for", "sale of", "sale to", "to sell",
+            "divests", "divested", "agrees to buy", "agreed to buy",
+            "agrees to acquire", "agreed to acquire")),
     ("funding", ("bond", "debt deal", "notes offering", "note offering",
                  "raises $", "raise $", "funding round", "series a", "series b",
                  "series c", "series d", "fundraise", "fundraising", "credit facility",
@@ -1585,6 +1595,18 @@ def _value_scaled_conf(value_b: Optional[float], floor: float, ceil: float) -> O
 # little - an EARNED edge, not an automatic win), and a single-name pure-deal cluster
 # that is NOT a confirmed tape driver is demoted (the tape did not move on its account).
 _MAT_WIDE_EDGE_MAX = 0.30     # max market-wide/macro lift added to the 0.5 neutral base
+
+# Rebased from #527 (O3). A confirmed mega-deal earned only the 0.5 neutral materiality
+# on a quiet tape, so a $14.8B acquisition lost the breadth tiebreak to a $101M contract.
+# A confirmed >=$1B deal is material BY VALUE. Floor only: it never lowers a higher
+# earned score. Value-scaled so $14.8B floors above $1.45B.
+#
+# THE CEILING IS LOAD-BEARING. 0.75 sits UNDER the market-wide/macro cap
+# (0.5 + _MAT_WIDE_EDGE_MAX = 0.80), so a genuinely material macro on a moving tape can
+# NEVER be displaced by a deal, however large. Do not raise _MEGA_MAT_FLOOR_MAX to or
+# above 0.80 without deciding you want deals to outrank macro.
+_MEGA_MAT_FLOOR_MIN = 0.55    # a confirmed $1B mega-deal (value floored at $1B)
+_MEGA_MAT_FLOOR_MAX = 0.75    # a confirmed mega-deal at/above the value saturation point
 _MAT_WIDE_MAG_SAT_PCT = 1.5   # |S&P move %| at which the wide edge saturates to the max
 _MAT_SINGLE_NAME_NOISE_DEMOTE = 0.20  # demote a non-driver single-name pure-deal cluster
 
@@ -1726,6 +1748,19 @@ def _unified_materiality(scored_cluster: dict, *, tape: Optional[dict],
             and not is_driver and not scored_cluster.get("is_mega_deal")):
         comp -= _MAT_SINGLE_NAME_NOISE_DEMOTE
         reasons.append(f"single-name non-driver noise (-{_MAT_SINGLE_NAME_NOISE_DEMOTE})")
+
+    # Rebased from #527 (O3). Confirmed mega-deal materiality floor: see the constants
+    # above. Floor only, value-scaled, capped under the market-wide edge.
+    if scored_cluster.get("is_mega_deal"):
+        v = _deal_value_usd_b(text)
+        floor = _value_scaled_conf(max(v if v is not None else 1.0, 1.0),
+                                   _MEGA_MAT_FLOOR_MIN, _MEGA_MAT_FLOOR_MAX)
+        if floor is not None and comp < floor:
+            reasons.append(
+                f"confirmed mega-deal value floor (-> {round(floor, 3)}, "
+                f"~${max(v or 1.0, 1.0):.1f}B)"
+            )
+            comp = floor
 
     return max(0.0, min(1.0, comp)), reasons
 
