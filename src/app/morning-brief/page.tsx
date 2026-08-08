@@ -22,6 +22,7 @@ import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { stripHtml } from "@/lib/strip-html";
+import { sectionText } from "@/lib/brief-sections";
 import { makeCallLink } from "@/lib/make-call-link";
 import { FileText } from "lucide-react";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
@@ -537,8 +538,10 @@ export default function MorningBriefPage() {
     const s = briefing?.sections || {};
     const out: { key: string; title: string; content: string }[] = [];
     for (const key of TAB_ORDER) {
-      const content = s[key];
-      if (content && content.trim()) {
+      // sectionText, not s[key]: Gemini writes sections with no response_schema,
+      // so a value that is normally prose can arrive as a nested object.
+      const content = sectionText(s[key]);
+      if (content.trim()) {
         out.push({ key, title: SECTION_TITLES[key] || key, content });
       }
     }
