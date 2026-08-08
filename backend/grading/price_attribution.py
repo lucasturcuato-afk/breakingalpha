@@ -75,6 +75,7 @@ from backend.grading.resolver import (
     VERDICT_PARTIAL,
     VERDICT_WRONG,
     Outcome,
+    deferred,
     ungradable,
 )
 from backend.market_data import fetch_historical_candle
@@ -519,6 +520,7 @@ class PriceAttributionGrader:
         self,
         ticker_sectors: Mapping[str, str] | None = None,
         fetch_candle: CandleFetcher = fetch_historical_candle,
+        now: Callable[[], datetime] | None = None,
     ):
         # ticker -> canonical sector label (from the companies table),
         # resolved in one batched query by the runner.
@@ -526,6 +528,9 @@ class PriceAttributionGrader:
             k.upper(): v for k, v in (ticker_sectors or {}).items()
         }
         self._fetch_candle = fetch_candle
+        # Injectable clock (UTC) so the transient-vs-permanent decision for a
+        # missing candle is testable. Never reads a clock in grading math.
+        self._now = now or (lambda: datetime.now(timezone.utc))
 
     def resolve(self, call: dict) -> Outcome:
         claim_type = (call.get("claim_type") or "").strip().lower()
@@ -553,10 +558,26 @@ class PriceAttributionGrader:
 
         entity = self._fetch_candle(target, day_start, day_end)
         if not entity:
+            # Transient vs permanent absence. The session being priced is
+            # day_start; its EOD candle only exists after that session closes and
+            # Tiingo publishes it (hours after the 4pm ET close). When the run
+            # fires on the SAME UTC day as the session (the 2026-08-07 batch
+            # graded at 22:36 UTC), the candle is simply not published yet: defer,
+            # leave the call unresolved, and let the next run grade it. Only a
+            # PAST session that is still empty is a real ungradable, because by
+            # then the bar would exist if it ever will.
+            if day_start.date() >= self._now().date():
+                return deferred(
+                    REASON_NO_PRICE_DATA,
+                    f"session candle for {target} on {day_start.date().isoformat()} "
+                    "not yet published; will retry next run",
+                    grader=self.name,
+                )
             return ungradable(
                 REASON_NO_PRICE_DATA,
                 f"no session candle for {target} on {day_start.date().isoformat()}",
                 grader=self.name,
+                extra={"absence": "permanent"},
             )
 
         # Session count comes from the entity's actual candles; thresholds
