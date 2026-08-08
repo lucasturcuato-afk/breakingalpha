@@ -42,14 +42,23 @@ from macro_surprise import RELEASE_KINDS
 
 # Directional assertions. Longest-first within each set so "ticked up" wins over
 # "up" and the recorded match is the real phrase, which matters for the log.
+# Present participles are included deliberately. Measuring the clause-scope gap
+# showed the lists were past-tense only, so "rising sharply from the prior month's
+# figure" and "accelerating from the prior +0.5%" matched NOTHING and the guard
+# reported clean on two deliberately inverted test renders. A directional word the
+# guard cannot see is a directional claim it cannot check.
 _UP = (
-    "ticked up", "edged up", "moved up", "rose", "climbed", "increased", "jumped",
-    "surged", "accelerated", "higher", "hotter", "firmer", "gained", "up",
+    "ticked up", "edged up", "moved up", "rose", "rising", "rise", "climbed",
+    "climbing", "increased", "increasing", "jumped", "jumping", "surged", "surging",
+    "accelerated", "accelerating", "higher", "hotter", "firmer", "gained", "gaining",
+    "strengthened", "strengthening", "up",
 )
 _DOWN = (
-    "ticked down", "edged down", "moved down", "fell", "declined", "dropped",
-    "decreased", "slowed", "cooled", "eased", "softened", "lower", "softer",
-    "cooler", "weaker", "down", "contracted", "shrank",
+    "ticked down", "edged down", "moved down", "fell", "falling", "declined",
+    "declining", "dropped", "dropping", "decreased", "decreasing", "slowed",
+    "slowing", "cooled", "cooling", "eased", "easing", "softened", "softening",
+    "lower", "softer", "cooler", "weaker", "down", "contracted", "contracting",
+    "shrank", "shrinking", "moderated", "moderating",
 )
 _FLAT = (
     "in line with", "matching", "matched", "unchanged", "flat", "steady",
@@ -254,6 +263,52 @@ def check(narrative, release_ctx):
                     "why": f"actual {ctx.get('actual')} vs prior {ctx.get('prior')} is {want}",
                     "span": [start, end],
                 })
+    # ANAPHORA PASS for prior-direction claims. Measured, not assumed: across 20
+    # renders (8 known-good plus 12 live), 3 of 15 directional claims about a release
+    # series sat in a clause that did not name it, a 20 percent blind spot. All three
+    # were the same shape, a trailing flat clause: "...printed +0.4% m/m, matching the
+    # prior month's figure."
+    #
+    # #566 tried plain sentence scope and it reintroduced subject-attribution false
+    # positives ("US stocks opened higher as June nonfarm payrolls printed..."). This
+    # is narrower on purpose: a bare clause inherits the series from the nearest
+    # PRECEDING clause in the same sentence, and ONLY when the clause contains no
+    # competing subject at all (no index, sector, yield, oil, VIX, dollar, market).
+    # One competing subject anywhere in the clause and it is left alone.
+    for sent, sbase in _sentences(narrative):
+        last_key = None
+        for cl, cs, ce in _clauses_of(sent, sbase):
+            named = [c for c in release_ctx
+                     if RELEASE_KINDS.get(c.get("release_key"))
+                     and RELEASE_KINDS[c["release_key"]][1].search(cl)]
+            if named:
+                last_key = named[0] if len(named) == 1 else None
+                continue
+            if last_key is None or _OTHER_SUBJECT_RX.search(cl):
+                continue
+            if _CONSENSUS_RX.search(cl):
+                continue          # consensus claims are handled by the pass below
+            claimed = _claimed_dir(cl, len(cl) // 2)
+            if not claimed:
+                continue
+            cdir, phrase = claimed
+            want = _expected_dir(last_key.get("actual"), last_key.get("prior"))
+            if not want or cdir == want:
+                continue
+            if any(v["span"] == [cs, ce] for v in violations):
+                continue
+            violations.append({
+                "kind": "prior_inverted_anaphoric", "series": last_key["release_key"],
+                "period": last_key.get("period"), "clause": cl.strip(),
+                "claim": phrase, "claimed_dir": cdir, "expected_dir": want,
+                "actual": last_key.get("actual"), "prior": last_key.get("prior"),
+                "why": (f"clause does not name the series; inherited "
+                        f"{last_key['release_key']} from the preceding clause, "
+                        f"actual {last_key.get('actual')} vs prior "
+                        f"{last_key.get('prior')} is {want}"),
+                "span": [cs, ce],
+            })
+
     # SENTENCE SCOPE for consensus claims. A quantified miss or a stated consensus
     # figure often lives in a clause that does not itself name the series, e.g.
     # "payrolls at +57K for June, which missed expectations of +80K". The clause loop
