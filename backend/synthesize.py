@@ -3448,7 +3448,8 @@ def _pulse_driver_signal(tape, top_stories, brief_type):
     return out
 
 
-def _pulse_macro_framing(macro_is_release_day, driver_signal, surprise=None):
+def _pulse_macro_framing(macro_is_release_day, driver_signal, surprise=None,
+                         release_ctx=None):
     """R2: build the pulse's MACRO FRAMING clause. macro_is_release_day is NO
     LONGER the sole gate. THREE framings, keyed on (a) whether a dated macro
     release printed today AND (b) the deterministic driver signal computed from
@@ -3472,6 +3473,16 @@ def _pulse_macro_framing(macro_is_release_day, driver_signal, surprise=None):
     # ARTICLES, so it cannot be stale, and this decouples the fix from the separate
     # release-day-flag repair. macro_surprise emits nothing without explicit
     # comparator language, so this branch cannot fire off a price move (#463).
+    # RELEASE CONTEXT branch. Supersedes the surprise-only clause: the trigger is
+    # now that a release PRINTED today, not that someone wrote "below expectations".
+    # An in-line print, and a print with no consensus in the corpus, are both still
+    # the day's event and both get analysed. Surprise is one optional field on the
+    # context object, no longer the gate.
+    _rel_clause = macro_surprise.release_framing_clause(release_ctx)
+    if _rel_clause:
+        _lead = (release_ctx or [{}])[0]
+        _d = _lead.get("direction_vs_consensus")
+        return _rel_clause, f"release_context:{_d or 'no_consensus'}"
     _surprise_clause = macro_surprise.surprise_framing_clause(surprise)
     if _surprise_clause:
         return _surprise_clause, "macro_surprise"
@@ -3885,7 +3896,8 @@ def _pulse_top_stories(spine, floor, companies_of_fn, limit=5):
 
 
 def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None,
-                          macro_is_release_day=False, surprise=None):
+                          macro_is_release_day=False, surprise=None,
+                          release_ctx=None):
     """MARKET_PULSE_V2: ONE bounded, focused Gemini call that produces
     market_pulse.narrative with the TAPE + MACRO as the SUBJECT and stories only as
     color. This is the dedicated call that fixes the article-dominated monolith
@@ -3942,7 +3954,7 @@ def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None,
     prior_block = (prior_ctx or "").strip()
     driver_signal = _pulse_driver_signal(tape, top_stories, brief_type)
     macro_framing, _pulse_framing_branch = _pulse_macro_framing(
-        macro_is_release_day, driver_signal, surprise=surprise
+        macro_is_release_day, driver_signal, surprise=surprise, release_ctx=release_ctx
     )
     extra_block = (
         f"ADDITIONAL TAPE (rates / oil / sector leadership / breadth - fetched facts, "
@@ -5885,20 +5897,53 @@ def run(brief_type="morning"):
                     # grounding sourced set through the same channel every other
                     # macro figure does (overview_grounding._sourced_figure_set reads
                     # macro_strip), which means the gate is satisfied, not weakened.
-                    _macro_surprise = None
+                    # INPUT FIX. The extractor used to read `spine`, the
+                    # relevance-top-60 synthesis pool. On 2026-08-07 every payrolls
+                    # article ranked 696 or worse of 1000 because 600 articles tied
+                    # at relevance_score 10, so the consensus article, ingested 18
+                    # minutes before generation, was never seen. `_pool` is the
+                    # coverage pool this same run ALREADY built for the lead contest
+                    # (impact_ranking.fetch_coverage_pool, 1000 rows,
+                    # recency-ordered), so this costs ZERO extra queries.
+                    # The coverage pool is NOT enough: its LIMIT 1000 spanned only
+                    # five minutes on 2026-08-07 (2397 articles in the window). Use
+                    # the dedicated text-only release pool, which is one cheap extra
+                    # SELECT of five small columns. Degrades to the coverage pool and
+                    # then the spine if it fails.
                     try:
-                        _macro_surprise = macro_surprise.extract_macro_surprise(spine)
-                        _sline = macro_surprise.format_surprise_strip_line(_macro_surprise)
-                        if _sline:
-                            _pulse_macro = (_pulse_macro + "\n" + _sline).strip()
-                            print(f"  📐 macro surprise: {_sline}")
+                        _macro_pool = impact_ranking.fetch_release_text_pool(supabase, _now)
+                    except Exception:
+                        _macro_pool = []
+                    if not _macro_pool:
+                        _macro_pool = locals().get("_pool") or spine
+                    _macro_surprise = None
+                    _release_ctx = []
+                    try:
+                        _macro_surprise = macro_surprise.extract_macro_surprise(_macro_pool)
+                        _release_ctx = macro_surprise.build_release_context(
+                            _macro_pool,
+                            releases=(_shared_macro_ctx or {}).get("releases"),
+                            fired_keys=(_shared_macro_ctx or {}).get("fired_today"),
+                        )
+                        for _c in _release_ctx:
+                            _rline = macro_surprise.format_release_strip_line(_c)
+                            if _rline:
+                                _pulse_macro = (_pulse_macro + "\n" + _rline).strip()
+                                print(f"  📐 release context: {_rline}")
+                        if not _release_ctx:
+                            _sline = macro_surprise.format_surprise_strip_line(_macro_surprise)
+                            if _sline:
+                                _pulse_macro = (_pulse_macro + "\n" + _sline).strip()
+                                print(f"  📐 macro surprise: {_sline}")
                     except Exception as _ms_e:
-                        print(f"  ⚠ macro surprise skipped (non-fatal): {_ms_e}")
+                        print(f"  ⚠ macro release context skipped (non-fatal): {_ms_e}")
                         _macro_surprise = None
+                        _release_ctx = []
                     _prior_ctx = _fetch_prior_brief_lead()
                     _v2 = generate_market_pulse(
                         brief_type, tape_obj, _pulse_macro, _pulse_stories, prior_ctx=_prior_ctx,
                         macro_is_release_day=_macro_release_today, surprise=_macro_surprise,
+                        release_ctx=_release_ctx,
                     )
                     if _v2:
                         # Deterministic subject-check: opening must be the index-level
@@ -5915,6 +5960,7 @@ def run(brief_type="morning"):
                             _v2r = generate_market_pulse(
                                 brief_type, tape_obj, _pulse_macro, _pulse_stories,
                                 prior_ctx=_prior_ctx, macro_is_release_day=_macro_release_today,
+                                release_ctx=_release_ctx,
                                 surprise=_macro_surprise,
                             )
                             _pc2 = (
@@ -5983,6 +6029,7 @@ def run(brief_type="morning"):
                         _v2re = generate_market_pulse(
                             brief_type, tape_obj, _pulse_macro, _pulse_stories,
                             prior_ctx=_prior_ctx, macro_is_release_day=_macro_release_today,
+                                release_ctx=_release_ctx,
                         )
                         _reok = bool(
                             _v2re
