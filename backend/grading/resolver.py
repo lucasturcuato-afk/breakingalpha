@@ -36,6 +36,11 @@ VERDICT_CORRECT = "correct"
 VERDICT_WRONG = "wrong"
 VERDICT_PARTIAL = "partial"
 VERDICT_UNGRADABLE = "ungradable"
+# Not a verdict and never persisted. A call whose session candle does not exist
+# YET (the session has not closed or the EOD bar is not yet published) is left
+# unresolved and re-scanned next run, instead of being locked as ungradable
+# forever for a temporary condition. See deferred() and is_deferred.
+VERDICT_DEFERRED = "deferred"
 
 # Attribution tags (nullable column, only set on price-graded outcomes).
 ATTRIBUTION_CLEAN = "clean"
@@ -67,17 +72,42 @@ class Outcome:
 
     @property
     def is_gradable(self) -> bool:
-        return self.verdict != VERDICT_UNGRADABLE
+        return self.verdict not in (VERDICT_UNGRADABLE, VERDICT_DEFERRED)
+
+    @property
+    def is_deferred(self) -> bool:
+        """True when grading was postponed (transient data absence). The runner
+        writes NO row for this, so the call stays unresolved and is re-scanned."""
+        return self.verdict == VERDICT_DEFERRED
 
 
-def ungradable(reason: str, detail: str, grader: str = "resolver") -> Outcome:
-    """Explicit, visible refusal to grade. Never a silent skip."""
+def ungradable(
+    reason: str, detail: str, grader: str = "resolver", extra: dict | None = None
+) -> Outcome:
+    """Explicit, visible refusal to grade. Never a silent skip. `extra` merges
+    into metadata so callers can mark, e.g., absence='permanent'."""
+    meta = {
+        "grader": grader,
+        "ungradable_reason": reason,
+        "ungradable_detail": detail,
+    }
+    if extra:
+        meta.update(extra)
+    return Outcome(verdict=VERDICT_UNGRADABLE, metadata=meta)
+
+
+def deferred(reason: str, detail: str, grader: str = "resolver") -> Outcome:
+    """Grading postponed: the data is absent NOW but expected to arrive (the
+    session candle is not yet published). Never persisted; the call is left
+    unresolved and re-scanned on the next run. Metadata marks the absence as
+    transient so it is distinguishable from a permanent ungradable."""
     return Outcome(
-        verdict=VERDICT_UNGRADABLE,
+        verdict=VERDICT_DEFERRED,
         metadata={
             "grader": grader,
-            "ungradable_reason": reason,
-            "ungradable_detail": detail,
+            "deferred_reason": reason,
+            "deferred_detail": detail,
+            "absence": "transient",
         },
     )
 

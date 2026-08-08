@@ -164,9 +164,19 @@ def main() -> None:
     ticker_sectors = sectors_for_tickers(sb, tickers)
     resolver = default_resolver(PriceAttributionGrader(ticker_sectors=ticker_sectors))
 
-    graded = ungraded = failed = 0
+    graded = ungraded = failed = deferred_count = 0
     for claim in claims:
         outcome = resolver.resolve(claim_to_call(claim))
+        # Transient data absence: write no outcome and leave status 'open' so the
+        # claim is re-scanned next run once its candle is published. Never lock a
+        # claim ungradable for a temporary condition.
+        if outcome.is_deferred:
+            deferred_count += 1
+            print(
+                f"[claims] Deferred {claim['id']}: "
+                f"{outcome.metadata.get('deferred_detail')}"
+            )
+            continue
         if outcome.is_gradable:
             notes = gemini_verdict_notes(
                 claim["user_claim"], claim.get("expected_direction") or "", outcome
@@ -196,7 +206,10 @@ def main() -> None:
                 f"{outcome.metadata.get('ungradable_reason')}"
             )
 
-    print(f"[claims] Done: {graded} graded, {ungraded} ungradable, {failed} failed")
+    print(
+        f"[claims] Done: {graded} graded, {ungraded} ungradable, "
+        f"{deferred_count} deferred, {failed} failed"
+    )
 
 
 if __name__ == "__main__":
