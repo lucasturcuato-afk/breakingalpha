@@ -22,6 +22,7 @@ import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { stripHtml } from "@/lib/strip-html";
+import { sectionText } from "@/lib/brief-sections";
 import { makeCallLink } from "@/lib/make-call-link";
 import { reconcileCloseWord } from "@/lib/tape-adjective";
 import { Moon } from "lucide-react";
@@ -508,8 +509,9 @@ export default function EveningWrapPage() {
     const out: { key: string; title: string; content: string }[] = [];
     for (const key of MOVERS_TAB_ORDER) {
       if (key === "tomorrow_setup") continue;
-      const content = s[key];
-      if (content && content.trim()) {
+      // Same unguarded .trim() that took /morning-brief down on 2026-08-07.
+      const content = sectionText(s[key]);
+      if (content.trim()) {
         out.push({ key, title: SECTION_TITLES[key] || key, content });
       }
     }

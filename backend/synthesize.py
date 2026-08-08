@@ -6487,6 +6487,24 @@ def run(brief_type="morning"):
         except Exception as e:
             print(f"  ⚠ section routing fixup error (non-fatal): {e}")
 
+    # Section values must be flat strings. `sections` goes to Gemini with
+    # response_mime_type="application/json" and NO response_schema, so the value
+    # type is unconstrained. On 2026-08-07 the model returned sector_spotlight as
+    # {"Consumer & Retail": "<prose>"} instead of prose, and every frontend
+    # consumer calls .trim() on the value. Flatten the nested form back to prose
+    # here so the shape can never reach the database.
+    if isinstance(data.get("sections"), dict):
+        _flat = {}
+        for _k, _v in data["sections"].items():
+            if isinstance(_v, str):
+                _flat[_k] = _v
+            elif isinstance(_v, dict) and all(isinstance(x, str) for x in _v.values()):
+                _flat[_k] = " ".join(f"{_sk}: {_sv.strip()}" for _sk, _sv in _v.items() if _sv.strip())
+                print(f"  \u26a0 sections.{_k}: flattened nested dict to prose ({list(_v.keys())})")
+            else:
+                print(f"  \u26a0 sections.{_k}: dropped, unusable type {type(_v).__name__}")
+        data["sections"] = _flat
+
     sector_breakdown = _validate_sector_breakdown(data.get("sector_breakdown", {}))
     print(f"  📊 sector_breakdown: {len(sector_breakdown)} sector(s) — {list(sector_breakdown.keys())}")
 
