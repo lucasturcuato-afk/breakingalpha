@@ -5946,6 +5946,41 @@ def run(brief_type="morning"):
                         release_ctx=_release_ctx,
                     )
                     if _v2:
+                        # MACRO DIRECTION GUARD. Deterministic, no LLM. Every directional
+                        # claim about a release series must agree with that series' own
+                        # numbers. Runs BEFORE the subject-check so a stripped clause is
+                        # not re-validated as if it had shipped. Strip-or-repair at the
+                        # CLAUSE level (#491): a single bad clause must never drop the
+                        # hero to minimal_template.
+                        try:
+                            import macro_direction_guard as _mdg
+                            _dv = _mdg.check(_v2, _release_ctx)
+                            if _dv:
+                                for _v in _dv:
+                                    print("  ⚠ " + _mdg.format_violation(_v))
+                                _fixed, _nstrip = _mdg.strip_violations(_v2, _dv)
+                                if _nstrip:
+                                    _v2 = _fixed
+                                    print(f"  ✂ macro-direction: stripped {_nstrip} clause(s), "
+                                          f"narrative kept ({len(_v2)} chars)")
+                                else:
+                                    print("  ⚠ macro-direction: violation(s) found but the strip "
+                                          "would empty the narrative; keeping it and logging only")
+                                try:
+                                    import lead_preselect as _lp_mdg
+                                    _lp_mdg._LAST_DECISION_LOG.update({
+                                        "macro_direction_violations": [
+                                            {k: _v[k] for k in ("kind", "series", "claim",
+                                                                "claimed_dir", "actual", "prior",
+                                                                "consensus")}
+                                            for _v in _dv
+                                        ],
+                                        "macro_direction_stripped": _nstrip,
+                                    })
+                                except Exception:
+                                    pass
+                        except Exception as _mde:
+                            print(f"  ⚠ macro-direction guard skipped (non-fatal): {_mde}")
                         # Deterministic subject-check: opening must be the index-level
                         # market read, not a single company/sector, with brief-type
                         # claim scope. ONE bounded re-ask, then the minimal grounded
