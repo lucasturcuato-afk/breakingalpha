@@ -695,6 +695,16 @@ def _select_articles_for_synthesis(
     return spine, floor
 
 
+# Candidate-generation regime. Stamped into the C1 audit
+# (pipeline_runs.preselect_decision.unified.candidate_gen_regime) so the lead
+# weight calibrator cannot silently fit one weight vector across two different
+# candidate populations. Bump this string whenever the synthesis pool query
+# (window, limit, or ordering) changes.
+#   pool60-relevance-only : ORDER BY relevance_score DESC LIMIT 60, ties resolved
+#                           by physical row order (non-reproducible).
+#   pool60-tiebreak-0023  : + ingested_at DESC, published_at DESC, id ASC.
+CANDIDATE_GEN_REGIME = "pool60-tiebreak-0023"
+
 DRIVER_DEAL_TYPES = ("Geopolitical", "Macro", "Macro & Policy")
 DRIVER_MIN_SCORE = 8
 DRIVER_QUERY_LIMIT = 24
@@ -1127,12 +1137,22 @@ def fetch_watchlist_signals(cutoff_hours: int = 24) -> tuple[list[dict], list[st
 
         print(f"  📋 Watchlist: {len(identifiers)} tracked identifiers")
 
-        # Fetch cached articles for those identifiers from the last cutoff_hours
+        # Fetch cached articles for those identifiers from the last cutoff_hours.
+        # Same deterministic tiebreak as the synthesis pool: relevance_score
+        # saturates here too, so a bare score sort with LIMIT 50 lets physical
+        # row order decide which watchlist signals reach the prompt. Ordering
+        # mirrors sql/0023_top_stories_index.sql
+        #     relevance_score DESC, ingested_at DESC, published_at DESC, id ASC
+        # with fetched_at standing in for ingested_at: watchlist_articles has no
+        # ingested_at column, and fetched_at is this table's ingest timestamp.
         articles_resp = supabase.table("watchlist_articles")\
             .select("identifier, title, summary, source, source_type, published_at, relevance_score, url")\
             .in_("identifier", identifiers)\
             .gte("fetched_at", cutoff)\
             .order("relevance_score", desc=True)\
+            .order("fetched_at", desc=True)\
+            .order("published_at", desc=True)\
+            .order("id", desc=False)\
             .limit(50)\
             .execute()
 
@@ -4795,11 +4815,25 @@ def run(brief_type="morning"):
     # `url`, `source`, and `deal_type` are required by lead_preselect.py —
     # url joins to deal_flow.source_url, source feeds the tier tiebreaker,
     # and deal_type drives the macro/geopolitical fallback hierarchy.
+    # DETERMINISTIC TIEBREAK (relevance saturation). relevance_score alone does
+    # not order this pool: on 2026-08-07 the point-in-time window held 2,397
+    # rows, 1,171 at score >= 8 and 600 at score 10, so a LIMIT 60 cut on a
+    # single sort key is decided entirely by physical row order and ~90% of the
+    # score-10 tier is discarded arbitrarily and irreproducibly. Same ordering
+    # as sql/0023_top_stories_index.sql, which the dashboard's Top Stories query
+    # already uses and which the idx_articles_top_stories index backs:
+    #     relevance_score DESC, ingested_at DESC, published_at DESC, id ASC
+    # This does NOT rescue a low-scored cluster (a score-9 story still loses to
+    # 600 score-10 rows). It makes the cut reproducible and freshness-biased
+    # inside the tie, which is the precondition for any later fix.
     resp = supabase.table("articles")\
         .select("title, summary, content, url, source, sector, industry_verticals, companies, deal_type, relevance_score, relevance_reason, published_at, ingested_at")\
         .gte("ingested_at", cutoff)\
         .gte("published_at", publish_cutoff)\
         .order("relevance_score", desc=True)\
+        .order("ingested_at", desc=True)\
+        .order("published_at", desc=True)\
+        .order("id", desc=False)\
         .limit(60)\
         .execute()
 
@@ -5054,6 +5088,14 @@ def run(brief_type="morning"):
                         "shipped_cluster": _shipped_cluster or None,
                         "shipped_title": (str((preselected or {}).get("title") or "")[:200] or None),
                         "shipped_in_audit": _shipped_in_audit,
+                        # Candidate-generation regime marker. The calibrator fits
+                        # weights across days of C1 vectors; if the pool that
+                        # generates those candidates changes, vectors from before
+                        # and after are not the same population and must not be
+                        # pooled into one fit. Bumped by the deterministic
+                        # relevance tiebreak (sql/0023 ordering) on the synthesis
+                        # pool, which changed 50/60 of the 2026-08-07 pool rows.
+                        "candidate_gen_regime": CANDIDATE_GEN_REGIME,
                     }
                     try:
                         import lead_preselect as _lp_u
