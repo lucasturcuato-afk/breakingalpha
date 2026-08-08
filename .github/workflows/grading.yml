@@ -57,6 +57,10 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          # Evidence ledger pass. Default off when the repo var is unset, so the
+          # step writes nothing until this is set to 'active'. A flag the workflow
+          # does not pass is inert, which has bitten us before; pass it here.
+          EVIDENCE_LEDGER_MODE: ${{ vars.EVIDENCE_LEDGER_MODE }}
         run: python cron/daily_grading.py ${{ steps.flags.outputs.force_flag }}
 
       - name: Notify on failure
