@@ -21,3 +21,21 @@ export function sectionText(value: unknown): string {
   }
   return "";
 }
+
+/**
+ * Map form of {@link sectionText}. Coerces every value in a sections object to
+ * a string and drops keys that coerce to empty. Use this at every read boundary
+ * (API route, direct Supabase read) so downstream consumers get the shape their
+ * types already claim.
+ */
+export function normalizeSections(
+  raw: unknown
+): Record<string, string> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const text = sectionText(value);
+    if (text.trim()) out[key] = text;
+  }
+  return out;
+}

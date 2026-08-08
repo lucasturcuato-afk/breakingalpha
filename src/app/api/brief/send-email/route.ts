@@ -31,6 +31,7 @@ import { getSiteUrl } from "@/lib/email/site-url";
 import { ensureIssueNumber } from "@/lib/email/issue-number";
 import { makeUnsubscribeToken } from "@/lib/email/unsubscribe-token";
 import { isAdmin } from "@/lib/admin-emails";
+import { normalizeSections } from "@/lib/brief-sections";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -180,7 +181,8 @@ export async function POST(request: NextRequest) {
     headline: raw.headline ?? undefined,
     summary: raw.summary ?? undefined,
     market_tone: raw.market_tone ?? undefined,
-    sections: (safeParseJSON(raw.sections) as Record<string, string> | null) ?? null,
+    // Reads Supabase directly, so /api/briefing normalization does not reach it.
+    sections: normalizeSections(safeParseJSON(raw.sections)),
     top_deals: (safeParseJSON(raw.top_deals) as BriefEmailPayload["top_deals"]) ?? [],
     sector_breakdown:
       (safeParseJSON(raw.sector_breakdown) as Record<string, string> | null) ?? null,
@@ -494,7 +496,8 @@ export async function GET(request: NextRequest) {
     headline: raw.headline ?? undefined,
     summary: raw.summary ?? undefined,
     market_tone: raw.market_tone ?? undefined,
-    sections: (safeParseJSON(raw.sections) as Record<string, string> | null) ?? null,
+    // Reads Supabase directly, so /api/briefing normalization does not reach it.
+    sections: normalizeSections(safeParseJSON(raw.sections)),
     top_deals: (safeParseJSON(raw.top_deals) as BriefEmailPayload["top_deals"]) ?? [],
     sector_breakdown:
       (safeParseJSON(raw.sector_breakdown) as Record<string, string> | null) ?? null,

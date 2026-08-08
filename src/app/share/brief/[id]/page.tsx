@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { TickerStrip } from "@/components/brief/ticker-strip";
 import { Wordmark } from "@/components/ui/wordmark";
 import { stripHtml } from "@/lib/strip-html";
+import { normalizeSections } from "@/lib/brief-sections";
 
 /**
  * Public read-only brief view.
@@ -118,7 +119,12 @@ export default async function PublicBriefPage({ params }: Props) {
 
   const briefing = data as BriefingRow;
 
-  const sections = (safeParse(briefing.sections) as Record<string, unknown> | null) || {};
+  // This page reads Supabase directly, so /api/briefing normalization does not
+  // reach it. Without this it does not crash, but it silently drops any section
+  // whose value is not a string.
+  const sections = normalizeSections(
+    (safeParse(briefing.sections) as Record<string, unknown> | null) || {}
+  );
   const sectorBreakdown =
     (safeParse(briefing.sector_breakdown) as Record<string, unknown> | null) || {};
   const topDealsRaw = safeParse(briefing.top_deals);
