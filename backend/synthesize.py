@@ -27,6 +27,7 @@ except Exception:  # pragma: no cover - path differs between runner and tests
     from backend.call_falsifiability import apply_gate as apply_falsifiability_gate
 import prose_quality_guard
 import overview_grounding
+import macro_surprise
 from dataclasses import asdict
 try:
     from usage_log import log_gemini_usage
@@ -3406,7 +3407,7 @@ def _pulse_driver_signal(tape, top_stories, brief_type):
     return out
 
 
-def _pulse_macro_framing(macro_is_release_day, driver_signal):
+def _pulse_macro_framing(macro_is_release_day, driver_signal, surprise=None):
     """R2: build the pulse's MACRO FRAMING clause. macro_is_release_day is NO
     LONGER the sole gate. THREE framings, keyed on (a) whether a dated macro
     release printed today AND (b) the deterministic driver signal computed from
@@ -3423,6 +3424,16 @@ def _pulse_macro_framing(macro_is_release_day, driver_signal):
     Every figure the driver framing names (WTI / sector-ETF / VIX / index %) is
     already in the pulse grounding supported set, so this adds NO ungrounded term.
     Returns (framing_text, branch_name). Pure; testable offline."""
+    # SURPRISE branch. A corpus-derived, deterministic surprise outranks both the
+    # calendar release-day flag and the tape driver, because a print that missed
+    # consensus IS the day's catalyst regardless of what the FRED calendar says.
+    # It is NOT gated on macro_is_release_day: the surprise is derived from TODAY'S
+    # ARTICLES, so it cannot be stale, and this decouples the fix from the separate
+    # release-day-flag repair. macro_surprise emits nothing without explicit
+    # comparator language, so this branch cannot fire off a price move (#463).
+    _surprise_clause = macro_surprise.surprise_framing_clause(surprise)
+    if _surprise_clause:
+        return _surprise_clause, "macro_surprise"
     if macro_is_release_day:
         return (
             "MACRO FRAMING: a major economic release dropped TODAY (tagged 'RELEASED "
@@ -3833,7 +3844,7 @@ def _pulse_top_stories(spine, floor, companies_of_fn, limit=5):
 
 
 def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None,
-                          macro_is_release_day=False):
+                          macro_is_release_day=False, surprise=None):
     """MARKET_PULSE_V2: ONE bounded, focused Gemini call that produces
     market_pulse.narrative with the TAPE + MACRO as the SUBJECT and stories only as
     color. This is the dedicated call that fixes the article-dominated monolith
@@ -3890,7 +3901,7 @@ def generate_market_pulse(brief_type, tape, macro, top_stories, prior_ctx=None,
     prior_block = (prior_ctx or "").strip()
     driver_signal = _pulse_driver_signal(tape, top_stories, brief_type)
     macro_framing, _pulse_framing_branch = _pulse_macro_framing(
-        macro_is_release_day, driver_signal
+        macro_is_release_day, driver_signal, surprise=surprise
     )
     extra_block = (
         f"ADDITIONAL TAPE (rates / oil / sector leadership / breadth - fetched facts, "
@@ -5796,10 +5807,25 @@ def run(brief_type="morning"):
                     # the release-day FLAG is the shared authoritative one above, NOT a
                     # second independent derivation.
                     _pulse_macro, _ = _pulse_macro_strip()
+                    # Deterministic, no-LLM macro surprise from TODAY'S corpus.
+                    # Appended to the strip TEXT so any figure it names enters the
+                    # grounding sourced set through the same channel every other
+                    # macro figure does (overview_grounding._sourced_figure_set reads
+                    # macro_strip), which means the gate is satisfied, not weakened.
+                    _macro_surprise = None
+                    try:
+                        _macro_surprise = macro_surprise.extract_macro_surprise(spine)
+                        _sline = macro_surprise.format_surprise_strip_line(_macro_surprise)
+                        if _sline:
+                            _pulse_macro = (_pulse_macro + "\n" + _sline).strip()
+                            print(f"  📐 macro surprise: {_sline}")
+                    except Exception as _ms_e:
+                        print(f"  ⚠ macro surprise skipped (non-fatal): {_ms_e}")
+                        _macro_surprise = None
                     _prior_ctx = _fetch_prior_brief_lead()
                     _v2 = generate_market_pulse(
                         brief_type, tape_obj, _pulse_macro, _pulse_stories, prior_ctx=_prior_ctx,
-                        macro_is_release_day=_macro_release_today,
+                        macro_is_release_day=_macro_release_today, surprise=_macro_surprise,
                     )
                     if _v2:
                         # Deterministic subject-check: opening must be the index-level
@@ -5816,6 +5842,7 @@ def run(brief_type="morning"):
                             _v2r = generate_market_pulse(
                                 brief_type, tape_obj, _pulse_macro, _pulse_stories,
                                 prior_ctx=_prior_ctx, macro_is_release_day=_macro_release_today,
+                                surprise=_macro_surprise,
                             )
                             _pc2 = (
                                 overview_grounding.validate_pulse_opening(
