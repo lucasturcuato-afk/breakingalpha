@@ -37,10 +37,13 @@ export function formatShortDate(): string {
   });
 }
 
-export function Greeting({
-  storyCount = 0,
-  context = "markets are adjusting to new data.",
-}: GreetingProps) {
+/**
+ * `context` is optional and has NO default. It carries a claim about the tape
+ * or the user's feed, so it is rendered only when a caller derived one from
+ * real data. A hardcoded fallback here reads as a measured observation and is
+ * not one.
+ */
+export function Greeting({ storyCount = 0, context }: GreetingProps) {
   const [mounted, setMounted] = useState(false);
   const [userName, setUserName] = useState("there");
 
@@ -86,8 +89,8 @@ export function Greeting({
       </h2>
       <p className="font-display italic text-[15px] md:text-[17px] text-text-secondary mt-2.5 leading-[1.5]">
         {storyCount > 0
-          ? `${storyCount} high-signal stories worth your attention — ${context}`
-          : `No new stories yet — ${context}`}
+          ? `${storyCount} high-signal stories worth your attention${context ? ` — ${context}` : "."}`
+          : `No new stories yet${context ? ` — ${context}` : "."}`}
       </p>
     </div>
   );

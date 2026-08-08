@@ -8,7 +8,20 @@ import {
   isAwaitingOwnVerdict,
   type ClaimOutcomeRow,
 } from "@/lib/claim-outcome";
-import { VERDICT_WORD } from "@/lib/verdict-vocabulary";
+// #542's record view supersedes #543's per-row verdictChip. It still speaks the
+// shared observational vocabulary: buildYourRecord buckets through
+// RESOLUTION_BY_STATE and its labels are DESK_RECORD_COPY.bucketLabel, both from
+// verdict-vocabulary.ts (#543). So VERDICT_WORD is no longer imported directly
+// here; the same table reaches this file through your-record.ts.
+import {
+  buildYourRecord,
+  resolutionForClaim,
+  YOUR_RECORD_COPY as COPY,
+  type UserClaimLike,
+  type YourRecord,
+} from "@/lib/your-record.ts";
+import { RESOLUTION_ORDER, type Resolution } from "@/lib/desk-record.ts";
+import { todayPt } from "@/lib/session-date.ts";
 
 /**
  * YourCallsWidget — the user's OWN calls, from GET /api/radar/claims
@@ -20,7 +33,13 @@ import { VERDICT_WORD } from "@/lib/verdict-vocabulary";
  *    so an adopted claim never borrows the desk's verdict.
  *  - No outcome row means the claim is genuinely ungraded and renders "open",
  *    never a substituted or inferred result.
- *  - Nothing is fabricated: with no claims the widget states that plainly.
+ *  - Nothing is fabricated: with no claims the widget states that plainly, and
+ *    with claims but nothing graded it says THAT plainly too. It never fills
+ *    the gap with the desk's numbers. The desk's graded record is a separate,
+ *    separately-labeled block (DeskRecordSummary); this file cannot read it.
+ *  - Vocabulary is observational (supported, challenged, no clean read,
+ *    awaiting), shared with the desk record. No W/L, no hit rate, no
+ *    percentage of any kind is computed or rendered over the record.
  *
  * Deep link: /radar/calls does NOT read a ?claim= param (it reads draft,
  * thesis, views, adopt), so linking per-claim by id would be a dead link.
@@ -56,26 +75,76 @@ function directionTone(dir: string | null): string {
   return "text-text-muted border-border-base bg-parchment-mid";
 }
 
+/** Tone per resolution. Colour marks state, not rank. */
+const RESOLUTION_CLS: Record<Resolution, string> = {
+  supported: "text-signal-up",
+  challenged: "text-signal-dn",
+  noCleanRead: "text-text-muted",
+  notGraded: "text-text-faint",
+};
+
 /**
- * Verdict label + tone, only ever from the claim's own outcome row.
- *
- * The word comes from the shared vocabulary table, never a local Right/Wrong
- * pair. These are the reader's OWN claims, which is where the difference
- * between "the evidence challenged this" and "you were wrong" decides whether
- * someone keeps a record at all.
+ * The user's record, above their claims. Three honest states and no fourth:
+ * no claims at all, claims but nothing resolved, and a real breakdown. The
+ * empty states are the point, not a gap to paper over.
  */
-function verdictChip(outcome: ClaimOutcomeRow): { label: string; cls: string } {
-  const v = (outcome.verdict ?? "").toLowerCase();
-  const clean = (outcome.attribution ?? "").toLowerCase() === "clean";
-  if (v === "correct" && clean) {
-    return { label: VERDICT_WORD.supported!, cls: "text-signal-up" };
+function YourRecordSummary({ record }: { record: YourRecord }) {
+  if (record.totalClaims === 0) {
+    return (
+      <div className="mb-3">
+        <p className="font-sans text-[11px] text-text-primary leading-snug m-0">
+          {COPY.noClaimsTitle}
+        </p>
+        <p className="font-sans text-[10px] text-text-muted leading-snug mt-1 m-0">
+          {COPY.noClaimsBody}
+        </p>
+      </div>
+    );
   }
-  if (v === "wrong" && clean) {
-    return { label: VERDICT_WORD.challenged!, cls: "text-signal-dn" };
+
+  if (!record.hasResolved) {
+    return (
+      <div className="mb-3">
+        <p className="font-sans text-[11px] text-text-primary leading-snug m-0">
+          {COPY.noneResolvedTitle}
+        </p>
+        <p className="font-sans text-[10px] text-text-muted leading-snug mt-1 m-0">
+          {COPY.noneResolvedBody}
+        </p>
+        <p className="font-data text-[9.5px] text-text-faint tabular-nums mt-1.5 m-0">
+          {COPY.awaitingLabel} {record.awaiting}
+        </p>
+      </div>
+    );
   }
-  if (v === "ungradable") return { label: "Ungradable", cls: "text-text-faint" };
-  // partial, or a verdict without a clean attribution: no clean read.
-  return { label: VERDICT_WORD.noCleanRead!, cls: "text-text-muted" };
+
+  return (
+    <div className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2">
+      {RESOLUTION_ORDER.map((r) => (
+        <div key={r}>
+          <span className="font-data text-[9px] tracking-[0.02em] text-text-faint uppercase block">
+            {COPY.bucketLabel[r]}
+          </span>
+          <span
+            className={cn(
+              "font-data text-[15px] font-semibold tabular-nums leading-none block mt-0.5",
+              RESOLUTION_CLS[r],
+            )}
+          >
+            {record.byResolution[r]}
+          </span>
+        </div>
+      ))}
+      <div className="col-span-2">
+        <span className="font-data text-[9.5px] text-text-faint tabular-nums">
+          {COPY.awaitingLabel} {record.awaiting}
+        </span>
+        <p className="font-sans text-[9.5px] text-text-faint italic leading-snug mt-0.5 m-0">
+          {COPY.awaitingNote}
+        </p>
+      </div>
+    </div>
+  );
 }
 
 export function YourCallsWidget() {
@@ -114,20 +183,26 @@ export function YourCallsWidget() {
 
   const claims = (data.claims ?? []).filter((c) => c.status !== "archived");
   const outcomes = data.outcomes ?? {};
+  const today = todayPt();
+  const record = buildYourRecord(claims as UserClaimLike[], outcomes, today);
+
+  if (data.unavailable) {
+    return (
+      <p className="font-sans text-[11px] text-text-muted italic leading-snug py-1 m-0">
+        {COPY.unavailable}
+      </p>
+    );
+  }
 
   if (claims.length === 0) {
     return (
       <div>
-        <p className="font-sans text-[11px] text-text-muted italic leading-snug py-1">
-          {data.unavailable
-            ? "Calls are not available yet."
-            : "You have not made any calls yet. Commit one in Radar and it will be graded here."}
-        </p>
+        <YourRecordSummary record={record} />
         <Link
           href={CALLS_HREF}
-          className="block mt-2 font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors"
+          className="block font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors"
         >
-          Go to Calls →
+          {COPY.cta}
         </Link>
       </div>
     );
@@ -135,11 +210,15 @@ export function YourCallsWidget() {
 
   return (
     <div className="dash-fill-in">
+      <YourRecordSummary record={record} />
       <div className="space-y-2">
         {claims.slice(0, 4).map((c) => {
           const own = resolveClaimOutcome(c, outcomes);
           const awaiting = isAwaitingOwnVerdict(c, outcomes);
-          const chip = own ? verdictChip(own) : null;
+          const resolution = resolutionForClaim(c as UserClaimLike, outcomes, today);
+          const chip = resolution
+            ? { label: COPY.bucketLabel[resolution], cls: RESOLUTION_CLS[resolution] }
+            : null;
           return (
             <Link
               key={c.id}
@@ -161,7 +240,7 @@ export function YourCallsWidget() {
                   <span className="font-data text-[9.5px] text-text-muted">{c.target_symbol}</span>
                 )}
                 <span className="font-data text-[9px] text-text-faint ml-auto">
-                  {awaiting ? "open" : chip?.label}
+                  {awaiting ? COPY.awaitingLabel.toLowerCase() : chip?.label}
                 </span>
               </div>
               <p className="font-sans text-[11.5px] text-text-primary leading-snug line-clamp-2 group-hover:text-gold-dark transition-colors m-0">

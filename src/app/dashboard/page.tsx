@@ -5,7 +5,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { DashTile } from "@/components/dashboard/dash-tile";
-import { CallRecord } from "@/components/dashboard/call-record";
+import { DeskRecordSummary } from "@/components/dashboard/desk-record-summary";
 import {
   Greeting,
   StatCard,
@@ -464,6 +464,9 @@ export default function DashboardPage() {
       );
     }
     const card = marketCards[sym.toUpperCase()];
+    // No card, or a card the feed could not price: render the absence. The
+    // previous `card?.pct ?? 0` printed "0.00%" for a symbol nothing quoted.
+    const unknown = !card || card.value === "—";
     return (
       <StatCard
         key={sym}
@@ -472,6 +475,7 @@ export default function DashboardPage() {
         change={card?.pct ?? 0}
         changeAbs={card?.change}
         displayUnit={card?.displayUnit}
+        changeUnknown={unknown}
         stale={card?.closed ?? false}
         accentGold={i === 0}
         detailRows={[]}
@@ -544,10 +548,13 @@ export default function DashboardPage() {
 
         {/* Greeting header — kicker/title/subtitle + date pill + arrange controls */}
         <div className="dash-rise flex items-start justify-between gap-4 flex-wrap mt-1">
-          <Greeting
-            storyCount={storyCount}
-            context={greetingSubtitle ?? "markets are adjusting to new export policy data."}
-          />
+          {/* No fallback sentence. `greetingSubtitle` is derived from the
+              user's own watchlist, sectors and the latest briefing's tone;
+              when none of those produce a line there is nothing true to say
+              about the tape, so the greeting says nothing about it. The old
+              default asserted a specific market condition nothing had
+              measured. */}
+          <Greeting storyCount={storyCount} context={greetingSubtitle} />
           <div className="flex flex-col items-end gap-2.5 ml-auto">
             <DatePill />
             {/* Edit-mode controls: pencil to enter, Done + Plus while editing. */}
@@ -743,19 +750,24 @@ export default function DashboardPage() {
             riseDelay={220}
             fresh={<FreshRadar stories={stories} watchlistTickers={watchlistTickers} embedded />}
           />
-          {/* Your calls = the user's OWN claims (/api/radar/claims), with
-              CallRecord kept as a separate, explicitly-labeled block for
-              Signalera's graded brief-call record. The two are different
-              things and are no longer presented as one. */}
-          <DashTile title="Your calls" subtitle="your tracked views" riseDelay={300} className="h-full flex flex-col">
-            <YourCallsWidget />
-            <div className="mt-4 pt-3.5 border-t border-border-subtle">
-              <p className="font-data text-[9.5px] tracking-[0.02em] text-text-faint uppercase mb-2">
-                Signalera&rsquo;s graded record
-              </p>
-              <CallRecord />
-            </div>
-          </DashTile>
+          {/* Your calls = the user's OWN claims (/api/radar/claims), and
+              nothing else. Signalera's graded brief-call record is a separate
+              tile below, under its own heading. Two records, two objects: the
+              desk's numbers are never rendered under a "Your" heading, and an
+              empty personal record says so rather than borrowing them. */}
+          <div className="flex flex-col gap-[18px] h-full">
+            <DashTile title="Your calls" subtitle="your tracked views" riseDelay={300}>
+              <YourCallsWidget />
+            </DashTile>
+            <DashTile
+              title="Signalera&rsquo;s record"
+              subtitle="the desk&rsquo;s graded calls"
+              riseDelay={320}
+              className="flex-1"
+            >
+              <DeskRecordSummary />
+            </DashTile>
+          </div>
         </div>
 
         {/* Follow row — Watchlist + Signals, bottoms aligned. */}

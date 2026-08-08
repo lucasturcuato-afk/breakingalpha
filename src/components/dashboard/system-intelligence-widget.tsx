@@ -2,9 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
+import { shouldShowLearningBadge } from "@/lib/learning-badge";
 
 interface IntelligenceData {
   lastRun: string | null;
+  /** Evidence the calibrator has fit weights from graded outcomes. */
+  learning?: { calibrated: boolean; fitTs: string | null; nTrain: number } | null;
   avgQualityScore: number | null;
   topPattern: { sector: string; horizon: string; win_rate: number } | null;
   topSource: { source: string; win_rate: number } | null;
@@ -86,11 +89,24 @@ export function SystemIntelligenceWidget() {
         </>
       )}
 
-      <span className="border-l border-border-base h-3 self-center" aria-hidden="true" />
-      <span className="flex items-center gap-1 font-sans text-[10px] text-text-secondary whitespace-nowrap">
-        <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse" />
-        Learning active
-      </span>
+      {/* "Learning active" is gated on evidence that the calibrator has
+          actually fit weights from graded outcomes (a non-default lead_weights
+          row with n_train > 0). It was previously unconditional: a pulsing
+          badge asserting a live feedback loop while the only calibrator held
+          one hand-tuned seed row and had never proposed a weight. With no
+          evidence the badge is absent, not softened. */}
+      {shouldShowLearningBadge(data?.learning) && (
+        <>
+          <span className="border-l border-border-base h-3 self-center" aria-hidden="true" />
+          <span className="flex items-center gap-1 font-sans text-[10px] text-text-secondary whitespace-nowrap">
+            <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse" />
+            Learning active
+            <span className="text-text-faint">
+              ({(data?.learning?.nTrain ?? 0).toLocaleString()} graded)
+            </span>
+          </span>
+        </>
+      )}
     </div>
   );
 }
