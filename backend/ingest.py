@@ -487,6 +487,178 @@ def validate_tags(tags, whitelist: list, max_count: int = 3) -> list:
                     return result
     return result
 
+
+# ---------------------------------------------------------------------------
+# deal_type validation
+# ---------------------------------------------------------------------------
+# FILTER_PROMPT defines deal_type over a 7-value vocabulary, but nothing enforced
+# it. A FULL-TABLE census (~162,000 rows) found 28 distinct invalid values across
+# ~8,175 rows (~5%). A 30-day sample had shown only 9 of them, so the tail is
+# long and thin: 20 of the 28 values have fewer than 30 rows each.
+#
+# The invalid values fall into three groups, and they are NOT all the same bug:
+#
+#   1. ACTIVITY_TYPES bleed -- the model returns a value from the other
+#      enumeration in this prompt. The bulk of the volume.
+#        Fundraising 2649, Earnings & Results 2573, IPO & Capital Markets 1280,
+#        Macro & Policy 751, Regulation & Legal 402, Mergers & Acquisitions 283,
+#        Private Equity 116, Venture Capital 15, Crypto & Digital Assets 2,
+#        Geopolitics 2
+#
+#   2. Invented vocabulary -- plausible-sounding categories that are in no
+#      enumeration at all.
+#        Regulation 26, Regulatory 24, Partnership 12, Public Company News 6,
+#        Product Launch 4, Market Movement 4, Macro/Geopolitical 3,
+#        Public Markets & Earnings 3, Public Markets 2, Investment 2,
+#        Hiring 1, Market Entry 1, PE 1, Joint Venture 1, Expansion 1,
+#        Infrastructure Investment 1
+#
+#   3. PROMPT TEXT AS DATA -- not a classification at all.
+#        "Joint-venture disambiguator" (4 rows) is the literal heading of a
+#        clause in this very prompt. The model copied a section label into the
+#        answer field. Mapped to Other because it carries ZERO information about
+#        the article; see the note on _DEAL_TYPE_ALIASES below.
+#        "null" (6 rows) is the literal 4-character STRING (verified: type=str,
+#        len=4), distinct from the 451 rows holding a real SQL NULL. The prompt
+#        says "Return null only if the article is so general it fits none of
+#        these", and the model complied in MEANING while emitting `"null"`
+#        instead of `null` -- a JSON-typing slip. It is handled as a true NULL,
+#        not coerced to Other: coercing would both fabricate a category and
+#        contradict the prompt's own escape hatch.
+#
+# A column scan confirmed deal_type is the ONLY structured field carrying prompt
+# text. sentiment holds exactly {neutral, bullish, bearish}; primary_company has
+# zero placeholder values; industry_verticals / activity_types / themes / sector
+# are clean because validate_tags whitelists them. deal_type is the one
+# constrained field that had no validator. That is the gap this closes.
+#
+# This is POST-PROCESSING ONLY, by design. The prompt is not touched and no
+# Literal is added to the FilterDecision response schema, because either would
+# change model behaviour and invalidate the cached prompt prefix (FILTER_PROMPT
+# is a ~3.9k-token static prefix and FILTER_PROMPT_CACHE=1 in production keeps
+# ~89% of filter input tokens on the cached tier). Generation stays byte-identical;
+# only what we STORE is corrected.
+
+#: The only values articles.deal_type may hold. Mirrors the FILTER_PROMPT vocabulary.
+DEAL_TYPES = ["M&A", "IPO", "Funding", "Earnings", "Macro", "Geopolitical", "Other"]
+
+#: Strings that MEAN "no category", written as text instead of as a JSON null.
+#: These resolve to a true None so the column holds a real NULL. Kept as an
+#: explicit set rather than a loose "looks empty" heuristic: only values actually
+#: observed, or unambiguously equivalent, belong here.
+_DEAL_TYPE_NULL_STRINGS = frozenset({"null", "none", "n/a", "na", "unknown"})
+
+#: Every observed invalid value -> the deal_type it corresponds to. Each mapping
+#: is justified by FILTER_PROMPT's own text, quoted in the trailing comment, not
+#: by taste. Where the prompt is silent the value goes to Other, which the prompt
+#: defines as "a catch-all for anything that does not clearly fit the above".
+#:
+#: THERE IS DELIBERATELY NO WILDCARD HERE beyond the final unrecognised-value
+#: branch in validate_deal_type, which warns. Adding an entry is a review step.
+_DEAL_TYPE_ALIASES = {
+    # --- ACTIVITY_TYPES bleed. All 11 are covered so a first sighting of the
+    # --- two never yet observed is corrected rather than merely reported.
+    "Mergers & Acquisitions": "M&A",        # ACTIVITY_TYPES spelling of M&A
+    "IPO & Capital Markets": "IPO",         # ACTIVITY_TYPES spelling of IPO
+    "Earnings & Results": "Earnings",       # ACTIVITY_TYPES spelling of Earnings
+    "Macro & Policy": "Macro",              # "tariff or trade policy affecting broad markets"
+    "Geopolitics": "Geopolitical",          # ACTIVITY_TYPES spelling of Geopolitical
+    "Private Equity": "Funding",            # Funding: "private equity investment"
+    "Venture Capital": "Funding",           # Funding: "a venture round"
+    "Fundraising": "Funding",               # Funding: "or fundraising raise"
+    "Regulation & Legal": "Other",          # Other: "regulatory action ... legal settlement"
+    "Leadership & Operations": "Other",     # Other: "personnel change"
+    "Crypto & Digital Assets": "Other",     # no deal_type counterpart exists
+
+    # --- Invented vocabulary, in no enumeration.
+    "Regulation": "Other",                  # Other: "regulatory action"
+    "Regulatory": "Other",                  # Other: "regulatory action"
+    "Partnership": "Other",                 # Other: "partnership announcement"; and the JV
+                                            # clause: "purely a commercial / sales
+                                            # partnership with no equity, use Other"
+    "Public Company News": "Other",         # no counterpart; catch-all
+    "Product Launch": "Other",              # Other: "product launch"
+    "Market Movement": "Other",             # Other: "market commentary"
+    "Public Markets": "Other",              # no counterpart; too vague to place
+    "Market Entry": "Other",                # no counterpart
+    "Expansion": "Other",                   # no counterpart
+    "Hiring": "Other",                      # Other: "personnel change"
+    "Public Markets & Earnings": "Earnings",  # Earnings is the named component
+    "Macro/Geopolitical": "Macro",          # a compound of two valid values. The
+                                            # prompt opens deal_type with "apply
+                                            # the FIRST definition that matches",
+                                            # and Macro precedes Geopolitical in
+                                            # its enumeration, so Macro wins on
+                                            # the prompt's own rule rather than
+                                            # on a coin flip
+    "Investment": "Funding",                # Funding: "receiving investment capital"
+    "Infrastructure Investment": "Funding",  # same
+    "PE": "Funding",                        # abbreviation; Funding: "private equity investment"
+    "Joint Venture": "Funding",             # the prompt's JV clause ends "Default to
+                                            # Funding when ambiguous", and with no
+                                            # article context ambiguous is the case
+
+    # --- Prompt text as data, not a classification.
+    # The literal heading of a clause in FILTER_PROMPT. The model copied a
+    # section label into the answer field, so this carries NO information about
+    # the article. Other is correct for that reason, NOT via the JV taxonomy:
+    # the JV clause would say Funding, but there is no evidence these articles
+    # were joint ventures at all. See the note in the PR.
+    "Joint-venture disambiguator": "Other",
+}
+
+#: Values already reported this process, so an unrecognised value is printed ONCE
+#: rather than once per article. A new leak stays visible without flooding the log.
+_DEAL_TYPE_WARNED: set = set()
+
+
+def validate_deal_type(value) -> str | None:
+    """Coerce a model-supplied deal_type to the allowed vocabulary.
+
+    Returns None when the value is absent (null / empty / non-string), because
+    FILTER_PROMPT explicitly permits null for an article that fits none of the
+    categories, and a NULL is more honest than a manufactured "Other".
+
+    A valid value passes through unchanged. A known ACTIVITY_TYPES leak is mapped
+    to its deal_type counterpart. Anything else becomes "Other" and is printed
+    once, so a NEW leak surfaces in the run log instead of silently polluting the
+    column the way the current ones did.
+    """
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    if not v:
+        return None
+    # A stringified null MEANS null. FILTER_PROMPT permits "Return null only if
+    # the article is so general it fits none of these"; a model that writes
+    # `"null"` instead of `null` has complied in meaning and slipped on JSON
+    # typing. Coercing it to "Other" would invent a category the model
+    # explicitly declined to assign. Checked before the DEAL_TYPES membership
+    # test so it can never fall through to the unrecognised-value branch.
+    if v.casefold() in _DEAL_TYPE_NULL_STRINGS:
+        return None
+    if v in DEAL_TYPES:
+        return v
+    if v in _DEAL_TYPE_ALIASES:
+        return _DEAL_TYPE_ALIASES[v]
+
+    # Case/whitespace-tolerant second pass before giving up, mirroring the
+    # forgiving matching validate_tags applies to its own whitelist.
+    folded = v.casefold()
+    for allowed in DEAL_TYPES:
+        if folded == allowed.casefold():
+            return allowed
+    for alias, mapped in _DEAL_TYPE_ALIASES.items():
+        if folded == alias.casefold():
+            return mapped
+
+    if v not in _DEAL_TYPE_WARNED:
+        _DEAL_TYPE_WARNED.add(v)
+        print(f"  ⚠ deal_type: unrecognised value {v!r} -> 'Other' (new leak; "
+              f"add a mapping in _DEAL_TYPE_ALIASES if it should map elsewhere)")
+    return "Other"
+
+
 FILTER_PROMPT = """You are a senior analyst at a top investment firm. Analyze this article and determine its relevance to financial markets and investing.
 
 CRITICAL CLASSIFICATION RULE (apply before everything below): Analyst-driven coverage -- price-target changes (raised or cut), upgrades, downgrades, rating initiations or reiterations, "should you buy/sell/hold X" framing, 'Best ___ Stocks' listicles, and opinion/Cramer-style commentary -- is NOT a first-order company event. For ANY such article, sentiment MUST be "neutral" and deal_type MUST be "Other", no matter how bullish or bearish the analyst or author sounds. Anchor sentiment ONLY on a named first-order event reported by the company itself.
@@ -2072,7 +2244,10 @@ def _article_row(article, analysis, clean_companies):
         "sector": sector_fallback,
         "industry_verticals": industry_verticals,
         "activity_types": activity_types,
-        "deal_type": analysis.get("deal_type"),
+        # Post-processing guard only: the prompt and response schema are
+        # untouched, so the model's output is byte-identical; this just stops
+        # ACTIVITY_TYPES values from being STORED in deal_type.
+        "deal_type": validate_deal_type(analysis.get("deal_type")),
         "primary_company": analysis.get("primary_company"),
         "content_type": article.get("content_type", "snippet"),
     }
