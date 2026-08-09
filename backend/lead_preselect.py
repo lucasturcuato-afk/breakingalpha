@@ -637,6 +637,10 @@ def _pick_macro(articles: list[dict], now: datetime) -> Optional[dict]:
         key=lambda a: (
             -int(a.get("relevance_score") or 0),
             _article_age_hours(a, now),
+            # Final key: relevance_score is saturated and two articles can share
+            # an age to the same hour, so without a unique key hits[0] depends on
+            # the incoming list order. id is stable across runs; age is not.
+            str(a.get("id") or ""),
         )
     )
     return hits[0]
@@ -653,6 +657,10 @@ def _pick_geopolitical(articles: list[dict], now: datetime) -> Optional[dict]:
         key=lambda a: (
             -int(a.get("relevance_score") or 0),
             _article_age_hours(a, now),
+            # Final key: relevance_score is saturated and two articles can share
+            # an age to the same hour, so without a unique key hits[0] depends on
+            # the incoming list order. id is stable across runs; age is not.
+            str(a.get("id") or ""),
         )
     )
     return hits[0]
@@ -706,6 +714,10 @@ def _pick_sector_cluster(articles: list[dict], now: datetime) -> Optional[dict]:
         key=lambda a: (
             -int(a.get("relevance_score") or 0),
             _article_age_hours(a, now),
+            # Final key: relevance_score is saturated and two articles can share
+            # an age to the same hour, so without a unique key hits[0] depends on
+            # the incoming list order. id is stable across runs; age is not.
+            str(a.get("id") or ""),
         )
     )
     return members[0]

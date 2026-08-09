@@ -207,13 +207,28 @@ def record_run(brief_type, started_at, ingest_count=None, deal_extractor_status=
         error_notes = f"{error_notes} | {msg}" if error_notes else msg
 
     # --- Fetch the 24h article pool (mirrors synthesize.py query) --------
+    # It has to ACTUALLY mirror it, or run_articles reconstructs a selection
+    # synthesis never saw. Two divergences fixed here:
+    #   1. synthesize.py filters on BOTH ingested_at >= 24h AND
+    #      published_at >= 48h. This query had only the ingested_at half, so it
+    #      admitted stale-but-freshly-ingested rows synthesis had excluded.
+    #   2. synthesize.py orders on the full four-key tiebreak. This ordered on
+    #      relevance_score alone, and that column is saturated (~23% of stored
+    #      articles sit at exactly 10, and the LIMIT never reaches score 9), so
+    #      the 60 rows kept here were an arbitrary slice of a ~670-row tie and
+    #      differed run-to-run from the 60 synthesis actually read.
     cutoff = (completed_at - timedelta(hours=24)).isoformat()
+    publish_cutoff = (completed_at - timedelta(hours=48)).isoformat()
     pool   = []
     try:
         pool_resp = supabase.table("articles") \
             .select("id, sector, industry_verticals, companies, relevance_score") \
             .gte("ingested_at", cutoff) \
+            .gte("published_at", publish_cutoff) \
             .order("relevance_score", desc=True) \
+            .order("ingested_at", desc=True) \
+            .order("published_at", desc=True) \
+            .order("id", desc=False) \
             .limit(_POOL_LIMIT) \
             .execute()
         pool = pool_resp.data or []
