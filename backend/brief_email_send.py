@@ -133,6 +133,28 @@ def make_unsubscribe_token(user_id: str, secret: str) -> str:
     return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
 
+#: What the inbox shows in the sender column. An address or a bare domain in
+#: that slot reads as automated mail; a name reads as a publication.
+FROM_DISPLAY_NAME = "Signalera"
+
+
+def with_display_name(addr: str, name: str = FROM_DISPLAY_NAME) -> str:
+    """Guarantee the sender renders as a name, not an address.
+
+    EMAIL_FROM_ADDRESS is configured in Vercel as the bare `briefs@signalera.ai`,
+    so every brief so far has arrived from "briefs@signalera.ai" rather than
+    from "Signalera". An address that already carries a display name, or that
+    we cannot parse, is returned untouched: this only ever adds a name, it
+    never rewrites one an operator set deliberately.
+    """
+    raw = (addr or "").strip()
+    if not raw or "<" in raw or ">" in raw:
+        return raw
+    if "@" not in raw:
+        return raw
+    return f"{name} <{raw}>"
+
+
 def site_url(env: dict[str, str] | None = None) -> str:
     source = os.environ if env is None else env
     raw = (source.get("NEXT_PUBLIC_SITE_URL") or source.get("SITE_URL") or "").strip()
@@ -483,7 +505,9 @@ def _send_digest(
                     "skipped": 0, "failed": 0}
         dispatch = resend_sender(api_key)
 
-    from_addr = source.get("EMAIL_FROM_ADDRESS") or "Signalera <briefs@signalera.ai>"
+    from_addr = with_display_name(
+        source.get("EMAIL_FROM_ADDRESS") or "briefs@signalera.ai"
+    )
     reply_to = source.get("EMAIL_REPLY_TO") or "admin@signalera.ai"
 
     sent = skipped = failed = 0
