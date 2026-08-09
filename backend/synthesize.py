@@ -4963,6 +4963,21 @@ def run(brief_type="morning"):
         preselected = impact_pick or deal_pick
         lead_source = "impact" if impact_pick else ("deal_preselect" if deal_pick else "gemini")
 
+        # Stamp the candidate-generation regime on EVERY brief run, at the top
+        # level of the decision log. The nested copy (unified.candidate_gen_regime)
+        # is written inside the unified-contest block below, which is gated on
+        # brief_type + a non-empty pool and wrapped in a bare except that swallows
+        # any failure, so a skipped or failed contest leaves the run UNLABELLED and
+        # the calibrator cannot tell which pool produced that day's C1 vectors.
+        # Absence must mean "pre-#556 row", never "the contest happened to throw".
+        # Telemetry only: writes one string into lead_preselect._LAST_DECISION_LOG,
+        # reads nothing back, and changes no candidate, no score and no prose.
+        try:
+            import lead_preselect as _lp_regime
+            _lp_regime._LAST_DECISION_LOG["candidate_gen_regime"] = CANDIDATE_GEN_REGIME
+        except Exception as _regime_err:
+            print(f"  ⚠ candidate_gen_regime stamp failed (non-fatal): {_regime_err}")
+
         # UNIFIED_LEAD: ONE deterministic argmax over the unified candidate set
         # (macro / impact clusters AND the qualified deal, which is already a scored
         # cluster in the pool) on the named-weight rubric in impact_ranking
