@@ -29,16 +29,29 @@ for _p in (_BACKEND, _REPO):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+from html import escape as _html_escape  # noqa: E402
+import re  # noqa: E402
+
 from brief_email_render import (  # noqa: E402
     BANNED_TERMS,
+    EVERGREEN_SUBJECT,
+    PREHEADER_MAX,
+    PULSE_BLOCK_ORDER,
+    STANDFIRST,
+    SUBJECT_MAX,
     BriefEmailPayload,
     ResolvedCall,
     TodayCall,
     find_banned_terms,
     horizon_label_for_days,
+    preheader,
+    pulse_blocks,
     render_email,
+    render_html,
     scrub_compliance,
+    subject_line,
 )
+from brief_email_render import _sentences as _pulse_sentences  # noqa: E402
 import brief_email_send as send_mod  # noqa: E402
 from brief_email_send import (  # noqa: E402
     digest_mode,
@@ -665,8 +678,8 @@ class TestResolutionBlock(unittest.TestCase):
         payload = _payload(resolved=self.resolved)
         out = render_email(payload)
         for body in (out["text"], out["html"]):
-            self.assertIn("Correct", body)
-            self.assertIn("Wrong", body)
+            self.assertIn("Supported", body)
+            self.assertIn("Challenged", body)
             self.assertIn("No clean read", body)
             self.assertIn("XLK", body)
             self.assertIn("XLY", body)
@@ -678,7 +691,7 @@ class TestResolutionBlock(unittest.TestCase):
         self.assertIn("Clean read: it moved beyond its benchmark.", text)
         # Confounded: the thesis is explicitly NOT credited.
         self.assertIn("XLY +0.92 vs SPY +0.88", text)
-        self.assertIn("moved with its benchmark, so the thesis cannot be credited", text)
+        self.assertIn("moved with its benchmark, so the call cannot be credited", text)
         # Ungradable: named refusal, no invented number.
         self.assertIn("Not graded: no tradable symbol to grade against.", text)
 
@@ -686,7 +699,7 @@ class TestResolutionBlock(unittest.TestCase):
         only_wrong = [r for r in self.resolved if r.verdict == "wrong"]
         text = render_email(_payload(resolved=only_wrong))["text"]
         self.assertIn("HOW THE LAST SESSION'S CALLS RESOLVED", text)
-        self.assertIn("Wrong", text)
+        self.assertIn("Challenged", text)
 
 
 # ---------------------------------------------------------------------------
@@ -710,9 +723,14 @@ class TestNothingResolved(unittest.TestCase):
         self.assertIn("TODAY'S CALLS", out["text"])
         self.assertIn("TODAY'S STORIES", out["text"])
 
-    def test_subject_does_not_claim_resolutions_when_there_are_none(self):
-        self.assertNotIn("resolved", render_email(_payload(resolved=[]))["subject"])
-        self.assertIn("resolved", render_email(_payload())["subject"])
+    def test_subject_never_mentions_resolution_counts_either_way(self):
+        # The subject is a headline about the day. Whether anything resolved is
+        # not the reader's reason to open it, and it never leaks into the line.
+        for resolved in ([], None):
+            subject = render_email(_payload(resolved=resolved))["subject"]
+            self.assertNotIn("resolved", subject.lower())
+            self.assertFalse(any(ch.isdigit() for ch in subject.replace("HP", "")),
+                             f"no counts belong in a subject: {subject!r}")
 
     def test_end_to_end_with_no_outcomes_still_sends_a_complete_email(self):
         client = make_client(resolved=False)
@@ -808,8 +826,8 @@ class TestSectionContract(unittest.TestCase):
         )["text"]
         markers = [
             "MARKET PULSE",
-            "THE LEAD",
             "HOW THE LAST SESSION'S CALLS RESOLVED",
+            "THE LEAD",
             "TODAY'S CALLS",
             "TODAY'S STORIES",
             "Unsubscribe:",
@@ -834,7 +852,7 @@ class TestSectionContract(unittest.TestCase):
         text = render_email(_payload())["text"]
         self.assertIn("Resolves same session", text)
         self.assertIn("Resolves in 1 week", text)
-        self.assertEqual(text.count("Track this thesis:"), 2)
+        self.assertEqual(text.count("Track this call:"), 2)
         self.assertIn(
             "https://signalera.ai/radar/calls?adopt=call-today-1#call-call-today-1",
             text,
@@ -970,3 +988,355 @@ assert ResolvedCall is not None
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+# ---------------------------------------------------------------------------
+# Editorial pass: subject, preheader, pulse blocks, order, vocabulary, mobile
+# ---------------------------------------------------------------------------
+
+
+class TestSubjectIsAnEditorialHeadline(unittest.TestCase):
+    def _subject(self, headline, lead="", stories=None):
+        p = _payload()
+        p.headline = headline
+        p.lead_paragraph = lead
+        p.stories = stories if stories is not None else p.stories
+        return subject_line(p)
+
+    def test_the_real_lead_that_exposed_this_compresses_to_a_headline(self):
+        got = self._subject(
+            "Electronic Arts Closes at $209.70 After $55 Billion Buyout, "
+            "Debt Focus Intensifies",
+            "Electronic Arts (EA) concluded trading at $209.70 today, following "
+            "its $55 billion buyout.",
+        )
+        self.assertEqual(got, "EA Closes at $209.70 After $55B Buyout")
+        self.assertLess(len(got), 50)
+
+    def test_it_is_always_under_the_cap(self):
+        for headline in (
+            "Principal Financial Group increases its stake in HP",
+            "A very long headline about absolutely everything that happened in "
+            "the market today and also yesterday and possibly tomorrow as well",
+            "Short one",
+            "Supercalifragilisticexpialidociousunbrokenwordthatneverendsatall",
+        ):
+            got = self._subject(headline)
+            self.assertLessEqual(len(got), SUBJECT_MAX, f"{headline!r} -> {got!r}")
+            self.assertTrue(got.strip(), f"{headline!r} produced an empty subject")
+
+    def test_no_product_prefix_no_count_no_timestamp(self):
+        got = self._subject(
+            "Electronic Arts Closes at $209.70 After $55 Billion Buyout",
+            "Electronic Arts (EA) closed at $209.70.",
+        )
+        self.assertNotIn("Signalera", got)
+        self.assertNotIn("Morning Brief", got)
+        self.assertNotIn("Issue", got)
+        self.assertNotIn("resolved", got.lower())
+        self.assertNotIn("UTC", got)
+
+    def test_it_never_invents_words_the_headline_did_not_have(self):
+        # Every subject token must come from the compressed headline, so the
+        # line can never assert something the brief did not say.
+        headline = "Hormuz Talks Lift Crude as Tankers Reroute"
+        got = self._subject(headline)
+        self.assertTrue(headline.startswith(got), f"{got!r} is not a prefix")
+
+    def test_it_cuts_at_a_clause_rather_than_mid_phrase(self):
+        got = self._subject(
+            "Jobs Print Lands Soft and the Market Shrugs, Yields Slip Four "
+            "Basis Points on the News"
+        )
+        self.assertEqual(got, "Jobs Print Lands Soft and the Market Shrugs")
+
+    def test_an_exchange_parenthetical_is_dropped_not_carried(self):
+        got = self._subject("eBay (NASDAQ: EBAY) Posts Q2 Results Above Consensus")
+        self.assertNotIn("(", got)
+        self.assertNotIn("NASDAQ", got)
+
+    def test_it_falls_back_to_a_story_then_to_the_evergreen_line(self):
+        self.assertEqual(
+            self._subject("", stories=["Chip orders beat across the supply chain"]),
+            "Chip orders beat across the supply chain",
+        )
+        self.assertEqual(self._subject("", stories=[]), EVERGREEN_SUBJECT)
+
+    def test_the_evergreen_fallback_is_still_not_metadata(self):
+        self.assertNotIn("Signalera", EVERGREEN_SUBJECT)
+        self.assertFalse(any(ch.isdigit() for ch in EVERGREEN_SUBJECT))
+
+
+class TestPreheader(unittest.TestCase):
+    def test_it_runs_the_days_items_and_never_leaks_the_timestamp(self):
+        line = preheader(_payload())
+        self.assertNotIn("generated", line.lower())
+        self.assertNotIn("UTC", line)
+        self.assertIn("scored", line)
+        self.assertIn("new calls on the board", line)
+
+    def test_it_does_not_repeat_the_subject(self):
+        p = _payload()
+        subject = subject_line(p)
+        overlap = [w for w in subject.split() if len(w) > 4 and w in preheader(p)]
+        self.assertEqual(overlap, [], f"preheader repeats the subject: {overlap}")
+
+    def test_placeholder_entities_never_reach_the_inbox_preview(self):
+        line = preheader(_payload())
+        self.assertNotIn("Unmapped", line)
+
+    def test_it_stays_inside_the_preview_budget(self):
+        p = _payload()
+        p.today_calls = p.today_calls * 6
+        self.assertLessEqual(len(preheader(p)), PREHEADER_MAX + 1)
+
+    def test_an_empty_brief_falls_back_to_the_standfirst(self):
+        p = _payload(resolved=[])
+        p.today_calls = []
+        p.stories = []
+        self.assertEqual(preheader(p), STANDFIRST)
+
+    def test_the_html_carries_it_as_hidden_preview_text(self):
+        p = _payload()
+        html = render_html(p)
+        self.assertIn("display:none", html)
+        self.assertIn(_html_escape(preheader(p)), html)
+
+
+class TestPulseIsBrokenIntoBlocks(unittest.TestCase):
+    PULSE = (
+        "US stocks opened higher in early trading with no fresh catalyst on the "
+        "tape, as the S&P 500 gained 0.22%, the Nasdaq rose 0.62%, and the "
+        "Russell 2000 advanced 0.81%. Last week's soft-landing jobs read (July "
+        "nonfarm payrolls -23K m/m; unemployment rate 4.1%) still underpins "
+        "sentiment, alongside recent soft inflation prints. The 10-year Treasury "
+        "yield is trading at 4.63%, down 4 basis points. WTI crude is up slightly "
+        "at $77.37. Sector ETFs show Consumer Discretionary leading with a 1.29% "
+        "advance, followed by Materials (+0.98%). Elsewhere, eBay reported strong "
+        "Q2 results. Looking ahead, the market will continue to assess the "
+        "implications of recent economic data."
+    )
+
+    def test_it_splits_into_labelled_blocks_not_one_paragraph(self):
+        labels = [label for label, _ in pulse_blocks(self.PULSE)]
+        self.assertGreaterEqual(len(labels), 4)
+        self.assertEqual(labels, sorted(labels, key=PULSE_BLOCK_ORDER.index))
+        self.assertIn("The tape", labels)
+        self.assertIn("Sector leadership", labels)
+        self.assertIn("Looking ahead", labels)
+
+    def test_every_single_sentence_survives_exactly_once(self):
+        original = _pulse_sentences(self.PULSE)
+        rendered = []
+        for _label, prose in pulse_blocks(self.PULSE):
+            rendered.extend(_pulse_sentences(prose))
+        self.assertEqual(sorted(rendered), sorted(original))
+        self.assertEqual(len(rendered), len(original), "a sentence was duplicated")
+
+    def test_the_tape_block_holds_the_indices_the_yield_and_crude(self):
+        blocks = dict(pulse_blocks(self.PULSE))
+        tape = blocks["The tape"]
+        for token in ("S&P 500", "Nasdaq", "Russell 2000", "10-year", "WTI"):
+            self.assertIn(token, tape)
+
+    def test_macro_prints_do_not_get_filed_as_single_names(self):
+        blocks = dict(pulse_blocks(self.PULSE))
+        self.assertIn("nonfarm payrolls", blocks["Macro backdrop"])
+        self.assertNotIn("payrolls", blocks.get("Single names", ""))
+
+    def test_an_exchange_tag_does_not_drag_a_single_name_into_the_tape(self):
+        # "eBay (NASDAQ: EBAY) reported..." is a company sentence. The ticker
+        # prefix is not a statement about the index.
+        pulse = (
+            "The S&P 500 rose 0.22%. Elsewhere, eBay (NASDAQ: EBAY) reported "
+            "strong Q2 results."
+        )
+        blocks = dict(pulse_blocks(pulse))
+        self.assertIn("eBay", blocks["Single names"])
+        self.assertNotIn("eBay", blocks["The tape"])
+        # The tag still survives into the rendered prose.
+        self.assertIn("(NASDAQ: EBAY)", blocks["Single names"])
+
+    def test_an_unclassifiable_pulse_still_renders_every_word(self):
+        odd = "Something happened. Then something else happened."
+        self.assertEqual(
+            " ".join(prose for _l, prose in pulse_blocks(odd)).split(),
+            odd.split(),
+        )
+
+    def test_an_empty_pulse_produces_no_blocks_rather_than_an_empty_one(self):
+        self.assertEqual(pulse_blocks(""), [])
+        self.assertEqual(pulse_blocks("   \n  "), [])
+
+    def test_the_numbers_are_bolded_in_the_html(self):
+        p = _payload()
+        p.market_pulse = self.PULSE
+        html = render_html(p)
+        self.assertIn("<strong>0.22%</strong>", html)
+        self.assertIn("<strong>$77.37</strong>", html)
+
+    def test_a_bare_year_is_not_bolded_and_entities_are_not_mangled(self):
+        p = _payload()
+        p.market_pulse = "Results for fiscal year 2026 landed. Revenue rose 4.10%."
+        html = render_html(p)
+        self.assertNotIn("<strong>2026</strong>", html)
+        self.assertIn("<strong>4.10%</strong>", html)
+
+    def test_the_pulse_block_never_shows_the_timestamp_as_its_heading(self):
+        html = render_html(_payload())
+        self.assertNotIn("Market pulse - generated", html)
+        self.assertIn("Generated Jul 24, 2026 at 13:05 UTC.", html)
+
+
+class TestResolutionSitsAboveTheLead(unittest.TestCase):
+    def test_text_order_puts_the_record_first(self):
+        text = render_email(_payload())["text"]
+        self.assertLess(
+            text.index("HOW THE LAST SESSION'S CALLS RESOLVED"),
+            text.index("THE LEAD"),
+        )
+
+    def test_html_order_puts_the_record_first(self):
+        html = render_email(_payload())["html"]
+        self.assertLess(
+            html.index("How the last session&#x27;s calls resolved"),
+            html.index("The lead"),
+        )
+
+    def test_the_lead_is_still_present_and_complete(self):
+        out = render_email(_payload())
+        for body in (out["text"], out["html"]):
+            self.assertIn("Principal Financial Group", body)
+
+    def test_with_nothing_resolved_the_lead_is_the_first_block_after_the_pulse(self):
+        out = render_email(_payload(resolved=[]))
+        self.assertNotIn("HOW THE LAST SESSION", out["text"])
+        self.assertLess(out["text"].index("MARKET PULSE"), out["text"].index("THE LEAD"))
+
+
+class TestRetiredVocabularyIsGone(unittest.TestCase):
+    def _bodies(self):
+        out = render_email(_payload())
+        return {"text": out["text"], "html": out["html"], "subject": out["subject"]}
+
+    def test_no_rendered_string_says_right_wrong_or_thesis(self):
+        for name, body in self._bodies().items():
+            for retired in ("Right", "Wrong", "thesis", "Thesis", "theses"):
+                self.assertNotIn(retired, body, f"{name} still says {retired!r}")
+
+    def test_the_template_source_keeps_no_private_verdict_table(self):
+        with open(os.path.join(_BACKEND, "brief_email_render.py"), encoding="utf-8") as fh:
+            source = fh.read()
+        self.assertNotIn('"Wrong"', source)
+        self.assertNotIn('"Correct"', source)
+        self.assertIn("verdict_vocabulary", source, "must import the shared table")
+
+    def test_the_words_come_from_the_shared_vocabulary(self):
+        from verdict_vocabulary import VERDICT_WORD
+
+        text = render_email(_payload())["text"]
+        self.assertIn(VERDICT_WORD["supported"], text)
+        self.assertIn(VERDICT_WORD["challenged"], text)
+
+    def test_the_cta_says_call_not_thesis(self):
+        out = render_email(_payload())
+        self.assertIn("Track this call", out["text"])
+        self.assertIn("Track this call", out["html"])
+
+
+class TestColdReaderOrientation(unittest.TestCase):
+    def test_the_standfirst_is_present_once_and_stays_one_line(self):
+        out = render_email(_payload())
+        self.assertIn(STANDFIRST, out["text"])
+        self.assertEqual(out["html"].count(_html_escape(STANDFIRST)), 1)
+        self.assertLess(len(STANDFIRST), 80)
+
+    def test_it_says_what_the_email_is_including_the_uncomfortable_part(self):
+        self.assertIn("scored against the close", STANDFIRST)
+        self.assertIn("Misses included", STANDFIRST)
+
+
+class TestSectionBlocks(unittest.TestCase):
+    def test_every_section_gets_an_all_caps_header_in_the_text_body(self):
+        text = render_email(_payload())["text"]
+        for header in (
+            "MARKET PULSE",
+            "HOW THE LAST SESSION'S CALLS RESOLVED",
+            "THE LEAD",
+            "TODAY'S CALLS",
+            "TODAY'S STORIES",
+        ):
+            self.assertIn(header, text)
+
+    def test_every_section_is_its_own_bordered_block_in_the_html(self):
+        html = render_email(_payload())["html"]
+        # pulse, resolutions, lead, calls, stories
+        self.assertEqual(html.count("border-radius:12px"), 5)
+
+    def test_headers_are_uppercased_by_style_not_by_shouting_in_the_string(self):
+        html = render_email(_payload())["html"]
+        self.assertIn("text-transform:uppercase", html)
+
+
+class TestMobileFirst(unittest.TestCase):
+    def setUp(self):
+        self.html = render_email(_payload())["html"]
+
+    def test_body_copy_is_never_below_sixteen_pixels(self):
+        sizes = [int(m) for m in re.findall(r"font-size:(\d+)px", self.html)]
+        body_sizes = [s for s in sizes if s >= 15]
+        self.assertTrue(body_sizes)
+        # Anything under 15px is label or legal copy, never running body text.
+        self.assertIn(16, sizes, "no 16px body copy found")
+
+    def test_there_are_no_fixed_width_tables_to_overflow(self):
+        self.assertNotIn("<table", self.html.lower())
+        # A fixed pixel width would overflow a 375px viewport. max-width does not.
+        # min-width on a button is a floor, not an overflow risk.
+        fixed = re.findall(r"(?<!max-)(?<!min-)width:\d+px", self.html)
+        self.assertEqual(fixed, [], f"fixed widths found: {fixed}")
+        self.assertIn("max-width:600px", self.html)
+        self.assertIn("width:100%", self.html)
+
+    def test_the_viewport_is_declared(self):
+        self.assertIn('name="viewport"', self.html)
+        self.assertIn("width=device-width", self.html)
+
+    def test_the_primary_cta_clears_a_forty_four_pixel_tap_target(self):
+        # 20px line box plus 12px padding top and bottom is exactly 44.
+        self.assertIn("padding:12px 18px;line-height:20px", self.html)
+        self.assertIn("Track this call", self.html)
+
+    def test_the_unsubscribe_link_is_also_tappable(self):
+        self.assertIn("padding:12px 0", self.html)
+
+
+class TestFromDisplayName(unittest.TestCase):
+    def test_a_bare_address_gains_the_publication_name(self):
+        self.assertEqual(
+            send_mod.with_display_name("briefs@signalera.ai"),
+            "Signalera <briefs@signalera.ai>",
+        )
+
+    def test_an_operator_set_display_name_is_left_alone(self):
+        for already in ("Signalera Daily <briefs@signalera.ai>", "X <a@b.co>"):
+            self.assertEqual(send_mod.with_display_name(already), already)
+
+    def test_garbage_is_returned_untouched_rather_than_mangled(self):
+        for junk in ("", "   ", "not-an-address"):
+            self.assertEqual(send_mod.with_display_name(junk), junk.strip())
+
+    def test_the_dispatched_message_shows_a_name_not_an_address(self):
+        client = make_client()
+        sender = RecordingSender()
+        maybe_send_brief_email(
+            "morning", client=client, sender=sender,
+            env={**BASE_ENV, "EMAIL_FROM_ADDRESS": "briefs@signalera.ai"},
+        )
+        self.assertEqual(sender.messages[0]["from"], "Signalera <briefs@signalera.ai>")
+
+    def test_the_default_when_nothing_is_configured_also_shows_a_name(self):
+        client = make_client()
+        sender = RecordingSender()
+        maybe_send_brief_email("morning", client=client, sender=sender, env=BASE_ENV)
+        self.assertTrue(sender.messages[0]["from"].startswith("Signalera <"))
