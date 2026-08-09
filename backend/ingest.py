@@ -492,15 +492,45 @@ def validate_tags(tags, whitelist: list, max_count: int = 3) -> list:
 # deal_type validation
 # ---------------------------------------------------------------------------
 # FILTER_PROMPT defines deal_type over a 7-value vocabulary, but nothing enforced
-# it, and the model bleeds ACTIVITY_TYPES values across into the field. Measured
-# on the last 30 days (20,000 articles): 1,325 rows, 6.6%, carried a deal_type
-# outside the allowed set, and EVERY invalid value observed was a verbatim
-# ACTIVITY_TYPES entry:
+# it. A FULL-TABLE census (~162,000 rows) found 28 distinct invalid values across
+# ~8,175 rows (~5%). A 30-day sample had shown only 9 of them, so the tail is
+# long and thin: 20 of the 28 values have fewer than 30 rows each.
 #
-#   Earnings & Results 647   Fundraising 317   Macro & Policy 156
-#   IPO & Capital Markets 100   Regulation & Legal 70
-#   Mergers & Acquisitions 20   Private Equity 13   Venture Capital 1
-#   Geopolitics 1
+# The invalid values fall into three groups, and they are NOT all the same bug:
+#
+#   1. ACTIVITY_TYPES bleed -- the model returns a value from the other
+#      enumeration in this prompt. The bulk of the volume.
+#        Fundraising 2649, Earnings & Results 2573, IPO & Capital Markets 1280,
+#        Macro & Policy 751, Regulation & Legal 402, Mergers & Acquisitions 283,
+#        Private Equity 116, Venture Capital 15, Crypto & Digital Assets 2,
+#        Geopolitics 2
+#
+#   2. Invented vocabulary -- plausible-sounding categories that are in no
+#      enumeration at all.
+#        Regulation 26, Regulatory 24, Partnership 12, Public Company News 6,
+#        Product Launch 4, Market Movement 4, Macro/Geopolitical 3,
+#        Public Markets & Earnings 3, Public Markets 2, Investment 2,
+#        Hiring 1, Market Entry 1, PE 1, Joint Venture 1, Expansion 1,
+#        Infrastructure Investment 1
+#
+#   3. PROMPT TEXT AS DATA -- not a classification at all.
+#        "Joint-venture disambiguator" (4 rows) is the literal heading of a
+#        clause in this very prompt. The model copied a section label into the
+#        answer field. Mapped to Other because it carries ZERO information about
+#        the article; see the note on _DEAL_TYPE_ALIASES below.
+#        "null" (6 rows) is the literal 4-character STRING (verified: type=str,
+#        len=4), distinct from the 451 rows holding a real SQL NULL. The prompt
+#        says "Return null only if the article is so general it fits none of
+#        these", and the model complied in MEANING while emitting `"null"`
+#        instead of `null` -- a JSON-typing slip. It is handled as a true NULL,
+#        not coerced to Other: coercing would both fabricate a category and
+#        contradict the prompt's own escape hatch.
+#
+# A column scan confirmed deal_type is the ONLY structured field carrying prompt
+# text. sentiment holds exactly {neutral, bullish, bearish}; primary_company has
+# zero placeholder values; industry_verticals / activity_types / themes / sector
+# are clean because validate_tags whitelists them. deal_type is the one
+# constrained field that had no validator. That is the gap this closes.
 #
 # This is POST-PROCESSING ONLY, by design. The prompt is not touched and no
 # Literal is added to the FilterDecision response schema, because either would
@@ -512,29 +542,69 @@ def validate_tags(tags, whitelist: list, max_count: int = 3) -> list:
 #: The only values articles.deal_type may hold. Mirrors the FILTER_PROMPT vocabulary.
 DEAL_TYPES = ["M&A", "IPO", "Funding", "Earnings", "Macro", "Geopolitical", "Other"]
 
-#: ACTIVITY_TYPES value -> the deal_type it corresponds to. Every mapping below
-#: follows FILTER_PROMPT's own definitions, not a guess:
-#:   Private Equity / Venture Capital -> Funding, because the prompt defines
-#:     Funding as "a named company is receiving investment capital -- a venture
-#:     round, private equity investment, debt financing, or fundraising raise".
-#:   Regulation & Legal / Leadership & Operations -> Other, because the prompt
-#:     lists "regulatory action ... legal settlement, personnel change" under Other.
-#:   Crypto & Digital Assets -> Other; it has no deal_type counterpart.
-#: All 11 ACTIVITY_TYPES are covered, including the two not yet observed leaking
-#: (Crypto & Digital Assets, Leadership & Operations), so a first sighting is
-#: corrected rather than merely reported.
+#: Strings that MEAN "no category", written as text instead of as a JSON null.
+#: These resolve to a true None so the column holds a real NULL. Kept as an
+#: explicit set rather than a loose "looks empty" heuristic: only values actually
+#: observed, or unambiguously equivalent, belong here.
+_DEAL_TYPE_NULL_STRINGS = frozenset({"null", "none", "n/a", "na", "unknown"})
+
+#: Every observed invalid value -> the deal_type it corresponds to. Each mapping
+#: is justified by FILTER_PROMPT's own text, quoted in the trailing comment, not
+#: by taste. Where the prompt is silent the value goes to Other, which the prompt
+#: defines as "a catch-all for anything that does not clearly fit the above".
+#:
+#: THERE IS DELIBERATELY NO WILDCARD HERE beyond the final unrecognised-value
+#: branch in validate_deal_type, which warns. Adding an entry is a review step.
 _DEAL_TYPE_ALIASES = {
-    "Mergers & Acquisitions": "M&A",
-    "Private Equity": "Funding",
-    "Venture Capital": "Funding",
-    "IPO & Capital Markets": "IPO",
-    "Earnings & Results": "Earnings",
-    "Macro & Policy": "Macro",
-    "Geopolitics": "Geopolitical",
-    "Regulation & Legal": "Other",
-    "Fundraising": "Funding",
-    "Crypto & Digital Assets": "Other",
-    "Leadership & Operations": "Other",
+    # --- ACTIVITY_TYPES bleed. All 11 are covered so a first sighting of the
+    # --- two never yet observed is corrected rather than merely reported.
+    "Mergers & Acquisitions": "M&A",        # ACTIVITY_TYPES spelling of M&A
+    "IPO & Capital Markets": "IPO",         # ACTIVITY_TYPES spelling of IPO
+    "Earnings & Results": "Earnings",       # ACTIVITY_TYPES spelling of Earnings
+    "Macro & Policy": "Macro",              # "tariff or trade policy affecting broad markets"
+    "Geopolitics": "Geopolitical",          # ACTIVITY_TYPES spelling of Geopolitical
+    "Private Equity": "Funding",            # Funding: "private equity investment"
+    "Venture Capital": "Funding",           # Funding: "a venture round"
+    "Fundraising": "Funding",               # Funding: "or fundraising raise"
+    "Regulation & Legal": "Other",          # Other: "regulatory action ... legal settlement"
+    "Leadership & Operations": "Other",     # Other: "personnel change"
+    "Crypto & Digital Assets": "Other",     # no deal_type counterpart exists
+
+    # --- Invented vocabulary, in no enumeration.
+    "Regulation": "Other",                  # Other: "regulatory action"
+    "Regulatory": "Other",                  # Other: "regulatory action"
+    "Partnership": "Other",                 # Other: "partnership announcement"; and the JV
+                                            # clause: "purely a commercial / sales
+                                            # partnership with no equity, use Other"
+    "Public Company News": "Other",         # no counterpart; catch-all
+    "Product Launch": "Other",              # Other: "product launch"
+    "Market Movement": "Other",             # Other: "market commentary"
+    "Public Markets": "Other",              # no counterpart; too vague to place
+    "Market Entry": "Other",                # no counterpart
+    "Expansion": "Other",                   # no counterpart
+    "Hiring": "Other",                      # Other: "personnel change"
+    "Public Markets & Earnings": "Earnings",  # Earnings is the named component
+    "Macro/Geopolitical": "Macro",          # a compound of two valid values. The
+                                            # prompt opens deal_type with "apply
+                                            # the FIRST definition that matches",
+                                            # and Macro precedes Geopolitical in
+                                            # its enumeration, so Macro wins on
+                                            # the prompt's own rule rather than
+                                            # on a coin flip
+    "Investment": "Funding",                # Funding: "receiving investment capital"
+    "Infrastructure Investment": "Funding",  # same
+    "PE": "Funding",                        # abbreviation; Funding: "private equity investment"
+    "Joint Venture": "Funding",             # the prompt's JV clause ends "Default to
+                                            # Funding when ambiguous", and with no
+                                            # article context ambiguous is the case
+
+    # --- Prompt text as data, not a classification.
+    # The literal heading of a clause in FILTER_PROMPT. The model copied a
+    # section label into the answer field, so this carries NO information about
+    # the article. Other is correct for that reason, NOT via the JV taxonomy:
+    # the JV clause would say Funding, but there is no evidence these articles
+    # were joint ventures at all. See the note in the PR.
+    "Joint-venture disambiguator": "Other",
 }
 
 #: Values already reported this process, so an unrecognised value is printed ONCE
@@ -558,6 +628,14 @@ def validate_deal_type(value) -> str | None:
         return None
     v = value.strip()
     if not v:
+        return None
+    # A stringified null MEANS null. FILTER_PROMPT permits "Return null only if
+    # the article is so general it fits none of these"; a model that writes
+    # `"null"` instead of `null` has complied in meaning and slipped on JSON
+    # typing. Coercing it to "Other" would invent a category the model
+    # explicitly declined to assign. Checked before the DEAL_TYPES membership
+    # test so it can never fall through to the unrecognised-value branch.
+    if v.casefold() in _DEAL_TYPE_NULL_STRINGS:
         return None
     if v in DEAL_TYPES:
         return v
