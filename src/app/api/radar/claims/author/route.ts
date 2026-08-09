@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { todayPt } from "@/lib/session-date";
 
 export const dynamic = "force-dynamic";
 
@@ -224,7 +225,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const todayIso = new Date().toISOString().slice(0, 10);
+  // US market session date (Pacific), NOT the server's UTC date: the reference
+  // "today" for the extraction prompt, the window fallbacks, and the max-window
+  // check. Shared convention via src/lib/session-date.ts. See #543.
+  const todayIso = todayPt();
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const prompt = authoringPrompt(claimText, todayIso);
 
