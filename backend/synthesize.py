@@ -4886,10 +4886,19 @@ def run(brief_type="morning"):
         # Fallback: if the 48h published_at filter excludes everything (rare),
         # widen to 7 days but still respect freshness — never go fully unbounded.
         wide_publish_cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        # Same four-key order as the primary query above. This fallback was
+        # ordering on ingested_at ALONE, so on the rare run that reaches it the
+        # pool was picked purely by ingest recency and relevance_score was not
+        # consulted at all -- a different, and worse, selection rule than the one
+        # the brief normally uses. Widening the published_at window is the only
+        # thing that should change here.
         resp = supabase.table("articles")\
             .select("title, summary, content, url, source, sector, industry_verticals, companies, deal_type, relevance_score, relevance_reason, published_at, ingested_at")\
             .gte("published_at", wide_publish_cutoff)\
+            .order("relevance_score", desc=True)\
             .order("ingested_at", desc=True)\
+            .order("published_at", desc=True)\
+            .order("id", desc=False)\
             .limit(60)\
             .execute()
         articles = resp.data or []

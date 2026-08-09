@@ -284,6 +284,13 @@ def select_rail_ids(client, prior_ids):
         .gte("published_at", cutoff)
         .order("relevance_score", desc=True)
         .order("published_at", desc=True)
+        # id ASC is the determinism guarantee. relevance_score and published_at
+        # are BOTH insufficient: measured over a 7-day window, 428 rows share a
+        # (score 10, published_at) pair with at least one other row, and the
+        # worst single pair holds 10 rows. Without a unique final key those rows
+        # order arbitrarily, so the rail could differ between two runs reading
+        # identical data.
+        .order("id", desc=False)
         .limit(limit)
         .execute()
     )
