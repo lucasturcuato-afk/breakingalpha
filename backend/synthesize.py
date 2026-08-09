@@ -5078,7 +5078,19 @@ def run(brief_type="morning"):
                         # Map an impact_ranking audit row -> the C1 per-candidate shape:
                         # raw pre-weight components + final weighted score +
                         # is_shipped_lead + below_cap (true for a cluster APP appended
-                        # via always_include_clusters because it ranked below the cap).
+                        # via always_include_clusters because it ranked below the cap)
+                        # + the LEAD-BAR verdict.
+                        #
+                        # lead_barred / lead_bar_reason are the L1 (analyst rating / PT)
+                        # and L2 (rumor / preview with a confirmed alternative) verdicts
+                        # from impact_ranking._lead_bar_reason. compute_unified_lead
+                        # already computes them on EVERY run and stamps them on every
+                        # audit row; this mapper used to drop them, so the stored log
+                        # read lead_barred=0 on 0 of 292 candidates across 28 runs while
+                        # the SAME code fired on 14 of 287 candidates in offline replay
+                        # of those same runs. The bars were never broken, only invisible.
+                        # Read them off the row rather than recomputing: the audit row is
+                        # the verdict the argmax actually used.
                         return {
                             "title": _a.get("title"),
                             "cluster": _a.get("cluster_key"),
@@ -5094,6 +5106,8 @@ def run(brief_type="morning"):
                             },
                             "weighted_score": _a.get("unified_score"),
                             "below_cap": bool(_a.get("below_cap", False)),
+                            "lead_barred": bool(_a.get("lead_barred", False)),
+                            "lead_bar_reason": _a.get("lead_bar_reason"),
                         }
 
                     _audit = _uni.get("unified_candidates") or []
@@ -5123,6 +5137,16 @@ def run(brief_type="morning"):
                     # must skip the run rather than mis-join. ──
                     _shipped_in_audit = any(c["is_shipped_lead"] for c in _c1_candidates)
 
+                    # Run-level roll-up of the lead bars. Per-candidate flags are the
+                    # source of truth; this is the queryable counter that makes "the
+                    # bars never fired" answerable without unnesting every candidate
+                    # array, which is how the 0-of-292 blind spot survived two PRs.
+                    _c1_bar_reasons: dict = {}
+                    for _c in _c1_candidates:
+                        if _c.get("lead_barred"):
+                            _r = str(_c.get("lead_bar_reason") or "unknown")
+                            _c1_bar_reasons[_r] = _c1_bar_reasons.get(_r, 0) + 1
+
                     _c1_unified = {
                         "computed": True,
                         "flag_state": UNIFIED_LEAD,
@@ -5133,6 +5157,8 @@ def run(brief_type="morning"):
                         "shipped_cluster": _shipped_cluster or None,
                         "shipped_title": (str((preselected or {}).get("title") or "")[:200] or None),
                         "shipped_in_audit": _shipped_in_audit,
+                        "lead_barred_count": sum(_c1_bar_reasons.values()),
+                        "lead_bar_reasons": _c1_bar_reasons,
                         # Candidate-generation regime marker. The calibrator fits
                         # weights across days of C1 vectors; if the pool that
                         # generates those candidates changes, vectors from before
@@ -5162,7 +5188,8 @@ def run(brief_type="morning"):
                         pass
                     print(f"  🧭 [unified:{UNIFIED_LEAD}] argmax -> {_uni['cluster_key']}: "
                           f"{str(_uni['article'].get('title') or '')[:60]} "
-                          f"(score={_uni.get('score')}; logged {len(_c1_candidates)} candidates)")
+                          f"(score={_uni.get('score')}; logged {len(_c1_candidates)} candidates, "
+                          f"{sum(_c1_bar_reasons.values())} lead-barred {_c1_bar_reasons or ''})")
 
                     # ── SERVE: only when the flag is ON do we replace the shipped
                     # precedence pick with the unified argmax. OFF is shadow-only. ──
