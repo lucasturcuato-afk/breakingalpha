@@ -2043,23 +2043,74 @@ _POOL_COLS = ("title, summary, url, source, sector, industry_verticals, companie
               "deal_type, relevance_score, published_at, ingested_at")
 
 
+# Hard upper bound on the paginated coverage pool. The largest 24h window observed
+# in the stored record is 3,793 rows (2026-07-30 morning), so 6,000 clears every
+# real day with headroom while still bounding a pathological ingest burst to 6
+# round trips. It is a backstop, not a target: normal days finish in 2 to 4 pages.
+COVERAGE_POOL_MAX_ROWS = 6000
+_COVERAGE_PAGE = 1000
+
+
 def fetch_coverage_pool(sb, now: datetime.datetime, hours_ingest: int = 24,
-                        hours_publish: int = 48, limit: int = 1000) -> list[dict]:
+                        hours_publish: int = 48,
+                        limit: int = COVERAGE_POOL_MAX_ROWS) -> list[dict]:
     """Point-in-time, RECENCY-ordered window (not relevance-ordered): coverage
     breadth must be computed over the true population, not the relevance-top slice
-    that buries a broadly-covered macro event. Read-only; never raises."""
-    try:
-        ing = (now - datetime.timedelta(hours=hours_ingest)).isoformat()
-        pub = (now - datetime.timedelta(hours=hours_publish)).isoformat()
-        upper = now.isoformat()
-        resp = (sb.table("articles").select(_POOL_COLS)
+    that buries a broadly-covered macro event. Read-only; never raises.
+
+    PAGINATED. PostgREST enforces a server-side max-rows of 1000 regardless of
+    .limit(), proven directly: .limit(1000), .limit(2000) and .limit(3000) against
+    the same window all returned exactly 1000 rows. Because ingestion arrives in two
+    daily bursts (02:00 and 14:00 UTC, the pipeline's own ingest steps), the newest
+    1000 rows collapsed to a few minutes:
+
+        2026-07-30 morning  window 3793  pool 1000  covering 0:12:28 of 24h
+        2026-08-07 morning  window 2397  pool 1000  covering 0:04:56 of 24h
+        2026-08-07 evening  window 2323  pool 1000  covering 0:04:01 of 24h
+
+    The rows that truncation dropped are RICHER than the ones it kept: on 2026-08-07
+    the retained 1000 were 21.8%% relevance-10 while the dropped 1397 were 27.3%%.
+
+    Mirrors fetch_release_text_pool (#565). Measured cost on this column set: 0.47s
+    mean per run over 8,483 rows across three runs, 2 to 4 pages.
+
+    DEGRADES GRACEFULLY: any failure mid-pagination falls back to the single 1000-row
+    fetch this function used to do, loudly, rather than failing the run. A short pool
+    is a worse lead; no pool is a broken brief."""
+    ing = (now - datetime.timedelta(hours=hours_ingest)).isoformat()
+    pub = (now - datetime.timedelta(hours=hours_publish)).isoformat()
+    upper = now.isoformat()
+
+    def _page(start, end):
+        return (sb.table("articles").select(_POOL_COLS)
                 .gte("ingested_at", ing).lt("ingested_at", upper)
                 .gte("published_at", pub).lt("published_at", upper)
-                .order("ingested_at", desc=True).limit(limit).execute())
-        return resp.data or []
+                .order("ingested_at", desc=True)
+                .range(start, end).execute()).data or []
+
+    out: list[dict] = []
+    try:
+        cap = max(0, min(int(limit or COVERAGE_POOL_MAX_ROWS), COVERAGE_POOL_MAX_ROWS))
+        for start in range(0, cap, _COVERAGE_PAGE):
+            batch = _page(start, min(start + _COVERAGE_PAGE, cap) - 1)
+            out.extend(batch)
+            if len(batch) < _COVERAGE_PAGE:
+                break
+        if len(out) >= COVERAGE_POOL_MAX_ROWS:
+            logger.warning(
+                "impact_ranking: coverage pool hit the %d-row cap; the window is "
+                "larger than the cap and the oldest rows were dropped",
+                COVERAGE_POOL_MAX_ROWS)
+        return out
     except Exception as e:
-        logger.warning("impact_ranking: fetch_coverage_pool failed: %s", e)
-        return []
+        logger.warning(
+            "impact_ranking: paginated coverage pool failed after %d rows (%s); "
+            "FALLING BACK to the single 1000-row fetch", len(out), e)
+        try:
+            return _page(0, _COVERAGE_PAGE - 1)
+        except Exception as e2:
+            logger.warning("impact_ranking: fetch_coverage_pool fallback failed: %s", e2)
+            return []
 
 
 _RELEASE_TEXT_COLS = "title, summary, source, published_at, ingested_at"
