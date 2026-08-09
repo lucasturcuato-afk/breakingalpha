@@ -83,6 +83,59 @@ jobs:
           # "active" replaces preselected before the hoist). So merging this changes
           # nothing until vars.MATERIALITY_RANK_MODE is set to active by a human.
           MATERIALITY_RANK_MODE: ${{ vars.MATERIALITY_RANK_MODE }}
+          # ---------------------------------------------------------------
+          # Flags the backend reads that this workflow NEVER passed until now.
+          # Because they were never mapped, they sat at their Python defaults on
+          # every production run since they shipped: generate_lead_v2 has never
+          # executed in prod (0 hits for LEAD_V2 / "unified:on" / "unified:hard"
+          # / "SERVED lead" across the last 5 runs). A repo Variable alone does
+          # nothing; MARKET_PULSE_V2 works only because it has BOTH a Variable
+          # and a mapping line. These lines add the missing half.
+          #
+          # INERT ON MERGE. None of these repo Variables is set, so each renders
+          # an EMPTY STRING, and every flag below treats an empty string as OFF
+          # or as its existing prod-neutral default (per-flag reasoning in the
+          # PR body). This is the same shape already proven in production:
+          # MATERIALITY_RANK_MODE and EMAIL_DIGEST_MODE above have rendered
+          # empty on every run and the pipeline has stayed green.
+          #
+          # Deliberately NOT mapped: RELEVANCE_NEW_GATE,
+          # RELEVANCE_GRADE_SHADOW_SAMPLE_RATE, FILTER_* budgets, STORE_CHUNK_SIZE,
+          # WATCHLIST_BOOST_CHUNK and COST_ABORT_USD are int()/float() parsed at
+          # import, so an empty string would raise ValueError and kill the run.
+          # RELEVANCE_GRADE_MODEL and SEC_USER_AGENT are used verbatim, so an
+          # empty string is NOT their default. Those must stay unmapped until
+          # their read sites coerce empty to the default.
+          #
+          # UNIFIED_LEAD, read at backend/synthesize.py:92. Enum off | on | hard.
+          # Empty coerces to "off" at the read site (explicit guard, prints the
+          # fallback). "off" is shadow-only and byte-identical to today.
+          UNIFIED_LEAD: ${{ vars.UNIFIED_LEAD }}
+          # LEAD_V2, read at backend/synthesize.py:115. Truthy check against
+          # ("1","true","yes","on"); empty is not in that set, so False, which is
+          # the current default. generate_lead_v2 stays uninvoked.
+          LEAD_V2: ${{ vars.LEAD_V2 }}
+          # PERSONALIZATION_MODE, read at backend/synthesize.py:128. Enum
+          # off | shadow | active; empty coerces to "off" at the read site, so
+          # story_items is neither built nor written. Same as today.
+          PERSONALIZATION_MODE: ${{ vars.PERSONALIZATION_MODE }}
+          # LIVE_CALENDAR_ENABLED, read at backend/event_calendar.py:325. The
+          # check is `!= "false"`, so empty resolves to TRUE, which equals the
+          # "true" default. Behavior unchanged.
+          LIVE_CALENDAR_ENABLED: ${{ vars.LIVE_CALENDAR_ENABLED }}
+          # CATALYST_CONSENSUS_ENABLED, read at backend/event_calendar.py:326.
+          # The check is `== "true"`, so empty resolves to False, which equals
+          # the "false" default.
+          CATALYST_CONSENSUS_ENABLED: ${{ vars.CATALYST_CONSENSUS_ENABLED }}
+          # DISABLE_TICKER_POPULATION, read at backend/entity_resolver.py:399 as
+          # a bare truthiness check. An empty string is falsy, so ticker
+          # population keeps running exactly as it does today.
+          DISABLE_TICKER_POPULATION: ${{ vars.DISABLE_TICKER_POPULATION }}
+          # THESIS_GRADER_FORCE, read at backend/thesis_grader.py:862. Truthy
+          # check; empty is False, which is the current default (no forced
+          # re-grade).
+          THESIS_GRADER_FORCE: ${{ vars.THESIS_GRADER_FORCE }}
+          # ---------------------------------------------------------------
           # Morning Brief email digest, read at backend/brief_email_send.py.
           # Repo VARIABLE, not a secret (non-sensitive enum: off | active).
           # Off-safe: when the variable is UNSET this renders an empty string,

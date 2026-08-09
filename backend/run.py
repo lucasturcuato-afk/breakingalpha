@@ -42,6 +42,7 @@ import user_signal_aggregator
 import embedding_job
 import thesis_generator
 import sector_backfill
+import flag_report
 
 logger = logging.getLogger("run")
 if not logger.handlers:
@@ -123,6 +124,11 @@ if __name__ == "__main__":
     print("=" * 50)
     print(f"🌅 BreakingAlpha Pipeline — {brief_type.upper()} RUN")
     print("=" * 50)
+
+    # Unconditional flag dump. "Is flag X on in prod?" must be answerable with
+    # `gh run view <id> --log | grep '\[FLAGS\]'`, not with a five-run grep dig.
+    # See backend/flag_report.py for why. Never raises.
+    flag_report.emit()
 
     pipeline_t0 = time.time()
 
