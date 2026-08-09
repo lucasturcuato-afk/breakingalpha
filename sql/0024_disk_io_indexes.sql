@@ -19,9 +19,13 @@
 -- Index builds on a large articles table take minutes and consume IO while they
 -- run. Build them one at a time, off-peak, ideally not during a pipeline run.
 --
+-- SECTION 1 IS SKIPPED. articles.url already has a unique index
+-- (articles_url_key), so idx_articles_url would be a duplicate. Verified
+-- 2026-08-08. See section 1 and docs/runbooks/ci-hardening-and-hand-apply-sql.md.
+--
 -- Sections:
 --   0. VERIFY FIRST (read-only) -- decides which of the rest you actually need
---   1. articles.url            -- required by the new dedup probe
+--   1. articles.url            -- SKIP, duplicate of articles_url_key
 --   2. trigram indexes         -- leading-wildcard ILIKE (Radar/watchlist)
 --   3. jsonb GIN indexes       -- taxonomy containment (Radar follows)
 --   4. morning_brief_calls     -- prerequisite for outcome retrieval
@@ -78,18 +82,39 @@
 
 
 -- ===========================================================================
--- 1. articles.url -- REQUIRED by the new ingest dedup probe.
+-- 1. articles.url -- SKIP. RESOLVED 2026-08-08: DO NOT CREATE THIS INDEX.
 -- ===========================================================================
--- backend/ingest.py no longer reads every url ingested in the last 30 days.
--- It probes `url IN (<this run's pool>) AND ingested_at >= cutoff` in bounded
--- chunks. That probe is only cheap if url is indexed; without one each chunk
--- degrades to a scan (still no worse than the full-window read it replaced,
--- but it wastes the whole point of the change).
 --
--- RUN THIS ONLY IF 0d RETURNED NOTHING.
-
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_articles_url
-  ON public.articles (url);
+--   *** SKIP THIS ENTIRE SECTION. idx_articles_url IS A DUPLICATE. ***
+--
+-- Step 0d has been answered. public.articles.url ALREADY carries a unique
+-- btree index named `articles_url_key`, created implicitly by its UNIQUE
+-- constraint. idx_articles_url below would be a second, functionally identical
+-- btree on the same column: pure waste. It costs disk and it costs write IO on
+-- every ingest insert, on the exact table whose IO budget this file exists to
+-- protect, and the planner would keep choosing articles_url_key regardless.
+--
+-- The dedup probe described below is ALREADY index-served by articles_url_key.
+-- There is nothing to do here.
+--
+-- Original rationale, kept for the record: backend/ingest.py no longer reads
+-- every url ingested in the last 30 days. It probes
+-- `url IN (<this run's pool>) AND ingested_at >= cutoff` in bounded chunks.
+-- That probe is only cheap if url is indexed. It is. See articles_url_key.
+--
+-- Confirm for yourself before skipping (read-only, expect one row named
+-- articles_url_key):
+--
+--   SELECT indexname, indexdef FROM pg_indexes
+--    WHERE schemaname = 'public' AND tablename = 'articles'
+--      AND indexdef ILIKE '%(url%';
+--
+-- The statement below is left commented out ON PURPOSE so that a future
+-- copy-paste of this file cannot create the duplicate by accident. Do not
+-- uncomment it unless the query above returns ZERO rows.
+--
+-- CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_articles_url
+--   ON public.articles (url);
 
 
 -- ===========================================================================
@@ -226,7 +251,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_mbc_target_symbol
 --
 --   SELECT indexrelname, idx_scan, pg_size_pretty(pg_relation_size(indexrelid)) AS size
 --     FROM pg_stat_user_indexes
---    WHERE indexrelname IN ('idx_articles_url',
+--    WHERE indexrelname IN ('articles_url_key',
 --                           'idx_articles_title_trgm',
 --                           'idx_articles_primary_company_trgm',
 --                           'idx_articles_industry_verticals_gin',
