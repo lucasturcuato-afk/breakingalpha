@@ -6,6 +6,7 @@ as a fake, so this runs anywhere and proves the invariants the feature claims:
 
   1. flag off        -> nothing is attempted, no client, no render, no send
   2. unsubscribed    -> excluded from the recipient set
+  2b. auth pager     -> every page is walked, not just GoTrue's first 50
   3. send failure    -> caught, logged, never raised into the pipeline
   4. idempotence     -> the same (brief, user) never sends twice
   5. resolution block-> correct + wrong + no-clean-read all render, unfiltered
@@ -113,25 +114,44 @@ class _Query:
 
 
 class _AuthAdmin:
-    def __init__(self, users):
-        self._users = users
+    """Pages the way GoTrue does.
 
-    def list_users(self):
-        return list(self._users)
+    Two behaviors matter and both are modeled: an omitted per_page falls back
+    to the server default of 50, and `server_page_cap` lets the server hand
+    back FEWER rows than asked for. Production code that stops on a short page
+    silently truncates against a capping server, so the fake has to be able to
+    cap.
+    """
+
+    DEFAULT_PER_PAGE = 50
+
+    def __init__(self, users, server_page_cap=None):
+        self._users = list(users)
+        self._server_page_cap = server_page_cap
+        self.calls: list[tuple[int, int]] = []
+
+    def list_users(self, page=None, per_page=None):
+        page = page or 1
+        size = per_page or self.DEFAULT_PER_PAGE
+        if self._server_page_cap is not None:
+            size = min(size, self._server_page_cap)
+        self.calls.append((page, size))
+        start = (page - 1) * size
+        return list(self._users[start : start + size])
 
 
 class _Auth:
-    def __init__(self, users):
-        self.admin = _AuthAdmin(users)
+    def __init__(self, users, server_page_cap=None):
+        self.admin = _AuthAdmin(users, server_page_cap=server_page_cap)
 
 
 class FakeClient:
     """Minimal stand-in for the supabase-py client, recording every write."""
 
-    def __init__(self, tables, users):
+    def __init__(self, tables, users, server_page_cap=None):
         self.tables = {k: list(v) for k, v in tables.items()}
         self.writes: dict[str, list] = {}
-        self.auth = _Auth(users)
+        self.auth = _Auth(users, server_page_cap=server_page_cap)
         self.table_calls: list[str] = []
 
     def table(self, name):
@@ -282,7 +302,15 @@ def _profile_rows():
     ]
 
 
-def make_client(*, resolved=True, today_calls=True, ledger=None):
+def make_client(
+    *,
+    resolved=True,
+    today_calls=True,
+    ledger=None,
+    users=None,
+    profiles=None,
+    server_page_cap=None,
+):
     return FakeClient(
         tables={
             "briefings": [_brief_row()],
@@ -294,10 +322,11 @@ def make_client(*, resolved=True, today_calls=True, ledger=None):
                 _prior_outcome_rows() if resolved else []
             ),
             "articles": _article_rows(),
-            "user_profiles": _profile_rows(),
+            "user_profiles": _profile_rows() if profiles is None else list(profiles),
             "brief_email_sends": list(ledger or []),
         },
-        users=_user_rows(),
+        users=_user_rows() if users is None else list(users),
+        server_page_cap=server_page_cap,
     )
 
 
@@ -378,6 +407,146 @@ class TestRecipients(unittest.TestCase):
         recipients = [m["to"][0] for m in sender.messages]
         self.assertEqual(recipients, ["subscribed@example.com"])
         self.assertNotIn("unsubscribed@example.com", recipients)
+
+
+# ---------------------------------------------------------------------------
+# 2b. The auth pager is walked to exhaustion
+#
+# A single unpaged list_users() returns GoTrue's first page of 50. Against a
+# real user table of 107 that silently mailed the first 50 accounts and dropped
+# the rest, with nothing in the summary dict or the logs to show for it.
+# ---------------------------------------------------------------------------
+
+
+GOTRUE_DEFAULT_PAGE = 50
+
+
+def _many_users(n, start=0):
+    return [
+        {"id": f"user-{i:04d}", "email": f"u{i:04d}@example.com"}
+        for i in range(start, start + n)
+    ]
+
+
+class TestAuthUserPagination(unittest.TestCase):
+    def test_more_than_one_page_of_users_is_returned_in_full(self):
+        # 107 is the production count that surfaced this bug.
+        client = make_client(
+            users=_many_users(107), profiles=[], server_page_cap=GOTRUE_DEFAULT_PAGE
+        )
+        got = send_mod._fetch_recipients(client)
+        self.assertGreater(
+            len(got),
+            GOTRUE_DEFAULT_PAGE,
+            "the pager stopped at GoTrue's first page and dropped the rest",
+        )
+        self.assertEqual(len(got), 107)
+        self.assertEqual(len({r["id"] for r in got}), 107, "no user counted twice")
+        self.assertIn("u0106@example.com", {r["email"] for r in got})
+
+    def test_the_pager_never_relies_on_the_50_row_default(self):
+        client = make_client(users=_many_users(107), profiles=[])
+        send_mod._fetch_recipients(client)
+        requested = [per_page for _page, per_page in client.auth.admin.calls]
+        self.assertTrue(requested, "list_users was never called")
+        self.assertTrue(
+            all(p > GOTRUE_DEFAULT_PAGE for p in requested),
+            f"every request must ask past the default: {requested}",
+        )
+
+    def test_a_server_that_caps_page_size_below_the_request_still_yields_everyone(self):
+        # We ask for AUTH_USERS_PER_PAGE; this server hands back 40 at a time.
+        # Stopping on a short page would return 40 of 107 and call it done.
+        client = make_client(users=_many_users(107), profiles=[], server_page_cap=40)
+        got = send_mod._fetch_recipients(client)
+        self.assertEqual(len(got), 107)
+
+    def test_termination_is_on_an_empty_page_not_a_short_one(self):
+        # An exact multiple of the page size: the last full page must not be
+        # mistaken for the end of the list.
+        client = make_client(users=_many_users(100), profiles=[], server_page_cap=50)
+        got = send_mod._fetch_recipients(client)
+        self.assertEqual(len(got), 100)
+        self.assertEqual(
+            client.auth.admin.calls,
+            [(1, 50), (2, 50), (3, 50)],
+            "two full pages then one empty page proves exhaustion",
+        )
+
+    def test_a_single_short_page_costs_exactly_two_calls(self):
+        client = make_client(users=_many_users(3), profiles=[])
+        got = send_mod._fetch_recipients(client)
+        self.assertEqual(len(got), 3)
+        self.assertEqual(len(client.auth.admin.calls), 2, "one page plus the empty probe")
+
+    def test_opt_out_is_honored_for_users_beyond_the_first_page(self):
+        users = _many_users(107)
+        # Two users who only exist on later pages have unsubscribed.
+        profiles = [
+            {"id": "user-0060", "brief_email_subscribed": False},
+            {"id": "user-0101", "brief_email_subscribed": False},
+        ]
+        client = make_client(
+            users=users, profiles=profiles, server_page_cap=GOTRUE_DEFAULT_PAGE
+        )
+        emails = {r["email"] for r in send_mod._fetch_recipients(client)}
+        self.assertEqual(len(emails), 105)
+        self.assertNotIn("u0060@example.com", emails)
+        self.assertNotIn("u0101@example.com", emails)
+
+    def test_end_to_end_every_page_of_recipients_is_mailed(self):
+        client = make_client(
+            users=_many_users(107), profiles=[], server_page_cap=GOTRUE_DEFAULT_PAGE
+        )
+        sender = RecordingSender()
+        result = maybe_send_brief_email(
+            "morning", client=client, sender=sender, env=BASE_ENV
+        )
+        self.assertEqual(result["sent"], 107)
+        self.assertEqual(result["failed"], 0)
+        self.assertEqual(len(sender.messages), 107)
+        self.assertEqual(len(client.writes.get("brief_email_sends", [])), 107)
+        # The 51st account onward is the population the old code never reached.
+        mailed = {m["to"][0] for m in sender.messages}
+        self.assertIn("u0050@example.com", mailed)
+        self.assertIn("u0106@example.com", mailed)
+
+    def test_a_pager_that_never_empties_is_capped_and_logged_not_looped_forever(self):
+        class NeverEmpty:
+            """Pathological server: every page returns the same row."""
+
+            calls = 0
+
+            def list_users(self, page=None, per_page=None):
+                NeverEmpty.calls += 1
+                return [{"id": f"user-{page}", "email": f"u{page}@example.com"}]
+
+        class _StuckAuth:
+            admin = NeverEmpty()
+
+        client = make_client()
+        client.auth = _StuckAuth()
+        with self.assertLogs("brief_email_send", level="ERROR") as captured:
+            got = send_mod._fetch_recipients(client)
+        self.assertEqual(NeverEmpty.calls, send_mod.AUTH_USERS_MAX_PAGES)
+        self.assertEqual(len(got), send_mod.AUTH_USERS_MAX_PAGES)
+        self.assertTrue(
+            any("may be truncated" in line for line in captured.output),
+            captured.output,
+        )
+
+    def test_a_pager_that_raises_still_refuses_rather_than_mailing_a_subset(self):
+        class Exploding:
+            def list_users(self, page=None, per_page=None):
+                raise RuntimeError("gotrue 500")
+
+        class _BrokenAuth:
+            admin = Exploding()
+
+        client = make_client()
+        client.auth = _BrokenAuth()
+        with self.assertLogs("brief_email_send", level="ERROR"):
+            self.assertEqual(send_mod._fetch_recipients(client), [])
 
 
 # ---------------------------------------------------------------------------

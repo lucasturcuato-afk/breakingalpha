@@ -83,6 +83,15 @@ STUB_HEADLINE = "Market Intelligence Unavailable"
 
 SEND_LEDGER_TABLE = "brief_email_sends"
 
+#: Page size requested from the auth admin pager. GoTrue defaults to 50 per
+#: page, and a single unpaged list_users() call therefore capped the recipient
+#: set at the first 50 accounts no matter how many existed.
+AUTH_USERS_PER_PAGE = 200
+
+#: Runaway guard for the pager loop. At 200 per page this covers 100k users.
+#: Hitting it is logged as an error rather than silently truncating.
+AUTH_USERS_MAX_PAGES = 500
+
 
 # ---------------------------------------------------------------------------
 # Flag
@@ -683,19 +692,47 @@ def _fetch_story_headlines(sb: Any, brief: dict) -> list[str]:
     return [by_id[i] for i in ids if by_id.get(i)]
 
 
-def _fetch_recipients(sb: Any) -> list[dict]:
-    """Auth users with an email, minus anyone who unsubscribed."""
-    users: list[dict] = []
-    try:
-        listed = sb.auth.admin.list_users()
+def _list_all_auth_users(sb: Any) -> list[dict]:
+    """Every auth user, walking the pager to exhaustion.
+
+    Termination is on an EMPTY page, never on a short one. GoTrue is free to
+    cap per_page below what we ask for, so treating a short page as the last
+    page would reintroduce exactly the silent truncation this function exists
+    to prevent. One extra round trip is the price of not guessing.
+
+    Users are keyed by id so a row that shifts across a page boundary between
+    requests is counted once rather than twice.
+    """
+    users: dict[str, dict] = {}
+    page = 1
+    while page <= AUTH_USERS_MAX_PAGES:
+        listed = sb.auth.admin.list_users(page=page, per_page=AUTH_USERS_PER_PAGE)
         raw = listed if isinstance(listed, list) else getattr(listed, "users", []) or []
+        if not raw:
+            return list(users.values())
         for u in raw:
             uid = getattr(u, "id", None) or (u.get("id") if isinstance(u, dict) else None)
+            if not uid:
+                continue
             email = getattr(u, "email", None) or (
                 u.get("email") if isinstance(u, dict) else None
             )
-            if uid:
-                users.append({"id": str(uid), "email": email or ""})
+            users[str(uid)] = {"id": str(uid), "email": email or ""}
+        page += 1
+
+    logger.error(
+        "[EMAIL DIGEST] auth user pager hit the %d page cap after %d users; "
+        "the recipient set may be truncated",
+        AUTH_USERS_MAX_PAGES,
+        len(users),
+    )
+    return list(users.values())
+
+
+def _fetch_recipients(sb: Any) -> list[dict]:
+    """Auth users with an email, minus anyone who unsubscribed."""
+    try:
+        users = _list_all_auth_users(sb)
     except Exception as exc:  # noqa: BLE001
         logger.error("[EMAIL DIGEST] could not list auth users: %s", exc)
         return []
