@@ -487,6 +487,100 @@ def validate_tags(tags, whitelist: list, max_count: int = 3) -> list:
                     return result
     return result
 
+
+# ---------------------------------------------------------------------------
+# deal_type validation
+# ---------------------------------------------------------------------------
+# FILTER_PROMPT defines deal_type over a 7-value vocabulary, but nothing enforced
+# it, and the model bleeds ACTIVITY_TYPES values across into the field. Measured
+# on the last 30 days (20,000 articles): 1,325 rows, 6.6%, carried a deal_type
+# outside the allowed set, and EVERY invalid value observed was a verbatim
+# ACTIVITY_TYPES entry:
+#
+#   Earnings & Results 647   Fundraising 317   Macro & Policy 156
+#   IPO & Capital Markets 100   Regulation & Legal 70
+#   Mergers & Acquisitions 20   Private Equity 13   Venture Capital 1
+#   Geopolitics 1
+#
+# This is POST-PROCESSING ONLY, by design. The prompt is not touched and no
+# Literal is added to the FilterDecision response schema, because either would
+# change model behaviour and invalidate the cached prompt prefix (FILTER_PROMPT
+# is a ~3.9k-token static prefix and FILTER_PROMPT_CACHE=1 in production keeps
+# ~89% of filter input tokens on the cached tier). Generation stays byte-identical;
+# only what we STORE is corrected.
+
+#: The only values articles.deal_type may hold. Mirrors the FILTER_PROMPT vocabulary.
+DEAL_TYPES = ["M&A", "IPO", "Funding", "Earnings", "Macro", "Geopolitical", "Other"]
+
+#: ACTIVITY_TYPES value -> the deal_type it corresponds to. Every mapping below
+#: follows FILTER_PROMPT's own definitions, not a guess:
+#:   Private Equity / Venture Capital -> Funding, because the prompt defines
+#:     Funding as "a named company is receiving investment capital -- a venture
+#:     round, private equity investment, debt financing, or fundraising raise".
+#:   Regulation & Legal / Leadership & Operations -> Other, because the prompt
+#:     lists "regulatory action ... legal settlement, personnel change" under Other.
+#:   Crypto & Digital Assets -> Other; it has no deal_type counterpart.
+#: All 11 ACTIVITY_TYPES are covered, including the two not yet observed leaking
+#: (Crypto & Digital Assets, Leadership & Operations), so a first sighting is
+#: corrected rather than merely reported.
+_DEAL_TYPE_ALIASES = {
+    "Mergers & Acquisitions": "M&A",
+    "Private Equity": "Funding",
+    "Venture Capital": "Funding",
+    "IPO & Capital Markets": "IPO",
+    "Earnings & Results": "Earnings",
+    "Macro & Policy": "Macro",
+    "Geopolitics": "Geopolitical",
+    "Regulation & Legal": "Other",
+    "Fundraising": "Funding",
+    "Crypto & Digital Assets": "Other",
+    "Leadership & Operations": "Other",
+}
+
+#: Values already reported this process, so an unrecognised value is printed ONCE
+#: rather than once per article. A new leak stays visible without flooding the log.
+_DEAL_TYPE_WARNED: set = set()
+
+
+def validate_deal_type(value) -> str | None:
+    """Coerce a model-supplied deal_type to the allowed vocabulary.
+
+    Returns None when the value is absent (null / empty / non-string), because
+    FILTER_PROMPT explicitly permits null for an article that fits none of the
+    categories, and a NULL is more honest than a manufactured "Other".
+
+    A valid value passes through unchanged. A known ACTIVITY_TYPES leak is mapped
+    to its deal_type counterpart. Anything else becomes "Other" and is printed
+    once, so a NEW leak surfaces in the run log instead of silently polluting the
+    column the way the current ones did.
+    """
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    if not v:
+        return None
+    if v in DEAL_TYPES:
+        return v
+    if v in _DEAL_TYPE_ALIASES:
+        return _DEAL_TYPE_ALIASES[v]
+
+    # Case/whitespace-tolerant second pass before giving up, mirroring the
+    # forgiving matching validate_tags applies to its own whitelist.
+    folded = v.casefold()
+    for allowed in DEAL_TYPES:
+        if folded == allowed.casefold():
+            return allowed
+    for alias, mapped in _DEAL_TYPE_ALIASES.items():
+        if folded == alias.casefold():
+            return mapped
+
+    if v not in _DEAL_TYPE_WARNED:
+        _DEAL_TYPE_WARNED.add(v)
+        print(f"  ⚠ deal_type: unrecognised value {v!r} -> 'Other' (new leak; "
+              f"add a mapping in _DEAL_TYPE_ALIASES if it should map elsewhere)")
+    return "Other"
+
+
 FILTER_PROMPT = """You are a senior analyst at a top investment firm. Analyze this article and determine its relevance to financial markets and investing.
 
 CRITICAL CLASSIFICATION RULE (apply before everything below): Analyst-driven coverage -- price-target changes (raised or cut), upgrades, downgrades, rating initiations or reiterations, "should you buy/sell/hold X" framing, 'Best ___ Stocks' listicles, and opinion/Cramer-style commentary -- is NOT a first-order company event. For ANY such article, sentiment MUST be "neutral" and deal_type MUST be "Other", no matter how bullish or bearish the analyst or author sounds. Anchor sentiment ONLY on a named first-order event reported by the company itself.
@@ -2072,7 +2166,10 @@ def _article_row(article, analysis, clean_companies):
         "sector": sector_fallback,
         "industry_verticals": industry_verticals,
         "activity_types": activity_types,
-        "deal_type": analysis.get("deal_type"),
+        # Post-processing guard only: the prompt and response schema are
+        # untouched, so the model's output is byte-identical; this just stops
+        # ACTIVITY_TYPES values from being STORED in deal_type.
+        "deal_type": validate_deal_type(analysis.get("deal_type")),
         "primary_company": analysis.get("primary_company"),
         "content_type": article.get("content_type", "snippet"),
     }
