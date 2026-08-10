@@ -188,6 +188,32 @@ class TodayCall:
 
 
 @dataclass
+class PersonalClaim:
+    """One of the reader's OWN tracked calls. `verdict` is None while open."""
+
+    claim: str
+    symbol: str | None = None
+    verdict: str | None = None
+    detail: str = ""
+
+
+@dataclass
+class PersonalBlock:
+    """The per-recipient slice. Built by brief_email_personal.py, never here.
+
+    An instance with nothing in it is never rendered: the caller passes None
+    and the section is omitted. See is_empty().
+    """
+
+    resolved: list[PersonalClaim] = field(default_factory=list)
+    upcoming: list[PersonalClaim] = field(default_factory=list)
+    watchlist_stories: list[tuple[str, str]] = field(default_factory=list)
+
+    def is_empty(self) -> bool:
+        return not (self.resolved or self.upcoming or self.watchlist_stories)
+
+
+@dataclass
 class BriefEmailPayload:
     brief_id: str
     brief_date: str
@@ -201,6 +227,9 @@ class BriefEmailPayload:
     today_calls: list[TodayCall] = field(default_factory=list)
     stories: list[str] = field(default_factory=list)
     issue_number: int | None = None
+    #: None for a reader with no tracked calls and no watchlist hits, which is
+    #: most readers today. The section is omitted rather than rendered empty.
+    personal: PersonalBlock | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -306,6 +335,10 @@ RESOLUTION_INTRO = (
     "Every call the last session made, scored against the close with benchmark "
     "attribution. Challenged calls and no-clean-reads are listed alongside the "
     "supported ones, in the same order they were made."
+)
+
+PERSONAL_INTRO = (
+    "Only what touches names you follow. Nothing here is a recommendation."
 )
 
 TODAY_CALLS_INTRO = (
@@ -541,16 +574,18 @@ def preheader(payload: BriefEmailPayload) -> str:
 # ---------------------------------------------------------------------------
 
 #: Block order is fixed. A block with no sentences is not rendered.
+#: "Looking ahead" was removed. Its content was reliably of the form "the
+#: market will continue to assess the implications of recent economic data",
+#: which is true of every trading day and therefore says nothing. The sentences
+#: are NOT dropped: the bucket is gone, so they classify on their actual
+#: content like every other sentence and land in the block they belong to. The
+#: sentences-out-equals-sentences-in test still holds.
 PULSE_BLOCK_ORDER: tuple[str, ...] = (
     "The tape",
     "Macro backdrop",
     "Sector leadership",
     "Single names",
-    "Looking ahead",
 )
-
-_AHEAD_HINTS = ("looking ahead", "ahead,", "later this week", "on deck",
-                "watch for", "will continue", "tomorrow", "next week")
 
 _TAPE_HINTS = ("s&p", "nasdaq", "dow ", "russell", "treasury", "10-year",
                "ten-year", "yield", "basis point", "crude", "wti", "brent",
@@ -565,7 +600,10 @@ _SECTOR_HINTS = ("sector", "etf", "consumer discretionary", "consumer staples",
 
 _MACRO_HINTS = ("payroll", "unemployment", "jobless", "cpi", "pce", "inflation",
                 "jobs read", "jobs report", "fed ", "fomc", "gdp", "rate cut",
-                "rate hike", "retail sales", "ism", "ppi")
+                "rate hike", "retail sales", "ism", "ppi",
+                # Ex-"Looking ahead" prose is macro commentary; it files here
+                # rather than being mistaken for a single-name mention.
+                "economic data", "geopolitical", "macro")
 
 #: Sentence boundary: a terminator, whitespace, then something that starts a
 #: new sentence. Decimals ("0.22%") and "S.A. announced" do not qualify.
@@ -593,8 +631,6 @@ _EXCHANGE_PAREN = re.compile(
 
 def _classify_pulse_sentence(sentence: str) -> str:
     low = _EXCHANGE_PAREN.sub(" ", sentence).lower()
-    if any(h in low for h in _AHEAD_HINTS):
-        return "Looking ahead"
     if any(h in low for h in _TAPE_HINTS):
         return "The tape"
     if any(h in low for h in _SECTOR_HINTS):
@@ -646,7 +682,29 @@ def render_text(payload: BriefEmailPayload) -> str:
         lines.append(f"  {prose}")
         lines.append("")
 
-    # 2. Resolutions, above the lead. Omitted when empty, never padded.
+    # 2. Your names. Per recipient, omitted entirely when they have nothing.
+    if payload.personal is not None and not payload.personal.is_empty():
+        block = payload.personal
+        lines.append("YOUR NAMES")
+        lines.append(PERSONAL_INTRO)
+        lines.append("")
+        for item in block.resolved:
+            head = f"{item.symbol} - {item.verdict}" if item.symbol else item.verdict
+            lines.append(f"{head} (yours, now scored)")
+            lines.append(f"  {scrub_compliance(item.claim)}")
+            lines.append(f"  {item.detail}")
+            lines.append("")
+        for item in block.upcoming:
+            head = f"{item.symbol} - {item.detail}" if item.symbol else item.detail
+            lines.append(f"{head} (yours, still open)")
+            lines.append(f"  {scrub_compliance(item.claim)}")
+            lines.append("")
+        for ticker, title in block.watchlist_stories:
+            lines.append(f"{ticker} on your watchlist")
+            lines.append(f"  {scrub_compliance(title)}")
+            lines.append("")
+
+    # 3. Resolutions, above the lead. Omitted when empty, never padded.
     if payload.resolved:
         lines.append("HOW THE LAST SESSION'S CALLS RESOLVED")
         lines.append(RESOLUTION_INTRO)
@@ -793,7 +851,54 @@ def render_html(payload: BriefEmailPayload) -> str:
         pulse_inner.append(_para(_bold_numbers(_esc(prose)), margin="0 0 18px"))
     parts.append(_block("".join(pulse_inner).rstrip()))
 
-    # 2. Resolutions, above the lead. Omitted when empty.
+    # 2. Your names. Per recipient, omitted entirely when they have nothing.
+    if payload.personal is not None and not payload.personal.is_empty():
+        block = payload.personal
+        inner = [_section_heading("Your names")]
+        inner.append(_para(_esc(PERSONAL_INTRO), size=13, color=_MUTED,
+                           margin="0 0 16px"))
+        for item in block.resolved:
+            color = _VERDICT_COLORS.get(item.verdict or "", _MUTED)
+            inner.append(
+                f'<div style="border-left:4px solid {color};padding:2px 0 2px 14px;'
+                f'margin:0 0 18px;">'
+                f'<p style="font-size:15px;font-weight:700;color:{_INK};'
+                f'margin:0 0 6px;">{_esc(item.symbol or "Your call")}'
+                f'<span style="color:{color};"> &middot; '
+                f'{_esc(item.verdict or "")}</span>'
+                f'<span style="font-weight:400;color:{_MUTED};"> &middot; yours'
+                f"</span></p>"
+                f"{_para(_esc(scrub_compliance(item.claim)), margin='0 0 6px')}"
+                f"{_para(_bold_numbers(_esc(item.detail)), size=14, color=_MUTED, margin='0', italic=True)}"
+                f"</div>"
+            )
+        for item in block.upcoming:
+            inner.append(
+                f'<div style="border-left:4px solid {_BORDER};'
+                f'padding:2px 0 2px 14px;margin:0 0 18px;">'
+                f'<p style="font-size:15px;font-weight:700;color:{_INK};'
+                f'margin:0 0 6px;">{_esc(item.symbol or "Your call")}'
+                f'<span style="font-weight:400;color:{_MUTED};"> &middot; '
+                f"{_esc(item.detail)}</span></p>"
+                f"{_para(_esc(scrub_compliance(item.claim)), margin='0')}"
+                f"</div>"
+            )
+        if block.watchlist_stories:
+            items = "".join(
+                f'<li style="font-size:{_BODY_PX}px;line-height:1.6;color:{_INK};'
+                f'margin:0 0 12px;"><strong>{_esc(ticker)}</strong> &middot; '
+                f"{_esc(scrub_compliance(title))}</li>"
+                for ticker, title in block.watchlist_stories
+            )
+            inner.append(
+                f'<p style="font-size:11px;letter-spacing:1.4px;'
+                f'text-transform:uppercase;font-weight:700;color:{_GOLD};'
+                f'margin:0 0 8px;">On your watchlist</p>'
+                f'<ul style="margin:0;padding-left:20px;">{items}</ul>'
+            )
+        parts.append(_block("".join(inner)))
+
+    # 3. Resolutions, above the lead. Omitted when empty.
     if payload.resolved:
         inner = [_section_heading("How the last session's calls resolved")]
         inner.append(_para(_esc(RESOLUTION_INTRO), size=13, color=_MUTED,

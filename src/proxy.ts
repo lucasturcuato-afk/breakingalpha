@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/ssr'
+import { postAuthDestination } from '@/lib/auth-redirect'
 import { NextResponse, type NextRequest } from 'next/server'
 import { isAllowlisted } from '@/lib/allowlist'
 
@@ -50,9 +51,10 @@ export async function proxy(request: NextRequest) {
   }
 
   if (user && isAuthPage) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
+    // An already-signed-in reader clicking the brief CTA lands here with
+    // ?adopt=<id>. Send them to the call, not to the dashboard.
+    const dest = postAuthDestination(request.nextUrl.search)
+    return NextResponse.redirect(new URL(dest, request.nextUrl.origin))
   }
 
   // Beta allowlist gate — enforce BEYOND the OAuth callback.
