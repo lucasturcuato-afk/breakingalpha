@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { todayPt } from "@/lib/session-date";
 import {
   DEFAULT_ADOPT_HORIZON,
   MAX_WINDOW_DAYS,
@@ -60,7 +61,11 @@ export async function POST(request: NextRequest) {
   // Forward from TODAY, not from the brief's date. Adopting a call made last
   // Tuesday means "I am taking this view now"; backdating the start would hand
   // the user sessions that already happened.
-  const todayIso = new Date().toISOString().slice(0, 10);
+  // US market session date (Pacific), NOT the server's UTC date. A claim
+  // adopted after ~5pm PT is still the same trading session; stamping UTC stored
+  // the window a day ahead of what the user saw (see #543). One convention,
+  // shared with every other surface via src/lib/session-date.ts.
+  const todayIso = todayPt();
   const horizon = normalizeAdoptHorizon(body.horizon, DEFAULT_ADOPT_HORIZON);
   const windowEnd = resolveAdoptWindow(todayIso, horizon, body.window_days);
 

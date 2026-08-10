@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { todayPt } from "@/lib/session-date";
 
 export const dynamic = "force-dynamic";
 
@@ -158,7 +159,10 @@ export async function POST(request: NextRequest) {
       : null;
 
   // Server-side gradeability enforcement (never trust the client).
-  const todayIso = new Date().toISOString().slice(0, 10);
+  // US market session date (Pacific), NOT UTC, so the window fallback and the
+  // max-window check agree with what the user saw. One convention, shared via
+  // src/lib/session-date.ts. See #543.
+  const todayIso = todayPt();
   const priceable = ["ticker", "sector", "index"].includes(claimType);
   const windowOk =
     windowEnd !== null &&
