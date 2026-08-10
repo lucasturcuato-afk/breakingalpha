@@ -4,11 +4,24 @@ import { useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { isAllowlisted } from "@/lib/allowlist";
 import { postWaitlistRegister } from "@/lib/waitlist-register-client";
+import { postAuthDestination } from "@/lib/auth-redirect";
 import { cn } from "@/lib/utils";
 import { Mail, Lock, Eye, EyeOff, Check } from "lucide-react";
 import Link from "next/link";
 
 type AuthMode = "signin" | "signup";
+
+/**
+ * Where this sign-in should land. Read at click time from the live URL rather
+ * than via useSearchParams, which would force a Suspense boundary on a page
+ * that has no other reason to need one. The email CTA arrives here as
+ * /auth?adopt=<call id>.
+ */
+function destination(): string {
+  return postAuthDestination(
+    typeof window === "undefined" ? "" : window.location.search,
+  );
+}
 
 function getSupabase() {
   return createBrowserClient(
@@ -58,7 +71,9 @@ export default function AuthPage() {
           await supabase.auth.signOut();
           window.location.href = "/waitlist";
         } else {
-          window.location.href = "/dashboard";
+          // Carries ?adopt=<id> from the Morning Brief CTA through to the
+          // call itself, instead of dropping the reader on the dashboard.
+          window.location.href = destination();
         }
       }
     } else {
@@ -95,7 +110,11 @@ export default function AuthPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        // The provider round trip preserves the query on redirectTo and
+       // appends ?code=, so `next` is how the adopt target survives Google.
+       redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+          destination(),
+        )}`,
         queryParams: {
           access_type: "offline",
           prompt: "select_account",
@@ -105,10 +124,15 @@ export default function AuthPage() {
     if (error) console.error("OAuth error:", error.message);
   }
 
+  // Say what the desk actually does. The previous three lines named an object
+  // #548 retired and made a social proof claim we had not earned. These are
+  // specific and checkable against the product. src/lib/auth-copy.test.ts
+  // greps this file, so the retired wording cannot come back, not even in a
+  // comment.
   const features = [
-    "Live AI-generated market signals",
-    "Real-time deal flow and M&A tracking",
-    "AI thesis board updated as markets move",
+    "Falsifiable market calls, published before the outcome is known",
+    "Every call scored against the close with benchmark attribution",
+    "The misses stay on the record, next to the hits",
   ];
 
   return (
@@ -139,7 +163,8 @@ export default function AuthPage() {
             market intelligence.
           </h1>
           <p className="mt-5 font-sans text-[16px] text-text-muted leading-relaxed">
-            Join analysts tracking signals that move markets.
+            The desk publishes its calls before the outcome is known, then
+            scores every one of them against the close.
           </p>
 
           <div className="mt-10 space-y-4">
@@ -159,7 +184,7 @@ export default function AuthPage() {
         {/* Bottom */}
         <div className="relative z-10">
           <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-faint">
-            Trusted by analysts at top-tier firms
+            Calls are timestamped before the close and graded after it
           </p>
         </div>
       </div>

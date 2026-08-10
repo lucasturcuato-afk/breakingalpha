@@ -31,6 +31,7 @@ for _p in (_BACKEND, _REPO):
 
 from html import escape as _html_escape  # noqa: E402
 import re  # noqa: E402
+from datetime import datetime, timezone  # noqa: E402
 
 from brief_email_render import (  # noqa: E402
     BANNED_TERMS,
@@ -323,6 +324,7 @@ def make_client(
     users=None,
     profiles=None,
     server_page_cap=None,
+    extra_tables=None,
 ):
     return FakeClient(
         tables={
@@ -337,6 +339,10 @@ def make_client(
             "articles": _article_rows(),
             "user_profiles": _profile_rows() if profiles is None else list(profiles),
             "brief_email_sends": list(ledger or []),
+            "user_claims": [],
+            "user_claim_outcomes": [],
+            "watchlist": [],
+            **(extra_tables or {}),
         },
         users=_user_rows() if users is None else list(users),
         server_page_cap=server_page_cap,
@@ -1119,11 +1125,36 @@ class TestPulseIsBrokenIntoBlocks(unittest.TestCase):
 
     def test_it_splits_into_labelled_blocks_not_one_paragraph(self):
         labels = [label for label, _ in pulse_blocks(self.PULSE)]
-        self.assertGreaterEqual(len(labels), 4)
+        self.assertGreaterEqual(len(labels), 3)
         self.assertEqual(labels, sorted(labels, key=PULSE_BLOCK_ORDER.index))
         self.assertIn("The tape", labels)
         self.assertIn("Sector leadership", labels)
-        self.assertIn("Looking ahead", labels)
+
+    def test_the_looking_ahead_section_is_gone(self):
+        # "The market will continue to assess the implications of recent
+        # economic data" is true of every trading day, so the block said
+        # nothing. The heading is retired.
+        self.assertNotIn("Looking ahead", PULSE_BLOCK_ORDER)
+        labels = [label for label, _ in pulse_blocks(self.PULSE)]
+        self.assertNotIn("Looking ahead", labels)
+        # The HEADING is gone. A model sentence that happens to open with the
+        # words is refiled, not censored: rewriting the pulse would break the
+        # partition guarantee and is editorialising we do not do.
+        payload = _payload()
+        payload.market_pulse = self.PULSE
+        out = render_email(payload)
+        self.assertNotIn("LOOKING AHEAD", out["text"])
+        self.assertNotIn(">Looking ahead<", out["html"])
+
+    def test_its_sentences_are_refiled_not_dropped(self):
+        # The partition guarantee has to survive removing a bucket.
+        original = _pulse_sentences(self.PULSE)
+        rendered = []
+        for _label, prose in pulse_blocks(self.PULSE):
+            rendered.extend(_pulse_sentences(prose))
+        self.assertEqual(sorted(rendered), sorted(original))
+        blocks = dict(pulse_blocks(self.PULSE))
+        self.assertIn("will continue to assess", blocks["Macro backdrop"])
 
     def test_every_single_sentence_survives_exactly_once(self):
         original = _pulse_sentences(self.PULSE)
@@ -1340,3 +1371,44 @@ class TestFromDisplayName(unittest.TestCase):
         sender = RecordingSender()
         maybe_send_brief_email("morning", client=client, sender=sender, env=BASE_ENV)
         self.assertTrue(sender.messages[0]["from"].startswith("Signalera <"))
+
+
+class TestEasternTime(unittest.TestCase):
+    def test_a_utc_created_at_renders_as_eastern_labelled_ET(self):
+        # 14:17 UTC on an August date is 10:17 in New York (EDT, UTC-4).
+        got = send_mod._format_generated_at("2026-08-07T14:17:04+00:00", None)
+        self.assertEqual(got, "Aug 07, 2026 at 10:17 AM ET")
+
+    def test_winter_dates_shift_by_five_not_four(self):
+        # Standard time. The zone does the arithmetic; we never hardcode it.
+        got = send_mod._format_generated_at("2026-01-15T14:17:00+00:00", None)
+        self.assertEqual(got, "Jan 15, 2026 at 9:17 AM ET")
+
+    def test_a_naive_timestamp_is_read_as_utc_then_converted(self):
+        self.assertEqual(
+            send_mod._format_generated_at("2026-08-07T14:17:00", None),
+            "Aug 07, 2026 at 10:17 AM ET",
+        )
+
+    def test_an_unusable_created_at_still_renders_a_stamp(self):
+        got = send_mod._format_generated_at(None, datetime(2026, 8, 7, 14, 17,
+                                                           tzinfo=timezone.utc))
+        self.assertEqual(got, "Aug 07, 2026 at 10:17 AM ET")
+
+    def test_no_rendered_string_says_UTC(self):
+        payload = _payload()
+        payload.generated_at_display = send_mod._format_generated_at(
+            "2026-08-07T14:17:04+00:00", None
+        )
+        out = render_email(payload)
+        for name in ("subject", "text", "html"):
+            self.assertNotIn("UTC", out[name], name)
+        self.assertIn("ET", out["text"])
+
+    def test_the_end_to_end_body_carries_eastern_time(self):
+        client = make_client()
+        sender = RecordingSender()
+        maybe_send_brief_email("morning", client=client, sender=sender, env=BASE_ENV)
+        body = sender.messages[0]["text"]
+        self.assertNotIn("UTC", body)
+        self.assertIn(" ET", body)

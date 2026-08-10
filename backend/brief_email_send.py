@@ -44,7 +44,8 @@ import hmac
 import json
 import logging
 import os
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Any, Callable, Iterable
 
 try:  # pragma: no cover - import shim, mirrors backend/synthesize.py
@@ -66,6 +67,15 @@ except ImportError:  # pragma: no cover
         render_email,
     )
 
+try:  # pragma: no cover - import shim
+    from brief_email_personal import PersonalContext, bucket_by, personal_block
+except ImportError:  # pragma: no cover
+    from backend.brief_email_personal import (
+        PersonalContext,
+        bucket_by,
+        personal_block,
+    )
+
 logger = logging.getLogger(__name__)
 
 RESEND_ENDPOINT = "https://api.resend.com/emails"
@@ -82,6 +92,10 @@ SITE_URL_FALLBACK = "https://signalera.ai"
 STUB_HEADLINE = "Market Intelligence Unavailable"
 
 SEND_LEDGER_TABLE = "brief_email_sends"
+
+#: The market's own clock. Every timestamp the email renders is converted here
+#: and labelled ET, because email cannot detect a recipient timezone.
+EASTERN = ZoneInfo("America/New_York")
 
 #: Page size requested from the auth admin pager. GoTrue defaults to 50 per
 #: page, and a single unpaged list_users() call therefore capped the recipient
@@ -472,7 +486,12 @@ def _send_digest(
 
     generated_at = _format_generated_at(brief.get("created_at"), now)
 
-    stories = _fetch_story_headlines(sb, brief)
+    story_rows = _fetch_story_rows(sb, brief)
+    stories = [str(r.get("title") or "").strip() for r in story_rows]
+    # One fetch for the whole run. The per-recipient pass below is pure dict
+    # work over these rows and makes NO model call and no extra query.
+    personal_ctx = _fetch_personal_context(sb, story_rows)
+    personal_now = now or datetime.now(timezone.utc)
 
     secret = (
         source.get("SUPABASE_JWT_SECRET")
@@ -537,6 +556,7 @@ def _send_digest(
                 today_calls=[today_call_from_row(c, base_url) for c in today_rows],
                 stories=stories,
                 issue_number=brief.get("issue_number"),
+                personal=personal_block(uid, personal_ctx, now=personal_now),
             )
             rendered = render_email(payload)
 
@@ -601,7 +621,16 @@ def _mask(email: str) -> str:
 
 
 def _format_generated_at(created_at: Any, now: datetime | None) -> str:
-    """Human timestamp for the market pulse header, always in UTC.
+    """Human timestamp for the market pulse header, always Eastern.
+
+    Email cannot detect a recipient timezone: there is no client-side hook and
+    no header that carries one. UTC was the honest-but-useless answer, because
+    a reader in New York had to do arithmetic to learn whether a pre-open note
+    was written this morning. Eastern is the market's own clock, so it is right
+    for the content even when it is not the reader's local time, and it is
+    always labelled ET so nobody has to guess which zone they are reading.
+
+    No timezone column and no per-user logic: one conversion, one label.
 
     Falls back to `now` (or the current time) when the brief row has no usable
     created_at, so the header can never render blank and imply live state.
@@ -619,7 +648,7 @@ def _format_generated_at(created_at: Any, now: datetime | None) -> str:
         dt = now or datetime.now(timezone.utc)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc).strftime("%b %d, %Y at %H:%M UTC")
+    return dt.astimezone(EASTERN).strftime("%b %d, %Y at %-I:%M %p ET")
 
 
 # ---------------------------------------------------------------------------
@@ -691,8 +720,12 @@ def _fetch_recent_resolutions(sb: Any) -> tuple[list[dict], list[dict]]:
     return calls, outcomes
 
 
-def _fetch_story_headlines(sb: Any, brief: dict) -> list[str]:
-    """Three to five headlines from the brief's own persisted story rail.
+def _fetch_story_rows(sb: Any, brief: dict) -> list[dict]:
+    """Three to five article ROWS from the brief's own persisted story rail.
+
+    Returns rows rather than titles so the per-recipient watchlist match can
+    read primary_company and companies off the same fetch. One query serves
+    both the shared stories section and every user's personal block.
 
     Reads story_rail_ids so the email shows the same rail the site shows. When
     the rail is absent we return nothing and the section is omitted rather than
@@ -710,10 +743,13 @@ def _fetch_story_headlines(sb: Any, brief: dict) -> list[str]:
     if not ids:
         return []
     rows = _rows(
-        sb.table("articles").select("id, title").in_("id", ids).execute()
+        sb.table("articles")
+        .select("id, title, primary_company, companies")
+        .in_("id", ids)
+        .execute()
     )
-    by_id = {str(r.get("id")): (r.get("title") or "").strip() for r in rows}
-    return [by_id[i] for i in ids if by_id.get(i)]
+    by_id = {str(r.get("id")): r for r in rows}
+    return [by_id[i] for i in ids if (by_id.get(i) or {}).get("title")]
 
 
 def _list_all_auth_users(sb: Any) -> list[dict]:
@@ -751,6 +787,70 @@ def _list_all_auth_users(sb: Any) -> list[dict]:
         len(users),
     )
     return list(users.values())
+
+
+def _fetch_personal_context(sb: Any, story_rows: list[dict]) -> PersonalContext:
+    """Every row the per-user pass needs, fetched ONCE for the whole run.
+
+    Five reads total regardless of recipient count. Each one soft-fails to
+    empty: a personal block is an enhancement, and losing it must never cost
+    anybody the brief itself.
+    """
+    ctx = PersonalContext(story_rows=story_rows)
+
+    try:
+        claims = _rows(
+            sb.table("user_claims")
+            .select(
+                "id, user_id, user_claim, target_symbol, status, "
+                "resolution_window_end, adopted_from_call_id"
+            )
+            .execute()
+        )
+        ctx.claims_by_user = bucket_by(claims, "user_id")
+        claim_ids = [str(c.get("id")) for c in claims if c.get("id")]
+        if claim_ids:
+            for outcome in _rows(
+                sb.table("user_claim_outcomes")
+                .select("claim_id, verdict, attribution, actual_pct_change, graded_at")
+                .in_("claim_id", claim_ids)
+                .execute()
+            ):
+                cid = str(outcome.get("claim_id") or "")
+                prev = ctx.outcomes_by_claim.get(cid)
+                # Regrades leave more than one row; keep the newest.
+                if cid and (
+                    prev is None
+                    or (outcome.get("graded_at") or "") > (prev.get("graded_at") or "")
+                ):
+                    ctx.outcomes_by_claim[cid] = outcome
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[EMAIL DIGEST] personal claims read failed: %s", exc)
+
+    try:
+        ctx.watchlist_by_user = bucket_by(
+            _rows(
+                sb.table("watchlist")
+                .select("user_id, identifier, display_name, type")
+                .execute()
+            ),
+            "user_id",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[EMAIL DIGEST] personal watchlist read failed: %s", exc)
+
+    try:
+        for row in _rows(
+            sb.table(SEND_LEDGER_TABLE).select("user_id, sent_at").execute()
+        ):
+            uid = str(row.get("user_id") or "")
+            sent = str(row.get("sent_at") or "")
+            if uid and sent > ctx.last_send_by_user.get(uid, ""):
+                ctx.last_send_by_user[uid] = sent
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[EMAIL DIGEST] personal last-send read failed: %s", exc)
+
+    return ctx
 
 
 def _fetch_recipients(sb: Any) -> list[dict]:

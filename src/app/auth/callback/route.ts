@@ -5,6 +5,7 @@ import type { NextRequest } from 'next/server'
 import { checkFixedWindow, clientKeyFromHeaders } from '@/lib/rate-limit'
 import { registerWaitlist } from '@/lib/waitlist-register'
 import { sendWaitlistConfirmationEmail } from '@/lib/waitlist-email'
+import { POST_AUTH_DEFAULT, safeNext } from '@/lib/auth-redirect'
 
 // Coarse per-IP throttle on the OAuth callback (the one server-side auth entry
 // point). Caps code-exchange attempts to slow credential-stuffing / replay
@@ -86,8 +87,12 @@ export async function GET(request: NextRequest) {
     }
 
     if (allowed) {
-      // User is allowlisted — proceed to dashboard
-      return NextResponse.redirect(`${origin}/dashboard`)
+      // Allowlisted. Honour the destination the sign-in carried through the
+      // provider round trip (the Morning Brief CTA sends ?next=/radar/calls...)
+      // and fall back to the dashboard. safeNext keeps this from becoming an
+      // open redirect: only same-origin relative paths get through.
+      const next = safeNext(searchParams.get('next')) ?? POST_AUTH_DEFAULT
+      return NextResponse.redirect(`${origin}${next}`)
     }
 
     // User is NOT allowlisted. This callback runs only after proven ownership
