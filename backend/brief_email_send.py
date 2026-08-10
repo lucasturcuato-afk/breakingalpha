@@ -68,12 +68,24 @@ except ImportError:  # pragma: no cover
     )
 
 try:  # pragma: no cover - import shim
-    from brief_email_personal import PersonalContext, bucket_by, personal_block
-except ImportError:  # pragma: no cover
-    from backend.brief_email_personal import (
+    from brief_email_personal import (
+        MATCH_POOL_HOURS,
+        MATCH_POOL_MAX_ROWS,
+        MATCH_POOL_MIN_RELEVANCE,
         PersonalContext,
         bucket_by,
         personal_block,
+        prepare_pool,
+    )
+except ImportError:  # pragma: no cover
+    from backend.brief_email_personal import (
+        MATCH_POOL_HOURS,
+        MATCH_POOL_MAX_ROWS,
+        MATCH_POOL_MIN_RELEVANCE,
+        PersonalContext,
+        bucket_by,
+        personal_block,
+        prepare_pool,
     )
 
 logger = logging.getLogger(__name__)
@@ -488,9 +500,11 @@ def _send_digest(
 
     story_rows = _fetch_story_rows(sb, brief)
     stories = [str(r.get("title") or "").strip() for r in story_rows]
-    # One fetch for the whole run. The per-recipient pass below is pure dict
-    # work over these rows and makes NO model call and no extra query.
-    personal_ctx = _fetch_personal_context(sb, story_rows)
+    # Two fetches for the whole run: the brief's own rail for TODAY'S STORIES,
+    # and the wider same-day pool the watchlist matches against. The
+    # per-recipient pass below is pure dict work over these rows and makes NO
+    # model call and no extra query, however many recipients there are.
+    personal_ctx = _fetch_personal_context(sb, _fetch_match_pool(sb, brief))
     personal_now = now or datetime.now(timezone.utc)
 
     secret = (
@@ -618,6 +632,19 @@ def _mask(email: str) -> str:
         return "***"
     name, domain = email.split("@", 1)
     return f"{name[:2]}***@{domain}"
+
+
+def _as_utc(raw: Any) -> datetime | None:
+    """Parse a stored timestamp into an aware UTC datetime, or None."""
+    if isinstance(raw, datetime):
+        return raw if raw.tzinfo else raw.replace(tzinfo=timezone.utc)
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = datetime.fromisoformat(raw.strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    return None
 
 
 def _format_generated_at(created_at: Any, now: datetime | None) -> str:
@@ -789,14 +816,68 @@ def _list_all_auth_users(sb: Any) -> list[dict]:
     return list(users.values())
 
 
-def _fetch_personal_context(sb: Any, story_rows: list[dict]) -> PersonalContext:
+#: PostgREST answers at most this many rows per request, so the pool pages.
+_PAGE = 1000
+
+
+def _fetch_match_pool(sb: Any, brief: dict) -> list[dict]:
+    """Same-day articles the pipeline rated relevant, in relevance order.
+
+    ONE shared read (paged) for the whole run, not per user. This replaced
+    matching against the brief's five rail stories, which reached 0 of the 42
+    users who have a watchlist: five articles is too small a target to hit.
+
+    Soft-fails to an empty list. Losing the pool costs the personal block, and
+    a personal block is an enhancement; it must never cost anyone the brief.
+    """
+    reference = _as_utc(brief.get("created_at")) or datetime.now(timezone.utc)
+    floor = (reference - timedelta(hours=MATCH_POOL_HOURS)).isoformat()
+
+    rows: list[dict] = []
+    try:
+        while len(rows) < MATCH_POOL_MAX_ROWS:
+            page = _rows(
+                sb.table("articles")
+                .select("id, title, primary_company, companies, relevance_score")
+                .gte("published_at", floor)
+                .gte("relevance_score", MATCH_POOL_MIN_RELEVANCE)
+                .order("relevance_score", desc=True)
+                .order("published_at", desc=True)
+                .order("id")
+                .range(len(rows), len(rows) + _PAGE - 1)
+                .execute()
+            )
+            if not page:
+                break
+            rows.extend(page)
+            if len(page) < _PAGE:
+                break
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[EMAIL DIGEST] match pool read failed: %s", exc)
+        return []
+
+    if len(rows) >= MATCH_POOL_MAX_ROWS:
+        # Never shrink coverage silently. If this fires, raise the ceiling.
+        logger.warning(
+            "[EMAIL DIGEST] match pool hit the %d row ceiling; some same-day "
+            "articles were not considered for watchlist matching",
+            MATCH_POOL_MAX_ROWS,
+        )
+    logger.info(
+        "[EMAIL DIGEST] watchlist match pool: %d same-day articles at "
+        "relevance >= %d", len(rows), MATCH_POOL_MIN_RELEVANCE,
+    )
+    return prepare_pool(rows[:MATCH_POOL_MAX_ROWS])
+
+
+def _fetch_personal_context(sb: Any, match_pool: list[dict]) -> PersonalContext:
     """Every row the per-user pass needs, fetched ONCE for the whole run.
 
     Five reads total regardless of recipient count. Each one soft-fails to
     empty: a personal block is an enhancement, and losing it must never cost
     anybody the brief itself.
     """
-    ctx = PersonalContext(story_rows=story_rows)
+    ctx = PersonalContext(story_rows=match_pool)
 
     try:
         claims = _rows(

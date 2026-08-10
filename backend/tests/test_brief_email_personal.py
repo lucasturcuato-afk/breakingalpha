@@ -29,10 +29,12 @@ for _p in (_BACKEND, _REPO):
         sys.path.insert(0, _p)
 
 from brief_email_personal import (  # noqa: E402
+    MATCH_POOL_MIN_RELEVANCE,
     MAX_PER_LIST,
     PersonalContext,
     bucket_by,
     personal_block,
+    prepare_pool,
     story_matches_watch,
 )
 from brief_email_render import PersonalBlock, render_email  # noqa: E402
@@ -336,3 +338,188 @@ class TestNoPerUserModelCall(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+# ---------------------------------------------------------------------------
+# The widened match pool
+#
+# Matching against the brief's five rail stories reached 0 of the 42 users who
+# have a watchlist. The pool is now every same-day article the pipeline scored
+# at MATCH_POOL_MIN_RELEVANCE or better. These tests pin the coverage lift, the
+# strictness that must NOT be traded for it, and the one-shared-read property.
+# ---------------------------------------------------------------------------
+
+
+def _pool(n, *, relevance=10, published="2026-08-10T09:00:00+00:00"):
+    """n same-day articles, each naming a distinct ticker TCK000..TCKnnn."""
+    return [
+        {"id": f"p{i}", "title": f"TCK{i:03d} Corp reports quarterly results",
+         "primary_company": f"TCK{i:03d} Corp", "companies": [f"TCK{i:03d} Corp"],
+         "relevance_score": relevance, "published_at": published}
+        for i in range(n)
+    ]
+
+
+RAIL_FIVE = _pool(5)
+WIDE_POOL = _pool(400)
+
+
+def _watchers(n):
+    """n users, each watching one ticker that only the wide pool covers."""
+    return {
+        f"u{i}": [{"identifier": f"TCK{i * 7:03d}", "display_name": None}]
+        for i in range(n)
+    }
+
+
+class TestCoverageLift(unittest.TestCase):
+    def _coverage(self, pool, users):
+        ctx = PersonalContext(watchlist_by_user=users, story_rows=prepare_pool(list(pool)))
+        return sum(1 for uid in users if personal_block(uid, ctx, now=NOW))
+
+    def test_the_narrow_rail_pool_reaches_almost_nobody(self):
+        users = _watchers(42)
+        self.assertLessEqual(
+            self._coverage(RAIL_FIVE, users), 1,
+            "five articles is too small a target; this is the bug being fixed",
+        )
+
+    def test_the_widened_pool_reaches_most_of_them(self):
+        users = _watchers(42)
+        before = self._coverage(RAIL_FIVE, users)
+        after = self._coverage(WIDE_POOL, users)
+        print(f"\n  coverage over {len(users)} watchlist users: "
+              f"before={before}/{len(users)}  after={after}/{len(users)}")
+        self.assertGreater(after, before)
+        self.assertGreaterEqual(after / len(users), 0.8)
+
+    def test_the_relevance_floor_is_the_pipelines_own_judgment(self):
+        # Below the floor the pool is not fetched at all, so a low-relevance
+        # article can never reach a reader through this block.
+        self.assertEqual(MATCH_POOL_MIN_RELEVANCE, 9)
+
+
+class TestStrictnessSurvivesTheWiderPool(unittest.TestCase):
+    def test_an_exchange_tag_still_matches_nothing(self):
+        # The regression #583 fixed must not come back now that the pool is
+        # 180x larger and full of "(NASDAQ: X)" headlines.
+        pool = prepare_pool([
+            {"id": str(i), "title": f"Company{i} (NASDAQ: SYM{i}) posts results",
+             "primary_company": f"Company{i}", "companies": [f"Company{i}"],
+             "relevance_score": 10}
+            for i in range(200)
+        ])
+        for exchange in ("NASDAQ", "NYSE", "AMEX", "LSE"):
+            ctx = PersonalContext(
+                watchlist_by_user={USER: [{"identifier": exchange,
+                                           "display_name": None}]},
+                story_rows=pool,
+            )
+            self.assertIsNone(personal_block(USER, ctx, now=NOW), exchange)
+
+    def test_a_ticker_must_be_an_entity_not_a_substring(self):
+        pool = prepare_pool([
+            {"id": "1", "title": "ROADMAP unveiled for infrastructure spending",
+             "primary_company": None, "companies": [], "relevance_score": 10},
+            {"id": "2", "title": "Offroad vehicle sales climb",
+             "primary_company": None, "companies": [], "relevance_score": 10},
+        ])
+        ctx = PersonalContext(
+            watchlist_by_user={USER: [{"identifier": "ROAD", "display_name": None}]},
+            story_rows=pool,
+        )
+        self.assertIsNone(personal_block(USER, ctx, now=NOW))
+
+    def test_short_tickers_still_never_match_prose_in_a_big_pool(self):
+        pool = prepare_pool(_pool(300) + [
+            {"id": "x", "title": "IT budgets are on the rise", "primary_company": None,
+             "companies": [], "relevance_score": 10}])
+        for short in ("IT", "ON", "A"):
+            ctx = PersonalContext(
+                watchlist_by_user={USER: [{"identifier": short, "display_name": None}]},
+                story_rows=pool,
+            )
+            self.assertIsNone(personal_block(USER, ctx, now=NOW), short)
+
+
+class TestCapAndOrdering(unittest.TestCase):
+    def setUp(self):
+        # One reader watching a ticker that 20 same-day stories mention.
+        self.pool = prepare_pool([
+            {"id": f"m{i}", "title": f"NVDA story number {i}",
+             "primary_company": "Nvidia", "companies": ["Nvidia"],
+             "relevance_score": 10 if i < 4 else 9}
+            for i in range(20)
+        ])
+        self.ctx = PersonalContext(
+            watchlist_by_user={USER: [{"identifier": "NVDA", "display_name": None}]},
+            story_rows=self.pool,
+        )
+
+    def test_a_reader_with_many_matches_gets_a_capped_list(self):
+        block = personal_block(USER, self.ctx, now=NOW)
+        self.assertEqual(len(block.watchlist_stories), MAX_PER_LIST)
+        self.assertLessEqual(MAX_PER_LIST, 3, "this is a block, not a second brief")
+
+    def test_the_survivors_are_the_most_relevant_not_the_first_watch_row(self):
+        # The pool arrives in relevance order, so the cap keeps the head of it.
+        block = personal_block(USER, self.ctx, now=NOW)
+        titles = [t for _tk, t in block.watchlist_stories]
+        self.assertEqual(titles, [r["title"] for r in self.pool[:MAX_PER_LIST]])
+
+    def test_a_second_watchlist_row_cannot_starve_a_more_relevant_match(self):
+        ctx = PersonalContext(
+            watchlist_by_user={USER: [
+                {"identifier": "ZZZZ", "display_name": None},
+                {"identifier": "NVDA", "display_name": None},
+            ]},
+            story_rows=self.pool,
+        )
+        block = personal_block(USER, ctx, now=NOW)
+        self.assertEqual(len(block.watchlist_stories), MAX_PER_LIST)
+
+
+class TestPoolIsOneSharedRead(unittest.TestCase):
+    def _run(self, n):
+        users = [{"id": f"u{i}", "email": f"u{i}@example.com"} for i in range(n)]
+        client = make_client(
+            users=users,
+            profiles=[],
+            extra_tables={
+                "watchlist": [{"user_id": u["id"], "identifier": "NVDA",
+                               "display_name": "Nvidia"} for u in users],
+                "articles": [
+                    {"id": "w1", "title": "Nvidia (NVDA) beats on data center",
+                     "primary_company": "Nvidia", "companies": ["Nvidia"],
+                     "relevance_score": 10,
+                     "published_at": "2026-07-24T12:00:00+00:00"},
+                ],
+            },
+        )
+        sender = RecordingSender()
+        result = maybe_send_brief_email(
+            "morning", client=client, sender=sender, env=BASE_ENV
+        )
+        return result, client, sender
+
+    def test_read_count_is_identical_for_one_recipient_and_twelve(self):
+        _r1, c1, _s1 = self._run(1)
+        r12, c12, s12 = self._run(12)
+        reads1 = [t for t in c1.table_calls if t != "brief_email_sends"]
+        reads12 = [t for t in c12.table_calls if t != "brief_email_sends"]
+        print(f"\n  shared reads: 1 recipient={len(reads1)}  12 recipients={len(reads12)}")
+        self.assertEqual(len(reads1), len(reads12))
+        self.assertEqual(r12["sent"], 12)
+
+    def test_the_widened_pool_actually_reaches_the_recipients(self):
+        _r, _c, sender = self._run(3)
+        for message in sender.messages:
+            self.assertIn("YOUR NAMES", message["text"])
+            self.assertIn("Nvidia (NVDA) beats on data center", message["text"])
+
+    def test_the_pool_query_is_issued_exactly_once(self):
+        _r, client, _s = self._run(12)
+        self.assertEqual(
+            client.table_calls.count("articles"), 2,
+            "one read for the brief rail, one for the match pool, never per user",
+        )
