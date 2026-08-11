@@ -76,7 +76,15 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (e) {
-    console.error("[memo/export-pdf] render error:", e);
+    // The thrown object comes from a render tree built out of the memo, so it
+    // can embed memo prose in its message. Log a redacted shape with a capped
+    // message rather than the raw error.
+    const err = e instanceof Error ? e : new Error(String(e));
+    console.error("[memo/export-pdf] render error:", {
+      name: err.name,
+      message: err.message.slice(0, 200),
+      stack: err.stack,
+    });
     return NextResponse.json({ error: "Failed to render PDF" }, { status: 500 });
   }
 }
