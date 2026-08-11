@@ -80,6 +80,14 @@ BASE_ENV = {
 # ---------------------------------------------------------------------------
 
 
+def _cmp_ge(value, floor):
+    """>= across the mixed int/ISO-string columns the fake carries."""
+    try:
+        return float(value) >= float(floor)
+    except (TypeError, ValueError):
+        return str(value) >= str(floor)
+
+
 class _Res:
     def __init__(self, data):
         self.data = data
@@ -109,10 +117,27 @@ class _Query:
         self._rows = [r for r in self._rows if str(r.get(col)) in wanted]
         return self
 
-    def order(self, *_a, **_k):
+    def gte(self, col, val):
+        self._rows = [
+            r for r in self._rows
+            if r.get(col) is not None and _cmp_ge(r.get(col), val)
+        ]
+        return self
+
+    def order(self, col=None, desc=False, **_k):
+        if col:
+            self._rows = sorted(
+                self._rows,
+                key=lambda r: (r.get(col) is None, r.get(col) if r.get(col) is not None else 0),
+                reverse=bool(desc),
+            )
         return self
 
     def limit(self, *_a, **_k):
+        return self
+
+    def range(self, start, end):
+        self._rows = self._rows[start : end + 1]
         return self
 
     def insert(self, row):

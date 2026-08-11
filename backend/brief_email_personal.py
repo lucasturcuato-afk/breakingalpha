@@ -14,13 +14,16 @@ WHAT A READER SEES, in this order:
   2. Their tracked calls that resolve inside the next week.
   3. Today's stories that touch a ticker on their watchlist.
 
+THE MATCH POOL. Watchlist matching runs against every same-day article the
+pipeline scored at MATCH_POOL_MIN_RELEVANCE or better, NOT against the five
+stories the brief chose for its rail. Matching against the rail was measured at
+0 of 42 watchlist users: five articles is simply too small a target. The wider
+pool measures 35 of 42. The floor matters and is not arbitrary; see
+MATCH_POOL_MIN_RELEVANCE.
+
 WHAT AN EMPTY READER SEES: nothing. personal_block() returns None and the
-section is omitted. Measured against production on 2026-08-10, the block
-renders for 2 of the 42 users who have a watchlist at all: only 13 user_claims
-exist product-wide, and the daily story rail is five articles, so a watchlist
-hit is rarer than it sounds. That is the case this design is built for. An
-empty state would read as a broken email rather than as an honest absence, and
-an email is not a dashboard.
+section is omitted. An empty state would read as a broken email rather than as
+an honest absence, and an email is not a dashboard.
 """
 
 from __future__ import annotations
@@ -45,8 +48,34 @@ UPCOMING_DAYS = 7
 #: retrospective of everything they ever tracked.
 FIRST_SEND_LOOKBACK_HOURS = 48
 
-#: Per-list caps. This is a block inside a newsletter, not a report.
+#: Per-list caps. This is a block inside a newsletter, not a report. One user
+#: matches 20 same-day stories, so the cap is load-bearing and the pool must
+#: arrive in relevance order for the surviving three to be the right three.
 MAX_PER_LIST = 3
+
+#: Relevance floor for the watchlist match pool, on the pipeline's 0-10 scale.
+#:
+#: Measured over the 42 users who have a watchlist, same-day articles:
+#:     rail[:5]  (the old pool)     5 articles     0 of 42
+#:     score >= 10                584 articles    28 of 42
+#:     score >= 9                 907 articles    35 of 42   <- here
+#:     score >= 8                1262 articles    35 of 42
+#:     everything                2761 articles    35 of 42
+#:
+#: 9 is the knee. Lowering it to 8 adds 355 articles and zero coverage, and the
+#: whole day adds nothing either, so the tail is noise rather than reach.
+#: relevance_score is a saturated integer (584 same-day articles scored 10), so
+#: a "top N" cut would slice arbitrarily inside a tier; a score floor is the
+#: pipeline's own relevance judgment and does not.
+MATCH_POOL_MIN_RELEVANCE = 9
+
+#: How far back the match pool reaches. This is a daily email about today.
+MATCH_POOL_HOURS = 24
+
+#: Hard ceiling on rows pulled for the pool. PostgREST answers at most 1000 per
+#: request, so the fetch pages; this bounds the paging. Hitting it is logged by
+#: the caller rather than silently shrinking someone's coverage.
+MATCH_POOL_MAX_ROWS = 2000
 
 #: A ticker short enough to collide with ordinary prose ("A", "IT", "ON") is
 #: matched only through its display name.
@@ -111,7 +140,30 @@ _EXCHANGE_TAG = re.compile(
 )
 
 
+#: Where prepare_pool() stashes the precomputed haystack on a story row.
+HAYSTACK_KEY = "_match_haystack"
+
+
+def prepare_pool(rows: list[dict]) -> list[dict]:
+    """Annotate pool rows with their match haystack, ONCE for the whole run.
+
+    Without this every recipient re-derives the same string for every article,
+    which at 907 articles and 107 recipients is ~97k redundant regex
+    substitutions. Called by the send path immediately after the fetch. Order
+    is preserved, because the pool arriving in relevance order is what makes
+    the per-user cap keep the most relevant matches.
+    """
+    for row in rows or []:
+        row[HAYSTACK_KEY] = _build_haystack(row)
+    return rows or []
+
+
 def _story_haystack(story: dict) -> str:
+    cached = story.get(HAYSTACK_KEY)
+    return cached if isinstance(cached, str) else _build_haystack(story)
+
+
+def _build_haystack(story: dict) -> str:
     companies = story.get("companies")
     if isinstance(companies, str):
         joined = companies
@@ -212,21 +264,27 @@ def personal_block(
         if end is not None and today <= end <= today + timedelta(days=UPCOMING_DAYS):
             upcoming.append(_claim_line(claim, None, today=today))
 
+    # Walk the POOL outer, not the watchlist. The pool arrives in relevance
+    # order, so stopping at MAX_PER_LIST keeps the most relevant matches rather
+    # than whatever the reader's first watchlist row happened to hit.
     stories: list[tuple[str, str]] = []
     seen_titles: set[str] = set()
-    for watch in ctx.watchlist_by_user.get(user_id, []):
-        label = _ticker_base(str(watch.get("identifier") or "")) or str(
-            watch.get("display_name") or ""
-        )
+    watches = ctx.watchlist_by_user.get(user_id, [])
+    if watches:
         for story in ctx.story_rows:
             title = str(story.get("title") or "").strip()
             if not title or title in seen_titles:
                 continue
-            if story_matches_watch(story, watch):
-                stories.append((label, title))
-                seen_titles.add(title)
-        if len(stories) >= MAX_PER_LIST:
-            break
+            for watch in watches:
+                if story_matches_watch(story, watch):
+                    label = _ticker_base(str(watch.get("identifier") or "")) or str(
+                        watch.get("display_name") or ""
+                    )
+                    stories.append((label, title))
+                    seen_titles.add(title)
+                    break
+            if len(stories) >= MAX_PER_LIST:
+                break
 
     block = PersonalBlock(
         resolved=resolved[:MAX_PER_LIST],
