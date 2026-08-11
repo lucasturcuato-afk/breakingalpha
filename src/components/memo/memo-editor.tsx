@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FileText } from "lucide-react";
+import { downloadMemoPdf } from "@/lib/download-memo-pdf";
 import type { MemoSourceData } from "./source-panel";
 
 interface MemoSection {
@@ -50,6 +51,7 @@ export function MemoEditor({ memo, sourceData, generating = false, error }: Memo
   const [editMode, setEditMode] = useState(false);
   const [editText, setEditText] = useState("");
   const [copied, setCopied] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const sections = useMemo(
     () => (memo ? parseMemo(editMode ? editText : memo) : []),
@@ -70,16 +72,23 @@ export function MemoEditor({ memo, sourceData, generating = false, error }: Memo
     }
   }
 
-  function handleExport() {
+  async function handleExport() {
     const text = editMode ? editText : memo;
     if (!text) return;
-    const blob = new Blob([text], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `memo-${sourceData?.company ?? "deal"}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const subject = sourceData?.company ?? "deal";
+    setExporting(true);
+    try {
+      await downloadMemoPdf({
+        memo: text,
+        title: subject,
+        kicker: "Deal Memo",
+        filename: `memo-${subject}`,
+      });
+    } catch (e) {
+      console.error("[memo export-pdf] failed:", e);
+    } finally {
+      setExporting(false);
+    }
   }
 
   // Loading state
@@ -173,10 +182,14 @@ export function MemoEditor({ memo, sourceData, generating = false, error }: Memo
           <button
             type="button"
             onClick={handleExport}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-sans text-[11px] font-medium text-text-secondary hover:bg-parchment-mid transition-colors cursor-pointer"
+            disabled={exporting}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-sans text-[11px] font-medium text-text-secondary hover:bg-parchment-mid transition-colors cursor-pointer",
+              exporting && "opacity-60 cursor-not-allowed",
+            )}
           >
             <Download size={11} />
-            Export .md
+            {exporting ? "Preparing PDF…" : "Export PDF"}
           </button>
         </div>
       </div>
