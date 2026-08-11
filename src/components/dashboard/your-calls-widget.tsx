@@ -195,12 +195,17 @@ export function YourCallsWidget() {
   }
 
   if (claims.length === 0) {
+    // The one invitation to a first call on the surface a new user lands on.
+    // This was a 10px text link sitting under two lines of muted copy, which is
+    // not an affordance: two of 107 accounts have ever committed a call. It is
+    // now a real button. The copy is unchanged and still promises nothing the
+    // grader will not deliver.
     return (
       <div>
         <YourRecordSummary record={record} />
         <Link
           href={CALLS_HREF}
-          className="block font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors"
+          className="mt-1 inline-flex items-center justify-center rounded-lg bg-gold px-3.5 py-2 font-sans text-[12px] font-bold text-cream no-underline transition-colors hover:bg-gold-dark"
         >
           {COPY.cta}
         </Link>

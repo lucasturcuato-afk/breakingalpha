@@ -29,6 +29,7 @@ import { EvidenceMap, type MapArticle } from "@/components/radar/EvidenceMap";
 import { GroupJumpNav, useGroupScrollSpy } from "@/components/radar/GroupJumpNav";
 import { useTopicClusters } from "@/lib/use-topic-clusters";
 import { useMotionSettled } from "@/lib/use-motion-settled";
+import { DeskRecordAside } from "@/components/record/DeskRecordAside";
 
 interface FollowSummary {
   id: string;
@@ -881,6 +882,12 @@ function FirstRun({
         Watchlist and Calls are ready when you are; the tabs above work even
         while this page is empty.
       </p>
+      {/* Something real while this page has nothing. The desk's own record,
+          labelled as the desk's, next to a page that is empty by definition on
+          a first visit. No follow of the reader's is implied by these counts. */}
+      <div className="mt-6 text-left">
+        <DeskRecordAside />
+      </div>
     </div>
   );
 }

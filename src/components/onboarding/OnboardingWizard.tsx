@@ -12,6 +12,11 @@ import type {
   WorkflowStyle,
 } from "@/lib/user-profile";
 import { trackClientEvent } from "@/lib/track-event";
+import { POST_AUTH_DEFAULT, postOnboardingDestination } from "@/lib/auth-redirect";
+import { DeskRecordAside } from "@/components/record/DeskRecordAside";
+
+/** Where a finished user goes when no ?next= says otherwise. */
+const FIRST_CALL_HREF = "/radar/calls";
 
 /* ─── Constants ─── */
 
@@ -384,32 +389,6 @@ const MORNING_HEADLINES: Record<string, Record<string, string>> = {
   },
 };
 
-const EVENING_HEADLINES: Record<string, Record<string, string>> = {
-  pe: {
-    "Energy & Oil/Gas": "Energy M&A: 2 new sponsor processes launched, LMT up 3.2% on contract news",
-    "Technology": "SaaS take-private rumor lifts mid-cap software — PE names circle $4B target",
-    _default: "PE deal flow steady — 3 new platform announcements today",
-  },
-  equity: {
-    "Technology": "Semis lead as NVDA prints new high — broad tech +1.8% into close",
-    "Geopolitics & Macro": "Fed speakers push back on cut timeline — duration underperforms, dollar firms",
-    _default: "Broad market +0.4% — growth outperforms value, semis lead",
-  },
-  vc: {
-    "Technology": "Two AI startups close $100M+ rounds — Series B window widening for infra plays",
-    _default: "Late-stage marks stable — one IPO filing adds liquidity signal for sector",
-  },
-  macro: {
-    _default: "Dollar firms into close — 10yr +4bp, EM underperforms on carry unwind",
-  },
-  credit: {
-    _default: "HY spreads -3bp on risk-on tone — 2 new fallen angel candidates on watch",
-  },
-  _default: {
-    _default: "Markets close mixed — volume light ahead of tomorrow's data releases",
-  },
-};
-
 function headlineFor(
   table: Record<string, Record<string, string>>,
   strategy: StrategyType | null,
@@ -473,11 +452,28 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
   );
   const [tickerInput, setTickerInput] = useState("");
   const [watchlist, setWatchlist] = useState<string[]>(initialProfile.watchlist_tickers);
-  const [preview, setPreview] = useState<PreviewResult | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Where "finish" goes. Read once on mount from the live URL rather than via
+   * useSearchParams, which would force a Suspense boundary on a page that needs
+   * one for nothing else. Same reasoning as src/app/auth/page.tsx.
+   *
+   * With a ?next= from the onboarding gate: the call the reader clicked in the
+   * brief. Without one: /radar/calls, the one surface where a user holding
+   * nothing can still act. Sending them to the dashboard instead would land
+   * them on five empty panels with the first call three clicks away.
+   */
+  const [finishDestination, setFinishDestination] = useState(FIRST_CALL_HREF);
+  const [landingOnACall, setLandingOnACall] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const resolved = postOnboardingDestination(window.location.search);
+    if (resolved === POST_AUTH_DEFAULT) return; // no usable next; keep the default
+    setFinishDestination(resolved);
+    setLandingOnACall(resolved.startsWith("/radar/calls?adopt="));
+  }, []);
 
   const toggleSector = useCallback((s: string) => {
     setSectors((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
@@ -507,31 +503,6 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
     if (step === 6) return true; // watchlist optional
     if (step === 7) return true;
     return false;
-  }
-
-  async function fetchPreview() {
-    setPreviewLoading(true);
-    setPreviewError(null);
-    try {
-      const res = await fetch("/api/onboarding/preview-thesis", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          role,
-          sectors,
-          risk_appetite: riskAppetite,
-          watchlist_tickers: watchlist,
-        }),
-      });
-      if (!res.ok) throw new Error(`Preview failed (${res.status})`);
-      const data = (await res.json()) as PreviewResult;
-      setPreview(data);
-    } catch (e) {
-      setPreviewError(e instanceof Error ? e.message : "Could not generate preview");
-    } finally {
-      setPreviewLoading(false);
-    }
   }
 
   async function handleFinish() {
@@ -609,7 +580,12 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
       for (const s of sectors) {
         trackClientEvent("sector_filter_applied", { sector: s });
       }
-      router.push("/dashboard");
+      // Land where the link intended. A reader who clicked "Track this call"
+      // in the brief and had never onboarded used to be dropped on the
+      // dashboard here, which is where the emailed call died even after the
+      // sign-in fix. proxy.ts stamps ?next= on the gate redirect and
+      // postOnboardingDestination re-synthesizes the #call- anchor.
+      router.push(finishDestination);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
@@ -619,12 +595,7 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
   }
 
   async function handleNext() {
-    if (step === 6) {
-      setStep(7);
-      await fetchPreview();
-      return;
-    }
-    if (step === 7) {
+    if (step === TOTAL_STEPS) {
       await handleFinish();
       return;
     }
@@ -636,10 +607,12 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
     : step === 1
       ? "Get started \u2192"
       : step === TOTAL_STEPS
-        ? "Enter Signalera \u2192"
+        ? landingOnACall
+          ? "Go to the call \u2192"
+          : "Make your first call \u2192"
         : "Continue \u2192";
 
-  const ctaDisabled = !canProceed() || saving || (step === 7 && previewLoading);
+  const ctaDisabled = !canProceed() || saving;
 
   return (
     <main
@@ -700,14 +673,7 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
               onRemove={removeTicker}
             />
           )}
-          {step === 7 && (
-            <StepPreview
-              preview={preview}
-              loading={previewLoading}
-              error={previewError}
-              onRetry={fetchPreview}
-            />
-          )}
+          {step === 7 && <StepRecord landingOnACall={landingOnACall} />}
 
           {error && (
             <p className="mt-5 font-sans text-[12px]" style={{ color: "#f87171" }}>
@@ -781,14 +747,9 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
         )}
         {step === 7 && (
           <Step7FeedPanel
-            preview={preview}
-            loading={previewLoading}
-            error={previewError}
-            onRetry={fetchPreview}
             role={role}
             strategy={strategy}
             sectors={sectors}
-            risk={riskAppetite}
             horizon={horizon}
             workflow={workflow}
           />
@@ -911,7 +872,11 @@ function SignalPreviewPanel({
         className="font-sans text-[10px] font-semibold uppercase tracking-[0.22em] mb-3 transition-colors"
         style={{ color: isUpdating ? "#8a7a60" : CTA_BG }}
       >
-        {isUpdating ? "Updating your signal" : "Your first signal"}
+        {/* This card is illustrativePreview(), assembled from lookup tables in
+            this file. Its old label named the invented object as belonging to
+            the reader. The card is a useful shape to show; the label now says
+            what it actually is. */}
+        {isUpdating ? "Updating the example" : "An example, shaped by your answers"}
       </p>
 
       {/* Premium thesis card — fades on content change */}
@@ -1402,42 +1367,43 @@ function ConvictionFilterPreview({ risk }: { risk: RiskAppetite }) {
 
 /* ─── Step 7 mini feed panel (Change 3) ─── */
 
+/**
+ * Step 7 right panel. The desk's real graded record, plus the persona bar.
+ *
+ * What was here: a "Your first signal" card holding a model-generated thesis
+ * that the route behind it was explicitly told not to base on real news. It
+ * labelled an invented object as the reader's own first signal. Replaced with
+ * DeskRecordAside, which renders counts from fetchDeskRecord under a heading
+ * that names the desk and can never be relabelled as the reader's.
+ *
+ * The Morning Brief and Evening Wrap cards stay, because they illustrate a
+ * layout rather than assert a result, and both now say so.
+ */
 function Step7FeedPanel({
-  preview,
-  loading,
-  error,
-  onRetry,
   role,
   strategy,
   sectors,
-  risk,
   horizon,
   workflow,
 }: {
-  preview: PreviewResult | null;
-  loading: boolean;
-  error: string | null;
-  onRetry: () => void;
   role: UserRole | null;
   strategy: StrategyType | null;
   sectors: string[];
-  risk: RiskAppetite;
   horizon: InvestmentHorizon | null;
   workflow: WorkflowStyle | null;
 }) {
   const morningHL = headlineFor(MORNING_HEADLINES, strategy, sectors);
-  const eveningHL = headlineFor(EVENING_HEADLINES, strategy, sectors);
   const dateStr = todayLabel();
 
   return (
     <div className="flex flex-col h-full max-w-[460px]">
-      {/* A. Morning Brief preview (25%) */}
-      <div style={{ flex: "0 0 25%" }}>
+      {/* A. What the brief looks like. Illustrative, and labelled as such. */}
+      <div style={{ flex: "0 0 22%" }}>
         <p
           className="font-sans text-[10px] font-semibold uppercase tracking-[0.2em] mb-2"
           style={{ color: "#8a7a60" }}
         >
-          Morning Brief &middot; {dateStr}
+          Morning Brief \u00b7 {dateStr} \u00b7 layout example
         </p>
         <div
           className="rounded-xl"
@@ -1454,122 +1420,17 @@ function Step7FeedPanel({
             {morningHL}
           </p>
           <p className="font-sans text-[11px]" style={{ color: "#8a7a60" }}>
-            3 more stories in your brief &rarr;
+            An example headline. Your real brief arrives each morning.
           </p>
         </div>
       </div>
 
-      {/* B. Live thesis card (40%) */}
-      <div style={{ flex: "0 0 40%" }} className="pt-4">
-        <p
-          className="font-sans text-[10px] font-semibold uppercase tracking-[0.2em] mb-2"
-          style={{ color: CTA_BG }}
-        >
-          Your first signal
-        </p>
-
-        {loading && (
-          <div
-            className="flex items-center gap-2 font-sans text-[12px]"
-            style={{ color: "#c0a870" }}
-          >
-            <span
-              className="inline-block h-2 w-2 rounded-full animate-pulse"
-              style={{ backgroundColor: CTA_BG }}
-            />
-            Generating a preview thesis…
-          </div>
-        )}
-
-        {error && !loading && (
-          <div
-            className="rounded-lg p-4 border"
-            style={{
-              borderColor: "rgba(220,38,38,0.35)",
-              backgroundColor: "rgba(220,38,38,0.08)",
-            }}
-          >
-            <p className="font-sans text-[12px] mb-2" style={{ color: "#f87171" }}>
-              {error}
-            </p>
-            <button
-              type="button"
-              onClick={onRetry}
-              className="font-sans text-[11px] font-semibold cursor-pointer hover:opacity-80"
-              style={{ color: CTA_BG }}
-            >
-              Try again
-            </button>
-          </div>
-        )}
-
-        {preview && !loading && (
-          <div
-            className="rounded-xl"
-            style={{
-              padding: "24px",
-              borderLeft: `3px solid ${CTA_BG}`,
-              backgroundColor: "rgba(255,255,255,0.04)",
-              boxShadow:
-                "0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px rgba(0,0,0,0.18)",
-            }}
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <span
-                className="font-sans text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wide"
-                style={{ backgroundColor: CTA_BG, color: CTA_FG }}
-              >
-                {preview.conviction}
-              </span>
-              <span
-                className="font-sans text-[9px] uppercase tracking-wide"
-                style={{ color: "#c0a870" }}
-              >
-                {preview.sector}
-              </span>
-            </div>
-            <h3
-              className="font-display text-[17px] font-bold leading-snug mb-2"
-              style={{ color: "#f5f0e8" }}
-            >
-              {preview.title}
-            </h3>
-            <p className="font-sans text-[13px] leading-relaxed" style={{ color: "#c0a870" }}>
-              {preview.rationale}
-            </p>
-          </div>
-        )}
+      {/* B. The desk's record. Real counts, desk-labelled, never the reader's. */}
+      <div style={{ flex: "1 1 auto" }} className="pt-4">
+        <DeskRecordAside tone="dark" showLink={false} />
       </div>
 
-      {/* C. Evening Wrap preview (25%) */}
-      <div style={{ flex: "0 0 25%" }} className="pt-4">
-        <p
-          className="font-sans text-[10px] font-semibold uppercase tracking-[0.2em] mb-2"
-          style={{ color: "#8a7a60" }}
-        >
-          Evening Wrap &middot; Today
-        </p>
-        <div
-          className="rounded-xl"
-          style={{
-            padding: "16px",
-            borderLeft: `3px solid ${CTA_BG}`,
-            backgroundColor: "rgba(255,255,255,0.03)",
-          }}
-        >
-          <p
-            className="font-sans text-[13px] font-semibold leading-snug mb-2"
-            style={{ color: "#f5f0e8" }}
-          >
-            {eveningHL}
-          </p>
-          <p className="font-sans text-[11px]" style={{ color: "#8a7a60" }}>
-            Full wrap available after market close &rarr;
-          </p>
-        </div>
-      </div>
-
-      {/* D. Persona summary bar (10%) */}
+      {/* C. Persona summary bar. */}
       <div style={{ flex: "0 0 10%" }} className="pt-3">
         <PersonaSummaryBar
           role={role}
@@ -1974,57 +1835,37 @@ function StepWatchlist({
   );
 }
 
-function StepPreview({
-  preview,
-  loading,
-  error,
-  onRetry,
-}: {
-  preview: PreviewResult | null;
-  loading: boolean;
-  error: string | null;
-  onRetry: () => void;
-}) {
+/**
+ * Step 7. What this desk actually is, and the record that proves it.
+ *
+ * This screen replaced a generated "preview thesis". That screen's subtitle
+ * read "A live sample thesis, drafted right now with your preferences" while
+ * the prompt behind it (src/app/api/onboarding/preview-thesis/route.ts) said
+ * "Do NOT use real breaking news". It was the last thing a user saw before the
+ * dashboard, and it promised a liveness the next screen could not deliver.
+ *
+ * What stands in its place is the desk's real graded record, loaded by
+ * DeskRecordAside from the same fetchDeskRecord the dashboard tile and
+ * /radar/desk-record use, under a heading that names the desk. No user input is
+ * collected here: the required-input count stays at six.
+ */
+function StepRecord({ landingOnACall }: { landingOnACall: boolean }) {
   return (
     <div>
       <SectionTitle
-        kicker="Step 7 · Review"
-        title="Here's what Signalera looks like for you."
-        body="A live sample thesis, drafted right now with your preferences."
+        kicker="Step 7 \u00b7 What this is"
+        title="This desk publishes calls it can be wrong about."
+        body="Every predictive call in the morning brief is timestamped before the outcome is known, then scored against the close with benchmark attribution. A name that moved because the whole market moved is never counted as a hit. The misses stay on the record beside the hits."
       />
-      {loading && (
-        <div
-          className="flex items-center gap-2 font-sans text-[12px]"
-          style={{ color: "#c0a870" }}
-        >
-          <span
-            className="inline-block h-2 w-2 rounded-full animate-pulse"
-            style={{ backgroundColor: CTA_BG }}
-          />
-          Generating a preview thesis…
-        </div>
-      )}
-      {!loading && !error && preview && (
-        <p className="font-sans text-[13px]" style={{ color: "#c0a870" }}>
-          Preview ready on the right &rarr;. Hit <b>Enter Signalera</b> when
-          you&apos;re done.
-        </p>
-      )}
-      {!loading && !error && !preview && (
-        <p className="font-sans text-[13px]" style={{ color: "#c0a870" }}>
-          We&apos;ll generate a sample thesis for you on the right.
-        </p>
-      )}
-      {error && !loading && (
-        <button
-          type="button"
-          onClick={onRetry}
-          className="font-sans text-[11px] font-semibold cursor-pointer hover:opacity-80"
-          style={{ color: CTA_BG }}
-        >
-          Retry preview
-        </button>
-      )}
+      <p className="font-sans text-[13px] leading-relaxed" style={{ color: "#c0a870" }}>
+        You can take any call as your own. It is stamped with the window it will
+        be graded over, and it is scored on the same bar, whichever way it goes.
+      </p>
+      <p className="mt-4 font-sans text-[12px]" style={{ color: "#8a7a60" }}>
+        {landingOnACall
+          ? "The call you clicked in the brief is waiting on the other side of this button."
+          : "Nothing is on your record yet. That is what the next screen is for."}
+      </p>
     </div>
   );
 }

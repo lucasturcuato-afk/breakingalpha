@@ -46,6 +46,8 @@ import {
   hasCommitFooter,
 } from "@/components/calls/TrackCallControl";
 import { notifyRadarLanded } from "@/lib/radar-landed";
+import { DeskRecordAside } from "@/components/record/DeskRecordAside";
+import { YOUR_RECORD_COPY } from "@/lib/your-record";
 import {
   adoptWindowForCall,
   adoptWindowRequest,
@@ -796,6 +798,40 @@ function RecordHero({
 }) {
   const R = 34;
   const C = 2 * Math.PI * R;
+
+  // Nothing on the record at all. A ring at zero with three zeros beside it
+  // reads as a score of zero, not as an absence, and this is the top of the
+  // page the brief's "Track this call" link lands on. Say the absence, then
+  // show the desk's record beside it, clearly the desk's. Two accounts have
+  // ever committed a call, so this is the state almost every reader sees.
+  const nothingOnRecord =
+    record.hitRate == null &&
+    record.right === 0 &&
+    record.wrong === 0 &&
+    record.noCleanRead === 0 &&
+    record.notGraded === 0 &&
+    record.open === 0;
+
+  if (nothingOnRecord) {
+    return (
+      <div className="mb-6 grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl bg-espresso px-6 py-5 text-cream dark:border dark:border-border-default dark:bg-elevated">
+          <p className="font-sans text-[15px] font-semibold">
+            {YOUR_RECORD_COPY.noClaimsTitle}
+          </p>
+          <p className="mt-1.5 font-sans text-[13px] opacity-70">
+            {YOUR_RECORD_COPY.noClaimsBody}
+          </p>
+          <p className="mt-3 font-sans text-[11px] opacity-50">
+            Your record fills in from your own calls only. Nothing is counted
+            here on your behalf.
+          </p>
+        </div>
+        <DeskRecordAside />
+      </div>
+    );
+  }
+
   return (
     <div className="mb-6 flex items-center gap-6 rounded-xl bg-espresso px-6 py-5 text-cream dark:border dark:border-border-default dark:bg-elevated">
       <div className="relative h-24 w-24 shrink-0">
