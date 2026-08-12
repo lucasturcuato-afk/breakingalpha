@@ -77,13 +77,18 @@ export async function POST(request: NextRequest) {
     });
   } catch (e) {
     // The thrown object comes from a render tree built out of the memo, so it
-    // can embed memo prose in its message. Log a redacted shape with a capped
-    // message rather than the raw error.
+    // can embed memo prose in its message. Log a redacted shape rather than the
+    // raw error. The full stack is not logged: in V8 it opens with
+    // "Name: message" carrying the whole untruncated message, which would defeat
+    // the cap below. Only the frames are kept.
     const err = e instanceof Error ? e : new Error(String(e));
+    const rawStack = err.stack ?? "";
+    const framesStart = rawStack.indexOf("\n    at ");
+    const frames = framesStart === -1 ? "" : rawStack.slice(framesStart + 1);
     console.error("[memo/export-pdf] render error:", {
       name: err.name,
       message: err.message.slice(0, 200),
-      stack: err.stack,
+      frames,
     });
     return NextResponse.json({ error: "Failed to render PDF" }, { status: 500 });
   }
