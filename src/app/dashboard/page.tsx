@@ -199,36 +199,47 @@ function DashboardPageInner() {
 
     // 1. Stat-band counts (today + bullish/bearish split)
     async function loadCounts() {
-      // count: "planned" is the PLANNER ESTIMATE, not an exact count. That is a
-      // deliberate accuracy trade, and it is the difference between a number
-      // and no number at all.
+      // count: "exact". This was count: "planned" for exactly as long as
+      // `ingested_at` had no index.
       //
-      // Measured against production before this change: count: "exact" on
-      // `articles` returned HTTP 500 / 57014 statement timeout on EVERY call,
-      // at ~3.5s each. The window made no difference -- 1h, 6h, 24h and 72h all
-      // timed out in ~3.5s -- which is the signature of a sequential scan:
-      // `ingested_at` is not index-served, so an exact count walks all ~169k
-      // rows regardless of how narrow the predicate is. These three counts had
-      // therefore NEVER returned data; the catch swallowed the failure and the
-      // stat band silently showed its initial zeros.
+      // History, because the trade-off is not obvious. Before the index,
+      // count: "exact" returned HTTP 500 / 57014 on EVERY call at ~3.5s. The
+      // window made no difference -- 1h, 6h, 24h and 72h all timed out in
+      // ~3.5s -- the signature of a sequential scan over all ~169k rows. The
+      // catch swallowed it and the stat band silently showed zeros.
       //
-      // The same predicate with count: "planned" returns in ~1.05s.
+      // count: "planned" made it return, but returned the wrong number. The
+      // planner cannot estimate the selectivity of a leading-wildcard ILIKE, so
+      // it fell back to a guess of 1. Measured against production on the same
+      // predicate, same minute:
+      //
+      //             planned    exact
+      //   total         285     1279
+      //   bullish         1      284      <- not a rounding error
+      //   bearish         1      118
+      //
+      // With idx_articles_ingested_at in place, count: "exact" is ~300ms and
+      // correct. There is no longer a trade to make.
+      //
+      // If these ever regress to multi-second timeouts, check that the index
+      // still exists before reaching for "planned" again -- a fast wrong number
+      // is worse than a slow right one on a tile the user reads as fact.
       const todayMidnight = new Date();
       todayMidnight.setUTCHours(0, 0, 0, 0);
       const iso = todayMidnight.toISOString();
       const [total, bull, bear] = await Promise.all([
         supabase
           .from("articles")
-          .select("id", { count: "planned", head: true })
+          .select("id", { count: "exact", head: true })
           .gte("ingested_at", iso),
         supabase
           .from("articles")
-          .select("id", { count: "planned", head: true })
+          .select("id", { count: "exact", head: true })
           .gte("ingested_at", iso)
           .ilike("sentiment", "%bullish%"),
         supabase
           .from("articles")
-          .select("id", { count: "planned", head: true })
+          .select("id", { count: "exact", head: true })
           .gte("ingested_at", iso)
           .ilike("sentiment", "%bearish%"),
       ]);
@@ -263,9 +274,32 @@ function DashboardPageInner() {
       // Measured: 633ms, `content-range: 0-999/*`, 1000 rows returned.
       //
       // pipeline_runs carries ingest_count per run and is small (201 rows over
-      // the same 12-day window, 468ms). Runs that do not ingest (edgar,
-      // grading) carry a null ingest_count and are skipped, so the buckets are
-      // articles stored per day, which is what the sparkline is meant to show.
+      // the same 12-day window, 468ms).
+      //
+      // WHAT ingest_count IS, exactly: the number of `articles` rows INSERTED by
+      // one run's ingest step -- `stored = len(article_ids)` in
+      // backend/ingest.py, taken AFTER the relevance gate and AFTER dedup. It is
+      // not articles fetched, not articles that passed the filter but deduped
+      // away, and not articles selected for the brief (that is `selected_count`,
+      // a different column). So these buckets are "new articles stored per day",
+      // which is the same quantity the tile's own value shows for today.
+      //
+      // Verified against the source of truth: for 11 of the last 12 days, the
+      // per-day sum of ingest_count equals an exact count of `articles` by
+      // ingested_at, to the row.
+      //
+      // KNOWN GAP, do not mistake it for a bug here. observe.record_run() is
+      // called at the END of all 16 pipeline steps, so a run that stores
+      // articles and then dies before finishing never writes its ingest_count.
+      // 2026-08-03 is exactly that: 534 articles really landed, no run row
+      // carries a count, and this sparkline plots 0 for that day. Fixing it
+      // means recording the ingest count when ingest finishes rather than when
+      // the pipeline does -- a backend change, not a frontend one.
+      //
+      // Runs that never ingest (edgar_ingestion, daily_grading,
+      // outcome_evaluator, xbrl_facts_ingestion) carry a null ingest_count and
+      // are skipped. That is correct, not a second gap: none of them insert
+      // into `articles` at all.
       try {
         const sparkStart = new Date();
         sparkStart.setUTCHours(0, 0, 0, 0);
