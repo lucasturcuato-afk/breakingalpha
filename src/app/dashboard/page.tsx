@@ -5,6 +5,11 @@ import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { DashTile } from "@/components/dashboard/dash-tile";
+import {
+  DashboardReadyProvider,
+  DashboardRevealGate,
+  useDashboardSource,
+} from "@/components/dashboard/dashboard-ready";
 import { DeskRecordSummary } from "@/components/dashboard/desk-record-summary";
 import {
   Greeting,
@@ -131,7 +136,20 @@ function sectorMatches(articleSector: string | undefined, profileSectors: string
   });
 }
 
+/**
+ * The dashboard is wrapped so every source below can register with the reveal
+ * gate. The provider must sit ABOVE the component that calls useDashboardSource,
+ * hence the split.
+ */
 export default function DashboardPage() {
+  return (
+    <DashboardReadyProvider>
+      <DashboardPageInner />
+    </DashboardReadyProvider>
+  );
+}
+
+function DashboardPageInner() {
   const { profile, refetch: refetchProfile, updateProfile } = useUserProfile();
   const [stories, setStories] = useState<StoryData[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
@@ -165,6 +183,8 @@ export default function DashboardPage() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [refetchProfile]);
+
+  const settleStories = useDashboardSource("stories");
 
   useEffect(() => {
     // Cold-start: the four data groups below are independent, so they run in
@@ -317,10 +337,17 @@ export default function DashboardPage() {
       }
     }
 
-    loadCounts();
-    loadSpark();
-    loadBriefing();
-    loadStories();
+    // Dashboard reveal gate — page-level Supabase reads. The four groups are
+    // independent and each fills its own section, so the gate waits for ALL of
+    // them via allSettled: a rejected group settles exactly like a resolved
+    // one, and each function already swallows its own errors into an empty
+    // state, so a failure reveals the page with that section empty.
+    void Promise.allSettled([
+      loadCounts(),
+      loadSpark(),
+      loadBriefing(),
+      loadStories(),
+    ]).finally(() => settleStories());
   }, []);
 
   // Read user's market_cards preference from profile (or use defaults).
@@ -421,6 +448,15 @@ export default function DashboardPage() {
     }
     loadMarketCards();
   }, [userMarketCards]);
+
+  // Dashboard reveal gate — page-level market cards. Settles once the effect
+  // above has run to completion, including its early returns (no symbols, a
+  // non-ok response) and its catch, so an unpriced or dead feed reveals the
+  // page with the cards showing "no quote" rather than holding it.
+  const settleMarketCards = useDashboardSource("market-cards");
+  useEffect(() => {
+    settleMarketCards();
+  }, [marketCards, settleMarketCards]);
 
   // Switch to "For You" tab when profile is loaded and onboarded
   useEffect(() => {
@@ -537,6 +573,7 @@ export default function DashboardPage() {
       moodHeadline={moodHeadline}
       moodDetails={moodDetails}
     >
+      <DashboardRevealGate>
       <div className="dash-contentwrap dash-dots max-w-[1440px] mx-auto px-6 md:px-12 py-6 md:py-8 pb-16">
         <CursorGlow />
         <TileSpotlight />
@@ -743,9 +780,20 @@ export default function DashboardPage() {
         {/* Radar row — The Watch newsroom (lead deck + wire + fresh radar) and
             Your calls. Fresh-on-radar lives inside the newsroom tile per the
             mockup; it renders nothing when no not-tracked ticker surfaces.
-            items-stretch + h-full tiles keep the two column bottoms aligned
-            instead of leaving a ragged edge. */}
-        <div className="mt-[18px] grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-[18px] items-stretch">
+
+            items-start, NOT items-stretch. Stretch equalises the two column
+            heights, so whichever column is shorter is padded out with dead
+            space rather than ending where its content ends. Measured on the
+            live page: both columns 853px, the left column's content ending
+            550px in, leaving 303px of empty tile below a single Fresh-on-radar
+            card. The stretch predates #542; that PR split the right column into
+            two tiles (Your calls + Signalera's record, the second flex-1),
+            which made it tall enough for the gap to become obvious.
+
+            A ragged bottom edge is the correct trade: there is genuinely
+            nothing to put in the space when Fresh-on-radar surfaces one card,
+            and no height is hardcoded either way. */}
+        <div className="mt-[18px] grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-[18px] items-start">
           <WatchlistFeed
             riseDelay={220}
             fresh={<FreshRadar stories={stories} watchlistTickers={watchlistTickers} embedded />}
@@ -755,31 +803,38 @@ export default function DashboardPage() {
               tile below, under its own heading. Two records, two objects: the
               desk's numbers are never rendered under a "Your" heading, and an
               empty personal record says so rather than borrowing them. */}
-          <div className="flex flex-col gap-[18px] h-full">
+          {/* No h-full: the column is as tall as its two tiles, not as tall as
+              the grid row. */}
+          <div className="flex flex-col gap-[18px]">
             <DashTile title="Your calls" subtitle="your tracked views" riseDelay={300}>
               <YourCallsWidget />
             </DashTile>
+            {/* No flex-1: it would expand to fill whatever height the column
+                has, which is what made this column the taller of the two. */}
             <DashTile
               title="Signalera&rsquo;s record"
               subtitle="the desk&rsquo;s graded calls"
               riseDelay={320}
-              className="flex-1"
             >
               <DeskRecordSummary />
             </DashTile>
           </div>
         </div>
 
-        {/* Follow row — Watchlist + Signals, bottoms aligned. */}
-        <div className="mt-[18px] grid grid-cols-1 lg:grid-cols-[1fr_1.9fr] gap-[18px] items-stretch">
-          <DashTile title="Watchlist" riseDelay={340} className="h-full">
+        {/* Follow row — Watchlist + Following. Same shape as the Radar row and
+            the same latent bug: items-stretch + h-full padded the shorter tile
+            out to match the taller one. It did not reproduce on the day the
+            Radar row did only because these two happened to be similar heights.
+            Fixed here too rather than left to surface later. */}
+        <div className="mt-[18px] grid grid-cols-1 lg:grid-cols-[1fr_1.9fr] gap-[18px] items-start">
+          <DashTile title="Watchlist" riseDelay={340}>
             <WatchlistWidget />
           </DashTile>
           {/* Following = the user's real Radar follows, each with its latest
               matching headline, from /api/radar/following-feed. Replaces the
               competitor/community fallback that stood in before Radar's
               follow storage existed on this branch. */}
-          <DashTile title="Following" subtitle="desks & sectors you track" riseDelay={380} className="h-full">
+          <DashTile title="Following" subtitle="desks & sectors you track" riseDelay={380}>
             <FollowingWidget />
           </DashTile>
         </div>
@@ -792,6 +847,7 @@ export default function DashboardPage() {
         </div>
 
       </div>
+      </DashboardRevealGate>
     </AppShell>
   );
 }

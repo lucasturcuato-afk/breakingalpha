@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useDashboardSource } from "@/components/dashboard/dashboard-ready";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { shouldShowLearningBadge } from "@/lib/learning-badge";
 
@@ -29,6 +30,12 @@ function relativeTime(iso: string | null): string {
 export function SystemIntelligenceWidget() {
   const [data, setData] = useState<IntelligenceData | null>(null);
 
+  // Dashboard reveal gate. This was the slowest source measured (max 8.7s on a
+  // cold route). It has no loading state of its own, so the settle goes in a
+  // finally: a non-ok response and a thrown request both release the gate,
+  // and the 60s refresh interval below re-enters this function but cannot
+  // re-trigger loading because settle is idempotent.
+  const settleDashboard = useDashboardSource("system-intelligence");
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch("/api/system-intelligence");
@@ -37,8 +44,10 @@ export function SystemIntelligenceWidget() {
       setData(json);
     } catch {
       // silent
+    } finally {
+      settleDashboard();
     }
-  }, []);
+  }, [settleDashboard]);
 
   useEffect(() => {
     fetchData();

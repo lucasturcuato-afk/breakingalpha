@@ -22,6 +22,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useDashboardSource } from "@/components/dashboard/dashboard-ready";
 import Link from "next/link";
 import {
   DESK_RECORD_COPY as COPY,
@@ -54,6 +55,15 @@ function getSupabase() {
 export function DeskRecordSummary() {
   const [record, setRecord] = useState<DeskRecord | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  // Dashboard reveal gate. Settles on the FIRST completed load, resolved or
+  // failed: the error path above sets this same state, so a dead endpoint
+  // releases the gate instead of holding the page. Idempotent in the provider,
+  // so later refetches cannot re-trigger loading.
+  const settleDashboard = useDashboardSource("desk-record");
+  useEffect(() => {
+    if (status !== "loading") settleDashboard();
+  }, [status, settleDashboard]);
+
 
   useEffect(() => {
     let cancelled = false;

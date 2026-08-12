@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useDashboardSource } from "@/components/dashboard/dashboard-ready";
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 
@@ -56,6 +57,14 @@ export function FollowingWidget() {
   const [data, setData] = useState<{ developments?: Development[]; unavailable?: boolean } | undefined>(
     undefined,
   );
+
+  // Dashboard reveal gate. /api/radar/following-feed was the second-slowest
+  // source measured (max 7.9s cold). Settles on first completion either way:
+  // the catch below sets data to an empty developments list.
+  const settleDashboard = useDashboardSource("following");
+  useEffect(() => {
+    if (data !== undefined) settleDashboard();
+  }, [data, settleDashboard]);
 
   useEffect(() => {
     let cancelled = false;

@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
+import { useDashboardSource } from "@/components/dashboard/dashboard-ready";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 
@@ -31,6 +32,15 @@ export function DailyBriefsWidget() {
   const [active, setActive] = useState<"morning" | "evening">("morning");
   // undefined = loading, null = none exists, BriefRow = latest real brief
   const [briefs, setBriefs] = useState<Record<string, BriefRow | null> | undefined>(undefined);
+  // Dashboard reveal gate. Settles on the FIRST completed load, resolved or
+  // failed: the error path above sets this same state, so a dead endpoint
+  // releases the gate instead of holding the page. Idempotent in the provider,
+  // so later refetches cannot re-trigger loading.
+  const settleDashboard = useDashboardSource("daily-briefs");
+  useEffect(() => {
+    if (briefs !== undefined) settleDashboard();
+  }, [briefs, settleDashboard]);
+
 
   useEffect(() => {
     let cancelled = false;

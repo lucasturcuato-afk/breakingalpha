@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useDashboardSource } from "@/components/dashboard/dashboard-ready";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +29,15 @@ type Quote = { price: string; pct: number };
  */
 export function WatchlistWidget() {
   const [items, setItems] = useState<PinnedItem[] | null>(null);
+  // Dashboard reveal gate. Settles on the FIRST completed load, resolved or
+  // failed: the error path above sets this same state, so a dead endpoint
+  // releases the gate instead of holding the page. Idempotent in the provider,
+  // so later refetches cannot re-trigger loading.
+  const settleDashboard = useDashboardSource("watchlist");
+  useEffect(() => {
+    if (items !== null) settleDashboard();
+  }, [items, settleDashboard]);
+
   const [fallback, setFallback] = useState(false);
 
   useEffect(() => {
