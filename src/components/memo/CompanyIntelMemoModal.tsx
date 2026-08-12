@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { X, Copy, Check, Download, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
+import { downloadMemoPdf } from "@/lib/download-memo-pdf";
 
 /* ===========================================================================
  * CompanyIntelMemoModal
@@ -156,6 +157,7 @@ export default function CompanyIntelMemoModal(props: CompanyIntelMemoModalProps)
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [containerVisible, setContainerVisible] = useState(false);
   // Highlight key on the active source row. Bumping this re-triggers the
   // 200ms gold flash CSS transition via inline style. We track the source
@@ -400,15 +402,21 @@ export default function CompanyIntelMemoModal(props: CompanyIntelMemoModalProps)
     setTimeout(() => setCopied(false), 2000);
   }, [memo]);
 
-  const handleExport = useCallback(() => {
-    const blob = new Blob([memo], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${title.replace(/\s+/g, "_")}_memo.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [memo, title]);
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      await downloadMemoPdf({
+        memo,
+        title,
+        kicker: TYPE_LABELS[type],
+        filename: `${title.replace(/\s+/g, "_")}_memo`,
+      });
+    } catch (e) {
+      console.error("[memo export-pdf] failed:", e);
+    } finally {
+      setExporting(false);
+    }
+  }, [memo, title, type]);
 
   const handleRetry = useCallback(() => {
     runFetch();
@@ -644,14 +652,16 @@ export default function CompanyIntelMemoModal(props: CompanyIntelMemoModalProps)
             <button
               type="button"
               onClick={handleExport}
+              disabled={exporting}
               className={cn(
                 "inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg",
                 "border border-gold/40 bg-gold-muted text-gold",
                 "font-data text-[10px] font-bold uppercase cursor-pointer hover:bg-gold/10 transition-colors",
+                exporting && "opacity-60 cursor-not-allowed",
               )}
             >
               <Download size={11} />
-              Export .md
+              {exporting ? "Preparing PDF…" : "Export PDF"}
             </button>
             <button
               type="button"
