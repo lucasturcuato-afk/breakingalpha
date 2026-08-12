@@ -57,6 +57,22 @@ from models import GEMINI_MODEL
 # Flash-Lite; see the temp-0.2 confirmation in the PR.
 from models import GEMINI_FILTER_MODEL as FILTER_MODEL
 
+# Published list rates for the model the FILTER actually runs on. FILTER_MODEL is
+# gemini-2.5-flash-lite, NOT gemini-2.5-flash.
+#
+# The [filter:usage] line used to hardcode $0.30/1M in and $2.50/1M out, which are
+# the full-Flash rates (they match GEMINI_INPUT/OUTPUT_PRICE_PER_TOKEN in
+# thesis_grader.py, where full Flash IS the model). Applied to a Flash-Lite call
+# that overstated input 3x and output 6.25x. Named here, next to the model they
+# describe, so the two cannot drift apart again.
+#
+# These drive an ESTIMATE printed for operators. The billing meter remains the
+# source of truth, and the log line still says so.
+FILTER_INPUT_PRICE_PER_1M = 0.10
+FILTER_OUTPUT_PRICE_PER_1M = 0.40
+FILTER_INPUT_PRICE_PER_TOKEN = FILTER_INPUT_PRICE_PER_1M / 1_000_000
+FILTER_OUTPUT_PRICE_PER_TOKEN = FILTER_OUTPUT_PRICE_PER_1M / 1_000_000
+
 # ---------------------------------------------------------------------------
 # RE-ANCHORED RELEVANCE GRADER (RELEVANCE_GRADE_MODE) -- LUCAS-REVIEWED CORE SCORER.
 #
@@ -120,9 +136,12 @@ RELEVANCE_GRADE_SHADOW_SAMPLE_RATE = float(
 # article is never stored and its re-grade is never consumed. Skipping it therefore
 # leaves the STORED set and every stored score/band byte-identical while cutting the
 # grader call volume by the filter's reject rate (measured ~92% on 2026-07-07: 25,712
-# grader calls vs 2,144 stored). DEFAULT OFF so merging changes nothing until Noah
-# sets GRADER_SKIP_IRRELEVANT=1. No effect under legacy/shadow (shadow never overwrites
-# the stored score and is already sample-bounded).
+# grader calls vs 2,144 stored). The CODE default is off; PRODUCTION SETS IT TO 1
+# (repo variable, set 2026-07-08), so the skip is active and the expensive Flash
+# re-grade runs only on articles the cheap Flash-Lite filter kept. Measured effect:
+# the grader/filter call ratio stepped from ~0.99 to ~0.45 at that date.
+# No effect under legacy/shadow (shadow never overwrites the stored score and is
+# already sample-bounded).
 GRADER_SKIP_IRRELEVANT = os.environ.get("GRADER_SKIP_IRRELEVANT", "").strip().lower() in (
     "1", "true", "yes", "on"
 )
@@ -259,6 +278,13 @@ RSS_FEEDS = {
     "GlobeNewswire":    "https://www.globenewswire.com/RssFeed/subjectcode/01-ABN/feedTitle/All%20Press%20Releases",
 }
 
+#: NO LONGER DRIVES content_type. It used to, and that was the bug: it labelled
+#: a row full_text because of its SOURCE, while articles.content is only ever
+#: populated by the Tail-A enrichment pass, which covers a DISJOINT set
+#: (fulltext.SCRAPEABLE_SOURCES). The two never intersected, so the label was
+#: exactly inverted on every row. content_type is now set from whether content
+#: was actually written. Kept only as documentation of which feeds deliver a
+#: filing body rather than a headline; nothing reads it.
 FULL_TEXT_SOURCES = {"SEC 8-K", "SEC 10-Q", "Federal Reserve"}
 
 # Press wire sources — used for per-wire signal/noise logging in run_ingestion.
@@ -1616,7 +1642,21 @@ def fetch_all_articles():
                     "publisher": source,
                     "publisher_domain": normalize_domain(e.get("link", "")),
                     "published_at": published_at,
-                    "content_type": "full_text" if source in FULL_TEXT_SOURCES else "snippet"
+                    # content_type describes whether THIS ROW holds full text in
+                    # articles.content. Nothing populates `content` at insert
+                    # time -- the only writer is the Tail-A enrichment pass in
+                    # run_ingestion, which runs AFTER the store -- so every row
+                    # is a snippet here, without exception.
+                    #
+                    # This used to read `"full_text" if source in
+                    # FULL_TEXT_SOURCES else "snippet"`, which labelled SEC/Fed
+                    # rows full_text purely because of their source. Measured
+                    # full-table before this fix: 1,768 rows claimed full_text
+                    # (exactly SEC 8-K 976 + SEC 10-Q 730 + Federal Reserve 62)
+                    # and ZERO of them held any content, while all 5,635 rows
+                    # that DID hold content were labelled snippet. The label was
+                    # exactly inverted. See sql/0027 for the backfill.
+                    "content_type": "snippet",
                 })
                 feed_added += 1
             print(f"  RSS {source}: {feed_added} articles in {time.time() - feed_t0:.2f}s")
@@ -1988,12 +2028,15 @@ def filter_articles(articles):
         with _FILTER_USAGE_LOCK:
             u = dict(_FILTER_USAGE)
         out_tok = u["candidates"] + u["thoughts"]
-        est = u["prompt"] * (0.30 / 1_000_000) + out_tok * (2.50 / 1_000_000)
+        est = (u["prompt"] * FILTER_INPUT_PRICE_PER_TOKEN
+               + out_tok * FILTER_OUTPUT_PRICE_PER_TOKEN)
         print(
             f"  [filter:usage] calls={u['calls']} prompt_tok={u['prompt']} "
             f"candidates_tok={u['candidates']} thoughts_tok={u['thoughts']} "
             f"cached_tok={u['cached']} total_tok={u['total']} "
-            f"est_cost=${est:.4f} ESTIMATED (@ $0.30/1M in, $2.50/1M out; meter is truth)"
+            f"est_cost=${est:.4f} ESTIMATED (model={FILTER_MODEL} @ "
+            f"${FILTER_INPUT_PRICE_PER_1M:.2f}/1M in, "
+            f"${FILTER_OUTPUT_PRICE_PER_1M:.2f}/1M out; meter is truth)"
         )
     except Exception as ex:
         print(f"  [filter:usage] summary skipped: {ex}")
@@ -2752,10 +2795,17 @@ def run_ingestion():
     print(f"  [3/4] DONE: {n_sec} SEC pinned (no Gemini), Gemini filter on {n_llm} "
           f"in {time.time() - t:.2f}s")
 
-    # Re-anchored relevance grader (RELEVANCE_GRADE_MODE). DEFAULT shadow is
-    # prod-neutral: it leaves relevance_score and the >=6 gate untouched and only
-    # logs RELEVANCE_GRADE_SHADOW divergence on a sampled fraction. `new` replaces
-    # the score and switches the gate to RELEVANCE_NEW_GATE. `legacy` is a no-op.
+    # Re-anchored relevance grader (RELEVANCE_GRADE_MODE).
+    #
+    # PRODUCTION RUNS `new` (repo variable, set 2026-06-19). Under `new` the Flash
+    # grade REPLACES relevance_score and the gate becomes RELEVANCE_NEW_GATE
+    # (currently 1), so the score and the gate are BOTH different from the code
+    # default. This comment previously described the `shadow` default as though it
+    # were what runs; it is not, and had not been since that date.
+    #
+    # For reference, the modes: `legacy` is a no-op; `shadow` leaves the legacy
+    # score and the >=6 gate untouched and only logs RELEVANCE_GRADE_SHADOW
+    # divergence on a sampled fraction; `new` is described above.
     # Runs across the same shared parallel pool as the filter so the extra Flash
     # calls do not serialize. SEC-bypassed and None results are skipped inside
     # apply_relevance_grade. The gate below reads the (possibly-updated) score.
@@ -2768,10 +2818,15 @@ def run_ingestion():
               f"(shadow_sample_rate={RELEVANCE_GRADE_SHADOW_SAMPLE_RATE}) "
               f"applied in {time.time() - tg:.2f}s")
 
-    # Ingest gate. Under legacy/shadow it is the unchanged >=6 (so deploying the
-    # shadow default changes nothing in prod). Under `new` it switches to the
-    # data-derived RELEVANCE_NEW_GATE (>=1: drop only the true-0 junk floor, retain
-    # everything with any signal for downstream relevance ranking).
+    # Ingest gate. IN PRODUCTION THIS IS >= RELEVANCE_NEW_GATE (currently 1), not
+    # >= 6, because RELEVANCE_GRADE_MODE=new. The >=6 branch applies only under
+    # `legacy`/`shadow`, neither of which has run since 2026-06-19.
+    # RELEVANCE_NEW_GATE is data-derived: drop only the true-0 junk floor and
+    # retain everything with any signal for downstream relevance ranking.
+    #
+    # NOTE: a rejection here produces NO log line -- the loop below prints only on
+    # the pass branch -- so the pipeline's single largest filter is unobservable.
+    # Not changed here; that is an observability gap, not a correctness bug.
     ingest_gate = RELEVANCE_NEW_GATE if RELEVANCE_GRADE_MODE == "new" else 6
     relevant = []
     for a, result in zip(fresh, results):
@@ -2795,7 +2850,7 @@ def run_ingestion():
         wire_relevant = sum(1 for a, _ in relevant if a["source"] == src)
         print(
             f"  [ingest] {src}: {stats['fetched']} articles fetched, "
-            f"{stats['fresh']} passed freshness, {wire_relevant} passed relevance >= 6"
+            f"{stats['fresh']} passed freshness, {wire_relevant} passed relevance >= {ingest_gate}"
         )
 
     # Google News per-ticker funnel
@@ -2804,7 +2859,7 @@ def run_ingestion():
         gnews_relevant = sum(1 for a, _ in relevant if a["source"].startswith("Google News ("))
         print(
             f"  [ingest] Google News: {len(gnews_stats)} tickers, "
-            f"{gnews_total_fetched} articles fetched, {gnews_relevant} passed relevance >= 6"
+            f"{gnews_total_fetched} articles fetched, {gnews_relevant} passed relevance >= {ingest_gate}"
         )
 
     # [4b] Full-text enrichment for scrapeable sources
@@ -2815,7 +2870,14 @@ def run_ingestion():
         try:
             full_text = fetch_full_text(a["url"], a["source"])
             if full_text:
-                supabase.table("articles").update({"content": full_text}).eq("id", aid).execute()
+                # content_type is promoted HERE, in the same write as the content
+                # itself, because this is the only moment a row goes from having
+                # no full text to having some. Setting it at fetch time (the old
+                # behaviour) labelled rows on their source rather than on their
+                # contents, and the two never agreed.
+                supabase.table("articles").update(
+                    {"content": full_text, "content_type": "full_text"}
+                ).eq("id", aid).execute()
                 print(f"  Full text fetched: {a['source']} {a['title'][:50]} ({len(full_text)} chars)")
                 enriched += 1
             time.sleep(0.5)
