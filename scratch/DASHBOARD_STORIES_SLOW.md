@@ -60,3 +60,118 @@ They run in parallel via `Promise.allSettled([...]).finally(() => settleStories(
 - The reveal gate ships at a 10s budget with this behaviour known and accepted; see the PR description.
 - `scratch/DASHBOARD_REQUEST_DUPLICATION.md` — separate issue, 46 `/api/` requests per load.
 - `scratch/INGEST_RECON.md` — the `articles` table profile and the disk-IO history.
+
+---
+
+## RESOLVED (measured 2026-08-12, same method, same hardware)
+
+Root cause was NOT evenly spread across the four functions.
+
+| function | before | finding |
+|---|---|---|
+| `loadCounts` | 3,410ms x3 | **HTTP 500 `57014`** every time. Three `count: "exact"` queries on a ~169k-row `articles` table, sequentially scanning. Identical timing at 1h/6h/24h/72h windows proves the scan is insensitive to selectivity. It had **never once returned data**; the silent catch defaulted the stat band to 0. |
+| `loadSpark` | 633ms | 200, but **1,000 rows of ~31,000** (`content-range: 0-999/*`). PostgREST's default cap. The sparkline was silently wrong. |
+| `loadBriefing` | 581ms | innocent |
+| `loadStories` | 555ms | innocent |
+
+**Fixes, code only, no migration:**
+- `count: "exact"` -> `count: "planned"` (planner estimate, 1,050ms, returns). A failed count now sets `countsFailed` and the tile renders "no count" rather than a fabricated 0.
+- `loadSpark` reads `pipeline_runs.ingest_count` instead of scanning `articles`. Server-side aggregate already maintained by the pipeline; 468ms, 201 rows over 12 days.
+
+**Result:** `stories` 13,570ms -> 4,839ms. Whole-page reveal now lands on `all-settled`, not `timeout`. The stat band shows a real number (285) for the first time.
+
+**Still open:** the count is now a planner ESTIMATE, not exact. `idx_articles_ingested_at` (sql/0023, HAND-APPLY) is unconfirmed; an exact count stays out of reach until it exists.
+
+---
+
+## AMENDED 2026-08-12 (later the same day): the index landed, `planned` was wrong
+
+`idx_articles_ingested_at` was confirmed MISSING and has now been created by hand.
+Re-measured `count: exact` on the identical predicate, 5 reps each:
+
+| query | before index | after index | exact value | planned value |
+|---|---|---|---|---|
+| total | 3,410ms, HTTP 500 `57014` | **300ms, HTTP 206** | **1,279** | 285 |
+| bullish | 3,538ms, HTTP 500 | **301ms, HTTP 200** | **284** | **1** |
+| bearish | 3,683ms, HTTP 500 | **329ms, HTTP 200** | **118** | **1** |
+
+Two conclusions, the second more important than the first.
+
+1. `count: exact` is now ~300ms, an 11x improvement, and it returns.
+2. **`count: planned` was badly wrong, not slightly wrong.** The planner cannot
+   estimate the selectivity of a leading-wildcard `ILIKE`, so it guessed **1** for
+   both bullish and bearish. The total was off by 4.5x (285 vs 1,279). The
+   "285 high-signal stories" figure reported when the planned-count fix shipped
+   was itself a wrong number -- differently wrong from the old silent zero, but
+   still not the truth.
+
+Switched all three counts to `count: "exact"`. Verified in the browser: the
+headline reads **1,279**. Reveal still lands on `all-settled`.
+
+## What `pipeline_runs.ingest_count` actually counts (asked, answered)
+
+`stored = len(article_ids)` in `backend/ingest.py`, returned by `run_ingest()` and
+written by `observe.record_run()`. Counted **after** the relevance gate
+(`relevance_score >= ingest_gate`) and **after** dedup. It is:
+
+- NOT articles fetched
+- NOT articles that passed the filter but deduped away
+- NOT articles selected for the brief (that is `selected_count`, a separate column)
+
+It is new `articles` rows inserted, per run, and the pipeline runs twice daily
+(`morning`, `evening`), bucketed here by `started_at`.
+
+**It matches the tile's label.** The card is "Signals Today"; its value is an exact
+count of `articles` by `ingested_at >= today`, and the sparkline sums
+`ingest_count` per day. Same quantity, two sources. Verified per-day over 12 days:
+
+```
+day          sum(ingest_count)   exact articles   delta
+2026-08-01              1464             1464         0
+2026-08-02                 0                0         0
+2026-08-03                 0              534      +534   <-- the one gap
+2026-08-04              3635             3635         0
+2026-08-05              2643             2643         0
+2026-08-06              2829             2829         0
+2026-08-07              2977             2977         0
+2026-08-08              1346             1346         0
+2026-08-09                 0                0         0
+2026-08-10              2749             2749         0
+2026-08-11              2670             2670         0
+2026-08-12              1279             1279         0
+TOTAL                  21592            22126      +534
+```
+
+**11 of 12 days agree to the row.**
+
+### The one gap, and its cause
+
+**CORRECTED 2026-08-12.** An earlier version of this section said `record_run()`
+fires "at the END of all 16 pipeline steps". That is WRONG and the distinction
+matters. It is step **[4/16]** (`run.py:230-234`); ingest is step **[1/16]**
+(`run.py:136`). Only a failure BETWEEN those two loses the row. Failures in
+steps 5-16 happen after the row is already written and are individually
+soft-guarded, so they do NOT lose it. Full account in
+`scratch/PIPELINE_RUN_RECORDING_GAP.md`.
+2026-08-03 is that case: 534 articles really landed, no run row carries a count,
+and the sparkline plots **0** for that day. 534 / 22,126 = 2.4% of the window,
+concentrated as one entirely-wrong bar rather than spread thin.
+
+Note `_run_ingest_guarded` returns 0 on ingest failure, but no run in the window
+recorded 0, so this is the crash-before-record path, not the guarded-failure path.
+
+**Fix (backend, NOT done here):** record the ingest count when ingest finishes
+rather than when the pipeline does.
+
+### Not a gap
+
+`edgar_ingestion` (144 runs), `daily_grading` (12), `outcome_evaluator` (11) and
+`xbrl_facts_ingestion` (10) carry a null `ingest_count` and are filtered out.
+That is correct: none of them insert into `articles`. `ingest_sec.py` writes
+`selected_count` and touches `sec_filings`, not `articles`.
+
+### Residual risk
+
+Buckets key on the run's `started_at`, not on each article's `ingested_at`. A run
+crossing midnight would attribute its articles to the day it started. No such
+split appears in this window (all deltas are 0), so the risk is theoretical.

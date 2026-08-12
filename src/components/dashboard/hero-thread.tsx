@@ -1,5 +1,7 @@
 "use client";
 
+import { cachedFetch } from "@/lib/client-fetch-cache";
+
 import { useEffect, useState } from "react";
 import { stripHtml } from "@/lib/strip-html";
 
@@ -63,7 +65,7 @@ export function HeroThread({ storyId }: { storyId: string }) {
       const missing = symbols.filter((s) => !quoteCache.has(s));
       if (missing.length > 0) {
         try {
-          const qr = await fetch(`/api/watchlist-quotes?symbols=${missing.join(",")}`);
+          const qr = await cachedFetch(`/api/watchlist-quotes?symbols=${missing.join(",")}`);
           if (qr.ok) {
             const qj = await qr.json();
             for (const [sym, q] of Object.entries((qj.quotes ?? {}) as Record<string, Quote>)) {

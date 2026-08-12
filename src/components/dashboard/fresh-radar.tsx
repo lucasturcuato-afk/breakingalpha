@@ -1,5 +1,7 @@
 "use client";
 
+import { cachedFetch } from "@/lib/client-fetch-cache";
+
 import { useEffect, useState } from "react";
 import { useDashboardSource } from "@/components/dashboard/dashboard-ready";
 import { cn } from "@/lib/utils";
@@ -117,7 +119,7 @@ export function FreshRadar({
       const symbols = candidates.map((c) => c.ticker);
       const [closesList, quotes] = await Promise.all([
         Promise.all(candidates.map((c) => loadCloses(c.ticker))),
-        fetch(`/api/watchlist-quotes?symbols=${symbols.join(",")}`)
+        cachedFetch(`/api/watchlist-quotes?symbols=${symbols.join(",")}`)
           .then((r) => (r.ok ? r.json() : { quotes: {} }))
           .then((j) => (j.quotes ?? {}) as Record<string, { price: string; pct: number }>)
           .catch(() => ({} as Record<string, { price: string; pct: number }>)),

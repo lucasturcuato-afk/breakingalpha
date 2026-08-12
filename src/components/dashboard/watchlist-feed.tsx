@@ -1,5 +1,7 @@
 "use client";
 
+import { cachedFetch } from "@/lib/client-fetch-cache";
+
 import { useState, useEffect, useRef, useMemo, type ReactNode } from "react";
 import { useDashboardSource } from "@/components/dashboard/dashboard-ready";
 import { useReducedMotion } from "framer-motion";
@@ -390,7 +392,7 @@ export function WatchlistFeed({
           .slice(0, 20);
         if (symbols.length > 0) {
           try {
-            const qr = await fetch(`/api/watchlist-quotes?symbols=${symbols.join(",")}`);
+            const qr = await cachedFetch(`/api/watchlist-quotes?symbols=${symbols.join(",")}`);
             if (qr.ok && !cancelled) {
               const qj = await qr.json();
               setQuotes(qj.quotes ?? {});
