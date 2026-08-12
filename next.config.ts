@@ -17,6 +17,15 @@ const nextConfig: NextConfig = {
    */
   serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium-min"],
   /*
+   * public/ is served from the CDN and is not bundled into the serverless
+   * function, so the memo PDF route cannot fs.readFileSync its faces without
+   * tracing them in explicitly. Without this the route silently falls back to
+   * the built-in Helvetica and logs "[memo-pdf] app faces unavailable".
+   */
+  outputFileTracingIncludes: {
+    "/api/memo/export-pdf": ["./public/fonts/memo-pdf/**"],
+  },
+  /*
    * Radar unification: the standalone Watchlist / Thesis Board / Thesis
    * Tracker tabs moved under /radar. Permanent redirects keep every old
    * deep link alive; query strings (e.g. /thesis-board?thesis=<id>) pass
