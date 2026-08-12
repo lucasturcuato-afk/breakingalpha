@@ -146,9 +146,13 @@ TOTAL                  21592            22126      +534
 
 ### The one gap, and its cause
 
-`observe.record_run()` fires at the END of all 16 pipeline steps (`run.py:234`),
-while ingest is step 1 (`run.py:136`). A run that stores articles and then dies
-before finishing writes no row at all, so its ingest_count is lost entirely.
+**CORRECTED 2026-08-12.** An earlier version of this section said `record_run()`
+fires "at the END of all 16 pipeline steps". That is WRONG and the distinction
+matters. It is step **[4/16]** (`run.py:230-234`); ingest is step **[1/16]**
+(`run.py:136`). Only a failure BETWEEN those two loses the row. Failures in
+steps 5-16 happen after the row is already written and are individually
+soft-guarded, so they do NOT lose it. Full account in
+`scratch/PIPELINE_RUN_RECORDING_GAP.md`.
 2026-08-03 is that case: 534 articles really landed, no run row carries a count,
 and the sparkline plots **0** for that day. 534 / 22,126 = 2.4% of the window,
 concentrated as one entirely-wrong bar rather than spread thin.

@@ -288,13 +288,16 @@ function DashboardPageInner() {
       // per-day sum of ingest_count equals an exact count of `articles` by
       // ingested_at, to the row.
       //
-      // KNOWN GAP, do not mistake it for a bug here. observe.record_run() is
-      // called at the END of all 16 pipeline steps, so a run that stores
-      // articles and then dies before finishing never writes its ingest_count.
-      // 2026-08-03 is exactly that: 534 articles really landed, no run row
-      // carries a count, and this sparkline plots 0 for that day. Fixing it
-      // means recording the ingest count when ingest finishes rather than when
-      // the pipeline does -- a backend change, not a frontend one.
+      // KNOWN GAP, do not mistake it for a bug here. ingest is step [1/16] and
+      // observe.record_run() is step [4/16], so a run that stores articles and
+      // then dies before reaching step 4 writes no pipeline_runs row at all.
+      // The one unguarded statement in that window is run_synthesize() at
+      // run.py:189; every other step between them is wrapped in a soft-fail
+      // guard. 2026-08-03 is exactly that shape: 534 articles really landed, no
+      // run row carries a count, and this sparkline plots 0 for that day.
+      // Fixing it is a backend change (record the ingest count when ingest
+      // finishes, not at step 4), not a frontend one. See
+      // scratch/PIPELINE_RUN_RECORDING_GAP.md.
       //
       // Runs that never ingest (edgar_ingestion, daily_grading,
       // outcome_evaluator, xbrl_facts_ingestion) carry a null ingest_count and
