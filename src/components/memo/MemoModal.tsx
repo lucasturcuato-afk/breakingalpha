@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import { useOutputFeedback } from "@/hooks/useOutputFeedback";
 import { ThumbsControl } from "@/components/feedback/ThumbsControl";
+import { downloadMemoPdf } from "@/lib/download-memo-pdf";
 
 /* ── Markdown component overrides ── */
 
@@ -120,6 +121,7 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [visibleSections, setVisibleSections] = useState<Set<number>>(new Set());
   const [memoOutputId, setMemoOutputId] = useState<string | null>(null);
   const { ref: feedbackRef, thumbs, setThumbs, recordExport } = useOutputFeedback({
@@ -250,16 +252,22 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
     setTimeout(() => setCopied(false), 2000);
   }, [memo]);
 
-  const handleExport = useCallback(() => {
-    const blob = new Blob([memo], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${title.replace(/\s+/g, "_")}_memo.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-    recordExport();
-  }, [memo, title, recordExport]);
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      await downloadMemoPdf({
+        memo,
+        title,
+        kicker: TYPE_LABELS[type],
+        filename: `${title.replace(/\s+/g, "_")}_memo`,
+      });
+      recordExport();
+    } catch (e) {
+      console.error("[memo export-pdf] failed:", e);
+    } finally {
+      setExporting(false);
+    }
+  }, [memo, title, type, recordExport]);
 
   if (!isOpen || !mounted) return null;
 
@@ -395,10 +403,14 @@ export function MemoModal({ isOpen, onClose, title, content, type, systemPrompt,
             <button
               type="button"
               onClick={handleExport}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-gold/40 bg-gold-muted text-gold font-data text-[10px] font-bold uppercase cursor-pointer hover:bg-gold/10 transition-colors"
+              disabled={exporting}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-gold/40 bg-gold-muted text-gold font-data text-[10px] font-bold uppercase cursor-pointer hover:bg-gold/10 transition-colors",
+                exporting && "opacity-60 cursor-not-allowed",
+              )}
             >
               <Download size={11} />
-              Export .md
+              {exporting ? "Preparing PDF…" : "Export PDF"}
             </button>
             <button
               type="button"
