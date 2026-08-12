@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo, type ReactNode } from "react";
+import { useDashboardSource } from "@/components/dashboard/dashboard-ready";
 import { useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { ExternalLink, Eye } from "lucide-react";
@@ -346,6 +347,15 @@ export function WatchlistFeed({
   const [identifiers, setIdentifiers] = useState<string[]>([]);
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
   const [loading, setLoading] = useState(true);
+  // Dashboard reveal gate. Settles on the FIRST completed load, resolved or
+  // failed: the error path above sets this same state, so a dead endpoint
+  // releases the gate instead of holding the page. Idempotent in the provider,
+  // so later refetches cannot re-trigger loading.
+  const settleDashboard = useDashboardSource("watchlist-feed");
+  useEffect(() => {
+    if (!loading) settleDashboard();
+  }, [loading, settleDashboard]);
+
   // A failed feed read renders an error state, never "no recent articles":
   // real emptiness and a broken query are different facts.
   const [feedError, setFeedError] = useState(false);
@@ -417,7 +427,7 @@ export function WatchlistFeed({
     // lead deck | wire column, fresh row) so filling in causes no layout shift.
     return (
       <div
-        className="dash-tile dash-rise h-full bg-white border border-border-base rounded-[28px_28px_28px_10px] p-5 md:p-6"
+        className="dash-tile dash-rise bg-white border border-border-base rounded-[28px_28px_28px_10px] p-5 md:p-6"
         style={{ animationDelay: `${riseDelay}ms` }}
       >
         <div className="animate-pulse">
@@ -438,7 +448,7 @@ export function WatchlistFeed({
 
   return (
     <div
-      className="dash-tile dash-rise dash-fill-in h-full bg-white border border-border-base rounded-[28px_28px_28px_10px] p-5 md:p-6"
+      className="dash-tile dash-rise dash-fill-in bg-white border border-border-base rounded-[28px_28px_28px_10px] p-5 md:p-6"
       style={{ animationDelay: `${riseDelay}ms` }}
     >
       <div className="flex items-baseline justify-between gap-3 border-b-[1.5px] border-[color:var(--espresso)] pb-2.5 mb-3.5">

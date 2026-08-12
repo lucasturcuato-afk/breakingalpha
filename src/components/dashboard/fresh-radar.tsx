@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useDashboardSource } from "@/components/dashboard/dashboard-ready";
 import { cn } from "@/lib/utils";
 import { Loader2, Check } from "lucide-react";
 import { DrawSpark, loadCloses } from "@/components/dashboard/spark-line";
@@ -84,6 +85,15 @@ export function FreshRadar({
   embedded?: boolean;
 }) {
   const [cards, setCards] = useState<RadarCard[] | null>(null);
+  // Dashboard reveal gate. Settles on the FIRST completed load, resolved or
+  // failed: the error path above sets this same state, so a dead endpoint
+  // releases the gate instead of holding the page. Idempotent in the provider,
+  // so later refetches cannot re-trigger loading.
+  const settleDashboard = useDashboardSource("fresh-radar");
+  useEffect(() => {
+    if (cards !== null) settleDashboard();
+  }, [cards, settleDashboard]);
+
 
   useEffect(() => {
     let cancelled = false;
