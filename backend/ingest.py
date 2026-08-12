@@ -364,18 +364,30 @@ def _get_gnews_tickers() -> list[str]:
     return sorted(tickers)
 
 
-def _fetch_single_gnews_feed(ticker: str) -> list[dict]:
-    """Fetch and parse one Google News RSS feed for a ticker."""
+def _fetch_single_gnews_feed(ticker: str) -> tuple[list[dict], dict[str, int]]:
+    """Fetch and parse one Google News RSS feed for a ticker.
+
+    Returns (articles, stats). stats counts what this loop DROPS as well as what
+    it keeps, so the gnews leg gets the freshness accounting the RSS loop already
+    has: `entries` seen, `skipped_stale` (older than INGEST_FRESHNESS_DAYS) and
+    `skipped_no_link_or_title`. Counting only -- both drop conditions below are
+    byte-for-byte the ones that were already there. This leg carries ~88% of
+    ingest volume and until now rejected on a bare `continue` with no counter,
+    so a feed that went all-stale would have vanished with no signal.
+    """
     url = _build_gnews_url(ticker)
     articles = []
+    stats = {"entries": 0, "skipped_stale": 0, "skipped_no_link_or_title": 0}
     try:
         raw = _fetch_feed_bytes(url)
         feed = feedparser.parse(raw)
         freshness_cutoff = datetime.now(timezone.utc) - timedelta(days=INGEST_FRESHNESS_DAYS)
         for e in feed.entries[:GNEWS_ENTRY_CAP]:
+            stats["entries"] += 1
             link = e.get("link", "")
             title = e.get("title", "")
             if not link or not title:
+                stats["skipped_no_link_or_title"] += 1
                 continue
             # Missing date stays NULL: never now-stamp a date-less item, or a
             # stale story masquerades as fresh (articles has no created_at; the
@@ -387,6 +399,7 @@ def _fetch_single_gnews_feed(ticker: str) -> list[dict]:
                 try:
                     pub_dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
                     if pub_dt < freshness_cutoff:
+                        stats["skipped_stale"] += 1
                         continue
                 except Exception:
                     pass  # if parsing fails, let the entry through
@@ -418,14 +431,16 @@ def _fetch_single_gnews_feed(ticker: str) -> list[dict]:
             })
     except Exception as ex:
         print(f"  gnews: fetch failed for {ticker}: {ex}")
-    return articles
+    return articles, stats
 
 
 def fetch_gnews_per_ticker_feeds() -> tuple[list[dict], dict[str, dict[str, int]]]:
     """Fetch Google News RSS for all watchlist+company tickers in parallel.
 
-    Returns (articles, gnews_stats) where gnews_stats maps
-    ticker → {"fetched": N} for funnel logging.
+    Returns (articles, gnews_stats) where gnews_stats maps ticker →
+    {"fetched": N, "entries": N, "skipped_stale": N, "skipped_no_link_or_title": N}
+    for funnel logging. "fetched" keeps its original meaning (articles kept) so
+    the existing run_ingestion funnel line is unaffected.
     """
     tickers = _get_gnews_tickers()
     if not tickers:
@@ -437,20 +452,45 @@ def fetch_gnews_per_ticker_feeds() -> tuple[list[dict], dict[str, dict[str, int]
     all_articles: list[dict] = []
     gnews_stats: dict[str, dict[str, int]] = {}
 
+    # Rejection totals across every ticker feed. Each worker counts into its own
+    # local dict and hands it back on the future, so there is no shared mutable
+    # state and no lock is needed here.
+    total_entries = total_stale = total_no_link = 0
+    all_stale_tickers = 0
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=GNEWS_WORKERS) as pool:
         future_to_ticker = {pool.submit(_fetch_single_gnews_feed, t): t for t in tickers}
         for future in concurrent.futures.as_completed(future_to_ticker):
             ticker = future_to_ticker[future]
             try:
-                result = future.result()
-                gnews_stats[ticker] = {"fetched": len(result)}
+                result, fstats = future.result()
+                gnews_stats[ticker] = {"fetched": len(result), **fstats}
                 all_articles.extend(result)
+                total_entries += fstats["entries"]
+                total_stale += fstats["skipped_stale"]
+                total_no_link += fstats["skipped_no_link_or_title"]
+                # A feed that saw entries and kept none of them because they were
+                # all stale is the regression shape worth naming: the ticker goes
+                # to zero articles while the fetch itself still "succeeds".
+                if fstats["skipped_stale"] and not result:
+                    all_stale_tickers += 1
             except Exception as ex:
                 print(f"  gnews: worker error for {ticker}: {ex}")
-                gnews_stats[ticker] = {"fetched": 0}
+                gnews_stats[ticker] = {"fetched": 0, "entries": 0,
+                                       "skipped_stale": 0, "skipped_no_link_or_title": 0}
 
     elapsed = time.time() - t0
     print(f"  gnews: {len(all_articles)} articles from {len(tickers)} tickers in {elapsed:.1f}s")
+    # Mirrors the RSS loop's stale accounting, but aggregate only: this leg runs
+    # ~800 ticker feeds against the RSS loop's ~10, so a per-feed line would bury
+    # the run log. Per-ticker numbers stay available in gnews_stats.
+    if total_stale or total_no_link:
+        print(f"  gnews total: skipped {total_stale} stale articles "
+              f"(>{INGEST_FRESHNESS_DAYS}d old) and {total_no_link} with no link/title, "
+              f"of {total_entries} entries seen across {len(tickers)} tickers")
+    if all_stale_tickers:
+        print(f"  gnews total: {all_stale_tickers} tickers returned entries but kept "
+              f"none of them (every entry stale)")
     return all_articles, gnews_stats
 
 
@@ -836,6 +876,53 @@ def _clamp_relevance_score(value) -> Optional[int]:
     return max(0, min(10, n))
 
 
+# ---------------------------------------------------------------------------
+# Grade-source accounting. Under RELEVANCE_GRADE_MODE=new a grade_relevance
+# failure silently retains the legacy Flash-Lite score, so the stored corpus
+# mixes two scoring populations with nothing on the row to tell them apart and
+# the fallback rate cannot be trended. Every graded result now carries the
+# provenance of the score it ends up with, and the run totals are summed here.
+# Recording only: no score, no gate outcome, and no drop decision changes.
+# ---------------------------------------------------------------------------
+
+#: Key stamped onto the FilterDecision dict, read by _article_row.
+GRADE_SOURCE_KEY = "relevance_grade_source"
+
+GRADE_SOURCE_GRADER = "grader"                    # re-anchored grade applied
+GRADE_SOURCE_LEGACY_FALLBACK = "legacy_fallback"  # grader failed, legacy retained
+GRADE_SOURCE_SEC_PINNED = "sec_pinned"            # deterministic SEC bypass, never graded
+GRADE_SOURCE_LEGACY_SKIP = "legacy_skip"          # GRADER_SKIP_IRRELEVANT cost guard
+GRADE_SOURCE_LEGACY_MODE = "legacy_mode"          # mode=legacy|shadow, legacy is authoritative
+
+_GRADE_SOURCE_LOCK = threading.Lock()
+_GRADE_SOURCE_TALLY: dict[str, int] = {}
+
+
+def _reset_grade_source_tally() -> None:
+    with _GRADE_SOURCE_LOCK:
+        _GRADE_SOURCE_TALLY.clear()
+
+
+def _mark_grade_source(result, source) -> None:
+    """Stamp `result` with the provenance of its relevance_score and tally it.
+
+    apply_relevance_grade runs across the shared parallel filter pool, so the
+    tally is lock-guarded (same pattern as _FILTER_USAGE). Fully exception-
+    guarded: observability must never raise into the grading path."""
+    try:
+        result[GRADE_SOURCE_KEY] = source
+        with _GRADE_SOURCE_LOCK:
+            _GRADE_SOURCE_TALLY[source] = _GRADE_SOURCE_TALLY.get(source, 0) + 1
+    except Exception:
+        pass
+
+
+def _grade_source_snapshot() -> dict[str, int]:
+    """Copy of the run's grade-source counts, for logging and persistence."""
+    with _GRADE_SOURCE_LOCK:
+        return dict(_GRADE_SOURCE_TALLY)
+
+
 def grade_relevance(article):
     """Run the re-anchored relevance grader on one article (gemini-2.5-flash,
     thinking_budget=0). Returns {"score": int, "band": str, "reason": str} with the
@@ -912,16 +999,25 @@ def apply_relevance_grade(article, result):
 
     Returns `result` (possibly mutated under `new`). SEC-bypassed results carry a
     deterministic relevance_reason marker and are never re-graded (they never hit
-    the LLM and their scores are pinned by item code)."""
+    the LLM and their scores are pinned by item code).
+
+    Every non-None `result` leaves this function stamped with GRADE_SOURCE_KEY,
+    naming which scorer produced the relevance_score it carries. That marker is
+    additive: it changes nothing about the score or the gate, it only makes the
+    fallback population separable afterwards."""
     if result is None or RELEVANCE_GRADE_MODE == "legacy":
+        if result is not None:
+            _mark_grade_source(result, GRADE_SOURCE_LEGACY_MODE)
         return result
 
     is_sec = "deterministic SEC bypass" in (result.get("relevance_reason") or "")
 
     if RELEVANCE_GRADE_MODE == "shadow":
         if is_sec:
+            _mark_grade_source(result, GRADE_SOURCE_SEC_PINNED)
             return result
         if random.random() >= RELEVANCE_GRADE_SHADOW_SAMPLE_RATE:
+            _mark_grade_source(result, GRADE_SOURCE_LEGACY_MODE)
             return result
         grade = grade_relevance(article)
         if grade is not None:
@@ -932,21 +1028,31 @@ def apply_relevance_grade(article, result):
                 f"band={grade['band']} "
                 f"title={(article.get('title') or '')[:100]!r}"
             )
+        # Shadow never mutates the score, so the stored value is legacy either
+        # way -- including when the shadow grade itself failed.
+        _mark_grade_source(result, GRADE_SOURCE_LEGACY_MODE)
         return result
 
     # new: the re-anchored grade becomes authoritative. SEC stays deterministic.
     if is_sec:
+        _mark_grade_source(result, GRADE_SOURCE_SEC_PINNED)
         return result
     # Cost guard: a not-relevant article is dropped by the ingest gate on its
     # `relevant` flag (which grade_relevance never changes), regardless of its
     # score, so re-grading it is wasted spend that no consumer reads. Skipping it
     # keeps the stored set and every stored score identical. Default OFF.
     if GRADER_SKIP_IRRELEVANT and not result.get("relevant"):
+        _mark_grade_source(result, GRADE_SOURCE_LEGACY_SKIP)
         return result
     grade = grade_relevance(article)
     if grade is not None:
         result["relevance_score"] = grade["score"]
         result["relevance_band"] = grade["band"]
+        _mark_grade_source(result, GRADE_SOURCE_GRADER)
+    else:
+        # Grader failed. The legacy score stays, exactly as before -- the only
+        # difference is that the row now says so.
+        _mark_grade_source(result, GRADE_SOURCE_LEGACY_FALLBACK)
     return result
 
 
@@ -2257,6 +2363,26 @@ def _publisher_columns_available():
     return _PUBLISHER_COLUMNS_AVAILABLE
 
 
+#: Cached probe for the sql/0026 grade-source column. Same hand-apply contract
+#: as _PUBLISHER_COLUMNS_AVAILABLE.
+_GRADE_SOURCE_COLUMN_AVAILABLE = None
+
+
+def _grade_source_column_available():
+    """True when articles.relevance_grade_source exists. Probes once."""
+    global _GRADE_SOURCE_COLUMN_AVAILABLE
+    if _GRADE_SOURCE_COLUMN_AVAILABLE is not None:
+        return _GRADE_SOURCE_COLUMN_AVAILABLE
+    try:
+        supabase.table("articles").select("relevance_grade_source").limit(1).execute()
+        _GRADE_SOURCE_COLUMN_AVAILABLE = True
+    except Exception as ex:
+        _GRADE_SOURCE_COLUMN_AVAILABLE = False
+        print("  relevance-grade: articles.relevance_grade_source missing "
+              f"(apply sql/0026_ingest_observability.sql) - not storing grade source ({ex})")
+    return _GRADE_SOURCE_COLUMN_AVAILABLE
+
+
 def _article_row(article, analysis, clean_companies):
     """Build the articles-table insert row. Shared by store_article (legacy) and
     store_articles_batch so the column shape can never drift between them."""
@@ -2301,6 +2427,14 @@ def _article_row(article, analysis, clean_companies):
     if _publisher_columns_available():
         row["publisher"] = article.get("publisher")
         row["publisher_domain"] = article.get("publisher_domain")
+    # Which scorer produced relevance_score on this row. Without it, rows that
+    # kept a legacy score because the grader failed are indistinguishable from
+    # rows the grader actually scored, so the mixed population cannot be split
+    # after the fact. Stored only once sql/0026 has landed; an unstamped result
+    # (legacy mode, where apply_relevance_grade never runs) stays NULL rather
+    # than being guessed.
+    if _grade_source_column_available():
+        row["relevance_grade_source"] = analysis.get(GRADE_SOURCE_KEY)
     return row
 
 
@@ -2741,10 +2875,28 @@ def store_article(article, analysis):
         return None
 
 
+def _persist_ingest_run_stats(payload):
+    """Best-effort write of one ingest_run_stats row.
+
+    ingest_run_stats is a HAND-APPLY table (sql/0026_ingest_observability.sql).
+    Until it lands this prints once per run and the run is otherwise unaffected;
+    the same breakdown is already on stdout either way. Never raises: this runs
+    in the ingest tail, and a failure here must not mark the step degraded.
+    """
+    try:
+        supabase.table("ingest_run_stats").insert(payload).execute()
+        print("  [ingest:stats] run breakdown persisted to ingest_run_stats")
+    except Exception as ex:
+        print(f"  [ingest:stats] not persisted, stdout breakdown above is the "
+              f"only record (apply sql/0026_ingest_observability.sql): {ex}")
+
+
 def run_ingestion():
     print(f"\n{'='*60}\nBreakingAlpha Ingestion - {datetime.now().strftime('%Y-%m-%d %H:%M')}\n{'='*60}")
     t_total = time.time()
+    run_started_at = datetime.now(timezone.utc)
     _reset_run_entity_caches()
+    _reset_grade_source_tally()
 
     t = time.time()
     print("\n[1/4] Fetching articles...")
@@ -2829,10 +2981,41 @@ def run_ingestion():
     # Not changed here; that is an observability gap, not a correctness bug.
     ingest_gate = RELEVANCE_NEW_GATE if RELEVANCE_GRADE_MODE == "new" else 6
     relevant = []
+    # Gate accounting. The loop printed a line only on the PASS branch, so the
+    # single biggest filter in the pipeline produced no output at all for the
+    # articles it rejected: a grader shift that halved the keep rate would have
+    # looked identical to a quiet news day. The condition below is the original
+    # compound test split into its own short-circuit order (falsy result ->
+    # relevant falsy -> score below gate), so the buckets partition the drops
+    # exactly and the passing set is unchanged.
+    gate_dropped = {"result_none": 0, "relevant_falsy": 0, "below_gate": 0}
     for a, result in zip(fresh, results):
-        if result and result.get("relevant") and result.get("relevance_score", 0) >= ingest_gate:
-            relevant.append((a, result))
-            print(f"  ✓ [{result['relevance_score']}/10] [{result.get('sector','?')[:20]}] {a['title'][:60]}...")
+        if not result:
+            gate_dropped["result_none"] += 1
+            continue
+        if not result.get("relevant"):
+            gate_dropped["relevant_falsy"] += 1
+            continue
+        if result.get("relevance_score", 0) < ingest_gate:
+            gate_dropped["below_gate"] += 1
+            continue
+        relevant.append((a, result))
+        print(f"  ✓ [{result['relevance_score']}/10] [{result.get('sector','?')[:20]}] {a['title'][:60]}...")
+
+    gate_candidates = len(fresh)
+    gate_total_dropped = sum(gate_dropped.values())
+    print(
+        f"  [3/4] ingest gate (score >= {ingest_gate}, mode={RELEVANCE_GRADE_MODE}): "
+        f"{gate_candidates} candidates, {len(relevant)} passed, {gate_total_dropped} dropped "
+        f"(result-none {gate_dropped['result_none']}, "
+        f"not-relevant {gate_dropped['relevant_falsy']}, "
+        f"below-gate {gate_dropped['below_gate']})"
+    )
+    grade_sources = _grade_source_snapshot()
+    if grade_sources:
+        print("  [3/4] grade source: " + ", ".join(
+            f"{k} {v}" for k, v in sorted(grade_sources.items())
+        ))
 
     t = time.time()
     print(f"\n[4/4] Storing {len(relevant)} articles (batched)...")
@@ -2854,12 +3037,21 @@ def run_ingestion():
         )
 
     # Google News per-ticker funnel
+    gnews_totals = {"entries": 0, "skipped_stale": 0, "skipped_no_link_or_title": 0, "fetched": 0}
     if gnews_stats:
-        gnews_total_fetched = sum(s["fetched"] for s in gnews_stats.values())
+        # .get() defaults keep this working against any gnews_stats shape that
+        # predates the freshness counters.
+        for s in gnews_stats.values():
+            for k in gnews_totals:
+                gnews_totals[k] += s.get(k, 0)
         gnews_relevant = sum(1 for a, _ in relevant if a["source"].startswith("Google News ("))
         print(
             f"  [ingest] Google News: {len(gnews_stats)} tickers, "
-            f"{gnews_total_fetched} articles fetched, {gnews_relevant} passed relevance >= {ingest_gate}"
+            f"{gnews_totals['entries']} entries seen, "
+            f"{gnews_totals['skipped_stale']} skipped stale, "
+            f"{gnews_totals['skipped_no_link_or_title']} skipped no link/title, "
+            f"{gnews_totals['fetched']} articles fetched, "
+            f"{gnews_relevant} passed relevance >= {ingest_gate}"
         )
 
     # [4b] Full-text enrichment for scrapeable sources
@@ -2888,6 +3080,33 @@ def run_ingestion():
 
     boosted = boost_watchlist_relevance(article_ids)
     print(f"  ★ {boosted} articles boosted by watchlist relevance")
+
+    # Persist the run's funnel so the drop rates are trendable instead of living
+    # only in one run's stdout. Fully guarded, additive, and last: nothing above
+    # depends on it.
+    _persist_ingest_run_stats({
+        "run_started_at": run_started_at.isoformat(),
+        "duration_s": round(time.time() - t_total, 2),
+        "relevance_grade_mode": RELEVANCE_GRADE_MODE,
+        "freshness_days": INGEST_FRESHNESS_DAYS,
+        "ingest_gate": ingest_gate,
+        "gate_candidates": gate_candidates,
+        "gate_passed": len(relevant),
+        "gate_dropped": gate_total_dropped,
+        "gate_dropped_by_reason": gate_dropped,
+        "gnews_tickers": len(gnews_stats),
+        "gnews_entries_seen": gnews_totals["entries"],
+        "gnews_fetched": gnews_totals["fetched"],
+        "gnews_skipped_stale": gnews_totals["skipped_stale"],
+        "gnews_skipped_no_link_or_title": gnews_totals["skipped_no_link_or_title"],
+        # Tickers that saw entries and kept none because every one was stale.
+        "gnews_all_stale_tickers": sum(
+            1 for s in gnews_stats.values()
+            if s.get("skipped_stale", 0) and not s.get("fetched", 0)
+        ),
+        "grade_source_counts": grade_sources,
+        "articles_stored": stored,
+    })
     return stored
 
 if __name__ == "__main__":
