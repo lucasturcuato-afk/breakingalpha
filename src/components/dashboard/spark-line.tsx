@@ -1,5 +1,7 @@
 "use client";
 
+import { cachedFetch } from "@/lib/client-fetch-cache";
+
 /**
  * DrawSpark — the re-skin's shared draw-in sparkline. The stroke reveals left
  * to right via stroke-dash (.dash-fspark-path, reduced-motion gated in CSS)
@@ -66,7 +68,7 @@ interface ChartResponse {
  */
 export async function loadCloses(ticker: string): Promise<number[] | null> {
   try {
-    const res = await fetch(`/api/stock-chart?ticker=${encodeURIComponent(ticker)}&range=1mo`);
+    const res = await cachedFetch(`/api/stock-chart?ticker=${encodeURIComponent(ticker)}&range=1mo`);
     if (!res.ok) return null;
     const data: ChartResponse = await res.json();
     const closes = (data.points ?? []).map((p) => p.c).filter((c) => Number.isFinite(c));

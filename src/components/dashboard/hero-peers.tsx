@@ -1,5 +1,7 @@
 "use client";
 
+import { cachedFetch } from "@/lib/client-fetch-cache";
+
 import { useEffect, useState } from "react";
 import { AnimatedNumber } from "@/components/ui";
 import { DrawSpark, loadCloses } from "@/components/dashboard/spark-line";
@@ -95,7 +97,7 @@ export function HeroPeers({
       const symbols = [...tickers].slice(0, MAX_BARS);
       let quoted: PeerBar[] = [];
       try {
-        const res = await fetch(`/api/watchlist-quotes?symbols=${symbols.join(",")}`);
+        const res = await cachedFetch(`/api/watchlist-quotes?symbols=${symbols.join(",")}`);
         if (res.ok) {
           const json = await res.json();
           const quotes: Record<string, { price: string; pct: number }> = json.quotes ?? {};

@@ -60,3 +60,24 @@ They run in parallel via `Promise.allSettled([...]).finally(() => settleStories(
 - The reveal gate ships at a 10s budget with this behaviour known and accepted; see the PR description.
 - `scratch/DASHBOARD_REQUEST_DUPLICATION.md` — separate issue, 46 `/api/` requests per load.
 - `scratch/INGEST_RECON.md` — the `articles` table profile and the disk-IO history.
+
+---
+
+## RESOLVED (measured 2026-08-12, same method, same hardware)
+
+Root cause was NOT evenly spread across the four functions.
+
+| function | before | finding |
+|---|---|---|
+| `loadCounts` | 3,410ms x3 | **HTTP 500 `57014`** every time. Three `count: "exact"` queries on a ~169k-row `articles` table, sequentially scanning. Identical timing at 1h/6h/24h/72h windows proves the scan is insensitive to selectivity. It had **never once returned data**; the silent catch defaulted the stat band to 0. |
+| `loadSpark` | 633ms | 200, but **1,000 rows of ~31,000** (`content-range: 0-999/*`). PostgREST's default cap. The sparkline was silently wrong. |
+| `loadBriefing` | 581ms | innocent |
+| `loadStories` | 555ms | innocent |
+
+**Fixes, code only, no migration:**
+- `count: "exact"` -> `count: "planned"` (planner estimate, 1,050ms, returns). A failed count now sets `countsFailed` and the tile renders "no count" rather than a fabricated 0.
+- `loadSpark` reads `pipeline_runs.ingest_count` instead of scanning `articles`. Server-side aggregate already maintained by the pipeline; 468ms, 201 rows over 12 days.
+
+**Result:** `stories` 13,570ms -> 4,839ms. Whole-page reveal now lands on `all-settled`, not `timeout`. The stat band shows a real number (285) for the first time.
+
+**Still open:** the count is now a planner ESTIMATE, not exact. `idx_articles_ingested_at` (sql/0023, HAND-APPLY) is unconfirmed; an exact count stays out of reach until it exists.

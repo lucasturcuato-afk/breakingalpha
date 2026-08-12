@@ -1,5 +1,7 @@
 "use client";
 
+import { cachedFetch } from "@/lib/client-fetch-cache";
+
 import { useEffect, useState } from "react";
 import { useDashboardSource } from "@/components/dashboard/dashboard-ready";
 import Link from "next/link";
@@ -72,7 +74,7 @@ export function WatchlistWidget() {
         let quotes: Record<string, Quote> = {};
         if (symbols.length > 0) {
           try {
-            const qr = await fetch(`/api/watchlist-quotes?symbols=${symbols.join(",")}`);
+            const qr = await cachedFetch(`/api/watchlist-quotes?symbols=${symbols.join(",")}`);
             if (qr.ok) quotes = ((await qr.json()).quotes ?? {}) as Record<string, Quote>;
           } catch {
             // quotes optional; rows render with a dash

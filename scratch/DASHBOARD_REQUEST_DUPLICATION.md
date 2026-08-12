@@ -53,3 +53,17 @@
 ## Related
 
 The reveal gate added in the layout/loading PR gates on each source's **first** settle precisely so this refetch storm cannot re-trigger the page loading state. That is a containment, not a fix — the requests still happen.
+
+---
+
+## RESOLVED (measured 2026-08-12, same method, ~13s dwell)
+
+| endpoint | before | after |
+|---|---|---|
+| `/api/watchlist-quotes` | 24x | **5x** |
+| `/api/stock-chart` | 11x | **1x** |
+| **total /api/** | **65** | **33** |
+
+**Fix:** `src/lib/client-fetch-cache.ts` -- in-flight dedupe plus a 30s TTL, keyed on URL. Six dashboard call sites swapped `fetch(` -> `cachedFetch(`. Responses are cloned per caller, so `res.ok` and `res.json()` behave identically and no call site's error handling changed. A non-ok response is evicted rather than cached, so the intermittent 503 documented above cannot become a 30s outage.
+
+**Not addressed:** `/api/market-indices` is now the top repeater at 7x. Left alone deliberately -- it may be an intentional live-price poll, and a 30s TTL would silently change its refresh cadence. Confirm the intent before caching it.

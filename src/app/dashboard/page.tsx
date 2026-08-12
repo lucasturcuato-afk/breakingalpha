@@ -157,6 +157,9 @@ function DashboardPageInner() {
   // to "No stories yet", which blamed the pipeline for a database timeout.
   const [storiesError, setStoriesError] = useState(false);
   const [storyCount, setStoryCount] = useState(0);
+  // True when the count queries errored. Rendered as an explicit absence rather
+  // than as 0, which would read as "no articles today".
+  const [countsFailed, setCountsFailed] = useState(false);
   const [marketCards, setMarketCards] = useState<Record<string, MarketCardData | null>>({});
   const [bullishCount, setBullishCount] = useState(0);
   const [bearishCount, setBearishCount] = useState(0);
@@ -196,53 +199,94 @@ function DashboardPageInner() {
 
     // 1. Stat-band counts (today + bullish/bearish split)
     async function loadCounts() {
-      try {
-        const todayMidnight = new Date();
-        todayMidnight.setUTCHours(0, 0, 0, 0);
-        const [{ count }, { count: bullish }, { count: bearish }] = await Promise.all([
-          supabase
-            .from("articles")
-            .select("id", { count: "exact", head: true })
-            .gte("ingested_at", todayMidnight.toISOString()),
-          supabase
-            .from("articles")
-            .select("id", { count: "exact", head: true })
-            .gte("ingested_at", todayMidnight.toISOString())
-            .ilike("sentiment", "%bullish%"),
-          supabase
-            .from("articles")
-            .select("id", { count: "exact", head: true })
-            .gte("ingested_at", todayMidnight.toISOString())
-            .ilike("sentiment", "%bearish%"),
-        ]);
-        setStoryCount(count ?? 0);
-        setBullishCount(bullish ?? 0);
-        setBearishCount(bearish ?? 0);
-      } catch (e) {
-        console.error("Failed to load dashboard counts:", e);
+      // count: "planned" is the PLANNER ESTIMATE, not an exact count. That is a
+      // deliberate accuracy trade, and it is the difference between a number
+      // and no number at all.
+      //
+      // Measured against production before this change: count: "exact" on
+      // `articles` returned HTTP 500 / 57014 statement timeout on EVERY call,
+      // at ~3.5s each. The window made no difference -- 1h, 6h, 24h and 72h all
+      // timed out in ~3.5s -- which is the signature of a sequential scan:
+      // `ingested_at` is not index-served, so an exact count walks all ~169k
+      // rows regardless of how narrow the predicate is. These three counts had
+      // therefore NEVER returned data; the catch swallowed the failure and the
+      // stat band silently showed its initial zeros.
+      //
+      // The same predicate with count: "planned" returns in ~1.05s.
+      const todayMidnight = new Date();
+      todayMidnight.setUTCHours(0, 0, 0, 0);
+      const iso = todayMidnight.toISOString();
+      const [total, bull, bear] = await Promise.all([
+        supabase
+          .from("articles")
+          .select("id", { count: "planned", head: true })
+          .gte("ingested_at", iso),
+        supabase
+          .from("articles")
+          .select("id", { count: "planned", head: true })
+          .gte("ingested_at", iso)
+          .ilike("sentiment", "%bullish%"),
+        supabase
+          .from("articles")
+          .select("id", { count: "planned", head: true })
+          .gte("ingested_at", iso)
+          .ilike("sentiment", "%bearish%"),
+      ]);
+
+      // A failed count is now VISIBLE. Previously any error fell through to the
+      // initial 0 and read as "no articles today", which is a different fact
+      // from "we could not count them".
+      const failed = [total, bull, bear].filter((r) => r.error);
+      if (failed.length > 0) {
+        console.error(
+          "Dashboard counts failed:",
+          failed.map((r) => r.error?.message).join(" | "),
+        );
+        setCountsFailed(true);
+        return;
       }
+      setCountsFailed(false);
+      setStoryCount(total.count ?? 0);
+      setBullishCount(bull.count ?? 0);
+      setBearishCount(bear.count ?? 0);
     }
 
     // 2. Signals sparkline (12-day ingest buckets)
     async function loadSpark() {
+      // Reads the ALREADY-AGGREGATED per-run ingest counts instead of pulling
+      // every article row and bucketing them in the browser.
+      //
+      // The previous version selected `ingested_at` for every article in the
+      // window -- roughly 31,000 rows at current volume -- and PostgREST capped
+      // the response at its default 1,000. So the sparkline was computed from
+      // an arbitrary truncated 1,000 rows and was WRONG, not merely slow.
+      // Measured: 633ms, `content-range: 0-999/*`, 1000 rows returned.
+      //
+      // pipeline_runs carries ingest_count per run and is small (201 rows over
+      // the same 12-day window, 468ms). Runs that do not ingest (edgar,
+      // grading) carry a null ingest_count and are skipped, so the buckets are
+      // articles stored per day, which is what the sparkline is meant to show.
       try {
         const sparkStart = new Date();
         sparkStart.setUTCHours(0, 0, 0, 0);
         sparkStart.setUTCDate(sparkStart.getUTCDate() - (SPARK_DAYS - 1));
-        const { data: sparkRows } = await supabase
-          .from("articles")
-          .select("ingested_at")
-          .gte("ingested_at", sparkStart.toISOString());
-        if (sparkRows) {
-          const buckets = new Array(SPARK_DAYS).fill(0);
-          const baseMs = sparkStart.getTime();
-          const dayMs = 86400000;
-          for (const row of sparkRows) {
-            const idx = Math.floor((new Date(row.ingested_at).getTime() - baseMs) / dayMs);
-            if (idx >= 0 && idx < SPARK_DAYS) buckets[idx]++;
-          }
-          setSparkSignals(buckets);
+        const { data: runRows, error } = await supabase
+          .from("pipeline_runs")
+          .select("started_at, ingest_count")
+          .gte("started_at", sparkStart.toISOString())
+          .not("ingest_count", "is", null);
+        if (error) {
+          console.error("Failed to load dashboard sparkline:", error.message);
+          return;
         }
+        const buckets = new Array(SPARK_DAYS).fill(0);
+        const baseMs = sparkStart.getTime();
+        const dayMs = 86400000;
+        for (const row of runRows ?? []) {
+          const idx = Math.floor((new Date(row.started_at).getTime() - baseMs) / dayMs);
+          if (idx >= 0 && idx < SPARK_DAYS) buckets[idx] += row.ingest_count ?? 0;
+        }
+        setSparkSignals(buckets);
       } catch (e) {
         console.error("Failed to load dashboard sparkline:", e);
       }
@@ -486,14 +530,22 @@ function DashboardPageInner() {
         <StatCard
           key={sym}
           label={labelForSymbol("SIGNALS")}
-          value={String(storyCount)}
+          // countsFailed renders the absence. Showing "0" here would assert
+          // there were no articles today, which is a different fact from "the
+          // count query failed" -- and it is the fact this tile showed for as
+          // long as count: "exact" was timing out.
+          value={countsFailed ? "no count" : String(storyCount)}
           change={0}
           accentGold
           sparkData={sparkSignals}
-          detailRows={[
-            { label: "Bullish", value: String(bullishCount) },
-            { label: "Bearish", value: String(bearishCount) },
-          ]}
+          detailRows={
+            countsFailed
+              ? [{ label: "Counts", value: "unavailable" }]
+              : [
+                  { label: "Bullish", value: String(bullishCount) },
+                  { label: "Bearish", value: String(bearishCount) },
+                ]
+          }
           editOverlay={overlay}
           showDivider={i > 0}
         />
