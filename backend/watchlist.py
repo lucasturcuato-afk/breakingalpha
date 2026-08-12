@@ -152,6 +152,31 @@ _CAPITALISATION_REQUIRED = frozenset({
     "mara", "meta", "mu", "net", "on", "onto", "pep", "spy", "v",
 })
 
+# Exchange and venue tokens. These are never a company mention, so they are
+# dropped before matching regardless of what the watchlist contains.
+#
+# NASDAQ is the one that actually hurt: it is a live ticker-type watchlist entry,
+# and the token appears in 2,309 titles and 1,745 summaries of the 48,000-row
+# sample, almost entirely as the exchange prefix in the "Company Inc
+# (NASDAQ:ABCD)" pattern that wire and press-release feeds use. That is a
+# listing venue, not a mention of the company. Capitalisation cannot separate
+# these because the exchange prefix is itself uppercase.
+#
+# The siblings are included because they are the same defect waiting to happen
+# and cost nothing today (none is currently watched). Counts are EXCH:TICKER
+# prefix occurrences in the same sample: nyse 3,657, nasdaq 3,044, nasdaqgs 201,
+# tsx 149, asx 79, lse 64, nysearca 58, otcmkts 48, nasdaqgm 34, xtra 30,
+# nasdaqcm 29.
+#
+# NOTE: this makes "NASDAQ" unwatchable as an identifier. Nasdaq Inc. the
+# operating company is still reachable by watching its real ticker, NDAQ, which
+# does not collide with the exchange prefix.
+_EXCHANGE_TOKENS = frozenset({
+    "nasdaq", "nasdaqgs", "nasdaqgm", "nasdaqcm", "nyse", "nysearca",
+    "nyseamerican", "amex", "otc", "otcmkts", "otcqb", "otcqx",
+    "tsx", "tsxv", "asx", "lse", "xtra", "epa", "etr", "bme", "swx", "cboe",
+})
+
 
 def _build_identifier_matcher(identifiers):
     """Compile the watchlist identifiers into one token-anchored alternation.
@@ -163,9 +188,16 @@ def _build_identifier_matcher(identifiers):
     Alternatives are sorted longest-first so a longer identifier wins over a
     prefix of itself (regex alternation is first-match-wins at each position, so
     without this "ge" could shadow "ge group").
+
+    Exchange/venue tokens (_EXCHANGE_TOKENS) are dropped here rather than
+    filtered at match time: they can never be a mention, so they should not cost
+    a regex alternative either.
     """
     cleaned = sorted(
-        {i.strip() for i in identifiers if i and i.strip()},
+        {
+            i.strip() for i in identifiers
+            if i and i.strip() and i.strip().lower() not in _EXCHANGE_TOKENS
+        },
         key=lambda s: (-len(s), s.lower()),
     )
     if not cleaned:

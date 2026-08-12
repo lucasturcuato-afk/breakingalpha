@@ -285,6 +285,27 @@ class WatchlistTokenMatchTest(_BoostTestBase):
         self.assertEqual(count, 1, "ordinary tickers stay case-insensitive")
         self.assertEqual(fake.updates[0][1], {"watchlist_match": ["aapl"]})
 
+    def test_exchange_token_never_matches(self):
+        # NASDAQ is a live ticker-type watchlist entry, but the token is almost
+        # always the exchange prefix in "Company Inc (NASDAQ:ABCD)".
+        arts = {
+            "a": {"id": "a", "title": "Rubrik Inc (NASDAQ:RBRK) launches data layer",
+                  "summary": "", "companies": [], "relevance_score": 5},
+            "b": {"id": "b", "title": "Nasdaq composite closes higher",
+                  "summary": "", "companies": [], "relevance_score": 5},
+        }
+        fake, count = self._run(["NASDAQ", "NYSE"], arts)
+        self.assertEqual(count, 0, "exchange tokens are never a company mention")
+        self.assertEqual(fake.updates, [])
+
+    def test_exchange_exclusion_does_not_block_the_real_ticker(self):
+        # Nasdaq Inc. the operating company stays reachable via NDAQ.
+        arts = {"a": {"id": "a", "title": "NDAQ maintained by Barclays",
+                      "summary": "", "companies": [], "relevance_score": 5}}
+        fake, count = self._run(["NASDAQ", "NDAQ"], arts)
+        self.assertEqual(count, 1)
+        self.assertEqual(fake.updates[0][1], {"watchlist_match": ["ndaq"]})
+
     def test_legacy_alias_still_callable(self):
         arts = {"a": {"id": "a", "title": "AAPL posts record quarter",
                       "summary": "", "companies": [], "relevance_score": 5}}
