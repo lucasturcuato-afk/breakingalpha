@@ -1,4 +1,4 @@
--- 0026_ingest_observability.sql
+-- 0028_ingest_observability.sql
 --
 -- HAND-APPLY. Do not auto-run. Adds the storage behind the ingest observability
 -- work: per-row relevance-score provenance, and a per-run funnel breakdown for
@@ -16,10 +16,18 @@
 --
 -- Section 1 and section 2 are independent. Either can be applied alone.
 --
--- CONCURRENTLY NOTE: the index in section 1 is on `articles`, which is large and
--- under IO pressure (see sql/0023 and sql/0024). CONCURRENTLY CANNOT run inside
--- a transaction block: in the Supabase SQL editor run that one statement ON ITS
--- OWN, off-peak. Everything else can go in one paste.
+-- NOTHING IS INDEXED ON `articles`. This migration touches that table exactly
+-- once, to add one nullable column. The single index here is on
+-- ingest_run_stats, a brand new empty table, where the build is instant and
+-- uncontended. So everything can go in a single paste, at any time, with no
+-- CONCURRENTLY caveat and no off-peak window.
+--
+-- An earlier draft carried a partial index on articles.relevance_grade_source.
+-- It was dropped: nothing in the ingest write path reads that column, so the
+-- index served only the ad-hoc grouping query in section 3, which filters on
+-- ingested_at and is already served by the sql/0023 and sql/0024 indexes. On a
+-- table that size, adding an index no query plan asked for is a cost with no
+-- reader. If the grouping query is ever measured slow, add it then.
 
 
 -- ===========================================================================
@@ -51,14 +59,10 @@ ALTER TABLE public.articles
   ADD COLUMN IF NOT EXISTS relevance_grade_source text;
 
 COMMENT ON COLUMN public.articles.relevance_grade_source IS
-  'Which scorer produced relevance_score: grader | legacy_fallback | sec_pinned | legacy_skip | legacy_mode. NULL = unlabelled (pre-0026 or ungraded path).';
+  'Which scorer produced relevance_score: grader | legacy_fallback | sec_pinned | legacy_skip | legacy_mode. NULL = unlabelled (pre-0028 or ungraded path).';
 
--- Partial index: every read of this column is "find the rows that are NOT
--- plain grader output", so the NULL majority is excluded from the index.
--- RUN THIS STATEMENT ON ITS OWN (CONCURRENTLY cannot be in a transaction).
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_articles_relevance_grade_source
-  ON public.articles (relevance_grade_source, ingested_at DESC)
-  WHERE relevance_grade_source IS NOT NULL;
+-- Adding a nullable column with no default is a catalog-only change in
+-- Postgres: no table rewrite, no backfill, no long lock on a large table.
 
 
 -- ===========================================================================

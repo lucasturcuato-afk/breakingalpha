@@ -2379,7 +2379,7 @@ def _grade_source_column_available():
     except Exception as ex:
         _GRADE_SOURCE_COLUMN_AVAILABLE = False
         print("  relevance-grade: articles.relevance_grade_source missing "
-              f"(apply sql/0026_ingest_observability.sql) - not storing grade source ({ex})")
+              f"(apply sql/0028_ingest_observability.sql) - not storing grade source ({ex})")
     return _GRADE_SOURCE_COLUMN_AVAILABLE
 
 
@@ -2878,7 +2878,7 @@ def store_article(article, analysis):
 def _persist_ingest_run_stats(payload):
     """Best-effort write of one ingest_run_stats row.
 
-    ingest_run_stats is a HAND-APPLY table (sql/0026_ingest_observability.sql).
+    ingest_run_stats is a HAND-APPLY table (sql/0028_ingest_observability.sql).
     Until it lands this prints once per run and the run is otherwise unaffected;
     the same breakdown is already on stdout either way. Never raises: this runs
     in the ingest tail, and a failure here must not mark the step degraded.
@@ -2888,7 +2888,7 @@ def _persist_ingest_run_stats(payload):
         print("  [ingest:stats] run breakdown persisted to ingest_run_stats")
     except Exception as ex:
         print(f"  [ingest:stats] not persisted, stdout breakdown above is the "
-              f"only record (apply sql/0026_ingest_observability.sql): {ex}")
+              f"only record (apply sql/0028_ingest_observability.sql): {ex}")
 
 
 def run_ingestion():
