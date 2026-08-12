@@ -2984,23 +2984,26 @@ def run_ingestion():
     # Gate accounting. The loop printed a line only on the PASS branch, so the
     # single biggest filter in the pipeline produced no output at all for the
     # articles it rejected: a grader shift that halved the keep rate would have
-    # looked identical to a quiet news day. The condition below is the original
-    # compound test split into its own short-circuit order (falsy result ->
-    # relevant falsy -> score below gate), so the buckets partition the drops
-    # exactly and the passing set is unchanged.
+    # looked identical to a quiet news day.
+    #
+    # The pass condition below is the ORIGINAL predicate, character for
+    # character. Counting happens entirely in the else branch, so this cannot
+    # move an article across the gate even in principle -- there is no rewritten
+    # expression to reason about, and the #590 guard on this predicate still
+    # holds. The else-branch tests re-derive the reason in the same
+    # short-circuit order the predicate itself uses, so the three buckets
+    # partition the drops exactly.
     gate_dropped = {"result_none": 0, "relevant_falsy": 0, "below_gate": 0}
     for a, result in zip(fresh, results):
-        if not result:
+        if result and result.get("relevant") and result.get("relevance_score", 0) >= ingest_gate:
+            relevant.append((a, result))
+            print(f"  ✓ [{result['relevance_score']}/10] [{result.get('sector','?')[:20]}] {a['title'][:60]}...")
+        elif not result:
             gate_dropped["result_none"] += 1
-            continue
-        if not result.get("relevant"):
+        elif not result.get("relevant"):
             gate_dropped["relevant_falsy"] += 1
-            continue
-        if result.get("relevance_score", 0) < ingest_gate:
+        else:
             gate_dropped["below_gate"] += 1
-            continue
-        relevant.append((a, result))
-        print(f"  ✓ [{result['relevance_score']}/10] [{result.get('sector','?')[:20]}] {a['title'][:60]}...")
 
     gate_candidates = len(fresh)
     gate_total_dropped = sum(gate_dropped.values())

@@ -76,21 +76,22 @@ def _original_gate(results, gate):
 
 
 def _instrumented_gate(results, gate):
-    """The instrumented classification, mirroring run_ingestion's loop. Returns
-    (passed_indices, dropped_by_reason)."""
+    """The instrumented classification, mirroring run_ingestion's loop verbatim.
+
+    The pass arm is the original predicate unchanged; only the else arms are
+    new. Kept in lockstep with the production loop by
+    TestGateLoopShapeMatchesProduction below."""
     dropped = {"result_none": 0, "relevant_falsy": 0, "below_gate": 0}
     passed = []
     for i, result in enumerate(results):
-        if not result:
+        if result and result.get("relevant") and result.get("relevance_score", 0) >= gate:
+            passed.append(i)
+        elif not result:
             dropped["result_none"] += 1
-            continue
-        if not result.get("relevant"):
+        elif not result.get("relevant"):
             dropped["relevant_falsy"] += 1
-            continue
-        if result.get("relevance_score", 0) < gate:
+        else:
             dropped["below_gate"] += 1
-            continue
-        passed.append(i)
     return passed, dropped
 
 
@@ -133,6 +134,29 @@ class IngestGateClassificationTest(unittest.TestCase):
         self.assertEqual(dropped["relevant_falsy"], 2)
         # relevant rows scoring 0, 1, 5 and the score-less {"relevant": True}.
         self.assertEqual(dropped["below_gate"], 4)
+
+    def test_production_loop_still_uses_the_original_predicate_verbatim(self):
+        """_instrumented_gate above is a COPY of the production loop, so on its
+        own it proves nothing about production. This pins the real source.
+
+        The pass arm must remain the untouched predicate that sql/#590's
+        TestNoCollateralBehaviourChange also guards, and the drop counting must
+        live in else arms so it cannot participate in the pass decision."""
+        source = (
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         "ingest.py")
+        )
+        with open(source, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn(
+            'if result and result.get("relevant") and '
+            'result.get("relevance_score", 0) >= ingest_gate:',
+            text,
+            "the gate pass condition must stay the original predicate verbatim",
+        )
+        for arm in ('elif not result:',
+                    'elif not result.get("relevant"):'):
+            self.assertIn(arm, text, "drop counting must live in else arms")
 
     def test_gate_of_one_keeps_everything_with_any_signal(self):
         """The production gate under RELEVANCE_GRADE_MODE=new. Only the true-0
