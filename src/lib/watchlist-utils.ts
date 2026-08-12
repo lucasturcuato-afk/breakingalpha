@@ -90,20 +90,152 @@ export function getCompanySearchTerms(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Sector entries resolve to the taxonomy, not to free text
+// ---------------------------------------------------------------------------
+// A watchlist row is (identifier text, type enum). `type` is constrained;
+// `identifier` is NOT -- there is no FK and no check constraint, so a sector
+// subscription is free text. buildArticleOrFilter used to ignore `type`
+// entirely and serve every entry as
+//   primary_company ILIKE '%Finance%' OR title ILIKE '%Finance%'
+// which matches the word "finance" in prose and has nothing to do with the
+// article's sector. Same defect class as the watchlist boost's substring match.
+//
+// articles.industry_verticals and articles.activity_types are the right target:
+// both are written through validate_tags(), so they can only ever hold
+// whitelist members, and industry_verticals is populated on 95.3% of rows.
+//
+// The two whitelists are the dual-dimension taxonomy from CLAUDE.md, mirrored
+// from backend/ingest.py INDUSTRY_VERTICALS / ACTIVITY_TYPES. They share no
+// values, so an identifier resolves unambiguously to exactly one column.
+
+const INDUSTRY_VERTICALS = [
+  "Technology",
+  "Healthcare & Biotech",
+  "Energy & Oil/Gas",
+  "Financial Services",
+  "Consumer & Retail",
+  "Industrials & Manufacturing",
+  "Aerospace & Defense",
+  "Real Estate",
+  "Media & Telecom",
+  "Materials & Mining",
+  "Agriculture",
+] as const;
+
+const ACTIVITY_TYPES = [
+  "Mergers & Acquisitions",
+  "Private Equity",
+  "Venture Capital",
+  "IPO & Capital Markets",
+  "Earnings & Results",
+  "Macro & Policy",
+  "Geopolitics",
+  "Regulation & Legal",
+  "Fundraising",
+  "Crypto & Digital Assets",
+  "Leadership & Operations",
+] as const;
+
+// Shorthand forms already stored in the live watchlist, from the free-text
+// fallthrough in WatchlistAddInput. Each maps to exactly one canonical value.
+// Kept deliberately small: only unambiguous synonyms belong here.
+//
+// NOT mapped, on purpose:
+//   "Public Markets"     -- no defensible target in either whitelist.
+//   "Geopolitics & Macro" -- straddles TWO activity types (Geopolitics and
+//                            Macro & Policy). Mapping it would silently pick
+//                            one. It reaches user_preferences, not watchlist.
+// Both resolve to null, and a null sector filter returns no articles rather
+// than the wrong ones.
+const SECTOR_ALIASES: Record<string, string> = {
+  finance: "Financial Services",
+  financial: "Financial Services",
+  financials: "Financial Services",
+  energy: "Energy & Oil/Gas",
+  consumer: "Consumer & Retail",
+  retail: "Consumer & Retail",
+  healthcare: "Healthcare & Biotech",
+  health: "Healthcare & Biotech",
+  biotech: "Healthcare & Biotech",
+  tech: "Technology",
+  industrials: "Industrials & Manufacturing",
+  manufacturing: "Industrials & Manufacturing",
+  aerospace: "Aerospace & Defense",
+  defense: "Aerospace & Defense",
+  media: "Media & Telecom",
+  telecom: "Media & Telecom",
+  materials: "Materials & Mining",
+  mining: "Materials & Mining",
+  crypto: "Crypto & Digital Assets",
+};
+
+export type SectorMatch = {
+  column: "industry_verticals" | "activity_types";
+  value: string;
+};
+
+/**
+ * Resolve a sector-type watchlist identifier to the taxonomy column and
+ * canonical value it should match on, or null when it maps to nothing.
+ *
+ * Exact whitelist membership wins, then the alias table. Both are
+ * case-insensitive; the returned `value` is always the canonical casing,
+ * because the stored taxonomy values are case-sensitive.
+ */
+export function resolveSectorEntry(identifier: string): SectorMatch | null {
+  const key = (identifier || "").trim().toLowerCase();
+  if (!key) return null;
+
+  const vertical = INDUSTRY_VERTICALS.find((v) => v.toLowerCase() === key);
+  if (vertical) return { column: "industry_verticals", value: vertical };
+
+  const activity = ACTIVITY_TYPES.find((a) => a.toLowerCase() === key);
+  if (activity) return { column: "activity_types", value: activity };
+
+  const aliased = SECTOR_ALIASES[key];
+  if (!aliased) return null;
+
+  return (INDUSTRY_VERTICALS as readonly string[]).includes(aliased)
+    ? { column: "industry_verticals", value: aliased }
+    : { column: "activity_types", value: aliased };
+}
+
 /**
  * Builds a Supabase PostgREST `.or()` filter string that matches articles
- * for the given watchlist entry across primary_company and title.
+ * for the given watchlist entry.
+ *
+ * sector entries match the taxonomy arrays by containment. ticker and company
+ * entries keep the existing fuzzy multi-term behaviour across primary_company
+ * and title.
  *
  * Note: the `companies` column is a PostgreSQL text[] array; PostgREST does
  * not support .ilike on array columns, so it is intentionally excluded.
  *
- * Returns null if no valid conditions could be produced.
+ * Returns null if no valid conditions could be produced. Callers treat null as
+ * "no articles" rather than "unfiltered".
  */
 export function buildArticleOrFilter(
   identifier: string,
   displayName: string | null | undefined,
   type: string,
 ): string | null {
+  if (type === "sector") {
+    const match = resolveSectorEntry(identifier);
+    if (!match) return null;
+    // industry_verticals / activity_types are JSONB, not text[]. A jsonb
+    // containment filter needs a JSON array literal (cs.["Technology"]);
+    // the postgres array literal cs.{Technology} is rejected outright with
+    // 400 22P02 invalid input syntax for type json. Same trap documented in
+    // src/lib/radar-following.ts matchTaxonomy, where it silently made every
+    // industry follow match nothing.
+    //
+    // A comma or paren in the value would break the or-grammar. No canonical
+    // taxonomy value contains either, so this is a guard, not a live path.
+    if (/[,()]/.test(match.value)) return null;
+    return `${match.column}.cs.${JSON.stringify([match.value])}`;
+  }
+
   const terms = getCompanySearchTerms(identifier, displayName);
   if (terms.length === 0) return null;
 
