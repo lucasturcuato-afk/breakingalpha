@@ -21,10 +21,10 @@ interface RoleOption {
 
 const roles: RoleOption[] = [
   { id: "student_analyst", label: "Student Analyst", description: "Building investment knowledge and analytical skills", icon: <GraduationCap size={20} /> },
-  { id: "buy_side", label: "Buy-Side Analyst", description: "Investment fund research and portfolio analysis", icon: <TrendingUp size={20} /> },
-  { id: "sell_side", label: "Sell-Side Analyst", description: "Equity research and coverage for clients", icon: <BarChart3 size={20} /> },
+  { id: "buy_side", label: "Fund Analyst", description: "Investment fund research and portfolio analysis", icon: <TrendingUp size={20} /> },
+  { id: "sell_side", label: "Equity Research", description: "Equity research and coverage for clients", icon: <BarChart3 size={20} /> },
   { id: "private_equity", label: "Private Equity", description: "Deal evaluation, due diligence, and portfolio ops", icon: <Briefcase size={20} /> },
-  { id: "ria", label: "RIA / Advisor", description: "Managing client portfolios and allocations", icon: <Shield size={20} /> },
+  { id: "ria", label: "RIA / Advisor", description: "Managing client capital", icon: <Shield size={20} /> },
   { id: "family_office", label: "Family Office", description: "Multi-asset investment management", icon: <Building2 size={20} /> },
   { id: "other", label: "Other", description: "Finance professional with custom needs", icon: <Scale size={20} /> },
 ];

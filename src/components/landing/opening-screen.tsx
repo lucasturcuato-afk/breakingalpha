@@ -460,7 +460,7 @@ function Hero({
   onWaitlist: () => void;
   onSeeHow: () => void;
 }) {
-  const target = "We track which calls hold up.";
+  const target = "We track which calls the evidence supports.";
   const [typed, setTyped] = useState("");
   const [cursorOn, setCursorOn] = useState(true);
 
@@ -501,7 +501,7 @@ function Hero({
         </h1>
         <p className={styles.heroPara}>
           A generic market summary is a commodity. An honest, graded record is not. Signalera grades every call
-          against the evidence, including the calls that did not hold, and gets sharper the longer you use it.
+          against the evidence, including the calls the evidence ran against, and gets sharper the longer you use it.
         </p>
         <p className={styles.heroDisclaimer}>Informational only. Never advice.</p>
         <div className={styles.heroCtas}>

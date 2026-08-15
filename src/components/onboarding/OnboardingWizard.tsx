@@ -17,8 +17,8 @@ import { trackClientEvent } from "@/lib/track-event";
 
 const ROLES: { id: UserRole; label: string; description: string }[] = [
   { id: "student_analyst", label: "Student Analyst", description: "Learning equity research" },
-  { id: "buy_side", label: "Buy-Side Analyst", description: "Fund research & portfolio" },
-  { id: "sell_side", label: "Sell-Side Analyst", description: "Equity research coverage" },
+  { id: "buy_side", label: "Fund Analyst", description: "Fund research & portfolio" },
+  { id: "sell_side", label: "Equity Research", description: "Equity research coverage" },
   { id: "private_equity", label: "Private Equity", description: "Deal evaluation & ops" },
   { id: "ria", label: "RIA / Wealth Manager", description: "Managing client capital" },
   { id: "family_office", label: "Family Office", description: "Multi-asset allocation" },
@@ -255,8 +255,8 @@ function contextualCopyFor(
 
 const ROLE_SHORT: Record<UserRole, string> = {
   student_analyst: "Student",
-  buy_side: "Buy-side",
-  sell_side: "Sell-side",
+  buy_side: "Fund",
+  sell_side: "Equity Research",
   private_equity: "Private Equity",
   ria: "RIA",
   family_office: "Family Office",

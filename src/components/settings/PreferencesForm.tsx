@@ -17,8 +17,8 @@ import type {
 
 const ROLES: { id: UserRole; label: string }[] = [
   { id: "student_analyst", label: "Student Analyst" },
-  { id: "buy_side", label: "Buy-Side Analyst" },
-  { id: "sell_side", label: "Sell-Side Analyst" },
+  { id: "buy_side", label: "Fund Analyst" },
+  { id: "sell_side", label: "Equity Research" },
   { id: "private_equity", label: "Private Equity" },
   { id: "ria", label: "RIA / Wealth Manager" },
   { id: "family_office", label: "Family Office" },
