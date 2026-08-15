@@ -19,6 +19,8 @@
  * so the gate has to be about direction, not about the absolute number.
  *
  * Exit 1 on any ERROR. WARN never fails the run but is printed.
+ * Exit 2 means the run could not be trusted: a bad ref, or a file in the diff
+ * with uncommitted edits. --since refuses rather than answering with a caveat.
  *
  * The allowlist at the bottom is the important part. Every entry is a ruling
  * someone made, not a silent pass. Adding to it should be a visible diff.
@@ -319,8 +321,9 @@ function addedLinesSince(ref) {
 }
 
 /* The diff numbers lines in HEAD's blob, but lintFile reads the working tree.
- * If a touched file has uncommitted edits the two disagree and the filter
- * silently drifts, which is the one way this gate can lie. Say so. */
+ * If a touched file has uncommitted edits the two disagree and the new /
+ * pre-existing split silently drifts, which is the one way this gate can lie.
+ * A gate that cannot trust its own answer refuses to run. */
 function uncommitted(files) {
   if (!files.length) return [];
   try {
@@ -341,6 +344,20 @@ const addedByFile = sinceRef ? addedLinesSince(sinceRef) : null;
 
 let files;
 if (sinceRef) {
+  // Refuse before doing any work. Checked across every file in the diff, not
+  // just the lintable ones, so the answer is "the tree matches HEAD" rather
+  // than "the tree matches HEAD in the places I happened to look".
+  const drifted = uncommitted([...addedByFile.keys()]);
+  if (drifted.length) {
+    console.error(
+      `design-lint --since ${sinceRef}: refusing to run. ${drifted.length} file(s) in the ` +
+      `diff have uncommitted changes.`);
+    console.error(
+      'The diff numbers lines in HEAD, this lints the working tree. While they disagree ' +
+      'the new / pre-existing split cannot be trusted. Commit or stash, then re-run:');
+    for (const d of drifted) console.error(`  ${d}`);
+    process.exit(2);
+  }
   // Only the touched files, and only ones still on disk and in scope.
   files = [...addedByFile.keys()]
     .filter(f => EXT.has(extname(f)) && !isExcluded(f) && existsSync(f));
@@ -377,17 +394,9 @@ for (const f of [...errors, ...warns]) {
 
 if (sinceRef) {
   const preExisting = findings.length - reported.length;
-  const drifted = uncommitted(files);
   console.log(`\ndesign-lint --since ${sinceRef}: ${files.length} files touched`);
   console.log(`${reported.length} new, ${preExisting} pre-existing in touched files`);
   console.log(`new: ${errors.length} errors, ${warns.length} warnings`);
-  if (drifted.length) {
-    console.log(
-      `\nWARNING: ${drifted.length} touched file(s) have uncommitted changes. The diff ` +
-      `numbers lines in HEAD, this lints your working tree, so the new/pre-existing ` +
-      `split is unreliable until you commit:`);
-    for (const d of drifted) console.log(`  ${d}`);
-  }
 } else {
   console.log(`\ndesign-lint: ${files.length} files, ${errors.length} errors, ${warns.length} warnings`);
 }
