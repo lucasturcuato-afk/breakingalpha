@@ -32,14 +32,16 @@ export function CompletenessBadge({ completeness }: { completeness?: Completenes
   );
 }
 
-export function SignalScore({ score }: { score?: number | null }) {
-  if (score == null) return null;
-  return (
-    <span className="font-sans text-[10px] text-text-muted font-semibold">
-      Signal: {score.toFixed(1)}
-    </span>
-  );
-}
+// SignalScore is deliberately gone. A per-story scalar is the same class of
+// derived figure the product brief forbids, and the design system specifies
+// text labels rather than numbers for this kind of reading. Nothing replaces
+// it in the row: the prototype's story anatomy is a sentiment pill, the
+// ticker, the sector, and source with elapsed time. See the design handoff,
+// open decision 8.
+//
+// getAdjustedScore stays exported and is still computed. It remains the
+// per-user ordering key in personalization-rail.ts. Ranking on a scalar is
+// not the violation; showing one is.
 
 // Minimum graded-outcome sample before a source's win rate is meaningful.
 // Below this we hide the pill entirely — a 0% or 1-of-1 win rate on every

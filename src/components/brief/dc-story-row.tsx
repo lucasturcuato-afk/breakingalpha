@@ -9,7 +9,7 @@ import { withCompanyLine } from "@/lib/memo-company-line";
 import { cn } from "@/lib/utils";
 import { BookmarkButton } from "@/components/ui/bookmark";
 import { MemoModal } from "@/components/memo/MemoModal";
-import { CompletenessBadge, SignalScore, SourceCredibilityBadge } from "@/lib/article-signal";
+import { CompletenessBadge, SourceCredibilityBadge } from "@/lib/article-signal";
 import { SentimentPill, sentimentToTone } from "@/components/ui/sentiment-pill";
 import type { StoryData } from "@/components/dashboard";
 
@@ -173,12 +173,6 @@ export function DCStoryRow({ story, index, watching = false }: DCStoryRowProps) 
             <span className="font-sans" style={{ fontSize: 10 }}>
               {story.timestamp}
             </span>
-            {story.adjustedScore != null && (
-              <>
-                <span style={{ color: "var(--text-faint)" }}>·</span>
-                <SignalScore score={story.adjustedScore} />
-              </>
-            )}
             <SourceCredibilityBadge winRate={story.sourceWinRate} sampleSize={story.sourceSampleSize} />
             {completenessLabel && <CompletenessBadge completeness={story.completeness} />}
           </div>

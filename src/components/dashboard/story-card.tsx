@@ -17,7 +17,7 @@ import { MemoModal } from "@/components/memo/MemoModal";
 import { HeroPeers } from "@/components/dashboard/hero-peers";
 import { HeroThread } from "@/components/dashboard/hero-thread";
 import type { Completeness } from "@/lib/article-signal";
-import { CompletenessBadge, SignalScore, SourceCredibilityBadge } from "@/lib/article-signal";
+import { CompletenessBadge, SourceCredibilityBadge } from "@/lib/article-signal";
 
 export interface StoryData {
   id: string;
@@ -328,7 +328,6 @@ export function LeadStoryCard({
             {story.timestamp}
           </span>
           <CompletenessBadge completeness={story.completeness} />
-          <SignalScore score={story.adjustedScore} />
           <SourceCredibilityBadge winRate={story.sourceWinRate} sampleSize={story.sourceSampleSize} />
           {story.url && (
             <a
@@ -475,7 +474,6 @@ export function CompactStoryCard({ story, number, onBookmark }: CompactStoryCard
               {story.timestamp}
             </span>
             <CompletenessBadge completeness={story.completeness} />
-            <SignalScore score={story.adjustedScore} />
             <SourceCredibilityBadge winRate={story.sourceWinRate} sampleSize={story.sourceSampleSize} />
             {story.url && (
               <a

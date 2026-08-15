@@ -38,14 +38,13 @@ export function ArticlesTable({ articles }: ArticlesTableProps) {
     <div className="overflow-x-auto rounded-md border border-border-subtle bg-cream-hi">
       <table
         data-testid="articles-table"
-        className="w-full table-fixed border-collapse text-left text-sm min-w-[700px]"
+        className="w-full table-fixed border-collapse text-left text-sm min-w-[644px]"
       >
         <thead>
           <tr className="border-b border-border-subtle bg-[var(--row-alt)]">
             <th className={`${TH} w-[88px]`}>Type</th>
             <th className={`${TH} min-w-[200px]`}>Headline</th>
             <th className={`${TH} w-[160px]`}>Source</th>
-            <th className={`${TH} w-[56px] text-right`}>Score</th>
             <th className={`${TH} w-[88px]`}>Tone</th>
             <th className={`${TH} w-[72px] text-right`}>Age</th>
           </tr>

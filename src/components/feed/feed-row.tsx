@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { SentimentPill, sentimentToTone } from "@/components/ui/sentiment-pill";
 import { Sparkles, Plus, MessageSquare, ExternalLink, Bookmark, BookmarkCheck } from "lucide-react";
 import { MemoModal } from "@/components/memo/MemoModal";
-import { CompletenessBadge, SignalScore, SourceCredibilityBadge } from "@/lib/article-signal";
+import { CompletenessBadge, SourceCredibilityBadge } from "@/lib/article-signal";
 import type { StoryData } from "@/components/dashboard";
 
 interface FeedRowProps {
@@ -99,7 +99,6 @@ function FeedRowInner({ story, saved: savedProp, onBookmark }: FeedRowProps) {
               {story.timestamp}
             </span>
             <CompletenessBadge completeness={story.completeness} />
-            <SignalScore score={story.adjustedScore} />
             <SourceCredibilityBadge winRate={story.sourceWinRate} />
           </div>
 

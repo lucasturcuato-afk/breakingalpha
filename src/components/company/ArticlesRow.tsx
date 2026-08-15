@@ -17,7 +17,7 @@ import type { KeyboardEvent, Ref, MouseEvent as ReactMouseEvent } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { SentimentPill, type SentimentTone } from "@/components/ui/sentiment-pill";
-import { CompletenessBadge, SourceCredibilityBadge, getAdjustedScore } from "@/lib/article-signal";
+import { CompletenessBadge, SourceCredibilityBadge } from "@/lib/article-signal";
 import type { CompanyDetailArticle } from "@/lib/data-access/getCompanyDetail";
 
 export interface ArticlesRowProps {
@@ -120,8 +120,6 @@ export function ArticlesRow({
 
   const rowBg = index % 2 === 1 ? "bg-[var(--row-alt)]" : "";
   const rowInteractive = hasExpandable ? "cursor-pointer" : "";
-  const adjustedScore = getAdjustedScore(article.relevanceScore, article.completeness);
-  const scoreText = adjustedScore != null ? adjustedScore.toFixed(1) : "--";
 
   return (
     <>
@@ -171,12 +169,6 @@ export function ArticlesRow({
             <CompletenessBadge completeness={article.completeness} />
           </span>
         </td>
-        <td
-          data-testid="articles-row-score"
-          className={`${TD} font-data text-[11px] text-text-secondary text-right`}
-        >
-          {scoreText}
-        </td>
         <td data-testid="articles-row-tone" className={TD}>
           <SentimentPill tone={tone} size="xs" />
         </td>
@@ -221,7 +213,7 @@ export function ArticlesRow({
         >
           <td
             data-testid="articles-row-summary"
-            colSpan={6}
+            colSpan={5}
             className={`px-4 py-3 text-xs leading-relaxed text-text-secondary bg-[var(--row-alt)] ${rowBg}`}
           >
             {expandLabel ? (
