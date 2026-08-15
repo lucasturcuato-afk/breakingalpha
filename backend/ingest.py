@@ -23,6 +23,10 @@ from publishers import (
     publisher_from_title_suffix,
 )
 from entity_resolver import resolve_entity, increment_mention_counts
+from normalize import normalize_lookup_key
+# Read-only matching for the primary_company fold. Deliberately NOT the alias
+# write key: see backend/company_match.py's module docstring.
+from company_match import normalize_company_key, looks_like_ticker
 from supabase_client import get_service_client
 try:
     from usage_log import accumulate_gemini_usage
@@ -2106,10 +2110,16 @@ def _reset_run_entity_caches() -> None:
     """Clear the per-run entity memo + mention tallies. Called at the top of
     run_ingestion so a long-lived process does not carry resolutions or counts
     across runs (in CI each run is a fresh process, so this is belt-and-suspenders)."""
+    global _ENTITY_SNAPSHOT
     _RUN_VALID_COMPANY_CACHE.clear()
     _RUN_ENTITY_RESOLUTION_CACHE.clear()
     _RUN_COMPANY_MENTION_TALLY.clear()
     _RUN_ALIAS_MENTION_TALLY.clear()
+    # Primary-fold resolution state. The snapshot is a point-in-time copy of the
+    # entity index, so a long-lived process must rebuild it per run or it folds
+    # against a stale index.
+    _PRIMARY_INDEXED_CACHE.clear()
+    _ENTITY_SNAPSHOT = None
 
 
 def _resolve_company_valid(company: str) -> bool:
@@ -2184,43 +2194,174 @@ STORE_CHUNK_SIZE = int(os.getenv("STORE_CHUNK_SIZE", "500"))
 # unchanged and behavior is byte-identical to today.
 TAGGING_PRIMARY_FOLD_ENABLED = os.getenv("TAGGING_PRIMARY_FOLD_ENABLED", "false").strip().lower() == "true"
 
-# Process-level memo of "does this primary_company name resolve to an indexed
-# companies row". Read-only SELECTs only; populated lazily.
-_PRIMARY_INDEXED_CACHE: dict[str, bool] = {}
+# Process-level memo of "what indexed company does this primary_company name
+# resolve to". Read-only SELECTs only; populated lazily. Maps the raw name to a
+# canonical companies.name, or None when it resolves to nothing.
+_PRIMARY_INDEXED_CACHE: dict[str, Optional[str]] = {}
+
+#: One-shot in-memory snapshot of the entity index, for the resolution surfaces
+#: that cannot be expressed as a PostgREST filter on `companies.name`. ~5.4k
+#: companies + ~6.0k aliases, loaded once per process. None until first use;
+#: an empty snapshot (load failed) is cached as such so we do not retry per name.
+_ENTITY_SNAPSHOT: Optional[dict] = None
 
 
-def _primary_resolves_to_indexed(name: str) -> bool:
-    """SELECT-only: does `name` resolve to an existing companies row (exact name,
-    else case-insensitive name match)? Memoized per process. Fail-closed: on any
-    error return False so a name we could not confirm is indexed is never folded.
-    Writes nothing."""
-    cached = _PRIMARY_INDEXED_CACHE.get(name)
-    if cached is not None:
-        return cached
-    result = False
+def _select_all_rows(table: str, columns: str, page_size: int = 1000) -> list[dict]:
+    """Read every row of a SMALL table. PostgREST caps a response at 1000 rows.
+
+    .range() is LIMIT/OFFSET and therefore O(offset) per page, which is why the
+    article-scale readers in this file avoid it. That does not apply here: both
+    callers are ~5-6k row reference tables, so this is 6 pages, not 170.
+    """
+    out, page = [], 0
+    while True:
+        resp = (supabase.table(table).select(columns)
+                .range(page * page_size, page * page_size + page_size - 1).execute())
+        rows = resp.data or []
+        out.extend(rows)
+        if len(rows) < page_size:
+            return out
+        page += 1
+
+
+def _load_entity_snapshot() -> dict:
+    """Build the read-only alias / ticker / normalized-name lookup tables.
+
+    Loads every companies and aliases row once (~11k small rows) instead of
+    issuing per-name queries, so adding three resolution surfaces costs one
+    pair of reads per process rather than 3N round trips.
+
+    Every map is name/key -> SET of canonical ids. The sets are the point: a key
+    that reaches two different companies is ambiguous and the caller refuses to
+    fold it. sql/proposals/0020 measured 677 duplicate clusters over 1,779 of
+    4,865 company rows, so normalized ambiguity is common, not hypothetical.
+
+    Fail-soft: on any error returns empty maps, which degrades resolution to
+    exactly the pre-existing eq/ilike behavior rather than breaking ingest.
+    """
+    snap = {"name_by_id": {}, "by_alias_key": {}, "by_ticker": {}, "by_norm": {}}
     try:
-        r = supabase.table("companies").select("id").eq("name", name).limit(1).execute()
-        if r.data:
-            result = True
-        else:
-            r2 = supabase.table("companies").select("id").ilike("name", name).limit(1).execute()
-            result = bool(r2.data)
+        companies = _select_all_rows("companies", "id, name, ticker")
+        for row in companies:
+            cid, name = row.get("id"), (row.get("name") or "").strip()
+            if not cid or not name:
+                continue
+            snap["name_by_id"][cid] = name
+            snap["by_norm"].setdefault(normalize_company_key(name), set()).add(cid)
+            ticker = (row.get("ticker") or "").strip().upper()
+            if ticker:
+                snap["by_ticker"].setdefault(ticker, set()).add(cid)
+
+        aliases = _select_all_rows("aliases", "lookup_key, canonical_id")
+        for row in aliases:
+            key, cid = (row.get("lookup_key") or "").strip(), row.get("canonical_id")
+            # An alias pointing at a company row we do not have is unusable.
+            if not key or cid not in snap["name_by_id"]:
+                continue
+            snap["by_alias_key"].setdefault(key, set()).add(cid)
+            # Aliases widen the normalized surface too: "Sony Group" reaches
+            # Sony through the alias even though no companies.name matches.
+            snap["by_norm"].setdefault(normalize_company_key(key), set()).add(cid)
+
+        print(f"  primary-fold: entity snapshot loaded "
+              f"({len(snap['name_by_id'])} companies, {len(snap['by_alias_key'])} alias keys, "
+              f"{len(snap['by_ticker'])} tickers, {len(snap['by_norm'])} normalized keys)")
     except Exception as ex:
-        print(f"  primary-fold: indexed check error [{name!r}]: {ex}")
-        result = False
-    _PRIMARY_INDEXED_CACHE[name] = result
-    return result
+        print(f"  primary-fold: entity snapshot load failed, falling back to "
+              f"name-only matching ({ex})")
+    return snap
+
+
+def _entity_snapshot() -> dict:
+    global _ENTITY_SNAPSHOT
+    if _ENTITY_SNAPSHOT is None:
+        _ENTITY_SNAPSHOT = _load_entity_snapshot()
+    return _ENTITY_SNAPSHOT
+
+
+def _unique_company_name(snap: dict, ids) -> Optional[str]:
+    """The canonical name when `ids` names exactly one company, else None.
+
+    This is the ambiguity guard. Two companies behind one key means we cannot
+    say which article this is about, and a wrong fold is worse than a miss.
+    """
+    if not ids or len(ids) != 1:
+        return None
+    return snap["name_by_id"].get(next(iter(ids)))
+
+
+def _resolve_primary_to_canonical(name: str) -> Optional[str]:
+    """SELECT-only: resolve `name` to the canonical companies.name it denotes,
+    or None. Memoized per process. Fail-closed on error. Writes nothing, and in
+    particular never calls resolve_entity, so it can never mint a company.
+
+    Resolution order, first unique hit wins:
+      1. exact companies.name          (live query, unchanged from before)
+      2. case-insensitive name         (live query, unchanged from before)
+      3. aliases.lookup_key            (the project's own resolver surface)
+      4. companies.ticker              (bare symbols: primary_company holds
+                                        "ARM", the join key lives in a column)
+      5. suffix/punctuation-normalized (SAP SE -> SAP, The Boeing Company ->
+                                        Boeing), over names AND alias keys
+
+    Steps 1-2 stay live queries rather than reading the snapshot so that a
+    company minted earlier in THIS run is still visible, which is how the
+    pre-existing behavior worked. Steps 3-5 are pure snapshot lookups.
+
+    Returns the CANONICAL name, not the input. That is the point: folding the
+    raw string "ARM" into companies[] does nothing for a reader querying
+    "Arm Holdings", and folding the wrong casing fails PostgREST `.contains`,
+    which is case-sensitive.
+    """
+    if name in _PRIMARY_INDEXED_CACHE:
+        return _PRIMARY_INDEXED_CACHE[name]
+
+    resolved: Optional[str] = None
+    try:
+        r = supabase.table("companies").select("name").eq("name", name).limit(1).execute()
+        if r.data:
+            resolved = r.data[0]["name"]
+        else:
+            r2 = supabase.table("companies").select("name").ilike("name", name).limit(1).execute()
+            if r2.data:
+                resolved = r2.data[0]["name"]
+
+        if resolved is None:
+            snap = _entity_snapshot()
+            resolved = _unique_company_name(
+                snap, snap["by_alias_key"].get(normalize_lookup_key(name))
+            )
+            if resolved is None and looks_like_ticker(name):
+                resolved = _unique_company_name(
+                    snap, snap["by_ticker"].get(name.strip().upper())
+                )
+            if resolved is None:
+                resolved = _unique_company_name(
+                    snap, snap["by_norm"].get(normalize_company_key(name))
+                )
+    except Exception as ex:
+        print(f"  primary-fold: resolution error [{name!r}]: {ex}")
+        resolved = None
+
+    _PRIMARY_INDEXED_CACHE[name] = resolved
+    return resolved
 
 
 def _fold_primary_into_companies(clean_companies, analysis):
     """Return the companies[] list to write ON THE ARTICLE ROW.
 
     Flag off (default): returns clean_companies unchanged.
-    Flag on: returns a NEW list = clean_companies plus primary_company, when
-    primary_company is non-empty, not a blocked entity, resolves to an indexed
-    company, and is not already present (case-insensitive). Never mutates
-    clean_companies. See the HARD FREEZE note above: this does not feed
-    company_mentions or mention_count."""
+    Flag on: returns a NEW list = clean_companies plus the CANONICAL name of
+    primary_company, when primary_company is non-empty, not a blocked entity,
+    resolves to exactly one indexed company, and that canonical name is not
+    already present (case-insensitive). Never mutates clean_companies. See the
+    HARD FREEZE note above: this does not feed company_mentions or
+    mention_count.
+
+    The canonical name, not the raw string, is what gets appended. A resolved
+    "ARM" contributes "Arm Holdings"; an unresolvable name contributes nothing,
+    exactly as before.
+    """
     if not TAGGING_PRIMARY_FOLD_ENABLED:
         return clean_companies
     primary = (analysis.get("primary_company") or "").strip()
@@ -2228,11 +2369,12 @@ def _fold_primary_into_companies(clean_companies, analysis):
         return clean_companies
     if is_blocked_entity(primary):
         return clean_companies
-    if primary.lower() in {c.lower() for c in clean_companies}:
+    canonical = _resolve_primary_to_canonical(primary)
+    if not canonical:
         return clean_companies
-    if not _primary_resolves_to_indexed(primary):
+    if canonical.lower() in {c.lower() for c in clean_companies}:
         return clean_companies
-    return [*clean_companies, primary]
+    return [*clean_companies, canonical]
 
 
 #: Cached probe for the sql/0025 publisher columns. The migration is HAND-APPLY,
