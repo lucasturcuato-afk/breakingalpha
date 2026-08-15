@@ -23,6 +23,10 @@ const eslintConfig = defineConfig([
     "frontend/**",
     "docs/**",
     "design-reference/**",
+    // The mobile design handoff. Source of truth for the redesign, not source
+    // code: a static prototype export plus its support bundle. It is read by
+    // scripts/screen-audit.mjs, never built. design-lint.mjs excludes it too.
+    "design_handoff_signalera_mobile/**",
   ]),
   // React Compiler readiness debt. eslint-plugin-react-hooks v6 (pulled in by
   // eslint-config-next/core-web-vitals on Next 16) ships these rules as ERRORS.

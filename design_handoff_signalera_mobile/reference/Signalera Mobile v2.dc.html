@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="_ds/signalera-design-system-8abeaaa0-6a3c-4dc3-8120-ae7c0a2ee9dc/tokens.css">
+<script src="_ds/signalera-design-system-8abeaaa0-6a3c-4dc3-8120-ae7c0a2ee9dc/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#e9e2d6; }
+  a { color:#1a1208; text-decoration:underline; text-decoration-color:#d4a84b; text-underline-offset:3px; }
+  a:hover { text-decoration-color:#1a1208; }
+  :root{
+    --v2-pad:20px; --v2-gap:0px; --v2-body:14px; --v2-lead:1.6;
+    --v2-claim:17.5px; --v2-title:30px; --v2-clamp:3; --v2-row:15px;
+    --v2-open:flex;
+    --v2-fsup:flex; --v2-fchal:flex; --v2-fdev:flex;
+  }
+  @keyframes v2fill { from { width:0% } to { width:100% } }
+  @keyframes v2in { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }
+</style>
+</helmet>
+
+<section style="display:flex;flex-direction:column;gap:52px;padding:60px 48px 100px;font-family:Inter,sans-serif">
+
+  <header style="display:flex;flex-direction:column;gap:16px;max-width:940px">
+    <div style="display:inline-flex;font:700 22px/1 'Playfair Display',serif;letter-spacing:-0.02em;white-space:nowrap"><span style="color:#1a1208">Signal</span><span style="background-image:linear-gradient(180deg,#e8c77a 0%,#d4a84b 55%,#a8873a 100%);background-clip:text;-webkit-background-clip:text;color:transparent;-webkit-text-fill-color:transparent">era</span></div>
+    <div style="font:400 italic 15px/1 'Playfair Display',serif;color:#6f6248">v2 &middot; a different structure, not a revision</div>
+    <h1 style="margin:0;font:800 52px/1.03 'Playfair Display',serif;letter-spacing:-0.025em;color:#1a1208;max-width:20ch">The brief and the record are the same timeline.</h1>
+    <p style="margin:0;max-width:68ch;font:400 16px/1.7 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">v1 gave the record its own tab. That was the wrong instinct held confidently. A claim offered this morning and a claim graded in September are not two objects in two places, they are one object at two moments. So there is one surface: <strong style="font-weight:600">the Ledger</strong>, running from your pending reviews at the top, down through today, back through every entry you have ever made. The record is not a destination. It is what the app already is.</p>
+    <div style="display:flex;gap:26px;flex-wrap:wrap;margin-top:10px;padding-top:24px;border-top:1px solid #d6cdbc">
+      <div style="width:200px"><div style="font:600 12px/1.4 Inter,sans-serif;color:#1a1208">One spine</div><div style="margin-top:5px;font:400 12.5px/1.6 Inter,sans-serif;color:#6f6248">Ledger, Watch, Ask. Three poles. Nine desktop surfaces resolve without a junk drawer.</div></div>
+      <div style="width:200px"><div style="font:600 12px/1.4 Inter,sans-serif;color:#1a1208">A document, not a dashboard</div><div style="margin-top:5px;font:400 12.5px/1.6 Inter,sans-serif;color:#6f6248">Date rules and hairlines. A card appears only where something is actionable, so the action is unmissable.</div></div>
+      <div style="width:200px"><div style="font:600 12px/1.4 Inter,sans-serif;color:#1a1208">The note is the product</div><div style="margin-top:5px;font:400 12.5px/1.6 Inter,sans-serif;color:#6f6248">Committing asks for one line of your reasoning. Without it the record proves you clicked, not that you thought.</div></div>
+      <div style="width:200px"><div style="font:600 12px/1.4 Inter,sans-serif;color:#1a1208">Resolution is the moment</div><div style="margin-top:5px;font:400 12.5px/1.6 Inter,sans-serif;color:#6f6248">A review takes the whole screen and reads your own note back to you. It is the only thing that gets that weight.</div></div>
+    </div>
+  </header>
+
+  <div style="display:flex;flex-wrap:wrap;gap:44px 34px">
+
+    <!-- ══════════ 01 FIRST RUN ══════════ -->
+    <div data-screen-label="01 First run" style="display:flex;flex-direction:column;gap:12px;width:390px">
+      <div style="display:flex;flex-direction:column;gap:3px"><div style="font:600 13px/1.3 Inter,sans-serif;color:#1a1208">01 &middot; First run</div><div style="font:400 12px/1.5 Inter,sans-serif;color:#6f6248">An empty ledger is not a failure state. It is a page with a date on it and nothing above the date yet.</div></div>
+      <div style="width:390px;height:844px;background:#fffdf9;border:1px solid #d6cdbc;border-radius:34px;overflow:hidden;display:flex;flex-direction:column">
+        <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 26px 0 30px;font:600 14px/1 Inter,sans-serif;color:#1a1208"><span>6:52</span><span style="display:flex;gap:5px;align-items:center"><span style="width:16px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span><span style="width:20px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span></span></div>
+        <div style="flex:1;overflow:hidden;padding:0 var(--v2-pad);display:flex;flex-direction:column">
+          <div style="flex:none;padding:8px 0 18px;display:inline-flex;font:700 19px/1 'Playfair Display',serif;letter-spacing:-0.02em"><span style="color:#1a1208">Signal</span><span style="background-image:linear-gradient(180deg,#e8c77a 0%,#d4a84b 55%,#a8873a 100%);background-clip:text;-webkit-background-clip:text;color:transparent;-webkit-text-fill-color:transparent">era</span></div>
+          <div style="flex:none;padding:17px 0;border-top:1px dashed #ded5c6;border-bottom:1px dashed #ded5c6;display:flex;flex-direction:column;gap:7px;align-items:center">
+            <div style="font:400 12px/1 'JetBrains Mono',monospace;color:#786a52">NOTHING ABOVE THIS LINE YET</div>
+            <div style="font:400 italic 13.5px/1.5 'Playfair Display',serif;color:#6f6248;text-align:center">Your open calls will sit here,<br>with the date each one gets checked.</div>
+          </div>
+          <div style="flex:none;display:flex;align-items:center;gap:11px;padding:18px 0 0"><span style="font:400 italic 13px/1 'Playfair Display',serif;color:#6f6248">Thursday, August 6</span><span style="flex:1;height:1px;background:#ede8df"></span></div>
+          <h1 style="flex:none;margin:16px 0 0;font:700 var(--v2-title)/1.12 'Playfair Display',serif;letter-spacing:-0.02em;color:#1a1208">Five calls this morning. Each one has a date it gets checked.</h1>
+          <p style="flex:none;margin:11px 0 0;font:400 var(--v2-body)/var(--v2-lead) Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">Take one and it goes on your record with the reasoning you write for it. When the date arrives it is checked against real prices, whichever way it went, and the entry stays either way.</p>
+          <div style="flex:none;margin-top:18px;min-height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:#1a1208;border-radius:9px"><span style="font:600 14.5px/1 Inter,sans-serif;color:#fffdf9">Read this morning's brief</span><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#d4a84b" stroke-width="1.8" stroke-linecap="round"><path d="M4 12h15M13 6l6 6-6 6"></path></svg></div>
+          <div style="flex:none;margin-top:22px;height:1px;background:#ede8df"></div>
+          <div style="flex:none;margin-top:15px;font:400 italic 12.5px/1 'Playfair Display',serif;color:#6f6248">three ways to engage, one of them counts</div>
+          <div style="flex:none;margin-top:14px;display:flex;flex-direction:column;gap:0">
+            <div style="display:flex;gap:13px;align-items:flex-start;padding:10px 0"><span style="flex:none;margin-top:4px;display:inline-block;width:10px;height:10px;border:1.5px solid #6f6248;border-radius:50%"></span><div><span style="font:600 13.5px/1.3 Inter,sans-serif;color:#1a1208">Follow.</span> <span style="font:400 13px/1.5 Inter,sans-serif;color:#6f6248">A name or theme you want in view. Never graded.</span></div></div>
+            <div style="height:1px;background:#f0ebe0"></div>
+            <div style="display:flex;gap:13px;align-items:flex-start;padding:10px 0"><span style="flex:none;margin-top:4px;display:inline-block;width:10px;height:10px;border:1.5px solid #6f6248;transform:rotate(45deg)"></span><div><span style="font:600 13.5px/1.3 Inter,sans-serif;color:#1a1208">A view.</span> <span style="font:400 13px/1.5 Inter,sans-serif;color:#6f6248">A story plus your note. No direction, no date. Never graded.</span></div></div>
+            <div style="height:1px;background:#f0ebe0"></div>
+            <div style="display:flex;gap:13px;align-items:flex-start;padding:10px 0"><span style="flex:none;margin-top:4px;display:inline-block;width:10px;height:10px;background:#d4a84b;transform:rotate(45deg)"></span><div><span style="font:600 13.5px/1.3 Inter,sans-serif;color:#1a1208">A call.</span> <span style="font:400 13px/1.5 Inter,sans-serif;color:#6f6248">A direction and a date. Checked when the date arrives.</span></div></div>
+          </div>
+        </div>
+        <nav style="flex:none;display:flex;align-items:stretch;border-top:1px solid #ede8df;background:#fffdf9">
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#1a1208"><svg style="color:#d4a84b" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4v16M8 6h12M8 11h12M8 16h8"></path></svg><span style="font:600 10.5px/1 Inter,sans-serif">Ledger</span></div>
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2.4"></circle></svg><span style="font:500 10.5px/1 Inter,sans-serif">Watch</span></div>
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><span style="font:500 10.5px/1 Inter,sans-serif">Ask</span></div>
+        </nav>
+        <div style="height:22px;flex:none;display:flex;align-items:center;justify-content:center;background:#fffdf9"><div style="width:134px;height:5px;border-radius:3px;background:#1a1208"></div></div>
+      </div>
+    </div>
+
+    <!-- ══════════ 02 THE REVIEW MOMENT ══════════ -->
+    <div data-screen-label="02 The review" style="display:flex;flex-direction:column;gap:12px;width:390px">
+      <div style="display:flex;flex-direction:column;gap:3px"><div style="font:600 13px/1.3 Inter,sans-serif;color:#1a1208">02 &middot; The review, which is the whole product</div><div style="font:400 12px/1.5 Inter,sans-serif;color:#6f6248">It takes the entire screen and reads your own note back to you. Nothing else in the app gets this weight.</div></div>
+      <div style="width:390px;height:844px;background:#fffdf9;border:1px solid #d6cdbc;border-radius:34px;overflow:hidden;display:flex;flex-direction:column">
+        <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 26px 0 30px;font:600 14px/1 Inter,sans-serif;color:#1a1208"><span>6:51</span><span style="display:flex;gap:5px;align-items:center"><span style="width:16px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span><span style="width:20px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span></span></div>
+        <div style="flex:1;overflow:hidden;padding:26px var(--v2-pad) 0;display:flex;flex-direction:column">
+          <div style="flex:none;font:400 italic 13px/1 'Playfair Display',serif;color:#6f6248">resolved overnight &middot; Thursday, August 27</div>
+          <div style="flex:none;margin-top:14px;display:flex;align-items:center;gap:11px"><span style="flex:none;display:inline-block;width:11px;height:11px;border-radius:50%;background:#dc2626"></span><span style="font:700 34px/1 'Playfair Display',serif;letter-spacing:-0.02em;color:#1a1208">Challenged</span></div>
+          <p style="flex:none;margin:16px 0 0;font:500 19px/1.38 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">Constellation Energy trades above the utilities sector index through the next PJM capacity auction result.</p>
+          <div style="flex:none;margin-top:17px;height:1px;background:#ede8df"></div>
+          <p style="flex:none;margin:14px 0 0;font:500 15.5px/1.55 Inter,sans-serif;color:#1a1208">CEG +2.10% against XLU +6.44% and SPY +1.71% over 21 days.</p>
+          <p style="flex:none;margin:9px 0 0;font:400 13.5px/1.6 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">The move separates cleanly from both the sector and the market, so the read counts. The auction cleared inside the forward curve and the regulated book carried the sector.</p>
+          <div style="flex:none;margin-top:17px;height:1px;background:#ede8df"></div>
+          <div style="flex:none;margin-top:14px;font:400 11px/1 'JetBrains Mono',monospace;color:#786a52">YOU WROTE, 2026-08-06 06:58 PT</div>
+          <p style="flex:none;margin:10px 0 0;font:400 italic 16px/1.6 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">Data centre contracting is repricing faster than the regulated book. If the auction clears high the sector index still carries too much regulated drag to keep pace.</p>
+          <div style="flex:none;margin-top:16px;padding:14px 15px;border:1px solid #ede8df;border-radius:11px;background:#faf5ed">
+            <p style="margin:0;font:400 13.5px/1.65 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">Your reasoning held together. Its condition did not arrive: the auction cleared inside expectations, so the drag you priced never got tested.</p>
+          </div>
+        </div>
+        <div style="flex:none;padding:0 var(--v2-pad) 16px;display:flex;flex-direction:column;gap:8px">
+          <div style="min-height:52px;display:flex;align-items:center;justify-content:center;background:#1a1208;border-radius:9px;font:600 14.5px/1 Inter,sans-serif;color:#fffdf9">On to this morning's brief</div>
+          <div style="min-height:44px;display:flex;align-items:center;justify-content:center;font:500 13.5px/1 Inter,sans-serif;color:#6f6248">Open the full entry</div>
+        </div>
+        <div style="height:22px;flex:none;display:flex;align-items:center;justify-content:center;background:#fffdf9"><div style="width:134px;height:5px;border-radius:3px;background:#1a1208"></div></div>
+      </div>
+    </div>
+
+    <!-- ══════════ 03 LEDGER MORNING ══════════ -->
+    <div data-screen-label="03 Ledger morning" style="display:flex;flex-direction:column;gap:12px;width:390px">
+      <div style="display:flex;flex-direction:column;gap:3px"><div style="font:600 13px/1.3 Inter,sans-serif;color:#1a1208">03 &middot; The Ledger &middot; the future sits above today</div><div style="font:400 12px/1.5 Inter,sans-serif;color:#6f6248">Open calls are at the top because their dates have not arrived. The obligation is spatial, and it is the first thing you see.</div></div>
+      <div style="width:390px;height:844px;background:#fffdf9;border:1px solid #d6cdbc;border-radius:34px;overflow:hidden;display:flex;flex-direction:column">
+        <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 26px 0 30px;font:600 14px/1 Inter,sans-serif;color:#1a1208"><span>6:52</span><span style="display:flex;gap:5px;align-items:center"><span style="width:16px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span><span style="width:20px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span></span></div>
+        <div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:6px var(--v2-pad) 12px">
+          <div style="display:inline-flex;font:700 19px/1 'Playfair Display',serif;letter-spacing:-0.02em"><span style="color:#1a1208">Signal</span><span style="background-image:linear-gradient(180deg,#e8c77a 0%,#d4a84b 55%,#a8873a 100%);background-clip:text;-webkit-background-clip:text;color:transparent;-webkit-text-fill-color:transparent">era</span></div>
+          <div style="min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center"><span style="width:30px;height:30px;border-radius:50%;background:#faf5ed;border:1px solid #ede8df;display:flex;align-items:center;justify-content:center;font:600 11.5px/1 Inter,sans-serif;color:#6f6248">MR</span></div>
+        </div>
+        <div style="flex:1;overflow:hidden;padding:0 var(--v2-pad);display:flex;flex-direction:column">
+          <div style="display:var(--v2-open, flex);flex:none;flex-direction:column;border:1px solid #ede8df;border-radius:12px;background:#faf7f2;overflow:hidden">
+            <div style="min-height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 14px"><span style="font:600 12px/1 Inter,sans-serif;color:#1a1208">6 open</span><span style="display:flex;align-items:center;gap:7px"><span style="font:400 11px/1 'JetBrains Mono',monospace;color:#786a52">next in 21 days</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#786a52" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"></path></svg></span></div>
+            <div style="padding:0 14px 12px;display:flex;flex-direction:column">
+              <div style="display:flex;gap:11px;align-items:baseline;padding:8px 0;border-top:1px solid #ede8df"><span style="flex:none;width:42px;font:500 10.5px/1.4 'JetBrains Mono',monospace;color:#786a52">AUG 27</span><span style="min-width:0;flex:1;font:400 12.5px/1.45 Inter,sans-serif;color:#3d2b1f;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1;overflow:hidden">Constellation Energy trades above the utilities sector index</span></div>
+              <div style="display:flex;gap:11px;align-items:baseline;padding:8px 0;border-top:1px solid #f0ebe0"><span style="flex:none;width:42px;font:500 10.5px/1.4 'JetBrains Mono',monospace;color:#786a52">SEP 04</span><span style="min-width:0;flex:1;font:400 12.5px/1.45 Inter,sans-serif;color:#3d2b1f;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1;overflow:hidden">The 10-year Treasury yield closes under 4.50%</span></div>
+            </div>
+          </div>
+          <div style="flex:none;display:flex;align-items:center;gap:11px;padding:20px 0 0"><span style="font:400 italic 13px/1 'Playfair Display',serif;color:#6f6248">Thursday, August 6</span><span style="flex:1;height:1px;background:#ede8df"></span><span style="font:400 10.5px/1 'JetBrains Mono',monospace;color:#786a52">6:45</span></div>
+          <p style="flex:none;margin:16px 0 0;font:400 15.5px/1.6 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">The market is <strong style="font-weight:700">patient</strong>. Breadth thinned for a fourth session while the index held, which is the tape saying it does not believe its own level.</p>
+          <div style="flex:none;margin-top:16px;display:flex;align-items:baseline;justify-content:space-between"><span style="font:400 italic 12.5px/1 'Playfair Display',serif;color:#6f6248">five calls, one decided</span><span style="font:400 10.5px/1 'JetBrains Mono',monospace;color:#786a52">1 / 5</span></div>
+          <div style="flex:none;margin-top:9px;display:flex;gap:4px"><div style="flex:1;height:2px;background:#1a1208"></div><div style="flex:1;height:2px;background:#ede8df"></div><div style="flex:1;height:2px;background:#ede8df"></div><div style="flex:1;height:2px;background:#ede8df"></div><div style="flex:1;height:2px;background:#ede8df"></div></div>
+          <div style="flex:none;margin-top:16px;border:1px solid #ede8df;border-radius:13px;background:#ffffff;padding:18px">
+            <span style="font:600 11px/1 Inter,sans-serif;color:#6f6248">Financial services</span>
+            <p style="margin:10px 0 0;font:500 var(--v2-claim)/1.4 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">Cash App gross profit growth outpaces Square's for a second consecutive quarter.</p>
+            <div style="margin-top:11px;display:flex;gap:9px;align-items:flex-start"><p style="margin:0;flex:1;font:400 var(--v2-body)/var(--v2-lead) Inter,sans-serif;color:#3d2b1f;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:var(--v2-clamp);overflow:hidden">Q2 put Cash App inflows per active at a new high while merchant GPV growth stayed in the low teens. Lending attach is doing most of the work and the desk reads the gap as widening before it closes.</p><svg style="flex:none;margin-top:5px" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#786a52" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"></path></svg></div>
+            <div style="margin-top:18px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+              <div style="font:400 11.5px/1.4 Inter,sans-serif;color:#6f6248">reviewed Nov 4<br><span style="color:#786a52">in about a quarter</span></div>
+              <div style="min-height:44px;display:flex;align-items:center;padding:0 17px;border:1px solid #1a1208;border-radius:8px;font:600 13px/1 Inter,sans-serif;color:#1a1208;white-space:nowrap">Take this call</div>
+            </div>
+          </div>
+          <div style="flex:none;margin-top:12px;border:1px solid #ede8df;border-radius:13px;background:#ffffff;padding:18px">
+            <span style="font:600 11px/1 Inter,sans-serif;color:#6f6248">Materials</span>
+            <p style="margin:10px 0 0;font:500 var(--v2-claim)/1.4 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">LME copper stays in backwardation through the September prompt date.</p>
+          </div>
+        </div>
+        <nav style="flex:none;display:flex;align-items:stretch;border-top:1px solid #ede8df;background:#fffdf9">
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#1a1208"><svg style="color:#d4a84b" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4v16M8 6h12M8 11h12M8 16h8"></path></svg><span style="font:600 10.5px/1 Inter,sans-serif">Ledger</span></div>
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2.4"></circle></svg><span style="font:500 10.5px/1 Inter,sans-serif">Watch</span></div>
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><span style="font:500 10.5px/1 Inter,sans-serif">Ask</span></div>
+        </nav>
+        <div style="height:22px;flex:none;display:flex;align-items:center;justify-content:center;background:#fffdf9"><div style="width:134px;height:5px;border-radius:3px;background:#1a1208"></div></div>
+      </div>
+    </div>
+
+    <!-- ══════════ 04 CLAIM EXPANDED ══════════ -->
+    <div data-screen-label="04 Claim expanded" style="display:flex;flex-direction:column;gap:12px;width:390px">
+      <div style="display:flex;flex-direction:column;gap:3px"><div style="font:600 13px/1.3 Inter,sans-serif;color:#1a1208">04 &middot; The claim, opened</div><div style="font:400 12px/1.5 Inter,sans-serif;color:#6f6248">Claim first, then the structure of the argument, then what would settle it. Never a summary of a summary.</div></div>
+      <div style="width:390px;height:844px;background:#fffdf9;border:1px solid #d6cdbc;border-radius:34px;overflow:hidden;display:flex;flex-direction:column">
+        <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 26px 0 30px;font:600 14px/1 Inter,sans-serif;color:#1a1208"><span>6:55</span><span style="display:flex;gap:5px;align-items:center"><span style="width:16px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span><span style="width:20px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span></span></div>
+        <div style="flex:none;min-height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 var(--v2-pad);border-bottom:1px solid #ede8df"><span style="min-height:44px;display:flex;align-items:center;gap:6px;font:500 13px/1 Inter,sans-serif;color:#6f6248"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M15 6l-6 6 6 6"></path></svg>Ledger</span><span style="font:400 10.5px/1 'JetBrains Mono',monospace;color:#786a52">2 / 5</span></div>
+        <div style="flex:1;overflow:hidden;padding:22px var(--v2-pad) 0;display:flex;flex-direction:column">
+          <span style="flex:none;font:600 11px/1 Inter,sans-serif;color:#6f6248">Utilities</span>
+          <p style="flex:none;margin:11px 0 0;font:600 21px/1.32 'Playfair Display',serif;letter-spacing:-0.01em;color:#1a1208;text-wrap:pretty">Constellation Energy trades above the utilities sector index through the next PJM capacity auction result.</p>
+          <div style="flex:none;margin-top:20px;height:1px;background:#ede8df"></div>
+          <div style="flex:none;margin-top:16px;font:400 italic 12.5px/1 'Playfair Display',serif;color:#6f6248">what the desk sees</div>
+          <p style="flex:none;margin:10px 0 0;font:400 14px/1.65 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">Data centre contracting has pulled roughly a third of the nuclear fleet into fixed-price supply agreements over eighteen months, and the auction clears into a market short on firm capacity.</p>
+          <p style="flex:none;margin:11px 0 0;font:400 14px/1.65 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">The sector index carries regulated utilities whose rate base grows on a schedule set years ago. That is the drag: the index cannot reprice at the speed a merchant nuclear book can.</p>
+          <div style="flex:none;margin-top:18px;padding:14px 15px;border:1px solid #ede8df;border-radius:11px;background:#faf5ed">
+            <div style="font:400 11px/1 'JetBrains Mono',monospace;color:#786a52">WHAT WOULD SETTLE IT</div>
+            <p style="margin:9px 0 0;font:400 13.5px/1.6 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">The PJM auction result, expected Aug 26. A clear inside the forward curve removes the premise.</p>
+          </div>
+          <div style="flex:none;margin-top:18px;height:1px;background:#ede8df"></div>
+          <div style="flex:none;margin-top:14px;display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:400 12.5px/1 Inter,sans-serif;color:#6f6248">Measured against</span><span style="font:500 12px/1 'JetBrains Mono',monospace;color:#1a1208">XLU, and SPY</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:400 12.5px/1 Inter,sans-serif;color:#6f6248">Window</span><span style="font:500 12px/1 'JetBrains Mono',monospace;color:#1a1208">21 days, fixed at entry</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:400 12.5px/1 Inter,sans-serif;color:#6f6248">Checked</span><span style="font:500 12px/1 'JetBrains Mono',monospace;color:#1a1208">2026-08-27</span></div>
+          </div>
+        </div>
+        <div style="flex:none;padding:14px var(--v2-pad) 16px;border-top:1px solid #ede8df;display:flex;gap:9px">
+          <div style="flex:none;min-width:52px;min-height:52px;display:flex;align-items:center;justify-content:center;border:1px solid #ede8df;border-radius:9px"><span style="display:inline-block;width:12px;height:12px;border:1.5px solid #6f6248;transform:rotate(45deg)"></span></div>
+          <div style="flex:1;min-height:52px;display:flex;align-items:center;justify-content:center;background:#1a1208;border-radius:9px;font:600 14.5px/1 Inter,sans-serif;color:#fffdf9">Take this call</div>
+        </div>
+        <div style="height:22px;flex:none;display:flex;align-items:center;justify-content:center;background:#fffdf9"><div style="width:134px;height:5px;border-radius:3px;background:#1a1208"></div></div>
+      </div>
+    </div>
+
+    <!-- ══════════ 05 COMMIT SHEET, LIVE ══════════ -->
+    <div data-screen-label="05 Commit sheet" style="display:flex;flex-direction:column;gap:12px;width:390px">
+      <div style="display:flex;flex-direction:column;gap:3px"><div style="font:600 13px/1.3 Inter,sans-serif;color:#1a1208">05 &middot; Committing &middot; live, press and keep pressing</div><div style="font:400 12px/1.5 Inter,sans-serif;color:#6f6248">The note comes first and the button is disabled until it has something in it. Without your reasoning the record proves you clicked.</div></div>
+      <div style="width:390px;height:844px;background:#fffdf9;border:1px solid #d6cdbc;border-radius:34px;overflow:hidden;display:flex;flex-direction:column;position:relative">
+        <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 26px 0 30px;font:600 14px/1 Inter,sans-serif;color:#1a1208"><span>6:58</span><span style="display:flex;gap:5px;align-items:center"><span style="width:16px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span><span style="width:20px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span></span></div>
+        <div style="flex:1;overflow:hidden;padding:20px var(--v2-pad) 0;opacity:.26">
+          <span style="font:600 11px/1 Inter,sans-serif;color:#6f6248">Utilities</span>
+          <p style="margin:11px 0 0;font:600 21px/1.32 'Playfair Display',serif;color:#1a1208">Constellation Energy trades above the utilities sector index through the next PJM capacity auction result.</p>
+        </div>
+        <div style="position:absolute;left:0;right:0;bottom:0;background:#fffdf9;border-top:1px solid #ede8df;border-radius:20px 20px 34px 34px;padding:10px var(--v2-pad) 22px;box-shadow:0 -10px 34px rgba(26,18,8,.11)">
+          <div style="width:38px;height:4px;border-radius:2px;background:#e2dbcd;margin:0 auto 18px"></div>
+          <h2 style="margin:0;font:700 21px/1.2 'Playfair Display',serif;color:#1a1208">Why do you think so?</h2>
+          <p style="margin:10px 0 0;font:400 13px/1.55 Inter,sans-serif;color:#6f6248;text-wrap:pretty">One line. This is what a reader of your record will actually judge, and it is what gets read back to you when the date arrives.</p>
+          <div style="margin-top:14px;min-height:104px;padding:13px 14px;border:1px solid #d4a84b;border-radius:11px;background:#fffdf9">
+            <p style="margin:0;font:400 italic 15px/1.6 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">{{ noteText }}<span style="display:inline-block;width:1.5px;height:15px;background:#d4a84b;vertical-align:-2px;margin-left:1px"></span></p>
+          </div>
+          <div style="margin-top:14px;height:1px;background:#f0ebe0"></div>
+          <div style="margin-top:10px;min-height:44px;display:flex;align-items:center;justify-content:space-between">
+            <div><div style="font:600 13px/1.3 Inter,sans-serif;color:#1a1208">Checked on Aug 27, 2026</div><div style="margin-top:3px;font:400 11.5px/1 Inter,sans-serif;color:#6f6248">21 days, against XLU and SPY</div></div>
+            <div style="min-height:44px;display:flex;align-items:center;padding:0 12px;font:500 12.5px/1 Inter,sans-serif;color:#6f6248;text-decoration:underline;text-underline-offset:3px">change</div>
+          </div>
+          <div style="margin-top:6px;height:1px;background:#f0ebe0"></div>
+          <p style="margin:11px 0 0;font:400 11.5px/1.55 Inter,sans-serif;color:#786a52;text-wrap:pretty">The window is fixed the moment you commit and cannot be moved afterwards. A miss stays on the record, and the record is better for it.</p>
+          <sc-if value="{{ notCommitted }}" hint-placeholder-val="{{ true }}">
+            <div onPointerDown="{{ startPress }}" onPointerUp="{{ endPress }}" onPointerLeave="{{ endPress }}" style="margin-top:16px;position:relative;min-height:54px;border-radius:9px;background:#1a1208;overflow:hidden;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;touch-action:none">
+              <div style="{{ fillStyle }}"></div>
+              <span style="position:relative;font:600 15px/1 Inter,sans-serif;color:#fffdf9">{{ pressLabel }}</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ committed }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:16px;min-height:54px;border-radius:9px;border:1px solid #ede8df;background:#faf5ed;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;animation:v2in 280ms cubic-bezier(0.16,1,0.3,1) both">
+              <span style="font:600 14px/1 Inter,sans-serif;color:#1a1208"><span style="color:#1a1208">&#9670;</span> On your ledger</span>
+              <span style="font:400 10px/1 'JetBrains Mono',monospace;color:#786a52">ENTERED 2026-08-06 &middot; CHECKED 2026-08-27</span>
+            </div>
+          </sc-if>
+          <div style="margin-top:8px;min-height:44px;display:flex;align-items:center;justify-content:center;font:500 13.5px/1 Inter,sans-serif;color:#6f6248">Not this one</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ 06 COMMITTED ══════════ -->
+    <div data-screen-label="06 Committed" style="display:flex;flex-direction:column;gap:12px;width:390px">
+      <div style="display:flex;flex-direction:column;gap:3px"><div style="font:600 13px/1.3 Inter,sans-serif;color:#1a1208">06 &middot; The confirmation is the ledger changing</div><div style="font:400 12px/1.5 Inter,sans-serif;color:#6f6248">No toast. The open block gains a row, the count moves to seven, and the claim is now yours with your note under it.</div></div>
+      <div style="width:390px;height:844px;background:#fffdf9;border:1px solid #d6cdbc;border-radius:34px;overflow:hidden;display:flex;flex-direction:column">
+        <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 26px 0 30px;font:600 14px/1 Inter,sans-serif;color:#1a1208"><span>6:59</span><span style="display:flex;gap:5px;align-items:center"><span style="width:16px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span><span style="width:20px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span></span></div>
+        <div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:6px var(--v2-pad) 12px">
+          <div style="display:inline-flex;font:700 19px/1 'Playfair Display',serif;letter-spacing:-0.02em"><span style="color:#1a1208">Signal</span><span style="background-image:linear-gradient(180deg,#e8c77a 0%,#d4a84b 55%,#a8873a 100%);background-clip:text;-webkit-background-clip:text;color:transparent;-webkit-text-fill-color:transparent">era</span></div>
+          <div style="min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center"><span style="width:30px;height:30px;border-radius:50%;background:#faf5ed;border:1px solid #ede8df;display:flex;align-items:center;justify-content:center;font:600 11.5px/1 Inter,sans-serif;color:#6f6248">MR</span></div>
+        </div>
+        <div style="flex:1;overflow:hidden;padding:0 var(--v2-pad);display:flex;flex-direction:column">
+          <div style="flex:none;display:flex;flex-direction:column;border:1px solid #ede8df;border-radius:12px;background:#faf7f2;overflow:hidden;animation:v2in 260ms cubic-bezier(0.16,1,0.3,1) both">
+            <div style="min-height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 14px"><span style="font:600 12px/1 Inter,sans-serif;color:#1a1208">7 open</span><span style="display:flex;align-items:center;gap:7px"><span style="font:400 11px/1 'JetBrains Mono',monospace;color:#786a52">next in 21 days</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#786a52" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"></path></svg></span></div>
+            <div style="padding:0 14px 12px;display:flex;flex-direction:column">
+              <div style="display:flex;gap:11px;align-items:baseline;padding:8px 0;border-top:1px solid #ede8df"><span style="flex:none;width:42px;font:500 10.5px/1.4 'JetBrains Mono',monospace;color:#786a52">AUG 27</span><span style="min-width:0;flex:1;font:400 12.5px/1.45 Inter,sans-serif;color:#3d2b1f;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1;overflow:hidden">Constellation Energy trades above the utilities sector index</span><span style="flex:none;width:5px;height:5px;border-radius:50%;background:#d4a84b"></span></div>
+              <div style="display:flex;gap:11px;align-items:baseline;padding:8px 0;border-top:1px solid #f0ebe0"><span style="flex:none;width:42px;font:500 10.5px/1.4 'JetBrains Mono',monospace;color:#786a52">SEP 04</span><span style="min-width:0;flex:1;font:400 12.5px/1.45 Inter,sans-serif;color:#3d2b1f;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1;overflow:hidden">The 10-year Treasury yield closes under 4.50%</span></div>
+            </div>
+          </div>
+          <div style="flex:none;display:flex;align-items:center;gap:11px;padding:20px 0 0"><span style="font:400 italic 13px/1 'Playfair Display',serif;color:#6f6248">Thursday, August 6</span><span style="flex:1;height:1px;background:#ede8df"></span></div>
+          <div style="flex:none;margin-top:16px;border:1px solid #ede8df;border-radius:13px;background:#ffffff;overflow:hidden">
+            <div style="height:2px;background:#d4a84b"></div>
+            <div style="padding:16px 18px 18px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font:600 11px/1 Inter,sans-serif;color:#6f6248">Utilities</span><span style="font:600 11px/1 Inter,sans-serif;color:#1a1208">&#9670; Yours</span></div>
+              <p style="margin:10px 0 0;font:500 var(--v2-claim)/1.4 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">Constellation Energy trades above the utilities sector index through the next PJM capacity auction result.</p>
+              <div style="margin-top:14px;height:1px;background:#f0ebe0"></div>
+              <div style="margin-top:12px;font:400 10.5px/1 'JetBrains Mono',monospace;color:#786a52">YOUR NOTE</div>
+              <p style="margin:8px 0 0;font:400 italic 14.5px/1.6 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">Data centre contracting is repricing faster than the regulated book. If the auction clears high the sector index still carries too much regulated drag to keep pace.</p>
+              <p style="margin:12px 0 0;font:400 10px/1.6 'JetBrains Mono',monospace;color:#786a52">ENTERED 2026-08-06 06:58 PT &nbsp;&middot;&nbsp; CHECKED 2026-08-27</p>
+            </div>
+          </div>
+          <div style="flex:none;margin-top:20px;display:flex;align-items:baseline;justify-content:space-between"><span style="font:400 italic 12.5px/1 'Playfair Display',serif;color:#6f6248">three still to read</span><span style="font:400 10.5px/1 'JetBrains Mono',monospace;color:#786a52">3 / 5</span></div>
+          <div style="flex:none;margin-top:12px;border:1px solid #ede8df;border-radius:13px;background:#ffffff;padding:18px">
+            <span style="font:600 11px/1 Inter,sans-serif;color:#6f6248">Rates</span>
+            <p style="margin:10px 0 0;font:500 var(--v2-claim)/1.4 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">The 10-year Treasury yield closes under 4.50% before the September FOMC decision.</p>
+            <p style="margin:11px 0 0;font:400 var(--v2-body)/var(--v2-lead) Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">Two soft payroll prints and a cooling shelter component have moved the front end without the long end following.</p>
+          </div>
+        </div>
+        <nav style="flex:none;display:flex;align-items:stretch;border-top:1px solid #ede8df;background:#fffdf9">
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#1a1208"><svg style="color:#d4a84b" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4v16M8 6h12M8 11h12M8 16h8"></path></svg><span style="font:600 10.5px/1 Inter,sans-serif">Ledger</span></div>
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2.4"></circle></svg><span style="font:500 10.5px/1 Inter,sans-serif">Watch</span></div>
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><span style="font:500 10.5px/1 Inter,sans-serif">Ask</span></div>
+        </nav>
+        <div style="height:22px;flex:none;display:flex;align-items:center;justify-content:center;background:#fffdf9"><div style="width:134px;height:5px;border-radius:3px;background:#1a1208"></div></div>
+      </div>
+    </div>
+
+    <!-- ══════════ 07 EVENING ══════════ -->
+    <div data-screen-label="07 Evening" style="display:flex;flex-direction:column;gap:12px;width:390px">
+      <div style="display:flex;flex-direction:column;gap:3px"><div style="font:600 13px/1.3 Inter,sans-serif;color:#1a1208">07 &middot; The evening, on the same ledger</div><div style="font:400 12px/1.5 Inter,sans-serif;color:#6f6248">The wrap is not a separate destination. It is what appears under today's date rule at 4:35, above the morning.</div></div>
+      <div style="width:390px;height:844px;background:#fffdf9;border:1px solid #d6cdbc;border-radius:34px;overflow:hidden;display:flex;flex-direction:column">
+        <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 26px 0 30px;font:600 14px/1 Inter,sans-serif;color:#1a1208"><span>16:41</span><span style="display:flex;gap:5px;align-items:center"><span style="width:16px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span><span style="width:20px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span></span></div>
+        <div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:6px var(--v2-pad) 12px">
+          <div style="display:inline-flex;font:700 19px/1 'Playfair Display',serif;letter-spacing:-0.02em"><span style="color:#1a1208">Signal</span><span style="background-image:linear-gradient(180deg,#e8c77a 0%,#d4a84b 55%,#a8873a 100%);background-clip:text;-webkit-background-clip:text;color:transparent;-webkit-text-fill-color:transparent">era</span></div>
+          <div style="min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center"><span style="width:30px;height:30px;border-radius:50%;background:#faf5ed;border:1px solid #ede8df;display:flex;align-items:center;justify-content:center;font:600 11.5px/1 Inter,sans-serif;color:#6f6248">MR</span></div>
+        </div>
+        <div style="flex:1;overflow:hidden;padding:0 var(--v2-pad);display:flex;flex-direction:column">
+          <div style="flex:none;min-height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border:1px solid #ede8df;border-radius:12px;background:#faf7f2"><span style="font:600 12px/1 Inter,sans-serif;color:#1a1208">7 open</span><span style="font:400 11px/1 'JetBrains Mono',monospace;color:#786a52">next in 21 days</span></div>
+          <div style="flex:none;display:flex;align-items:center;gap:11px;padding:20px 0 0"><span style="font:400 italic 13px/1 'Playfair Display',serif;color:#6f6248">Thursday, August 6</span><span style="flex:1;height:1px;background:#ede8df"></span><span style="font:400 10.5px/1 'JetBrains Mono',monospace;color:#786a52">16:35</span></div>
+          <p style="flex:none;margin:16px 0 0;font:400 15.5px/1.6 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">The close read <strong style="font-weight:700">thin</strong>. 312 advancers against 188 decliners masked a fourth straight session where the equal-weight index finished under the cap-weighted one.</p>
+          <div style="flex:none;margin-top:20px;height:1px;background:#ede8df"></div>
+          <div style="flex:none;margin-top:16px;font:400 italic 12.5px/1 'Playfair Display',serif;color:#6f6248">what ran against the desk today</div>
+          <p style="flex:none;margin:10px 0 0;font:400 var(--v2-body)/var(--v2-lead) Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">The desk read the tape as risk-on into the July CPI print. Breadth said otherwise, and the rotation into defensives that started Tuesday did not reverse.</p>
+          <div style="flex:none;margin-top:18px;display:flex;flex-direction:column;gap:0">
+            <div style="display:flex;gap:12px;padding:12px 0;border-top:1px solid #f0ebe0"><span style="flex:none;width:46px;font:500 10.5px/1.5 'JetBrains Mono',monospace;color:#786a52">NVDA<br>+3.43%</span><p style="margin:0;min-width:0;flex:1;font:400 13.5px/1.5 Inter,sans-serif;color:#3d2b1f">Blackwell output guidance lifted for the January quarter, and the supply narrative changes with it.</p></div>
+            <div style="display:flex;gap:12px;padding:12px 0;border-top:1px solid #f0ebe0"><span style="flex:none;width:46px;font:500 10.5px/1.5 'JetBrains Mono',monospace;color:#786a52">EA<br>closed</span><p style="margin:0;min-width:0;flex:1;font:400 13.5px/1.5 Inter,sans-serif;color:#3d2b1f">The $55B take-private completed, and it is now the comp every sponsor will cite in interactive entertainment.</p></div>
+          </div>
+          <div style="flex:none;margin-top:18px;height:1px;background:#ede8df"></div>
+          <p style="flex:none;margin:16px 0 0;font:400 15px/1.6 'Playfair Display',serif;color:#1a1208">Tomorrow: July CPI at 8:30, then the brief at 6:45. Nothing of yours is checked until Aug 27.</p>
+        </div>
+        <nav style="flex:none;display:flex;align-items:stretch;border-top:1px solid #ede8df;background:#fffdf9">
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#1a1208"><svg style="color:#d4a84b" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4v16M8 6h12M8 11h12M8 16h8"></path></svg><span style="font:600 10.5px/1 Inter,sans-serif">Ledger</span></div>
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2.4"></circle></svg><span style="font:500 10.5px/1 Inter,sans-serif">Watch</span></div>
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><span style="font:500 10.5px/1 Inter,sans-serif">Ask</span></div>
+        </nav>
+        <div style="height:22px;flex:none;display:flex;align-items:center;justify-content:center;background:#fffdf9"><div style="width:134px;height:5px;border-radius:3px;background:#1a1208"></div></div>
+      </div>
+    </div>
+
+    <!-- ══════════ 08 DENSITY ══════════ -->
+    <div data-screen-label="08 Ledger at density" style="display:flex;flex-direction:column;gap:12px;width:390px">
+      <div style="display:flex;flex-direction:column;gap:3px"><div style="font:600 13px/1.3 Inter,sans-serif;color:#1a1208">08 &middot; Seven months in, 94 entries, filtered to yours</div><div style="font:400 12px/1.5 Inter,sans-serif;color:#6f6248">The filters are live. Challenged sits in line where it fell, at the same size, and the state word never abbreviates.</div></div>
+      <div style="width:390px;height:844px;background:#fffdf9;border:1px solid #d6cdbc;border-radius:34px;overflow:hidden;display:flex;flex-direction:column">
+        <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 26px 0 30px;font:600 14px/1 Inter,sans-serif;color:#1a1208"><span>8:12</span><span style="display:flex;gap:5px;align-items:center"><span style="width:16px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span><span style="width:20px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span></span></div>
+        <div style="flex:none;display:flex;gap:6px;padding:8px var(--v2-pad) 12px;overflow:hidden">
+          <div onClick="{{ lensAll }}" style="flex:none;min-height:44px;display:flex;align-items:center;padding:0 13px;border:1px solid #1a1208;border-radius:6px;font:600 12px/1 Inter,sans-serif;color:#1a1208;white-space:nowrap;cursor:pointer">Everything</div>
+          <div onClick="{{ lensDev }}" style="flex:none;min-height:44px;display:flex;align-items:center;gap:6px;padding:0 13px;border:1px solid #ede8df;border-radius:6px;font:500 12px/1 Inter,sans-serif;color:#6f6248;white-space:nowrap;cursor:pointer"><span style="width:6px;height:6px;border-radius:50%;background:#f59e0b"></span>Developing 5</div>
+          <div onClick="{{ lensChal }}" style="flex:none;min-height:44px;display:flex;align-items:center;gap:6px;padding:0 13px;border:1px solid #ede8df;border-radius:6px;font:500 12px/1 Inter,sans-serif;color:#6f6248;white-space:nowrap;cursor:pointer"><span style="width:6px;height:6px;border-radius:50%;background:#dc2626"></span>Challenged 12</div>
+          <div onClick="{{ lensSup }}" style="flex:none;min-height:44px;display:flex;align-items:center;gap:6px;padding:0 13px;border:1px solid #ede8df;border-radius:6px;font:500 12px/1 Inter,sans-serif;color:#6f6248;white-space:nowrap;cursor:pointer"><span style="width:6px;height:6px;border-radius:50%;background:#16a34a"></span>Supported 17</div>
+        </div>
+        <div style="flex:1;overflow:hidden;padding:0 var(--v2-pad);display:flex;flex-direction:column">
+          <div style="flex:none;display:flex;align-items:center;gap:11px;padding:2px 0 4px"><span style="font:400 italic 13px/1 'Playfair Display',serif;color:#6f6248">February 2027</span><span style="flex:1;height:1px;background:#ede8df"></span><span style="font:400 10.5px/1 'JetBrains Mono',monospace;color:#786a52">11</span></div>
+          <div style="display:var(--v2-fchal, flex);flex:none;flex-direction:column;gap:6px;padding:13px 0;border-top:1px solid #f0ebe0"><div style="display:flex;align-items:center;gap:8px"><span style="flex:none;display:inline-block;width:7px;height:7px;border-radius:50%;background:#dc2626"></span><span style="font:600 11px/1 Inter,sans-serif;color:#b91c1c">Challenged</span><span style="margin-left:auto;font:400 10px/1 'JetBrains Mono',monospace;color:#786a52">ETN &middot; Feb 19</span></div><p style="margin:0;font:500 var(--v2-row)/1.42 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">Grid equipment backlogs extend past 2027 as transformer lead times stay above 30 months.</p><p style="margin:0;font:400 12.5px/1.5 Inter,sans-serif;color:#3d2b1f">ETN &minus;3.90% against XLI +4.11%. Clean read.</p></div>
+          <div style="display:var(--v2-fsup, flex);flex:none;flex-direction:column;gap:6px;padding:13px 0;border-top:1px solid #f0ebe0"><div style="display:flex;align-items:center;gap:8px"><span style="flex:none;display:inline-block;width:7px;height:7px;border-radius:50%;background:#16a34a"></span><span style="font:600 11px/1 Inter,sans-serif;color:#15803d">Supported</span><span style="margin-left:auto;font:400 10px/1 'JetBrains Mono',monospace;color:#786a52">AMAT &middot; Feb 17</span></div><p style="margin:0;font:500 var(--v2-row)/1.42 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">Semicap orders reaccelerate on HBM capacity adds into the March quarter.</p><p style="margin:0;font:400 12.5px/1.5 Inter,sans-serif;color:#3d2b1f">AMAT +14.02% against SOXX +5.31%. Clean read.</p></div>
+          <div style="display:var(--v2-fchal, flex);flex:none;flex-direction:column;gap:6px;padding:13px 0;border-top:1px solid #f0ebe0"><div style="display:flex;align-items:center;gap:8px"><span style="flex:none;display:inline-block;width:7px;height:7px;border-radius:50%;background:#dc2626"></span><span style="font:600 11px/1 Inter,sans-serif;color:#b91c1c">Challenged</span><span style="margin-left:auto;font:400 10px/1 'JetBrains Mono',monospace;color:#786a52">ZIM &middot; Feb 12</span></div><p style="margin:0;font:500 var(--v2-row)/1.42 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">Transpacific spot freight rates stay soft through the Lunar New Year restock.</p><p style="margin:0;font:400 12.5px/1.5 Inter,sans-serif;color:#3d2b1f">ZIM +22.60% against the sector +6.02%. Clean read.</p></div>
+          <div style="display:var(--v2-fdev, flex);flex:none;flex-direction:column;gap:6px;padding:13px 0;border-top:1px solid #f0ebe0"><div style="display:flex;align-items:center;gap:8px"><span style="flex:none;display:inline-block;width:7px;height:7px;border-radius:50%;background:#f59e0b"></span><span style="font:600 11px/1 Inter,sans-serif;color:#a16207">Developing</span><span style="margin-left:auto;font:400 10px/1 'JetBrains Mono',monospace;color:#786a52">ZION &middot; Feb 9</span></div><p style="margin:0;font:500 var(--v2-row)/1.42 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">Regional bank net interest margin compression bottoms by the March quarter.</p><p style="margin:0;font:400 12.5px/1.5 Inter,sans-serif;color:#3d2b1f">ZION +3.71% against XLF +3.44%. The move could not be separated from the sector.</p></div>
+          <div style="flex:none;display:flex;align-items:center;gap:11px;padding:14px 0 4px"><span style="font:400 italic 13px/1 'Playfair Display',serif;color:#6f6248">January 2027</span><span style="flex:1;height:1px;background:#ede8df"></span><span style="font:400 10.5px/1 'JetBrains Mono',monospace;color:#786a52">14</span></div>
+          <div style="display:var(--v2-fchal, flex);flex:none;flex-direction:column;gap:6px;padding:13px 0;border-top:1px solid #f0ebe0"><div style="display:flex;align-items:center;gap:8px"><span style="flex:none;display:inline-block;width:7px;height:7px;border-radius:50%;background:#dc2626"></span><span style="font:600 11px/1 Inter,sans-serif;color:#b91c1c">Challenged</span><span style="margin-left:auto;font:400 10px/1 'JetBrains Mono',monospace;color:#786a52">RMS.PA &middot; Jan 28</span></div><p style="margin:0;font:500 var(--v2-row)/1.42 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">Luxury demand in China stabilises by the holiday quarter.</p></div>
+        </div>
+        <nav style="flex:none;display:flex;align-items:stretch;border-top:1px solid #ede8df;background:#fffdf9">
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#1a1208"><svg style="color:#d4a84b" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4v16M8 6h12M8 11h12M8 16h8"></path></svg><span style="font:600 10.5px/1 Inter,sans-serif">Ledger</span></div>
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2.4"></circle></svg><span style="font:500 10.5px/1 Inter,sans-serif">Watch</span></div>
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><span style="font:500 10.5px/1 Inter,sans-serif">Ask</span></div>
+        </nav>
+        <div style="height:22px;flex:none;display:flex;align-items:center;justify-content:center;background:#fffdf9"><div style="width:134px;height:5px;border-radius:3px;background:#1a1208"></div></div>
+      </div>
+    </div>
+
+    <!-- ══════════ 09 ENTRY DETAIL ══════════ -->
+    <div data-screen-label="09 Entry detail" style="display:flex;flex-direction:column;gap:12px;width:390px">
+      <div style="display:flex;flex-direction:column;gap:3px"><div style="font:600 13px/1.3 Inter,sans-serif;color:#1a1208">09 &middot; One entry, challenged, months later</div><div style="font:400 12px/1.5 Inter,sans-serif;color:#6f6248">The full chain: what you claimed, when, why, what the window showed, and what it means. This is the artifact.</div></div>
+      <div style="width:390px;height:844px;background:#fffdf9;border:1px solid #d6cdbc;border-radius:34px;overflow:hidden;display:flex;flex-direction:column">
+        <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 26px 0 30px;font:600 14px/1 Inter,sans-serif;color:#1a1208"><span>8:15</span><span style="display:flex;gap:5px;align-items:center"><span style="width:16px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span><span style="width:20px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span></span></div>
+        <div style="flex:none;min-height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 var(--v2-pad);border-bottom:1px solid #ede8df"><span style="min-height:44px;display:flex;align-items:center;gap:6px;font:500 13px/1 Inter,sans-serif;color:#6f6248"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M15 6l-6 6 6 6"></path></svg>Ledger</span><span style="min-height:44px;display:flex;align-items:center;font:500 13px/1 Inter,sans-serif;color:#6f6248">Share</span></div>
+        <div style="flex:1;overflow:hidden;padding:22px var(--v2-pad) 0;display:flex;flex-direction:column">
+          <div style="flex:none;display:flex;align-items:center;gap:9px"><span style="flex:none;display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626"></span><span style="font:600 12.5px/1 Inter,sans-serif;color:#b91c1c">Challenged</span><span style="margin-left:auto;font:400 11px/1 Inter,sans-serif;color:#6f6248">Pharmaceuticals</span></div>
+          <p style="flex:none;margin:14px 0 0;font:600 21px/1.32 'Playfair Display',serif;letter-spacing:-0.01em;color:#1a1208;text-wrap:pretty">Novo Nordisk narrows the US script gap against Lilly by the July IQVIA prints.</p>
+          <div style="flex:none;margin-top:20px;height:1px;background:#ede8df"></div>
+          <div style="flex:none;margin-top:16px;font:400 11px/1 'JetBrains Mono',monospace;color:#786a52">YOU WROTE, 2026-06-24 07:11 PT</div>
+          <p style="flex:none;margin:11px 0 0;font:400 italic 16px/1.62 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">CagriSema's label read better than the print suggested and the compounding crackdown should have pulled scripts back to branded. I read the June slowdown as inventory, not demand.</p>
+          <div style="flex:none;margin-top:20px;height:1px;background:#ede8df"></div>
+          <div style="flex:none;margin-top:16px;font:400 italic 12.5px/1 'Playfair Display',serif;color:#6f6248">what the window showed</div>
+          <p style="flex:none;margin:10px 0 0;font:500 15px/1.55 Inter,sans-serif;color:#1a1208">NVO &minus;8.13% against XLV &minus;0.44% and SPY +1.71% over 28 days.</p>
+          <p style="flex:none;margin:9px 0 0;font:400 13.5px/1.6 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">The move separates cleanly from both the sector and the market, so the read counts. Weekly prints widened the gap in three of four weeks. The compounding crackdown landed, and the scripts went to Lilly.</p>
+          <div style="flex:none;margin-top:16px;padding:14px 15px;border:1px solid #ede8df;border-radius:11px;background:#faf5ed">
+            <p style="margin:0;font:400 13.5px/1.65 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">You were more confident than the street and the evidence ran the other way. The inventory read was the weak link and it was testable at the time.</p>
+          </div>
+          <div style="flex:none;margin-top:16px;font:400 10px/1.7 'JetBrains Mono',monospace;color:#786a52">ENTERED 2026-06-24 &nbsp;&middot;&nbsp; CHECKED 2026-07-22 &nbsp;&middot;&nbsp; WINDOW FIXED AT ENTRY</div>
+        </div>
+        <nav style="flex:none;display:flex;align-items:stretch;border-top:1px solid #ede8df;background:#fffdf9">
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#1a1208"><svg style="color:#d4a84b" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4v16M8 6h12M8 11h12M8 16h8"></path></svg><span style="font:600 10.5px/1 Inter,sans-serif">Ledger</span></div>
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2.4"></circle></svg><span style="font:500 10.5px/1 Inter,sans-serif">Watch</span></div>
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><span style="font:500 10.5px/1 Inter,sans-serif">Ask</span></div>
+        </nav>
+        <div style="height:22px;flex:none;display:flex;align-items:center;justify-content:center;background:#fffdf9"><div style="width:134px;height:5px;border-radius:3px;background:#1a1208"></div></div>
+      </div>
+    </div>
+
+    <!-- ══════════ 10 WATCH ══════════ -->
+    <div data-screen-label="10 Watch" style="display:flex;flex-direction:column;gap:12px;width:390px">
+      <div style="display:flex;flex-direction:column;gap:3px"><div style="font:600 13px/1.3 Inter,sans-serif;color:#1a1208">10 &middot; Watch &middot; everything that is not a call</div><div style="font:400 12px/1.5 Inter,sans-serif;color:#6f6248">Names, themes and deals in one list with one membership rule: you follow it. Views sit above, because they carry your words.</div></div>
+      <div style="width:390px;height:844px;background:#fffdf9;border:1px solid #d6cdbc;border-radius:34px;overflow:hidden;display:flex;flex-direction:column">
+        <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 26px 0 30px;font:600 14px/1 Inter,sans-serif;color:#1a1208"><span>12:20</span><span style="display:flex;gap:5px;align-items:center"><span style="width:16px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span><span style="width:20px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span></span></div>
+        <div style="flex:none;padding:10px var(--v2-pad) 0"><h1 style="margin:0;font:700 26px/1.14 'Playfair Display',serif;letter-spacing:-0.02em;color:#1a1208">Watch</h1><p style="margin:8px 0 0;font:400 12.5px/1.5 Inter,sans-serif;color:#6f6248">31 things you follow. Nothing on this screen is ever graded.</p></div>
+        <div style="flex:none;display:flex;gap:6px;padding:14px var(--v2-pad);overflow:hidden">
+          <div style="flex:none;min-height:44px;display:flex;align-items:center;padding:0 13px;border:1px solid #1a1208;border-radius:6px;font:600 12px/1 Inter,sans-serif;color:#1a1208">All</div>
+          <div style="flex:none;min-height:44px;display:flex;align-items:center;padding:0 13px;border:1px solid #ede8df;border-radius:6px;font:500 12px/1 Inter,sans-serif;color:#6f6248">Views 3</div>
+          <div style="flex:none;min-height:44px;display:flex;align-items:center;padding:0 13px;border:1px solid #ede8df;border-radius:6px;font:500 12px/1 Inter,sans-serif;color:#6f6248">Themes 6</div>
+          <div style="flex:none;min-height:44px;display:flex;align-items:center;padding:0 13px;border:1px solid #ede8df;border-radius:6px;font:500 12px/1 Inter,sans-serif;color:#6f6248">Deals 4</div>
+          <div style="flex:none;min-height:44px;display:flex;align-items:center;padding:0 13px;border:1px solid #ede8df;border-radius:6px;font:500 12px/1 Inter,sans-serif;color:#6f6248">Names</div>
+        </div>
+        <div style="flex:1;overflow:hidden;padding:0 var(--v2-pad);display:flex;flex-direction:column">
+          <div style="flex:none;display:flex;align-items:center;gap:11px;padding:0 0 4px"><span style="font:400 italic 12.5px/1 'Playfair Display',serif;color:#6f6248">your views</span><span style="flex:1;height:1px;background:#ede8df"></span></div>
+          <div style="flex:none;padding:14px 0;border-top:1px solid #f0ebe0;display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;gap:9px"><span style="flex:none;display:inline-block;width:9px;height:9px;border:1.5px solid #6f6248;transform:rotate(45deg)"></span><span style="font:600 11px/1 Inter,sans-serif;color:#6f6248">No direction, no window</span><span style="margin-left:auto;font:400 10px/1 'JetBrains Mono',monospace;color:#786a52">Jul 30</span></div>
+            <p style="margin:0;font:500 var(--v2-claim)/1.4 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">Blackstone mulls a second debt package for the Anthropic chip deal.</p>
+            <p style="margin:0;font:400 italic 14px/1.6 'Playfair Display',serif;color:#3d2b1f;text-wrap:pretty">A second package suggests the first was undersubscribed. Watching who takes the paper before I say anything about direction.</p>
+          </div>
+          <div style="flex:none;padding:14px 0;border-top:1px solid #f0ebe0;display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;gap:9px"><span style="flex:none;display:inline-block;width:9px;height:9px;border:1.5px solid #6f6248;transform:rotate(45deg)"></span><span style="font:600 11px/1 Inter,sans-serif;color:#6f6248">No direction, no window</span><span style="margin-left:auto;font:400 10px/1 'JetBrains Mono',monospace;color:#786a52">Jul 24</span></div>
+            <p style="margin:0;font:500 var(--v2-claim)/1.4 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">Electronic Arts' Saudi-backed take-private officially closes.</p>
+            <p style="margin:0;font:400 italic 14px/1.6 'Playfair Display',serif;color:#3d2b1f">Precedent for sovereign capital in interactive entertainment. Want the comp set before I form a view.</p>
+          </div>
+          <div style="flex:none;display:flex;align-items:center;gap:11px;padding:16px 0 4px"><span style="font:400 italic 12.5px/1 'Playfair Display',serif;color:#6f6248">following</span><span style="flex:1;height:1px;background:#ede8df"></span></div>
+          <div style="flex:none;display:flex;align-items:center;gap:13px;min-height:56px;border-top:1px solid #f0ebe0"><span style="flex:none;display:inline-block;width:11px;height:11px;border:1.5px solid #6f6248;border-radius:50%"></span><div style="min-width:0;flex:1"><div style="font:500 14px/1.3 Inter,sans-serif;color:#1a1208">Grid capacity</div><div style="margin-top:3px;font:400 10.5px/1 Inter,sans-serif;color:#786a52">theme</div></div><span style="flex:none;font:400 11px/1 'JetBrains Mono',monospace;color:#786a52">6 this week</span></div>
+          <div style="flex:none;display:flex;align-items:center;gap:13px;min-height:56px;border-top:1px solid #f0ebe0"><span style="flex:none;display:inline-block;width:11px;height:11px;border:1.5px solid #6f6248;border-radius:50%"></span><div style="min-width:0;flex:1"><div style="font:500 14px/1.3 Inter,sans-serif;color:#1a1208">Hologic</div><div style="margin-top:3px;font:400 10.5px/1 Inter,sans-serif;color:#786a52">deal &middot; under LOI &middot; $18.3B</div></div><span style="flex:none;font:400 11px/1 'JetBrains Mono',monospace;color:#786a52">Aug 22</span></div>
+          <div style="flex:none;display:flex;align-items:center;gap:13px;min-height:56px;border-top:1px solid #f0ebe0"><span style="flex:none;display:inline-block;width:11px;height:11px;border:1.5px solid #6f6248;border-radius:50%"></span><div style="min-width:0;flex:1"><div style="font:500 14px/1.3 Inter,sans-serif;color:#1a1208">NVDA</div><div style="margin-top:3px;font:400 10.5px/1 Inter,sans-serif;color:#786a52">name &middot; Semiconductors</div></div><span style="flex:none;font:400 11px/1 'JetBrains Mono',monospace;color:#786a52">219.22 +3.43%</span></div>
+        </div>
+        <nav style="flex:none;display:flex;align-items:stretch;border-top:1px solid #ede8df;background:#fffdf9">
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4v16M8 6h12M8 11h12M8 16h8"></path></svg><span style="font:500 10.5px/1 Inter,sans-serif">Ledger</span></div>
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#1a1208"><svg style="color:#d4a84b" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2.4"></circle></svg><span style="font:600 10.5px/1 Inter,sans-serif">Watch</span></div>
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><span style="font:500 10.5px/1 Inter,sans-serif">Ask</span></div>
+        </nav>
+        <div style="height:22px;flex:none;display:flex;align-items:center;justify-content:center;background:#fffdf9"><div style="width:134px;height:5px;border-radius:3px;background:#1a1208"></div></div>
+      </div>
+    </div>
+
+    <!-- ══════════ 11 ASK ══════════ -->
+    <div data-screen-label="11 Ask" style="display:flex;flex-direction:column;gap:12px;width:390px">
+      <div style="display:flex;flex-direction:column;gap:3px"><div style="font:600 13px/1.3 Inter,sans-serif;color:#1a1208">11 &middot; Ask &middot; lookup and intelligence in one field</div><div style="font:400 12px/1.5 Inter,sans-serif;color:#6f6248">Type a ticker and it resolves to a company. Type a question and it answers, citing your own ledger before anything else.</div></div>
+      <div style="width:390px;height:844px;background:#fffdf9;border:1px solid #d6cdbc;border-radius:34px;overflow:hidden;display:flex;flex-direction:column">
+        <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 26px 0 30px;font:600 14px/1 Inter,sans-serif;color:#1a1208"><span>12:46</span><span style="display:flex;gap:5px;align-items:center"><span style="width:16px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span><span style="width:20px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span></span></div>
+        <div style="flex:1;overflow:hidden;padding:16px var(--v2-pad) 0;display:flex;flex-direction:column;gap:14px">
+          <div style="flex:none;display:flex;justify-content:flex-end"><div style="max-width:82%;padding:12px 15px;border-radius:15px;background:#faf5ed;border:1px solid #ede8df;font:400 13.5px/1.55 Inter,sans-serif;color:#1a1208">What have I been wrong-footed on most this year?</div></div>
+          <div style="flex:none;display:flex;flex-direction:column;gap:11px">
+            <p style="margin:0;font:400 13.5px/1.65 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">Two patterns show up across your twelve challenged entries.</p>
+            <p style="margin:0;font:700 16px/1.3 'Playfair Display',serif;color:#1a1208">Reading a slowdown as inventory</p>
+            <p style="margin:0;font:400 13.5px/1.65 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">Four entries turned on this, including Novo Nordisk in June and Zim in February. In each one the demand read was the weak link and it was testable before the window closed.</p>
+            <div style="padding:12px 14px;border:1px solid #ede8df;border-radius:10px;background:#faf7f2">
+              <div style="font:400 10px/1 'JetBrains Mono',monospace;color:#786a52">FROM YOUR LEDGER &middot; 2026-06-24</div>
+              <p style="margin:8px 0 0;font:400 italic 13.5px/1.55 'Playfair Display',serif;color:#1a1208">I read the June slowdown as inventory, not demand.</p>
+            </div>
+            <p style="margin:0;font:700 16px/1.3 'Playfair Display',serif;color:#1a1208">Timing a policy catalyst</p>
+            <p style="margin:0;font:400 13.5px/1.65 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">Three entries were right about direction and early on the date. The reasoning survived the window in each case, which is why they read as challenged rather than mistaken.</p>
+          </div>
+          <div style="flex:none;display:flex;align-items:center;gap:9px;padding-left:2px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#786a52" stroke-width="1.8" stroke-linecap="round"><path d="M7 11v9H4v-9zM7 11l4-8h1.5a2 2 0 0 1 2 2.3L14 9h4.5a2 2 0 0 1 2 2.4l-1.2 6A2 2 0 0 1 17.3 19H7"></path></svg><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#786a52" stroke-width="1.8" stroke-linecap="round" style="transform:rotate(180deg)"><path d="M7 11v9H4v-9zM7 11l4-8h1.5a2 2 0 0 1 2 2.3L14 9h4.5a2 2 0 0 1 2 2.4l-1.2 6A2 2 0 0 1 17.3 19H7"></path></svg><span style="font:400 10.5px/1 Inter,sans-serif;color:#786a52">was this useful</span></div>
+        </div>
+        <div style="flex:none;display:flex;gap:7px;padding:10px var(--v2-pad) 0;overflow:hidden">
+          <div style="flex:none;min-height:44px;display:flex;align-items:center;padding:0 12px;border:1px solid #ede8df;border-radius:9px;background:#faf7f2;font:400 11.5px/1 Inter,sans-serif;color:#6f6248;white-space:nowrap">Where am I overexposed to one theme</div>
+          <div style="flex:none;min-height:44px;display:flex;align-items:center;padding:0 12px;border:1px solid #ede8df;border-radius:9px;background:#faf7f2;font:400 11.5px/1 Inter,sans-serif;color:#6f6248;white-space:nowrap">CEG</div>
+        </div>
+        <div style="flex:none;display:flex;align-items:center;gap:9px;padding:12px var(--v2-pad) 14px">
+          <div style="flex:1;min-width:0;min-height:48px;display:flex;align-items:center;padding:0 15px;border:1px solid #ede8df;border-radius:12px;background:#faf7f2;font:400 13px/1 Inter,sans-serif;color:#786a52">A ticker, or a question</div>
+          <div style="flex:none;width:48px;height:48px;border-radius:12px;background:#1a1208;display:flex;align-items:center;justify-content:center"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#d4a84b" stroke-width="1.9" stroke-linecap="round"><path d="M12 19V5M6 11l6-6 6 6"></path></svg></div>
+        </div>
+        <nav style="flex:none;display:flex;align-items:stretch;border-top:1px solid #ede8df;background:#fffdf9">
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4v16M8 6h12M8 11h12M8 16h8"></path></svg><span style="font:500 10.5px/1 Inter,sans-serif">Ledger</span></div>
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2.4"></circle></svg><span style="font:500 10.5px/1 Inter,sans-serif">Watch</span></div>
+          <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#1a1208"><svg style="color:#d4a84b" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><span style="font:600 10.5px/1 Inter,sans-serif">Ask</span></div>
+        </nav>
+        <div style="height:22px;flex:none;display:flex;align-items:center;justify-content:center;background:#fffdf9"><div style="width:134px;height:5px;border-radius:3px;background:#1a1208"></div></div>
+      </div>
+    </div>
+
+    <!-- ══════════ 12 PREPARED RECORD ══════════ -->
+    <div data-screen-label="12 Prepared record" style="display:flex;flex-direction:column;gap:12px;width:390px">
+      <div style="display:flex;flex-direction:column;gap:3px"><div style="font:600 13px/1.3 Inter,sans-serif;color:#1a1208">12 &middot; The prepared record &middot; new, and the point of all of it</div><div style="font:400 12px/1.5 Inter,sans-serif;color:#6f6248">The user's problem is evidence for a seat. So the app produces the artifact. Complete, timestamped, and impossible to curate.</div></div>
+      <div style="width:390px;height:844px;background:#fffdf9;border:1px solid #d6cdbc;border-radius:34px;overflow:hidden;display:flex;flex-direction:column">
+        <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 26px 0 30px;font:600 14px/1 Inter,sans-serif;color:#1a1208"><span>21:04</span><span style="display:flex;gap:5px;align-items:center"><span style="width:16px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span><span style="width:20px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span></span></div>
+        <div style="flex:none;min-height:48px;display:flex;align-items:center;padding:0 var(--v2-pad);border-bottom:1px solid #ede8df"><span style="min-height:44px;display:flex;align-items:center;gap:6px;font:500 13px/1 Inter,sans-serif;color:#6f6248"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M15 6l-6 6 6 6"></path></svg>Ledger</span></div>
+        <div style="flex:1;overflow:hidden;padding:24px var(--v2-pad) 0;display:flex;flex-direction:column">
+          <div style="flex:none;padding-bottom:16px;border-bottom:2px solid #1a1208">
+            <div style="font:400 11px/1 'JetBrains Mono',monospace;color:#786a52">PREPARED RECORD</div>
+            <h1 style="margin:11px 0 0;font:700 25px/1.15 'Playfair Display',serif;letter-spacing:-0.02em;color:#1a1208">Maya Reyes</h1>
+            <p style="margin:7px 0 0;font:400 12.5px/1.5 Inter,sans-serif;color:#6f6248">41 calls entered between June 2, 2026 and February 20, 2027. Every entry is included. Nothing is sorted, filtered or removed.</p>
+          </div>
+          <div style="flex:none;display:flex;gap:0;padding:12px 0;border-bottom:1px solid #ede8df">
+            <div style="flex:1"><div style="font:400 10px/1 'JetBrains Mono',monospace;color:#786a52">SUPPORTED</div><div style="margin-top:6px;font:500 17px/1 'JetBrains Mono',monospace;color:#1a1208">17</div></div>
+            <div style="flex:1"><div style="font:400 10px/1 'JetBrains Mono',monospace;color:#786a52">CHALLENGED</div><div style="margin-top:6px;font:500 17px/1 'JetBrains Mono',monospace;color:#1a1208">12</div></div>
+            <div style="flex:1"><div style="font:400 10px/1 'JetBrains Mono',monospace;color:#786a52">DEVELOPING</div><div style="margin-top:6px;font:500 17px/1 'JetBrains Mono',monospace;color:#1a1208">5</div></div>
+            <div style="flex:1"><div style="font:400 10px/1 'JetBrains Mono',monospace;color:#786a52">AWAITING</div><div style="margin-top:6px;font:500 17px/1 'JetBrains Mono',monospace;color:#1a1208">7</div></div>
+          </div>
+          <div style="flex:none;padding:14px 0;border-bottom:1px solid #f0ebe0;display:flex;flex-direction:column;gap:7px">
+            <div style="display:flex;align-items:baseline;gap:9px"><span style="font:500 10px/1 'JetBrains Mono',monospace;color:#786a52">2026-06-24</span><span style="font:600 10.5px/1 Inter,sans-serif;color:#b91c1c">Challenged</span></div>
+            <p style="margin:0;font:500 15px/1.42 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">Novo Nordisk narrows the US script gap against Lilly by the July IQVIA prints.</p>
+            <p style="margin:0;font:400 italic 13px/1.55 'Playfair Display',serif;color:#3d2b1f;text-wrap:pretty">CagriSema's label read better than the print suggested. I read the June slowdown as inventory, not demand.</p>
+            <p style="margin:0;font:400 11.5px/1.5 Inter,sans-serif;color:#6f6248">NVO &minus;8.13% against XLV &minus;0.44%. Clean read.</p>
+          </div>
+          <div style="flex:none;padding:14px 0;border-bottom:1px solid #f0ebe0;display:flex;flex-direction:column;gap:7px">
+            <div style="display:flex;align-items:baseline;gap:9px"><span style="font:500 10px/1 'JetBrains Mono',monospace;color:#786a52">2026-07-08</span><span style="font:600 10.5px/1 Inter,sans-serif;color:#15803d">Supported</span></div>
+            <p style="margin:0;font:500 15px/1.42 'Playfair Display',serif;color:#1a1208;text-wrap:pretty">Azure growth reaccelerates above 30% when the June quarter prints.</p>
+            <p style="margin:0;font:400 italic 13px/1.55 'Playfair Display',serif;color:#3d2b1f;text-wrap:pretty">Capacity was the constraint, not demand. June is when the second-half racks land.</p>
+          </div>
+        </div>
+        <div style="flex:none;padding:12px var(--v2-pad) 16px;border-top:1px solid #ede8df;display:flex;gap:9px">
+          <div style="flex:1;min-height:50px;display:flex;align-items:center;justify-content:center;border:1px solid #ede8df;border-radius:9px;font:500 13.5px/1 Inter,sans-serif;color:#6f6248">Link</div>
+          <div style="flex:1;min-height:50px;display:flex;align-items:center;justify-content:center;background:#1a1208;border-radius:9px;font:600 13.5px/1 Inter,sans-serif;color:#fffdf9">Export PDF</div>
+        </div>
+        <div style="height:22px;flex:none;display:flex;align-items:center;justify-content:center;background:#fffdf9"><div style="width:134px;height:5px;border-radius:3px;background:#1a1208"></div></div>
+      </div>
+    </div>
+
+    <!-- ══════════ 13 INSTALL ══════════ -->
+    <div data-screen-label="13 Install" style="display:flex;flex-direction:column;gap:12px;width:390px">
+      <div style="display:flex;flex-direction:column;gap:3px"><div style="font:600 13px/1.3 Inter,sans-serif;color:#1a1208">13 &middot; The install moment</div><div style="font:400 12px/1.5 Inter,sans-serif;color:#6f6248">Fires once, only after a first commit and only on a second visit. It argues from the user's own open window, never from our convenience.</div></div>
+      <div style="width:390px;height:844px;background:#fffdf9;border:1px solid #d6cdbc;border-radius:34px;overflow:hidden;display:flex;flex-direction:column;position:relative">
+        <div style="height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 22px;background:#f4efe6;font:600 13px/1 Inter,sans-serif;color:#1a1208"><span>7:04</span><span style="display:flex;gap:5px;align-items:center"><span style="width:16px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span><span style="width:20px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span></span></div>
+        <div style="height:50px;flex:none;display:flex;align-items:center;padding:0 14px;background:#f4efe6;border-bottom:1px solid #e2dbcd"><div style="flex:1;height:34px;border-radius:8px;background:#ffffff;border:1px solid #e2dbcd;display:flex;align-items:center;justify-content:center;font:400 13px/1 Inter,sans-serif;color:#6f6248">signalera.ai</div></div>
+        <div style="flex:1;overflow:hidden;padding:22px var(--v2-pad) 0;opacity:.24"><div style="font:400 italic 13px/1 'Playfair Display',serif;color:#6f6248">Thursday, August 6</div><h1 style="margin:14px 0 0;font:700 28px/1.14 'Playfair Display',serif;color:#1a1208">Two on your ledger.</h1></div>
+        <div style="position:absolute;left:0;right:0;bottom:0;background:#fffdf9;border-top:1px solid #ede8df;border-radius:20px 20px 34px 34px;padding:10px var(--v2-pad) 22px;box-shadow:0 -10px 34px rgba(26,18,8,.11)">
+          <div style="width:38px;height:4px;border-radius:2px;background:#e2dbcd;margin:0 auto 20px"></div>
+          <div style="display:inline-flex;font:700 18px/1 'Playfair Display',serif;letter-spacing:-0.02em"><span style="color:#1a1208">Signal</span><span style="background-image:linear-gradient(180deg,#e8c77a 0%,#d4a84b 55%,#a8873a 100%);background-clip:text;-webkit-background-clip:text;color:transparent;-webkit-text-fill-color:transparent">era</span></div>
+          <div style="margin-top:16px;display:flex;align-items:center;gap:15px">
+            <div style="flex:none;width:60px;height:60px;border-radius:14px;background:#1a1208;display:flex;align-items:center;justify-content:center"><span style="font:700 36px/1 'Playfair Display',serif;letter-spacing:-0.02em;background-image:linear-gradient(180deg,#e8c77a 0%,#d4a84b 55%,#a8873a 100%);background-clip:text;-webkit-background-clip:text;color:transparent;-webkit-text-fill-color:transparent">S</span></div>
+            <h2 style="margin:0;font:700 20px/1.2 'Playfair Display',serif;color:#1a1208">Keep the ledger one tap away.</h2>
+          </div>
+          <p style="margin:15px 0 0;font:400 14px/1.6 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">You have two open calls. The nearest is checked on Aug 27. On the home screen this opens straight to the ledger, with no address bar in the way.</p>
+          <div style="margin-top:16px;padding:13px 14px;border:1px solid #ede8df;border-radius:11px;background:#faf7f2;display:flex;flex-direction:column;gap:11px">
+            <div style="display:flex;align-items:center;gap:11px"><span style="flex:none;width:20px;height:20px;border:1px solid #786a52;border-radius:5px;display:flex;align-items:center;justify-content:center;font:600 11px/1 Inter,sans-serif;color:#6f6248">1</span><span style="font:400 13px/1.4 Inter,sans-serif;color:#3d2b1f">Tap the share control in Safari's toolbar</span><svg style="flex:none;margin-left:auto" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6f6248" stroke-width="1.8" stroke-linecap="round"><path d="M12 15V4M8 8l4-4 4 4M5 15v4h14v-4"></path></svg></div>
+            <div style="display:flex;align-items:center;gap:11px"><span style="flex:none;width:20px;height:20px;border:1px solid #786a52;border-radius:5px;display:flex;align-items:center;justify-content:center;font:600 11px/1 Inter,sans-serif;color:#6f6248">2</span><span style="font:400 13px/1.4 Inter,sans-serif;color:#3d2b1f">Choose Add to Home Screen</span></div>
+          </div>
+          <div style="margin-top:16px;min-height:52px;display:flex;align-items:center;justify-content:center;background:#1a1208;border-radius:9px;font:600 15px/1 Inter,sans-serif;color:#fffdf9">Show me</div>
+          <div style="margin-top:8px;min-height:44px;display:flex;align-items:center;justify-content:center;font:500 13.5px/1 Inter,sans-serif;color:#6f6248">Not now</div>
+          <p style="margin:8px 0 0;font:400 11px/1.5 Inter,sans-serif;color:#786a52;text-align:center">Asked once. If you say no, it is not asked again.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ 14 SHELL ══════════ -->
+    <div data-screen-label="14 Shell both states" style="display:flex;flex-direction:column;gap:12px;width:814px">
+      <div style="display:flex;flex-direction:column;gap:3px"><div style="font:600 13px/1.3 Inter,sans-serif;color:#1a1208">14 &middot; The shell in both states, measured</div><div style="font:400 12px/1.5 Inter,sans-serif;color:#6f6248">Nothing of ours enters the band Safari owns. Every height is dvh based, so the address bar collapsing changes room without moving anything.</div></div>
+      <div style="display:flex;gap:34px">
+        <div style="width:390px;display:flex;flex-direction:column;gap:10px">
+          <div style="width:390px;height:844px;background:#fffdf9;border:1px solid #d6cdbc;border-radius:34px;overflow:hidden;display:flex;flex-direction:column;position:relative">
+            <div style="height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 22px;background:#f4efe6;font:600 13px/1 Inter,sans-serif;color:#1a1208"><span>6:52</span><span style="display:flex;gap:5px;align-items:center"><span style="width:16px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span><span style="width:20px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span></span></div>
+            <div style="height:50px;flex:none;display:flex;align-items:center;padding:0 14px;background:#f4efe6;border-bottom:1px solid #e2dbcd"><div style="flex:1;height:34px;border-radius:8px;background:#ffffff;border:1px solid #e2dbcd;display:flex;align-items:center;justify-content:center;font:400 13px/1 Inter,sans-serif;color:#6f6248">signalera.ai</div></div>
+            <div style="flex:1;background:#fbf8f2;display:flex;align-items:center;justify-content:center"><div style="text-align:center;padding:0 40px"><div style="font:400 11px/1 'JetBrains Mono',monospace;color:#6f6248">CONTENT HEIGHT</div><div style="margin-top:8px;font:700 38px/1 'Playfair Display',serif;color:#1a1208">640px</div><div style="margin-top:10px;font:400 12px/1.55 Inter,sans-serif;color:#6f6248">The open block, the date rule and one full claim card fit above the fold. That is the minimum the morning needs.</div></div></div>
+            <nav style="flex:none;display:flex;align-items:stretch;border-top:1px solid #ede8df;background:#fffdf9">
+              <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#1a1208"><svg style="color:#d4a84b" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4v16M8 6h12M8 11h12M8 16h8"></path></svg><span style="font:600 10.5px/1 Inter,sans-serif">Ledger</span></div>
+              <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2.4"></circle></svg><span style="font:500 10.5px/1 Inter,sans-serif">Watch</span></div>
+              <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><span style="font:500 10.5px/1 Inter,sans-serif">Ask</span></div>
+            </nav>
+            <div style="height:50px;flex:none;display:flex;align-items:center;justify-content:space-around;padding:0 28px;background:#f4efe6;border-top:1px solid #e2dbcd;color:#6f6248">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M15 6l-6 6 6 6"></path></svg>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" style="opacity:.35"><path d="M9 6l6 6-6 6"></path></svg>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 15V4M8 8l4-4 4 4M5 15v4h14v-4"></path></svg>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
+            </div>
+            <div style="position:absolute;left:0;right:0;bottom:0;height:50px;border:1px dashed #b91c1c;background:rgba(185,28,28,.05);display:flex;align-items:center;justify-content:center;font:600 10px/1 Inter,sans-serif;color:#b91c1c">Safari owns this band. Nothing of ours goes here.</div>
+          </div>
+          <div style="font:600 12px/1.4 Inter,sans-serif;color:#1a1208">Browser chrome present</div>
+        </div>
+        <div style="width:390px;display:flex;flex-direction:column;gap:10px">
+          <div style="width:390px;height:844px;background:#fffdf9;border:1px solid #d6cdbc;border-radius:34px;overflow:hidden;display:flex;flex-direction:column;position:relative">
+            <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 26px 0 30px;font:600 14px/1 Inter,sans-serif;color:#1a1208"><span>6:52</span><span style="display:flex;gap:5px;align-items:center"><span style="width:16px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span><span style="width:20px;height:9px;border:1px solid #1a1208;border-radius:2px;display:inline-block"></span></span></div>
+            <div style="flex:1;background:#fbf8f2;display:flex;align-items:center;justify-content:center"><div style="text-align:center;padding:0 40px"><div style="font:400 11px/1 'JetBrains Mono',monospace;color:#6f6248">CONTENT HEIGHT</div><div style="margin-top:8px;font:700 38px/1 'Playfair Display',serif;color:#1a1208">712px</div><div style="margin-top:10px;font:400 12px/1.55 Inter,sans-serif;color:#6f6248">72px more. Nothing reflows: the same components get more room, so a second claim card clears the fold.</div></div></div>
+            <nav style="flex:none;display:flex;align-items:stretch;border-top:1px solid #ede8df;background:#fffdf9">
+              <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#1a1208"><svg style="color:#d4a84b" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4v16M8 6h12M8 11h12M8 16h8"></path></svg><span style="font:600 10.5px/1 Inter,sans-serif">Ledger</span></div>
+              <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2.4"></circle></svg><span style="font:500 10.5px/1 Inter,sans-serif">Watch</span></div>
+              <div style="flex:1;min-width:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#786a52"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><span style="font:500 10.5px/1 Inter,sans-serif">Ask</span></div>
+            </nav>
+            <div style="height:22px;flex:none;display:flex;align-items:center;justify-content:center;background:#fffdf9"><div style="width:134px;height:5px;border-radius:3px;background:#1a1208"></div></div>
+            <div style="position:absolute;left:0;right:0;bottom:0;height:22px;border:1px dashed #15803d;background:rgba(21,128,61,.05);display:flex;align-items:center;justify-content:center;font:600 10px/1 Inter,sans-serif;color:#15803d">env(safe-area-inset-bottom)</div>
+          </div>
+          <div style="font:600 12px/1.4 Inter,sans-serif;color:#1a1208">Standalone, installed</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════ RATIONALE ══════════ -->
+  <div style="width:940px;display:flex;flex-direction:column;padding:44px 52px 52px;background:#fffdf9;border:1px solid #d6cdbc;border-radius:16px">
+    <div style="font:400 italic 14px/1 'Playfair Display',serif;color:#6f6248">why this and not v1</div>
+    <h2 style="margin:16px 0 0;font:800 34px/1.1 'Playfair Display',serif;letter-spacing:-0.02em;color:#1a1208">Four arguments, and the three I expect to lose</h2>
+
+    <h3 style="margin:34px 0 0;font:700 19px/1.25 'Playfair Display',serif;color:#1a1208">1 &middot; One timeline, because a claim is one object</h3>
+    <p style="margin:11px 0 0;font:400 15px/1.75 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">v1 put the brief in Today and the record in Record, which meant the same claim appeared in two places under two designs and the user had to learn that they were the same thing. On the Ledger a claim enters at the top of today, gains your note when you commit, gains its attribution figures when the window closes, and settles into the past. One object, one anatomy, accreting evidence. The record is not somewhere you go. It is the app, older.</p>
+    <p style="margin:11px 0 0;font:400 15px/1.75 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">The structural consequence is that open calls sit <em>above</em> today, because their dates have not arrived. Scrolling down is your past reasoning; the thing you owe an answer on is the first thing on the screen. That is the return trigger made spatial rather than announced, and it is the Zeigarnik effect doing the work a notification cannot do on mobile web.</p>
+
+    <h3 style="margin:30px 0 0;font:700 19px/1.25 'Playfair Display',serif;color:#1a1208">2 &middot; The note is the product, so committing asks for it</h3>
+    <p style="margin:11px 0 0;font:400 15px/1.75 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">This is the largest change and I believe it is the correct one. A record of adopted calls proves you clicked. A record of adopted calls each carrying one line of your own reasoning, timestamped before the outcome was known, proves you thought. Only the second is evidence, and evidence is the entire product thesis. So the commit sheet leads with the question rather than the button, and the button is not the first thing your thumb finds.</p>
+    <p style="margin:11px 0 0;font:400 15px/1.75 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">It also makes the friction honest. v1 asked for 700ms of pressure, which is theatre if nothing is being weighed. Here the pressure sits after a sentence you had to compose, so the gesture confirms a decision instead of manufacturing one.</p>
+
+    <h3 style="margin:30px 0 0;font:700 19px/1.25 'Playfair Display',serif;color:#1a1208">3 &middot; Resolution gets the whole screen, and reads you back to yourself</h3>
+    <p style="margin:11px 0 0;font:400 15px/1.75 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">Screen 02 is the emotional centre and it is the only full-screen interruption in the design. Your claim, the figures, and then your own words from three weeks ago, before you knew. That confrontation is the product working. It is also why challenged entries cannot be punished visually: the note is what is being examined, and a note can be excellent while the window runs against it. Screen 02 says exactly that in the closing line.</p>
+
+    <h3 style="margin:30px 0 0;font:700 19px/1.25 'Playfair Display',serif;color:#1a1208">4 &middot; The prepared record, which nothing before this touched</h3>
+    <p style="margin:11px 0 0;font:400 15px/1.75 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">The user cannot get an analyst seat without evidence they can think. Every version so far built the evidence and then left them to screenshot it. Screen 12 produces the artifact: complete, timestamped, uncurated, with the counts stated plainly and no rate derived from them. The line that does the work is the one under the name, saying every entry is included and nothing is sorted or removed. A record you can filter before showing it is not evidence, and this is the screen where that principle either survives or gets quietly sold.</p>
+
+    <div style="margin-top:32px;height:1px;background:#ede8df"></div>
+
+    <h3 style="margin:26px 0 0;font:700 19px/1.25 'Playfair Display',serif;color:#1a1208">Where I expect to lose</h3>
+    <div style="margin-top:14px;display:flex;flex-direction:column">
+      <div style="display:grid;grid-template-columns:190px 1fr;gap:22px;padding:14px 0;border-top:1px solid #ede8df"><div style="font:600 13px/1.5 Inter,sans-serif;color:#1a1208">Typing on a commute</div><div style="font:400 13.5px/1.7 Inter,sans-serif;color:#3d2b1f">The required note is the strongest idea here and the most likely to be cut. One-handed typing on a moving train is genuinely hard, and if adoption drops the loop starves. My answer is that a call you would not spend twenty seconds justifying was not a call. If you disagree, the fallback is a note that can be added later with the entry marked as unjustified until it is, which preserves the principle and loses the friction.</div></div>
+      <div style="display:grid;grid-template-columns:190px 1fr;gap:22px;padding:14px 0;border-top:1px solid #ede8df"><div style="font:600 13px/1.5 Inter,sans-serif;color:#1a1208">Counts on screen 12</div><div style="font:400 13.5px/1.7 Inter,sans-serif;color:#3d2b1f">Four numbers side by side invite the reader to divide them. My position is that a complete count is a fact and a rate is a claim, and that hiding the counts would make the record less auditable rather than more compliant. But this is the single element most likely to fail legal review, and the design survives their removal without a redraw.</div></div>
+      <div style="display:grid;grid-template-columns:190px 1fr;gap:22px;padding:14px 0;border-top:1px solid #ede8df"><div style="font:600 13px/1.5 Inter,sans-serif;color:#1a1208">Two words are gone</div><div style="font:400 13.5px/1.7 Inter,sans-serif;color:#3d2b1f">Radar and Dashboard both disappear, and Track this call becomes Take this call, because you are taking a position of reasoning rather than subscribing to a feed. Renames are cheap to reverse and I would not fight hard for any of the three.</div></div>
+      <div style="display:grid;grid-template-columns:190px 1fr;gap:22px;padding:14px 0;border-top:1px solid #ede8df;border-bottom:1px solid #ede8df"><div style="font:600 13px/1.5 Inter,sans-serif;color:#1a1208">Deal Flow, again</div><div style="font:400 13.5px/1.7 Inter,sans-serif;color:#3d2b1f">Same loss as before and I have not solved it. Deals live inside Watch as a filter, so there is no surface for surveying the whole deal universe. For a private equity recruiting audience that may be a real job, and if it is, Watch needs a fourth filter state that shows everything rather than only what you follow.</div></div>
+    </div>
+
+    <div style="margin-top:26px;padding:20px 22px;border:1px solid #ede8df;border-radius:12px;background:#faf5ed">
+      <div style="font:600 12px/1 Inter,sans-serif;color:#1a1208">Two departures from the design system, isolated and flagged</div>
+      <p style="margin:11px 0 0;font:400 13.5px/1.7 Inter,sans-serif;color:#3d2b1f;text-wrap:pretty">The system puts a 3px gold spine on the left of scored objects and a 4px gold rule on the lead card. Your ban on coloured left borders overrides both, so state lives in a 2px top edge plus a dot and the state word, applied consistently everywhere. Second, gold never touches text at any size anywhere in this design: it survives as fills, rules, dots and icons only, which is stricter than the system's own link colour and comes out of measuring the v1 screens rather than trusting them.</p>
+    </div>
+  </div>
+
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Airy&quot;,&quot;Standard&quot;,&quot;Compact&quot;],&quot;default&quot;:&quot;Standard&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Density&quot;},&quot;typeContrast&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;min&quot;:0,&quot;max&quot;:100,&quot;step&quot;:5,&quot;default&quot;:50,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Typography&quot;},&quot;reasoningLines&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;min&quot;:0,&quot;max&quot;:8,&quot;step&quot;:1,&quot;default&quot;:3,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Typography&quot;},&quot;openCalls&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;list&quot;,&quot;hidden&quot;],&quot;default&quot;:&quot;list&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Ledger&quot;}}">
+class Component extends DCLogic {
+  state = { pressing: false, committed: false };
+
+  componentDidMount() { this.applyVars(); }
+  componentDidUpdate() { this.applyVars(); }
+
+  applyVars() {
+    const p = this.props || {};
+    const r = document.documentElement.style;
+    const d = { Airy: 0, Standard: 1, Compact: 2 }[p.density] ?? 1;
+    r.setProperty('--v2-pad', [24, 20, 16][d] + 'px');
+    r.setProperty('--v2-body', [15, 14, 13][d] + 'px');
+    r.setProperty('--v2-lead', String([1.75, 1.6, 1.45][d]));
+    r.setProperty('--v2-row', [16, 15, 14][d] + 'px');
+
+    const c = p.typeContrast ?? 50;
+    r.setProperty('--v2-title', (23 + c * 0.14).toFixed(1) + 'px');
+    r.setProperty('--v2-claim', (15.8 + c * 0.034).toFixed(1) + 'px');
+
+    r.setProperty('--v2-clamp', String(p.reasoningLines ?? 3));
+
+    const o = p.openCalls ?? 'list';
+    r.setProperty('--v2-open', o === 'hidden' ? 'none' : 'flex');
+  }
+
+  setLens(which) {
+    const r = document.documentElement.style;
+    const keys = { sup: '--v2-fsup', chal: '--v2-fchal', dev: '--v2-fdev' };
+    Object.keys(keys).forEach(k => {
+      r.setProperty(keys[k], which === 'all' || which === k ? 'flex' : 'none');
+    });
+  }
+
+  renderVals() {
+    return {
+      noteText: "Data centre contracting is repricing faster than the regulated book. If the auction clears high the sector index still carries too much regulated drag to keep pace.",
+      committed: this.state.committed,
+      notCommitted: !this.state.committed,
+      pressLabel: this.state.pressing ? 'Keep pressing' : 'Press to enter this on your ledger',
+      fillStyle: this.state.pressing
+        ? 'position:absolute;left:0;top:0;bottom:0;background:#d4a84b;animation:v2fill 700ms linear forwards'
+        : 'position:absolute;left:0;top:0;bottom:0;width:0;background:#d4a84b',
+      startPress: () => {
+        if (this.state.committed) return;
+        this.setState({ pressing: true });
+        clearTimeout(this._t);
+        this._t = setTimeout(() => this.setState({ pressing: false, committed: true }), 700);
+      },
+      endPress: () => {
+        clearTimeout(this._t);
+        if (!this.state.committed) this.setState({ pressing: false });
+      },
+      lensAll: () => this.setLens('all'),
+      lensDev: () => this.setLens('dev'),
+      lensChal: () => this.setLens('chal'),
+      lensSup: () => this.setLens('sup')
+    };
+  }
+}
+</script>
+</body>
+</html>

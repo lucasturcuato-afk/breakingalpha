@@ -1,0 +1,172 @@
+/* Signalera Mobile — design tokens extracted from the prototype.
+
+   Diff against src/styles/tokens.css. Where a token has no counterpart there,
+   ADD it rather than substituting a near value: several near-misses (13px vs 12,
+   16px vs 14, --c-border vs --c-hair) were corrected during design and would
+   regress on substitution.
+
+   RULE: *ink variants are for TEXT; base variants are for FILLS. Using an ink
+   token as a background, or a base token as text, was the single most common
+   defect found during design. --c-green-surface exists only because
+   --c-greenink was being used as a fill and drifted below threshold in dark.
+
+   RULE: on pinned-espresso surfaces use the on-espresso literals
+   (#f87171 red / #4ade80 green / #fbbf24 amber), NOT the ink tokens. The ink
+   tokens are light-theme values and measure 2.86-3.76:1 on espresso.
+
+   RULE: gold never touches text at --c-gold (2.17:1 on cream). --c-goldink is
+   the only gold permitted on type. */
+
+:root {
+  --c-bg: #fffdf9;
+  --c-surface: #faf7f2;
+  --c-well: #faf5ed;
+  --c-card: #ffffff;
+  --c-ink: #1a1208;
+  --c-body: #3d2b1f;
+  --c-secondary: #6f6248;
+  --c-muted: #786a52;
+  --c-border: #ede8df;
+  --c-hair: #f0ebe0;
+  --c-edge: #ded5c6;
+  --c-frame: #d6cdbc;
+  --c-handle: #e2dbcd;
+  --c-gold: #d4a84b;
+  --c-goldink: #7a5f18;
+  --c-inverse: #1a1208;
+  --c-inverse-well: #241a0e;
+  --c-inverse-border: #3a2c1a;
+  --c-oninv: #fffdf9;
+  --c-oninv-strong: #faf5ed;
+  --c-oninv-body: #c9bda6;
+  --c-oninv-dim: #a2937a;
+  --c-oninv-mono: #e8dcc4;
+  --c-red: #dc2626;
+  --c-redink: #b91c1c;
+  --c-green: #16a34a;
+  --c-greenink: #15803d;
+  --c-amber: #f59e0b;
+  --c-amberink: #a16207;
+  --c-chrome: #f4efe6;
+  --c-chrome-border: #e2dbcd;
+  --c-red-well: #fdf5f4;
+  --c-red-edge: #f0c9c9;
+  --c-amber-well: #fdf8ef;
+  --c-amber-edge: #f0dfb8;
+  --c-ongold: #1a1208;
+  --c-inv-red: #f87171;
+  --c-inv-green: #4ade80;
+  --c-locked-bg: #e2dbcd;
+  --c-locked-ink: #5f5440;
+  --pill-bull-bg: #eaf5ec;
+  --pill-bull-text: #136830;
+  --pill-bull-border: #c3e3cb;
+  --pill-bear-bg: #fbeceb;
+  --pill-bear-text: #b91c1c;
+  --pill-bear-border: #f0c9c9;
+  --pill-mixed-bg: #f7f2e6;
+  --pill-mixed-text: #755b16;
+  --pill-mixed-border: #e6d9b8;
+  --c-green-surface: #15803d;
+  --pill-neutral-bg: #f3f0ea;
+  --pill-neutral-text: #5f5440;
+  --pill-neutral-border: #e2dbcd;
+  --pill-watch-bg: #f4efe6;
+  --pill-watch-text: #6d5414;
+  --pill-watch-border: #e6d9b8;
+  --c-number: #93866f;
+
+  /* density, driven from props at runtime */
+  --v3-pad: 20px;
+  --v3-body: 14px;
+  --v3-lead: 1.6;
+  --v3-claim: 17.5px;
+  --v3-clamp: 3;
+  --v3-trCrit: flex;
+  --v3-trHigh: flex;
+  --v3-trMed: flex;
+  --v3-fdA: flex;
+  --v3-fdB: flex;
+  --v3-fdC: flex;
+  --v3-fdD: flex;
+  --v3-fdE: none;
+  --v3-fdEmpty: none;
+  --v3-fdH1: flex;
+  --v3-fdH2: flex;
+  --v3-dlLoi: flex;
+  --v3-dlClosed: flex;
+  --v3-dlAnn: flex;
+  --v3-dlTerm: flex;
+  --v3-flAnn: flex;
+  --v3-flQtr: flex;
+  --v3-flEvt: flex;
+  --v3-flOther: none;
+  --v3-tkStr: flex;
+  --v3-tkWk: flex;
+  --v3-tkFlat: flex;
+  --v3-wlPub: flex;
+  --v3-wlPriv: flex;
+  --v3-wlInd: flex;
+  --v3-wlEmpty: none;
+  --v3-wlQuiet: block;
+}
+
+[data-theme="dark"] {
+  --c-bg: #14100a;
+  --c-surface: #1b1610;
+  --c-well: #221b12;
+  --c-card: #1e1e1e;
+  --c-ink: #f5efe3;
+  --c-body: #dcd2c1;
+  --c-secondary: #b5a88f;
+  --c-muted: #9e9178;
+  --c-border: #2f2920;
+  --c-hair: #282219;
+  --c-edge: #3b3229;
+  --c-frame: #3b3229;
+  --c-handle: #3b3229;
+  --c-gold: #d4a84b;
+  --c-goldink: #d4a84b;
+  --c-inverse: #0c0906;
+  --c-inverse-well: #171009;
+  --c-inverse-border: #3a2c1a;
+  --c-oninv: #f5efe3;
+  --c-oninv-strong: #faf5ed;
+  --c-oninv-body: #c9bda6;
+  --c-oninv-dim: #a2937a;
+  --c-oninv-mono: #e8dcc4;
+  --c-red: #f87171;
+  --c-redink: #fca5a5;
+  --c-green: #4ade80;
+  --c-greenink: #86efac;
+  --c-amber: #fbbf24;
+  --c-amberink: #fcd34d;
+  --c-chrome: #0f0c07;
+  --c-chrome-border: #2f2920;
+  --c-red-well: #2a1414;
+  --c-red-edge: #5c2a2a;
+  --c-amber-well: #2a2110;
+  --c-amber-edge: #5c4620;
+  --c-ongold: #1a1208;
+  --c-inv-red: #f87171;
+  --c-inv-green: #4ade80;
+  --c-locked-bg: #2a241c;
+  --c-locked-ink: #a89b82;
+  --pill-bull-bg: #16281c;
+  --pill-bull-text: #86efac;
+  --pill-bull-border: #2c4a34;
+  --pill-bear-bg: #2a1414;
+  --pill-bear-text: #fca5a5;
+  --pill-bear-border: #5c2a2a;
+  --pill-mixed-bg: #2a2415;
+  --pill-mixed-text: #e6cd8a;
+  --pill-mixed-border: #4c4128;
+  --c-green-surface: #0f5a2b;
+  --pill-neutral-bg: #241f18;
+  --pill-neutral-text: #b5a88f;
+  --pill-neutral-border: #3b3229;
+  --pill-watch-bg: #2a2110;
+  --pill-watch-text: #e6cd8a;
+  --pill-watch-border: #5c4620;
+  --c-number: #7d7364;
+}
