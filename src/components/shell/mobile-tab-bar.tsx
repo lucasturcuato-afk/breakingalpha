@@ -113,10 +113,10 @@ export function MobileTabBar() {
   return (
     <nav
       aria-label="Primary"
-      className="md:hidden fixed bottom-0 left-0 right-0 z-40"
+      /* Layout stays in classes, never in the style attribute: an inline
+         `display` beats `md:hidden` and the bar renders at every width. */
+      className="flex items-stretch md:hidden fixed bottom-0 left-0 right-0 z-40"
       style={{
-        display: "flex",
-        alignItems: "stretch",
         borderTop: "1px solid var(--c-border)",
         backgroundColor: "var(--c-bg)",
         /* The bar sits above the band Safari owns rather than behind it. */
