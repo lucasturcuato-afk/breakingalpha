@@ -12,6 +12,13 @@
  *   parity  Fingerprint the prototype screen and the implemented route, diff.
  *             node scripts/screen-audit.mjs parity ledger http://localhost:3000/ledger
  *
+ * --selector scopes both modes to a subtree, so a component can be diffed
+ * against just its counterpart instead of against an entire screen:
+ *   node scripts/screen-audit.mjs parity ledger URL --selector "[data-parity=ledger-card]"
+ * The design and the build rarely carry the same hooks, so --proto-selector
+ * overrides the prototype side when the two differ. A selector matching
+ * nothing exits 2 rather than diffing an empty subtree clean against anything.
+ *
  * Parity is the point. The handoff states every measurement in the README was
  * taken with getComputedStyle / getBoundingClientRect, which means the design
  * ships with machine-readable ground truth. Comparing numbers beats comparing
@@ -35,9 +42,12 @@ const VIEWPORTS = [
 
 const RADII_OK = [0, 4, 6, 9, 12, 14];
 
-/* Injected into the page. Returns both the violation list and the fingerprint. */
-const PROBE = `() => {
-  const out = { violations: [], fingerprint: [] };
+/* Injected into the page. Returns both the violation list and the fingerprint.
+ * With a selector, everything below is scoped to that subtree, root included,
+ * so a component can be diffed against its counterpart rather than against a
+ * whole screen. Without one, the whole document, as before. */
+const PROBE = `(sel) => {
+  const out = { violations: [], fingerprint: [], missing: false };
   const push = (rule, detail, el) => out.violations.push({
     rule, detail,
     at: el ? (el.tagName.toLowerCase()
@@ -71,7 +81,9 @@ const PROBE = `() => {
     return getComputedStyle(document.body).backgroundColor;
   };
 
-  const all = document.querySelectorAll('*');
+  const root = sel ? document.querySelector(sel) : null;
+  if (sel && !root) { out.missing = true; return out; }
+  const all = root ? [root, ...root.querySelectorAll('*')] : document.querySelectorAll('*');
   for (const el of all) {
     const cs = getComputedStyle(el);
     if (cs.display === 'none' || cs.visibility === 'hidden') continue;
@@ -166,18 +178,46 @@ const PROBE = `() => {
   return out;
 }`;
 
-async function probe(page, url, theme) {
+async function probe(page, url, theme, selector = null) {
   await page.goto(url, { waitUntil: 'networkidle' });
   await page.evaluate((t) => {
     document.documentElement.setAttribute('data-theme', t);
     try { localStorage.setItem('signalera-v3-theme', t); } catch (e) {}
   }, theme);
   await page.waitForTimeout(400);
-  return page.evaluate(new Function('return ' + PROBE)());
+  return page.evaluate(new Function('return ' + PROBE)(), selector);
+}
+
+/* Pull `--name value` out of argv and return the value, so the positional
+ * arguments keep their positions however the flags are ordered. */
+function takeFlag(argv, name) {
+  const i = argv.indexOf(name);
+  if (i === -1) return null;
+  const value = argv[i + 1];
+  if (!value || value.startsWith('--')) {
+    console.error(`screen-audit: ${name} needs a value`);
+    process.exit(2);
+  }
+  argv.splice(i, 2);
+  return value;
+}
+
+/* A selector that matches nothing is the one failure mode that would answer
+ * confidently and wrongly: an empty subtree diffs clean against anything. */
+function assertFound(result, where, selector) {
+  if (result.missing) {
+    console.error(`screen-audit: --selector ${selector} matched nothing ${where}`);
+    process.exit(2);
+  }
 }
 
 async function run() {
-  const [mode, ...rest] = process.argv.slice(2);
+  const argv = process.argv.slice(2);
+  /* Scopes both sides. The prototype and the build rarely carry the same
+   * hooks, so --proto-selector overrides the design side when they differ. */
+  const selector = takeFlag(argv, '--selector');
+  const protoSelector = takeFlag(argv, '--proto-selector') || selector;
+  const [mode, ...rest] = argv;
   const browser = await chromium.launch();
   let failed = 0;
 
@@ -186,15 +226,16 @@ async function run() {
     for (const vp of VIEWPORTS) {
       for (const theme of ['light', 'dark']) {
         const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height } });
-        const { violations } = await probe(page, url, theme);
+        const { violations, missing } = await probe(page, url, theme, selector);
+        if (selector) assertFound({ missing }, `at ${url}`, selector);
         // Reduced motion: nothing may be hidden rather than merely unanimated.
         const rm = await browser.newPage({
           viewport: { width: vp.width, height: vp.height },
           reducedMotion: 'reduce',
         });
-        const rmRes = await probe(rm, url, theme);
+        const rmRes = await probe(rm, url, theme, selector);
         const hidden = rmRes.fingerprint.length < violations.length * 0 + Math.floor(
-          (await probe(page, url, theme)).fingerprint.length * 0.9);
+          (await probe(page, url, theme, selector)).fingerprint.length * 0.9);
         if (hidden) violations.push({ rule: 'reduced-motion', detail: 'content missing under prefers-reduced-motion', at: null, text: null });
         await rm.close();
 
@@ -233,35 +274,71 @@ async function run() {
       if (btn) btn.click();
     }, screen);
     await page.waitForTimeout(600);
-    const proto = await page.evaluate(new Function('return ' + PROBE)());
+    const proto = await page.evaluate(new Function('return ' + PROBE)(), protoSelector);
+    if (protoSelector) assertFound(proto, 'in the prototype', protoSelector);
 
     const page2 = await browser.newPage({ viewport: { width: 390, height: 844 } });
-    const impl = await probe(page2, url, 'light');
+    const impl = await probe(page2, url, 'light', selector);
+    if (selector) assertFound(impl, `at ${url}`, selector);
 
     // Diff on the properties the README calls final: type, colour, geometry.
-    const key = (f) => f.text.slice(0, 24);
-    const pMap = new Map(proto.fingerprint.map(f => [key(f), f]));
+    /* Text alone collides. Within one tab bar the row and its label carry the
+     * same text, and the prototype repeats every pole name in its dev strip.
+     * Keying on text alone means last-one-wins, which pairs a label against a
+     * dev-strip chip and reports a mismatch that is not real. Key on tag, text
+     * and ordinal instead, so the nth occurrence on one side meets the nth on
+     * the other. */
+    const keyer = () => {
+      const seen = new Map();
+      return (f) => {
+        const base = f.tag + '|' + f.text.slice(0, 24);
+        const n = (seen.get(base) || 0) + 1;
+        seen.set(base, n);
+        return base + '#' + n;
+      };
+    };
+    const protoKey = keyer();
+    const key = keyer();
+    const pMap = new Map(proto.fingerprint.map(f => [protoKey(f), f]));
+    /* Key each built element ONCE. The ordinal counter advances on every call,
+     * so keying the same element twice would put it in a different bucket the
+     * second time. */
+    const implKeyed = impl.fingerprint.map(f => ({ f, k: key(f) }));
     const diffs = [];
-    for (const f of impl.fingerprint) {
-      const p = pMap.get(key(f));
+    for (const { f, k } of implKeyed) {
+      const p = pMap.get(k);
       if (!p) continue;
       for (const prop of ['fs', 'fw', 'ff', 'lh', 'ls', 'color', 'bg', 'radius', 'h']) {
         if (String(p[prop]) !== String(f[prop])) {
-          diffs.push(`${key(f) || f.tag}  ${prop}: design ${p[prop]}, built ${f[prop]}`);
+          diffs.push(`${f.text.slice(0, 24) || f.tag}  ${prop}: design ${p[prop]}, built ${f[prop]}`);
         }
       }
     }
-    const unmatched = impl.fingerprint.filter(f => !pMap.has(key(f))).length;
+    /* Unmatched is not automatically a defect: a design `div` that production
+     * renders as a real `a` or `button` cannot pair, and should not, since
+     * comparing a div's inherited context to an anchor's compares unlike
+     * things. Name them anyway. A bare count hides whether the gap is one
+     * deliberate element swap or half a screen that never got built. */
+    const unmatchedList = implKeyed.filter(({ k }) => !pMap.has(k)).map(({ f }) => f);
+    const unmatched = unmatchedList.length;
 
     writeFileSync(`parity-${screen}.json`, JSON.stringify({ proto: proto.fingerprint, impl: impl.fingerprint, diffs }, null, 2));
     for (const d of diffs) console.log('  ' + d);
+    if (unmatched) {
+      console.log(`\n  unmatched, present in the build with no design counterpart:`);
+      for (const f of unmatchedList.slice(0, 12)) {
+        console.log(`    <${f.tag}> ${f.h}px  "${f.text.slice(0, 32)}"`);
+      }
+      if (unmatched > 12) console.log(`    ...and ${unmatched - 12} more`);
+    }
     console.log(`\nparity ${screen}: ${diffs.length} property mismatches, ${unmatched} built elements with no design counterpart`);
     console.log(`full fingerprint written to parity-${screen}.json`);
     failed = diffs.length;
   }
 
   else {
-    console.log('usage: screen-audit.mjs audit <url> | screen-audit.mjs parity <screen> <url>');
+    console.log('usage: screen-audit.mjs audit <url> [--selector <css>]');
+    console.log('       screen-audit.mjs parity <screen> <url> [--selector <css>] [--proto-selector <css>]');
     process.exit(2);
   }
 

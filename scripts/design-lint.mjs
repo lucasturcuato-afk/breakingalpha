@@ -131,6 +131,158 @@ const ON_ESPRESSO = new Set(['#f87171', '#4ade80', '#fbbf24']);
 const HEX = /#[0-9a-fA-F]{3,8}\b/g;
 
 /* ------------------------------------------------------------------ */
+/* Rule 10. A responsive class defeated by an inline style.            */
+/*                                                                     */
+/* An inline style attribute beats any class, at every breakpoint. So  */
+/* an element carrying both `md:hidden` and style={{display:'flex'}}   */
+/* is not responsive at all: the class never applies and the element   */
+/* renders at every width. Nothing warns, nothing throws, and the      */
+/* wrong layout only shows up on a device.                             */
+/*                                                                     */
+/* This is structural rather than incidental. The prototype is written */
+/* entirely in inline styles and the build is written in Tailwind      */
+/* classes, so every screen ported from the handoff walks past this    */
+/* trap. It hit the navigation shell twice in one branch, once on      */
+/* `display` against md:hidden and once on `paddingBottom` against     */
+/* md:pb-0.                                                            */
+/*                                                                     */
+/* There is no legitimate case, which is why this has no allowlist:    */
+/* if the value must be dynamic, drive it with a CSS custom property   */
+/* set inline and consume it from a class, or move the whole rule into */
+/* classes. Both keep the breakpoint working.                          */
+/* ------------------------------------------------------------------ */
+
+/* Tailwind's own breakpoint prefixes, plus the max-* direction. `dark:`
+ * and state prefixes like `hover:` are deliberately NOT here: they are
+ * defeated by an inline style too, but that is a different bug with a
+ * different fix, and widening this rule would bury the layout one. */
+const RESPONSIVE_PREFIX = /(?:^|:)(?:max-)?(?:sm|md|lg|xl|2xl):/;
+
+/* Utility to property group. Only the six that actually bite. */
+const TW_PROP = [
+  [/^(?:hidden|block|inline-block|inline-flex|inline-grid|inline|flex|grid|table|table-[a-z-]+|flow-root|contents|list-item)$/, 'display'],
+  [/^-?(?:p|px|py|pt|pr|pb|pl|ps|pe)-/, 'padding'],
+  [/^-?(?:m|mx|my|mt|mr|mb|ml|ms|me)-/, 'margin'],
+  [/^(?:static|fixed|absolute|relative|sticky)$/, 'position'],
+  [/^(?:w|min-w|max-w)-/, 'width'],
+  [/^(?:h|min-h|max-h)-/, 'height'],
+];
+
+/* React style keys to the same property groups. Longhands count: a
+ * responsive `md:pb-0` is defeated by `paddingBottom` just as surely as
+ * by `padding`. */
+const STYLE_PROP = [
+  [/^display$/, 'display'],
+  [/^padding(?:Top|Right|Bottom|Left|Block|Inline|BlockStart|BlockEnd|InlineStart|InlineEnd)?$/, 'padding'],
+  [/^margin(?:Top|Right|Bottom|Left|Block|Inline|BlockStart|BlockEnd|InlineStart|InlineEnd)?$/, 'margin'],
+  [/^position$/, 'position'],
+  [/^(?:min|max)?[Ww]idth$/, 'width'],
+  [/^(?:min|max)?[Hh]eight$/, 'height'],
+];
+
+const propOf = (table, name) => {
+  for (const [re, prop] of table) if (re.test(name)) return prop;
+  return null;
+};
+
+/* Index of the brace matching the one at openIdx, or -1. String aware so
+ * a brace inside a quoted value does not shift the depth. */
+function matchBrace(text, openIdx) {
+  let depth = 0, quote = null;
+  for (let i = openIdx; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === '\\') { i++; continue; }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue; }
+    if (ch === '{') depth++;
+    else if (ch === '}') { depth--; if (depth === 0) return i; }
+  }
+  return -1;
+}
+
+/* JSX opening tags, as source slices. Brace and string aware, so a tag
+ * holding an object literal or a nested ternary is still one tag. */
+function jsxOpeningTags(text) {
+  const tags = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== '<' || !/[A-Za-z]/.test(text[i + 1] || '')) continue;
+    let j = i + 1, depth = 0, quote = null, ok = false;
+    for (; j < text.length; j++) {
+      const ch = text[j];
+      if (quote) {
+        if (ch === '\\') { j++; continue; }
+        if (ch === quote) quote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue; }
+      else if (ch === '{') depth++;
+      else if (ch === '}') depth--;
+      else if (ch === '<' && depth === 0) break;      // not a tag after all
+      else if (ch === '>' && depth === 0) { ok = true; break; }
+    }
+    if (!ok) continue;
+    tags.push({ start: i, src: text.slice(i, j + 1) });
+    i = j;
+  }
+  return tags;
+}
+
+/* Every string literal inside an attribute value, so cn("a", x && "b")
+ * yields both. */
+function stringLiterals(src) {
+  return (src.match(/(['"`])(?:\\.|(?!\1)[\s\S])*?\1/g) || [])
+    .map(s => s.slice(1, -1));
+}
+
+/* Attribute value source for `name`, whether quoted or braced. */
+function attrValue(tagSrc, name) {
+  const m = new RegExp(`\\b${name}\\s*=\\s*`).exec(tagSrc);
+  if (!m) return null;
+  const at = m.index + m[0].length;
+  if (tagSrc[at] === '{') {
+    const end = matchBrace(tagSrc, at);
+    return end === -1 ? null : { text: tagSrc.slice(at, end + 1), offset: at };
+  }
+  const q = tagSrc[at];
+  if (q !== '"' && q !== "'") return null;
+  const end = tagSrc.indexOf(q, at + 1);
+  return end === -1 ? null : { text: tagSrc.slice(at, end + 1), offset: at };
+}
+
+/* Top-level keys of the style object, with their offset inside the tag.
+ * Depth 1 only, so a key of a nested object is not mistaken for a style. */
+function styleKeys(styleSrc) {
+  const inner = styleSrc.text;
+  const open = inner.indexOf('{', 1);
+  if (open === -1) return [];
+  const close = matchBrace(inner, open);
+  if (close === -1) return [];
+  const keys = [];
+  let depth = 0, quote = null;
+  for (let i = open; i <= close; i++) {
+    const ch = inner[i];
+    if (quote) {
+      if (ch === '\\') { i++; continue; }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue; }
+    if (ch === '{' || ch === '[' || ch === '(') { depth++; continue; }
+    if (ch === '}' || ch === ']' || ch === ')') { depth--; continue; }
+    if (depth !== 1) continue;
+    const m = /^([A-Za-z_$][\w$]*)\s*:/.exec(inner.slice(i));
+    if (m && !/[\w$]/.test(inner[i - 1] || '')) {
+      keys.push({ name: m[1], offset: styleSrc.offset + i });
+      i += m[0].length - 1;
+    }
+  }
+  return keys;
+}
+
+/* ------------------------------------------------------------------ */
 
 const findings = [];
 function add(level, file, line, rule, detail) {
@@ -261,6 +413,39 @@ function lintFile(file) {
       }
     }
     re.lastIndex = 0;
+  }
+
+  // 10. responsive class defeated by an inline style. JSX only.
+  if (/\.(t|j)sx$/.test(file)) {
+    for (const tag of jsxOpeningTags(text)) {
+      const cls = attrValue(tag.src, 'className');
+      const sty = attrValue(tag.src, 'style');
+      if (!cls || !sty) continue;
+
+      // Which property groups does a RESPONSIVE class touch here.
+      const byProp = new Map();
+      for (const literal of stringLiterals(cls.text)) {
+        for (const token of literal.split(/\s+/)) {
+          if (!token || !RESPONSIVE_PREFIX.test(token)) continue;
+          const bare = token.slice(token.lastIndexOf(':') + 1);
+          const prop = propOf(TW_PROP, bare);
+          if (prop && !byProp.has(prop)) byProp.set(prop, token);
+        }
+      }
+      if (!byProp.size) continue;
+
+      for (const key of styleKeys(sty)) {
+        const prop = propOf(STYLE_PROP, key.name);
+        if (!prop || !byProp.has(prop)) continue;
+        add(
+          'ERROR',
+          file,
+          lineOf(text, tag.start + key.offset),
+          'responsive-inline-conflict',
+          `inline ${key.name} defeats ${byProp.get(prop)}; the class never applies`,
+        );
+      }
+    }
   }
 }
 
