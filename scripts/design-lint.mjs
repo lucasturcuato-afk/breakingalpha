@@ -53,6 +53,14 @@ const BANNED_ALLOW = [
   // Platform and language surface that cannot be renamed.
   { pattern: /\bReact\.memo\b/, why: 'React API' },
   { pattern: /@returns/, why: 'JSDoc tag, never rendered' },
+  // Stored enum ids, preserved by open-decision ruling 5. The rendered labels
+  // became Fund Analyst and Equity Research; the ids stay because role is a
+  // TEXT CHECK column and changing them would be a migration plus a backfill
+  // for no compliance gain, since an id is never shown to a user.
+  // Note this is a line-level exemption: a banned substring elsewhere on a
+  // line that also contains one of these ids downgrades to WARN rather than
+  // ERROR. It still prints, so it is visible, not silenced.
+  { pattern: /\b(buy|sell)_side\b/, why: 'stored enum id, never rendered, ruling 5' },
   // Ordinary words that contain a banned substring and carry no claim.
   { pattern: /\bthreshold(s)?\b/i, why: 'contains hold, no claim about a position' },
   { pattern: /\bhousehold(s)?\b/i, why: 'contains hold' },
