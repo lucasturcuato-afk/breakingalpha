@@ -45,6 +45,12 @@
      explicit that a near value must not be substituted, and several coincide
      in light while diverging in dark, so an alias would be right on one theme
      and wrong on the other.
+     The five the tab bar consumes show the shape of it:
+       --c-bg     #fffdf9 == --cream-hi light,      dark #14100a vs #1e1e1e
+       --c-ink    #1a1208 == --text-primary light,  dark #f5efe3 vs #f5e6d3
+       --c-gold   #d4a84b == --gold light,          dark #d4a84b vs #c9a84c
+       --c-muted  #786a52 near --text-muted #7a6a4d, dark #9e9178 vs #8a8a80
+       --c-border #ede8df near --border-base #ede4d3
 
      The --pill-* families are deliberately NOT here. This repo already defines
      all five in both themes with different values, and restyling a shared
@@ -114,6 +120,13 @@
   --v3-lead: 1.6;
   --v3-claim: 17.5px;
   --v3-clamp: 3;
+
+  /* Tab bar row height, measured at 58px in the design. The bar's own box is
+     this plus its 1px top rule plus env(safe-area-inset-bottom). Content
+     reserves space from the same token so the two cannot drift; the bar this
+     replaces reserved 56px against a 59px bar. */
+  --mobile-tabbar-row: 58px;
+  --mobile-tabbar-height: calc(var(--mobile-tabbar-row) + 1px);
 
 
   /* ── Text system ──

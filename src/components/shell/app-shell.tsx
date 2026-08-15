@@ -7,7 +7,7 @@ import { MoodBar, type MoodType } from "./mood-bar";
 import { Topbar } from "./topbar";
 import { RightPanel } from "./right-panel";
 import { CommandPalette } from "./command-palette";
-import { MobileBottomNav } from "./mobile-bottom-nav";
+import { MobileTabBar } from "./mobile-tab-bar";
 import { PageTransition } from "./page-transition";
 import { Footer } from "./footer";
 
@@ -117,16 +117,16 @@ export function AppShell({
       </a>
 
       {/* Sidebar (fixed, outside flex flow). Visible at md+ (icon-only between
-          768-1023px, full at lg+); below md the MobileBottomNav handles
+          768-1023px, full at lg+); below md the MobileTabBar handles
           navigation. */}
       <div className="hidden md:block">
         <Sidebar />
       </div>
 
-      {/* Main area. Below md: full width (sidebar hidden, MobileBottomNav).
+      {/* Main area. Below md: full width (sidebar hidden, MobileTabBar).
           md to lg-1: offset by 64px icon-only sidebar.
           lg+: offset by full --sidebar-width (220px). */}
-      <div className="h-screen flex flex-col md:ml-[64px] lg:ml-[var(--sidebar-width)] overflow-hidden">
+      <div className="h-[100dvh] flex flex-col md:ml-[64px] lg:ml-[var(--sidebar-width)] overflow-hidden">
         {/* Preview banner */}
         {isPreview && (
           <div
@@ -166,7 +166,11 @@ export function AppShell({
         {/* Content + right panel */}
         <div className="flex-1 flex overflow-hidden">
           {/* Scrollable content area */}
-          <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto bg-parchment pb-[56px] md:pb-0">
+          <main
+            id="main-content"
+            tabIndex={-1}
+            className="flex-1 overflow-y-auto bg-parchment pb-[calc(var(--mobile-tabbar-height)+env(safe-area-inset-bottom))] md:pb-0"
+          >
             <PageTransition>{children}</PageTransition>
           </main>
 
@@ -187,8 +191,8 @@ export function AppShell({
         </div>
       </div>
 
-      {/* Mobile bottom navigation — only visible <md */}
-      <MobileBottomNav />
+      {/* Mobile tab bar, four poles. Only visible below md. */}
+      <MobileTabBar />
 
       {/* Command palette overlay */}
       <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />
