@@ -23,15 +23,22 @@ import type { ReactNode } from "react";
 type Pole = {
   label: string;
   href: string;
-  icon: ReactNode;
+  icon: (stroke: string) => ReactNode;
   /** Routes that light this pole. Matched exactly or as a path prefix. */
   owns: string[];
 };
 
-/* Icons are reproduced from the design at 20x20 on a 24-unit viewBox. */
+/**
+ * Icons are reproduced from the design at 20x20 on a 24-unit viewBox.
+ *
+ * Stroke is passed rather than inherited through `color`. On the active row the
+ * design paints the icon --c-gold, which is a fill token and may not carry
+ * type; setting it as a stroke keeps the design's pixels while leaving the row's
+ * `color` to the ink token that actually renders the label.
+ */
 
-const IconToday = (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+const IconToday = (stroke: string) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
     <rect x="3" y="3" width="7.5" height="7.5" rx="1.6" />
     <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6" />
     <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6" />
@@ -39,21 +46,21 @@ const IconToday = (
   </svg>
 );
 
-const IconLedger = (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+const IconLedger = (stroke: string) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
     <path d="M4 4v16M8 6h12M8 11h12M8 16h8" />
   </svg>
 );
 
-const IconWatch = (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+const IconWatch = (stroke: string) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.7" aria-hidden="true">
     <circle cx="12" cy="12" r="8" />
     <circle cx="12" cy="12" r="2.4" />
   </svg>
 );
 
-const IconAsk = (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+const IconAsk = (stroke: string) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
     <circle cx="11" cy="11" r="7" />
     <path d="M20 20l-4-4" />
   </svg>
@@ -136,8 +143,8 @@ export function MobileTabBar() {
               textDecoration: "none",
             }}
           >
-            <span style={{ color: active ? "var(--c-gold)" : undefined, display: "flex" }}>
-              {pole.icon}
+            <span style={{ display: "flex" }}>
+              {pole.icon(active ? "var(--c-gold)" : "currentColor")}
             </span>
             <span
               style={{
