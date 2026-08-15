@@ -8,8 +8,15 @@
  *
  * Run against changed files:
  *   node scripts/design-lint.mjs $(git diff --name-only origin/main...HEAD)
- * Run against everything:
+ * Run against everything, the debt report:
  *   node scripts/design-lint.mjs --all
+ * Run as the ratchet, the gate:
+ *   node scripts/design-lint.mjs --since origin/main
+ *
+ * --all reports every violation in src. --since reports a violation only when
+ * it lands on a line this branch ADDED. Unchanged lines never fail, however
+ * dirty they already are. That is the whole point: the debt is real and large,
+ * so the gate has to be about direction, not about the absolute number.
  *
  * Exit 1 on any ERROR. WARN never fails the run but is printed.
  *
@@ -17,8 +24,9 @@
  * someone made, not a silent pass. Adding to it should be a visible diff.
  */
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, extname } from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const SRC = 'src';
 const EXT = new Set(['.ts', '.tsx', '.js', '.jsx', '.css', '.mdx']);
@@ -266,12 +274,86 @@ function walk(dir, out = []) {
 
 const args = process.argv.slice(2);
 const isExcluded = (f) => f.split('/').some(seg => EXCLUDE_DIRS.has(seg));
-const files = args.includes('--all')
-  ? walk(SRC)
-  : args.filter(f => EXT.has(extname(f)) && !isExcluded(f));
+
+function git(argv) {
+  return execFileSync('git', ['-c', 'core.quotePath=false', ...argv], {
+    encoding: 'utf8',
+    maxBuffer: 1 << 28,
+  });
+}
+
+/* Per-file set of line numbers this branch added, from a zero-context diff.
+ * Line numbers are the ones on the NEW side, which is what a finding carries. */
+function addedLinesSince(ref) {
+  let out;
+  try {
+    // Three dots: compare against the merge base, so unrelated commits that
+    // landed on the ref after the branch started are not counted as ours.
+    // --diff-filter=d drops deletions; a removed file has no added lines.
+    out = git(['diff', '-U0', '--no-color', '--diff-filter=d', `${ref}...HEAD`]);
+  } catch (e) {
+    console.error(`design-lint: git diff against ${ref} failed`);
+    console.error(String(e.stderr || e.message).trim());
+    process.exit(2);
+  }
+
+  const added = new Map();
+  let file = null;
+  for (const line of out.split('\n')) {
+    if (line.startsWith('+++ ')) {
+      const p = line.slice(4).trim();
+      file = p === '/dev/null' ? null : p.replace(/^b\//, '');
+      if (file && !added.has(file)) added.set(file, new Set());
+      continue;
+    }
+    if (!file || !line.startsWith('@@')) continue;
+    const m = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (!m) continue;
+    const start = parseInt(m[1], 10);
+    // Absent count means one line. An explicit 0 is a pure deletion hunk,
+    // where `start` is the line BEFORE the cut and nothing was added.
+    const count = m[2] === undefined ? 1 : parseInt(m[2], 10);
+    for (let i = 0; i < count; i++) added.get(file).add(start + i);
+  }
+  return added;
+}
+
+/* The diff numbers lines in HEAD's blob, but lintFile reads the working tree.
+ * If a touched file has uncommitted edits the two disagree and the filter
+ * silently drifts, which is the one way this gate can lie. Say so. */
+function uncommitted(files) {
+  if (!files.length) return [];
+  try {
+    return git(['diff', '--name-only', 'HEAD', '--', ...files]).split('\n').filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+const sinceIdx = args.indexOf('--since');
+const sinceRef = sinceIdx === -1 ? null : args[sinceIdx + 1];
+if (sinceIdx !== -1 && (!sinceRef || sinceRef.startsWith('--'))) {
+  console.error('design-lint: --since needs a ref, e.g. --since origin/main');
+  process.exit(2);
+}
+
+const addedByFile = sinceRef ? addedLinesSince(sinceRef) : null;
+
+let files;
+if (sinceRef) {
+  // Only the touched files, and only ones still on disk and in scope.
+  files = [...addedByFile.keys()]
+    .filter(f => EXT.has(extname(f)) && !isExcluded(f) && existsSync(f));
+} else if (args.includes('--all')) {
+  files = walk(SRC);
+} else {
+  files = args.filter(f => EXT.has(extname(f)) && !isExcluded(f));
+}
 
 if (!files.length) {
-  console.log('design-lint: no files to check');
+  console.log(sinceRef
+    ? `design-lint --since ${sinceRef}: no lintable files touched`
+    : 'design-lint: no files to check');
   process.exit(0);
 }
 
@@ -279,14 +361,37 @@ for (const f of files) {
   try { lintFile(f); } catch (e) { add('WARN', f, 0, 'unreadable', e.message); }
 }
 
-const errors = findings.filter(f => f.level === 'ERROR');
-const warns = findings.filter(f => f.level === 'WARN');
+/* In --since mode a finding survives only if it sits on an added line.
+ * Line 0 is the file-level slot used for unreadable files, which is not a
+ * line anyone can have added and must never be filtered into silence. */
+const reported = sinceRef
+  ? findings.filter(f => f.line === 0 || addedByFile.get(f.file)?.has(f.line))
+  : findings;
+
+const errors = reported.filter(f => f.level === 'ERROR');
+const warns = reported.filter(f => f.level === 'WARN');
 
 for (const f of [...errors, ...warns]) {
   console.log(`${f.level}  ${f.file}:${f.line}  [${f.rule}]  ${f.detail}`);
 }
 
-console.log(`\ndesign-lint: ${files.length} files, ${errors.length} errors, ${warns.length} warnings`);
+if (sinceRef) {
+  const preExisting = findings.length - reported.length;
+  const drifted = uncommitted(files);
+  console.log(`\ndesign-lint --since ${sinceRef}: ${files.length} files touched`);
+  console.log(`${reported.length} new, ${preExisting} pre-existing in touched files`);
+  console.log(`new: ${errors.length} errors, ${warns.length} warnings`);
+  if (drifted.length) {
+    console.log(
+      `\nWARNING: ${drifted.length} touched file(s) have uncommitted changes. The diff ` +
+      `numbers lines in HEAD, this lints your working tree, so the new/pre-existing ` +
+      `split is unreliable until you commit:`);
+    for (const d of drifted) console.log(`  ${d}`);
+  }
+} else {
+  console.log(`\ndesign-lint: ${files.length} files, ${errors.length} errors, ${warns.length} warnings`);
+}
+
 if (warns.length) {
   console.log('Warnings are allowlisted rulings or judgement calls. Read them before merging.');
 }
