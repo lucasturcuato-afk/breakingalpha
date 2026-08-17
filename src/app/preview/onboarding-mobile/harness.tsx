@@ -39,6 +39,13 @@ const PREVIEW_FIXTURE = {
 export function OnboardingMobileHarness() {
   const [step, setStep] = useState(1);
   const [lifecycle, setLifecycle] = useState<"ready" | "loading" | "error">("ready");
+  // The gated CTA. README mandates --c-locked-bg / --c-locked-ink at
+  // 5.39:1 rather than an opacity wash, so the locked treatment has to be
+  // reachable for a contrast measurement.
+  const [locked, setLocked] = useState(false);
+  // The save path can fail after the last step. The component renders it;
+  // this is how it gets measured.
+  const [saveFailed, setSaveFailed] = useState(false);
 
   const [firstName, setFirstName] = useState("Maya");
   const [firmOrSchool, setFirmOrSchool] = useState("");
@@ -60,6 +67,8 @@ export function OnboardingMobileHarness() {
     if (Number.isInteger(s) && s >= 1 && s <= TOTAL_STEPS) setStep(s);
     const p = q.get("preview");
     if (p === "loading" || p === "error") setLifecycle(p);
+    if (q.get("locked") === "1") setLocked(true);
+    if (q.get("save") === "error") setSaveFailed(true);
   }, []);
 
   return (
@@ -105,11 +114,11 @@ export function OnboardingMobileHarness() {
       previewLoading={lifecycle === "loading"}
       previewError={lifecycle === "error" ? "Preview failed (503)" : null}
       onRetryPreview={() => setLifecycle("ready")}
-      saveError={null}
+      saveError={saveFailed ? "Failed to save profile (500)" : null}
       ctaLabel={
         step === 1 ? "Get started →" : step === TOTAL_STEPS ? "Enter Signalera →" : "Continue →"
       }
-      ctaDisabled={false}
+      ctaDisabled={locked}
       onNext={() => setStep((s) => Math.min(TOTAL_STEPS, s + 1))}
       onBack={() => setStep((s) => Math.max(1, s - 1))}
       backDisabled={step === 1}
