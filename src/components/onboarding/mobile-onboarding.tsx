@@ -650,7 +650,7 @@ export function MobileOnboarding(p: MobileOnboardingProps) {
                   <TitleBlock
                     kicker="Step 7 · Review"
                     title="The preview did not come back."
-                    body="This is a failed read, not an empty result. Nothing about your setup is lost, and you can go on without it."
+                    body="This is a failed read, not an empty one. Nothing about your setup has gone anywhere, and you can go on without it."
                   />
                   <button
                     type="button"

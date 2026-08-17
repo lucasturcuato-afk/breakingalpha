@@ -550,7 +550,7 @@ function LoopCard({ reduced }: { reduced: boolean }) {
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
-                color: "var(--c-gold)",
+                color: "var(--c-inv-gold)",
               }}
             >
               <span
@@ -663,7 +663,7 @@ function LoopCard({ reduced }: { reduced: boolean }) {
               fontWeight: 400,
               lineHeight: 1,
               letterSpacing: "0.1em",
-              color: "var(--c-gold)",
+              color: "var(--c-inv-gold)",
             }}
           >
             {s.who}
@@ -1201,11 +1201,11 @@ function ProofName({ ticker, body }: { ticker: string; body: string }) {
 /* ── nine surfaces ─────────────────────────────────────────────────── */
 
 /* The design draws each row against a 1px vertical rule at its left
- * inset. It draws it as `border-left`, which is one of the four
- * treatments the standing brief forbids and which both gates flag. The
+ * inset, and draws it as a left border. That is one of the four
+ * treatments the standing brief forbids, and both gates flag it. The
  * rule survives as a sibling element instead: same 1px, same token, same
- * position, no left border anywhere. This is the anatomy the design's
- * own timeline already uses for its spine. */
+ * position, no border on any leading edge. This is the anatomy the
+ * design's own timeline already uses for its spine. */
 function Surfaces() {
   return (
     <>

@@ -16,8 +16,9 @@ import {
    Sign in, mobile. Prototype flag `isSignin`.
    ══════════════════════════════════════════════════════════════════════
    Built at 390px from Signalera Mobile v3.dc.html lines 1804 to 1886.
-   Holds no state and owns no Supabase call: every handler and every flag
-   is the page's, so the two layouts cannot drift into two behaviours.
+   Keeps no state and owns no Supabase call: every handler and every
+   flag is the page's, so the two layouts cannot drift into two
+   behaviours.
 
    Two states the design does not draw, both of which exist in the live
    page and are therefore built here rather than dropped:

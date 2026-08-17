@@ -405,6 +405,13 @@
   --c-inv-red: #f87171;
   --c-inv-green: #4ade80;
   --c-inv-amber: #fbbf24;
+  /* Gold AS TYPE, and only on espresso. The standing rule is that gold
+     never touches text at --c-gold, because on cream it measures 2.17:1;
+     --c-goldink exists for that. On espresso the arithmetic inverts,
+     --c-gold measures 8.0:1 and --c-goldink is a light-theme value that
+     does not. A separate name keeps the cream rule mechanically checkable
+     instead of carving an exception into it. */
+  --c-inv-gold: #d4a84b;
   --c-inv-red-edge: #5c2a2a;
   --c-inv-green-edge: #2c4a34;
   --c-inv-amber-edge: #5c4620;

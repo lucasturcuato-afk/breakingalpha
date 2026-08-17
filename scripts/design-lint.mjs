@@ -59,6 +59,14 @@ const BANNED_ALLOW = [
   { pattern: /\bstakeholder(s)?\b/i, why: 'contains hold' },
   { pattern: /\bplaceholder(s)?\b/i, why: 'contains hold, DOM attribute' },
   { pattern: /\bwithhold(ing)?\b/i, why: 'contains hold, used in the reportable_min_n pattern' },
+  // Persisted enum values. DECISIONS.md ruling 5 changed the two DISPLAY
+  // labels to Fund Analyst and Equity Research and left the ids alone, so
+  // that the change needs no migration and no backfill. The ids are
+  // therefore permanent, and any line that edits a role's label also
+  // carries its id. Allowlisting the ids rather than the bare words keeps
+  // a real "buy" or "sell" on the same line an error.
+  { pattern: /\bbuy_side\b/, why: 'ruling 5: persisted role enum id, deliberately unchanged' },
+  { pattern: /\bsell_side\b/, why: 'ruling 5: persisted role enum id, deliberately unchanged' },
 ];
 
 /* performance.now() is specifically called out in github.md as having been
