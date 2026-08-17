@@ -38,7 +38,7 @@ export function LedgerScreen({
   const [bannerShown, setBannerShown] = useState(true);
 
   return (
-    <div style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
+    <div data-parity="ledger" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%", padding: `0 ${PAD}` }}>
       {bannerShown ? <PersonalizationBanner data={data} onDismiss={() => setBannerShown(false)} /> : null}
       <Masthead data={data} />
       <StatsBar data={data} loading={stage === "loading"} />
@@ -120,7 +120,7 @@ export function LedgerScreen({
 
 function PersonalizationBanner({ data, onDismiss }: { data: LedgerData; onDismiss: () => void }) {
   return (
-    <div style={{ padding: `10px ${PAD} 0`, display: "flex", alignItems: "center", gap: "10px" }}>
+    <div style={{ padding: "10px 0 0", display: "flex", alignItems: "center", gap: "10px" }}>
       <div
         style={{
           flex: 1,
@@ -196,10 +196,10 @@ function PersonalizationBanner({ data, onDismiss }: { data: LedgerData; onDismis
 
 function Masthead({ data }: { data: LedgerData }) {
   return (
-    <div style={{ backgroundColor: "var(--c-inverse)", padding: `11px ${PAD} 12px`, marginTop: "10px" }}>
+    <div style={{ backgroundColor: "var(--c-inverse)", padding: "11px 20px 12px", marginTop: "10px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ font: "700 19px/1 'Playfair Display', serif", letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
-          Signal<span style={{ color: "var(--c-oninv-gold)" }}>era</span>
+          Signal<span style={{ display: "inline-block", font: "700 19px/1 'Playfair Display', serif", color: "var(--c-oninv-gold)" }}>era</span>
         </span>
         <span
           style={{
@@ -207,6 +207,7 @@ function Masthead({ data }: { data: LedgerData }) {
             height: "33px",
             borderRadius: "50%",
             border: "1px solid rgba(255,253,249,0.3)",
+            backgroundColor: "rgba(255,253,249,0.12)",
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
@@ -217,14 +218,15 @@ function Masthead({ data }: { data: LedgerData }) {
           MR
         </span>
       </div>
-      <div style={{ marginTop: "12px", font: "700 19px/1.1 'Playfair Display', serif", color: "var(--c-oninv)" }}>
+      <div style={{ marginTop: "12px", font: "700 19px/1.1 'Playfair Display', serif", letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
         Morning Brief
       </div>
       <div
         style={{
           marginTop: "6px",
+          maxWidth: "230px",
           font: "400 italic 12.5px/1.3 'Playfair Display', serif",
-          color: "var(--c-oninv-body)",
+          color: "rgba(255,253,249,0.78)",
         }}
       >
         {data.tagline}
@@ -236,8 +238,8 @@ function Masthead({ data }: { data: LedgerData }) {
           font: "600 10px/1 Inter, sans-serif",
           padding: "4px 9px",
           borderRadius: "14px",
-          backgroundColor: "var(--c-inverse-well)",
-          color: "var(--c-oninv-mono)",
+          backgroundColor: "rgba(255,253,249,0.15)",
+          color: "rgba(255,253,249,0.9)",
         }}
       >
         {data.readMinutes} min read
@@ -254,21 +256,31 @@ function StatsBar({ data, loading }: { data: LedgerData; loading: boolean }) {
         alignItems: "center",
         gap: "18px",
         flexWrap: "wrap",
-        padding: `10px ${PAD}`,
+        padding: "10px 0",
         borderBottom: "1px solid var(--c-border)",
         backgroundColor: "var(--c-bg)",
       }}
     >
       {data.stats.map((s) => (
         <span key={s.label} style={{ display: "inline-flex", alignItems: "baseline", gap: "6px" }}>
+          {/* One anatomy for all four cells. The design draws three labels in
+              Inter 700 and the VIX label in mono at --c-oninv-dim, which is two
+              anatomies in one band and measures 2.9:1 on cream. See the PR. */}
           <span style={{ font: "700 10px/1 Inter, sans-serif", color: "var(--c-muted)" }}>{s.label}</span>
           {loading ? (
             <span className={styles.sk} style={{ display: "inline-block", width: "34px", height: "10px" }} />
           ) : (
             <span
               style={{
-                font: "600 10.5px/1 'JetBrains Mono', monospace",
-                color: s.tone === "down" ? "var(--c-redink)" : "var(--c-ink)",
+                font: "700 12px/1 'JetBrains Mono', monospace",
+                color:
+                  s.tone === "calm"
+                    ? "var(--c-greenink)"
+                    : s.tone === "stress"
+                      ? "var(--c-redink)"
+                      : s.tone === "mood"
+                        ? "var(--c-amberink)"
+                        : "var(--c-ink)",
               }}
             >
               {s.value}
@@ -307,10 +319,37 @@ function Continuity({ data }: { data: LedgerData }) {
         </span>
       </div>
       {c.lines.map((l) => (
-        <div key={l.text} style={{ padding: "11px 0", borderTop: "1px solid var(--c-hair)", marginTop: "9px" }}>
-          <span style={{ font: "500 13px/1.4 Inter, sans-serif", color: "var(--c-ink)" }}>{l.text}</span>
+        <div
+          key={l.text}
+          style={{
+            padding: "11px 0",
+            borderTop: "1px solid var(--c-hair)",
+            marginTop: "9px",
+            display: "flex",
+            alignItems: "baseline",
+            gap: "8px",
+          }}
+        >
+          <span
+            style={{
+              flex: 1,
+              minWidth: 0,
+              font: l.emphasis
+                ? "500 13px/1.4 Inter, sans-serif"
+                : "400 12.5px/1.45 Inter, sans-serif",
+              color: l.emphasis ? "var(--c-ink)" : "var(--c-body)",
+            }}
+          >
+            {l.text}
+          </span>
           {l.before ? (
-            <span style={{ marginLeft: "6px", font: "400 12.5px/1.45 Inter, sans-serif", color: "var(--c-body)" }}>
+            <span
+              style={{
+                font: "500 10px/1 'JetBrains Mono', monospace",
+                letterSpacing: "0.04em",
+                color: "var(--c-muted)",
+              }}
+            >
               {l.before} → {l.after}
             </span>
           ) : null}
@@ -318,7 +357,7 @@ function Continuity({ data }: { data: LedgerData }) {
       ))}
       <div style={{ paddingTop: "11px", borderTop: "1px solid var(--c-hair)", display: "flex", alignItems: "baseline", gap: "9px" }}>
         <span style={{ font: "600 12px/1 Inter, sans-serif", color: "var(--c-ink)" }}>{c.openNow}</span>
-        <span style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.07em", color: "var(--c-muted)" }}>
+        <span style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.04em", color: "var(--c-muted)" }}>
           {c.nextIn}
         </span>
       </div>
@@ -338,10 +377,10 @@ function PulseHero({ data }: { data: LedgerData }) {
         padding: "16px",
       }}
     >
-      <div style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.07em", color: "var(--c-oninv-dim)" }}>
+      <div style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.07em", color: "rgba(255,253,249,0.55)" }}>
         {p.stampedAt}
       </div>
-      <p style={{ margin: "12px 0 0", font: "800 25px/1.24 'Playfair Display', serif", color: "var(--c-oninv)" }}>
+      <p style={{ margin: "12px 0 0", font: "800 25px/1.24 'Playfair Display', serif", letterSpacing: "-0.025em", color: "var(--c-oninv)" }}>
         Today the market is{" "}
         <span
           style={{
@@ -350,6 +389,8 @@ function PulseHero({ data }: { data: LedgerData }) {
             color: "var(--c-ongold)",
             borderRadius: "9px",
             padding: "1px 11px",
+            transform: "rotate(-1deg)",
+            boxShadow: "0 4px 0 rgba(0,0,0,0.15)",
           }}
         >
           {p.verdict}
@@ -366,6 +407,7 @@ function PulseHero({ data }: { data: LedgerData }) {
               gap: "8px",
               font: "500 12px/1 Inter, sans-serif",
               color: "var(--c-oninv)",
+              backgroundColor: "rgba(255,253,249,0.08)",
               border: "1px solid rgba(212,168,75,0.25)",
               borderRadius: "14px",
               padding: "7px 12px",
@@ -429,7 +471,7 @@ function BriefProgress({ data }: { data: LedgerData }) {
         <span style={{ font: "400 italic 12.5px/1 'Playfair Display', serif", color: "var(--c-secondary)" }}>
           {status}
         </span>
-        <span style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.07em", color: "var(--c-muted)" }}>
+        <span style={{ font: "400 10.5px/1 'JetBrains Mono', monospace", letterSpacing: "0.045em", color: "var(--c-muted)" }}>
           {read} / {total}
         </span>
       </div>

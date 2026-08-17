@@ -32,6 +32,11 @@ export async function proxy(request: NextRequest) {
     // Fixture harnesses (/preview/radar etc) open in LOCAL DEV ONLY so
     // visual smoke tests can run unauthenticated; prod stays gated.
     (path.startsWith('/preview/') && process.env.NODE_ENV === 'development') ||
+    // Mobile redesign: /ledger renders from a fixture and holds no user data
+    // yet, so it opens unauthenticated in LOCAL DEV ONLY for the runtime audit
+    // and the visual smoke test. Prod stays gated, because the real Ledger is
+    // the user's own record the moment it is wired to a loader.
+    (path === '/ledger' && process.env.NODE_ENV === 'development') ||
     path === '/about' ||
     path === '/morning-brief' ||
     path === '/live-feed' ||

@@ -47,10 +47,11 @@ export interface LedgerData {
   /** Publication time of today's evening wrap, or null when unpublished. */
   wrapPublishedAt: string | null;
   sectors: string[];
-  stats: { label: string; value: string; tone?: "up" | "down" | "flat" }[];
+  /** tone reads the figure, not the direction: a falling VIX is calm. */
+  stats: { label: string; value: string; tone?: "calm" | "stress" | "mood" }[];
   continuity: {
     changeCount: number;
-    lines: { text: string; before?: string; after?: string }[];
+    lines: { text: string; before?: string; after?: string; emphasis?: boolean }[];
     openNow: string;
     nextIn: string;
   };
@@ -74,15 +75,15 @@ export const LEDGER_FIXTURE: LedgerData = {
   wrapPublishedAt: null,
   sectors: ["Technology", "Energy", "Financials"],
   stats: [
-    { label: "Mood", value: "PATIENT" },
+    { label: "Mood", value: "PATIENT", tone: "mood" },
     { label: "Stories", value: "142" },
     { label: "Theses", value: "7 active" },
-    { label: "VIX", value: "15.80 ▼4.20%", tone: "down" },
+    { label: "VIX", value: "15.80 ▼4.20%", tone: "calm" },
   ],
   continuity: {
     changeCount: 2,
     lines: [
-      { text: "One of your calls was checked overnight." },
+      { text: "One of your calls was checked overnight.", emphasis: true },
       { text: "Open calls, so that count fell", before: "7", after: "6" },
     ],
     openNow: "6 open now",

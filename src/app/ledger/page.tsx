@@ -24,5 +24,26 @@ export default async function LedgerPage({
   // by a clock. ?wrap= stands in for that artifact until a loader supplies it.
   const wrapRaw = Array.isArray(params.wrap) ? params.wrap[0] : params.wrap;
 
-  return <LedgerScreen stage={stage} wrapPublishedAt={wrapRaw ?? null} />;
+  return (
+    <>
+      {/* The mobile layout is gated on the same breakpoint the shell uses to
+          swap the sidebar for the tab bar. Gating lives in classes, never in an
+          inline style: an inline display beats the class at every breakpoint,
+          which is the defect that shipped the tab bar to desktop once already. */}
+      <div className="md:hidden">
+        <LedgerScreen stage={stage} wrapPublishedAt={wrapRaw ?? null} />
+      </div>
+
+      {/* Above the breakpoint this route has no layout of its own. The desktop
+          equivalents already exist and are not being rebuilt here. */}
+      <div className="hidden md:block" style={{ padding: "48px", backgroundColor: "var(--c-bg)" }}>
+        <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+          The Ledger is a mobile surface.
+        </p>
+        <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)" }}>
+          On a wider screen the desk splits it across the Morning Brief and your calls.
+        </p>
+      </div>
+    </>
+  );
 }

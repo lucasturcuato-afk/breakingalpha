@@ -37,14 +37,19 @@
   --border-hover: #c9922a44;
 
   /* ── Mobile design system ──────────────────────────────────────────
-     The 57 colour tokens the mobile handoff defines, light theme, plus
-     the four density properties. Values are read out of the rendered
-     prototype rather than transcribed, so they cannot drift from it.
+     The colour tokens the mobile handoff defines, light theme, plus the four
+     density properties. Values are read out of the rendered prototype rather
+     than transcribed, so they cannot drift from it.
 
-     Defined as literals rather than aliased onto the desktop tokens: the
-     handoff is explicit that a near value must not be substituted, and
-     several coincide in light while diverging in dark, so an alias would
-     be right on one theme and wrong on the other. See DECISIONS.md. */
+     Literals rather than aliases onto the desktop tokens: the handoff is
+     explicit that a near value must not be substituted, and several coincide
+     in light while diverging in dark, so an alias would be right on one theme
+     and wrong on the other.
+
+     The --pill-* families are deliberately NOT here. This repo already defines
+     all five in both themes with different values, and restyling a shared
+     component from a screen PR is out of scope. The delta is recorded in the
+     PR body instead. */
   --c-bg: #fffdf9;
   --c-surface: #faf7f2;
   --c-well: #faf5ed;
@@ -68,15 +73,6 @@
   --c-oninv-body: #c9bda6;
   --c-oninv-dim: #a2937a;
   --c-oninv-mono: #e8dcc4;
-  /* Gold as TYPE on a pinned espresso surface.
-     The on-inverse ink family exists for type that sits on espresso, and it
-     had no gold member even though the design puts gold type there: the
-     wordmark renders "Signal" in cream and "era" in gold on the masthead.
-     Writing that as --c-gold is an ink/base swap, and --c-goldink is #7a5f18
-     in light, which is near black on espresso. This is the missing member.
-     Pinned identical across themes, for the same reason the masthead itself is
-     pinned: the surface does not flip, so its type must not either. */
-  --c-oninv-gold: #d4a84b;
   --c-red: #dc2626;
   --c-redink: #b91c1c;
   --c-green: #16a34a;
@@ -94,25 +90,18 @@
   --c-inv-green: #4ade80;
   --c-locked-bg: #e2dbcd;
   --c-locked-ink: #5f5440;
-  --pill-bull-bg: #eaf5ec;
-  --pill-bull-text: #136830;
-  --pill-bull-border: #c3e3cb;
-  --pill-bear-bg: #fbeceb;
-  --pill-bear-text: #b91c1c;
-  --pill-bear-border: #f0c9c9;
-  --pill-mixed-bg: #f7f2e6;
-  --pill-mixed-text: #755b16;
-  --pill-mixed-border: #e6d9b8;
   --c-green-surface: #15803d;
-  --pill-neutral-bg: #f3f0ea;
-  --pill-neutral-text: #5f5440;
-  --pill-neutral-border: #e2dbcd;
-  --pill-watch-bg: #f4efe6;
-  --pill-watch-text: #6d5414;
-  --pill-watch-border: #e6d9b8;
   --c-number: #93866f;
+  /* Gold as TYPE on a pinned espresso surface. The on-inverse ink family
+     exists for type sitting on espresso and had no gold member, though the
+     design puts gold type there: the masthead renders "Signal" in cream and
+     "era" in gold. Writing that as --c-gold is an ink/base swap, and
+     --c-goldink is #7a5f18 in light, which is near black on espresso. Pinned
+     identical across themes for the same reason the masthead is: the surface
+     does not flip, so its type must not either. */
+  --c-oninv-gold: #d4a84b;
 
-  /* Density, set from props on the prototype root so they tune globally. */
+  /* Density, tuned globally. */
   --v3-pad: 20px;
   --v3-body: 14px;
   --v3-lead: 1.6;
@@ -365,8 +354,8 @@ html.dark {
   --text-muted: #8a8a80;
 
   /* ── Mobile design system, dark ──
-     From the prototype rule scoped to its own root. This repo switches
-     theme on html.dark, so the values move to that mechanism unchanged. */
+     From the prototype rule scoped to its own root. This repo switches theme
+     on html.dark, so the values move to that mechanism unchanged. */
   --c-bg: #14100a;
   --c-surface: #1b1610;
   --c-well: #221b12;
@@ -390,15 +379,6 @@ html.dark {
   --c-oninv-body: #c9bda6;
   --c-oninv-dim: #a2937a;
   --c-oninv-mono: #e8dcc4;
-  /* Gold as TYPE on a pinned espresso surface.
-     The on-inverse ink family exists for type that sits on espresso, and it
-     had no gold member even though the design puts gold type there: the
-     wordmark renders "Signal" in cream and "era" in gold on the masthead.
-     Writing that as --c-gold is an ink/base swap, and --c-goldink is #7a5f18
-     in light, which is near black on espresso. This is the missing member.
-     Pinned identical across themes, for the same reason the masthead itself is
-     pinned: the surface does not flip, so its type must not either. */
-  --c-oninv-gold: #d4a84b;
   --c-red: #f87171;
   --c-redink: #fca5a5;
   --c-green: #4ade80;
@@ -416,23 +396,16 @@ html.dark {
   --c-inv-green: #4ade80;
   --c-locked-bg: #2a241c;
   --c-locked-ink: #a89b82;
-  --pill-bull-bg: #16281c;
-  --pill-bull-text: #86efac;
-  --pill-bull-border: #2c4a34;
-  --pill-bear-bg: #2a1414;
-  --pill-bear-text: #fca5a5;
-  --pill-bear-border: #5c2a2a;
-  --pill-mixed-bg: #2a2415;
-  --pill-mixed-text: #e6cd8a;
-  --pill-mixed-border: #4c4128;
   --c-green-surface: #0f5a2b;
-  --pill-neutral-bg: #241f18;
-  --pill-neutral-text: #b5a88f;
-  --pill-neutral-border: #3b3229;
-  --pill-watch-bg: #2a2110;
-  --pill-watch-text: #e6cd8a;
-  --pill-watch-border: #5c4620;
   --c-number: #7d7364;
+  /* Gold as TYPE on a pinned espresso surface. The on-inverse ink family
+     exists for type sitting on espresso and had no gold member, though the
+     design puts gold type there: the masthead renders "Signal" in cream and
+     "era" in gold. Writing that as --c-gold is an ink/base swap, and
+     --c-goldink is #7a5f18 in light, which is near black on espresso. Pinned
+     identical across themes for the same reason the masthead is: the surface
+     does not flip, so its type must not either. */
+  --c-oninv-gold: #d4a84b;
 
   --text-faint: #5a5a54;
 

@@ -216,6 +216,10 @@ async function run() {
   /* Scopes both sides. The prototype and the build rarely carry the same
    * hooks, so --proto-selector overrides the design side when they differ. */
   const selector = takeFlag(argv, '--selector');
+  /* Override the three phone widths. The mobile layout has to be verified
+     ABSENT above the breakpoint as well as correct below it, and a fixed list
+     of phone viewports cannot express that. */
+  const widthFlag = takeFlag(argv, '--width');
   const protoSelector = takeFlag(argv, '--proto-selector') || selector;
   const [mode, ...rest] = argv;
   const browser = await chromium.launch();
@@ -223,7 +227,10 @@ async function run() {
 
   if (mode === 'audit') {
     const url = rest[0];
-    for (const vp of VIEWPORTS) {
+    const viewports = widthFlag
+      ? widthFlag.split(',').map((w) => ({ name: w.trim(), width: Number(w), height: 900 }))
+      : VIEWPORTS;
+    for (const vp of viewports) {
       for (const theme of ['light', 'dark']) {
         const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height } });
         const { violations, missing } = await probe(page, url, theme, selector);
@@ -251,7 +258,7 @@ async function run() {
         await page.close();
       }
     }
-    console.log(`\nscreen-audit: ${failed} violations across 3 widths and 2 themes`);
+    console.log(`\nscreen-audit: ${failed} violations across ${viewports.length} width(s) and 2 themes`);
   }
 
   else if (mode === 'parity') {
@@ -337,7 +344,7 @@ async function run() {
   }
 
   else {
-    console.log('usage: screen-audit.mjs audit <url> [--selector <css>]');
+    console.log('usage: screen-audit.mjs audit <url> [--selector <css>] [--width 390,1440]');
     console.log('       screen-audit.mjs parity <screen> <url> [--selector <css>] [--proto-selector <css>]');
     process.exit(2);
   }

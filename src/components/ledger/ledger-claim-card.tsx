@@ -66,7 +66,8 @@ export function LedgerClaimCard({
         </span>
       }
       claim={claim}
-      prose={reasoning ? <span className={styles.clamp}>{reasoning}</span> : undefined}
+      prose={reasoning}
+      proseClassName={styles.clamp}
     />
   );
 

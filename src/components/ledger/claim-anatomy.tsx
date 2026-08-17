@@ -50,9 +50,11 @@ export interface ClaimAnatomyProps {
   prose?: ReactNode;
   /** Window, result line, or the control row on a card. */
   meta?: ReactNode;
+  /** Applied to the prose paragraph, e.g. the line clamp. */
+  proseClassName?: string;
 }
 
-export function ClaimAnatomy({ scale, lead, claim, prose, meta }: ClaimAnatomyProps) {
+export function ClaimAnatomy({ scale, lead, claim, prose, meta, proseClassName }: ClaimAnatomyProps) {
   const s = SCALE[scale];
   return (
     <>
@@ -69,6 +71,7 @@ export function ClaimAnatomy({ scale, lead, claim, prose, meta }: ClaimAnatomyPr
       </p>
       {prose ? (
         <p
+          className={proseClassName}
           style={{
             margin: scale === "card" ? "11px 0 0" : 0,
             font: s.prose,
