@@ -220,5 +220,124 @@
 @media (min-width: 768px) {
   .gateLock {
     overflow: hidden;
+
+/* ══════════════════════════════════════════════════════════════════════
+   Settings batch atoms (Settings, Alerts, Saved, Learned, Share)
+   ══════════════════════════════════════════════════════════════════════ */
+/* Motion and the few rules the mobile settings batch cannot express inline.
+ *
+ * Nothing here is responsive. An inline style beats a class at every
+ * breakpoint, so mixing a responsive class with an inline property is a defect
+ * the design lint rejects. Keeping this module free of breakpoints lets the
+ * screens style measured values inline without ever colliding with it.
+ *
+ * Easing is the design's single curve. Durations come from the handoff's
+ * motion table. */
+
+.enter {
+  /* Rests in the drawn state and animates FROM the hidden one, so a subtree
+   * that mounts late never hides its own content. */
+  opacity: 1;
+  transform: none;
+  animation: mobileIn 240ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes mobileIn {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Proportion bars. The handoff is explicit that an entrance on
+ * information-bearing data must rest in the drawn state, so the base is
+ * scaleX(1) and the animation runs from zero. A bar that never animates still
+ * reports its number. */
+.barSweep {
+  transform: scaleX(1);
+  transform-origin: left center;
+  opacity: 1;
+  animation: mobileBarSweep 400ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes mobileBarSweep {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+/* Loading. The shimmer is the handoff's own, at its own duration. */
+.sk {
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--c-hair) 0%,
+    var(--c-surface) 50%,
+    var(--c-hair) 100%
+  );
+  background-size: 200% 100%;
+  animation: mobileShimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes mobileShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* A real button carrying none of the agent's default chrome. Used wherever the
+ * design draws a control that is not shaped like a button, so the element is
+ * still a <button> for keyboard and assistive technology. */
+.bare {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The tape. Linear, 60s, the handoff's own timing. Duplicated content inside
+ * the track makes the wrap seamless. */
+.ticker {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  animation: mobileTicker 60s linear infinite;
+}
+
+@keyframes mobileTicker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Nothing is hidden rather than merely unanimated: every rule above already
+   * rests in its drawn state, so removing the animation leaves content
+   * visible. */
+  .enter,
+  .barSweep,
+  .sk,
+  .ticker {
+    animation: none;
   }
 }

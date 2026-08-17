@@ -73,18 +73,30 @@ export function useSavedDeals(options?: UseSavedDealsOptions): UseSavedDealsRetu
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           console.error("[useSavedDeals] Load error:", res.status, body);
-          setIsLoading(false);
+          // A failed read used to end here, leaving the caller with an empty
+          // list and no way to tell it apart from a user who has saved
+          // nothing. Every consumer then rendered "No saved deals yet" over a
+          // request that died, which is a trust failure rather than an empty
+          // state. The failure is reported now; what a caller does with it is
+          // the caller's business.
+          if (!cancelled) {
+            setError("Your saved deals could not be loaded.");
+            setIsLoading(false);
+          }
           return;
         }
         const { savedDeals: rows } = await res.json();
         if (!cancelled) {
-          console.log("[useSavedDeals] Loaded saved IDs:", rows.length, rows);
           setSavedDeals(rows ?? []);
+          setError(null);
           setIsLoading(false);
         }
       } catch (e) {
         console.error("[useSavedDeals] Load exception:", e);
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled) {
+          setError("Your saved deals could not be loaded.");
+          setIsLoading(false);
+        }
       }
     }
     load();
