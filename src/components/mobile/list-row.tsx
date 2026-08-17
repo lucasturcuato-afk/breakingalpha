@@ -24,7 +24,7 @@ import styles from "./mobile.module.css";
  *    extra 4px carries nothing, so both build at 56, which clears the 44px tap
  *    floor with room. Recorded in the PR body as a deliberate parity gap.
  *
- * Focus follows the handoff's rule that a container holding a focusable
+ * Focus follows the handoff's rule that a container wrapping a focusable
  * control must not itself be focusable. A navigational row IS the control, so
  * it renders as a real `a` or `button` with nothing focusable inside. A row
  * carrying a switch or a text button renders as a plain div, and the control

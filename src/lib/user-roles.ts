@@ -19,8 +19,8 @@ import type { UserRole } from "@/lib/user-profile";
  *   string carried a banned word.
  *
  * `family_office`'s short description is "Multi-asset mandates" for the same
- * reason: the wizard's "Multi-asset allocation" carries a banned substring.
- * That substitution is correct and was recorded nowhere upstream.
+ * reason: the wizard's own short description carries a banned substring. That
+ * substitution is correct and was recorded nowhere upstream.
  *
  * The RIA LABEL is the one place this table rules on something no decision
  * covers. Settings said "RIA / Advisor" and the wizard said "RIA / Wealth
