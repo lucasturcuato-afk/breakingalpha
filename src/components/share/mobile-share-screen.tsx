@@ -82,7 +82,23 @@ export function MobileShareScreen({
           backgroundColor: "var(--c-bg)",
         }}
       >
-        <Link href="/" className={styles.bare} style={{ textDecoration: "none" }}>
+        {/* The design draws the wordmark as inert text. It is a link here, as
+            it is on the desktop layout, so it carries the 44px hit box the
+            same way every other undersized control does: content-box padding
+            plus a compensating negative margin, which moves nothing. */}
+        <Link
+          href="/"
+          className={styles.bare}
+          style={{
+            boxSizing: "content-box",
+            display: "inline-flex",
+            alignItems: "center",
+            minHeight: "22px",
+            padding: "11px 0",
+            margin: "-11px 0",
+            textDecoration: "none",
+          }}
+        >
           {/* The CSS wordmark, per the standing logo deviation: the sanctioned
               lockup's defining element is a rising arrow, which is the most
               prominent possible claim about outcomes, seen here before any

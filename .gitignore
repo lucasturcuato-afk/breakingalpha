@@ -85,6 +85,7 @@ scripts/out/
 
 # Parity harness artifacts (scripts/parity_harness.py, scripts/screen-audit.mjs)
 .parity-proto*.html
+.parity-*.html
 parity-*.json
 
 # ESLint cache. `npm run lint` is a bare `eslint`, and ESLint deletes a stale

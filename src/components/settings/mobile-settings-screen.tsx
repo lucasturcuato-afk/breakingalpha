@@ -194,9 +194,10 @@ export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
             </p>
 
             <SectionRule label="watchlist tickers" />
-            <div style={{ marginTop: "10px" }}>
+            <div>
               <FormField
                 label="Watchlist tickers"
+                labelHidden
                 value={watchlistInput}
                 onChange={props.onWatchlistInput}
                 placeholder="AAPL, NVDA, MSFT, META"

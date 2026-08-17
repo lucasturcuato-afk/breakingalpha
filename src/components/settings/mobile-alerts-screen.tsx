@@ -95,6 +95,11 @@ const ROWS: { key: keyof AlertPrefs; group: "publication" | "ledger"; label: str
   { key: "names", group: "ledger", label: "Followed names", sub: "Only when the desk writes on one" },
 ];
 
+/**
+ * The container. Owns the store and nothing else, so `AlertsView` below can be
+ * rendered at any lifecycle state by the preview harness without this file
+ * growing a branch for it.
+ */
 export function MobileAlertsScreen() {
   const raw = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
   /* Local edits, so a change shows immediately. Null until the reader touches
@@ -125,6 +130,21 @@ export function MobileAlertsScreen() {
     [local, stored],
   );
 
+  return <AlertsView status={status} prefs={prefs} onChange={set} idBase={idBase} />;
+}
+
+export function AlertsView({
+  status,
+  prefs,
+  onChange,
+  idBase,
+}: {
+  status: Status;
+  prefs: AlertPrefs;
+  onChange: (key: keyof AlertPrefs, next: boolean) => void;
+  idBase: string;
+}) {
+  const set = onChange;
   const publication = ROWS.filter((r) => r.group === "publication");
   const ledger = ROWS.filter((r) => r.group === "ledger");
 
@@ -289,7 +309,7 @@ function Row({
           <span
             aria-hidden="true"
             className={styles.sk}
-            style={{ flex: "none", width: "46px", height: "28px", borderRadius: "var(--radius-pill)" }}
+            style={{ flex: "none", width: "46px", height: "28px", borderRadius: "14px" }}
           />
         ) : (
           <ToggleSwitch checked={checked} onChange={onChange} label={row.label} describedBy={subId} />

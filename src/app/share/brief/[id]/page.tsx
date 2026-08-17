@@ -168,12 +168,12 @@ export default async function PublicBriefPage({ params }: Props) {
     <div className="min-h-screen bg-parchment">
       {/* Header */}
       <header className="border-b border-border-base px-6 py-4 flex items-center justify-between bg-cream dark:bg-elevated">
-        <Link href="/" className="inline-flex items-center">
+        <Link href="/" className="inline-flex items-center min-h-[44px]">
           <Wordmark size="md" />
         </Link>
         <Link
           href="/auth"
-          className="inline-flex items-center px-4 py-2 rounded-lg bg-gold text-[var(--c-ongold)] font-sans text-[12px] font-semibold hover:bg-gold-dark transition-colors"
+          className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg bg-gold text-[var(--c-ongold)] font-sans text-[12px] font-semibold hover:bg-gold-dark transition-colors"
         >
           Sign up, free
         </Link>
@@ -200,7 +200,7 @@ export default async function PublicBriefPage({ params }: Props) {
           <p
             className="font-sans mb-3"
             style={{
-              color: "var(--gold)",
+              color: "var(--c-goldink)",
               fontSize: "10px",
               fontWeight: 700,
               letterSpacing: "0.1em",
@@ -313,7 +313,7 @@ export default async function PublicBriefPage({ params }: Props) {
         </p>
         <Link
           href="/auth"
-          className="inline-block px-5 py-2.5 rounded-xl bg-gold text-[var(--c-ongold)] font-sans text-[13px] font-semibold hover:bg-gold-dark transition-colors"
+          className="inline-flex items-center justify-center min-h-[44px] px-5 py-2.5 rounded-xl bg-gold text-[var(--c-ongold)] font-sans text-[13px] font-semibold hover:bg-gold-dark transition-colors"
         >
           Try Signalera, free
         </Link>

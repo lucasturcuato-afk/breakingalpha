@@ -182,11 +182,6 @@
   --radius-lg: 9px;
   --radius-xl: 12px;
   --radius-2xl: 14px;
-  /* A capsule, not a radius. The 4/6/9/12/14 scale describes corners on a
-   * rectangle; a switch track and a proportion bar are pill-shaped, and the
-   * prototype draws both at 99px. Naming the shape keeps the scale honest and
-   * keeps the literal out of every call site. */
-  --radius-pill: 999px;
 
   /* ── Motion ── */
   --duration-fast: 100ms;

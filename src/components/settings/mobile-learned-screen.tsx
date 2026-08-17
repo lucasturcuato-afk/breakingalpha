@@ -190,7 +190,7 @@ function WeightRow({ sector, weight }: { sector: string; weight: number }) {
           flex: 1,
           minWidth: 0,
           height: "8px",
-          borderRadius: "var(--radius-pill)",
+          borderRadius: "4px",
           backgroundColor: "var(--c-hair)",
           overflow: "hidden",
           display: "block",
@@ -202,7 +202,7 @@ function WeightRow({ sector, weight }: { sector: string; weight: number }) {
             display: "block",
             width: `${span}%`,
             height: "8px",
-            borderRadius: "var(--radius-pill)",
+            borderRadius: "4px",
             backgroundColor: fill,
           }}
         />

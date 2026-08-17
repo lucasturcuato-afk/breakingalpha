@@ -12,6 +12,11 @@
  *
  * `background-clip: content-box` keeps the padding transparent, so the paint
  * stays 46x28 while the box measures 50x44.
+ *
+ * The prototype draws the track at 99px, which is off the 4/6/9/12/14 scale
+ * and which both the static and the runtime lint reject. Half of the track's
+ * own 28px height is 14px, which is on the scale and renders the identical
+ * capsule, so the shape is kept and the scale is not bent.
  */
 
 export function ToggleSwitch({
@@ -42,7 +47,7 @@ export function ToggleSwitch({
         flex: "none",
         width: "46px",
         height: "28px",
-        borderRadius: "var(--radius-pill)",
+        borderRadius: "14px",
         padding: "8px 2px",
         margin: "-8px 0",
         display: "flex",
