@@ -88,7 +88,18 @@ export async function proxy(request: NextRequest) {
     // Mobile redesign screens, steps 2 to 12. LOCAL DEV ONLY; see
     // MOBILE_REDESIGN_DEV_PATHS above. /ledger's own clause is folded into
     // that list rather than kept alongside it, so there is one place to read.
+    // This branch's own dev-only clause for /settings/profile, /settings/alerts
+    // and /saved is folded in too: the list already carries /settings, /alerts,
+    // /saved and /learned as prefixes, which is a superset of it.
     isMobileRedesignDevPath(path) ||
+    // The public share brief. NOT a dev path and not covered by the list
+    // above, which opens /share in development only. This surface exists to be
+    // opened by someone with no account: it reads through the anon key and an
+    // RLS policy permitting anon SELECT, it sets robots noindex, and its whole
+    // footer argues the recipient should sign up. It was nevertheless
+    // redirecting every signed-out visitor to /auth, so every link ever shared
+    // with a non-user landed on a sign-in wall instead of the brief.
+    path.startsWith('/share/') ||
     path === '/about' ||
     path === '/morning-brief' ||
     path === '/live-feed' ||

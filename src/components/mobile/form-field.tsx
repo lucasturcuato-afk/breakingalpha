@@ -38,6 +38,7 @@ export function FormField({
   placeholder,
   help,
   mono = false,
+  labelHidden = false,
   disabled = false,
 }: {
   label: string;
@@ -47,6 +48,12 @@ export function FormField({
   help?: string;
   /** Tickers read as machine record, so they take the mono face. */
   mono?: boolean;
+  /**
+   * Hide the label visually, for the one field the design titles with a
+   * section rule instead. The label still exists and is still bound to the
+   * input, because a rule is a heading and a heading is not a label.
+   */
+  labelHidden?: boolean;
   disabled?: boolean;
 }) {
   const id = useId();
@@ -56,7 +63,19 @@ export function FormField({
     <div>
       <label
         htmlFor={id}
-        style={{ display: "block", font: "600 11px/1 Inter, sans-serif", color: "var(--c-ink)" }}
+        style={
+          labelHidden
+            ? {
+                position: "absolute",
+                width: "1px",
+                height: "1px",
+                overflow: "hidden",
+                clip: "rect(0 0 0 0)",
+                clipPath: "inset(50%)",
+                whiteSpace: "nowrap",
+              }
+            : { display: "block", font: "600 11px/1 Inter, sans-serif", color: "var(--c-ink)" }
+        }
       >
         {label}
       </label>
@@ -70,6 +89,7 @@ export function FormField({
         onChange={(e) => onChange(e.target.value)}
         style={{
           ...FIELD,
+          marginTop: labelHidden ? "10px" : FIELD.marginTop,
           font: mono
             ? "400 13px/1 'JetBrains Mono', monospace"
             : "400 13px/1 Inter, sans-serif",

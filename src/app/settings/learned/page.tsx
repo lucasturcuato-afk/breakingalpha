@@ -59,7 +59,15 @@ export default async function LearnedPage() {
         </p>
         <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)" }}>
           On a wider screen the learned weights sit inside{" "}
-          <Link href="/settings/preferences" style={{ color: "var(--c-goldink)" }}>
+          <Link href="/settings/preferences" style={{
+              boxSizing: "content-box",
+              display: "inline-flex",
+              alignItems: "center",
+              minHeight: "20px",
+              padding: "12px 0",
+              margin: "-12px 0",
+              color: "var(--c-goldink)",
+            }}>
             your preferences
           </Link>
           .
