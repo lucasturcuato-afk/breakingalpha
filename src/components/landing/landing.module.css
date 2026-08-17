@@ -476,7 +476,8 @@
   font-variant-numeric: tabular-nums; flex-wrap: wrap;
 }
 .cntBrass { color: var(--brass); }
-.cntChal { color: var(--chal); }
+/* .cntChal removed with ruling 2: it existed only to paint the
+   "evidence supported 71.6% to 71.4%" figure, which is gone. */
 
 /* ==================== PROOF (week one vs week four) ==================== */
 .proofSection { border-top: 1px solid var(--line); background: var(--surf2); }
@@ -596,7 +597,8 @@
 .feedStatLast { padding: 14px 18px; }
 .feedStatLabel { font-family: var(--ff-mono); font-size: 8.5px; letter-spacing: 0.14em; color: var(--pd-dim); margin-bottom: 4px; }
 .feedStatNum { font-family: var(--ff-mono); font-size: 22px; color: var(--pd-text); font-variant-numeric: tabular-nums; }
-.feedStatNumSup { color: var(--pdc-sup); }
+/* .feedStatNumSup removed with ruling 2: it existed only to paint the
+   EVIDENCE SUPPORTED tile, which is gone. */
 .feedStatNumAwt { color: var(--pdc-awt); }
 /*
   Stat-tile flash on number update. The @keyframes statFlash above is
@@ -837,7 +839,7 @@
 @media (max-width: 560px) {
   .modalRoot { align-items: flex-end; padding: 0; }
   .modalPanel {
-    max-width: 100%; border-radius: 16px 16px 0 0; border-bottom: none;
+    max-width: 100%; border-radius: 14px 14px 0 0; border-bottom: none;
     padding: 26px 22px calc(24px + env(safe-area-inset-bottom, 0px));
     /* slide up from the bottom edge */
     transform: translateY(100%);

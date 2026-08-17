@@ -1,0 +1,213 @@
+/* ══════════════════════════════════════════════════════════════════════
+   Shared atoms for the mobile screens (Landing, Onboarding, Sign in)
+   ══════════════════════════════════════════════════════════════════════
+   The prototype is written entirely in inline styles. Most of it ports as
+   inline style objects reading var(--c-*), which keeps the built values
+   diffable against the design with getComputedStyle. What CANNOT be an
+   inline style lives here: keyframes, prefers-reduced-motion, focus-
+   visible, ::placeholder, and the content-box tap-target pattern.
+
+   Motion: every easing is cubic-bezier(0.16, 1, 0.3, 1). No bounces, no
+   springs. Durations are the handoff README's table.
+
+   One rule that was learned the hard way and is preserved: any entrance
+   on information-bearing data must REST IN THE DRAWN STATE. `animation: X
+   both` with a delay makes the hidden frame the resting frame, so a
+   subtree that mounts late hides its data permanently. Every class below
+   that carries a delay therefore also declares the drawn values, and the
+   animation only replays them.
+   ══════════════════════════════════════════════════════════════════════ */
+
+@keyframes v3in {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes v3rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes v3up {
+  from { transform: translateY(101%); }
+  to { transform: none; }
+}
+
+@keyframes v3wipe {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes v3blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+@keyframes v3pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes v3shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Screen enter, 240ms, 7px rise. */
+.in {
+  opacity: 1;
+  transform: none;
+  animation: v3in 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Content reveal, 620ms, 14px rise. Stagger with --d. */
+.rise {
+  opacity: 1;
+  transform: none;
+  animation: v3rise 620ms cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0ms);
+}
+
+/* Gold rule draw across the top edge of a card, 520ms. */
+.wipe {
+  transform-origin: left;
+  transform: scaleX(1);
+  animation: v3wipe 520ms cubic-bezier(0.16, 1, 0.3, 1) 120ms;
+}
+
+/* Typed-headline cursor. A brass block, half an em wide. */
+.cursor {
+  display: inline-block;
+  width: 0.5em;
+  height: 0.82em;
+  margin-left: 5px;
+  vertical-align: -0.04em;
+  background-color: var(--c-gold);
+  animation: v3blink 1s steps(2, start) infinite;
+}
+
+.pulseDot {
+  animation: v3pulse 2.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+/* Loading. A shimmer across a token-coloured bar, never a bare grey. */
+.skeleton {
+  background-color: var(--c-border);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--c-hair) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: v3shimmer 1.8s linear infinite;
+}
+
+/* The sheet rise. 300ms, from fully below the fold. */
+.sheetUp {
+  animation: v3up 300ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .in,
+  .rise,
+  .wipe,
+  .cursor,
+  .pulseDot,
+  .skeleton,
+  .sheetUp {
+    animation: none !important;
+  }
+  .in,
+  .rise {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .wipe {
+    transform: scaleX(1) !important;
+  }
+  .cursor {
+    opacity: 1 !important;
+  }
+}
+
+/* ── Wordmark ──────────────────────────────────────────────────────────
+   "Signal" in ink, "era." carrying a vertical gold gradient through
+   background-clip. This is the treatment the prototype renders on all
+   four of its wordmark sites; the desktop landing uses .brassSpan and
+   /auth uses a flat text-gold, so the three do not agree. Flagged, not
+   reconciled. */
+.wordmarkGold {
+  background-image: linear-gradient(
+    180deg,
+    var(--c-gold-hi) 0%,
+    var(--c-gold) 55%,
+    var(--c-gold-low) 100%
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ── Focus ─────────────────────────────────────────────────────────────
+   2px gold at 2px offset, 4px radius. Scoped to the mobile subtree so it
+   cannot leak into the desktop surfaces. */
+.screen :focus-visible {
+  outline: 2px solid var(--c-gold);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Real controls that must look like the prototype's divs ────────────
+   Every interactive element in the prototype is a div with role=button.
+   Production uses real <button> and <a>, which arrive with a UA
+   appearance the design does not have. */
+.reset {
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.field::placeholder {
+  color: var(--c-muted);
+  opacity: 1;
+}
+
+/* ── Tap targets ───────────────────────────────────────────────────────
+   44px minimum, no exceptions. Where the drawn control is smaller than
+   44, grow the hit box with content-box padding and take it back with a
+   compensating negative margin, so the row rhythm does not move and
+   nothing shrinks. background-clip keeps the fill on the drawn box. */
+.tapPad {
+  box-sizing: content-box;
+  min-height: 38px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+  margin-top: -3px;
+  margin-bottom: -3px;
+  background-clip: content-box;
+}
+
+/* ── Scroll lock, desktop only ─────────────────────────────────────────
+   The signal-wall intro gate is a desktop-scale device and is NOT PORTED
+   to mobile, so its body scroll lock must not reach mobile either. The
+   lock is a class rather than a JS style write for exactly that reason:
+   a media query can gate a class, and cannot gate an assignment to
+   document.body.style. */
+.gateLock {
+  overflow: visible;
+}
+
+@media (min-width: 768px) {
+  .gateLock {
+    overflow: hidden;
+  }
+}

@@ -12,16 +12,28 @@ import type {
   WorkflowStyle,
 } from "@/lib/user-profile";
 import { trackClientEvent } from "@/lib/track-event";
+import { MobileOnboarding } from "./mobile-onboarding";
 
 /* ─── Constants ─── */
 
+/* Rulings 5 and 6, DECISIONS.md. The two analyst labels carried banned
+ * substrings inside ordinary job titles and now read Fund Analyst and
+ * Equity Research; the ENUM IDS ARE UNCHANGED, so there is no migration
+ * and no backfill. Ruling 5 names three sites; this file is one of them,
+ * and it is the only one inside this PR's scope. `settings/profile` and
+ * `PreferencesForm` still carry the old labels.
+ *
+ * Family Office was not named by either ruling and is corrected here on
+ * the same grounds the rulings were made: its description contained a
+ * banned word outright. The design already reads "Multi-asset mandates".
+ * Ampersands become "and" to match the design's own strings. */
 const ROLES: { id: UserRole; label: string; description: string }[] = [
   { id: "student_analyst", label: "Student Analyst", description: "Learning equity research" },
-  { id: "buy_side", label: "Buy-Side Analyst", description: "Fund research & portfolio" },
-  { id: "sell_side", label: "Sell-Side Analyst", description: "Equity research coverage" },
-  { id: "private_equity", label: "Private Equity", description: "Deal evaluation & ops" },
+  { id: "buy_side", label: "Fund Analyst", description: "Fund research and portfolio" },
+  { id: "sell_side", label: "Equity Research", description: "Equity research coverage" },
+  { id: "private_equity", label: "Private Equity", description: "Deal evaluation and ops" },
   { id: "ria", label: "RIA / Wealth Manager", description: "Managing client capital" },
-  { id: "family_office", label: "Family Office", description: "Multi-asset allocation" },
+  { id: "family_office", label: "Family Office", description: "Multi-asset mandates" },
   { id: "other", label: "Other", description: "Custom investor profile" },
 ];
 
@@ -30,7 +42,7 @@ const STRATEGIES: { id: StrategyType; label: string; description: string }[] = [
   { id: "equity", label: "Public Equity", description: "Catalyst-driven, valuation-aware" },
   { id: "vc", label: "Venture", description: "Asymmetric upside, runway-sensitive" },
   { id: "macro", label: "Macro", description: "Regime- and policy-aware" },
-  { id: "credit", label: "Credit", description: "Coupon safety, spread & default risk" },
+  { id: "credit", label: "Credit", description: "Coupon safety, spread and default risk" },
 ];
 
 const SECTORS = [
@@ -48,7 +60,7 @@ const SECTORS = [
 
 const HORIZONS: { id: InvestmentHorizon; label: string; description: string }[] = [
   { id: "short", label: "Short", description: "Weeks to a few months" },
-  { id: "medium", label: "Medium", description: "6–18 months" },
+  { id: "medium", label: "Medium", description: "6 to 18 months" },
   { id: "long", label: "Long", description: "Multi-year" },
 ];
 
@@ -58,11 +70,17 @@ const WORKFLOWS: { id: WorkflowStyle; label: string; description: string }[] = [
   { id: "monitoring", label: "Monitoring", description: "Existing positions" },
 ];
 
-const RISK_OPTIONS: { id: RiskAppetite; label: string; description: string }[] = [
-  { id: "aggressive", label: "Aggressive", description: "High-conviction, asymmetric" },
-  { id: "balanced", label: "Balanced", description: "Risk-adjusted across sectors" },
-  { id: "defensive", label: "Defensive", description: "Capital preservation" },
-];
+/* Ruling 7a, DECISIONS.md: the risk-appetite CONTROL is not ported. It
+ * reads as individualized suitability framing, which the product brief
+ * forbids, and the design drops it. What was RISK_OPTIONS stood here.
+ *
+ * The FIELD is untouched, which is the part that has to be said out loud
+ * rather than left implicit: `risk_appetite` is a request field of
+ * POST /api/onboarding/preview-thesis and a column on user_profiles, and
+ * both still receive a value. With no control, that value is the profile's
+ * own or "balanced". The API, the Python and the column are out of scope
+ * here and are ruling 7b's own workstream. */
+const RISK_DEFAULT: RiskAppetite = "balanced";
 
 const TOTAL_STEPS = 7;
 
@@ -468,9 +486,8 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
     initialProfile.investment_horizon,
   );
   const [workflow, setWorkflow] = useState<WorkflowStyle | null>(initialProfile.workflow_style);
-  const [riskAppetite, setRiskAppetite] = useState<RiskAppetite>(
-    initialProfile.risk_appetite ?? "balanced",
-  );
+  // Ruling 7a: read, never set. The control is gone; the field is not.
+  const riskAppetite: RiskAppetite = initialProfile.risk_appetite ?? RISK_DEFAULT;
   const [tickerInput, setTickerInput] = useState("");
   const [watchlist, setWatchlist] = useState<string[]>(initialProfile.watchlist_tickers);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
@@ -483,14 +500,26 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
     setSectors((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
   }, []);
 
+  /**
+   * Commit whatever is in the field to the list.
+   *
+   * The desktop flow is one symbol and an Add button. The mobile design
+   * draws a single comma-separated field instead, which is the better
+   * one-handed shape, so this accepts both: it splits on commas and
+   * whitespace and validates each token with the SAME rule the single
+   * entry used. Anything that does not match a symbol is dropped rather
+   * than stored, exactly as before, so the shape that reaches
+   * /api/watchlist is unchanged.
+   */
   const addTicker = useCallback(() => {
-    const t = tickerInput.trim().toUpperCase();
-    if (!t) return;
-    if (!/^[A-Z.\-]{1,8}$/.test(t)) {
-      setTickerInput("");
-      return;
+    const tokens = tickerInput
+      .toUpperCase()
+      .split(/[,\s]+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0 && /^[A-Z.\-]{1,8}$/.test(t));
+    if (tokens.length) {
+      setWatchlist((prev) => [...new Set([...prev, ...tokens])]);
     }
-    setWatchlist((prev) => (prev.includes(t) ? prev : [...prev, t]));
     setTickerInput("");
   }, [tickerInput]);
 
@@ -642,13 +671,57 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
   const ctaDisabled = !canProceed() || saving || (step === 7 && previewLoading);
 
   return (
+    <>
+      {/* Mobile, authored at 390px. Single column on cream tokens; the
+          desktop's two-panel espresso split is unchanged above md. The
+          gate condition is canProceed()'s own answer, passed down, so the
+          two layouts cannot disagree about when a step is complete. */}
+      <MobileOnboarding
+        step={step}
+        totalSteps={TOTAL_STEPS}
+        firstName={firstName}
+        onFirstName={setFirstName}
+        firmOrSchool={firmOrSchool}
+        onFirmOrSchool={setFirmOrSchool}
+        roles={ROLES}
+        role={role}
+        onRole={setRole}
+        strategies={STRATEGIES}
+        strategy={strategy}
+        onStrategy={setStrategy}
+        sectorOptions={SECTORS}
+        sectors={sectors}
+        onToggleSector={toggleSector}
+        horizons={HORIZONS}
+        horizon={horizon}
+        onHorizon={setHorizon}
+        workflows={WORKFLOWS}
+        workflow={workflow}
+        onWorkflow={setWorkflow}
+        tickerInput={tickerInput}
+        onTickerInput={setTickerInput}
+        onCommitTickers={addTicker}
+        tickers={watchlist}
+        onRemoveTicker={removeTicker}
+        preview={preview}
+        previewLoading={previewLoading}
+        previewError={previewError}
+        onRetryPreview={fetchPreview}
+        saveError={error}
+        ctaLabel={ctaLabel}
+        ctaDisabled={ctaDisabled}
+        onNext={handleNext}
+        onBack={() => setStep(Math.max(1, step - 1))}
+        backDisabled={step === 1 || saving}
+      />
+
     <main
-      className="min-h-screen w-full grid grid-cols-1 md:grid-cols-2"
+      className="hidden md:grid min-h-dvh w-full md:grid-cols-2"
       style={{ backgroundColor: "var(--espresso)" }}
     >
       {/* ── LEFT PANEL ── */}
       <section
-        className="relative flex flex-col min-h-screen border-r border-white/10"
+        className="relative flex flex-col min-h-dvh border-r border-white/10"
         style={{ padding: "48px" }}
       >
         {/* Header: brand + step dots */}
@@ -687,8 +760,6 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
               onHorizonSelect={setHorizon}
               workflow={workflow}
               onWorkflowSelect={setWorkflow}
-              risk={riskAppetite}
-              onRiskSelect={setRiskAppetite}
             />
           )}
           {step === 6 && (
@@ -750,7 +821,7 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
 
       {/* ── RIGHT PANEL ── */}
       <aside
-        className="relative min-h-screen hidden md:flex flex-col"
+        className="relative min-h-dvh hidden md:flex flex-col"
         style={{
           backgroundColor: "var(--espresso-light)",
           backgroundImage:
@@ -795,6 +866,7 @@ export function OnboardingWizard({ initialProfile }: { initialProfile: InitialPr
         )}
       </aside>
     </main>
+    </>
   );
 }
 
@@ -1293,16 +1365,10 @@ function Step5Panel({
         </div>
       </div>
 
-      {/* BOTTOM — Risk conviction filter */}
-      <div style={{ flex: "0 0 30%" }} className="pt-6">
-        <p
-          className="font-sans text-[10px] font-semibold uppercase tracking-[0.2em] mb-3"
-          style={{ color: "#8a7a60" }}
-        >
-          Your conviction filter
-        </p>
-        <ConvictionFilterPreview risk={risk} />
-      </div>
+      {/* Ruling 7a. The conviction filter that stood here was the step-5
+          risk control's echo: it read a field the user can no longer set
+          and stated a suitability claim on the strength of it. Removed
+          with the control rather than left showing one fixed answer. */}
 
       {/* Persona bar + surface pills (present on all steps 2-6) */}
       <PersonaSummaryBar
@@ -1317,90 +1383,6 @@ function Step5Panel({
     </div>
   );
 }
-
-function ConvictionFilterPreview({ risk }: { risk: RiskAppetite }) {
-  const configs: {
-    id: RiskAppetite;
-    badge: string;
-    badgeColor: string;
-    badgeBg: string;
-    copy: string;
-  }[] = [
-    {
-      id: "defensive",
-      badge: "WATCH",
-      badgeColor: "#9ca3af",
-      badgeBg: "rgba(156,163,175,0.15)",
-      copy: "Showing conservative signals only — WATCH conviction and above",
-    },
-    {
-      id: "balanced",
-      badge: "MEDIUM",
-      badgeColor: "#d4a03c",
-      badgeBg: "rgba(212,160,60,0.15)",
-      copy: "Showing MEDIUM and HIGH conviction signals",
-    },
-    {
-      id: "aggressive",
-      badge: "HIGH",
-      badgeColor: CTA_BG,
-      badgeBg: "rgba(201,168,76,0.15)",
-      copy: "Showing all signals including speculative WATCH plays",
-    },
-  ];
-
-  const selected = configs.find((c) => c.id === risk);
-  const isDefault = risk === "balanced";
-
-  if (!selected && isDefault) {
-    // Show all three badges at equal opacity
-    return (
-      <div
-        className="rounded-xl p-4"
-        style={{ backgroundColor: "rgba(255,255,255,0.03)" }}
-      >
-        <div className="flex items-center gap-2 mb-2">
-          {configs.map((c) => (
-            <span
-              key={c.id}
-              className="font-sans text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wide"
-              style={{ backgroundColor: c.badgeBg, color: c.badgeColor }}
-            >
-              {c.badge}
-            </span>
-          ))}
-        </div>
-        <p className="font-sans text-[11px]" style={{ color: "#8a7a60" }}>
-          Select a risk appetite to see your conviction filter
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="rounded-xl p-4"
-      style={{ backgroundColor: "rgba(255,255,255,0.03)" }}
-    >
-      <div className="flex items-center gap-2 mb-2">
-        <span
-          className="font-sans text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wide"
-          style={{
-            backgroundColor: selected?.badgeBg,
-            color: selected?.badgeColor,
-          }}
-        >
-          {selected?.badge}
-        </span>
-      </div>
-      <p className="font-sans text-[11px] leading-relaxed" style={{ color: "#c0a870" }}>
-        {selected?.copy}
-      </p>
-    </div>
-  );
-}
-
-/* ─── Step 7 mini feed panel (Change 3) ─── */
 
 function Step7FeedPanel({
   preview,
@@ -1818,22 +1800,19 @@ function StepHorizonWorkflow({
   onHorizonSelect,
   workflow,
   onWorkflowSelect,
-  risk,
-  onRiskSelect,
 }: {
   horizon: InvestmentHorizon | null;
   onHorizonSelect: (h: InvestmentHorizon) => void;
   workflow: WorkflowStyle | null;
   onWorkflowSelect: (w: WorkflowStyle) => void;
-  risk: RiskAppetite;
-  onRiskSelect: (r: RiskAppetite) => void;
 }) {
   return (
     <div>
+      {/* Ruling 7a. The title lost its third noun with the control. */}
       <SectionTitle
         kicker="Step 5 · How you work"
-        title="Horizon, workflow and risk."
-        body="Calibrates the urgency, depth and tone of every signal we surface."
+        title="Horizon and workflow."
+        body="Horizon sets the default review date on a call you take."
       />
 
       <div className="mb-6">
@@ -1878,22 +1857,6 @@ function StepHorizonWorkflow({
         </div>
       </div>
 
-      <div>
-        <DarkLabel>Risk</DarkLabel>
-        <div className="grid grid-cols-3 gap-2">
-          {RISK_OPTIONS.map((r) => (
-            <DarkPill key={r.id} selected={risk === r.id} onClick={() => onRiskSelect(r.id)}>
-              <div className="font-sans text-[13px] font-bold">{r.label}</div>
-              <div
-                className="font-sans text-[11px] mt-0.5"
-                style={{ color: "#8a7a60" }}
-              >
-                {r.description}
-              </div>
-            </DarkPill>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
@@ -1947,7 +1910,7 @@ function StepWatchlist({
       </div>
       {tickers.length === 0 ? (
         <p className="font-sans text-[11px] italic" style={{ color: "#8a7a60" }}>
-          No tickers yet — you can skip and add them later from preferences.
+          No tickers yet. You can skip and add them later from preferences.
         </p>
       ) : (
         <div className="flex flex-wrap gap-2">

@@ -336,6 +336,119 @@
      --purple binds to web-fallback citation markers (e.g. [w1]) per
      PR-E2 spec; gold tokens stay reserved for article-grounded [n] cites. */
   --purple: #8b5cf6;
+
+  /* ══════════════════════════════════════════════════════════════════
+     Mobile design tokens (--c-*)
+     ══════════════════════════════════════════════════════════════════
+     Lifted verbatim from the :root block of
+     design_handoff_signalera_mobile/Signalera Mobile v3.dc.html. The
+     handoff README is explicit: where a prototype token has no repo
+     counterpart, ADD it rather than substituting a near value, because
+     several near-misses were corrected during design and would regress.
+     Values here are the prototype's own, not the README's transcription
+     of them, so a drift between the two document and the artefact
+     resolves to the artefact.
+
+     Two rules the names encode and the mobile screens must respect:
+       - `ink` variants are TEXT. Base variants are FILLS. Never swapped.
+       - Gold never touches type at --c-gold (2.17:1 on cream).
+         --c-goldink exists for that and is the only gold on type. */
+
+  --c-bg: #fffdf9;
+  --c-surface: #faf7f2;
+  --c-well: #faf5ed;
+  --c-card: #ffffff;
+  --c-chrome: #f4efe6;
+  --c-chrome-border: #e2dbcd;
+
+  --c-inverse: #1a1208;
+  --c-inverse-well: #241a0e;
+  --c-inverse-border: #3a2c1a;
+
+  --c-ink: #1a1208;
+  --c-body: #3d2b1f;
+  --c-secondary: #6f6248;
+  --c-muted: #786a52;
+  --c-number: #93866f;
+  --c-oninv: #fffdf9;
+  --c-oninv-strong: #faf5ed;
+  --c-oninv-body: #c9bda6;
+  --c-oninv-dim: #a2937a;
+  --c-oninv-mono: #e8dcc4;
+
+  --c-border: #ede8df;
+  --c-hair: #f0ebe0;
+  --c-edge: #ded5c6;
+  --c-frame: #d6cdbc;
+  --c-handle: #e2dbcd;
+
+  --c-gold: #d4a84b;
+  --c-goldink: #7a5f18;
+  --c-ongold: #1a1208;
+
+  --c-red: #dc2626;
+  --c-redink: #b91c1c;
+  --c-red-well: #fdf5f4;
+  --c-red-edge: #f0c9c9;
+  --c-green: #16a34a;
+  --c-greenink: #15803d;
+  --c-green-surface: #15803d;
+  --c-amber: #f59e0b;
+  --c-amberink: #a16207;
+  --c-amber-well: #fdf8ef;
+  --c-amber-edge: #f0dfb8;
+  /* On-espresso semantics. PINNED, not themed: these sit on a surface
+     that does not flip, so a themed value would invert with the page and
+     leave the word in the other state's colour. The three fills are the
+     design system's one sanctioned literal exception; the three edges
+     are their borders, which the prototype writes as bare literals. */
+  --c-inv-red: #f87171;
+  --c-inv-green: #4ade80;
+  --c-inv-amber: #fbbf24;
+  --c-inv-red-edge: #5c2a2a;
+  --c-inv-green-edge: #2c4a34;
+  --c-inv-amber-edge: #5c4620;
+
+  --c-locked-bg: #e2dbcd;
+  --c-locked-ink: #5f5440;
+
+  /* Three additions this repo needs that the prototype writes as bare
+     literals rather than as tokens of its own.
+
+     --c-gold-hi / --c-gold-low are the top and bottom stops of the
+     wordmark's vertical gradient fill. The middle stop is --c-gold. The
+     repo's --gold-light (#e8b84b) and --gold-dark (#a88542) are near
+     values, not these, so they are not reused.
+
+     --c-gold-edge is the prototype's --pill-watch-border. It is renamed
+     because this repo already ships a --pill-watch-border with a
+     different value that eight live surfaces read through SentimentPill;
+     redefining that name would repaint every one of them. */
+  --c-gold-hi: #e8c77a;
+  --c-gold-low: #a8873a;
+  --c-gold-edge: #e6d9b8;
+
+  /* The sheet scrim. Espresso at 34%, so the page reads through it
+     rather than being replaced by a neutral grey. */
+  --c-scrim: rgba(26, 18, 8, 0.34);
+
+  /* ── Third-party brand marks ──
+     Not ours to theme and not ours to substitute: these are the four
+     fixed fills of the Google G, set by Google's brand guidelines, and
+     they are identical in both themes. They live here as tokens only so
+     the mark can be drawn without a bare literal in a component. */
+  --brand-google-blue: #4285f4;
+  --brand-google-green: #34a853;
+  --brand-google-yellow: #fbbc05;
+  --brand-google-red: #ea4335;
+
+  /* Density, set here so the four properties can be tuned globally.
+     README, Typography. */
+  --v3-pad: 20px;
+  --v3-body: 14px;
+  --v3-lead: 1.6;
+  --v3-claim: 17.5px;
+  --v3-clamp: 3;
 }
 
 /* ── Dark mode overrides ── */
@@ -546,4 +659,68 @@ html.dark {
   --pill-watch-bg: var(--gold-muted);
   --pill-watch-text: var(--gold-light);
   --pill-watch-border: var(--gold-border);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Mobile design tokens, dark
+   ══════════════════════════════════════════════════════════════════════
+   Two selectors on purpose. `html.dark` is how this app has always
+   flipped, set by theme-provider.tsx. `html[data-theme="dark"]` is how
+   the prototype flips and how scripts/screen-audit.mjs asks a running
+   page for its dark pass; without it the audit's dark run measures the
+   light theme twice and reports it clean. Only the --c-* layer answers
+   to the second selector, so nothing else in the app changes shape. */
+html.dark,
+html[data-theme="dark"] {
+  --c-bg: #14100a;
+  --c-surface: #1b1610;
+  --c-well: #221b12;
+  --c-card: #1e1e1e;
+  --c-chrome: #0f0c07;
+  --c-chrome-border: #2f2920;
+
+  --c-inverse: #0c0906;
+  --c-inverse-well: #171009;
+  --c-inverse-border: #3a2c1a;
+
+  --c-ink: #f5efe3;
+  --c-body: #dcd2c1;
+  --c-secondary: #b5a88f;
+  --c-muted: #9e9178;
+  --c-number: #7d7364;
+  --c-oninv: #f5efe3;
+  --c-oninv-strong: #faf5ed;
+  --c-oninv-body: #c9bda6;
+  --c-oninv-dim: #a2937a;
+  --c-oninv-mono: #e8dcc4;
+
+  --c-border: #2f2920;
+  --c-hair: #282219;
+  --c-edge: #3b3229;
+  --c-frame: #3b3229;
+  --c-handle: #3b3229;
+
+  --c-gold: #d4a84b;
+  --c-goldink: #d4a84b;
+  --c-ongold: #1a1208;
+
+  --c-red: #f87171;
+  --c-redink: #fca5a5;
+  --c-red-well: #2a1414;
+  --c-red-edge: #5c2a2a;
+  --c-green: #4ade80;
+  --c-greenink: #86efac;
+  --c-green-surface: #0f5a2b;
+  --c-amber: #fbbf24;
+  --c-amberink: #fcd34d;
+  --c-amber-well: #2a2110;
+  --c-amber-edge: #5c4620;
+  --c-locked-bg: #2a241c;
+  --c-locked-ink: #a89b82;
+
+  --c-gold-hi: #e8c77a;
+  --c-gold-low: #a8873a;
+  --c-gold-edge: #5c4620;
+
+  --c-scrim: rgba(0, 0, 0, 0.52);
 }

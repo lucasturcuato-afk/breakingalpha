@@ -10,7 +10,9 @@ import {
 } from "react";
 import Link from "next/link";
 import { WaitlistModal } from "./waitlist-modal";
+import { MobileLanding } from "./mobile-landing";
 import { useTheme } from "@/components/providers/theme-provider";
+import mobile from "@/components/mobile/mobile.module.css";
 import styles from "./landing.module.css";
 
 // ---------------------------------------------------------------------------
@@ -228,14 +230,19 @@ export function OpeningScreen() {
     }
   }, [mounted, theme, toggleTheme]);
 
-  // Intro gate locks scroll until the visitor enters.
+  // Intro gate locks scroll until the visitor enters. The gate is a
+  // desktop-scale device and is NOT PORTED to mobile, so its lock must not
+  // reach mobile either. A CLASS carries the lock rather than a style
+  // assignment, because a media query can gate a class and cannot gate a
+  // write to document.body.style. mobile.gateLock is `overflow: visible`
+  // below 768px and `overflow: hidden` at and above it.
   useEffect(() => {
     if (entered) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const cls = mobile.gateLock;
+    document.body.classList.add(cls);
     window.scrollTo(0, 0);
     return () => {
-      document.body.style.overflow = prev;
+      document.body.classList.remove(cls);
     };
   }, [entered]);
 
@@ -248,7 +255,7 @@ export function OpeningScreen() {
     setEntered(true);
     setClosing(false);
     requestAnimationFrame(() => {
-      document.body.style.overflow = "";
+      document.body.classList.remove(mobile.gateLock);
       window.scrollTo({ top: 0 });
       landingRef.current?.focus({ preventScroll: true });
     });
@@ -299,6 +306,11 @@ export function OpeningScreen() {
 
   return (
     <div className={styles.root}>
+      {/* Mobile, authored at 390px. The two trees are siblings and the gate
+          is a class on each, so neither can leak into the other's width. */}
+      <MobileLanding onSignin={openSignin} onWaitlist={openWaitlist} />
+
+      <div className="hidden md:block">
       <ScrollProgress />
 
       {!entered && <IntroGate reduced={reduced} closing={closing} onEnter={enter} />}
@@ -346,6 +358,7 @@ export function OpeningScreen() {
         <UniversitySection />
         <WaitlistSection onJoinWaitlist={onJoinWaitlist} />
         <SiteFooter />
+      </div>
       </div>
 
       <WaitlistModal
@@ -439,7 +452,7 @@ function IntroGate({
           </div>
           <div className={styles.introKicker}>BY 06:55 ET THE MARKET HAS ALREADY PRODUCED A DAY OF NOISE</div>
           <p className={styles.introLede}>
-            Most of it will not matter to you. The question is which calls hold up.
+            Most of it will not matter to you. The question is which calls the evidence supports.
           </p>
           <button type="button" onClick={onEnter} className={styles.introEnterBtn}>
             ENTER {"↓"}
@@ -460,7 +473,7 @@ function Hero({
   onWaitlist: () => void;
   onSeeHow: () => void;
 }) {
-  const target = "We track which calls hold up.";
+  const target = "We track which calls the evidence supports.";
   const [typed, setTyped] = useState("");
   const [cursorOn, setCursorOn] = useState(true);
 
@@ -501,7 +514,7 @@ function Hero({
         </h1>
         <p className={styles.heroPara}>
           A generic market summary is a commodity. An honest, graded record is not. Signalera grades every call
-          against the evidence, including the calls that did not hold, and gets sharper the longer you use it.
+          against the evidence, including the calls the evidence ran against, and gets sharper the longer you use it.
         </p>
         <p className={styles.heroDisclaimer}>Informational only. Never advice.</p>
         <div className={styles.heroCtas}>
@@ -826,9 +839,12 @@ function TimelineSection({ reduced }: { reduced: boolean }) {
                   <span className={styles.ledgerTitle}>Freight rates stay soft through peak shipping season</span>
                   <span className={styles.pillChalCenter}>CHALLENGED</span>
                 </div>
+                {/* Ruling 2. The aggregate figure that stood between these two
+                    counts is gone. Counts are permitted; a rate is not, and an
+                    "evidence supported N%" line is the exact shape the brief
+                    forbids anywhere, including placeholder content. */}
                 <div className={styles.ledgerStats}>
                   <span>theses tracked 1,283 &rarr; <span className={styles.cntBrass}>1,284</span></span>
-                  <span>evidence supported 71.6% &rarr; <span className={styles.cntChal}>71.4%</span></span>
                   <span>open theses 8 &rarr; <span className={styles.cntBrass}>7</span></span>
                 </div>
               </div>
@@ -839,7 +855,7 @@ function TimelineSection({ reduced }: { reduced: boolean }) {
           <Reveal reduced={reduced} className={styles.beat}>
             <div className={cx(styles.beatLeft, styles.beatLeftLast)}>
               <div className={styles.beatDate}>05 // TUE JUL 1 · 06:55 ET · WEEK FOUR</div>
-              <div className={styles.beatHead}>The brief is sharper because a call it tracked did not hold.</div>
+              <div className={styles.beatHead}>The brief is sharper because a call it tracked did not survive.</div>
               <p className={styles.beatPara}>
                 Week four beats week one because it has accumulated how you think, not what you clicked. That is the
                 thing a free summary cannot do.
@@ -996,18 +1012,14 @@ function MarketReadSection({ reduced }: { reduced: boolean }) {
   const [edition, setEdition] = useState<"morning" | "evening">("morning");
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [tracked, setTracked] = useState(1284);
-  const [pct, setPct] = useState("71.4");
   const [reviewed, setReviewed] = useState(23);
   // Flash a tile when its number updates. Boolean per tile; onAnimationEnd drops
   // it to re-arm for the next update. Gated on not-reduced-motion below.
   const [flashTracked, setFlashTracked] = useState(false);
-  const [flashPct, setFlashPct] = useState(false);
   const [flashReviewed, setFlashReviewed] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const idRef = useRef(0);
   const poolRef = useRef(0);
-  const tRef = useRef(1265);
-  const sRef = useRef(903);
   const trackedRef = useRef(1284);
 
   useEffect(() => {
@@ -1041,21 +1053,16 @@ function MarketReadSection({ reduced }: { reduced: boolean }) {
         setTimeout(() => {
           setFeed((prev) => prev.map((f) => (f.id === id ? { ...f, status: p.status, evidence: p.evidence } : f)));
           trackedRef.current += 1;
-          const pctMoved = p.status !== "awaiting";
-          if (pctMoved) {
-            tRef.current += 1;
-            if (p.status === "supported") sRef.current += 1;
-          }
           setTracked(trackedRef.current);
-          setPct(((sRef.current / tRef.current) * 100).toFixed(1));
           setReviewed((r) => r + 1);
-          // Flash each tile whose number just moved. Tracked and reviewed always
-          // move; the supported percent only moves on a non-awaiting verdict.
-          // Gated on not-reduced-motion so tiles change silently under it.
+          // Flash each tile whose number just moved. Both remaining tiles are
+          // counts and both always move. Gated on not-reduced-motion so tiles
+          // change silently under it.
+          // Ruling 2: the derived-rate tile that also lived here is gone, and
+          // with it the two running totals that fed it.
           if (!reduced) {
             setFlashTracked(true);
             setFlashReviewed(true);
-            if (pctMoved) setFlashPct(true);
           }
         }, 1500),
       );
@@ -1154,15 +1161,6 @@ function MarketReadSection({ reduced }: { reduced: boolean }) {
                 {tracked.toLocaleString("en-US")}
               </div>
             </div>
-            <div className={styles.feedStat}>
-              <div className={styles.feedStatLabel}>EVIDENCE SUPPORTED</div>
-              <div
-                className={cx(styles.feedStatNum, styles.feedStatNumSup, !reduced && flashPct && styles.statFlash)}
-                onAnimationEnd={() => setFlashPct(false)}
-              >
-                {pct}%
-              </div>
-            </div>
             <div className={styles.feedStatLast}>
               <div className={styles.feedStatLabel}>REVIEWED TODAY</div>
               <div
@@ -1173,8 +1171,11 @@ function MarketReadSection({ reduced }: { reduced: boolean }) {
               </div>
             </div>
           </div>
+          {/* The caveat that stood here existed only to qualify the removed
+              rate, and it named the rate twice to do it. Both tiles that
+              remain are counts and need no qualifier of that kind. */}
           <div className={styles.feedFoot}>
-            forecast accuracy on falsifiable claims, not investment performance, and not advice
+            falsifiable claims, reviewed on the record. informational only, never advice
           </div>
         </Reveal>
       </div>
