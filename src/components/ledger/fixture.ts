@@ -103,7 +103,7 @@ export const LEDGER_FIXTURE: LedgerData = {
       "Rates did the quiet work. The ten-year gave back a basis point into the close after two soft payroll prints, and the front end has moved further than the long end in every session this week. The desk reads the term premium as carrying more of the level than the market is pricing.",
     ],
   },
-  briefProgress: { read: 1, total: 5, status: "five calls this morning," },
+  briefProgress: { read: 1, total: 5, status: "five calls, one decided" },
   today: {
     date: "Thursday, August 6",
     claims: [
