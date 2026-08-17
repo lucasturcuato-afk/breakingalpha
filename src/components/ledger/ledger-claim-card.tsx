@@ -1,4 +1,5 @@
 import { ClaimAnatomy } from "./claim-anatomy";
+import { Chevron } from "./chevron";
 import styles from "./ledger.module.css";
 
 /**
@@ -68,6 +69,12 @@ export function LedgerClaimCard({
       claim={claim}
       prose={reasoning}
       proseClassName={styles.clamp}
+      /* The affordance on a clamped reading. It is not an expander: the design
+         wraps this whole block in one control that opens the Claim screen, so
+         the chevron says the reading continues elsewhere rather than in place.
+         The design draws it down, which is why it is not the right chevron the
+         tail actions use. */
+      proseTrailing={<Chevron direction="down" style={{ marginTop: "5px" }} />}
     />
   );
 

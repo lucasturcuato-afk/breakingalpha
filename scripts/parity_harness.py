@@ -1052,8 +1052,15 @@ def main() -> int:
         "<!doctype html>"
         f"<html data-theme=\"{args.theme}\"><head><meta charset=\"utf-8\">"
         + "\n".join(styles)
+        # The phone element paints its own ground. `body` cannot be relied on
+        # for it: the prototype's light tokens outrank [data-theme="dark"] on
+        # the root, so a dark harness kept a cream body and only the subtree
+        # under the attribute went dark. A capture scoped to this element then
+        # showed dark cards on a light page. The build's own screen root sets
+        # its background the same way, so the two sides match by construction.
         + "<style>body{margin:0;background:var(--c-bg)}"
-        f"#v3phone{{width:{args.width}px;padding:0 var(--v3-pad);box-sizing:border-box}}</style>"
+        f"#v3phone{{width:{args.width}px;padding:0 var(--v3-pad);"
+        "box-sizing:border-box;background:var(--c-bg)}</style>"
         + "</head><body>"
         + f"<div id=\"v3phone\" data-theme=\"{args.theme}\" data-parity=\"{args.screen}\">"
         + markup

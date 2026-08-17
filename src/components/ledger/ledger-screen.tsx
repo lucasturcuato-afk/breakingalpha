@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Chevron } from "./chevron";
+import { MobileTickerStrip } from "./mobile-ticker-strip";
 import { LedgerClaimCard } from "./ledger-claim-card";
 import { LedgerEntryRow } from "./ledger-entry-row";
 import { LedgerDateRule } from "./ledger-date-rule";
@@ -39,6 +41,10 @@ export function LedgerScreen({
 
   return (
     <div data-parity="ledger" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%", padding: `0 ${PAD}` }}>
+      {/* The top element on the screen, above the banner and the masthead, and
+          the only thing in the product that keeps moving once a screen has
+          settled. Without it the masthead floats. */}
+      <MobileTickerStrip />
       {bannerShown ? <PersonalizationBanner data={data} onDismiss={() => setBannerShown(false)} /> : null}
       <Masthead data={data} />
       <StatsBar data={data} loading={stage === "loading"} />
@@ -109,7 +115,13 @@ export function LedgerScreen({
         </div>
 
         <TailAction label="Write your own call" weight={600} borderToken="var(--c-ink)" marginTop="18px" />
-        <TailAction label="The desk grades itself too" weight={500} borderToken="var(--c-border)" marginTop="10px" />
+        <TailAction
+          label="The desk grades itself too"
+          weight={500}
+          borderToken="var(--c-border)"
+          marginTop="10px"
+          fillToken="var(--c-surface)"
+        />
         <div style={{ height: "calc(24px + env(safe-area-inset-bottom))" }} />
       </div>
     </div>
@@ -308,6 +320,11 @@ function Continuity({ data }: { data: LedgerData }) {
         border: "1px solid var(--c-border)",
         borderRadius: "12px",
         padding: "13px 14px 12px",
+        /* The design fills this card. It was missing here and parity could not
+           see it: the container carries no text of its own, so it is not in the
+           fingerprint at all and a fill absent from an unfingerprinted element
+           diffs clean forever. Caught by eye against the prototype. */
+        backgroundColor: "var(--c-well)",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
@@ -318,16 +335,20 @@ function Continuity({ data }: { data: LedgerData }) {
           {c.changeCount} CHANGES
         </span>
       </div>
-      {c.lines.map((l) => (
+      {c.lines.map((l, i) => (
         <div
           key={l.text}
           style={{
-            padding: "11px 0",
+            /* The design gives the first line more room and a margin off the
+               header, and tightens every line after it. Keyed on position
+               rather than on emphasis: it is the rhythm of the stack, not a
+               property of what the line says. */
+            padding: i === 0 ? "11px 0" : "9px 0",
+            marginTop: i === 0 ? "9px" : 0,
             borderTop: "1px solid var(--c-hair)",
-            marginTop: "9px",
             display: "flex",
             alignItems: "baseline",
-            gap: "8px",
+            gap: "10px",
           }}
         >
           <span
@@ -353,21 +374,44 @@ function Continuity({ data }: { data: LedgerData }) {
               {l.before} → {l.after}
             </span>
           ) : null}
+          {/* Gold, and only on the emphasis line. The design gives the lead
+              change a chevron and the count line a delta figure instead: one
+              says "there is something to read", the other says what moved. A
+              chevron on both would flatten that. */}
+          {l.emphasis ? <Chevron direction="right" stroke="var(--c-gold)" style={{ marginTop: "3px" }} /> : null}
         </div>
       ))}
       <div
         style={{
-          paddingTop: "11px",
+          /* The design gives this row a 46px minimum and centres it, rather
+             than padding it like the lines above. It is the row that opens the
+             open-call list, so it is sized as a control even before it is one. */
+          minHeight: "46px",
           borderTop: "1px solid var(--c-hair)",
           display: "flex",
-          alignItems: "baseline",
+          alignItems: "center",
           justifyContent: "space-between",
-          gap: "9px",
+          gap: "10px",
         }}
       >
         <span style={{ font: "600 12px/1 Inter, sans-serif", color: "var(--c-ink)" }}>{c.openNow}</span>
-        <span style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.04em", color: "var(--c-muted)" }}>
-          {c.nextIn}
+        <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.04em", color: "var(--c-muted)" }}>
+            {c.nextIn}
+          </span>
+          {/* Drawn at rest, which is rotate(0deg), because the open-call list
+              this row expands is not built in this unit. The rotation and its
+              easing are the design's own and are carried here so the control
+              that lands later inherits them rather than inventing them. */}
+          <span
+            style={{
+              display: "inline-flex",
+              transition: "transform 180ms cubic-bezier(0.16,1,0.3,1)",
+              transform: "rotate(0deg)",
+            }}
+          >
+            <Chevron direction="down" />
+          </span>
         </span>
       </div>
     </div>
@@ -380,12 +424,39 @@ function PulseHero({ data }: { data: LedgerData }) {
     <div
       className={styles.rise}
       style={{
-        marginTop: "14px",
+        marginTop: "16px",
         borderRadius: "14px",
         backgroundColor: "var(--c-inverse)",
-        padding: "16px",
+        /* Padding moves to the inner wrapper, as the design has it. The glow
+           has to reach the card's own edge, and padding on this element would
+           inset the overflow box the wash is clipped by. */
+        position: "relative",
+        overflow: "hidden",
       }}
     >
+      {/* The corner glow. A 220px circle pulled 70px past the top right corner,
+          so what lands on the card is the bright inner quarter of it falling
+          away to nothing well before the opposite edge. The design writes the
+          gold as --c-gold's own value carrying an eight-bit alpha suffix, which
+          resolves to the 0.376 below. No token expresses an alpha of a token,
+          so the alpha is spelled out here and the hue is not. */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          right: "-70px",
+          top: "-70px",
+          width: "220px",
+          height: "220px",
+          background: "radial-gradient(circle, rgba(212,168,75,0.376), transparent 70%)",
+          pointerEvents: "none",
+        }}
+      />
+      {/* One positioned wrapper for all of it, as the design does it. The glow
+          is absolutely positioned, so it paints above every non-positioned
+          sibling: without this the stamp, the headline and the drivers all sit
+          under the wash rather than on the card. */}
+      <div style={{ position: "relative", padding: "18px 16px 16px" }}>
       <div style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.07em", color: "rgba(255,253,249,0.55)" }}>
         {p.stampedAt}
       </div>
@@ -437,6 +508,7 @@ function PulseHero({ data }: { data: LedgerData }) {
             </span>
           </span>
         ))}
+      </div>
       </div>
     </div>
   );
@@ -505,11 +577,14 @@ function TailAction({
   weight,
   borderToken,
   marginTop,
+  fillToken,
 }: {
   label: string;
   weight: number;
   borderToken: string;
   marginTop: string;
+  /** The second action is filled; the first is not. */
+  fillToken?: string;
 }) {
   return (
     <button
@@ -518,17 +593,26 @@ function TailAction({
       style={{
         marginTop,
         width: "100%",
+        /* 52, not the design's 50. The design's rows are content-box, so its
+           50px minimum sits inside a 1px border on each side and measures 52
+           rendered. Everything here is border-box under the framework reset, so
+           the border has to be in the number. Measured, not transcribed. */
         minHeight: "52px",
         display: "flex",
         alignItems: "center",
+        /* The chevron sits on the trailing edge, not next to the label. */
+        justifyContent: "space-between",
         padding: "0 16px",
         border: `1px solid ${borderToken}`,
         borderRadius: "9px",
+        backgroundColor: fillToken,
         font: `${weight} 13px/1.4 Inter, sans-serif`,
         color: "var(--c-ink)",
+        textAlign: "left",
       }}
     >
-      {label}
+      <span style={{ minWidth: 0, flex: 1 }}>{label}</span>
+      <Chevron direction="right" size={15} />
     </button>
   );
 }

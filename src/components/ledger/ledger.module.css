@@ -95,6 +95,22 @@
   cursor: pointer;
 }
 
+/* The ticker track. The keyframe moves it by half its own width, which is why
+ * the strip renders its cell list twice: at -50% the second copy sits exactly
+ * where the first began, so the loop has no seam. */
+.ticker {
+  animation: ledgerTicker 60s linear infinite;
+}
+
+@keyframes ledgerTicker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Nothing is hidden rather than merely unanimated: every animated rule above
    * already rests in its drawn state, so removing the animation leaves the
@@ -102,6 +118,16 @@
   .rise,
   .enter,
   .sk {
+    animation: none;
+  }
+
+  /* The ticker is the one animation here that is not an entrance, so it is the
+   * one that had to be thought about rather than listed. Stopping it rests the
+   * track at translateX(0), which is the first copy of the cell list in its
+   * drawn position: every symbol the strip has is on screen or reachable by
+   * the strip's own horizontal scroll. Nothing is hidden by stopping it, and a
+   * reader who has asked for less motion does not get a marquee. */
+  .ticker {
     animation: none;
   }
 }

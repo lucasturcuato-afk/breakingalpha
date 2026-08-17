@@ -68,6 +68,13 @@
   --c-inverse: #1a1208;
   --c-inverse-well: #241a0e;
   --c-inverse-border: #3a2c1a;
+  /* The zero-alpha end of --c-inverse, for the ticker's edge fades. Mine, not
+     the design's: the design writes rgba(26,18,8,0), which is the LIGHT
+     inverse spelled out, and leaves it unchanged in dark. Fading a #0c0906 bar
+     out through a #1a1208 hue is a bruise at the edge, so the clear end tracks
+     its own theme. Not `transparent`, which Safari interpolates through black
+     and which puts the same bruise on both themes. */
+  --c-inverse-clear: rgba(26, 18, 8, 0);
   --c-oninv: #fffdf9;
   --c-oninv-strong: #faf5ed;
   --c-oninv-body: #c9bda6;
@@ -374,6 +381,7 @@ html.dark {
   --c-inverse: #0c0906;
   --c-inverse-well: #171009;
   --c-inverse-border: #3a2c1a;
+  --c-inverse-clear: rgba(12, 9, 6, 0);
   --c-oninv: #f5efe3;
   --c-oninv-strong: #faf5ed;
   --c-oninv-body: #c9bda6;

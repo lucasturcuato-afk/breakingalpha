@@ -1,3 +1,9 @@
+export { Chevron } from "./chevron";
+export type { ChevronDirection } from "./chevron";
+/* The Evening Wrap draws the same strip. It imports this rather than building
+   a second one; the design carries one ticker, not two. */
+export { MobileTickerStrip } from "./mobile-ticker-strip";
+export type { TickerCell } from "./mobile-ticker-strip";
 export { ClaimAnatomy, OutcomeLead, OUTCOME_STATES, OUTCOME_TOKENS } from "./claim-anatomy";
 export type { ClaimAnatomyProps, ClaimScale, OutcomeState } from "./claim-anatomy";
 export { LedgerClaimCard } from "./ledger-claim-card";

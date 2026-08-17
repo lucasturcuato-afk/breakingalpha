@@ -52,10 +52,45 @@ export interface ClaimAnatomyProps {
   meta?: ReactNode;
   /** Applied to the prose paragraph, e.g. the line clamp. */
   proseClassName?: string;
+  /**
+   * Sits on the prose slot's trailing edge, top-aligned. The design puts a
+   * chevron here on a card whose reading is clamped, and nothing here on a row.
+   *
+   * Passing it turns the prose slot into a two-column row: the paragraph takes
+   * the remaining width and this keeps its intrinsic one. Leaving it out
+   * renders the paragraph exactly as before, which is what the entry row needs,
+   * so the row is unchanged by this existing.
+   */
+  proseTrailing?: ReactNode;
 }
 
-export function ClaimAnatomy({ scale, lead, claim, prose, meta, proseClassName }: ClaimAnatomyProps) {
+export function ClaimAnatomy({
+  scale,
+  lead,
+  claim,
+  prose,
+  meta,
+  proseClassName,
+  proseTrailing,
+}: ClaimAnatomyProps) {
   const s = SCALE[scale];
+  const proseParagraph = prose ? (
+    <p
+      className={proseClassName}
+      style={{
+        margin: proseTrailing ? 0 : scale === "card" ? "11px 0 0" : 0,
+        /* The clamp needs a definite width to clamp against, which the flex
+           row's default `min-width:auto` would not give it: a long unbroken
+           reading would push the chevron off the card instead of ellipsing. */
+        flex: proseTrailing ? 1 : undefined,
+        minWidth: proseTrailing ? 0 : undefined,
+        font: s.prose,
+        color: "var(--c-body)",
+      }}
+    >
+      {prose}
+    </p>
+  ) : null;
   return (
     <>
       {lead}
@@ -69,18 +104,23 @@ export function ClaimAnatomy({ scale, lead, claim, prose, meta, proseClassName }
       >
         {claim}
       </p>
-      {prose ? (
-        <p
-          className={proseClassName}
+      {proseTrailing && proseParagraph ? (
+        <div
           style={{
-            margin: scale === "card" ? "11px 0 0" : 0,
-            font: s.prose,
-            color: "var(--c-body)",
+            marginTop: "11px",
+            display: "flex",
+            gap: "9px",
+            /* Top-aligned, so the chevron sits against the reading's first line
+               however many lines the clamp leaves. */
+            alignItems: "flex-start",
           }}
         >
-          {prose}
-        </p>
-      ) : null}
+          {proseParagraph}
+          {proseTrailing}
+        </div>
+      ) : (
+        proseParagraph
+      )}
       {meta}
     </>
   );
