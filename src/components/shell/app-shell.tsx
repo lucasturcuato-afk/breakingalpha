@@ -20,6 +20,17 @@ interface AppShellProps {
   moodDetails?: string[];
   rightPanel?: ReactNode;
   isPreview?: boolean;
+  /**
+   * The page owns the viewport below `md` and draws its own masthead.
+   *
+   * The mobile redesign's screens are full-bleed: the Ledger opens on its own
+   * masthead and its own date rule, so the desk's mood bar, topbar and footer
+   * are chrome stacked on top of a screen that already has a head. Set this and
+   * those three are gated out below `md` only. The tab bar stays, which is the
+   * point: the surface keeps its navigation and loses the furniture. Desktop is
+   * untouched at every width, and so is every page that does not set it.
+   */
+  mobileFullBleed?: boolean;
   children: ReactNode;
 }
 
@@ -30,8 +41,15 @@ export function AppShell({
   moodDetails,
   rightPanel,
   isPreview = false,
+  mobileFullBleed = false,
   children,
 }: AppShellProps) {
+  /* Gating lives in a CLASS, never in an inline style: an inline `display`
+     beats the class at every breakpoint, which is the defect design-lint's
+     rule 10 exists to catch and which shipped the tab bar to desktop once
+     already. `contents` when the flag is off so the wrapper generates no box
+     and every existing caller keeps the exact flex layout it has today. */
+  const chrome = mobileFullBleed ? "hidden md:block" : "contents";
   const [panelOpen, setPanelOpen] = useState(true);
   const [commandOpen, setCommandOpen] = useState(false);
   const [authed, setAuthed] = useState(false);
@@ -133,15 +151,17 @@ export function AppShell({
           </div>
         )}
 
-        {/* Mood bar */}
-        <MoodBar mood={mood} headline={moodHeadline} details={moodDetails} />
+        {/* Mood bar and topbar. Desk chrome, gated below md on a full-bleed
+            surface that draws its own head. */}
+        <div className={chrome}>
+          <MoodBar mood={mood} headline={moodHeadline} details={moodDetails} />
 
-        {/* Topbar */}
-        <Topbar
-          pageTitle={pageTitle}
-          authed={authed}
-          onCommandOpen={() => setCommandOpen(true)}
-        />
+          <Topbar
+            pageTitle={pageTitle}
+            authed={authed}
+            onCommandOpen={() => setCommandOpen(true)}
+          />
+        </div>
 
         {/* Content + right panel */}
         <div className="flex-1 flex overflow-hidden">
@@ -160,7 +180,11 @@ export function AppShell({
           )}
         </div>
 
-        <Footer />
+        {/* Same gating as the head. A footer under a screen whose last row is
+            the tab bar reads as the desk leaking onto the phone. */}
+        <div className={chrome}>
+          <Footer />
+        </div>
       </div>
 
       {/* Mobile bottom navigation — only visible <md */}

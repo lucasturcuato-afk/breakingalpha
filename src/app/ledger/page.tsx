@@ -1,3 +1,4 @@
+import { AppShell } from "@/components/shell";
 import { LedgerScreen, type BriefStage } from "@/components/ledger";
 
 /**
@@ -7,6 +8,12 @@ import { LedgerScreen, type BriefStage } from "@/components/ledger";
  * ?stage= renders a lifecycle state directly. The screen has no data source in
  * this unit, so the states cannot be reached by reproducing their conditions,
  * and the runtime audit has to be able to reach each one.
+ *
+ * The shell is mounted the way every other page in this repo mounts it, per
+ * page rather than by a layout. Without it the Ledger pole navigates to a
+ * screen with no tab bar on it and no way back, and the prototype shows the bar
+ * here: `showNav` lists `ledger` among its four. `mobileFullBleed` gates the
+ * desk chrome the screen replaces rather than skipping the shell to avoid it.
  */
 
 const STAGES: BriefStage[] = ["ready", "loading", "error", "none", "stale"];
@@ -25,7 +32,7 @@ export default async function LedgerPage({
   const wrapRaw = Array.isArray(params.wrap) ? params.wrap[0] : params.wrap;
 
   return (
-    <>
+    <AppShell pageTitle="Ledger" mobileFullBleed>
       {/* The mobile layout is gated on the same breakpoint the shell uses to
           swap the sidebar for the tab bar. Gating lives in classes, never in an
           inline style: an inline display beats the class at every breakpoint,
@@ -44,6 +51,6 @@ export default async function LedgerPage({
           On a wider screen the desk splits it across the Morning Brief and your calls.
         </p>
       </div>
-    </>
+    </AppShell>
   );
 }

@@ -126,9 +126,25 @@ const BASE_AS_TEXT = /(^|[;{}\s])color\s*:\s*[^;{}]*var\(\s*--c-(red|green|amber
 /* ------------------------------------------------------------------ */
 /* Rule 9. Hardcoded hex where a token exists.                         */
 /* The three on-espresso literals are the sanctioned exception.        */
+/*                                                                     */
+/* Two things this got wrong. `{3,8}` accepted runs of 5 and 7 digits, */
+/* which are not colours in any notation, so it matched the leading    */
+/* characters of longer identifiers. And a PR reference in a comment   */
+/* is a `#` followed by digits, so `#622` read as a three-digit hex    */
+/* and failed the branch on a code comment.                            */
+/*                                                                     */
+/* The digit counts are now the four that exist. The reference case is */
+/* excluded on CONTEXT rather than on content: a match is skipped only */
+/* when it is all digits AND an issue cue sits immediately before it.  */
+/* Requiring a letter a-f instead would have been shorter and wrong,   */
+/* because #000, #111, #222, #333, #666 and #999 are all-numeric and   */
+/* are exactly the literals people hardcode. Both conditions have to   */
+/* hold, so a bare #000 anywhere is still an error and only prose like */
+/* "PR #622" or "see #619" goes quiet.                                 */
 /* ------------------------------------------------------------------ */
 const ON_ESPRESSO = new Set(['#f87171', '#4ade80', '#fbbf24']);
-const HEX = /#[0-9a-fA-F]{3,8}\b/g;
+const HEX = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g;
+const ISSUE_CUE = /\b(?:PRs?|pull|issues?|GH|gh|closes?|fixes?|see|refs?)\s*[#(]?\s*$/i;
 
 /* ------------------------------------------------------------------ */
 /* Rule 10. A responsive class defeated by an inline style.            */
@@ -379,11 +395,15 @@ function lintFile(file) {
 
     // 9. hardcoded hex
     if (!isTokens) {
-      const hexes = raw.match(HEX) || [];
-      for (const h of hexes) {
-        if (!ON_ESPRESSO.has(h.toLowerCase())) {
-          add('ERROR', file, n, 'hardcoded-hex', `${h} should be a var()`);
-        }
+      HEX.lastIndex = 0;
+      for (const m of raw.matchAll(HEX)) {
+        const h = m[0];
+        if (ON_ESPRESSO.has(h.toLowerCase())) continue;
+        // An issue reference, not a colour. Both halves are required: all
+        // digits, and a cue word immediately before it.
+        const allDigits = /^#\d+$/.test(h);
+        if (allDigits && ISSUE_CUE.test(raw.slice(0, m.index))) continue;
+        add('ERROR', file, n, 'hardcoded-hex', `${h} should be a var()`);
       }
     }
   });
