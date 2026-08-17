@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Bookmark, Briefcase, ArrowLeft, Download, X } from "lucide-react";
 import { useSavedDeals, type EnrichedDeal } from "@/hooks/useSavedDeals";
 import { normalizeSector } from "@/lib/deal-utils";
+import { MobileSavedScreen } from "@/components/saved/mobile-saved-screen";
 
 type SortKey = "saved_at" | "company" | "value";
 
@@ -60,7 +61,8 @@ function exportCSV(deals: EnrichedDeal[]) {
 }
 
 export default function SavedDealsPage() {
-  const { enrichedSavedDeals, toggleSave, isLoading } = useSavedDeals();
+  const { enrichedSavedDeals, toggleSave, isLoading, error } = useSavedDeals();
+  const [exported, setExported] = useState(false);
 
   // Local display list for fade-out animation — seeded once on load
   const [displayDeals, setDisplayDeals] = useState<EnrichedDeal[]>([]);
@@ -96,7 +98,32 @@ export default function SavedDealsPage() {
 
   const hasSaved = displayDeals.length > 0;
 
+  function handleExport() {
+    exportCSV(sorted);
+    setExported(true);
+    setTimeout(() => setExported(false), 2000);
+  }
+
   return (
+    <>
+      {/* Phone width. One state, two layouts: the mobile screen reads the same
+          hook, the same sort key and the same list the desktop table does.
+          Gating lives in classes, never in an inline style. */}
+      <div className="md:hidden">
+        <MobileSavedScreen
+          deals={sorted}
+          isLoading={isLoading}
+          error={error}
+          sortKey={sortKey}
+          onSort={setSortKey}
+          onUnsave={handleUnsave}
+          onExport={handleExport}
+          exported={exported}
+          stageOf={getDealStage}
+        />
+      </div>
+
+      <div className="hidden md:block">
     <AppShell pageTitle="Saved Deals">
       <div className="max-w-3xl mx-auto px-6 py-8 dark:bg-[#161616] min-h-full">
         {/* Header */}
@@ -267,5 +294,7 @@ export default function SavedDealsPage() {
         )}
       </div>
     </AppShell>
+      </div>
+    </>
   );
 }

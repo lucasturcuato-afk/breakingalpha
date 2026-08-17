@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { TickerStrip } from "@/components/brief/ticker-strip";
 import { Wordmark } from "@/components/ui/wordmark";
 import { stripHtml } from "@/lib/strip-html";
+import { MobileShareScreen } from "@/components/share/mobile-share-screen";
 
 /**
  * Public read-only brief view.
@@ -134,6 +135,36 @@ export default async function PublicBriefPage({ params }: Props) {
   const kind = briefing.briefing_type === "evening" ? "Evening Wrap" : "Morning Brief";
 
   return (
+    <>
+      {/* Phone width. Same row, same guards, one layout per breakpoint.
+          Gating lives in classes: an inline display beats a class everywhere. */}
+      <div className="md:hidden">
+        <MobileShareScreen
+          kind={kind}
+          dateLine={formatDate(briefing.created_at)}
+          headline={briefing.headline}
+          marketTone={briefing.market_tone}
+          summary={briefing.summary}
+          deals={topDeals.map((d) => ({
+            company: d.company,
+            value: d.value,
+            deal_type: d.deal_type,
+            one_liner: d.one_liner ? stripHtml(d.one_liner) : undefined,
+          }))}
+          sections={sectionEntries.map(([key, content]) => ({
+            key,
+            title: sectionTitle(key),
+            body: stripHtml(content),
+          }))}
+          sectors={sectorEntries.map(([sector, analysis]) => ({
+            key: sector,
+            title: sector,
+            body: stripHtml(analysis),
+          }))}
+        />
+      </div>
+
+      <div className="hidden md:block">
     <div className="min-h-screen bg-parchment">
       {/* Header */}
       <header className="border-b border-border-base px-6 py-4 flex items-center justify-between bg-cream dark:bg-elevated">
@@ -142,9 +173,9 @@ export default async function PublicBriefPage({ params }: Props) {
         </Link>
         <Link
           href="/auth"
-          className="inline-flex items-center px-4 py-2 rounded-lg bg-gold text-cream font-sans text-[12px] font-semibold hover:bg-gold-dark transition-colors"
+          className="inline-flex items-center px-4 py-2 rounded-lg bg-gold text-[var(--c-ongold)] font-sans text-[12px] font-semibold hover:bg-gold-dark transition-colors"
         >
-          Sign up — Free
+          Sign up, free
         </Link>
       </header>
 
@@ -204,7 +235,7 @@ export default async function PublicBriefPage({ params }: Props) {
                 >
                   <div className="flex items-center justify-between mb-1.5">
                     <h4 className="font-sans text-[14px] font-semibold text-espresso">
-                      {deal.company || "—"}
+                      {deal.company || "Company not named"}
                     </h4>
                     <span className="font-data text-[11px] font-semibold text-gold flex-shrink-0 ml-2">
                       {deal.value || "Undisclosed"}
@@ -282,11 +313,13 @@ export default async function PublicBriefPage({ params }: Props) {
         </p>
         <Link
           href="/auth"
-          className="inline-block px-5 py-2.5 rounded-xl bg-gold text-cream font-sans text-[13px] font-semibold hover:bg-gold-dark transition-colors"
+          className="inline-block px-5 py-2.5 rounded-xl bg-gold text-[var(--c-ongold)] font-sans text-[13px] font-semibold hover:bg-gold-dark transition-colors"
         >
-          Try Signalera — Free
+          Try Signalera, free
         </Link>
       </footer>
     </div>
+      </div>
+    </>
   );
 }

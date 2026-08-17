@@ -1,0 +1,39 @@
+import Link from "next/link";
+import { MobileAlertsScreen } from "@/components/settings/mobile-alerts-screen";
+
+/**
+ * Alerts. A new route, because the screen had none: `src/app/alerts/` does not
+ * exist and nothing in the repo renders these settings. It sits under
+ * /settings because the only entry point is the Settings row "Brief and wrap
+ * times", and its back link goes there.
+ */
+
+export const metadata = {
+  title: "Alerts",
+};
+
+export default function AlertsPage() {
+  return (
+    <>
+      {/* Gating lives in classes. An inline display beats a class at every
+          breakpoint, which is how the tab bar reached desktop once already. */}
+      <div className="md:hidden">
+        <MobileAlertsScreen />
+      </div>
+
+      <div className="hidden md:block" style={{ padding: "48px", backgroundColor: "var(--c-bg)" }}>
+        <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+          Alerts is a mobile surface.
+        </p>
+        <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)" }}>
+          On a wider screen the brief and the wrap are already in front of you, so there is nothing
+          here to schedule.{" "}
+          <Link href="/settings/profile" style={{ color: "var(--c-goldink)" }}>
+            Back to settings
+          </Link>
+          .
+        </p>
+      </div>
+    </>
+  );
+}

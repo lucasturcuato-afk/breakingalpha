@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { USER_ROLES } from "@/lib/user-roles";
 import type {
   UserRole,
   RiskAppetite,
@@ -15,15 +16,10 @@ import type {
 
 /* ── Option data ── */
 
-const ROLES: { id: UserRole; label: string }[] = [
-  { id: "student_analyst", label: "Student Analyst" },
-  { id: "buy_side", label: "Buy-Side Analyst" },
-  { id: "sell_side", label: "Sell-Side Analyst" },
-  { id: "private_equity", label: "Private Equity" },
-  { id: "ria", label: "RIA / Wealth Manager" },
-  { id: "family_office", label: "Family Office" },
-  { id: "other", label: "Other" },
-];
+/* This file used to carry its own copy of the role enum, tracked by no design
+ * document, and it had already drifted from both other copies. It now reads
+ * the one table. Rulings 5 and 6 live there. */
+const ROLES = USER_ROLES;
 
 const STRATEGIES: { id: StrategyType; label: string }[] = [
   { id: "pe", label: "Private Equity" },
@@ -58,11 +54,8 @@ const WORKFLOWS: { id: WorkflowStyle; label: string }[] = [
   { id: "monitoring", label: "Monitoring" },
 ];
 
-const RISK_OPTIONS: { id: RiskAppetite; label: string }[] = [
-  { id: "aggressive", label: "Aggressive" },
-  { id: "balanced", label: "Balanced" },
-  { id: "defensive", label: "Defensive" },
-];
+/* Risk appetite options: removed by ruling 7a. The control is gone from the
+ * settings UI; the stored value is untouched and still round-trips on save. */
 
 /* ── Props ── */
 
@@ -109,7 +102,9 @@ export function PreferencesForm({
   const [sectors, setSectors] = useState<string[]>(initialSectors);
   const [horizon, setHorizon] = useState<InvestmentHorizon | null>(initialHorizon);
   const [workflow, setWorkflow] = useState<WorkflowStyle | null>(initialWorkflow);
-  const [risk, setRisk] = useState<RiskAppetite>(initialRisk);
+  /* Held, never edited here. Ruling 7a took the control out of the UI only, so
+   * the value the profile arrived with is the value that goes back. */
+  const [risk] = useState<RiskAppetite>(initialRisk);
   const [watchlist, setWatchlist] = useState<string[]>(initialWatchlist);
   const [tickerInput, setTickerInput] = useState("");
   const [marketCards, setMarketCards] = useState<string[]>(
@@ -305,21 +300,6 @@ export function PreferencesForm({
             </div>
           </div>
 
-          <div>
-            <label className="font-sans text-[11px] font-semibold text-text-muted mb-2 block">
-              Risk appetite
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {RISK_OPTIONS.map((r) => (
-                <Pill
-                  key={r.id}
-                  label={r.label}
-                  selected={risk === r.id}
-                  onClick={() => setRisk(r.id)}
-                />
-              ))}
-            </div>
-          </div>
         </div>
       </section>
 
